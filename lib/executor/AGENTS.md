@@ -2,6 +2,17 @@
 
 - This folder owns runtime actuation concepts: what PELS is trying to command, whether that command has materialized, and whether execution should issue, retry, wait, or skip.
 - Do not add planner decision logic here. Planner modules decide desired state; executor modules consume those decisions and runtime observations.
+- **The planner's shed policy does not reach this folder.** `grep -rn shedAction lib/executor/`
+  must stay empty. The planner decides where a shed leaves a device and hands over the END STATE as
+  `DevicePlanDevice.plannedShedTargetKind` — `binary_off`, a `step`, or the `target_value` the plan
+  already carries as `plannedTarget`, absent when the device is not shed this cycle. Executor code
+  reads that kind (pairing it with its own resolved step via `ExecutableShedTarget`) and converges
+  onto the destination. Do not reintroduce a read of the policy, not even behind a helper: a
+  device's configured shed behaviour is a FLOOR, the deepest the planner may go, not this cycle's
+  decision, so re-reading it here can only re-derive a decision this layer was not handed.
+  Same rule for plan devices: project them onto a narrow executor-facing view first
+  (`ExecutableConvergenceDevice`, `ExecutableSteppedLoadIntent`, …), never pass the whole plan
+  device in.
 - **Converging observed state onto desired state is this layer's charter, and it is unconditional.**
   `executorConvergence.ts` answers "does the executor still have work to do?" (and the settle
   question "has what I dispatched materialized?"); `planExecutionDrift.ts` answers it per device.

@@ -63,7 +63,6 @@ const buildSteppedLoadIntent = (
   name: 'Device 1',
   purpose: 'keep',
   steppedLoadProfile: buildSteppedLoadProfile(),
-  shedAction: 'set_step',
   desired: { on: true, stepId: 'high' },
   transition: null,
   matchingRestoreAttempt: null,

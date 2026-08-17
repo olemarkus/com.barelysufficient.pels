@@ -5,8 +5,11 @@
  * Owned by the executor because converging observed onto desired is this
  * layer's charter — the planner decides desired state from its own inputs and
  * knows nothing about drift (`lib/plan/AGENTS.md`, `lib/AGENTS.md` § Layer
- * boundaries). These functions take a `DevicePlan` and live `PlanInputDevice`s
- * only to read them; they make no planning decision and never mutate a plan.
+ * boundaries). The plan snapshots and live `PlanInputDevice`s arriving here are
+ * projected onto the narrow `ExecutableConvergenceDevice` view before any
+ * predicate reads them, so the comparisons see the decided end state per axis
+ * and never the planner's shed policy; they make no planning decision and never
+ * mutate a plan.
  *
  * Callers can rely on:
  * - `hasPlanExecutionDriftAgainstIntent` compares live observations against
@@ -22,16 +25,15 @@
  * Governing reference: `notes/state-management/README.md`.
  */
 import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
-import { isSteppedLoadDevice } from '../plan/planSteppedLoad';
-import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
-import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
+import type { ExecutableConvergenceDevice } from './executablePlan';
+import { buildExecutableConvergenceDevice } from './executablePlanProjection';
 import { hasPlanDeviceExecutionDrift } from './planExecutionDrift';
 
 export function hasPlanExecutionDrift(previousPlan: DevicePlan, livePlan: DevicePlan): boolean {
   if (previousPlan.devices.length !== livePlan.devices.length) return true;
   for (let index = 0; index < previousPlan.devices.length; index += 1) {
-    const previous = previousPlan.devices[index];
-    const live = livePlan.devices[index];
+    const previous = buildExecutableConvergenceDevice(previousPlan.devices[index]);
+    const live = buildExecutableConvergenceDevice(livePlan.devices[index]);
     if (previous.id !== live.id) return true;
     if (hasRelevantBinaryExecutionDrift(previous, live)) return true;
     if (hasRelevantTargetExecutionDrift(previous, live)) return true;
@@ -47,8 +49,10 @@ export function canRefreshPlanSnapshotFromLiveState(
   if (basePlan.devices.length !== livePlan.devices.length) return false;
 
   for (let index = 0; index < basePlan.devices.length; index += 1) {
-    const baseDevice = basePlan.devices[index];
-    const liveDevice = livePlan.devices[index];
+    const baseDevice = buildExecutableConvergenceDevice(basePlan.devices[index]);
+    const liveDevice = livePlan.devices[index]
+      ? buildExecutableConvergenceDevice(livePlan.devices[index])
+      : undefined;
     if (!liveDevice || baseDevice.id !== liveDevice.id) return false;
     if (!hasSettledPostActuationState(baseDevice, liveDevice)) return false;
   }
@@ -68,27 +72,28 @@ export function hasPlanExecutionDriftAgainstIntent(
 }
 
 // The binary on/off settle check: a planned binary restore is settled only once
-// the live device reads on (`currentOn`), a planned binary shed only once it reads
-// off. On/off is binary-only, so a non-binary live device is never confirmed
-// on/off and the corresponding restore/shed never reads settled here.
+// the live device reads on, a planned binary shed only once it reads off. On/off
+// is binary-only, so a non-binary live device (`observedBinaryOn === null`) is
+// never confirmed on/off and the corresponding restore/shed never reads settled
+// here.
 function hasSettledBinaryActuation(
-  baseDevice: DevicePlan['devices'][number],
-  liveDevice: DevicePlan['devices'][number],
+  baseDevice: ExecutableConvergenceDevice,
+  liveDevice: ExecutableConvergenceDevice,
 ): boolean {
-  if (requiresBinaryRestore(baseDevice) && !(isBinaryPlanDevice(liveDevice) && liveDevice.currentOn)) return false;
-  if (requiresBinaryShed(baseDevice) && !(isBinaryPlanDevice(liveDevice) && !liveDevice.currentOn)) return false;
+  if (requiresBinaryRestore(baseDevice) && liveDevice.observedBinaryOn !== true) return false;
+  if (requiresBinaryShed(baseDevice) && liveDevice.observedBinaryOn !== false) return false;
   return true;
 }
 
 function hasSettledPostActuationState(
-  baseDevice: DevicePlan['devices'][number],
-  liveDevice: DevicePlan['devices'][number],
+  baseDevice: ExecutableConvergenceDevice,
+  liveDevice: ExecutableConvergenceDevice,
 ): boolean {
   if (baseDevice.available === false || liveDevice.available === false) return true;
   if (
-    isSteppedLoadDevice(baseDevice)
+    baseDevice.observedStep
     && baseDevice.desiredStepId
-    && (!isSteppedLoadDevice(liveDevice) || liveDevice.selectedStepId !== baseDevice.desiredStepId)
+    && liveDevice.observedStep?.selectedStepId !== baseDevice.desiredStepId
   ) {
     return false;
   }
@@ -97,72 +102,56 @@ function hasSettledPostActuationState(
     // A pending target update settles only when the LIVE device still carries
     // the temperature facet and its setpoint reads at the planned value. A live
     // device that lost the facet has no setpoint to confirm — not settled.
-    const settled = isTemperaturePlanDevice(baseDevice)
-      && isTemperaturePlanDevice(liveDevice)
-      && liveDevice.currentTarget === baseDevice.plannedTarget;
-    if (!settled) return false;
+    if (liveDevice.observedTarget !== baseDevice.desiredTarget) return false;
   }
   return true;
 }
 
-function requiresBinaryRestore(device: DevicePlan['devices'][number]): boolean {
-  return device.controllable
-    && device.plannedState === 'keep'
-    && isBinaryPlanDevice(device) && !device.currentOn;
+// A restore is outstanding only while the device the plan wants on still reads
+// off — an already-on device has nothing to settle.
+function requiresBinaryRestore(device: ExecutableConvergenceDevice): boolean {
+  return device.desiredBinaryState === 'on' && device.observedBinaryOn === false;
 }
 
-function requiresBinaryShed(device: DevicePlan['devices'][number]): boolean {
-  // Only a `turn_off` shed settles on the binary axis. `set_step` and
-  // `set_temperature` sheds settle on the step / target axis — a step-only
-  // stepper (no binary handle) sheds via `set_step` and must NOT be held for a
-  // binary-off read it can never produce. (An already-off binary device's
-  // `turn_off` still settles immediately via the live binary-off read.)
-  return device.plannedState === 'shed' && device.shedAction === 'turn_off';
+// Only a shed the plan decided ends with the device OFF settles on the binary
+// axis. A shed that ends at a step, or at a setpoint, settles on that axis
+// instead — a step-only stepper (no binary handle) must NOT be held for a
+// binary-off read it can never produce. (An already-off device's binary shed
+// still settles immediately via the live binary-off read.)
+function requiresBinaryShed(device: ExecutableConvergenceDevice): boolean {
+  return device.desiredBinaryState === 'off';
 }
 
-function requiresTargetUpdate(device: DevicePlan['devices'][number]): boolean {
-  if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') {
-    return false;
-  }
-  if (!isTemperaturePlanDevice(device)) return false;
-  return device.plannedTarget !== device.currentTarget;
+function requiresTargetUpdate(device: ExecutableConvergenceDevice): boolean {
+  return device.desiredTarget !== null && device.observedTarget !== device.desiredTarget;
 }
 
 function hasRelevantBinaryExecutionDrift(
-  previousDevice: DevicePlan['devices'][number],
-  liveDevice: DevicePlan['devices'][number],
+  previousDevice: ExecutableConvergenceDevice,
+  liveDevice: ExecutableConvergenceDevice,
 ): boolean {
-  if (isSteppedLoadDevice(previousDevice)) {
+  const previousStep = previousDevice.observedStep;
+  if (previousStep) {
     // A live device that lost its stepped cluster counts as drift: the tracked
     // step can no longer be read at its previous value.
-    return !isSteppedLoadDevice(liveDevice)
-      || previousDevice.selectedStepId !== liveDevice.selectedStepId
-      || previousDevice.currentState !== liveDevice.currentState
-      || hasSteppedEvidenceChanged(previousDevice, liveDevice);
+    const liveStep = liveDevice.observedStep;
+    return !liveStep
+      || previousStep.selectedStepId !== liveStep.selectedStepId
+      || previousDevice.observedState !== liveDevice.observedState
+      || previousStep.reportedStepId !== liveStep.reportedStepId;
   }
-  return previousDevice.currentState !== liveDevice.currentState;
-}
-
-function hasSteppedEvidenceChanged(
-  previousDevice: DevicePlan['devices'][number],
-  liveDevice: DevicePlan['devices'][number],
-): boolean {
-  return previousDevice.reportedStepId !== liveDevice.reportedStepId;
+  return previousDevice.observedState !== liveDevice.observedState;
 }
 
 function hasRelevantTargetExecutionDrift(
-  previousDevice: DevicePlan['devices'][number],
-  liveDevice: DevicePlan['devices'][number],
+  previousDevice: ExecutableConvergenceDevice,
+  liveDevice: ExecutableConvergenceDevice,
 ): boolean {
-  if (!tracksTargetForExecution(previousDevice) || !isTemperaturePlanDevice(previousDevice)) return false;
+  // No setpoint is being converged on, so a setpoint change is not drift the
+  // executor owes work for.
+  if (previousDevice.desiredTarget === null) return false;
   // A live device that lost the temperature facet counts as drift: the tracked
   // setpoint can no longer be read at its previous value.
-  return !isTemperaturePlanDevice(liveDevice) || liveDevice.currentTarget !== previousDevice.currentTarget;
-}
-
-function tracksTargetForExecution(device: DevicePlan['devices'][number]): boolean {
-  if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') {
-    return false;
-  }
-  return isTemperaturePlanDevice(device);
+  return liveDevice.observedTarget === null
+    || liveDevice.observedTarget !== previousDevice.observedTarget;
 }

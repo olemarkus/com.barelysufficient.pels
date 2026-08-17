@@ -410,3 +410,51 @@ describe('planLiveStateMerge', () => {
     });
   });
 });
+
+// An `inactive` device carries no shed target, exactly like a device the plan is
+// keeping — so "no shed target" alone must not be read as "restore this". An
+// external-off hold that is already observed off is settled, not pending, and
+// demanding `on` for it would block the post-actuation snapshot from ever being
+// adopted whenever some other device settled in the same apply.
+describe('inactive devices do not demand a binary restore', () => {
+  const inactiveHold = () => buildBinaryDevice({
+    id: 'dev-inactive',
+    name: 'External hold',
+    plannedState: 'inactive' as const,
+    currentState: 'off',
+  });
+
+  const settledShed = () => buildBinaryDevice({
+    id: 'dev-shed',
+    name: 'Tank',
+    plannedState: 'shed' as const,
+    shedAction: 'turn_off' as const,
+    currentState: 'on',
+  });
+
+  const liveDevices = (): PlanInputDevice[] => [
+    inputDevice({
+      id: 'dev-inactive',
+      name: 'External hold',
+      binaryControl: { on: false },
+      binaryCapabilityId: 'onoff' as const,
+      targets: [],
+    }),
+    inputDevice({
+      id: 'dev-shed',
+      name: 'Tank',
+      binaryControl: { on: false },
+      binaryCapabilityId: 'onoff' as const,
+      targets: [],
+    }),
+  ];
+
+  it('adopts the live snapshot once the shed settles, despite an inactive device observed off', () => {
+    const plan = buildPlan([inactiveHold(), settledShed()]);
+    const live = buildLiveStatePlan(plan, liveDevices());
+
+    // The shed device moved on -> off, so there is drift to settle against.
+    expect(hasPlanExecutionDrift(plan, live)).toBe(true);
+    expect(canRefreshPlanSnapshotFromLiveState(plan, live)).toBe(true);
+  });
+});

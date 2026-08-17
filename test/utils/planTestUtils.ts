@@ -8,6 +8,7 @@ import type {
   SteppedPlanDevice,
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
+import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import type {
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
@@ -409,6 +410,16 @@ DevicePlanDevice => {
     // a consumer read absence as "not boosting" — which is a decision, not a gap.
     boostActive: overrides.boostActive ?? false,
     hasStandingDemand: fixtureHasStandingDemand(overrides),
+    // Mirrors production's ONE stamp site (`finalizePlanDevices`), through the
+    // same resolver: the plan's shed END STATE, derived from the device's final
+    // `plannedState` + shed triple. Without it every fixture would reach the
+    // executor as "not shed" — a decision, not a gap. An explicit override still
+    // wins, so a test can pin a deliberately inconsistent device.
+    plannedShedTargetKind: overrides.plannedShedTargetKind
+      ?? resolvePlannedShedTargetKind({
+        plannedState: overrides.plannedState ?? 'keep',
+        shedAction: overrides.shedAction,
+      }),
     ...(reason !== undefined
       ? { reason: typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason }
       : {}),

@@ -232,16 +232,17 @@ function resolveExpectedBinaryStateForIntent(intent: ExecutableDeviceIntent): Bi
 function resolveExpectedBinaryStateForSteppedIntent(
   intent: ExecutableSteppedLoadIntent,
 ): BinaryState | undefined {
-  if (intent.purpose === 'shed' && intent.shedAction === 'set_step') {
-    const desiredStepId = intent.desired.stepId ?? intent.desired.plannedStepId;
-    if (!desiredStepId) return undefined;
-    return isSteppedLoadOffStep(intent.steppedLoadProfile, desiredStepId) ? 'off' : 'on';
+  const shedTarget = intent.plannedShedTarget;
+  // A shed that ends at a step decides the binary axis through that step: off
+  // only if the step itself is the off step.
+  if (shedTarget?.kind === 'step') {
+    if (!shedTarget.stepId) return undefined;
+    return isSteppedLoadOffStep(intent.steppedLoadProfile, shedTarget.stepId) ? 'off' : 'on';
   }
   if (intent.desired.on === true) return 'on';
   if (intent.desired.on === false) return 'off';
   if (intent.purpose === 'keep') return 'on';
-  if (intent.shedAction !== 'set_step') return 'off';
-  return undefined;
+  return 'off';
 }
 
 function isPendingBinaryCommandMatchingExpected(
@@ -292,12 +293,12 @@ function hasSteppedStepDrift(
   return plannedCurrentStepId !== observedStepId;
 }
 
-/** The step a `set_step` shed wants, when that shed has not materialized yet. */
+/** The step a step-targeted shed wants, when that shed has not materialized yet. */
 function resolveUnexecutedShedStepId(
   intent: ExecutableSteppedLoadIntent,
 ): string | undefined {
-  if (intent.purpose !== 'shed' || intent.shedAction !== 'set_step') return undefined;
-  return intent.desired.stepId ?? intent.desired.plannedStepId;
+  const shedTarget = intent.plannedShedTarget;
+  return shedTarget?.kind === 'step' ? shedTarget.stepId : undefined;
 }
 
 function isSteppedBinaryTransitionInFlight(

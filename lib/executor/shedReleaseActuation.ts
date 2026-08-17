@@ -216,7 +216,11 @@ const buildShedReleaseSteppedAction = (params: {
     steppedLoadProfile: profile,
     communicationModel: steppedLoadIntent.communicationModel,
     controlAdapter: steppedLoadIntent.controlAdapter,
-    shedAction: 'set_step',
+    // The end state THIS path drives toward: `targetStep` is the producer-resolved
+    // release-cascade rung (`resolveProducerShedReleaseStep`), not a capacity-path
+    // shed decision. Lifecycle release deliberately keeps its own target — see
+    // `notes/state-management/deferred-objective-lifecycle-carveout.md`.
+    plannedShedTarget: { kind: 'step', stepId: targetStep.id },
     current: {
       // `observed` is always present here: the caller (`applyShedReleaseSteppedLoad`)
       // gates on `observed.steppedLoad.stepId` before building this action, so the

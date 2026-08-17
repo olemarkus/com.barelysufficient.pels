@@ -231,7 +231,11 @@ export const applySteppedLoadShedOff = async (
 ): Promise<boolean> => {
   if (action.desired.on !== false) return false;
   const atOffStep = action.current.stepIsOffStep;
-  if (action.shedAction !== 'turn_off' && !atOffStep) return false;
+  // The binary axis is this device's own end state only when the plan decided
+  // the device should be off. A plan that wants it parked at a step (or at a
+  // setpoint) reaches the binary handle only once the device already sits at its
+  // off step — otherwise the step command owns the descent.
+  if (action.plannedShedTarget?.kind !== 'binary_off' && !atOffStep) return false;
   if (!snapshot) return false;
   const name = action.name;
   try {

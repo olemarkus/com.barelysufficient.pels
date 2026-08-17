@@ -18,6 +18,23 @@ import type {
 } from '../../packages/contracts/src/types';
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 
+/**
+ * Where this cycle's shed decision leaves a device — the END STATE, not the
+ * policy that picked it:
+ *
+ * - `binary_off` — off on its binary axis.
+ * - `step` — parked at a step of its own ladder.
+ * - `target_value` — at the setpoint the plan carries as `plannedTarget`, so
+ *   that write is the whole of this device's contribution.
+ *
+ * Absent when the device is not shed this cycle. Resolved by the planner (see
+ * `resolvePlannedShedTargetKind`) so consumers downstream never have to read
+ * `shedAction` — a device's configured shed behaviour is a FLOOR, the deepest
+ * the planner may go, so it is not something a consumer can correctly re-read
+ * as this cycle's decision.
+ */
+export type PlannedShedTargetKind = 'binary_off' | 'step' | 'target_value';
+
 // Canonical observation-source union lives in `lib/observer/`; plan
 // continues to surface this name for compatibility with the many target-
 // command callers that already import it from here.
@@ -511,6 +528,19 @@ type DevicePlanDeviceBase = {
   shedAction?: ShedAction;
   shedTemperature?: number | null;
   releaseShedStepId?: string | null;
+  /**
+   * This cycle's shed END STATE — see `PlannedShedTargetKind`. Stamped once, by
+   * `finalizePlanDevices`, from the device's FINAL `plannedState` + shed
+   * triple: the restore, swap, and hold stages each revise `plannedState`
+   * through their own paths, so anything derived earlier would go stale at the
+   * next revision.
+   *
+   * It is what consumers outside the planner read instead of `shedAction`. The
+   * `step` rung is deliberately NOT carried here: the executor resolves its own
+   * command step (transition step ?? planned step), which can differ from
+   * `desiredStepId`, and pairs it with this kind.
+   */
+  plannedShedTargetKind?: PlannedShedTargetKind;
   /**
    * Producer-resolved reachability. REQUIRED because the transport already
    * answers it for every device — but note HOW: `managerHelpers.getIsAvailable`

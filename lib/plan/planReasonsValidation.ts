@@ -5,6 +5,7 @@ import {
   type PlanReasonCode,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { sortByPriorityAsc } from './planSort';
+import { resolvePlannedShedTargetKind } from './planActionMaterialization';
 
 export type PlanReasonPairValidationIssue = {
   deviceId: string;
@@ -161,7 +162,16 @@ export function finalizePlanDevices(
   planDevices: DevicePlanDevice[];
   lastPlannedShedIds: Set<string>;
 } {
-  const sorted = sortByPriorityAsc(planDevices);
+  // Stamp the shed END STATE here and nowhere else. The restore, swap, and hold
+  // stages each revise `plannedState` through their own paths, so a kind derived
+  // at device-build time would be stale by the time the plan leaves the builder;
+  // this is the last transform before `DevicePlan.devices`, so what it sees is
+  // the decision. See `PlannedShedTargetKind`.
+  const stamped = planDevices.map((dev): DevicePlanDevice => ({
+    ...dev,
+    plannedShedTargetKind: resolvePlannedShedTargetKind(dev),
+  }));
+  const sorted = sortByPriorityAsc(stamped);
   const issues = sorted
     .map(validatePlanReasonPair)
     .filter((issue): issue is PlanReasonPairValidationIssue => issue !== null);

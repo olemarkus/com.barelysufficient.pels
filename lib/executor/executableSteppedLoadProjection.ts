@@ -21,6 +21,7 @@ import {
 } from './steppedLoadActuation';
 import type {
   ExecutableObservedDeviceState,
+  ExecutableShedTarget,
   ExecutableObservedSteppedLoadState,
   ExecutableSteppedLoadCurrentFallback,
   ExecutableSteppedLoadCommandSession,
@@ -68,7 +69,7 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     steppedLoadProfile: dev.steppedLoadProfile,
     communicationModel: dev.communicationModel,
     controlAdapter: dev.controlAdapter,
-    shedAction: dev.shedAction,
+    plannedShedTarget: toExecutableShedTarget(dev.plannedShedTargetKind, desired.stepId),
     desired,
     previousStepId: dev.selectedStepId,
     transition,
@@ -241,12 +242,27 @@ const toExecutableSteppedStepState = (
   };
 };
 
+/**
+ * Pairs the producer-decided kind (`plannedShedTargetKind`) with the step THIS
+ * layer resolved. The executor pairs; it never decides the kind — see
+ * `ExecutableShedTarget`.
+ */
+const toExecutableShedTarget = (
+  kind: PlanDevice['plannedShedTargetKind'],
+  desiredStepId: string | undefined,
+): ExecutableShedTarget | undefined => {
+  if (kind === undefined) return undefined;
+  return kind === 'step' ? { kind, stepId: desiredStepId } : { kind };
+};
+
+// A shed the plan decided should end at a step, for which no step could be
+// resolved, is not actionable — drop the intent rather than emit a destination
+// the executor cannot converge on.
 const isUnderspecifiedSetStepShedIntent = (
   dev: PlanDevice,
   desired: ExecutableSteppedLoadDevice['desired'],
 ): boolean => (
-  dev.plannedState === 'shed'
-  && dev.shedAction === 'set_step'
+  dev.plannedShedTargetKind === 'step'
   && desired.stepId === undefined
 );
 
@@ -357,7 +373,9 @@ const resolveObservedStepForShed = (
       planningPowerW: currentStep.planningPowerW,
     } : undefined;
   }
-  if (intent.shedAction !== 'set_step') return undefined;
+  // Only a shed whose end state is a step needs the current rung priced; a shed
+  // that ends with the device off has nothing to descend from.
+  if (intent.plannedShedTarget?.kind !== 'step') return undefined;
   // The producer's number is finite by construction (`getCurrentDrawKw`
   // normalizes or answers 0); only "is it drawing?" is still worth asking —
   // the same test `resolvePlanStepForShed` applies on the plan-device path.
