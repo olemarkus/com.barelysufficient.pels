@@ -10,6 +10,7 @@ import { decideBinaryControl } from '../plan/planBinaryControl';
 import { resolveBinaryCommandPendingMs } from '../observer/pendingBinaryCommandTypes';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { Actuator } from '../actuator/deviceActuator';
+import { isHomeyRequestTimeout } from '../utils/errorUtils';
 import { getLogger } from '../logging/logger';
 
 /**
@@ -124,9 +125,16 @@ export async function decideAndDispatchBinaryControl(params: {
  *   previous write inside `decideBinaryControl` (plan layer).
  * - On success, leaves the entry intact for
  *   `syncPendingBinaryCommands` to clear once telemetry confirms.
- * - When the actuator declines the request or dispatch throws, clears the entry via
+ * - When the actuator declines the request, authority is lost, or the transport
+ *   gives a DEFINITE failure, clears the entry via
  *   `transport.pendingBinaryCommandStore.clear` so the next cycle can
  *   retry without seeing a stale "already pending" guard.
+ * - **A timed-out write is not a definite failure**, so it keeps the entry and
+ *   is treated as accepted. The outcome is genuinely unknown — the command may
+ *   still land — and only telemetry can settle it. Clearing here would both
+ *   claim knowledge PELS does not have and invite a duplicate re-issue into a
+ *   live write. It reports `{ ok: true }` for the same reason a success does:
+ *   a write left the process, so the device is worth re-reading.
  *
  * The return shape is discriminated so callers can distinguish
  * skipped-by-plan (handled by `decideAndDispatchBinaryControl`'s null
@@ -171,6 +179,37 @@ export async function dispatchBinaryControlDecision(params: {
     });
     return { ok: true };
   } catch (caughtError) {
+    // A timed-out write is UNKNOWN, not failed: the socket was abandoned at our
+    // end, but the command may still be on its way to the device. Clearing the
+    // pending entry here would assert "nothing is in flight" and hand the next
+    // cycle a duplicate re-issue — and a re-issued binary activation resets the
+    // device-side step limit (`lib/executor/AGENTS.md`). So resolve it exactly
+    // like a slow success and let the settle window decide: telemetry confirms
+    // it, or the window expires and `onTimedOut` earns the same reachability
+    // backoff `onDispatchFailed` would have. The 90 s window comfortably
+    // outlasts the transport's own timeout.
+    if (isHomeyRequestTimeout(caughtError)) {
+      // Authority first, exactly as the success path does above. A lifecycle
+      // fallback abandoned mid-write is superseded: the command that replaced
+      // it owns the pending entry now, so accepting ours here would flip a
+      // record we no longer own and fire its deferred confirm against a stale
+      // desired value. Losing authority outranks not knowing the outcome.
+      if (isAuthorityCurrent?.() === false) {
+        transport.pendingBinaryCommandStore.clear(decision.deviceId);
+        return { ok: false, reason: 'not_requested' };
+      }
+      if (transport.pendingBinaryCommandStore.peek(decision.deviceId)) {
+        transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
+      }
+      emitBinaryCommandOutcomeUnknown({
+        decision,
+        err: caughtError,
+      });
+      return { ok: true };
+    }
+    // Everything else is a definite answer from the transport — a rejection, a
+    // 4xx/5xx, an actuator that declined. Nothing is in flight, so the entry
+    // goes and the next cycle may retry without tripping its own guard.
     transport.pendingBinaryCommandStore.recordDispatchFailed(decision.deviceId, decision);
     transport.pendingBinaryCommandStore.clear(decision.deviceId);
     emitBinaryCommandFailure({
@@ -257,6 +296,37 @@ function emitBinaryCommandFailure(params: {
   });
 }
 
+/**
+ * Deliberately neither the success nor the failure event. It is not
+ * `binary_command_succeeded`, because nothing confirmed the device changed; it
+ * is not `binary_command_failed`, because nothing confirmed it did not. Keeping
+ * a third event means a prod log can separate "the hub said no" from "the hub
+ * never answered" — the pair used to be indistinguishable, which is what let a
+ * timeout quietly erase an in-flight command.
+ */
+function emitBinaryCommandOutcomeUnknown(params: {
+  decision: BinaryControlDecision;
+  err: unknown;
+}): void {
+  const { decision, err } = params;
+  logger.warn({
+    event: 'binary_command_outcome_unknown',
+    reasonCode: 'control_request_timed_out',
+    deviceId: decision.deviceId,
+    deviceName: decision.name,
+    desired: decision.desired,
+    controlAxis: 'binary',
+    logContext: decision.logContext,
+    ...(decision.restoreSource ? { restoreSource: decision.restoreSource } : {}),
+    ...(decision.reason ? { reason: decision.reason } : {}),
+    err,
+    msg: buildBinaryControlUnknownLogMessage({
+      desired: decision.desired,
+      name: decision.name,
+    }),
+  });
+}
+
 function buildBinaryControlSuccessLogMessage(params: {
   logContext: BinaryControlLogContext;
   desired: boolean;
@@ -281,4 +351,13 @@ function buildBinaryControlFailureLogMessage(params: {
   const { desired, name } = params;
   const verb = `${desired ? 'turn on' : 'turn off'}`;
   return `Failed to ${verb} ${name} via DeviceTransport`;
+}
+
+function buildBinaryControlUnknownLogMessage(params: {
+  desired: boolean;
+  name: string;
+}): string {
+  const { desired, name } = params;
+  const verb = `${desired ? 'turn on' : 'turn off'}`;
+  return `Timed out waiting for DeviceTransport to ${verb} ${name}; outcome unknown, awaiting telemetry`;
 }

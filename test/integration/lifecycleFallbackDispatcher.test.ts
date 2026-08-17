@@ -32,6 +32,7 @@ import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/plan/planConstants';
 import { createTargetCommandClaim } from '../../lib/executor/targetCommandClaim';
 import { createSteppedCommandClaim } from '../../lib/executor/steppedCommandClaim';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
+import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { resolveLifecycleFallbackRequest } from '../../setup/lifecycleFallbackRequest';
 import { projectLifecycleFallbackDevice } from '../../setup/lifecycleFallbackDeviceProjection';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -1962,6 +1963,51 @@ describe('LifecycleFallbackDispatcher', () => {
     expect(store.peek(snapshot.id)).toMatchObject({ desired: false });
     current = false;
     resolveWrite?.({ requested: true });
+    expect(await result).toEqual({ applied: false });
+    expect(store.peek(snapshot.id)).toBeUndefined();
+  });
+
+  // Same abandonment, but the write times out instead of resolving. An unknown
+  // outcome normally keeps its pending record — except when authority is gone,
+  // because the command that superseded this one owns the entry now. Accepting
+  // here would flip a record we no longer own and fire its deferred confirm
+  // against a stale desired value.
+  it('drops binary pending bookkeeping when lifecycle authority ends and the write times out', async () => {
+    const state = createPlanEngineState();
+    const snapshot = {
+      ...buildPlanInputDevice({
+        id: 'heater-1', name: 'Heater', binaryControl: { on: true }, currentOn: true, targets: [],
+      }),
+      binaryWritable: true,
+      targetWritable: false,
+      stepWritable: false,
+    };
+    const observation = {
+      getSnapshot: () => [snapshot], getSnapshotByDeviceId: () => snapshot,
+    } as unknown as DeviceObservation;
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
+    let current = true;
+    let rejectWrite: ((reason: unknown) => void) | undefined;
+    const actuator = createTestActuator(
+      () => new Promise<{ requested: true }>((_resolve, reject) => { rejectWrite = reject; }),
+    );
+    const ctx: PlanExecutorBinaryContext = {
+      state,
+      observation,
+      capacityDryRun: false,
+      buildBinaryControlTransport: () => ({ observation, pendingBinaryCommandStore: store, actuator }),
+      getRestoreLogSource: () => 'current_plan',
+      recordShedActuation: vi.fn(), recordReleaseShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
+      binaryCommandClaim: createBinaryCommandClaim(), binaryCommandOwner: 'lifecycle',
+      isBinaryCommandAuthorityCurrent: () => current,
+    };
+    const result = runBinaryControl({
+      ctx, deviceId: snapshot.id, name: snapshot.name, desired: false, snapshot,
+      logContext: 'capacity', lifecycleRelease: true,
+    });
+    expect(store.peek(snapshot.id)).toMatchObject({ desired: false });
+    current = false;
+    rejectWrite?.(new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/heater-1/capability/onoff'));
     expect(await result).toEqual({ applied: false });
     expect(store.peek(snapshot.id)).toBeUndefined();
   });

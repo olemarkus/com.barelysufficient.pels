@@ -51,6 +51,8 @@ This note is for contributors changing runtime logging.
 - `binary_command_applied`
 - `binary_command_skipped`
 - `binary_command_failed`
+- `binary_command_outcome_unknown` — the write timed out, so neither `failed`
+  nor `succeeded` is true. The command stays pending and telemetry settles it.
 - `target_command_applied`
 - `target_command_skipped`
 - `target_command_failed`
