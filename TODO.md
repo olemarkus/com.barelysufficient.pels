@@ -37,6 +37,34 @@ tracked as P1/P2/P3 follow-up below.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
+- [ ] **A device write is awaited inside the rebuild lock, so one slow device stalls every decision.**
+      `maybeApplyPlanChanges` awaits `planEngine.applyPlanActions` (`lib/plan/planServiceRebuild.ts`),
+      and the scheduler holds `activeIntent` (`lib/plan/rebuildScheduler/scheduler.ts`) plus the FIFO
+      `planOperationQueue` (`lib/plan/planService.ts`) for that whole time. The device loop in
+      `planExecutorDispatch.ts` is a sequential `for … await`, so timeouts are additive. A `hardCap`
+      intent gets `dueMs = nowMs` and priority 0, but that only wins the *pending* slot — there is no
+      preemption, cancellation, or deadline on an active rebuild, and `CapacityGuard` is state-only
+      ("the Plan is still the single decision-maker for shedding"), so no second path exists.
+      *Prod evidence (`/tmp/pels`, suffix `0a4464c3`, 6 days, 1475 rebuilds):* `buildMs` is a stable
+      102–143 ms; **all** variance is `applyMs`. 177 rebuilds (12%) held the lock ≥5 s, 68 for 9–30 s,
+      11 at the full 30 s. On 2026-08-11 22:01–22:06 eleven consecutive rebuilds each burned ~30.02 s
+      with `deviceWriteCount: 0` — a ~5.5-minute near-total stall (harmless that night: 0.45 kW draw,
+      4.6 kW headroom). Nine of the 177 ran with <1 kW hard-cap headroom, worst 2026-08-16T00:04:17Z
+      at 4.847 kW against a 5.0 kW cap — **153 W of margin, soft headroom already −0.206 kW** — with
+      the loop blind for 5.1 s. No breach is traceable to it, so this is exposure, not a proven
+      incident. Note `HTTP_TIMEOUT_MS = 30_000` is a socket-**idle** timer, not a deadline, so 30 s is
+      not actually a bound. **Shortening the timeout is not the fix** — see the completed
+      timeout-is-unknown change.
+      *This wants a design before an implementation*, and the design question is whether the rebuild
+      may return before its writes land. If yes, `deviceWriteCount`/`writtenDeviceIds` and
+      `schedulePostActuationRefresh` must key off *dispatch issued* rather than *write completed*, and
+      the pending-command guard becomes the thing that stops an overlapping re-issue — load-bearing in
+      a way it is not today. The constraint to respect is that this must not become a second actuation
+      lane: `lib/plan/AGENTS.md` allows exactly one way to converge a device, and the reason is
+      inc_26449fb9. Not-doing-it is a legitimate outcome; the numbers above are what makes it worth
+      deciding rather than assuming. Owner has ruled out parallelising the device loop.
+      Found 2026-08-17. [P1]
+
 - [ ] **The pending-restore reservation runs on one fixed clock against a 20 s-to-never distribution.**
       `PENDING_RESTORE_WINDOW_MS = 3 min` (`lib/plan/planConstants.ts`) reserves headroom for a
       device that has been restored but has not yet drawn. Its own comment gives a thermostat
@@ -966,6 +994,34 @@ program) remain deferred.*
       (never over-draws), so low-stakes. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
 ## P2 Product, Observability, and Maintainability
+
+- [ ] **A stepped write that throws records nothing, so the next cycle re-commands with no backoff.**
+      `executeSteppedLoadCommand` (`lib/executor/steppedLoadExecutorCommand.ts`) calls
+      `recordAcceptedSteppedLoadCommand` — which is what marks the desired step issued — only on the
+      success path, after the await. Its `catch` logs `stepped_load_command_failed` and returns
+      `false`, writing nothing; `steppedCommandClaim` is released in `finally` but that is an in-cycle
+      mutex, not durable state. So a timed-out stepped write leaves `steppedLoadDesiredByDeviceId`
+      with no entry, nothing suppresses a re-issue, and PELS re-commands every cycle until the device
+      answers. Same end state the binary axis had before the timeout-is-unknown fix, reached by
+      omission rather than by clearing — but milder, because a repeated step write does not reset the
+      device-side step limit the way a repeated binary activation does.
+      The shape to copy is the target axis, which already gets this right:
+      `targetExecutor.ts` → `recordFailedPendingTargetCommandAttempt`
+      (`lib/plan/planTargetControl.ts`) *writes* an entry with `status: 'temporary_unavailable'` and
+      `nextRetryAtMs`, preserving `startedMs`/`pendingMs`, and never deletes. Three axes now have
+      three hand-rolled `catch` policies; a shared write-outcome policy is the larger prize but the
+      stepped gap is fixable on its own. Found 2026-08-17. [P2]
+
+- [ ] **`stepped_load_restore_binary_undriven` fires 15/15 on deliberate sheds.**
+      `lib/executor/steppedLoadRestoreDiagnostics.ts` is the detector for the "stuck off while cold"
+      incident class (prod: Høiax "Connected 300"), and its docblock says it "only fires in the
+      anomalous shape". In a 2 h prod window it fired 15 times, all on Connected 300, and every one
+      carried `transition: full_shed_to_off`, `desiredOn: false`, `binaryTarget: false` — an
+      unambiguous *intentional* shed. The guard treats `desired.stepId = 'low'` as a non-off step
+      (`currentStepIsOffStep: false`) without also checking that the desired binary is explicitly
+      `false`. Consequence: the alarm cries wolf on every normal shed, so a genuine recurrence would
+      be indistinguishable from noise. Fix is a guard clause — bail when `desired.on === false` or
+      `binaryTarget === false` — plus a regression test. Found 2026-08-17. [P2]
 
 - [ ] **Two producer-shaped functions are stranded in `lib/plan` with no `lib/plan` callers.**
       `withHeadroomCurrentOn` (`lib/plan/planHeadroomSupport.ts`, its own comment: "the twin of

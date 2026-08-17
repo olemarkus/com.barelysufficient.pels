@@ -10,6 +10,7 @@ import {
   syncPendingBinaryCommands,
 } from '../../lib/observer/pendingBinaryCommands';
 import { createPlanEngineState } from '../../lib/plan/planState';
+import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
@@ -113,6 +114,42 @@ describe('binary command dispatch', () => {
     });
   });
 
+  // A timeout is the one rejection that does NOT mean "the command did not
+  // happen": the socket was abandoned at our end while Homey may still be
+  // pushing the write. Clearing pending here would claim knowledge PELS has not
+  // earned and hand the next cycle a duplicate re-issue.
+  it('keeps pending state and reports an unknown outcome when the write times out', async () => {
+    const failed = vi.fn();
+    const accepted = vi.fn();
+    const timeout = new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/device-1/capability/onoff');
+    const { state, transport } = buildTransport(vi.fn(async () => { throw timeout; }));
+    transport.pendingBinaryCommandStore = createPendingBinaryCommandStore(
+      state.pendingBinaryCommands,
+      { onDispatchAccepted: accepted, onDispatchFailed: failed },
+    );
+
+    await expect(dispatchBinaryControlDecision({
+      decision: {
+        deviceId: 'device-1', name: 'Load', desired: true, logContext: 'capacity',
+      },
+      transport,
+      snapshot: {
+        targets: [], currentOn: false, canSetControl: true, communicationModel: 'local',
+      },
+    })).resolves.toEqual({ ok: true });
+
+    expect(state.pendingBinaryCommands['device-1']).toMatchObject({ desired: true, pendingMs: 90_000 });
+    expect(logs.findEvent('binary_command_outcome_unknown')).toMatchObject({
+      deviceId: 'device-1', desired: true, reasonCode: 'control_request_timed_out', controlAxis: 'binary',
+    });
+    expect(logs.findEvent('binary_command_failed')).toBeUndefined();
+    expect(logs.findEvent('binary_command_succeeded')).toBeUndefined();
+    // The reachability backoff must come from the settle window expiring
+    // (`onTimedOut`), not from a dispatch failure we cannot substantiate.
+    expect(failed).not.toHaveBeenCalled();
+    expect(accepted).toHaveBeenCalledWith(expect.objectContaining({ deviceId: 'device-1', desired: true }));
+  });
+
   it('does not dispatch when the observer already reports the desired state', async () => {
     const { requestBinaryControl, transport } = buildTransport();
     await expect(decideAndDispatchBinaryControl({
@@ -147,6 +184,47 @@ describe('binary command dispatch', () => {
       source: 'device_update',
     })).toBe(true);
     expect(store.has('charger-1')).toBe(false);
+  });
+
+  // The load-bearing safety net. Keeping the entry armed on a timeout must not
+  // cost PELS the escalating reachability backoff — it only defers it from the
+  // transport timeout to the settle window, and `onTimedOut` reaches the very
+  // same `recordFailure` that `onDispatchFailed` would have.
+  it('still escalates an unacknowledged command when the settle window expires', async () => {
+    const timedOut = vi.fn();
+    const timeout = new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/device-1/capability/onoff');
+    const { state, transport } = buildTransport(vi.fn(async () => { throw timeout; }));
+    const store = createPendingBinaryCommandStore(
+      state.pendingBinaryCommands,
+      { onTimedOut: timedOut },
+    );
+    transport.pendingBinaryCommandStore = store;
+
+    await expect(dispatchBinaryControlDecision({
+      decision: {
+        deviceId: 'device-1', name: 'Load', desired: true, logContext: 'capacity',
+      },
+      transport,
+      snapshot: {
+        targets: [], currentOn: false, canSetControl: true, communicationModel: 'local',
+      },
+    })).resolves.toEqual({ ok: true });
+    expect(store.peek('device-1')).toMatchObject({ desired: true });
+
+    // Age the entry past its own window; no telemetry ever arrived.
+    const pending = state.pendingBinaryCommands['device-1'];
+    state.pendingBinaryCommands['device-1'] = { ...pending, startedMs: pending.startedMs - 91_000 };
+
+    syncPendingBinaryCommands({
+      store,
+      liveDevices: [{
+        id: 'device-1', name: 'Load', binaryCommandConfirmation: { state: 'unavailable' },
+      }],
+      source: 'rebuild',
+    });
+
+    expect(timedOut).toHaveBeenCalledWith(expect.objectContaining({ deviceId: 'device-1' }));
+    expect(store.peek('device-1')).toBeUndefined();
   });
 
   it('records pending before a fast asynchronous confirmation', async () => {
@@ -224,6 +302,38 @@ describe('binary command dispatch', () => {
 
     expect(confirmed).not.toHaveBeenCalled();
     expect(store.peek('flow-load')).toBeUndefined();
+  });
+
+  // The mirror image of the test above, and the reason the two branches must be
+  // told apart. A rejection makes the early echo untrustworthy — the transport
+  // said the command did not happen. A timeout says nothing, so the echo is the
+  // best evidence available: the device reporting the value we asked for.
+  it('settles an early echo when the write times out', async () => {
+    const state = createPlanEngineState();
+    const confirmed = vi.fn();
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, { onConfirmed: confirmed });
+    const { transport } = buildTransport(vi.fn(async () => {
+      const pending = store.peek('flow-load');
+      syncPendingBinaryCommands({
+        store,
+        liveDevices: [{
+          id: 'flow-load', name: 'Flow load',
+          binaryCommandConfirmation: {
+            state: 'observed', observedValue: true, observedAtMs: pending?.startedMs ?? 0,
+          },
+        }],
+        source: 'device_update',
+      });
+      throw new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/flow-load/capability/onoff');
+    }));
+    transport.pendingBinaryCommandStore = store;
+
+    await expect(dispatchBinaryControlDecision({
+      decision: { deviceId: 'flow-load', name: 'Flow load', desired: true, logContext: 'capacity' },
+      transport,
+    })).resolves.toEqual({ ok: true });
+
+    expect(confirmed).toHaveBeenCalledTimes(1);
   });
 
   it('does not settle an early echo after command authority is lost', async () => {

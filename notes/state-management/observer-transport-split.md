@@ -212,6 +212,18 @@ is still inside its own pending window, the longest of which is
 considers outstanding. That inequality is pinned by a unit test rather than
 written as an alias.
 
+The window also carries a second job, added 2026-08-17: it is the *only*
+resolution mechanism for a write whose HTTP call timed out. Such a write is
+neither accepted nor rejected — the socket was abandoned at our end while Homey
+may still have been delivering it — so the dispatcher keeps the entry armed and
+treats it as accepted rather than clearing it (`binaryControlDispatch.ts`). The
+90 s window comfortably outlasts the transport's own 30 s timeout, so telemetry
+still has room to settle it; if nothing arrives, the ordinary expiry fires
+`onTimedOut` and the reachability backoff escalates exactly as a dispatch
+failure would have. Note this means the early-echo gate refuses settlement only
+for a *rejected* dispatch, never for an unanswered one: a rejection makes the
+echo untrustworthy, a timeout leaves it the best evidence available.
+
 **What this window does not answer.** Whether the device then draws belongs to
 the EV resume probe and to the pending-restore reservation, each with its own
 deadline. The settle window must not duplicate them — that duplication was the
