@@ -39,7 +39,7 @@ export type OvershootStats = {
 };
 
 export type SheddingDeps = {
-  capacityGuard: CapacityGuard | undefined;
+  capacityGuard: CapacityGuard;
   /** Producer-resolved `computeShortfallThreshold` for this build. */
   shortfallThresholdKw: number;
   powerTracker: PowerTrackerState;

@@ -44,7 +44,7 @@ export type PeriodicStatusLogFields = {
  * instead. Keeping `MAIN_HOME_ID` here makes that ownership explicit.
  */
 export function buildPeriodicStatusLogFields(params: {
-  capacityGuard?: CapacityGuardView;
+  capacityGuard: CapacityGuardView;
   powerTracker: PowerTrackerState;
   capacitySettings: { limitKw: number; marginKw: number };
   operatingMode: string;
@@ -71,7 +71,7 @@ export function buildPeriodicStatusLogFields(params: {
   const metrics = resolveCapacityStatusMetrics({ capacitySettings, powerTracker, capacityPaceKw });
   const hourCapKWh = resolveUsableCapacityKw(capacitySettings);
 
-  const inShortfall = capacityGuard?.isInShortfall() ?? false;
+  const inShortfall = capacityGuard.isInShortfall();
   const usage = getCurrentHourUsage(powerTracker);
   const hourRemainingKWh = Math.max(0, hourCapKWh - usage.usedKWh);
   return {

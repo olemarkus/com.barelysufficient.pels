@@ -60,7 +60,7 @@ export function schedulePlanRebuildFromSignal(params: {
   currentPowerW?: number;
   powerDeltaW?: number;
   capacitySettings: { limitKw: number; marginKw: number };
-  capacityGuard?: CapacityGuard;
+  capacityGuard: CapacityGuard;
   /**
    * `capacityPaceKw` — the planner's live hourly threshold, resolved by the
    * caller. The scheduler compares the latched total against it to decide how
@@ -109,7 +109,7 @@ export function schedulePlanRebuildFromSignal(params: {
   const softLimitKw = capacityPaceKw;
   const fallbackHeadroomKw = typeof currentPowerW === 'number' ? softLimitKw - currentPowerW / 1000 : null;
   const headroomKw = latchedTotalKw !== null ? softLimitKw - latchedTotalKw : fallbackHeadroomKw;
-  const isInShortfall = capacityGuard?.isInShortfall() ?? false;
+  const isInShortfall = capacityGuard.isInShortfall() ?? false;
   const currentState = resetShortfallSuppressionInvalidationWhenRecovered({
     state: getState(),
     isInShortfall,
@@ -130,7 +130,7 @@ export function schedulePlanRebuildFromSignal(params: {
     maxIntervalExceeded,
   })) {
     incPerfCounter('plan_rebuild_skipped_shortfall_unrecoverable_total');
-    return Promise.resolve(capacityGuard?.checkShortfall({
+    return Promise.resolve(capacityGuard.checkShortfall({
       hasCandidates: false,
       deficitKw: hardCapBreach.deficitKw,
       totalKw: latchedTotalKw,
@@ -167,7 +167,7 @@ export function schedulePlanRebuildFromSignal(params: {
     planConvergenceActive,
     hardCapBreach,
     onTightNoopHardCapBreach: async (deficitKw) => {
-      await capacityGuard?.checkShortfall({
+      await capacityGuard.checkShortfall({
         hasCandidates: false,
         deficitKw,
         totalKw: latchedTotalKw,

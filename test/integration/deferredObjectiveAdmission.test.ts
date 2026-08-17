@@ -205,7 +205,7 @@ const buildBuilder = (
     getHardCapKw: () => capacitySettings.limitKw,
   });
   return new PlanBuilder({
-    getCapacityGuard: () => capacityGuard,
+    capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => capacitySettings,
     getOperatingMode: () => overrides.modeRef?.current ?? 'Home',
@@ -345,10 +345,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     });
     const builder = new PlanBuilder({
       setCapacityInShortfall: vi.fn(),
-      getCapacityGuard: () => {
-        const guard = createTestCapacityGuard({ homeId: 'main' });
-        return guard;
-      },
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
       getOperatingMode: () => modeRef.current,
       // Mode target sits 3 °C below the deadline target — exactly the bug this test pins.
@@ -602,7 +599,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getHardCapKw: () => 100,
     });
     const builder = new PlanBuilder({
-      getCapacityGuard: () => capacityGuard,
+      capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
       getOperatingMode: () => 'Home',

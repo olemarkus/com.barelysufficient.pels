@@ -22,7 +22,13 @@ export function createBundleCapacityGuard(params: {
   ctx: AppContext;
   homeId: HomeId;
   scalars: CapacityScalarSettings;
-  planService: PlanService;
+  /**
+   * Lazy on purpose: the only uses are the two deferred shortfall callbacks,
+   * which fire when a hard-cap incident happens, long after boot. Binding it
+   * eagerly forced the plan engine to be constructed before the guard, which
+   * in turn forced every planner-side guard access to be a lazy getter.
+   */
+  getPlanService: () => PlanService;
   getHomeDisplayName: () => string;
   getPowerTracker: () => PowerTrackerState;
   isTornDown: () => boolean;
@@ -39,7 +45,7 @@ export function createBundleCapacityGuard(params: {
   holdDeferredShortfallSideEffect: () => void;
 } {
   const {
-    ctx, homeId, scalars, planService, getHomeDisplayName, getPowerTracker,
+    ctx, homeId, scalars, getPlanService, getHomeDisplayName, getPowerTracker,
     isTornDown, isMembershipReady,
     isMeterSourceAuthorized, isMeterSourceEpochDiscarded,
     isPreparedReconcileActive, shortfallRetryTimerKey,
@@ -67,8 +73,8 @@ export function createBundleCapacityGuard(params: {
     isTemporarilyFenced,
     shouldHoldDeferredForPreparedApply: isPreparedReconcileActive,
     scheduleRetry: scheduleShortfallRetry,
-    applyShortfall: (deficitKw) => planService.handleShortfall(deficitKw),
-    applyClear: () => planService.handleShortfallCleared(),
+    applyShortfall: (deficitKw) => getPlanService().handleShortfall(deficitKw),
+    applyClear: () => getPlanService().handleShortfallCleared(),
   });
   const shortfallAlertDispatch = createCapacityShortfallAlertDispatch({
     homeId,

@@ -28,6 +28,7 @@ describe('periodic status used kWh', () => {
 
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(sampleStart + 15 * 60 * 1000);
     const fields = buildPeriodicStatusLogFields({
+      capacityGuard: { isInShortfall: () => false },
       sheddingActive: false,
       capacityPaceKw: 6.5,
       powerTracker: state,

@@ -49,7 +49,7 @@ export async function buildSheddingPlan(
   });
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
   state.sheddingActive = guardResult.sheddingActive;
-  const guardInShortfall = deps.capacityGuard?.isInShortfall() ?? false;
+  const guardInShortfall = deps.capacityGuard.isInShortfall() ?? false;
   const recoveredFromShedding = wasSheddingActive && !guardResult.sheddingActive;
   const mergedUpdates = recoveredFromShedding
     ? { ...updates, lastRecoveryMs: Date.now() }

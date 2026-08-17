@@ -1,4 +1,3 @@
-import CapacityGuard from '../lib/power/capacityGuard';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import type {
   StateOfChargeObservedProbe,
@@ -43,8 +42,6 @@ async function checkHeadroomForDevice(
   args: { deviceId: string; requiredKw: number | null },
   deps: FlowCardDeps,
 ): Promise<boolean> {
-  const capacityGuard = deps.getCapacityGuard();
-  if (!capacityGuard) return false;
   const { deviceId, requiredKw } = args;
   if (!deviceId || requiredKw === null || requiredKw < 0) return false;
 
@@ -71,7 +68,6 @@ async function checkHeadroomForDevice(
   }
   logHeadroomCheck({
     deps,
-    capacityGuard,
     deviceSnap,
     deviceId,
     requiredKw,
@@ -83,7 +79,6 @@ async function checkHeadroomForDevice(
 
 function logHeadroomCheck(params: {
   deps: FlowCardDeps;
-  capacityGuard: CapacityGuard;
   deviceSnap: TargetDeviceSnapshot | undefined;
   deviceId: string;
   requiredKw: number;

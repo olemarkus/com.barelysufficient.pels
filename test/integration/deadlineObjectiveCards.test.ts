@@ -1,3 +1,4 @@
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type { Mock } from 'vitest';
 import { registerDeadlineObjectiveCards } from '../../flowCards/deadlineObjectiveCards';
 import {
@@ -291,7 +292,7 @@ const buildDeps = (overrides: {
     getCurrentOperatingMode: () => 'Home',
     handleOperatingModeChange: async () => {},
     getCurrentPriceLevel: () => 'unknown' as never,
-    getCapacityGuard: () => undefined,
+    capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     recordPowerSample: async () => {},
     setCapacityLimit: () => {},
     getHeadroom: () => null,

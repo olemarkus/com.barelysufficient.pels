@@ -11,6 +11,7 @@
 // (`buildDeviceDiagnosticsObservations`), and the REAL whole-home sample ingest
 // (`recordPowerSampleForApp`) with a synthetic solar fixture (class:'solarpanel',
 // managed:true, controllable:false). Nothing internal is mocked.
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it, vi } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
@@ -171,7 +172,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       capacitySoftLimit: context.capacitySoftLimit,
       state: createPlanEngineState(),
       deps: {
-        capacityGuard: undefined,
+        capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),

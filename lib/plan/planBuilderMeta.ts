@@ -31,7 +31,7 @@ export function buildPlanMeta(params: {
   planDevices: DevicePlanDevice[];
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   powerTracker: PowerTrackerState;
-  capacityGuard: CapacityGuard | undefined;
+  capacityGuard: CapacityGuard;
   capacityLimitKw: number;
   hourlyBudgetExhausted: boolean;
   /** Producer-resolved `computeShortfallThreshold` for this build. */
@@ -150,7 +150,7 @@ function emitFailClosedTransitionLogs(
 }
 
 function buildShortfallMeta(
-  capacityGuard: CapacityGuard | undefined,
+  capacityGuard: CapacityGuard,
   totalKw: number | null,
   hardCapLimitKw: number,
   shortfallBudgetThresholdKw: number,
@@ -163,7 +163,7 @@ function buildShortfallMeta(
     ? hardCapLimitKw - totalKw
     : null;
   return {
-    capacityShortfall: capacityGuard?.isInShortfall() ?? false,
+    capacityShortfall: capacityGuard.isInShortfall() ?? false,
     shortfallBudgetThresholdKw,
     shortfallBudgetHeadroomKw,
     hardCapLimitKw,

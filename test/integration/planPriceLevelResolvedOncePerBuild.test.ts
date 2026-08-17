@@ -74,7 +74,7 @@ const buildBuilder = (params: {
   const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   lastPowerW = (3) * 1000;
   return new PlanBuilder({
-    getCapacityGuard: () => capacityGuard,
+    capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
     getOperatingMode: () => 'Home',

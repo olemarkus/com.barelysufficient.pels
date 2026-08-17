@@ -14,6 +14,7 @@
 // `controllable === true` + temperature requirement) are exactly what keeps the
 // battery inert. These tests prove being managed+non-controllable+non-temperature is
 // sufficient; no new control gate is added.
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
@@ -199,7 +200,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       capacitySoftLimit: context.capacitySoftLimit,
       state: createPlanEngineState(),
       deps: {
-        capacityGuard: undefined,
+        capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),

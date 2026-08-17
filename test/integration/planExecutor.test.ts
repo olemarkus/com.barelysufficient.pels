@@ -1,3 +1,4 @@
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
@@ -266,7 +267,7 @@ const buildExecutor = (
       },
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
     }),
-    getCapacityGuard: () => undefined,
+    capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
     getPowerTracker: () => ({}),
     getCapacityPaceKw: () => 9.5,

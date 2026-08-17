@@ -74,7 +74,6 @@ export function registerAppFlowCards(ctx: AppContext): void {
       ctx.homeMembership?.noteAdmittedFlowHomeSample();
       flowPowerSampleFreshnessClock.noteSample(nowMs);
     },
-    getCapacityGuard: () => ctx.capacityGuard,
     // Resolved here, not inside the guard: the guard holds neither power nor a
     // limit. `capacityPaceKw` is the planner's live threshold and the tracker is
     // the single power latch, so the Flow condition answers against the same

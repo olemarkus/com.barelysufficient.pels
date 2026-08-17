@@ -10,6 +10,7 @@
 // Only outward seams are mocked: the membership service runs real over the
 // shared mock settings store; the pipeline runs the real sample ingest.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type Homey from 'homey';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
@@ -326,7 +327,6 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
 describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
   const runSample = async (service: HomeMembershipService): Promise<PowerTrackerState> => {
     const ctx = makeCtx(service);
-    ctx.capacityGuard = undefined;
     let saved: PowerTrackerState = {};
     const planEngine = {
       state: undefined,
@@ -359,6 +359,7 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
       }),
       getPlanEngine: () => planEngine,
       getPlanService: () => planService,
+      getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
       getPlanRebuildNowMs: () => nowMs,
       savePowerTracker: (state) => { saved = state; },
       setPowerSampleRebuildState: (state) => { ctx.powerSampleRebuildState = state; },

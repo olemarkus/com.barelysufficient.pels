@@ -18,7 +18,7 @@ import { sumControlledUsageKw } from '../planUsage';
 
 function handleShortfallCheck(
   params: {
-    capacityGuard: CapacityGuard | undefined;
+    capacityGuard: CapacityGuard;
     remaining: number;
     deficitKw: number;
     totalKw: number | null;
@@ -30,14 +30,14 @@ function handleShortfallCheck(
     capacityGuard, remaining, deficitKw, totalKw, shortfallThresholdKw, capacityStateSummary,
   } = params;
   return deficitKw > 0
-    ? (capacityGuard?.checkShortfall({
+    ? (capacityGuard.checkShortfall({
       hasCandidates: remaining > 0,
       deficitKw,
       totalKw,
       shortfallThresholdKw,
       capacityStateSummary,
     }) ?? Promise.resolve())
-    : (capacityGuard?.checkShortfall({
+    : (capacityGuard.checkShortfall({
       hasCandidates: true,
       deficitKw: 0,
       totalKw,
@@ -172,7 +172,7 @@ export async function updateGuardState(params: {
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   softLimitSource: PlanContext['softLimitSource'];
-  capacityGuard: CapacityGuard | undefined;
+  capacityGuard: CapacityGuard;
   /** Producer-resolved `computeShortfallThreshold` for this build. */
   shortfallThresholdKw: number;
   /** The shedding latch this build inherits, from `PlanEngineState`. */

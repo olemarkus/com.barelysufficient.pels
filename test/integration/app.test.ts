@@ -123,7 +123,7 @@ const initApp = async (app: any) => {
   appInstance.initCapacityGuard();
   appInstance.initPlanEngine();
   appInstance.initPlanService();
-  appInstance.initCapacityGuardProviders();
+  appInstance.captureDefaultDynamicSoftLimit();
   appInstance.initSettingsHandler();
   appInstance.registerFlowCards();
   await appInstance.refreshTargetDevicesSnapshot();

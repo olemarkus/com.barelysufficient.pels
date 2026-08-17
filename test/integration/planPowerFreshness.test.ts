@@ -1,4 +1,5 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { buildPlanContext } from '../../lib/plan/planContext';
 import {
@@ -231,7 +232,7 @@ describe('planner behavior under stale power freshness states', () => {
     state?: ReturnType<typeof createPlanEngineState>;
   }): PlanBuilder {
     return new PlanBuilder({
-      getCapacityGuard: () => params.capacityGuard,
+      capacityGuard: params.capacityGuard ?? createTestCapacityGuard({ homeId: 'main' }),
       setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
       getOperatingMode: () => 'Home',

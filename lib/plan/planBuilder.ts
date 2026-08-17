@@ -62,7 +62,7 @@ import { attachDeferredReleaseIntents, buildIdentityDecorationBundle } from './p
 
 export type PlanBuilderDeps = {
   setCapacityInShortfall: (inShortfall: boolean) => void;
-  getCapacityGuard: () => CapacityGuard | undefined;
+  capacityGuard: CapacityGuard;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getOperatingMode: () => string;
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
@@ -130,7 +130,7 @@ export class PlanBuilder {
     this.stages = new PlanMaterializationStages(deps, state);
   }
 
-  private get capacityGuard(): CapacityGuard | undefined { return this.deps.getCapacityGuard(); }
+  private get capacityGuard(): CapacityGuard { return this.deps.capacityGuard; }
   private get capacitySettings(): { limitKw: number; marginKw: number } { return this.deps.getCapacitySettings(); }
   private get operatingMode(): string { return this.deps.getOperatingMode(); }
   private get modeDeviceTargets(): Record<string, Record<string, number>> { return this.deps.getModeDeviceTargets(); }

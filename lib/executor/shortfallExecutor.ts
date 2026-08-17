@@ -23,7 +23,7 @@ export type ShortfallExecutorDeps = {
   /** Stable home id used to correlate structured enter, alert, and clear logs. */
   homeId: HomeId;
   setCapacityInShortfall: (inShortfall: boolean) => void;
-  getCapacityGuard: () => CapacityGuard | undefined;
+  capacityGuard: CapacityGuard;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getPowerTracker: () => PowerTrackerState;
   /** `capacityPaceKw` — the planner's live hourly threshold, for the log line. */

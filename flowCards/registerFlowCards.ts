@@ -1,5 +1,4 @@
 import { PriceLevel } from '../lib/price/priceLevels';
-import CapacityGuard from '../lib/power/capacityGuard';
 import type { DecoratedDeviceSnapshot } from '../packages/contracts/src/types';
 import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
@@ -74,7 +73,6 @@ export type FlowCardDeps = {
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getCurrentPriceLevel: () => PriceLevel;
   recordPowerSample: (powerW: number) => Promise<void>;
-  getCapacityGuard: () => CapacityGuard | undefined;
   getHeadroom: () => number | null;
   /**
    * The tracker's latched whole-home total in kW, resolved by setup

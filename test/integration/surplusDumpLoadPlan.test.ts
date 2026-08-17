@@ -100,7 +100,7 @@ const makeHarness = (params: {
   let lastPowerW = params.totalKw * 1000;
   const state = createPlanEngineState();
   const builder = new PlanBuilder({
-    getCapacityGuard: () => guard,
+    capacityGuard: guard,
     setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw, marginKw: 0.2 }),
     getOperatingMode: () => 'Home',

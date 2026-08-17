@@ -201,7 +201,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getHardCapKw: () => 100,
   });
   return new PlanBuilder({
-    getCapacityGuard: () => capacityGuard,
+    capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
     getOperatingMode: () => 'Home',

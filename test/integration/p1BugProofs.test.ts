@@ -1,3 +1,4 @@
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
@@ -82,7 +83,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
       },
       requestTemperatureTarget: async (_deviceId, desired) => desired,
     }),
-    getCapacityGuard: () => undefined,
+    capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
     getPowerTracker: () => ({}),
     getCapacityPaceKw: () => 9.5,

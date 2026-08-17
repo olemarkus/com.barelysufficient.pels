@@ -1367,6 +1367,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     const pending = schedulePlanRebuildFromSignal({
+      capacityGuard: createCapacityGuardMock(),
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 10,
       latchedTotalKw: null,
@@ -1381,7 +1382,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       logError: vi.fn(),
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock(),
     });
 
     vi.advanceTimersByTime(14999);
@@ -1756,6 +1756,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
 
     const pending = schedulePlanRebuildFromSignal({
+      capacityGuard: createCapacityGuardMock(),
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 10,
       latchedTotalKw: null,

@@ -32,7 +32,12 @@ const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 1
 export type PowerSamplePipelineDeps = {
   getPowerTracker: () => PowerTrackerState;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
-  getCapacityGuard: () => CapacityGuard | undefined;
+  /**
+   * Late-bound by necessity: main's pipeline is a `PelsApp` field
+   * initializer, constructed before `initCapacityGuard` runs. The type is
+   * non-optional, so this defers the read without modelling an absent guard.
+   */
+  getCapacityGuard: () => CapacityGuard;
   getPlanEngine: () => PlanEngine;
   getPlanService: () => PlanService;
   getDeviceManager: () => DeviceTransport | undefined;

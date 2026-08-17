@@ -3278,7 +3278,7 @@ describe('buildSheddingPlan', () => {
         state,
         {
           ...deps,
-          capacityGuard: undefined,
+          capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: 3.073,
           powerTracker: { lastTimestamp: 1_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -3306,7 +3306,7 @@ describe('buildSheddingPlan', () => {
         {
           ...deps,
           // New sample, byte-identical watts: the meter has not caught up yet.
-          capacityGuard: undefined,
+          capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -3337,7 +3337,7 @@ describe('buildSheddingPlan', () => {
         state,
         {
           ...deps,
-          capacityGuard: undefined,
+          capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -3363,7 +3363,7 @@ describe('buildSheddingPlan', () => {
         state,
         {
           ...deps,
-          capacityGuard: undefined,
+          capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -3386,7 +3386,7 @@ describe('buildSheddingPlan', () => {
         state,
         {
           ...deps,
-          capacityGuard: undefined,
+          capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 3_000, lastPowerW: 3_271 } as PowerTrackerState,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -3430,7 +3430,7 @@ describe('buildSheddingPlan', () => {
         state,
         {
           ...deps,
-          capacityGuard: undefined,
+          capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
           shortfallThresholdKw: Number.POSITIVE_INFINITY,
           powerTracker: { lastTimestamp: 4_000, lastPowerW: UNCHANGED_READING_W } as PowerTrackerState,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),

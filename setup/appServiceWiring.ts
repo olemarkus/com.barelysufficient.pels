@@ -123,7 +123,7 @@ export type AppServiceWiringDeps = {
   initCapacityGuard: () => void;
   initDeviceDiagnosticsService: () => void;
   initPlanService: () => void;
-  initCapacityGuardProviders: () => void;
+  captureDefaultDynamicSoftLimit: () => void;
   initSettingsHandler: () => void;
 };
 
@@ -232,8 +232,8 @@ export class AppServiceWiring {
     await runStartupStep('initPlanEngine', () => this.deps.initPlanEngine(), logStartupStepFailure);
     await runStartupStep('initPlanService', () => this.deps.initPlanService(), logStartupStepFailure);
     await runStartupStep(
-      'initCapacityGuardProviders',
-      () => this.deps.initCapacityGuardProviders(),
+      'captureDefaultDynamicSoftLimit',
+      () => this.deps.captureDefaultDynamicSoftLimit(),
       logStartupStepFailure,
     );
     await runStartupStep('initSettingsHandler', () => this.deps.initSettingsHandler(), logStartupStepFailure);
@@ -374,6 +374,7 @@ export class AppServiceWiring {
       ctx.deferredObjectiveActivePlanRecorder = createDeferredObjectiveActivePlanRecorder(ctx);
     }
     const { planEngine, lifecycleFallbackPort } = createPlanEngineComposition(ctx, this.mainHomeScope, {
+      capacityGuard: ctx.capacityGuard,
       // Active sub-home zone membership is provisional until the first real
       // zone tree commits. Main's plan may still contain those fallback-Main
       // devices, so close the final write seam until ownership is trustworthy.
@@ -437,9 +438,8 @@ export class AppServiceWiring {
     ctx.planService = createPlanService(ctx, this.mainHomeScope);
   }
 
-  initCapacityGuardProviders(): void {
+  captureDefaultDynamicSoftLimit(): void {
     const { ctx } = this.deps;
-    if (!ctx.capacityGuard) return;
     ctx.defaultComputeDynamicSoftLimit = ctx.computeDynamicSoftLimit;
   }
 

@@ -1,3 +1,4 @@
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanContext } from '../../lib/plan/planContext';
 import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
@@ -101,7 +102,7 @@ describe('planner current-state consistency', () => {
       buildContext(liveDevice),
       state,
       {
-        capacityGuard: undefined,
+        capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),

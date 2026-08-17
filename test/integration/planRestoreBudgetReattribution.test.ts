@@ -117,7 +117,7 @@ const buildBuilder = (params: {
   tracker: { lastTimestamp: number; lastPowerW?: number };
   dailyBudget: boolean;
 }): PlanBuilder => new PlanBuilder({
-  getCapacityGuard: () => params.capacityGuard,
+  capacityGuard: params.capacityGuard,
   setCapacityInShortfall: vi.fn(),
   getCapacitySettings: () => ({ limitKw: params.limitKw, marginKw: 0 }),
   getOperatingMode: () => 'Home',
