@@ -647,7 +647,7 @@ export default tseslint.config(
     // remains is irreducible without breaking documented test seams: the field/helper
     // declarations and the ~70 thin AppContext/PelsWidgetHostApi delegators.
     // Ceiling just above current. Target: <=500 needs the per-domain delegator surface
-    // extracted next (TODO "Continue thinning app.ts ...").
+    // extracted next (TODO "Split the `PelsApp` class so `app.ts` reaches <=500").
     files: ['app.ts'],
     rules: {
       'max-lines': ['warn', { max: 950, skipBlankLines: true, skipComments: true }],

@@ -17,6 +17,15 @@ Execution — converging observed state onto that plan — is `lib/executor`.
 
 ## Invariants (enforced — see `.dependency-cruiser.cjs` and `docs/technical.md`)
 
+- **No EV cluster on the plan device, and there is not going to be one** (owner ruling
+  2026-08-15). `EvKind` / `EvDiscriminantProbe` / `withEvDiscriminant` are deleted, and the
+  `isEvPlanDevice` guard that several docblocks in this repo still cite never existed. A boost
+  threshold is configuration and a battery level is an observation, so the planner carries neither:
+  it carries one kind-free `boostActive` decision (`planBoost.ts`) resolved from the producer's
+  `boostSupported`/`boostRequested`, and the settings UI reads the config and the level from the
+  seams that own them (`getEvBoostConfig` / `getObservedStateOfCharge` in `createPlanService`). The
+  three clusters the planner discriminates are temperature, stepped, and binary — do not add a
+  fourth for EV. (`EvObservedFields` on the OBSERVER snapshot is a different thing and stays.)
 - **No `lib/device` imports** except the producer seams `deviceObservation.ts`,
   `deviceActionProjection.ts`, `deviceResidualKw.ts` (`no-plan-to-device`). Resolution happens in
   the producer projection; the planner consumes flat `PlanInputDevice` fields, never source/evidence.
