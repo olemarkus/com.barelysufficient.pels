@@ -13,6 +13,7 @@ import {
   withTemperatureDiscriminant,
   withSteppedDiscriminant,
 } from '../../lib/plan/planTypes';
+import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { buildPlanMeta, openPlanBuildGate, steppedInputDevice } from '../utils/planTestUtils';
@@ -76,6 +77,15 @@ const buildPlan = (
         controllable: true,
         binaryCapabilityId: 'onoff' as const,
         ...deviceOverrides,
+        // Mirror the producer: `finalizePlanDevices` stamps the shed end state on
+        // every device before a plan leaves the builder, so a fixture that skips it
+        // exercises a shape the planner never emits. An explicit override still
+        // wins, so a test can pin a deliberately inconsistent device.
+        plannedShedTargetKind: deviceOverrides.plannedShedTargetKind
+          ?? resolvePlannedShedTargetKind({
+            plannedState: deviceOverrides.plannedState ?? 'keep',
+            shedAction: deviceOverrides.shedAction,
+          }),
       }))) as DevicePlan['devices'][number],
     ],
   };

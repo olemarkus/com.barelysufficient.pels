@@ -8,6 +8,7 @@ import {
   withBinaryDiscriminant,
   withTemperatureDiscriminant,
 } from '../../lib/plan/planTypes';
+import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { buildPlanMeta, resolveFixtureCurrentOn, withMaterializedEvPlugState } from './planTestUtils';
 import type { BinaryControlObservation } from '../../packages/contracts/src/types';
 
@@ -40,6 +41,15 @@ export const asOutputDevice = (
     // readers answered from absence and a dropped `boostActive` in production
     // would have passed these suites unnoticed.
     boostActive: loose.boostActive ?? false,
+    // Mirrors production's ONE stamp site (`finalizePlanDevices`), through the
+    // same resolver: the plan's shed END STATE, derived from the device's final
+    // `plannedState` + shed triple. The convergence predicates read this and not
+    // the shed policy, so a fixture without it would arrive as "not shed".
+    plannedShedTargetKind: loose.plannedShedTargetKind
+      ?? resolvePlannedShedTargetKind({
+        plannedState: loose.plannedState ?? 'keep',
+        shedAction: loose.shedAction,
+      }),
     ...(binaryCapabilityId !== undefined ? {
       currentOn: currentOn ?? resolveFixtureCurrentOn({ ...materialized, binaryControl }),
     } : {}),

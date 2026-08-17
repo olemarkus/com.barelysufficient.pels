@@ -24,6 +24,7 @@ import type {
   DevicePlan,
   DevicePlanDevice,
   PlanInputDevice,
+  ShedAction,
   SteppedDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import {
@@ -31,6 +32,7 @@ import {
   withSteppedDiscriminant,
   withTemperatureDiscriminant,
 } from '../../lib/plan/planTypes';
+import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import type {
   EvObservedProbe,
   ReportedStepObservedProbe,
@@ -93,6 +95,14 @@ const pd = (
   withSteppedDiscriminant(withBinaryDiscriminant({
     ...withMaterializedEvPlugState(loose),
     currentOn: resolveFixtureCurrentOn(loose),
+    // Mirrors production's ONE stamp site (`finalizePlanDevices`): the plan's
+    // shed END STATE, which is what the executor projection reads instead of
+    // the shed policy. An explicit override still wins.
+    plannedShedTargetKind: loose.plannedShedTargetKind
+      ?? resolvePlannedShedTargetKind({
+        plannedState: loose.plannedState ?? 'keep',
+        shedAction: loose.shedAction,
+      }),
   })),
 ) as DevicePlanDevice;
 
@@ -1655,6 +1665,15 @@ describe('PlanExecutor stepped loads', () => {
           ...merged,
           currentState: (merged as { currentState?: string }).currentState ?? 'on',
           currentOn: resolveFixtureCurrentOn(merged),
+          // Mirrors production's ONE stamp site (`finalizePlanDevices`): the
+          // plan's shed END STATE, which the executor projection reads instead
+          // of the shed policy. This builder does not go through `pd()`.
+          // `merged` spreads a `Record<string, unknown>` override bag, so its
+          // declared property types are already widened — the double cast is the
+          // same fixture-boundary move the other builders in this file make.
+          plannedShedTargetKind: resolvePlannedShedTargetKind(
+            merged as unknown as { plannedState: 'shed' | 'keep' | 'inactive'; shedAction?: ShedAction },
+          ),
         })),
       ],
     };

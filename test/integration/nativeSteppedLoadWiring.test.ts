@@ -33,6 +33,7 @@ import {
   withTemperatureDiscriminant,
   withSteppedDiscriminant,
 } from '../../lib/plan/planTypes';
+import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import type {
@@ -67,7 +68,17 @@ type SteppedActionInput = Partial<DevicePlanDevice>
 const buildSteppedAction = (loose: SteppedActionInput) => {
   const { controlModel: _controlModel, ...rest } = loose;
   const device = withTemperatureDiscriminant(
-    withSteppedDiscriminant(withBinaryDiscriminant(rest)),
+    withSteppedDiscriminant(withBinaryDiscriminant({
+      ...rest,
+      // Mirrors production's ONE stamp site (`finalizePlanDevices`): the plan's
+      // shed END STATE, which is what the executor projection reads. Read off
+      // `loose` (the declared shape), not the rest object.
+      plannedShedTargetKind: loose.plannedShedTargetKind
+        ?? resolvePlannedShedTargetKind({
+          plannedState: loose.plannedState ?? 'keep',
+          shedAction: loose.shedAction,
+        }),
+    })),
   ) as DevicePlanDevice;
   return buildExecutableSteppedLoadDevice(
     buildExecutableSteppedLoadIntent(device),

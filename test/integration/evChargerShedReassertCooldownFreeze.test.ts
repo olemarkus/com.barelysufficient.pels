@@ -175,6 +175,9 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
     plannedState: 'shed' as const,
     boostActive: false,
     shedAction: 'turn_off' as const,
+    // What `finalizePlanDevices` stamps for this pair in production, and what
+    // the executor projection actually reads.
+    plannedShedTargetKind: 'binary_off' as const,
     controllable: true,
     available: true,
     steppedLoadProfile: snapshot.steppedLoadProfile,

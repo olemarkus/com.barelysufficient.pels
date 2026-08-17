@@ -1011,7 +1011,7 @@ describe('LifecycleFallbackDispatcher', () => {
       name: 'Stepped heater',
       purpose: 'shed',
       steppedLoadProfile: profile,
-      shedAction: 'set_step',
+      plannedShedTarget: { kind: 'step', stepId: desiredStepId },
       current: { on: true, stepId: 'high', stepIsOffStep: false },
       desired: { on: true, stepId: desiredStepId },
       previousStepId: 'high',
@@ -1116,7 +1116,7 @@ describe('LifecycleFallbackDispatcher', () => {
     };
     const action: ExecutableSteppedLoadDevice = {
       id: device.id, name: device.name, purpose: 'keep', steppedLoadProfile: profile,
-      shedAction: 'set_step', current: { on: true, stepId: 'low', stepIsOffStep: false },
+      current: { on: true, stepId: 'low', stepIsOffStep: false },
       desired: { on: true, stepId: 'high' }, previousStepId: 'low', transition: null,
       stepActuation: { kind: 'none', requestedStepId: undefined, materialization: { kind: 'not_materialized', reason: 'no_requested_step' } },
       commandStepActuation: { kind: 'none', requestedStepId: undefined, materialization: { kind: 'not_materialized', reason: 'no_requested_step' } },
@@ -2089,7 +2089,7 @@ describe('LifecycleFallbackDispatcher', () => {
     };
     const action: ExecutableSteppedLoadDevice = {
       id: 'heater-1', name: 'Stepped heater', purpose: 'keep', steppedLoadProfile: profile,
-      shedAction: 'set_step', current: { on: false, stepId: 'low', stepIsOffStep: false },
+      current: { on: false, stepId: 'low', stepIsOffStep: false },
       desired: { on: true, stepId: 'low' }, previousStepId: 'low', transition: null,
       stepActuation: { kind: 'none', requestedStepId: undefined, materialization: { kind: 'not_materialized', reason: 'no_requested_step' } },
       commandStepActuation: { kind: 'none', requestedStepId: undefined, materialization: { kind: 'not_materialized', reason: 'no_requested_step' } },
@@ -2152,7 +2152,7 @@ describe('LifecycleFallbackDispatcher', () => {
     observedOn = true;
     const action: ExecutableSteppedLoadDevice = {
       id: 'heater-1', name: 'Stepped heater', purpose: 'shed', steppedLoadProfile: profile,
-      shedAction: 'turn_off', current: { on: true, stepId: 'low', stepIsOffStep: false },
+      plannedShedTarget: { kind: 'binary_off' }, current: { on: true, stepId: 'low', stepIsOffStep: false },
       desired: { on: false, stepId: 'off' }, previousStepId: 'low', transition: null,
       stepActuation: { kind: 'none', requestedStepId: undefined, materialization: { kind: 'not_materialized', reason: 'no_requested_step' } },
       commandStepActuation: { kind: 'none', requestedStepId: undefined, materialization: { kind: 'not_materialized', reason: 'no_requested_step' } },
@@ -2259,7 +2259,8 @@ describe('LifecycleFallbackDispatcher', () => {
     };
     const action: ExecutableSteppedLoadDevice = {
       id: 'heater-1', name: 'Heater', purpose: 'shed', steppedLoadProfile: profile,
-      shedAction: 'set_step', current: { on: true, stepId: 'low', stepIsOffStep: false },
+      plannedShedTarget: { kind: 'step', stepId: 'high' },
+      current: { on: true, stepId: 'low', stepIsOffStep: false },
       desired: { on: true, stepId: 'high' }, previousStepId: 'low', transition: null,
       stepActuation: {
         kind: 'none', requestedStepId: undefined,

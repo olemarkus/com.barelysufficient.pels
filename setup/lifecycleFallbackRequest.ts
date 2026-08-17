@@ -98,7 +98,12 @@ const buildSteppedIntent = (
     steppedLoadProfile: device.stepAxis.profile,
     communicationModel: device.communicationModel,
     controlAdapter: device.controlAdapter,
-    shedAction: 'set_step',
+    // The lifecycle fallback drives the device to its configured posture, and for
+    // a step-axis device that posture IS `targetStepId`. It keeps its own
+    // discriminant (the `behavior` the dispatcher carries) rather than borrowing
+    // the capacity path's — see
+    // `notes/state-management/deferred-objective-lifecycle-carveout.md`.
+    plannedShedTarget: { kind: 'step', stepId: targetStepId },
     desired: { on: false },
     previousStepId: device.selectedStepId ?? device.previousStepId,
     transition: null,

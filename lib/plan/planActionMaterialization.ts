@@ -1,5 +1,6 @@
 import type { ShedActionIntent } from '../device/deviceActionProjection';
-import type { ShedAction } from './planTypes';
+import type { PlannedDeviceState } from '../../packages/contracts/src/types';
+import type { PlannedShedTargetKind, ShedAction } from './planTypes';
 
 /**
  * Materialises the snapshot-side shed-action triple
@@ -77,4 +78,26 @@ export function materializeShedSnapshotFields(input: ShedSnapshotMaterialization
   }
   // turn_off intent (any cycle), or set_temperature on a non-shedding cycle.
   return TURN_OFF;
+}
+
+/**
+ * The end state this cycle's decision leaves the device in — see
+ * `PlannedShedTargetKind`. Resolving it here, in the planner, is what lets
+ * consumers stop reading `shedAction`: the triple is materialized on EVERY
+ * device (a kept stepped device still carries `set_step`), so the policy alone
+ * cannot answer "where does the plan want this device", and a consumer that
+ * reads it is re-deriving a decision it was not handed.
+ */
+export function resolvePlannedShedTargetKind(device: {
+  plannedState: PlannedDeviceState;
+  shedAction?: ShedAction;
+}): PlannedShedTargetKind | undefined {
+  if (device.plannedState !== 'shed') return undefined;
+  // A device whose triple was never materialized falls back to the same binary
+  // posture `materializeShedSnapshotFields` gives it.
+  switch (device.shedAction ?? 'turn_off') {
+    case 'set_step': return 'step';
+    case 'set_temperature': return 'target_value';
+    default: return 'binary_off';
+  }
 }

@@ -8,7 +8,7 @@ import {
   formatDeviceReason,
   PLAN_REASON_CODES,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import type { DevicePlan } from '../plan/planTypes';
+import type { DevicePlan, PlannedShedTargetKind } from '../plan/planTypes';
 import {
   isDeferredRestoreBlockedReason,
   isRestoreAdmissionHoldReason,
@@ -24,6 +24,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
+  ExecutableConvergenceDevice,
   ExecutableDeviceIntent,
   ExecutableObservedDeviceState,
   ExecutableObservedState,
@@ -38,6 +39,7 @@ import { resolveCommandableNow } from '../../packages/shared-domain/src/commanda
 import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
 import { buildExecutableTargetIntent } from './executableTargetProjection';
 import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
+import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
 import { isSteppedLoadDevice } from '../plan/planSteppedLoad';
 
 type PlanDevice = DevicePlan['devices'][number];
@@ -77,6 +79,58 @@ function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: Plan
     };
   }
 }
+
+/**
+ * Projects a plan device onto the narrow convergence view
+ * (`ExecutableConvergenceDevice`). This is the producer for that seam: it
+ * resolves the plan's decided end state per axis here, once, so the convergence
+ * predicates never see the plan device — nor the shed policy behind the
+ * decision.
+ */
+export function buildExecutableConvergenceDevice(dev: PlanDevice): ExecutableConvergenceDevice {
+  const shedTargetKind = dev.plannedShedTargetKind;
+  return {
+    id: dev.id,
+    available: dev.available,
+    observedState: dev.currentState,
+    observedBinaryOn: isBinaryPlanDevice(dev) ? dev.currentOn : null,
+    observedTarget: isTemperaturePlanDevice(dev) ? dev.currentTarget : null,
+    observedStep: isSteppedLoadDevice(dev)
+      ? { selectedStepId: dev.selectedStepId, reportedStepId: dev.reportedStepId }
+      : null,
+    desiredStepId: dev.desiredStepId,
+    desiredBinaryState: resolveConvergenceDesiredBinaryState(dev, shedTargetKind),
+    desiredTarget: resolveConvergenceDesiredTarget(dev, shedTargetKind),
+  };
+}
+
+// The plan wants the binary axis OFF when that is where its shed lands, and ON
+// for a managed device it is keeping. Anything else (a shed carried on the step
+// or setpoint axis, an unmanaged device, a device with no binary axis this
+// cycle) leaves the axis undemanded.
+const resolveConvergenceDesiredBinaryState = (
+  dev: PlanDevice,
+  shedTargetKind: PlannedShedTargetKind | undefined,
+): 'on' | 'off' | null => {
+  if (shedTargetKind === 'binary_off') return 'off';
+  if (shedTargetKind !== undefined) return null;
+  // `keep` is required, not implied by the absent kind: an `inactive` device
+  // (external-off and the other inactive holds) also carries no shed target, and
+  // demanding `on` for one would leave convergence waiting on a restore the
+  // executor never intends to issue.
+  return dev.controllable && dev.plannedState === 'keep' && isBinaryPlanDevice(dev) ? 'on' : null;
+};
+
+// A setpoint is wanted whenever the device has a temperature axis, unless this
+// cycle's shed lands on another axis — then the setpoint is not what execution
+// is converging on.
+const resolveConvergenceDesiredTarget = (
+  dev: PlanDevice,
+  shedTargetKind: PlannedShedTargetKind | undefined,
+): number | null => {
+  if (shedTargetKind !== undefined && shedTargetKind !== 'target_value') return null;
+  return isTemperaturePlanDevice(dev) ? dev.plannedTarget : null;
+};
 
 export function buildExecutableObservedState(
   snapshots: ExecutorDeviceSnapshot[],
@@ -124,7 +178,6 @@ const isSurplusOnlyHoldShed = (planDevice: PlanDevice): boolean => (
 export type DroppedSteppedShedIntent = {
   deviceId: string;
   deviceName: string;
-  shedAction: PlanDevice['shedAction'];
   selectedStepId: string | null;
   desiredStepId: string | null;
 };
@@ -149,7 +202,6 @@ export function findDroppedSteppedShedIntents(
     result.push({
       deviceId: planDevice.id,
       deviceName: planDevice.name,
-      shedAction: planDevice.shedAction,
       selectedStepId: isSteppedLoadDevice(planDevice) ? planDevice.selectedStepId : null,
       desiredStepId: planDevice.desiredStepId ?? null,
     });
@@ -161,9 +213,8 @@ const isDroppedUnderspecifiedSetStepShed = (
   planDevice: PlanDevice,
   executableDevice: ExecutableDeviceIntent | undefined,
 ): boolean => (
-  planDevice.plannedState === 'shed'
-  && isSteppedLoadDevice(planDevice)
-  && planDevice.shedAction === 'set_step'
+  isSteppedLoadDevice(planDevice)
+  && planDevice.plannedShedTargetKind === 'step'
   && executableDevice?.steppedLoad === null
   && !isHeldByRestoreAdmission(planDevice)
 );
@@ -297,7 +348,8 @@ const buildExecutableBinaryIntent = (dev: PlanDevice): ExecutableBinaryIntent | 
 const buildExecutableBinaryShedIntent = (dev: PlanDevice): ExecutableBinaryIntent | null => {
   if (isSwapTargetPendingReason(dev.reason)) return null;
   if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return null;
-  if ((dev.shedAction ?? 'turn_off') === 'set_temperature') return null;
+  // A shed whose end state is the setpoint has no binary intent to issue.
+  if (dev.plannedShedTargetKind === 'target_value') return null;
   const isSwap = dev.reason?.code === PLAN_REASON_CODES.swappedOut;
   return {
     kind: 'shed',
