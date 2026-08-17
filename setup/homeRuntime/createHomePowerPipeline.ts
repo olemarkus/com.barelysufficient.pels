@@ -50,7 +50,7 @@ export type HomePowerPipelineDeps = {
   // capacity state.
   getPowerTracker?: () => PowerTrackerState;
   getCapacitySettings?: () => { limitKw: number; marginKw: number };
-  getCapacityGuard?: () => CapacityGuard | undefined;
+  getCapacityGuard: () => CapacityGuard;
   getPowerSampleRebuildState?: () => PowerSampleRebuildState;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
   getOutdoorTemperatureC?: () => number | undefined;
@@ -75,7 +75,7 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
   return new PowerSamplePipeline({
     getPowerTracker: deps.getPowerTracker ?? (() => ctx.powerTracker),
     getCapacitySettings: deps.getCapacitySettings ?? (() => ctx.capacitySettings),
-    getCapacityGuard: deps.getCapacityGuard ?? (() => ctx.capacityGuard),
+    getCapacityGuard: deps.getCapacityGuard,
     getPlanEngine: deps.getPlanEngine,
     getPlanService: deps.getPlanService,
     getDeviceManager: () => ctx.deviceManager,

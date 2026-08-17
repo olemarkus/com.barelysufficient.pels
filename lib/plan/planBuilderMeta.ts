@@ -38,9 +38,11 @@ export function buildPlanMeta(params: {
    */
   power: PowerCycleDisplay;
   powerTracker: PowerTrackerState;
-  capacityGuard: CapacityGuard | undefined;
+  capacityGuard: CapacityGuard;
   capacityLimitKw: number;
   hourlyBudgetExhausted: boolean;
+  /** Producer-resolved `computeShortfallThreshold` for this build. */
+  shortfallBudgetThresholdKw: number;
 }): DevicePlan['meta'] {
   const {
     context,
@@ -51,6 +53,7 @@ export function buildPlanMeta(params: {
     capacityGuard,
     capacityLimitKw,
     hourlyBudgetExhausted,
+    shortfallBudgetThresholdKw,
   } = params;
   const { controlledKw, uncontrolledKw } = splitControlledUsageKw({
     devices: planDevices,
@@ -58,7 +61,12 @@ export function buildPlanMeta(params: {
   });
   const currentHourUsageSplit = getHourUsageSplit(powerTracker, context.hourBucketKey);
   const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
-  const shortfallMeta = buildShortfallMeta(capacityGuard, power.totalKw, capacityLimitKw);
+  const shortfallMeta = buildShortfallMeta(
+    capacityGuard,
+    power.totalKw,
+    capacityLimitKw,
+    shortfallBudgetThresholdKw,
+  );
   return {
     totalKw: power.totalKw,
     softLimitKw: context.softLimit,
@@ -102,20 +110,20 @@ export function buildPlanMeta(params: {
 }
 
 function buildShortfallMeta(
-  capacityGuard: CapacityGuard | undefined,
+  capacityGuard: CapacityGuard,
   totalKw: number | null,
   hardCapLimitKw: number,
+  shortfallBudgetThresholdKw: number,
 ): ShortfallMeta {
-  const shortfallBudgetThresholdKw = capacityGuard?.getShortfallThreshold();
   const shortfallBudgetHeadroomKw
-    = typeof totalKw === 'number' && typeof shortfallBudgetThresholdKw === 'number'
+    = typeof totalKw === 'number'
       ? shortfallBudgetThresholdKw - totalKw
       : null;
   const hardCapHeadroomKw = typeof totalKw === 'number'
     ? hardCapLimitKw - totalKw
     : null;
   return {
-    capacityShortfall: capacityGuard?.isInShortfall() ?? false,
+    capacityShortfall: capacityGuard.isInShortfall() ?? false,
     shortfallBudgetThresholdKw,
     shortfallBudgetHeadroomKw,
     hardCapLimitKw,
@@ -126,12 +134,11 @@ function buildShortfallMeta(
 export function buildPlanContextHeadroomLogFields(
   context: PlanContext,
   power: PowerCycleDisplay,
-  capacityGuard: CapacityGuard | undefined,
   hardCapLimitKw: number,
+  shortfallBudgetThresholdKw: number,
 ): Record<string, number | boolean | string | null> {
-  const shortfallBudgetThresholdKw = capacityGuard?.getShortfallThreshold();
   const shortfallBudgetHeadroomKw
-    = typeof power.totalKw === 'number' && typeof shortfallBudgetThresholdKw === 'number'
+    = typeof power.totalKw === 'number'
       ? shortfallBudgetThresholdKw - power.totalKw
       : null;
   const hardCapHeadroomKw = typeof power.totalKw === 'number'

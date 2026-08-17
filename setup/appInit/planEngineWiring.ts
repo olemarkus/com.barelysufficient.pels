@@ -22,7 +22,7 @@ export type PlanEngineWiring = {
   getObservedState: PlanExecutorDeps['getObservedState'];
   actuator: Actuator;
   binaryCommandLifecycle?: BinaryCommandLifecycleListener;
-  getCapacityGuard: () => CapacityGuard | undefined;
+  capacityGuard: CapacityGuard;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityDryRun: () => boolean;
   getOperatingMode: () => string;

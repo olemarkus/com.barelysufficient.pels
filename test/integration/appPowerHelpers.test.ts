@@ -9,6 +9,7 @@ vi.mock('../../lib/utils/perfCounters', async (importOriginal) => {
 });
 
 import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { buildEmptyCapacityStateSummary } from '../../lib/power/capacityStateSummary';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
@@ -42,6 +43,10 @@ import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../../lib/objectives/profiles';
+import { buildNullCapacityStateSummary } from '../../lib/power/capacityStateSummary';
+
+// The guard no longer resolves the hard-cap budget itself; callers pass it in.
+const TEST_SHORTFALL_THRESHOLD_KW = 4.961;
 
 // Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
 // snapshots go through `withHeadroomCurrentOn` — the producer boundary that
@@ -56,25 +61,9 @@ const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
   sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
 );
 
-const createCapacityGuardMock = (params: {
-  limitKw?: number;
-  marginKw?: number;
-  softLimitKw?: number;
-  totalPowerKw?: number;
-} = {}): CapacityGuard => {
-  const {
-    limitKw = 10,
-    marginKw = 0.5,
-    softLimitKw = limitKw - marginKw,
-    totalPowerKw,
-  } = params;
-  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw, softMarginKw: marginKw });
-  capacityGuard.setSoftLimitProvider(() => softLimitKw);
-  if (typeof totalPowerKw === 'number') {
-    capacityGuard.reportTotalPower(totalPowerKw);
-  }
-  return capacityGuard;
-};
+// The guard holds no capacity settings now, so this is just a bare instance;
+// the thresholds tests used to configure travel with the calls instead.
+const createCapacityGuardMock = (): CapacityGuard => createTestCapacityGuard({ homeId: 'main' });
 
 describe('recordDailyBudgetCap', () => {
   it('returns existing state for invalid snapshots', () => {
@@ -146,8 +135,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 500,
       maxIntervalMs: 10000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
@@ -176,8 +165,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
@@ -189,8 +178,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 9700,
       limitKw: 10,
+      currentPowerW: 9700,
       softLimitKw: 9,
       headroomKw: -0.7,
     });
@@ -221,8 +210,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
@@ -235,8 +224,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 9700,
       limitKw: 10,
+      currentPowerW: 9700,
       softLimitKw: 8.7,
       headroomKw: -0.7,
     });
@@ -266,8 +255,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
@@ -294,8 +283,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
@@ -325,8 +314,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 10_600,
       limitKw: 10,
+      currentPowerW: 10_600,
       softLimitKw: 9,
       headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
@@ -340,8 +329,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 9_200,
       limitKw: 10,
+      currentPowerW: 9_200,
       softLimitKw: 9,
       headroomKw: -0.2,
     });
@@ -371,8 +360,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
@@ -400,8 +389,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 500,
       maxIntervalMs: 10000,
-      currentPowerW: 5050,
       limitKw: 10,
+      currentPowerW: 5050,
       softLimitKw: 9,
       headroomKw: 3.95,
     });
@@ -426,8 +415,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 500,
       maxIntervalMs: 10000,
-      currentPowerW: 5000,
       limitKw: 10,
+      currentPowerW: 5000,
       softLimitKw: 8.2,
       headroomKw: 3.2,
     });
@@ -456,8 +445,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 500,
       maxIntervalMs: 10000,
-      currentPowerW: 9010,  // 30 W above danger threshold, but only 30 W delta
       limitKw: 10,
+      currentPowerW: 9010,  // 30 W above danger threshold, but only 30 W delta
       softLimitKw: 9,
       headroomKw: 0.99,
     });
@@ -483,8 +472,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 500,
       maxIntervalMs: 10000,
-      currentPowerW: 9060,  // only 10 W delta — below 100 W threshold
       limitKw: 10,
+      currentPowerW: 9060,  // only 10 W delta — below 100 W threshold
       softLimitKw: 9,
       headroomKw: 0.94,
     });
@@ -509,8 +498,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 500,
       maxIntervalMs: 10000,  // 10 s elapsed > 10 s max
-      currentPowerW: 9060,
       limitKw: 10,
+      currentPowerW: 9060,
       softLimitKw: 9,
       headroomKw: 0.94,
     });
@@ -535,8 +524,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 500,
       maxIntervalMs: 30000,
-      currentPowerW: 6200,
       limitKw: 10,
+      currentPowerW: 6200,
       softLimitKw: 9,
       headroomKw: 2.8,
     });
@@ -561,8 +550,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 500,
       maxIntervalMs: 1000,
-      currentPowerW: 5050,
       limitKw: 10,
+      currentPowerW: 5050,
       softLimitKw: 9,
       headroomKw: 3.95,
     });
@@ -587,8 +576,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 10000,
-      powerDeltaW: 200,
       limitKw: 10,
+      powerDeltaW: 200,
       softLimitKw: 9,
       headroomKw: -0.2,
     });
@@ -614,9 +603,9 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 10000,
+      limitKw: 10,
       currentPowerW: 5200,
       powerDeltaW: 200,
-      limitKw: 10,
       headroomKw: -0.2,
     });
 
@@ -648,8 +637,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
@@ -665,8 +654,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 9700,
       limitKw: 10,
+      currentPowerW: 9700,
       softLimitKw: 8.7,
       headroomKw: -0.7,
     });
@@ -710,8 +699,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
@@ -727,8 +716,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
-      currentPowerW: 9700,
       limitKw: 10,
+      currentPowerW: 9700,
       softLimitKw: 8.8,
       headroomKw: -0.7,
     });
@@ -766,8 +755,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
@@ -784,8 +773,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
@@ -820,8 +809,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      currentPowerW: 9700,
       limitKw: 10,
+      currentPowerW: 9700,
       softLimitKw: 9,
       headroomKw: -0.7,
     });
@@ -856,8 +845,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
     });
@@ -889,8 +878,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
       isInShortfall: true,
@@ -906,8 +895,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
       isInShortfall: true,
@@ -942,8 +931,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      currentPowerW: 9700,
       limitKw: 10,
+      currentPowerW: 9700,
       softLimitKw: 9,
       headroomKw: -0.7,
       isInShortfall: true,
@@ -979,8 +968,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      currentPowerW: 9300,
       limitKw: 10,
+      currentPowerW: 9300,
       softLimitKw: 9.5,
       headroomKw: 0.2,
       isInShortfall: true,
@@ -1017,8 +1006,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      currentPowerW: 9300,
       limitKw: 10,
+      currentPowerW: 9300,
       softLimitKw: 9.5,
       headroomKw: 0.2,
       hardCapBreach: { breached: true, deficitKw: 0.1 },
@@ -1050,8 +1039,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 30_000,
-      currentPowerW: 9300,
       limitKw: 10,
+      currentPowerW: 9300,
       softLimitKw: 9.5,
       headroomKw: 0.2,
       hardCapBreach: { breached: true, deficitKw: 0.1 },
@@ -1083,8 +1072,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 30_000,
-      currentPowerW: 9450,
       limitKw: 10,
+      currentPowerW: 9450,
       softLimitKw: 9.5,
       headroomKw: 0.05,
       hardCapBreach: { breached: true, deficitKw: 0.25 },
@@ -1117,8 +1106,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 30_000,
-      currentPowerW: 9000,
       limitKw: 10,
+      currentPowerW: 9000,
       softLimitKw: 9.5,
       headroomKw: 0.5,
       hardCapBreach: { breached: false, deficitKw: 0 },
@@ -1149,8 +1138,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 0,
       maxIntervalMs: 1000,
-      currentPowerW: 9500,
       limitKw: 10,
+      currentPowerW: 9500,
       softLimitKw: 9,
       headroomKw: -0.5,
       isInShortfall: true,
@@ -1187,8 +1176,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      currentPowerW: 10_600, // 200 W delta vs last — "meaningful", but nothing to shed
       limitKw: 10,
+      currentPowerW: 10_600, // 200 W delta vs last — "meaningful", but nothing to shed
       softLimitKw: 9,
       headroomKw: -1.6,
       isInShortfall: false,
@@ -1222,8 +1211,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      currentPowerW: 10_600,
       limitKw: 10,
+      currentPowerW: 10_600,
       softLimitKw: 9,
       headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
@@ -1254,8 +1243,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      currentPowerW: 10_600,
       limitKw: 10,
+      currentPowerW: 10_600,
       softLimitKw: 9,
       headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
@@ -1286,8 +1275,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      currentPowerW: 10_600,
       limitKw: 10,
+      currentPowerW: 10_600,
       softLimitKw: 9,
       headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
@@ -1320,8 +1309,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      currentPowerW: 10_600,
       limitKw: 10,
+      currentPowerW: 10_600,
       softLimitKw: 9,
       headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
@@ -1355,8 +1344,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
         },
         minIntervalMs: 2000,
         maxIntervalMs: 30_000,
-        currentPowerW: 10_600,
         limitKw: 10,
+        currentPowerW: 10_600,
         softLimitKw: 9,
         headroomKw: -1.6,
         hardCapBreach: { breached: true, deficitKw: 0.6 },
@@ -1390,8 +1379,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       },
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      currentPowerW: 10_600,
       limitKw: 10,
+      currentPowerW: 10_600,
       softLimitKw: 9,
       headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
@@ -1436,8 +1425,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       getNowMs,
       minIntervalMs: 2000,
       maxIntervalMs: 30_000,
-      currentPowerW: 10_600,
       limitKw: 10,
+      currentPowerW: 10_600,
       softLimitKw: 9,
       headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
@@ -1530,6 +1519,10 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     const pending = schedulePlanRebuildFromSignal({
       scheduler,
+      capacityGuard: createCapacityGuardMock(),
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 10,
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1539,7 +1532,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 }),
     });
 
     vi.advanceTimersByTime(14999);
@@ -1563,6 +1555,9 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 10,
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1572,7 +1567,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 }),
+      capacityGuard: createCapacityGuardMock(),
       planConvergenceActive: true,
     });
 
@@ -1582,13 +1577,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('rebuilds convergence samples through the scheduler and preserves shortfall fallback', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 11_000, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
-    const capacityGuard = new CapacityGuard({
-      homeId: 'main',
-      limitKw: 10,
-      softMarginKw: 0.5,
-      onShortfall,
-    });
-    capacityGuard.reportTotalPower(11);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1602,6 +1591,10 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 10,
+      shortfallThresholdKw: 10,
+      capacityGuard,
+      latchedTotalKw: 11,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1611,7 +1604,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 11_000,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       planConvergenceActive: true,
     });
 
@@ -1627,14 +1619,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastSoftLimitKw: 9.5,
       backoffUntilMs: Date.now() + 60_000,
     };
-    const capacityGuard = new CapacityGuard({
-      homeId: 'main',
-      limitKw: 10,
-      softMarginKw: 0.5,
-    });
-    capacityGuard.setSoftLimitProvider(() => 9.5);
-    capacityGuard.setShortfallThresholdProvider(() => 9.2);
-    capacityGuard.reportTotalPower(9.3);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1649,6 +1634,10 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 9.2,
+      capacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1658,7 +1647,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       planConvergenceActive: true,
     });
 
@@ -1675,10 +1663,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastHardCapBreached: true,
       lastHardCapDeficitKw: 0.1,
     };
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
-    capacityGuard.setSoftLimitProvider(() => 9.5);
-    capacityGuard.setShortfallThresholdProvider(() => 9.2);
-    capacityGuard.reportTotalPower(9.3);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
     const scheduler = createTestPowerRebuildScheduler({
       getState: () => state,
@@ -1688,6 +1673,10 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 9.2,
+      capacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1697,7 +1686,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
@@ -1712,10 +1700,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastHardCapBreached: true,
       lastHardCapDeficitKw: 0.1,
     };
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
-    capacityGuard.setSoftLimitProvider(() => 9.5);
-    capacityGuard.setShortfallThresholdProvider(() => 9.0);
-    capacityGuard.reportTotalPower(9.3);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
     const scheduler = createTestPowerRebuildScheduler({
       getState: () => state,
@@ -1725,6 +1710,10 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 9.0,
+      capacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1734,7 +1723,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -1750,10 +1738,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastHardCapBreached: true,
       lastHardCapDeficitKw: 0.1,
     };
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.5 });
-    capacityGuard.setSoftLimitProvider(() => 9.5);
-    capacityGuard.setShortfallThresholdProvider(() => 9.2);
-    capacityGuard.reportTotalPower(9.3);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
     const scheduler = createTestPowerRebuildScheduler({
       getState: () => state,
@@ -1763,6 +1748,10 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 9.2,
+      capacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1772,7 +1761,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -1782,15 +1770,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('rebuilds immediately when the hard-cap threshold is breached below the soft limit', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9310, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
-    const capacityGuard = new CapacityGuard({
-      homeId: 'main',
-      limitKw: 10,
-      softMarginKw: 0.5,
-      onShortfall,
-    });
-    capacityGuard.setSoftLimitProvider(() => 9.5);
-    capacityGuard.setShortfallThresholdProvider(() => 9.2);
-    capacityGuard.reportTotalPower(9.3);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1804,6 +1784,10 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 9.2,
+      capacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1813,7 +1797,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       planConvergenceActive: true,
     });
 
@@ -1835,6 +1818,9 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     const pending = schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 10,
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1844,7 +1830,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 }),
+      capacityGuard: createCapacityGuardMock(),
       planConvergenceActive: true,
     });
 
@@ -1869,6 +1855,9 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 10,
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1878,7 +1867,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 5050,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.05 }),
+      capacityGuard: createCapacityGuardMock(),
       planConvergenceActive: true,
     });
 
@@ -1896,6 +1885,9 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 10,
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1905,7 +1897,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 9600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 9.6 }),
+      capacityGuard: createCapacityGuardMock(),
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -1914,15 +1906,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('bypasses the stable interval and checks shortfall when the hard-cap threshold is breached', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9310, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
-    const capacityGuard = new CapacityGuard({
-      homeId: 'main',
-      limitKw: 10,
-      softMarginKw: 0.5,
-      onShortfall,
-    });
-    capacityGuard.setSoftLimitProvider(() => 9.5);
-    capacityGuard.setShortfallThresholdProvider(() => 9.2);
-    capacityGuard.reportTotalPower(9.3);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -1936,6 +1920,10 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 9.2,
+      capacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1945,7 +1933,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -1966,10 +1953,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       setState: (next) => { state = next; },
       rebuildPlanFromCache,
     });
-    const firstCapacityGuard = createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 });
-
     const pending = schedulePlanRebuildFromSignal({
       scheduler,
+      capacityGuard: createCapacityGuardMock(),
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 10,
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1979,24 +1968,19 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: firstCapacityGuard,
     });
 
     vi.advanceTimersByTime(1000);
     await Promise.resolve();
 
-    const urgentCapacityGuard = new CapacityGuard({
-      homeId: 'main',
-      limitKw: 10,
-      softMarginKw: 0.5,
-      onShortfall: vi.fn(),
-    });
-    urgentCapacityGuard.setSoftLimitProvider(() => 9.5);
-    urgentCapacityGuard.setShortfallThresholdProvider(() => 9.2);
-    urgentCapacityGuard.reportTotalPower(9.3);
+    const urgentCapacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall: vi.fn() });
 
     void schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 9.2,
+      capacityGuard: urgentCapacityGuard,
+      latchedTotalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2006,7 +1990,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 9300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: urgentCapacityGuard,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -2017,13 +2000,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('enters shortfall when a tight no-op rebuild leaves the hard cap breached', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 11_000, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
-    const capacityGuard = new CapacityGuard({
-      homeId: 'main',
-      limitKw: 10,
-      softMarginKw: 0.5,
-      onShortfall,
-    });
-    capacityGuard.reportTotalPower(11);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -2037,6 +2014,10 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 10,
+      shortfallThresholdKw: 10,
+      capacityGuard,
+      latchedTotalKw: 11,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2046,7 +2027,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 11_000,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
     });
 
     expect(onShortfall).toHaveBeenCalledWith(1);
@@ -2056,13 +2036,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('does not enter shortfall for soft-limit-only no-op rebuilds', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9600, lastSoftLimitKw: 9.5 };
     const onShortfall = vi.fn();
-    const capacityGuard = new CapacityGuard({
-      homeId: 'main',
-      limitKw: 10,
-      softMarginKw: 0.5,
-      onShortfall,
-    });
-    capacityGuard.reportTotalPower(9.6);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall });
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -2076,6 +2050,10 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 10,
+      shortfallThresholdKw: 10,
+      capacityGuard,
+      latchedTotalKw: 9.6,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2085,7 +2063,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 9600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
     });
 
     expect(onShortfall).not.toHaveBeenCalled();
@@ -2094,16 +2071,14 @@ describe('schedulePlanRebuildFromSignal', () => {
 
   it('skips full rebuilds while shortfall is active and no actionable reduction remains', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
-    const capacityGuard = new CapacityGuard({
-      homeId: 'main',
-      limitKw: 10,
-      softMarginKw: 0.5,
-      onShortfall: vi.fn(),
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall: vi.fn() });
+    await capacityGuard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.306,
+      totalKw: 5.267,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
     });
-    capacityGuard.setSoftLimitProvider(() => 3.9);
-    capacityGuard.setShortfallThresholdProvider(() => 4.961);
-    capacityGuard.reportTotalPower(5.267);
-    await capacityGuard.checkShortfall(false, 0.306);
     const checkShortfallSpy = vi.spyOn(capacityGuard, 'checkShortfall');
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
@@ -2118,6 +2093,10 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 3.9,
+      shortfallThresholdKw: 4.961,
+      capacityGuard,
+      latchedTotalKw: 5.267,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2127,12 +2106,14 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       skipWhileShortfallUnrecoverable: true,
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
-    expect(checkShortfallSpy).toHaveBeenLastCalledWith(false, expect.closeTo(0.306, 3));
+    expect(checkShortfallSpy).toHaveBeenLastCalledWith(expect.objectContaining({
+      hasCandidates: false,
+      deficitKw: expect.closeTo(0.306, 3),
+    }));
   });
 
   // Regression: the 2026-07-06 cpuwarn crash. A persistent unwinnable overshoot
@@ -2144,16 +2125,14 @@ describe('schedulePlanRebuildFromSignal', () => {
   // WITH the unactionable summary must let the skip engage.
   it('suppresses the rebuild storm when overshoot persists but the plan is unactionable', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
-    const capacityGuard = new CapacityGuard({
-      homeId: 'main',
-      limitKw: 10,
-      softMarginKw: 0.5,
-      onShortfall: vi.fn(),
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall: vi.fn() });
+    await capacityGuard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.306,
+      totalKw: 5.267,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
     });
-    capacityGuard.setSoftLimitProvider(() => 3.9);
-    capacityGuard.setShortfallThresholdProvider(() => 4.961);
-    capacityGuard.reportTotalPower(5.267);
-    await capacityGuard.checkShortfall(false, 0.306);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
@@ -2172,6 +2151,10 @@ describe('schedulePlanRebuildFromSignal', () => {
     for (const powerW of [5450, 5300, 5480]) {
       await schedulePlanRebuildFromSignal({
       scheduler,
+        capacityPaceKw: 3.9,
+        shortfallThresholdKw: 4.961,
+        capacityGuard,
+        latchedTotalKw: 5.267,
         getState: () => state,
         setState: (next) => {
           state = next;
@@ -2181,7 +2164,6 @@ describe('schedulePlanRebuildFromSignal', () => {
         maxIntervalMs: 30000,
         currentPowerW: powerW,
         capacitySettings: { limitKw: 10, marginKw: 0.5 },
-        capacityGuard,
         planConvergenceActive: isPlanActivelyConverging(planState, { unactionable: planUnactionable }),
         skipWhileShortfallUnrecoverable: true,
         unactionable: planUnactionable,
@@ -2194,17 +2176,14 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('drives recovery checks during suppression then yields a rebuild at the max interval', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
     const onShortfallCleared = vi.fn();
-    const capacityGuard = new CapacityGuard({
-      homeId: 'main',
-      limitKw: 10,
-      softMarginKw: 0.5,
-      onShortfall: vi.fn(),
-      onShortfallCleared,
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall: vi.fn(), onShortfallCleared });
+    await capacityGuard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.306,
+      totalKw: 5.267,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
     });
-    capacityGuard.setSoftLimitProvider(() => 3.9);
-    capacityGuard.setShortfallThresholdProvider(() => 4.961);
-    capacityGuard.reportTotalPower(5.267);
-    await capacityGuard.checkShortfall(false, 0.306);
     const checkShortfallSpy = vi.spyOn(capacityGuard, 'checkShortfall');
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
@@ -2219,9 +2198,12 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     // Within the max interval, the unrecoverable-shortfall skip suppresses the full
     // rebuild but still drives `checkShortfall`, so recovery detection stays alive.
-    capacityGuard.reportTotalPower(4.6);
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 3.9,
+      shortfallThresholdKw: 4.961,
+      capacityGuard,
+      latchedTotalKw: 4.6,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2231,7 +2213,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 4600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       skipWhileShortfallUnrecoverable: true,
     });
 
@@ -2244,6 +2225,10 @@ describe('schedulePlanRebuildFromSignal', () => {
     vi.advanceTimersByTime(60_000);
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 3.9,
+      shortfallThresholdKw: 4.961,
+      capacityGuard,
+      latchedTotalKw: 4.6,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2253,7 +2238,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 4600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       skipWhileShortfallUnrecoverable: true,
     });
 
@@ -2267,16 +2251,14 @@ describe('schedulePlanRebuildFromSignal', () => {
       lastSoftLimitKw: 3.9,
       shortfallSuppressionInvalidated: true,
     };
-    const capacityGuard = new CapacityGuard({
-      homeId: 'main',
-      limitKw: 10,
-      softMarginKw: 0.5,
-      onShortfall: vi.fn(),
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall: vi.fn() });
+    await capacityGuard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.306,
+      totalKw: 5.267,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
     });
-    capacityGuard.setSoftLimitProvider(() => 3.9);
-    capacityGuard.setShortfallThresholdProvider(() => 4.961);
-    capacityGuard.reportTotalPower(5.267);
-    await capacityGuard.checkShortfall(false, 0.306);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: true,
       appliedActions: true,
@@ -2288,9 +2270,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    capacityGuard.reportTotalPower(6.1);
     await schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 3.9,
+      shortfallThresholdKw: 4.961,
+      capacityGuard,
+      latchedTotalKw: 6.1,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2300,7 +2285,6 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 6100,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard,
       skipWhileShortfallUnrecoverable: true,
     });
 
@@ -2323,6 +2307,9 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     const pending = schedulePlanRebuildFromSignal({
       scheduler,
+      capacityPaceKw: 9.5,
+      shortfallThresholdKw: 10,
+      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2332,7 +2319,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       maxIntervalMs: 30000,
       currentPowerW: 9600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
-      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 9.6 }),
+      capacityGuard: createCapacityGuardMock(),
     });
 
     expect(addPerfDurationMock).not.toHaveBeenCalledWith('power_sample_rebuild_ms', expect.any(Number));

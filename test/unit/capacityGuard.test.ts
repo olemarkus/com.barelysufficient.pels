@@ -1,4 +1,8 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
+import { buildNullCapacityStateSummary } from '../../lib/power/capacityStateSummary';
+
+// The guard no longer resolves the hard-cap budget itself; callers pass it in.
+const TEST_SHORTFALL_THRESHOLD_KW = 5;
 
 describe('CapacityGuard', () => {
   let originalNow: () => number;
@@ -18,118 +22,24 @@ describe('CapacityGuard', () => {
     mockTime += ms;
   };
 
-  describe('Limit calculations', () => {
-    it('returns default soft limit when no provider', () => {
-      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
-      expect(guard.getSoftLimit()).toBe(4.8);
-    });
-
-    it('uses soft limit provider when set', () => {
-      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
-      guard.setSoftLimitProvider(() => 3.5);
-      expect(guard.getSoftLimit()).toBe(3.5);
-    });
-
-    it('uses shortfall threshold provider when set', () => {
-      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
-      guard.setShortfallThresholdProvider(() => 10.0);
-      expect(guard.getShortfallThreshold()).toBe(10.0);
-    });
-
-    it('falls back to hard limit for shortfall threshold', () => {
-      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
-      expect(guard.getShortfallThreshold()).toBe(5);
-    });
-  });
-
-  describe('Power tracking', () => {
-    it('reports and retrieves total power', () => {
-      const guard = new CapacityGuard({ homeId: 'main' });
-      expect(guard.getLastTotalPower()).toBeNull();
-
-      guard.reportTotalPower(3.5);
-      expect(guard.getLastTotalPower()).toBe(3.5);
-    });
-
-    it('calculates headroom correctly', () => {
-      const guard = new CapacityGuard({ homeId: 'main', limitKw: 5, softMarginKw: 0.2 });
-      expect(guard.getHeadroom()).toBeNull();
-
-      guard.reportTotalPower(3.0);
-      expect(guard.getHeadroom()).toBeCloseTo(1.8, 5); // 4.8 - 3.0
-
-      guard.reportTotalPower(5.0);
-      expect(guard.getHeadroom()).toBeCloseTo(-0.2, 5); // 4.8 - 5.0
-    });
-
-    it('ignores invalid power values', () => {
-      const guard = new CapacityGuard({ homeId: 'main' });
-      guard.reportTotalPower(3.0);
-      guard.reportTotalPower(NaN);
-      expect(guard.getLastTotalPower()).toBe(3.0);
-    });
-  });
-
-  describe('Shedding state', () => {
-    it('starts with shedding inactive', () => {
-      const guard = new CapacityGuard({ homeId: 'main' });
-      expect(guard.isSheddingActive()).toBe(false);
-    });
-
-    it('can set shedding active', async () => {
-      const callbacks: string[] = [];
-      const guard = new CapacityGuard({
-      homeId: 'main',
-        onSheddingStart: () => { callbacks.push('start'); },
-        onSheddingEnd: () => { callbacks.push('end'); },
-      });
-
-      await guard.setSheddingActive(true);
-      expect(guard.isSheddingActive()).toBe(true);
-      expect(callbacks).toEqual(['start']);
-
-      // Setting same value doesn't trigger callback
-      await guard.setSheddingActive(true);
-      expect(callbacks).toEqual(['start']);
-
-      await guard.setSheddingActive(false);
-      expect(guard.isSheddingActive()).toBe(false);
-      expect(callbacks).toEqual(['start', 'end']);
-    });
-
-    it('uses override headroom when clearing shedding state', async () => {
-      const guard = new CapacityGuard({
-      homeId: 'main',
-        limitKw: 4,
-        softMarginKw: 0.5,
-        restoreMarginKw: 0.2,
-      });
-
-      guard.reportTotalPower(3.65);
-      await guard.setSheddingActive(true);
-      await guard.setSheddingActive(false, 0.45);
-
-      expect(guard.isSheddingActive()).toBe(false);
-    });
-  });
-
   describe('Shortfall detection', () => {
     it('starts without shortfall', () => {
-      const guard = new CapacityGuard({ homeId: 'main' });
+      const guard = createTestCapacityGuard({ homeId: 'main' });
       expect(guard.isInShortfall()).toBe(false);
     });
 
     it('enters shortfall when hard cap exceeded and no candidates', async () => {
       const shortfallEvents: Array<{ type: string; deficit?: number }> = [];
-      const guard = new CapacityGuard({
-      homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
-        onShortfall: (deficit) => { shortfallEvents.push({ type: 'shortfall', deficit }); },
+      const guard = createTestCapacityGuard({ homeId: 'main', onShortfall: (deficit) => { shortfallEvents.push({ type: 'shortfall', deficit }); },
       });
 
-      guard.reportTotalPower(5.5); // Over hard cap (5.0)
-      await guard.checkShortfall(false, 0.5); // No candidates
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.5,
+      totalKw: 5.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    }); // No candidates
 
       expect(shortfallEvents).toHaveLength(1);
       expect(shortfallEvents[0].type).toBe('shortfall');
@@ -138,15 +48,18 @@ describe('CapacityGuard', () => {
 
     it('does not enter shortfall when candidates remain', async () => {
       const shortfallEvents: string[] = [];
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => { shortfallEvents.push('shortfall'); },
       });
 
-      guard.reportTotalPower(5.5); // Over hard cap
-      await guard.checkShortfall(true, 0.5); // Has candidates
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0.5,
+      totalKw: 5.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    }); // Has candidates
 
       expect(shortfallEvents).toHaveLength(0);
       expect(guard.isInShortfall()).toBe(false);
@@ -154,15 +67,18 @@ describe('CapacityGuard', () => {
 
     it('does not enter shortfall when under hard cap', async () => {
       const shortfallEvents: string[] = [];
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => { shortfallEvents.push('shortfall'); },
       });
 
-      guard.reportTotalPower(4.9); // Under hard cap but over soft limit
-      await guard.checkShortfall(false, 0);
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0,
+      totalKw: 4.9,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
 
       expect(shortfallEvents).toHaveLength(0);
       expect(guard.isInShortfall()).toBe(false);
@@ -175,15 +91,18 @@ describe('CapacityGuard', () => {
       };
       const options = {
         homeId: 'h_area',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => {},
         structuredLog,
       };
-      const guard = new CapacityGuard(options);
+      const guard = createTestCapacityGuard(options);
 
-      guard.reportTotalPower(5.5);
-      await guard.checkShortfall(false, 0.5);
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.5,
+      totalKw: 5.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(guard.isInShortfall()).toBe(true);
       expect(logEvents).toHaveLength(1);
       expect(logEvents[0]).toMatchObject({
@@ -201,65 +120,93 @@ describe('CapacityGuard', () => {
       expect(firstIncidentId).toBeDefined();
 
       // Second shortfall check while already in shortfall should not emit another event
-      guard.reportTotalPower(6.0);
-      await guard.checkShortfall(false, 1.0);
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 1.0,
+      totalKw: 6.0,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(logEvents).toHaveLength(1); // No new event
     });
 
     it('publishes alert candidates separately from the slower incident-clear latch', async () => {
       const candidates: Array<{ incidentId: string; deficitKw: number }> = [];
       const conditionCleared = vi.fn();
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
         homeId: 'main',
-        limitKw: 5,
         onShortfallAlertCandidate: (entry) => { candidates.push(entry); },
         onShortfallAlertConditionCleared: conditionCleared,
       });
 
-      guard.reportTotalPower(5.5);
-      await guard.checkShortfall(false, 0.5);
-      await guard.checkShortfall(false, 0.6);
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.5,
+      totalKw: 5.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.6,
+      totalKw: 5.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
 
       expect(guard.isInShortfall()).toBe(true);
-      expect(guard.isShortfallAlertConditionActive()).toBe(true);
+      expect(guard.isShortfallAlertConditionActive(5.5, TEST_SHORTFALL_THRESHOLD_KW)).toBe(true);
       expect(candidates).toHaveLength(2);
       expect(candidates[1]).toMatchObject({
         incidentId: candidates[0].incidentId,
         deficitKw: 0.6,
       });
 
-      guard.reportTotalPower(4.5);
-      expect(guard.isShortfallAlertConditionActive()).toBe(false);
-      expect(conditionCleared).toHaveBeenCalledOnce();
+      // The predicate is evaluated against the total the caller passes, so a
+      // lower reading reports the condition clear immediately — the alert
+      // dispatch polls this closure over the live tracker latch and re-checks
+      // it before firing a deferred alert, which is what actually protects the
+      // Flow. The push callback below is the slower confirmation.
+      expect(guard.isShortfallAlertConditionActive(4.5, TEST_SHORTFALL_THRESHOLD_KW)).toBe(false);
 
       // A later high sample cannot silently resume the old hold. The planner
       // must first reconfirm that no further limiting candidates exist.
-      guard.reportTotalPower(5.6);
       expect(candidates).toHaveLength(2);
-      await guard.checkShortfall(false, 0.7);
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.7,
+      totalKw: 5.6,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(candidates).toHaveLength(3);
 
-      guard.reportTotalPower(4.5);
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
 
-      expect(conditionCleared).toHaveBeenCalledTimes(3);
+      expect(conditionCleared).toHaveBeenCalledOnce();
       expect(guard.isInShortfall()).toBe(true);
     });
 
     it('publishes the alert candidate even when the immediate state write rejects', async () => {
       const candidate = vi.fn();
-      const guard = new CapacityGuard({
-        homeId: 'main',
-        limitKw: 5,
-        onShortfall: () => Promise.reject(new Error('settings unavailable')),
-        onShortfallAlertCandidate: candidate,
-      });
+      const guard = createTestCapacityGuard({ homeId: 'main', onShortfall: () => Promise.reject(new Error('settings unavailable')), onShortfallAlertCandidate: candidate });
 
-      guard.reportTotalPower(5.5);
-      await expect(guard.checkShortfall(false, 0.5)).rejects.toThrow('settings unavailable');
+      await expect(guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.5,
+      totalKw: 5.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    })).rejects.toThrow('settings unavailable');
 
       expect(candidate).toHaveBeenCalledOnce();
-      expect(guard.isShortfallAlertConditionActive()).toBe(true);
+      expect(guard.isShortfallAlertConditionActive(5.5, TEST_SHORTFALL_THRESHOLD_KW)).toBe(true);
     });
 
     it('logs hard-shortfall diagnostics, planned-shed counters, and source metadata', async () => {
@@ -267,16 +214,18 @@ describe('CapacityGuard', () => {
       const structuredLog: Pick<import('../../lib/logging/logger').Logger, 'info'> = {
         info: (obj: Record<string, unknown>) => { logEvents.push(obj); },
       };
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => {},
         structuredLog,
       });
 
-      guard.reportTotalPower(5.38);
-      await guard.checkShortfall(false, 0.38, {
+      await guard.checkShortfall({
+        hasCandidates: false,
+        deficitKw: 0.38,
+        totalKw: 5.38,
+        shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+        capacityStateSummary: {
         controlledDevices: 3,
         plannedShedDevices: 2,
         pendingPlannedShedDevices: 1,
@@ -296,6 +245,7 @@ describe('CapacityGuard', () => {
         remainingActionableControlledLoadW: 0,
         remainingActionableControlledLoad: false,
         actuationInFlight: true,
+        },
       });
 
       expect(logEvents).toHaveLength(1);
@@ -319,75 +269,131 @@ describe('CapacityGuard', () => {
   describe('Shortfall clearing with hysteresis', () => {
     it('requires 60s sustained positive headroom to clear shortfall', async () => {
       const events: string[] = [];
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => { events.push('shortfall'); },
         onShortfallCleared: () => { events.push('cleared'); },
       });
 
       // Enter shortfall
-      guard.reportTotalPower(5.5);
-      await guard.checkShortfall(false, 0.7);
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.7,
+      totalKw: 5.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(guard.isInShortfall()).toBe(true);
       expect(events).toEqual(['shortfall']);
 
       // Power drops below threshold with margin
-      guard.reportTotalPower(4.5); // Headroom = 0.3kW
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(guard.isInShortfall()).toBe(true); // Timer started
 
       // Wait 30s - not enough
       advanceTime(30000);
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(guard.isInShortfall()).toBe(true);
 
       // Wait another 31s (total 61s) - should clear
       advanceTime(31000);
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(guard.isInShortfall()).toBe(false);
       expect(events).toEqual(['shortfall', 'cleared']);
     });
 
     it('resets timer when headroom drops', async () => {
       const events: string[] = [];
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => { events.push('shortfall'); },
         onShortfallCleared: () => { events.push('cleared'); },
       });
 
       // Enter shortfall
-      guard.reportTotalPower(5.5);
-      await guard.checkShortfall(false, 0.5);
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.5,
+      totalKw: 5.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
 
       // Start timer
-      guard.reportTotalPower(4.5);
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
 
       // Wait 30s
       advanceTime(30000);
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
 
       // Power spikes back over hard cap - resets timer
-      guard.reportTotalPower(5.1); // Exceeds hard cap again
-      await guard.checkShortfall(false, 0.1); // No candidates, re-enters shortfall state check
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.1,
+      totalKw: 5.1,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    }); // No candidates, re-enters shortfall state check
 
       // Drop back below - timer restarts from scratch
-      guard.reportTotalPower(4.5);
-      await guard.checkShortfall(true, 0); // Timer starts here
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    }); // Timer starts here
 
       // Wait 59s - not quite enough
       advanceTime(59000);
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(guard.isInShortfall()).toBe(true);
 
       // Wait 2s more (total 61s from restart) - NOW should clear
       advanceTime(2000);
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(guard.isInShortfall()).toBe(false);
     });
 
@@ -398,35 +404,60 @@ describe('CapacityGuard', () => {
       };
       const options = {
         homeId: 'h_area',
-        limitKw: 5,
         structuredLog,
       };
-      const guard = new CapacityGuard(options);
+      const guard = createTestCapacityGuard(options);
 
-      guard.reportTotalPower(5.5);
-      await guard.checkShortfall(false, 0.5);
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0.5,
+      totalKw: 5.5,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
 
-      guard.reportTotalPower(4.7);
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.7,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(logEvents.map((event) => event.event)).toEqual([
         'hard_cap_shortfall_detected',
         'hard_cap_shortfall_recovery_started',
       ]);
 
       advanceTime(30_000);
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.7,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(logEvents).toHaveLength(2);
 
-      guard.reportTotalPower(4.95);
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.95,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(logEvents.map((event) => event.event)).toEqual([
         'hard_cap_shortfall_detected',
         'hard_cap_shortfall_recovery_started',
         'hard_cap_shortfall_recovery_reset',
       ]);
 
-      guard.reportTotalPower(4.7);
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.7,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(logEvents.map((event) => event.event)).toEqual([
         'hard_cap_shortfall_detected',
         'hard_cap_shortfall_recovery_started',
@@ -435,7 +466,13 @@ describe('CapacityGuard', () => {
       ]);
 
       advanceTime(61_000);
-      await guard.checkShortfall(true, 0);
+      await guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.7,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
       expect(logEvents[4]).toMatchObject({
         event: 'hard_cap_shortfall_recovered',
         homeId: 'h_area',
@@ -450,30 +487,130 @@ describe('CapacityGuard', () => {
   describe('uses separate shortfall threshold', () => {
     it('uses shortfall threshold provider for detection', async () => {
       const events: string[] = [];
-      const guard = new CapacityGuard({
+      const guard = createTestCapacityGuard({
       homeId: 'main',
-        limitKw: 5,
-        softMarginKw: 0.2,
         onShortfall: () => { events.push('shortfall'); },
       });
 
-      // Set higher shortfall threshold (e.g., for end-of-hour where soft limit is lowered)
-      guard.setSoftLimitProvider(() => 3.0); // Lowered for shedding
-      guard.setShortfallThresholdProvider(() => 6.0); // Real limit for shortfall
+      // The panic threshold is the caller's to resolve and is deliberately
+      // higher than the shedding soft limit.
 
       // Power is 5kW - over soft limit (3) but under shortfall threshold (6)
-      guard.reportTotalPower(5.0);
-      await guard.checkShortfall(false, 2.0);
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 2.0,
+      totalKw: 5.0,
+      shortfallThresholdKw: 6,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
 
       expect(events).toHaveLength(0); // No shortfall
       expect(guard.isInShortfall()).toBe(false);
 
       // Power exceeds shortfall threshold
-      guard.reportTotalPower(7.0);
-      await guard.checkShortfall(false, 4.0);
+      await guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 4.0,
+      totalKw: 7.0,
+      shortfallThresholdKw: 6,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
 
       expect(events).toEqual(['shortfall']);
       expect(guard.isInShortfall()).toBe(true);
+    });
+  });
+
+  // Regression: the guard used to keep its own `mainPowerKw` copy, a
+  // last-known-value latch production never cleared, so an unmeasured cycle was
+  // unreachable here. Reading the tracker means a producer hold answers `null`,
+  // and the old `?? 0` would have read that as a 0 kW house — full recovery.
+  describe('an unmeasured cycle', () => {
+    const enterShortfall = async (guard: ReturnType<typeof createTestCapacityGuard>) => {
+      await guard.checkShortfall({
+        hasCandidates: false,
+        deficitKw: 1.0,
+        totalKw: 6.0,
+        shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+        capacityStateSummary: buildNullCapacityStateSummary(),
+      });
+      expect(guard.isInShortfall()).toBe(true);
+    };
+
+    const unmeasured = (guard: ReturnType<typeof createTestCapacityGuard>) => guard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: 0,
+      totalKw: null,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
+
+    // The defect itself: absence used to be read as 0 kW, so a house that was
+    // never measured out of its breach recovered on a missing reading alone.
+    it('never clears a live incident, however long the readings stay away', async () => {
+      const cleared: string[] = [];
+      const guard = createTestCapacityGuard({
+        homeId: 'main',
+        onShortfallCleared: () => { cleared.push('cleared'); },
+      });
+      await enterShortfall(guard);
+      const incidentId = guard.getCurrentIncidentId();
+
+      // Well past the 60 s sustain, on the flow-powered stale-hold rebuild.
+      for (let i = 0; i < 12; i += 1) {
+        advanceTime(60_000);
+        await unmeasured(guard);
+      }
+
+      expect(guard.isInShortfall()).toBe(true);
+      expect(cleared).toHaveLength(0);
+      // Same incident throughout: absence never ended it and started a new one.
+      expect(guard.getCurrentIncidentId()).toBe(incidentId);
+    });
+
+    const recoveredFor = (guard: ReturnType<typeof createTestCapacityGuard>) => guard.checkShortfall({
+      hasCandidates: true,
+      deficitKw: 0,
+      totalKw: 4.0,
+      shortfallThresholdKw: TEST_SHORTFALL_THRESHOLD_KW,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    });
+
+    // The flow-home case. Events arrive irregularly, so a rebuild between two of
+    // them is legitimately unmeasured — ordinary cadence, not a fault. Deciding
+    // nothing leaves the sustain standing; restarting it on the first miss meant
+    // such a home could never finish one and stayed latched in a hard-cap
+    // incident it had physically left.
+    it('leaves a sustain already under way standing', async () => {
+      const cleared: string[] = [];
+      const guard = createTestCapacityGuard({
+        homeId: 'main',
+        onShortfallCleared: () => { cleared.push('cleared'); },
+      });
+      await enterShortfall(guard);
+
+      await recoveredFor(guard);   // sustain starts at T0
+      advanceTime(30_000);
+      await unmeasured(guard);     // blind from T+30, inside the grace
+      advanceTime(40_000);
+      await recoveredFor(guard);   // T+70, measured again
+
+      expect(guard.isInShortfall()).toBe(false);
+      expect(cleared).toEqual(['cleared']);
+    });
+
+    it('does not end the alert lifecycle', async () => {
+      const conditionCleared: string[] = [];
+      const guard = createTestCapacityGuard({
+        homeId: 'main',
+        onShortfallAlertConditionCleared: () => { conditionCleared.push('cleared'); },
+      });
+      await enterShortfall(guard);
+      conditionCleared.length = 0;
+
+      await unmeasured(guard);
+
+      expect(conditionCleared).toHaveLength(0);
     });
   });
 });

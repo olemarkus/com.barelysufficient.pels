@@ -1,4 +1,4 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -9,6 +9,9 @@ import type {
   DeviceDiagnosticsRecorder,
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
+
+// The tracker is the single power latch; tests drive the whole-home total here.
+let lastPowerW = 0;
 
 /**
  * Resolving the current-hour price level is NOT cheap: it rebuilds the entire
@@ -68,11 +71,11 @@ const buildBuilder = (params: {
   /** Omit to configure every device; `{}` reproduces an unconfigured install. */
   priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 }): PlanBuilder => {
-  const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0.2 });
-  capacityGuard.reportTotalPower(3);
+  const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
+  lastPowerW = (3) * 1000;
   return new PlanBuilder({
+    capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
-    getCapacityGuard: () => capacityGuard,
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({
@@ -83,7 +86,7 @@ const buildBuilder = (params: {
       params.deviceIds.map((id) => [id, { enabled: true, cheapDelta: 2, expensiveDelta: -2 }]),
     ),
     getCurrentHourPriceLevel: params.getCurrentHourPriceLevel,
-    getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+    getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     getPriorityForDevice: () => 100,
     getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),

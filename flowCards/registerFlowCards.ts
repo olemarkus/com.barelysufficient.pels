@@ -1,5 +1,4 @@
 import { PriceLevel } from '../lib/price/priceLevels';
-import CapacityGuard from '../lib/power/capacityGuard';
 import type { DecoratedDeviceSnapshot } from '../packages/contracts/src/types';
 import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
@@ -74,9 +73,14 @@ export type FlowCardDeps = {
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getCurrentPriceLevel: () => PriceLevel;
   recordPowerSample: (powerW: number) => Promise<void>;
-  getCapacityGuard: () => CapacityGuard | undefined;
   getHeadroom: () => number | null;
-  setCapacityLimit: (kw: number) => void;
+  /**
+   * The tracker's latched whole-home total in kW, resolved by setup
+   * (`resolveLastTotalPowerKw`). `null` = no trustworthy reading.
+   */
+  getLatchedTotalKw: () => number | null;
+  /** `capacityPaceKw` — the planner's live hourly threshold. */
+  getCapacityPaceKw: () => number;
   // Decorated: the runtime snapshot carries the app-layer step-command
   // decoration (`desiredStepId` / `targetStepId`) that the clamp-deviation
   // check reads. The runtime already returns decorated objects; the type just

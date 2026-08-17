@@ -305,10 +305,13 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     // (`observe` + `forgetDevice`); `disableDeferredObjectiveInSettings` calls
     // `forgetDevice`, so the mock must expose it or the disable path crashes.
     deferredObjectiveHoursRemainingTracker: { observe: vi.fn(), forgetDevice: vi.fn() } as never,
+    // Matches what the guard actually exposes now: the hard-cap incident, no
+    // power and no thresholds.
     capacityGuard: {
-      getHeadroom: vi.fn(() => null),
-      setLimit: vi.fn(),
-      setSoftMargin: vi.fn(),
+      isInShortfall: vi.fn(() => false),
+      getCurrentIncidentId: vi.fn(() => null),
+      checkShortfall: vi.fn(async () => undefined),
+      isShortfallAlertConditionActive: vi.fn(() => false),
     } as never,
     dailyBudgetService: {
       loadSettings: vi.fn(),

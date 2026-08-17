@@ -1,3 +1,4 @@
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { buildSheddingCandidates } from '../../lib/plan/shedding/candidates';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -40,7 +41,8 @@ const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
   capacitySoftLimit: 5,
   state: createPlanEngineState(),
   deps: {
-    capacityGuard: undefined,
+    capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+    shortfallThresholdKw: Number.POSITIVE_INFINITY,
     powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
     getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
     // No stored priority for any device → caller-side default for the whole bucket.

@@ -1,4 +1,4 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
@@ -81,18 +81,17 @@ describe('shed grace', () => {
   }
 
   function buildBuilder(state: ReturnType<typeof createPlanEngineState>): PlanBuilder {
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 6, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(5.4);
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     return new PlanBuilder({
       setCapacityInShortfall: vi.fn(),
-      getCapacityGuard: () => capacityGuard,
+      capacityGuard,
       getCapacitySettings: () => ({ limitKw: 6, marginKw: 0 }),
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+      getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 5.4 * 1000 }),
       getDailyBudgetSnapshot: () => null,
       getPriorityForDevice: () => 100,
       // The binding pace, well under the 6 kW hard cap — the deficit is real and

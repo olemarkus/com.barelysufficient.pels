@@ -72,7 +72,6 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
     refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
     loadPowerTracker: vi.fn(),
-    getCapacityGuard: vi.fn().mockReturnValue(undefined),
     getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 10, marginKw: 1 }),
     getCapacityDryRun: vi.fn().mockReturnValue(false),
     loadPriceOptimizationSettings: vi.fn(),
@@ -227,21 +226,17 @@ describe('createSettingsHandler', () => {
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });
 
-  it('updates capacity limit settings and overhead token', async () => {
-    const guard = {
-      setLimit: vi.fn(),
-      setSoftMargin: vi.fn(),
-    };
+  it('reloads capacity settings and updates the overhead token', async () => {
+    // Nothing mirrors the capacity scalars any more: reloading the store IS the
+    // propagation, so the handler's job is the reload plus its side effects.
     const deps = buildDeps({
-      getCapacityGuard: vi.fn().mockReturnValue(guard),
       getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 12, marginKw: 0.5 }),
     });
     const handler = createSettingsHandler(deps);
 
     await handler(CAPACITY_LIMIT_KW);
 
-    expect(guard.setLimit).toHaveBeenCalledWith(12);
-    expect(guard.setSoftMargin).toHaveBeenCalledWith(0.5);
+    expect(deps.loadCapacitySettings).toHaveBeenCalled();
     expect(deps.updateOverheadToken).toHaveBeenCalledWith(0.5);
     expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();

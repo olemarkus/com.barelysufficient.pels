@@ -1,4 +1,4 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { buildIdentityDecorationBundle } from '../../lib/plan/planBuilderDecoration';
@@ -29,19 +29,20 @@ describe('PlanBuilder relative priority constraint', () => {
   });
 
   it('keeps producer-resolved ranks consistent through smart-task decoration and materialization', async () => {
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 10, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(0);
+    let lastPowerW = 0;
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
+    lastPowerW = (0) * 1000;
     const decoratedPriorities: Record<string, number | undefined> = {};
     const builder = new PlanBuilder({
+      capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
-      getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+      getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
       getDailyBudgetSnapshot: () => null,
       // The live dependency is intentionally stale: every consumer in this
       // cycle must use the relative ranks snapshotted on the input devices.

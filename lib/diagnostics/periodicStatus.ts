@@ -1,12 +1,14 @@
 import type CapacityGuard from '../power/capacityGuard';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
+import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
+import { computeShortfallThreshold } from '../plan/planBudget';
 import type { PowerTrackerState } from '../power/tracker';
 import { getHourBucketKey } from '../utils/dateUtils';
 import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 
 type CapacityGuardView = Pick<
   CapacityGuard,
-  'getLastTotalPower' | 'getSoftLimit' | 'getShortfallThreshold' | 'isSheddingActive' | 'isInShortfall'
+  'isInShortfall'
 >;
 
 type CapacityStatusMetrics = {
@@ -42,12 +44,19 @@ export type PeriodicStatusLogFields = {
  * instead. Keeping `MAIN_HOME_ID` here makes that ownership explicit.
  */
 export function buildPeriodicStatusLogFields(params: {
-  capacityGuard?: CapacityGuardView;
+  capacityGuard: CapacityGuardView;
   powerTracker: PowerTrackerState;
   capacitySettings: { limitKw: number; marginKw: number };
   operatingMode: string;
   capacityDryRun: boolean;
   starvedDeviceCount?: number;
+  /**
+   * `capacityPaceKw` — the dynamic hourly threshold, resolved by the caller.
+   * Logged as `softLimitKw` (`notes/safe-pace-two-constraints.md`).
+   */
+  capacityPaceKw: number;
+  /** The shedding latch, read off `PlanEngineState` by the caller. */
+  sheddingActive: boolean;
 }): PeriodicStatusLogFields {
   const {
     capacityGuard,
@@ -56,11 +65,13 @@ export function buildPeriodicStatusLogFields(params: {
     operatingMode,
     capacityDryRun,
     starvedDeviceCount = 0,
+    capacityPaceKw,
+    sheddingActive,
   } = params;
-  const metrics = resolveCapacityStatusMetrics({ capacityGuard, capacitySettings });
+  const metrics = resolveCapacityStatusMetrics({ capacitySettings, powerTracker, capacityPaceKw });
   const hourCapKWh = resolveUsableCapacityKw(capacitySettings);
-  const sheddingActive = capacityGuard?.isSheddingActive() ?? false;
-  const inShortfall = capacityGuard?.isInShortfall() ?? false;
+
+  const inShortfall = capacityGuard.isInShortfall();
   const usage = getCurrentHourUsage(powerTracker);
   const hourRemainingKWh = Math.max(0, hourCapKWh - usage.usedKWh);
   return {
@@ -83,16 +94,17 @@ export function buildPeriodicStatusLogFields(params: {
 }
 
 function resolveCapacityStatusMetrics(params: {
-  capacityGuard?: CapacityGuardView;
   capacitySettings: { limitKw: number; marginKw: number };
+  powerTracker: PowerTrackerState;
+  capacityPaceKw: number;
 }): CapacityStatusMetrics {
-  const { capacityGuard, capacitySettings } = params;
-  const total = capacityGuard?.getLastTotalPower() ?? null;
-  const softLimit = capacityGuard?.getSoftLimit() ?? resolveUsableCapacityKw(capacitySettings);
+  const { capacitySettings, powerTracker, capacityPaceKw } = params;
+  const total = resolveLastTotalPowerKw(powerTracker);
+  const softLimit = capacityPaceKw;
   // Derive headroom from the already-fetched softLimit to avoid a second provider call.
   // CapacityGuard.getHeadroom() is just getSoftLimit() - mainPowerKw, so this is equivalent.
   const headroom = total !== null ? softLimit - total : null;
-  const shortfallBudgetThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySettings.limitKw;
+  const shortfallBudgetThreshold = computeShortfallThreshold({ capacitySettings, powerTracker });
   const shortfallBudgetHeadroom = total !== null ? shortfallBudgetThreshold - total : null;
   const hardCapHeadroom = total !== null ? capacitySettings.limitKw - total : null;
   return {

@@ -14,7 +14,6 @@
  *
  * `lib/plan` is hot-path: no spread/Array.from in loops, no Array#forEach.
  */
-import type CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isCooldownBlockedReason } from '../planContract/planDecisionSemantics';
@@ -61,19 +60,20 @@ export class OvershootTracker {
   public updateOvershootState(params: {
     context: PlanContext;
     power: PowerCycleDisplay;
-    capacityGuard: CapacityGuard | undefined;
     capacityLimitKw: number;
     powerTracker: PowerTrackerState;
     deviceNameById: ReadonlyMap<string, string>;
     planDevices: DevicePlanDevice[];
     overshootDecision: SoftOvershootDecision;
     nowTs: number;
+    /** Producer-resolved `computeShortfallThreshold` for this build. */
+    shortfallBudgetThresholdKw: number;
   }): void {
     const {
       context,
       power,
-      capacityGuard,
       capacityLimitKw,
+      shortfallBudgetThresholdKw,
       powerTracker,
       deviceNameById,
       planDevices,
@@ -115,7 +115,7 @@ export class OvershootTracker {
         reasonCode: 'active_overshoot',
         headroomKw: context.headroom,
         ...overshootTimingFields,
-        ...buildPlanContextHeadroomLogFields(context, power, capacityGuard, capacityLimitKw),
+        ...buildPlanContextHeadroomLogFields(context, power, capacityLimitKw, shortfallBudgetThresholdKw),
         // Supplies exactly the meta the summary reads. It used to pass
         // `headroomKw` (never read) while omitting the managed/background
         // split (always read), so this log's `controlledPowerW` /
@@ -152,7 +152,7 @@ export class OvershootTracker {
         reasonCode: 'overshoot_cleared',
         durationMs,
         ...overshootTimingFields,
-        ...buildPlanContextHeadroomLogFields(context, power, capacityGuard, capacityLimitKw),
+        ...buildPlanContextHeadroomLogFields(context, power, capacityLimitKw, shortfallBudgetThresholdKw),
       });
     } else if (overshootActive && this.state.overshootStartedMs === null) {
       this.state.overshootStartedMs = nowTs;

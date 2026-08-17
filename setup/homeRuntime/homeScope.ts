@@ -23,7 +23,6 @@
  * target with no capacity pressure at all — exactly as main does. That is the
  * restore anchor; see `getModeDeviceTargets` below.
  */
-import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -75,7 +74,6 @@ export type HomeScope = {
   // with a per-home `CapacitySettingsStore` as their ONLY capacity source.
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityDryRun: () => boolean;
-  getCapacityGuard: () => CapacityGuard | undefined;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   /** Active planned devices with a unique, gap-free relative priority in this home. */
@@ -240,7 +238,6 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     // snapshot is the in-memory truth kept current by the settings handler.
     getCapacitySettings: () => ctx.capacitySettings,
     getCapacityDryRun: () => ctx.capacityDryRun,
-    getCapacityGuard: () => ctx.capacityGuard,
     getPowerTracker: () => ctx.powerTracker,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
     getPlanDevices: () => {

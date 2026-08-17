@@ -486,7 +486,6 @@ export function initSettingsHandlerForApp(
     },
     refreshTargetDevicesSnapshot: () => ctx.refreshTargetDevicesSnapshot(),
     loadPowerTracker: () => ctx.loadPowerTracker(),
-    getCapacityGuard: () => ctx.capacityGuard,
     getCapacitySettings: () => ctx.capacitySettings,
     getCapacityDryRun: () => ctx.capacityDryRun,
     loadPriceOptimizationSettings: ctx.loadPriceOptimizationSettings,

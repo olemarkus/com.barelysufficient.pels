@@ -1,16 +1,17 @@
-import CapacityGuard from '../../lib/power/capacityGuard';
+import type { PowerTrackerState } from '../../lib/power/tracker';
 import { PowerMeasurementGate } from '../../setup/powerMeasurementGate';
 
 const WARN_AFTER_MS = 60_000;
 
-// The real guard, not a stub: the gate's whole job is to report what the guard
-// knows, and a hand-written double would be free to drift from it.
-const buildGate = (guard: CapacityGuard | undefined, nowMs: () => number) => {
+// Driven through the real tracker state, not a stub: the gate's whole job is to
+// report whether that latch holds a reading, and a hand-written double would be
+// free to drift from it.
+const buildGate = (tracker: PowerTrackerState, nowMs: () => number) => {
   const info = vi.fn();
   const warn = vi.fn();
   const gate = new PowerMeasurementGate({
     homeId: 'main',
-    getCapacityGuard: () => guard,
+    getPowerTracker: () => tracker,
     logger: () => ({ info, warn }) as never,
     warnAfterMs: WARN_AFTER_MS,
     nowMs,
@@ -21,13 +22,13 @@ const buildGate = (guard: CapacityGuard | undefined, nowMs: () => number) => {
 
 describe('PowerMeasurementGate', () => {
   it('stays shut until the meter reports, then opens', () => {
-    const guard = new CapacityGuard({ homeId: 'main', limitKw: 6 });
-    const { gate, info } = buildGate(guard, () => 1000);
+    const tracker: PowerTrackerState = {};
+    const { gate, info } = buildGate(tracker, () => 1000);
 
     expect(gate.isOpen()).toBe(false);
     expect(info).not.toHaveBeenCalled();
 
-    guard.reportTotalPower(2.4);
+    tracker.lastPowerW = 2400;
 
     expect(gate.isOpen()).toBe(true);
     expect(info).toHaveBeenCalledWith(expect.objectContaining({
@@ -39,18 +40,27 @@ describe('PowerMeasurementGate', () => {
   // A reading of exactly zero is a measurement — the house drawing nothing.
   // Treating it as absence would gate a home that is reporting perfectly.
   it('opens on a zero reading', () => {
-    const guard = new CapacityGuard({ homeId: 'main', limitKw: 6 });
-    const { gate } = buildGate(guard, () => 1000);
+    const tracker: PowerTrackerState = {};
+    const { gate } = buildGate(tracker, () => 1000);
 
-    guard.reportTotalPower(0);
+    tracker.lastPowerW = 0;
 
     expect(gate.isOpen()).toBe(true);
   });
 
+  // A junk latch is not a measurement. The resolver gates finiteness at the
+  // read, so the gate never opens on a value nothing downstream could use.
+  it('stays shut on a non-finite reading', () => {
+    const tracker: PowerTrackerState = { lastPowerW: Number.NaN };
+    const { gate } = buildGate(tracker, () => 1000);
+
+    expect(gate.isOpen()).toBe(false);
+  });
+
   it('warns once after the grace, not on every check', () => {
-    const guard = new CapacityGuard({ homeId: 'main', limitKw: 6 });
+    const tracker: PowerTrackerState = {};
     let nowMs = 1000;
-    const { gate, warn } = buildGate(guard, () => nowMs);
+    const { gate, warn } = buildGate(tracker, () => nowMs);
 
     gate.isOpen();
     nowMs += WARN_AFTER_MS - 1;
@@ -73,18 +83,19 @@ describe('PowerMeasurementGate', () => {
     }));
   });
 
-  // An in-place meter swap puts the bundle back to "no reading from THIS meter",
-  // which is the one way an open gate shuts again.
+  // An in-place meter swap clears the tracker latch
+  // (`SuffixedTrackerPersistence.resetFreshness`), which is the one way an open
+  // gate shuts again.
   it('re-gates after a meter swap and re-arms the warning', () => {
-    const guard = new CapacityGuard({ homeId: 'main', limitKw: 6 });
+    const tracker: PowerTrackerState = {};
     let nowMs = 1000;
-    const { gate, warn, info } = buildGate(guard, () => nowMs);
+    const { gate, warn, info } = buildGate(tracker, () => nowMs);
 
-    guard.reportTotalPower(2.4);
+    tracker.lastPowerW = 2400;
     expect(gate.isOpen()).toBe(true);
     expect(info).toHaveBeenCalledTimes(1);
 
-    guard.resetLastTotalPower();
+    tracker.lastPowerW = undefined;
     expect(gate.isOpen()).toBe(false);
 
     // The grace restarts from the swap, so the new meter gets its own window
@@ -96,14 +107,8 @@ describe('PowerMeasurementGate', () => {
     gate.isOpen();
     expect(warn).toHaveBeenCalledTimes(1);
 
-    guard.reportTotalPower(1.1);
+    tracker.lastPowerW = 1100;
     expect(gate.isOpen()).toBe(true);
     expect(info).toHaveBeenCalledTimes(2);
-  });
-
-  it('stays shut when no guard is wired yet', () => {
-    const { gate } = buildGate(undefined, () => 1000);
-
-    expect(gate.isOpen()).toBe(false);
   });
 });

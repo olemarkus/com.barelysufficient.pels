@@ -1,5 +1,4 @@
 import type { HomeyRuntime } from '../ports/homeyRuntime';
-import CapacityGuard from '../power/capacityGuard';
 import type { DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
 import type { SettingsUiLogEntry } from '../../packages/contracts/src/types';
 import {
@@ -75,7 +74,6 @@ export type SettingsHandlerDeps = {
   rebuildPlanFromCache: (reason?: string) => Promise<void>;
   refreshTargetDevicesSnapshot: () => Promise<void>;
   loadPowerTracker: () => void;
-  getCapacityGuard: () => CapacityGuard | undefined;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityDryRun: () => boolean;
   loadPriceOptimizationSettings: () => void;
@@ -596,10 +594,7 @@ async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void>
 
 async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<void> {
   deps.loadCapacitySettings();
-  const guard = deps.getCapacityGuard();
-  const { limitKw, marginKw } = deps.getCapacitySettings();
-  guard?.setLimit(limitKw);
-  guard?.setSoftMargin(marginKw);
+  const { marginKw } = deps.getCapacitySettings();
   await deps.updateOverheadToken(marginKw);
   deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
   await rebuildPlanFromSettings(deps, 'capacity_limit_or_margin');

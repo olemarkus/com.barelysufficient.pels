@@ -23,6 +23,7 @@
  * Capacity-model internals: `docs/technical.md`.
  */
 import CapacityGuard from '../power/capacityGuard';
+import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import type { PowerTrackerState } from '../power/tracker';
 import { PowerFreshnessMonitor, type PowerCycleDisplay } from '../power/powerCycleReading';
 import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
@@ -63,7 +64,7 @@ import { attachDeferredReleaseIntents, buildIdentityDecorationBundle } from './p
 
 export type PlanBuilderDeps = {
   setCapacityInShortfall: (inShortfall: boolean) => void;
-  getCapacityGuard: () => CapacityGuard | undefined;
+  capacityGuard: CapacityGuard;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getOperatingMode: () => string;
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
@@ -138,7 +139,7 @@ export class PlanBuilder {
     this.powerFreshnessMonitor = new PowerFreshnessMonitor(deps.structuredLog, () => state.appStartedAtMs);
   }
 
-  private get capacityGuard(): CapacityGuard | undefined { return this.deps.getCapacityGuard(); }
+  private get capacityGuard(): CapacityGuard { return this.deps.capacityGuard; }
   private get capacitySettings(): { limitKw: number; marginKw: number } { return this.deps.getCapacitySettings(); }
   private get operatingMode(): string { return this.deps.getOperatingMode(); }
   private get modeDeviceTargets(): Record<string, Record<string, number>> { return this.deps.getModeDeviceTargets(); }
@@ -287,8 +288,8 @@ export class PlanBuilder {
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
       context,
       power,
-      capacityGuard: this.capacityGuard,
       capacityLimitKw: this.capacitySettings.limitKw,
+      shortfallBudgetThresholdKw: this.computeShortfallThreshold(),
       powerTracker: this.powerTracker,
       deviceNameById,
       planDevices: finalized.planDevices,
@@ -304,6 +305,7 @@ export class PlanBuilder {
       powerTracker: this.powerTracker,
       capacityGuard: this.capacityGuard,
       capacityLimitKw: this.capacitySettings.limitKw,
+      shortfallBudgetThresholdKw: this.computeShortfallThreshold(),
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
     }));
     this.stages.observeDiagnostics({
@@ -371,7 +373,7 @@ export class PlanBuilder {
     // — the planner no longer holds a `lastPowerFreshnessState` to compare.
     const power = this.powerFreshnessMonitor.observe({
       powerTracker: this.powerTracker,
-      totalKw: this.capacityGuard?.getLastTotalPower() ?? null,
+      totalKw: resolveLastTotalPowerKw(this.powerTracker),
       nowMs: Date.now(),
     });
     const context = trackPlanStage('plan_context_ms', () => buildPlanContext({
@@ -418,6 +420,7 @@ export class PlanBuilder {
       'plan_shedding_ms',
       () => buildSheddingPlan(context, this.state, {
         capacityGuard: this.capacityGuard,
+        shortfallThresholdKw: this.computeShortfallThreshold(),
         powerTracker: this.powerTracker,
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
         getPriorityForDevice: getCyclePriority,

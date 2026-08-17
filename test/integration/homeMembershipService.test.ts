@@ -459,7 +459,6 @@ describe('settings-change recompute triggers', () => {
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
     refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
     loadPowerTracker: vi.fn(),
-    getCapacityGuard: vi.fn().mockReturnValue(undefined),
     getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 10, marginKw: 1 }),
     getCapacityDryRun: vi.fn().mockReturnValue(false),
     loadPriceOptimizationSettings: vi.fn(),

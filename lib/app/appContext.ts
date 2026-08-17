@@ -255,7 +255,7 @@ export type AppContext = {
   getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead;
   get priceOptimizationEnabled(): boolean;
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;
-  capacityGuard?: CapacityGuard;
+  capacityGuard: CapacityGuard;
   readonly deferredObjectiveStatusBus: DeferredObjectiveStatusBus;
   readonly deferredObjectivePlanRevisionBus: DeferredObjectivePlanRevisionBus;
   readonly deferredObjectiveEndedBus: DeferredObjectiveEndedBus;

@@ -1,4 +1,3 @@
-import type CapacityGuard from './capacityGuard';
 import type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes';
 import { truncateToUtcHour, getHourBucketKey, getZonedParts } from '../utils/dateUtils';
 import { addPerfDuration } from '../utils/perfCounters';
@@ -104,26 +103,17 @@ function buildNextPowerState(params: {
 
 async function persistPowerSample(params: {
   nextState: PowerTrackerState;
-  currentPowerW: number;
-  capacityGuard?: CapacityGuard;
   saveState: (state: PowerTrackerState) => void;
   rebuildPlanFromCache: (reason?: string) => Promise<void>;
 }): Promise<void> {
   const {
     nextState,
-    currentPowerW,
-    capacityGuard,
     saveState,
     rebuildPlanFromCache,
   } = params;
-  if (capacityGuard) {
-    const capacityGuardStart = Date.now();
-    try {
-      capacityGuard.reportTotalPower(currentPowerW / 1000);
-    } finally {
-      addPerfDuration('power_sample_capacity_guard_ms', Date.now() - capacityGuardStart);
-    }
-  }
+  // `nextState.lastPowerW` is the only latch of the sample. It used to be
+  // copied into `CapacityGuard.mainPowerKw` here as well, which gave consumers
+  // two objects describing one sample; they now read `resolveLastTotalPowerKw`.
   saveState(nextState);
   const rebuildWaitStart = Date.now();
   try {
@@ -424,7 +414,7 @@ export function aggregateAndPruneHistory(
 export async function recordPowerSample(params: RecordPowerSampleParams): Promise<void> {
   const bookkeepingStart = Date.now();
   const {
-    state, currentPowerW, controlledPowerW, exemptPowerW, currentDevicePowerWById, nowMs = Date.now(), capacityGuard,
+    state, currentPowerW, controlledPowerW, exemptPowerW, currentDevicePowerWById, nowMs = Date.now(),
     hourBudgetKWh, rebuildPlanFromCache, saveState,
   } = params;
   // Authoritative whole-home actual consumption (net import + generation). Used
@@ -499,7 +489,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     const nextState = buildNextPowerState(nextStateArgs);
     addPerfDuration('power_sample_bookkeeping_ms', Date.now() - bookkeepingStart);
     await persistPowerSample({
-      nextState, currentPowerW, capacityGuard, saveState, rebuildPlanFromCache,
+      nextState, saveState, rebuildPlanFromCache,
     });
     return;
   }
@@ -557,6 +547,6 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   const nextState = buildNextPowerState({ ...nextStateArgs, unreliablePeriods });
   addPerfDuration('power_sample_bookkeeping_ms', Date.now() - bookkeepingStart);
   await persistPowerSample({
-    nextState, currentPowerW, capacityGuard, saveState, rebuildPlanFromCache,
+    nextState, saveState, rebuildPlanFromCache,
   });
 }

@@ -36,7 +36,6 @@ const makeRecorder = () => {
       nowMs,
       rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
       saveState,
-      capacityGuard: undefined,
       ...overrides,
     });
   };

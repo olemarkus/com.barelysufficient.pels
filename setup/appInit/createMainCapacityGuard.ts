@@ -1,5 +1,7 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
-import { buildPlanCapacityStateSummary } from '../../lib/plan/planLogging';
+import { computeShortfallThreshold } from '../../lib/plan/planBudget';
+import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
+import { getLogger } from '../../lib/logging/logger';
 import type { AppContext } from '../../lib/app/appContext';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import {
@@ -53,14 +55,15 @@ export const createMainCapacityGuard = (params: {
     sustainedTimerKey: MAIN_SHORTFALL_ALERT_SUSTAINED_TIMER,
     isDiscarded: params.isDiscarded,
     isTemporarilyFenced: params.isTemporarilyFenced,
-    isConditionActive: () => guard.isShortfallAlertConditionActive(),
+    isConditionActive: () => guard.isShortfallAlertConditionActive(
+      resolveLastTotalPowerKw(ctx.powerTracker),
+      computeShortfallThreshold({ capacitySettings: ctx.capacitySettings, powerTracker: ctx.powerTracker }),
+    ),
     getHomeDisplayName: () => HOMES_MAIN_HOME_NAME,
     flow: ctx.homey.flow,
   });
   const guard = new CapacityGuard({
     homeId: MAIN_HOME_ID,
-    limitKw: ctx.capacitySettings.limitKw,
-    softMarginKw: ctx.capacitySettings.marginKw,
     onShortfall: shortfallSideEffectGate.onShortfall,
     onShortfallCleared: async () => {
       shortfallAlertDispatch.onIncidentCleared();
@@ -68,14 +71,11 @@ export const createMainCapacityGuard = (params: {
     },
     onShortfallAlertCandidate: shortfallAlertDispatch.onCandidate,
     onShortfallAlertConditionCleared: shortfallAlertDispatch.onConditionCleared,
-    structuredLog: ctx.getStructuredLogger('capacity'),
-    capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(
-      ctx.planService?.getLatestPlanSnapshot(),
-      {
-        summarySource: 'plan_snapshot',
-        summarySourceAtMs: ctx.planService?.getLatestPlanSnapshotUpdatedAtMs() ?? null,
-      },
-    ),
+    // Resolved here, not defaulted inside the guard: `getStructuredLogger`
+    // answers `undefined` only in the boot window before structured logging is
+    // wired, and classifying that is setup's job. The guard is handed a
+    // definite logger and never branches on whether logging came up.
+    structuredLog: ctx.getStructuredLogger('capacity') ?? getLogger('power/capacity-guard'),
   });
   return { guard, shortfallSideEffectGate };
 };

@@ -1,4 +1,5 @@
 import type CapacityGuard from '../../power/capacityGuard';
+import { buildNullCapacityStateSummary } from '../../power/capacityStateSummary';
 import { addPerfDuration, incPerfCounter } from '../../utils/perfCounters';
 import {
   resetShortfallSuppressionInvalidationWhenRecovered,
@@ -56,7 +57,30 @@ export function schedulePlanRebuildFromSignal(params: {
   currentPowerW?: number;
   powerDeltaW?: number;
   capacitySettings: { limitKw: number; marginKw: number };
-  capacityGuard?: CapacityGuard;
+  capacityGuard: CapacityGuard;
+  /**
+   * `capacityPaceKw` — the planner's live hourly threshold, resolved by the
+   * caller. The scheduler compares the latched total against it to decide how
+   * urgently to rebuild, so it must be the same number the planner acts on.
+   */
+  capacityPaceKw: number;
+  /**
+   * The tracker's latched whole-home total in kW, resolved by the caller
+   * (`resolveLastTotalPowerKw`). `null` = no trustworthy reading, in which case
+   * headroom falls back to the incoming sample.
+   *
+   * Same sample as `currentPowerW`, not an older one: the tracker core calls
+   * `saveState` before it awaits the rebuild this path serves
+   * (`lib/power/tracker.ts`), so the latch already holds the incoming reading.
+   * The two differ in resolution, not in age — this one is finiteness-gated and
+   * in kW, which is why the raw watts are only a fallback.
+   */
+  latchedTotalKw: number | null;
+  /**
+   * Producer-resolved `computeShortfallThreshold` — a pure function of the
+   * hard cap and the tracker, so the caller computes it from data it holds.
+   */
+  shortfallThresholdKw: number;
   planConvergenceActive?: boolean;
   skipWhileShortfallUnrecoverable?: boolean;
   unactionable?: boolean;
@@ -74,26 +98,26 @@ export function schedulePlanRebuildFromSignal(params: {
     powerDeltaW,
     capacitySettings,
     capacityGuard,
+    capacityPaceKw,
+    latchedTotalKw,
+    shortfallThresholdKw,
     planConvergenceActive,
     skipWhileShortfallUnrecoverable = false,
     unactionable,
   } = params;
-  const softLimitKw = capacityGuard?.getSoftLimit()
-    ?? Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
-  const guardPower = capacityGuard?.getLastTotalPower() ?? null;
+  const softLimitKw = capacityPaceKw;
   const fallbackHeadroomKw = typeof currentPowerW === 'number' ? softLimitKw - currentPowerW / 1000 : null;
-  const headroomKw = guardPower !== null ? softLimitKw - guardPower : fallbackHeadroomKw;
-  const isInShortfall = capacityGuard?.isInShortfall() ?? false;
+  const headroomKw = latchedTotalKw !== null ? softLimitKw - latchedTotalKw : fallbackHeadroomKw;
+  const isInShortfall = capacityGuard.isInShortfall() ?? false;
   const currentState = resetShortfallSuppressionInvalidationWhenRecovered({
     state: getState(),
     isInShortfall,
     setState,
   });
   const hardCapBreach = resolveHardCapBreachFromSignal({
-    capacityGuard,
-    capacitySettings,
     currentPowerW,
-    guardPower,
+    latchedTotalKw,
+    shortfallThresholdKw,
   });
   const maxIntervalExceeded = maxIntervalMs > 0
     && (getNowMs() - currentState.lastMs) >= maxIntervalMs;
@@ -105,7 +129,13 @@ export function schedulePlanRebuildFromSignal(params: {
     maxIntervalExceeded,
   })) {
     incPerfCounter('plan_rebuild_skipped_shortfall_unrecoverable_total');
-    return Promise.resolve(capacityGuard?.checkShortfall(false, hardCapBreach.deficitKw)).finally(() => {
+    return Promise.resolve(capacityGuard.checkShortfall({
+      hasCandidates: false,
+      deficitKw: hardCapBreach.deficitKw,
+      totalKw: latchedTotalKw,
+      shortfallThresholdKw,
+      capacityStateSummary: buildNullCapacityStateSummary(),
+    })).finally(() => {
       addPerfDuration('power_sample_rebuild_ms', Date.now() - rebuildStart);
     });
   }
@@ -134,7 +164,13 @@ export function schedulePlanRebuildFromSignal(params: {
     planConvergenceActive,
     hardCapBreach,
     onTightNoopHardCapBreach: async (deficitKw) => {
-      await capacityGuard?.checkShortfall(false, deficitKw);
+      await capacityGuard.checkShortfall({
+        hasCandidates: false,
+        deficitKw,
+        totalKw: latchedTotalKw,
+        shortfallThresholdKw,
+        capacityStateSummary: buildNullCapacityStateSummary(),
+      });
     },
     unactionable,
   }).finally(() => {

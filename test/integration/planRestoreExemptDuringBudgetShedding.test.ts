@@ -14,6 +14,7 @@
  */
 import { planContextPower } from '../utils/planContextPowerFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { applyRestorePlan } from '../../lib/plan/restore';
 import type { PlanContext } from '../../lib/plan/planContext';
@@ -345,10 +346,11 @@ const buildThermostatInput = (on: boolean): PlanInputDevice => withBinaryDiscrim
 
 const buildBuilder = (params: {
   capacityGuard: CapacityGuard;
-  tracker: { lastTimestamp: number };
+  tracker: { lastTimestamp: number; lastPowerW?: number };
+  state: ReturnType<typeof createPlanEngineState>;
 }): PlanBuilder => new PlanBuilder({
+  capacityGuard: params.capacityGuard,
   setCapacityInShortfall: vi.fn(),
-  getCapacityGuard: () => params.capacityGuard,
   getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
   getOperatingMode: () => 'Home',
   getModeDeviceTargets: () => ({}),
@@ -362,7 +364,7 @@ const buildBuilder = (params: {
   log: vi.fn(),
   logDebug: vi.fn(),
   pendingBinaryCommandStore: emptyPendingStore,
-}, createPlanEngineState());
+}, params.state);
 
 describe('exempt restore lane through the full plan build with the latch held', () => {
   beforeEach(() => {
@@ -374,26 +376,27 @@ describe('exempt restore lane through the full plan build with the latch held', 
   });
 
   it('admits the exempt device on the capacity axis while shedding stays latched on the budget axis', async () => {
-    const capacityGuard = new CapacityGuard({ homeId: 'main', limitKw: 100, softMarginKw: 0 });
-    const tracker = { lastTimestamp: DAY_START_UTC };
-    const builder = buildBuilder({ capacityGuard, tracker });
+    const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
+    const tracker: { lastTimestamp: number; lastPowerW?: number } = { lastTimestamp: DAY_START_UTC };
+    const state = createPlanEngineState();
+    const builder = buildBuilder({ capacityGuard, tracker, state });
 
     // Cycle 1: both devices running plus background, far over the ~1.1 kW
     // pace: both get shed and the shedding latch engages.
-    capacityGuard.reportTotalPower(BACKGROUND_KW + 2.25);
+    tracker.lastPowerW = (BACKGROUND_KW + 2.25) * 1000;
     const first = await builder.buildDevicePlanSnapshot([
       buildHeaterInput({ on: true, exempt: false }),
       buildThermostatInput(true),
     ]);
     expect(first.devices.map((d) => d.plannedState)).toEqual(['shed', 'shed']);
-    expect(capacityGuard.isSheddingActive()).toBe(true);
+    expect(state.sheddingActive).toBe(true);
 
     // Cycles 2-3: both off, heater exempt again, but the 3.0 kW background
     // alone stays above the pace (+ the heater's 1.25 kW exempt add-back), so
     // the latch never clears.
     vi.setSystemTime(new Date(SECOND_BUILD_AT_MS));
     tracker.lastTimestamp = SECOND_BUILD_AT_MS;
-    capacityGuard.reportTotalPower(BACKGROUND_KW);
+    tracker.lastPowerW = BACKGROUND_KW * 1000;
     await builder.buildDevicePlanSnapshot([
       buildHeaterInput({ on: false, exempt: true }),
       buildThermostatInput(false),
@@ -401,7 +404,7 @@ describe('exempt restore lane through the full plan build with the latch held', 
 
     vi.setSystemTime(new Date(THIRD_BUILD_AT_MS));
     tracker.lastTimestamp = THIRD_BUILD_AT_MS;
-    capacityGuard.reportTotalPower(BACKGROUND_KW);
+    tracker.lastPowerW = BACKGROUND_KW * 1000;
     const third = await builder.buildDevicePlanSnapshot([
       buildHeaterInput({ on: false, exempt: true }),
       buildThermostatInput(false),
@@ -411,7 +414,7 @@ describe('exempt restore lane through the full plan build with the latch held', 
     const thermostat = third.devices.find((d) => d.id === THERMOSTAT_ID);
     expect(third.meta.softLimitSource).toBe('daily');
     // The regime under test: the latch is still held when admissions run.
-    expect(capacityGuard.isSheddingActive()).toBe(true);
+    expect(state.sheddingActive).toBe(true);
 
     // The exempt heater admits against capacity (~100 kW limit) through the
     // restricted lane, even though the whole full pass is latch-blocked.

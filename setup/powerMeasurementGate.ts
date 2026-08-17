@@ -1,4 +1,5 @@
-import type CapacityGuard from '../lib/power/capacityGuard';
+import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import type { HomeId } from '../lib/utils/settingsKeys';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { ConfiguredPowerSourceRead } from './powerSourceSettings';
@@ -18,8 +19,9 @@ import type { ConfiguredPowerSourceRead } from './powerSourceSettings';
  * open for the rest of that meter's life and a later dropout is handled where it
  * belongs — `lib/power` decides what a stale reading means and answers the
  * planner in kW. The gate shuts again only when the measurement itself goes
- * away: an in-place meter swap (`CapacityGuard.resetLastTotalPower`) puts the
- * bundle back to "no reading from THIS meter yet".
+ * away: an in-place meter swap clears the tracker latch
+ * (`SuffixedTrackerPersistence.resetFreshness`), putting the bundle back to "no
+ * reading from THIS meter yet".
  *
  * The planner sees only `isOpen()` and never learns what it is waiting on.
  *
@@ -32,7 +34,7 @@ import type { ConfiguredPowerSourceRead } from './powerSourceSettings';
  */
 export type PowerMeasurementGateOptions = {
   homeId: HomeId;
-  getCapacityGuard: () => CapacityGuard | undefined;
+  getPowerTracker: () => PowerTrackerState;
   logger: () => Pick<PinoLogger, 'info' | 'warn'> | undefined;
   /**
    * How long a home may sit gated before it is worth telling the operator. A
@@ -86,7 +88,7 @@ export class PowerMeasurementGate {
   constructor(private readonly options: PowerMeasurementGateOptions) {}
 
   isOpen(): boolean {
-    const open = this.options.getCapacityGuard()?.hasPowerMeasurement() === true;
+    const open = hasPowerMeasurement(this.options.getPowerTracker());
     if (open) {
       this.noteOpen();
       return true;

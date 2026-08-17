@@ -1,6 +1,7 @@
 import { requireDailyBudgetService, requireFlowHomey } from './contextGuards';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
+import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import {
   hasMainHomeSmartTaskAuthority,
@@ -73,9 +74,17 @@ export function registerAppFlowCards(ctx: AppContext): void {
       ctx.homeMembership?.noteAdmittedFlowHomeSample();
       flowPowerSampleFreshnessClock.noteSample(nowMs);
     },
-    getCapacityGuard: () => ctx.capacityGuard,
-    getHeadroom: () => ctx.capacityGuard?.getHeadroom() ?? null,
-    setCapacityLimit: (kw) => ctx.capacityGuard?.setLimit(kw),
+    // Resolved here, not inside the guard: the guard holds neither power nor a
+    // limit. `capacityPaceKw` is the planner's live threshold and the tracker is
+    // the single power latch, so the Flow condition answers against the same
+    // number the planner acts on.
+    getHeadroom: () => {
+      const totalKw = resolveLastTotalPowerKw(ctx.powerTracker);
+      if (totalKw === null) return null;
+      return ctx.computeDynamicSoftLimit() - totalKw;
+    },
+    getLatchedTotalKw: () => resolveLastTotalPowerKw(ctx.powerTracker),
+    getCapacityPaceKw: () => ctx.computeDynamicSoftLimit(),
     getSnapshot: () => ctx.getFlowSnapshot(),
     refreshSnapshot: (options) => ctx.refreshTargetDevicesSnapshot(options),
     getHomeyDevicesForFlow: () => ctx.getHomeyDevicesForFlow(),

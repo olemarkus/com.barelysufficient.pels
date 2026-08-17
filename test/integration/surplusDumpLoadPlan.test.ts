@@ -11,6 +11,7 @@
 // seams (capacity guard totals, power tracker, deps, a faked clock) are provided
 // directly.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState, type PlanEngineState } from '../../lib/plan/planState';
@@ -82,6 +83,7 @@ type Harness = {
   builder: PlanBuilder;
   guard: CapacityGuard;
   state: PlanEngineState;
+  setTotalKw: (kw: number) => void;
 };
 
 const makeHarness = (params: {
@@ -94,19 +96,19 @@ const makeHarness = (params: {
   decorate?: (devices: PlanInputDevice[]) => DeferredDecorationBundle;
 }): Harness => {
   const limitKw = params.limitKw ?? 10;
-  const guard = new CapacityGuard({ homeId: 'main', limitKw, softMarginKw: 0.2 });
-  guard.reportTotalPower(params.totalKw);
+  const guard = createTestCapacityGuard({ homeId: 'main' });
+  let lastPowerW = params.totalKw * 1000;
   const state = createPlanEngineState();
   const builder = new PlanBuilder({
+    capacityGuard: guard,
     setCapacityInShortfall: vi.fn(),
-    getCapacityGuard: () => guard,
     getCapacitySettings: () => ({ limitKw, marginKw: 0.2 }),
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),
     getPriceOptimizationEnabled: () => false,
     getPriceOptimizationSettings: () => params.priceOptSettings ?? {},
     getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-    getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now() - (params.powerSampleAgeMs ?? 0) }),
+    getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now() - (params.powerSampleAgeMs ?? 0), lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     getPriorityForDevice: () => 5,
     getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -118,7 +120,7 @@ const makeHarness = (params: {
     logDebug: vi.fn(),
     pendingBinaryCommandStore: emptyPendingStore,
   }, state);
-  return { builder, guard, state };
+  return { builder, guard, state, setTotalKw: (kw: number) => { lastPowerW = kw * 1000; } };
 };
 
 const deviceOf = (plan: DevicePlan, id: string) => plan.devices.find((device) => device.id === id);
@@ -250,7 +252,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     // Surplus vanishes (importing 2 kW, but 8 kW of headroom under the 10 kW cap)
     // while the pump is STILL OFF. First collapse cycle: eligibility latches (release
     // pending), and the still-off pump must flip to HELD — not left as keep.
-    h.guard.reportTotalPower(2);
+    h.setTotalKw(2);
     const held = await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
     const pump = deviceOf(held, PUMP);
     expect(pump?.plannedState).toBe('shed');
@@ -268,7 +270,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     // The pump turned on; the sun then sets — sustained 1.5 kW whole-home import
     // is unambiguously past the hard-off bar, so the release skips the min dwell
     // after one settle window.
-    h.guard.reportTotalPower(1.5);
+    h.setTotalKw(1.5);
     await h.builder.buildDevicePlanSnapshot([buildPump({ on: true })]);
     await vi.advanceTimersByTimeAsync(SURPLUS_ABSORB_SETTLE_MS);
     const plan = await h.builder.buildDevicePlanSnapshot([buildPump({ on: true })]);
@@ -297,7 +299,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     // reason, not the surplus framing. Advance the clock so the shed plan sees a
     // NEW power measurement (the shedding lane skips re-planning on a stale one).
     await vi.advanceTimersByTimeAsync(10_000);
-    h.guard.reportTotalPower(11);
+    h.setTotalKw(11);
     const plan = await h.builder.buildDevicePlanSnapshot([buildPump({ on: true })]);
     const pump = deviceOf(plan, PUMP);
     expect(pump?.plannedState).toBe('shed');
