@@ -1,6 +1,7 @@
 import type CapacityGuard from '../lib/power/capacityGuard';
 import type { HomeId } from '../lib/utils/settingsKeys';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
+import type { ConfiguredPowerSourceRead } from './powerSourceSettings';
 
 /**
  * The wiring-layer answer to "may the planner build a plan right now?".
@@ -47,8 +48,32 @@ export type PowerMeasurementGateOptions = {
    * means the selected meter is not reporting. Asserting the flow cause for
    * both is wrong for most homes, and this line is the only diagnostic an
    * operator gets.
+   *
+   * It is the CLASSIFIED read, not a raw settings value: an unset key is the
+   * historical `flow` default, so a raw `settings.get(...) ?? null` would send
+   * exactly the never-fired-flow home — the case this warning exists for — down
+   * the meter-not-reporting branch. A suspect read stays suspect rather than
+   * collapsing into either cause.
    */
-  getPowerSource: () => string | null;
+  getPowerSource: () => ConfiguredPowerSourceRead;
+};
+
+const GATED_DETAIL_PREFIX
+  = 'no meter reading yet; no plan is built for this home until one arrives — ';
+
+/**
+ * The half of the warning that names WHY the home is silent. A suspect read has
+ * its own cause: claiming either the flow or the meter would assert a source we
+ * failed to classify.
+ */
+const resolveGatedCause = (read: ConfiguredPowerSourceRead): string => {
+  if (read.state === 'suspect') {
+    return 'and the configured power source could not be read, so the cause is unclassified';
+  }
+  if (read.value === 'flow') {
+    return 'the flow that reports power usage to PELS has never fired';
+  }
+  return 'the selected whole-home meter is not reporting';
 };
 
 export class PowerMeasurementGate {
@@ -99,17 +124,15 @@ export class PowerMeasurementGate {
     }
     if (this.warned || nowMs - this.gatedSinceMs < this.options.warnAfterMs) return;
     this.warned = true;
-    const powerSource = this.options.getPowerSource();
+    const read = this.options.getPowerSource();
+    const powerSource = read.state === 'resolved' ? read.value : null;
     this.options.logger()?.warn({
       event: 'home_bundle_gated_no_power_sample',
       homeId: this.options.homeId,
       gatedForMs: nowMs - this.gatedSinceMs,
       powerSource,
-      detail: powerSource === 'flow'
-        ? 'no meter reading yet; no plan is built for this home until one arrives — '
-          + 'the flow that reports power usage to PELS has never fired'
-        : 'no meter reading yet; no plan is built for this home until one arrives — '
-          + 'the selected whole-home meter is not reporting',
+      ...(read.state === 'suspect' ? { powerSourceSuspectReason: read.reason } : {}),
+      detail: GATED_DETAIL_PREFIX + resolveGatedCause(read),
     });
   }
 }
