@@ -19,13 +19,20 @@ Execution — converging observed state onto that plan — is `lib/executor`.
 
 - **No EV cluster on the plan device, and there is not going to be one** (owner ruling
   2026-08-15). `EvKind` / `EvDiscriminantProbe` / `withEvDiscriminant` are deleted, and the
-  `isEvPlanDevice` guard that several docblocks used to cite never existed at all. A boost
-  threshold is configuration and a battery level is an observation, so the planner carries neither:
-  it carries one kind-free `boostActive` decision (`planBoost.ts`) resolved from the producer's
-  `boostSupported`/`boostRequested`, and the settings UI reads the config and the level from the
-  seams that own them (`getEvBoostConfig` / `getObservedStateOfCharge` in `createPlanService`). The
-  three clusters the planner discriminates are temperature, stepped, and binary — do not add a
-  fourth for EV. (`EvObservedFields` on the OBSERVER snapshot is a different thing and stays.)
+  `isEvPlanDevice` guard that several docblocks used to cite never existed at all. A boost threshold
+  is configuration, so the planner does not carry one: it carries a single kind-free `boostActive`
+  decision (`planBoost.ts`) resolved from the producer's `boostSupported`/`boostRequested`, and the
+  settings UI reads the config and the battery level from the seams that own them (`getEvBoostConfig`
+  / `getObservedStateOfCharge` in `createPlanService`). The three clusters the planner discriminates
+  are temperature, stepped, and binary — do not add a fourth for EV. (`EvObservedFields` on the
+  OBSERVER snapshot is a different thing and stays.)
+  **Scope: this is about the EV CLUSTER and the output `DevicePlanDevice`.** It is not licence to
+  strip `stateOfCharge` from `PlanInputDevice`. That field rides the input device undeclared —
+  `toPlanDevice` deliberately does not strip it, because `ObjectiveDeviceInput` reads it in
+  `lib/objectives/deferredObjectives/diagnosticProgress.ts`, and removing it turned every EV smart
+  task's progress into `objective_progress_stale`. The contract and the runtime disagree about that
+  field on purpose until someone reconciles them; see the TODO item "`stateOfCharge` rides the plan
+  device undeclared".
 - **No `lib/device` imports** except the producer seams `deviceObservation.ts`,
   `deviceActionProjection.ts`, `deviceResidualKw.ts` (`no-plan-to-device`). Resolution happens in
   the producer projection; the planner consumes flat `PlanInputDevice` fields, never source/evidence.
