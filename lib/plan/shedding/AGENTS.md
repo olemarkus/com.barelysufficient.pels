@@ -2,17 +2,17 @@
 
 Shedding selection belongs in `lib/plan/shedding`; `planDevices.ts` materializes decisions and must not select new shed devices.
 
-Keep this module as the single place that chooses devices for capacity, daily-budget, or hourly-budget shedding. Plan materialization may copy `shedSet` and `shedReasons`, but it should not independently set a device to `plannedState: 'shed'` as a new selection decision.
+Keep this module as the single place that chooses devices for capacity, daily-budget, or hourly-budget shedding. Plan materialization may copy `shedSet`, `shedReasons`, and `shedStepTargets`, but it should not independently set a device to `plannedState: 'shed'` as a new selection decision.
 
-The shedding planner decides what to shed, not how to actuate it. Keep step and temperature target projection outside this module; those are materialization or executor concerns for devices already present in `shedSet`.
+The shedding planner decides what to shed and HOW FAR — for a stepped device, which rung of its own ladder the shed leaves it at. It does not decide how to actuate that: the transport, the command ordering, and the temperature-target projection stay outside. The distinction is what `shedStepTargets` respects — it names a destination the module already priced its decision on, not an instruction to a device.
 
 ## Module layout
 
-- `candidates.ts` — the collect loop and the candidate ranking. Nothing else.
+- `candidates.ts` — the collect loop and the candidate ranking, plus the one cycle-level quantity per-device pricing needs: it hands `deficitKw` down so the stepped builder can rank on the rung a first pick would take.
 - `candidateBuilders.ts` — binary + temperature builders, and the two eligibility predicates.
-- `steppedCandidates.ts` — every stepped builder, plus the ladder descent that picks WHICH rung a shed aims at.
+- `steppedCandidates.ts` — every stepped builder, plus the ladder pricing (`resolveSteppedShedLadder`) and the rung choice (`chooseShedRung`) that selection spends against.
 - `candidateSkipLog.ts` — why a controlled device did not become a candidate.
-- `selection.ts` — the greedy pick over the ranked candidates.
+- `selection.ts` — the greedy pick over the ranked candidates, and the rung each one is taken at.
 
 ## A device may only be selected when limiting it releases power
 
@@ -26,12 +26,34 @@ The rule above is about the ANSWER, not about how hard you looked for it. For a 
 
 `resolveSteppedLoadImmediateReliefKw` caps *both* sides of the step delta by the current measurement, so the moment measured draw sits at or below the next rung's admission estimate the delta is exactly zero — for any from-step. A device pinned at `max` and one idling at `low` price identically. Prod 2026-08-05 (`inc_26449fb9`): a water heater's `measure_power` lagged its step-up by ~5 minutes, `max → medium` priced at 0, the heater was never a candidate, and the house sat 526 W over the hard cap for 4.5 minutes while the meter showed it drawing 2.9 kW.
 
-`resolveSteppedShedRung` (`steppedCandidates.ts`) walks the ladder and returns the **gentlest rung that actually releases power**. It cannot invent relief — every rung is priced by the same `resolveSteppedCandidatePower`, so the answer stays bounded by the meter. Two constraints on the descent:
+`resolveSteppedShedLadder` (`steppedCandidates.ts`) prices the WHOLE ladder — every reachable step down, gentlest first, each with the relief it releases — and drops the rungs that release nothing. It cannot invent relief: every rung goes through the same `resolveSteppedCandidatePower`, so the deepest rung buys the device's whole reported draw and no more. One constraint on which rungs are offered:
 
-- **Credited relief must not exceed delivered relief, so only `turn_off` descends.** The planner does not get to name the step the executor commands: materialization recomputes it from the device alone (`resolveSteppedLoadDirectShedStepId`, reached from `planDevicesBase`), and the candidate's `toStepId` never crosses over — only `shedSet` membership does. For `turn_off` that resolver answers the off step, so any credited rung under-states what the executor actually frees. For `set_step` it answers the ADJACENT rung, so crediting a deeper one would decrement the deficit by a step-down that is never commanded, mark the breach covered, and skip the device that could have helped — strictly worse than offering no candidate. Lift this only if materialization starts honouring the planner's chosen target.
-- **Gentlest, not deepest.** Stop at the first rung with positive relief. Taking the largest would over-shed every device whose adjacent rung already works.
+- **Only `turn_off` descends past the adjacent rung.** A `set_step` shed still offers its adjacent rung alone. Lifting that is a separate change; do not fold it in here.
 
-Related: `preemptiveStepDown` reads the chosen TARGET, not just the from-step. A descent that lands on the off step is a full turn-off, and `sortCandidates` is explicit that those follow normal priority ordering — marking one preemptive would sort it ahead of every other candidate and then stop the selection loop (`shouldStopAfterCandidate`) with the deficit still open.
+## The rung is chosen when the candidate is SPENT, not when it is built
+
+`chooseShedRung(rungs, neededKw)` answers the gentlest rung whose priced relief covers `neededKw`, and the deepest priced rung when none does. `selectShedDevices` calls it with the deficit still open at that candidate's turn.
+
+It has to be that way round. Every candidate is priced and ranked before the loop spends anything, so a rung fixed at build time is sized against the cycle's OPENING deficit and knows nothing about what earlier picks already covered. Two stepped devices eligible in one cycle is enough: a 3 kW deficit, 2 kW banked by the first, and the second still cut for a full 3 kW — 5 kW shed to close 3. The over-shoot grows with the deficit, and it was masked for as long as a `turn_off` device was delivered as a full cut whatever rung was credited.
+
+The kW compared must be a measured deficit (`deficitKw` and the remainder derived from it), never `needed`, which carries `Number.POSITIVE_INFINITY` as a severity sentinel in an exhausted hour (`ShedCandidateParams`). Fed the sentinel, no rung covers and every stepped `turn_off` candidate collapses to its off rung.
+
+An unconfirmed candidate banks nothing, so everything behind it is sized as though it had not been taken. That is deliberate — the watts have not moved, and covering a deficit on a promise declares a breach closed while it is open — and it errs toward covering the breach rather than under-shedding it.
+
+## The chosen rung is the delivered rung
+
+`shedStepTargets` carries the chosen rung from `selectShedDevices` into materialization, alongside `shedReasons`, and `resolveSteppedLoadDirectShedStepId` returns it unchanged. So credited relief equals delivered relief by construction, and the configured shed behaviour is only the FLOOR — the deepest this cycle may go — read solely as a fallback when no rung was decided.
+
+It did not use to be. Materialization recomputed the step from the device alone and answered the off step for every `turn_off` device, so the chosen rung decided **candidacy and nothing else**: a `turn_off` shed shipped as a full cut whatever rung the deficit was credited against. That made under-shedding invisible — 15 of 70 trim decisions on one production charger (11–17 Aug) chose a rung smaller than the deficit, worst case 3.77 kW answered with a 1.01 kW rung — and the full cut over-covered it every time.
+
+Two consequences to keep straight:
+
+- **`turn_off` no longer implies a full cut**, so the decided end state, not the behaviour, is what downstream reads: `resolvePlannedShedTargetKind` answers `step` for a device parked at an active rung, `resolveSteppedLoadTransition` enters `full_shed_to_off` only for the `binary_off` end state, and the executor converges on that kind (`lib/executor/AGENTS.md`).
+- **The ranking keys must not depend on the chosen rung**, since the rung is not known until spend time. `effectivePower` is therefore the device's deepest priced relief — everything limiting it can free — and `preemptiveStepDown` asks `chooseShedRung` against the cycle's OPENING deficit: "if this candidate went first, would it still be running?". For a first pick that is not an approximation, it is the question. Do not loosen it to "has any lower rung at all": that ranks a device ahead of the owner's priority order on the strength of a reduction it will not take — a 1 kW stepped load against a 3 kW deficit sorts first, finds no covering rung, takes its off rung anyway, and the binary load the owner ranked as sheddable-first is shed as well.
+
+A descent that lands on the off step is a full turn-off, and `sortCandidates` is explicit that those follow normal priority ordering — marking one preemptive would jump the queue past devices the owner ranked as sheddable first.
+
+Selection stops on the deficit and on nothing else (`selection.ts`): the relief of the candidate just taken is banked before the loop asks again. It used to break right after a preemptive step-down, which — while the rung was unsized — ended a cycle on a step-down worth a fraction of the deficit with the breach still open and nothing else limited.
 
 ## A skip must be reviewable
 

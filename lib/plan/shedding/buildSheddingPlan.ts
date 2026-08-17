@@ -31,6 +31,7 @@ export async function buildSheddingPlan(
   const {
     shedSet,
     shedReasons,
+    shedStepTargets,
     updates,
     overshootStats,
   } = planShedding(context, state, deps, overshoot.shedActionable);
@@ -63,6 +64,7 @@ export async function buildSheddingPlan(
   return {
     shedSet,
     shedReasons,
+    shedStepTargets,
     sheddingActive: guardResult.sheddingActive,
     guardInShortfall,
     updates: mergedUpdates,
@@ -81,6 +83,7 @@ function emptySheddingResult(
   return {
     shedSet: new Set<string>(),
     shedReasons: new Map<string, DeviceReason>(),
+    shedStepTargets: new Map<string, string>(),
     updates,
     overshootStats,
   };
@@ -115,6 +118,9 @@ function planShedding(
   const candidateParams: ShedCandidateParams = {
     devices: context.devices,
     needed: hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : needed,
+    // The measured deficit, never the severity sentinel: rung sizing compares
+    // kW against it. See `ShedCandidateParams`.
+    deficitKw: needed,
     limitSource: hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
     total: context.measuredDrawKw,
     capacitySoftLimit: context.capacitySoftLimit,
@@ -290,7 +296,7 @@ function holdSheddingAtLastDecision(params: {
   const candidateSummary = buildSheddingCandidates(candidateParams);
   const alreadyDecided = candidateSummary.candidates
     .filter((candidate) => state.lastShedPlanShedIds.has(candidate.id));
-  const { shedSet, shedReasons } = selectShedDevices({
+  const { shedSet, shedReasons, shedStepTargets } = selectShedDevices({
     candidates: alreadyDecided,
     needed,
     reason: resolveShedReason(limitSource, candidateSummary.capacityBreached),
@@ -308,6 +314,9 @@ function holdSheddingAtLastDecision(params: {
   return {
     shedSet,
     shedReasons,
+    // Re-priced on this cycle's candidates, like the reasons beside them: the
+    // hold freezes WHICH devices stay limited, not the rung each sits at.
+    shedStepTargets,
     updates: {},
     overshootStats: buildOvershootStats({
       needed,

@@ -77,6 +77,8 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
         ?? resolvePlannedShedTargetKind({
           plannedState: loose.plannedState ?? 'keep',
           shedAction: loose.shedAction,
+          steppedLoadProfile: loose.steppedLoadProfile,
+          plannedShedStepId: loose.plannedShedStepId,
         }),
     })),
   ) as DevicePlanDevice;
@@ -950,6 +952,11 @@ describe('native stepped-load wiring', () => {
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'max',
       desiredStepId: 'medium',
+      // The planner decided this shed parks the device at `medium`, so the end
+      // state is a step and the device keeps running there. Without the decision
+      // the fixture would fall back to the `turn_off` floor and the executor
+      // would drive the two-phase descent to off instead.
+      plannedShedStepId: 'medium',
       controlAdapter: {
         kind: 'capability_adapter',
         activationAvailable: true,

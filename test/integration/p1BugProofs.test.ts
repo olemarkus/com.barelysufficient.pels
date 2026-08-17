@@ -279,6 +279,7 @@ describe('P1 bug proofs', () => {
       state: planState,
       shedSet: new Set(),
       shedReasons: new Map(),
+      shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),

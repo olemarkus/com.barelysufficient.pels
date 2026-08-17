@@ -72,6 +72,7 @@ function collectSheddingCandidates(
   const {
     devices,
     needed,
+    deficitKw,
     limitSource,
     total,
     capacitySoftLimit,
@@ -104,6 +105,7 @@ function collectSheddingCandidates(
       state,
       nowTs,
       needed,
+      deficitKw,
       deps,
       recorder,
     });
@@ -147,7 +149,10 @@ function addCandidatePower(params: {
   devices: PlanInputDevice[];
   state: PlanEngineState;
   nowTs: number;
+  /** Severity, sentinel-carrying — for `resolveRecentRestoreState` only. */
   needed: number;
+  /** The real deficit in kW — for anything that compares or subtracts. */
+  deficitKw: number;
   deps: Pick<
     SheddingDeps,
     'getPriorityForDevice' | 'getShedBehavior' | 'debugStructured' | 'pendingBinaryCommandStore'
@@ -160,6 +165,7 @@ function addCandidatePower(params: {
     state,
     nowTs,
     needed,
+    deficitKw,
     deps,
     recorder,
   } = params;
@@ -177,6 +183,10 @@ function addCandidatePower(params: {
       devices,
       priority,
       recentlyRestored,
+      // The cycle's whole deficit sizes the rung: candidates are priced and
+      // ranked before selection spends anything, so there is no per-device
+      // remainder to hand down here.
+      neededKw: deficitKw,
       state,
       getShedBehavior: deps.getShedBehavior,
       pendingBinaryCommandStore: deps.pendingBinaryCommandStore,

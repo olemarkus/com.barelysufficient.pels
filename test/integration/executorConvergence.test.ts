@@ -816,24 +816,32 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
       .toBe(false);
   });
 
-  // Regression 5.3: turn_off shed with a non-off desiredStepId must still resolve to
-  // expected binary state 'off' — it must never be contaminated by the set_step logic
-  // that would return 'on' for a non-off desiredStep.
-  it('turn_off shed is never treated as set_step for expected binary state: always resolves to off', () => {
-    // Device has turn_off but desiredStepId is 'low' (non-off). If the code accidentally
-    // routed this through resolveSteppedShedBinaryState, it would return 'on'. It must not.
+  // Regression 5.3 — ASSERTION INVERTED, deliberately. It used to read "a
+  // `turn_off` shed with a non-off `desiredStepId` still expects binary off",
+  // because that combination could not be a real decision: the planner named no
+  // step, materialization answered the off step for every `turn_off` device, and
+  // a non-off desired step on a shed device was therefore incoherent.
+  //
+  // It is a real production state now. `turn_off` is the FLOOR, and the planner
+  // may park the device at a rung above it; when it does, `plannedShedStepId`
+  // names that rung and the decided end state is `step`. Demanding binary off
+  // for such a device would converge onto a state the plan did not decide — the
+  // whole load cut for a shed that chose to leave it running lower.
+  //
+  // The un-inverted half is test 4.1: the same device with NO rung decision
+  // still expects binary off.
+  it('a turn_off device parked at a rung expects no binary state, so being on is not drift', () => {
     const plan = buildPlanWith(buildSteppedShedDevice({
       shedAction: 'turn_off',
       selectedStepId: 'low',
-      desiredStepId: 'low', // non-off desiredStep — must not contaminate the 'off' result
+      desiredStepId: 'low',
+      // The decision that makes the non-off desired step coherent.
+      plannedShedStepId: 'low',
     }));
 
-    // Expected binary is 'off' for turn_off regardless of desiredStepId.
-    // Live currentOn=true → drift (expected='off', observed='on')
+    // Live currentOn=true → the device is running at its decided rung, which is
+    // where the plan wants it. No binary axis is demanded, so no drift.
     expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ binaryControl: { on: true }, selectedStepId: 'low' })], 'dev-1'))
-      .toBe(true);
-    // Live currentOn=false → no drift (expected='off', observed='off')
-    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ binaryControl: { on: false }, selectedStepId: 'low' })], 'dev-1'))
       .toBe(false);
   });
 });

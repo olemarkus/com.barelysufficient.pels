@@ -21,7 +21,7 @@ import { isBinaryPlanDevice } from './planBinaryDevice';
 import type {
   DevicePlanDevice,
   PlanInputDevice,
-  ShedAction,
+  PlannedShedTargetKind,
   SteppedDiscriminantProbe,
   SteppedLoadKind,
   SteppedPlanDevice,
@@ -68,7 +68,14 @@ type StepTransitionCapableDevice = {
   // `currentState === 'off'` decision the helpers used.
   currentOn?: boolean;
   plannedState?: string;
-  shedAction?: ShedAction;
+  /**
+   * This cycle's decided shed END STATE (`resolvePlannedShedTargetKind`), NOT
+   * the configured shed behaviour. The two are not interchangeable here: a
+   * `turn_off` behaviour is only the floor, so a device it covers may still be
+   * decided at an intermediate rung, and entering the full-shed branch on the
+   * behaviour would command a binary off the plan did not decide.
+   */
+  plannedShedTargetKind?: PlannedShedTargetKind;
 };
 
 export type SteppedLoadEffectiveTransition =
@@ -194,7 +201,11 @@ export const resolveSteppedLoadTransition = (
   const selectedStep = getSteppedLoadStep(profile, resolveKnownEffectiveStepId(stepState));
   const desiredStep = getSteppedLoadStep(profile, plannedDesiredStepId);
   const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
-  if (device.plannedState === 'shed' && device.shedAction === 'turn_off') {
+  // The decided end state, not the policy: only a shed the planner decided
+  // ends at the device's off step runs the two-phase step-prep-then-binary-off.
+  // A `turn_off` device parked at an intermediate rung falls through to
+  // `step_down_while_on`, which leaves the binary axis undemanded.
+  if (device.plannedState === 'shed' && device.plannedShedTargetKind === 'binary_off') {
     const commandStepId = lowestActiveStep?.id ?? desiredStep?.id ?? plannedDesiredStepId;
     const stepPrepared = commandStepId !== undefined && selectedStep?.id === commandStepId;
     return {

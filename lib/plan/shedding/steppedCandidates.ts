@@ -17,12 +17,17 @@
  * `max -> medium` priced at zero and the heater never became a shed candidate at
  * all — no cooldown, no penalty, no invariant, no log line.
  *
- * So `resolveSteppedShedRung` walks the ladder instead of sampling one rung and
- * returns the GENTLEST rung that actually releases power. It never invents
- * relief: every rung is priced by the same `resolveSteppedCandidatePower`, so
- * the answer stays bounded by what the meter reports. It only widens the search,
- * which keeps the module rule in `lib/plan/shedding/AGENTS.md` intact — a device
- * may only be selected when limiting it releases power.
+ * So `resolveSteppedShedLadder` prices the whole ladder instead of sampling one
+ * rung, and offers every step down that releases power. It never invents relief:
+ * every rung goes through the same `resolveSteppedCandidatePower`, so the answer
+ * stays bounded by what the meter reports. It only widens the search, which keeps
+ * the module rule in `lib/plan/shedding/AGENTS.md` intact — a device may only be
+ * selected when limiting it releases power.
+ *
+ * WHICH of those rungs a shed takes is decided when the candidate is spent, by
+ * `chooseShedRung` from `selection.ts`, against the deficit still open at that
+ * point. Deciding it here would size every candidate against the cycle's opening
+ * deficit and over-shoot by whatever earlier picks already covered.
  */
 import type { SteppedLoadProfile, SteppedLoadStep } from '../../../packages/contracts/src/types';
 import type { PlanEngineState } from '../planState';
@@ -48,14 +53,7 @@ import { isNonSteppedDeviceRecovering } from '../planShedRecovery';
 import { isPendingBinaryCommandActive } from '../planObservationPolicy';
 import { buildTemperatureCandidate } from './candidateBuilders';
 import type { ShedCandidateSkipRecorder } from './candidateSkipLog';
-import { type ShedCandidate, type SheddingDeps } from './types';
-
-type SteppedShedRung = {
-  selectedStep: SteppedLoadStep;
-  clampedTargetStep: SteppedLoadStep;
-  hasUnconfirmedLowerDesiredStep: boolean;
-  effectivePower: number;
-};
+import { type PricedShedRung, type ShedCandidate, type SheddingDeps } from './types';
 
 /**
  * `no_reachable_step` and `no_relief` are deliberately distinct: the first means
@@ -65,32 +63,28 @@ type SteppedShedRung = {
  * device cannot help right now", and it carries the rungs tried so the skip is
  * reviewable in the log instead of silent.
  */
-type SteppedShedRungResult =
-  | { kind: 'rung'; rung: SteppedShedRung }
+type SteppedShedLadderResult =
+  | {
+    kind: 'ladder';
+    fromStepId: string;
+    rungs: PricedShedRung[];
+    /** Device-level, not per-rung — see `resolveUnconfirmedLowerDesiredStep`. */
+    unconfirmedRelief: boolean;
+  }
   | { kind: 'no_relief'; rungsTried: string[] }
   | { kind: 'no_reachable_step' };
 
 /**
  * Ordered shed targets from `initialTargetStep` downwards, gentlest first.
  *
- * **Only a `turn_off` device descends**, and the reason is that the planner does
- * not get to name the step the executor commands. Materialization recomputes it
- * from the device alone (`resolveSteppedLoadDirectShedStepId`, reached from
- * `planDevicesBase`); the candidate's `toStepId` never crosses over — only
- * `shedSet` membership does. That resolver answers:
- *
- *   - `turn_off`  → the off step. Whatever rung is credited here, the executor
- *     turns the device off, so delivered relief is the device's whole draw and
- *     the credit can only be an under-estimate. Safe to descend.
- *   - `set_step`  → the ADJACENT rung, recomputed with `getSteppedLoadShedTargetStep`.
- *     Crediting a deeper rung would promise relief the executor never delivers:
- *     selection would decrement its deficit by a step-down that is then not
- *     commanded, treat the breach as covered, and skip the device that could
- *     actually have helped. Strictly worse than not offering the candidate.
- *
- * So the invariant this function protects is **credited relief <= delivered
- * relief**. If materialization ever honours the planner's chosen `toStepId`, a
- * `set_step` descent becomes safe and this restriction can be lifted (TODO).
+ * **Only a `turn_off` device descends past its adjacent rung**; a `set_step`
+ * device is offered `initialTargetStep` alone. That restriction is now a
+ * deliberate hold, not a consequence of anything here: materialization commands
+ * the rung this module chooses for either behaviour
+ * (`resolveSteppedLoadDirectShedStepId`), so a `set_step` descent would be
+ * delivered as credited. Letting it descend is a separate change — the
+ * behaviour's meaning to its owner ("lower it a step") is a product question,
+ * not a pricing one.
  *
  * Within the `turn_off` ladder: `getSteppedLoadNextLowerStep` floors at the
  * lowest ACTIVE step, so the off step is not on it and has to be appended.
@@ -124,16 +118,33 @@ function buildSteppedShedDescentTargets(params: {
   return targets;
 }
 
-export function resolveSteppedShedRung(params: {
+/**
+ * Prices the whole ladder rather than one rung: every reachable step down from
+ * the device's current position, gentlest first, each with the relief it
+ * releases. Rungs that release nothing are dropped, so the result is exactly
+ * "the ways this device can help, cheapest first".
+ *
+ * It stays bounded by the meter: every rung is priced by
+ * `resolveSteppedCandidatePower`, so the deepest rung buys the device's whole
+ * reported draw and no more.
+ *
+ * Which rung a shed actually takes is NOT decided here — `selectShedDevices`
+ * decides it, against the deficit still open when this candidate's turn comes.
+ * See `chooseShedRung`.
+ */
+export function resolveSteppedShedLadder(params: {
   device: PlanInputDevice;
   profile: SteppedLoadProfile;
   initialTargetStep: SteppedLoadStep | null;
   shedAction: 'turn_off' | 'set_step';
-}): SteppedShedRungResult {
+}): SteppedShedLadderResult {
   const { device, profile, initialTargetStep, shedAction } = params;
   if (!initialTargetStep) return { kind: 'no_reachable_step' };
   const targets = buildSteppedShedDescentTargets({ profile, initialTargetStep, shedAction });
   const rungsTried: string[] = [];
+  const rungs: PricedShedRung[] = [];
+  let fromStepId: string | undefined;
+  let unconfirmedRelief = false;
   for (const targetStep of targets) {
     const steppedTarget = resolveSteppedLoadSheddingTarget({ device, targetStep });
     // A rung that resolves to the device's own current step is not a step down.
@@ -143,15 +154,56 @@ export function resolveSteppedShedRung(params: {
     // once rather than reporting the same attempt several times.
     if (rungsTried.includes(clampedTargetStep.id)) continue;
     rungsTried.push(clampedTargetStep.id);
-    const effectivePower = resolveSteppedCandidatePower(device, selectedStep, clampedTargetStep);
-    if (effectivePower <= 0) continue;
-    return {
-      kind: 'rung',
-      rung: { selectedStep, clampedTargetStep, hasUnconfirmedLowerDesiredStep, effectivePower },
-    };
+    fromStepId = selectedStep.id;
+    unconfirmedRelief = hasUnconfirmedLowerDesiredStep;
+    const reliefKw = resolveSteppedCandidatePower(device, selectedStep, clampedTargetStep);
+    if (reliefKw <= 0) continue;
+    rungs.push({ toStepId: clampedTargetStep.id, reliefKw });
+  }
+  if (rungs.length > 0 && fromStepId !== undefined) {
+    return { kind: 'ladder', fromStepId, rungs, unconfirmedRelief };
   }
   if (rungsTried.length === 0) return { kind: 'no_reachable_step' };
   return { kind: 'no_relief', rungsTried };
+}
+
+/**
+ * The rung a shed of `neededKw` aims at: the **gentlest rung whose priced relief
+ * covers it**, and when no rung covers it, the one with the most priced relief
+ * (the deepest, since relief does not shrink as the ladder descends).
+ *
+ * Sizing the rung to what is needed is the point, in both directions. Answering
+ * a 3.77 kW deficit with a 1.01 kW step-down leaves the house over the limit and
+ * buys another cycle of the same decision. Answering a 1 kW remainder with a rung
+ * sized for the 3 kW the cycle opened with cuts two kW of load for nothing — and
+ * with two stepped devices eligible in one cycle, a 3 kW deficit was answered
+ * with 5 kW of shedding.
+ *
+ * That is why `neededKw` is the deficit still open when this candidate's turn
+ * comes (`selection.ts`), not the cycle's opening deficit. The one place the
+ * opening deficit is still the right question is candidate ORDERING, which
+ * happens before any spending: `preemptiveStepDown` asks this same question
+ * against it — "if this candidate went first, would it still be running?".
+ *
+ * `neededKw` must be a measured kW quantity: it is fed `deficitKw` and the
+ * remainder derived from it, never the severity `needed`, which is
+ * `Number.POSITIVE_INFINITY` in an exhausted hour and would leave "covers the
+ * deficit" with no possible answer.
+ */
+export function chooseShedRung(
+  rungs: readonly PricedShedRung[],
+  neededKw: number,
+): PricedShedRung | null {
+  let deepestRung: PricedShedRung | null = null;
+  for (const rung of rungs) {
+    // The ladder is ordered gentlest-first, so the first rung that covers what
+    // is needed is the gentlest one that does.
+    if (rung.reliefKw >= neededKw) return rung;
+    // Ties keep the gentler rung: a deeper cut that frees no more watts is a
+    // deeper cut for nothing.
+    if (!deepestRung || rung.reliefKw > deepestRung.reliefKw) deepestRung = rung;
+  }
+  return deepestRung;
 }
 
 type SteppedCandidateParams = {
@@ -159,6 +211,8 @@ type SteppedCandidateParams = {
   devices: PlanInputDevice[];
   priority: number;
   recentlyRestored: boolean;
+  /** The deficit this shed cycle has to close, in kW. Sizes the chosen rung. */
+  neededKw: number;
   state: PlanEngineState;
   getShedBehavior: SheddingDeps['getShedBehavior'];
   pendingBinaryCommandStore: PendingBinaryCommandStore;
@@ -212,7 +266,7 @@ function buildSteppedStepDownCandidate(
   params: SteppedCandidateParams,
   shedAction: 'turn_off' | 'set_step',
 ): ShedCandidate | null {
-  const { device, devices, priority, recentlyRestored, state, recorder } = params;
+  const { device, devices, priority, recentlyRestored, neededKw, state, recorder } = params;
   if (!isSteppedLoadDevice(device)) return null;
   const profile = device.steppedLoadProfile;
   const targetStep = resolveSteppedShedTargetStep({
@@ -222,60 +276,78 @@ function buildSteppedStepDownCandidate(
     shedBehaviorAction: shedAction,
     effectiveCurrentStepId: resolveEffectiveCurrentStepIdForSteppedShedding(device),
   });
-  // Walk the ladder rather than pricing only the next rung down: a measurement
+  // Price the whole ladder rather than only the next rung down: a measurement
   // that lags a step-up prices the adjacent rung at exactly zero relief, which
-  // would drop a device the meter shows drawing.
-  const rungResult = resolveSteppedShedRung({ device, profile, initialTargetStep: targetStep, shedAction });
-  if (rungResult.kind === 'no_reachable_step') {
+  // would drop a device the meter shows drawing, and an adjacent rung worth a
+  // fraction of the deficit answers a breach it cannot close.
+  const ladder = resolveSteppedShedLadder({
+    device,
+    profile,
+    initialTargetStep: targetStep,
+    shedAction,
+  });
+  if (ladder.kind === 'no_reachable_step') {
     return buildSteppedNoRungFallbackCandidate({ params, shedAction, targetStep });
   }
-  if (rungResult.kind === 'no_relief') {
-    recorder?.record({ device, reasonCode: 'zero_step_relief', rungsTried: rungResult.rungsTried });
+  if (ladder.kind === 'no_relief') {
+    recorder?.record({ device, reasonCode: 'zero_step_relief', rungsTried: ladder.rungsTried });
     return null;
   }
-  const { selectedStep, clampedTargetStep, hasUnconfirmedLowerDesiredStep, effectivePower } = rungResult.rung;
   return {
     ...device,
     kind: 'stepped',
     priority,
     recentlyRestored,
-    unconfirmedRelief: hasUnconfirmedLowerDesiredStep,
-    effectivePower,
-    fromStepId: selectedStep.id,
-    toStepId: clampedTargetStep.id,
-    preemptiveStepDown: isPreemptiveStepReduction({ profile, selectedStep, clampedTargetStep }),
+    unconfirmedRelief: ladder.unconfirmedRelief,
+    // Everything this device can free — the deepest priced rung, which is a
+    // property of the device and the meter, not of when this candidate is
+    // spent. Ranking and the reducible-load stats both need a stable number.
+    effectivePower: chooseShedRung(ladder.rungs, Number.POSITIVE_INFINITY)?.reliefKw ?? 0,
+    fromStepId: ladder.fromStepId,
+    rungs: ladder.rungs,
+    preemptiveStepDown: isPreemptiveStepReduction({ profile, rungs: ladder.rungs, neededKw }),
   };
 }
 
 /**
- * True only for a genuine step REDUCTION — one that leaves the device running at
- * a lower step.
+ * True when taking this candidate FIRST would leave the device running at a
+ * lower step rather than turning it off.
  *
- * This drives candidate ordering, so it is load-bearing twice over:
- * `sortCandidates` places a preemptive candidate ahead of every other candidate
- * regardless of priority, and `shouldStopAfterCandidate` ends the selection loop
- * right after one. A descent that lands on the off step is a full turn-off, and
- * `sortCandidates` is explicit that those follow normal priority ordering —
- * marking one preemptive would jump the queue and then strand the rest of the
- * deficit for a whole cycle.
+ * This drives candidate ordering: `sortCandidates` places a preemptive candidate
+ * ahead of every other candidate regardless of priority, so the cheapest credit
+ * — a device that can answer the deficit without spending a whole load — is
+ * taken first.
  *
- * Reading the TARGET rather than only the from-step also covers a pre-existing
- * corner: a pending desired step of `off` clamps the target to `off` while the
- * confirmed position is still high.
+ * It has to be a STABLE key. The rung a shed actually takes is chosen at spend
+ * time, against whatever deficit is left by then, so it is not available to a
+ * comparator and would make the sort depend on its own outcome. The two inputs
+ * here are both fixed for the cycle — the device's priced ladder and the
+ * cycle's opening deficit — and "first" is exactly the case where the remainder
+ * IS the opening deficit, so ranking on it is not an approximation of the
+ * question, it is the question.
+ *
+ * Deliberately NOT the looser "does this device have any lower rung at all".
+ * That ranks a device ahead of the owner's priority order on the strength of a
+ * reduction it will not end up taking: a 1 kW stepped load against a 3 kW
+ * deficit would sort first, find no rung that covers, take its off rung anyway,
+ * and leave the binary load the owner ranked as sheddable-first shed as well —
+ * a device turned off out of order AND an over-shed.
+ *
+ * A descent that lands on the off step is a full turn-off, and those follow
+ * normal priority ordering (`sortCandidates`). Reading the chosen TARGET rather
+ * than only the from-step also covers a pre-existing corner: a pending desired
+ * step of `off` clamps every rung to `off` while the confirmed position is still
+ * high.
  */
 function isPreemptiveStepReduction(params: {
   profile: SteppedLoadProfile;
-  selectedStep: SteppedLoadStep;
-  clampedTargetStep: SteppedLoadStep;
+  rungs: readonly PricedShedRung[];
+  neededKw: number;
 }): boolean {
-  const { profile, selectedStep, clampedTargetStep } = params;
-  if (isSteppedLoadOffStep(profile, clampedTargetStep.id)) return false;
-  const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
-  return Boolean(
-    lowestActiveStep
-    && selectedStep.id !== lowestActiveStep.id
-    && selectedStep.planningPowerW > lowestActiveStep.planningPowerW,
-  );
+  const { profile, rungs, neededKw } = params;
+  const firstPickRung = chooseShedRung(rungs, neededKw);
+  if (!firstPickRung) return false;
+  return !isSteppedLoadOffStep(profile, firstPickRung.toStepId);
 }
 
 /**
@@ -360,7 +432,11 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
     unconfirmedRelief: pendingBinary?.desired === false,
     effectivePower,
     fromStepId: selectedStep.id,
-    toStepId: selectedStep.id,
+    // No ladder: this device is already parked at its shed target, and the whole
+    // relief is the binary off that follows. There is no rung for selection to
+    // size, and naming its current step as the shed destination would cancel the
+    // off that the relief was priced on.
+    rungs: [],
     preemptiveStepDown: false,
   };
 }

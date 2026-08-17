@@ -4,8 +4,8 @@ import type { PlanEngineState } from './planState';
 import type { CurrentHourPriceLevel, PlanContext } from './planContext';
 import { buildEffectiveShedPosture, isAnyOtherDeviceLimited } from './keepInvariantPosture';
 import {
-  resolveSteppedLoadDirectShedStepId,
   resolveSteppedShedCurrentDesiredStepId,
+  resolveSteppedShedHypotheticalStepId,
 } from './planSteppedShedResolution';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isCoolingCapableTemperatureDeviceClass } from '../../packages/shared-domain/src/temperatureDeviceKind';
@@ -68,6 +68,11 @@ export function buildInitialPlanDevices(params: {
   state: PlanEngineState;
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
+  /**
+   * The rung the shedding planner priced each stepped shed at. Copied onto the
+   * device, never re-derived — see `resolveSteppedLoadDirectShedStepId`.
+   */
+  shedStepTargets: Map<string, string>;
   guardInShortfall: boolean;
   deps: PlanDevicesDeps;
 }): DevicePlanDevice[] {
@@ -76,6 +81,7 @@ export function buildInitialPlanDevices(params: {
     state,
     shedSet,
     shedReasons,
+    shedStepTargets,
     guardInShortfall,
     deps,
   } = params;
@@ -137,8 +143,6 @@ export function buildInitialPlanDevices(params: {
     const t1 = Date.now();
     const base = buildBasePlanDevice({
       dev,
-      devices: context.devices,
-      state,
       priority,
       recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
       binaryCommandPending: isPendingBinaryCommandActive({
@@ -149,6 +153,7 @@ export function buildInitialPlanDevices(params: {
       controllable,
       shedBehavior,
       shedSet,
+      shedStepTargets,
       anyOtherDeviceLimited: isAnyOtherDeviceLimited(effectiveShedSet, dev.id),
       shedReasons,
       boostActive,
@@ -388,6 +393,13 @@ function isRecentlyRestored(lastRestoreMs: number | undefined): boolean {
 // !isHeldByRestoreAdmission conjunct: plan reasons aren't computed at this pre-pass.
 // Mild inverse-direction asymmetry vs. lib/executor/executablePlanProjection.ts:126-135 —
 // tracked as a P3 in TODO.md.
+//
+// This is the one place that still RECOMPUTES a shed step, and deliberately so.
+// It runs before selection, over every stepped `set_step` device rather than the
+// chosen ones, and asks a hypothetical — "if this device were shed, would it
+// move?" — so there is no planner decision to honour yet. Materialization is the
+// opposite case and must never recompute: it is handed the rung the shed was
+// priced at (`resolveSteppedLoadDirectShedStepId`).
 function isPhantomSetStepShed(params: {
   dev: PlanInputDevice;
   devices: PlanInputDevice[];
@@ -398,8 +410,8 @@ function isPhantomSetStepShed(params: {
   if (!isSteppedLoadDevice(dev)) return false;
   const behavior = deps.getShedBehavior(dev.id);
   if (behavior.action !== 'set_step') return false;
-  const directStepId = resolveSteppedLoadDirectShedStepId({
-    dev, devices, state, shedBehavior: behavior, shouldShed: true,
+  const directStepId = resolveSteppedShedHypotheticalStepId({
+    dev, devices, state, shedBehavior: behavior,
     currentDesiredStepId: resolveSteppedShedCurrentDesiredStepId(dev),
   });
   return directStepId === undefined || directStepId === dev.selectedStepId;
