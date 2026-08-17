@@ -16,7 +16,7 @@
  * it is a device PELS does not manage.
  *
  * That is why nothing downstream carries a derived plug-state bit any more. The
- * state itself is carried (required on `EvObservedFields` / `EvKind`) and every
+ * state itself is carried (required on `EvObservedFields`, observer-side) and every
  * question is answered from it here, at the point of use. Duplicating the
  * answers as flat fields is what produced the optional-and-nullable cluster this
  * replaced; `scripts/check-ev-vocab.mjs` is what keeps consumers calling these

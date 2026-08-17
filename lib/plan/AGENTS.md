@@ -19,7 +19,7 @@ Execution — converging observed state onto that plan — is `lib/executor`.
 
 - **No EV cluster on the plan device, and there is not going to be one** (owner ruling
   2026-08-15). `EvKind` / `EvDiscriminantProbe` / `withEvDiscriminant` are deleted, and the
-  `isEvPlanDevice` guard that several docblocks in this repo still cite never existed. A boost
+  `isEvPlanDevice` guard that several docblocks used to cite never existed at all. A boost
   threshold is configuration and a battery level is an observation, so the planner carries neither:
   it carries one kind-free `boostActive` decision (`planBoost.ts`) resolved from the producer's
   `boostSupported`/`boostRequested`, and the settings UI reads the config and the level from the

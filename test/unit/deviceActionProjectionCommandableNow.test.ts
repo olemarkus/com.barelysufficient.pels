@@ -92,7 +92,7 @@ describe('isCommandableNow — producer-resolved bit only', () => {
   it('ignores raw fields entirely — only the producer-resolved bit is read', () => {
     // The dual-read is deleted: raw fields sitting alongside the bit must not
     // change the answer. That fallback is what made every plan device read
-    // "charger state unknown" — `withEvDiscriminant` strips `evChargingState`,
+    // "charger state unknown" — the since-deleted `withEvDiscriminant` stripped `evChargingState`,
     // the fallback saw absence, and answered anyway. Callers holding a raw
     // snapshot now call `resolveCommandableNow` explicitly instead.
     const withRawFieldsThatUsedToWin = {

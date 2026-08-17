@@ -36,7 +36,7 @@ describe('isCommandableNow', () => {
   it('ignores raw fields sitting alongside the bit', () => {
     // The dual-read is deleted: raw fields must not change the answer. That
     // fallback is what made every plan device read "charger state unknown" once
-    // `withEvDiscriminant` stripped the plug-state — it saw absence and answered.
+    // the since-deleted `withEvDiscriminant` stripped the plug-state — it saw absence and answered.
     const withRawFields = {
       commandableNow: true,
       available: false,

@@ -37,13 +37,13 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 
 const buildEvDevice = (
   overrides: Partial<PlanInputDevice> & FixtureBoostFields & { evChargingState?: string } = {},
-// `withMaterializedEvPlugState` (NOT `withEvDiscriminant`) is the fixture
-// boundary here: the preview's `isEvChargerNotResumableForDevice` reads the
-// materialized flat `evChargerNotResumable` only (the raw `evChargingState`
-// consumer arm is retired). `withEvDiscriminant` *discards* `evChargingState`
-// without materializing it, so it would erase the plug-state these tests set.
-// `withMaterializedEvPlugState` mirrors the producer: it derives the flat EV
-// fields from `evChargingState`, preserving the runtime resumability signal.
+// `withMaterializedEvPlugState` is the fixture boundary here: the preview's
+// `isEvChargerNotResumableForDevice` reads the materialized flat
+// `evChargerNotResumable` only (the raw `evChargingState` consumer arm is
+// retired). The helper mirrors the producer — it derives the flat EV fields from
+// `evChargingState`, preserving the runtime resumability signal. Setting
+// `evChargingState` on a fixture without it would leave the flat bits unset and
+// silently erase the plug-state these tests depend on.
 ): PlanInputDevice => withMaterializedEvPlugState({
   id: 'ev-1',
   name: 'Driveway EV',

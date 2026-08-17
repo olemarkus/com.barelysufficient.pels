@@ -143,7 +143,9 @@ const withFixtureTemperatureKind = <T extends { deviceType?: 'temperature' | 'on
  *
  * Mirrors the producer (`toPlanDevice`), so a fixture is faithful to a real
  * `PlanInputDevice`: the executor drift path reads `commandableNow` off it, and
- * plan consumers read the plug-state through `isEvPlanDevice`.
+ * plan consumers read no plug-state at all — the plan device does not carry
+ * `evChargingState` (owner ruling 2026-08-15, `lib/plan/AGENTS.md`); the settings
+ * UI sources it from the observer via `getObservedEvChargingState`.
  *
  * `commandableNow` is materialized for EVERY fixture, EV or not, because it is a
  * required base field — a fixture without it would let a consumer read
@@ -334,8 +336,9 @@ export const buildPlanDevice = (
     binaryControllable?: boolean;
     binaryCapabilityId?: string;
     deviceRole?: 'ev_charger';
-    // Lives on the orthogonal `EvKind` cluster, same as the two above; the plan
-    // device receives it through the snapshot spread in `toPlanDevice`.
+    // An observation, not plan state: it reaches the fixture through the snapshot
+    // spread in `toPlanDevice`, and the settings UI reads the real thing via
+    // `getObservedStateOfCharge`. There is no EV cluster on the plan types.
     stateOfCharge?: DeviceStateOfChargeSnapshot;
     /** Legacy fixture alias for `currentDrawKw` (see `fixtureCurrentDrawKw`). */
     measuredPowerKw?: number;

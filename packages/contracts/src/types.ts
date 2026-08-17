@@ -503,9 +503,10 @@ export type TargetDeviceSnapshot = DeviceDescriptor & ObservedDeviceState;
 
 /**
  * EV observed field cluster (EV-observed slice of the discriminated-types
- * refactor — the observer-snapshot twin of the plan layer's `EvKind`).
+ * refactor). Observer-side only: the plan layer has no EV cluster and is not
+ * getting one (owner ruling 2026-08-15, `lib/plan/AGENTS.md`).
  *
- * Like `EvKind`, this is ORTHOGONAL to every other axis (an EV charger is also
+ * This is ORTHOGONAL to every other axis (an EV charger is also
  * stepped-controlled), so it is NOT a union member; it is the intersection the
  * `isEvObserved` type-guard (`packages/shared-domain/src/evObservedState.ts`)
  * adds onto a snapshot. `evChargingState` is OMITTED from `ObservedDeviceState`,
@@ -579,8 +580,9 @@ export type TemperatureObservedProbe = {
 
 /**
  * State-of-charge observed field cluster (SoC-observed slice of the
- * discriminated-types refactor — the observer-snapshot twin of the plan layer's
- * `EvKind.stateOfCharge`).
+ * discriminated-types refactor). Observer-side only — the battery level is an
+ * observation and never rides the plan device; the settings UI reads it through
+ * `getObservedStateOfCharge`.
  *
  * Like the other observed clusters, this is ORTHOGONAL and NOT a union member;
  * it is the intersection the `hasObservedStateOfCharge` type-guard

@@ -3,7 +3,9 @@
 This module has a **two-clock** design: the allocator runs only at the `:58` settle / bootstrap
 (`activePlanSchedule.ts`, `settleWindow.ts`); between settles a **frozen read** serves the committed
 plan (`frozenHorizonPlan.ts`). Several per-cycle release decisions are layered on top at admission
-time (`admission.ts` → `hasNoCurrentClaim` / `canSkipUnclaimedHour`): `priceDeferralEligible`
+time (`admission.ts`, mapping the producer-resolved `currentHourClaim` 1:1 onto a decision — the
+claim itself is resolved once by `resolveCurrentHourClaim` in `currentHourClaim.ts`):
+`priceDeferralEligible`
 (WI-2), `coldStartReleaseEligible` (WI-4), and the sufficiency gate below. Get the interaction
 between these wrong and you will "find" bugs that are not there.
 
