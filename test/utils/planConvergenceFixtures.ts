@@ -2,6 +2,7 @@ import type {
   DevicePlan,
   PlanInputDevice,
   BinaryControlDiscriminantProbe,
+  SteppedDiscriminantProbe,
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import {
@@ -49,6 +50,8 @@ export const asOutputDevice = (
       ?? resolvePlannedShedTargetKind({
         plannedState: loose.plannedState ?? 'keep',
         shedAction: loose.shedAction,
+        steppedLoadProfile: (loose as SteppedDiscriminantProbe).steppedLoadProfile,
+        plannedShedStepId: loose.plannedShedStepId,
       }),
     ...(binaryCapabilityId !== undefined ? {
       currentOn: currentOn ?? resolveFixtureCurrentOn({ ...materialized, binaryControl }),

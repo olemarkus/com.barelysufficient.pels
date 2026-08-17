@@ -96,6 +96,7 @@ export class PlanMaterializationStages {
       state: this.state,
       shedSet: sheddingPlan.shedSet,
       shedReasons: sheddingPlan.shedReasons,
+      shedStepTargets: sheddingPlan.shedStepTargets,
       guardInShortfall: sheddingPlan.guardInShortfall,
       deps: {
         getPriorityForDevice: getCyclePriority,

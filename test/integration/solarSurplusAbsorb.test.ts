@@ -112,6 +112,7 @@ const buildDevices = (params: {
     state: params.state,
     shedSet: new Set(),
     shedReasons: new Map(),
+    shedStepTargets: new Map(),
     guardInShortfall: false,
     deps: params.deps,
   });
@@ -363,6 +364,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
         state,
         shedSet: new Set(),
         shedReasons: new Map(),
+        shedStepTargets: new Map(),
         guardInShortfall: false,
         deps: deps(true),
       })[0];

@@ -1250,8 +1250,13 @@ describe('buildSheddingPlan', () => {
       },
     );
 
+    // The stepped load is still chosen first, but `max -> mid` is worth only
+    // 0.8 kW against a 1.1 kW deficit, and a `set_step` device may not descend
+    // further (materialization would command the adjacent rung anyway). The
+    // remaining 0.3 kW is a real, still-open breach, so selection carries on to
+    // the next candidate instead of ending the cycle on a partial answer.
     expect(result.shedSet.has('connected-300')).toBe(true);
-    expect(result.shedSet.has('bath')).toBe(false);
+    expect(result.shedSet.has('bath')).toBe(true);
   });
 
   it('keeps stepping a stepped load down to its lowest active step before shedding other devices', async () => {
@@ -1979,6 +1984,286 @@ describe('buildSheddingPlan', () => {
     expect(result.shedSet.has('binary-dev')).toBe(false);
   });
 
+  it('picks a rung deep enough to cover the deficit instead of the adjacent one', async () => {
+    // The 11–17 Aug production shape: a charger at 28a, and a deficit no single
+    // adjacent rung can close. 28a -> 24a is worth 0.92 kW against 3.77 kW
+    // needed; the walk continues to 10a, which frees 4.14 kW and covers it. The
+    // rungs in between (20a, 16a) are priced and rejected for the same reason.
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'charger',
+        name: 'EV charger',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: '6a', planningPowerW: 1380 },
+            { id: '10a', planningPowerW: 2300 },
+            { id: '16a', planningPowerW: 3680 },
+            { id: '20a', planningPowerW: 4600 },
+            { id: '24a', planningPowerW: 5520 },
+            { id: '28a', planningPowerW: 6440 },
+          ],
+        },
+        selectedStepId: '28a',
+        currentDrawKw: 6.44,
+        binaryControl: { on: true },
+        controllable: true,
+      }),
+      buildDevice({
+        id: 'bath',
+        name: 'Bathroom thermostat',
+        currentDrawKw: 1.2,
+        binaryControl: { on: true },
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+    } as unknown as CapacityGuard;
+
+    const debugStructured = vi.fn();
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 8.77,
+        softLimit: 5,
+        capacitySoftLimit: 5,
+        headroomRaw: -3.77,
+        headroom: -3.77,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        shortfallThresholdKw: 10,
+        powerTracker: { lastTimestamp: 950 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'charger' ? 1 : 10),
+        log: vi.fn(),
+        debugStructured,
+      },
+    );
+
+    expect(result.shedSet.has('charger')).toBe(true);
+    // The chosen rung covers the deficit on its own, so nothing else is limited.
+    expect(result.shedSet.has('bath')).toBe(false);
+    expect(debugStructured).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'plan_shed_step_down',
+        deviceId: 'charger',
+        fromStepId: '28a',
+        toStepId: '10a',
+      }),
+    );
+    // And the decision crosses the boundary: materialization commands this rung
+    // rather than re-deriving the off step from the `turn_off` behaviour.
+    expect(result.shedStepTargets.get('charger')).toBe('10a');
+  });
+
+  it('sizes a later stepped shed to the deficit still open, not the one the cycle opened with', async () => {
+    // Two candidates in ONE cycle, the first only partially covering. A rung
+    // fixed at candidate-build time is sized against the cycle's opening deficit
+    // and knows nothing about what earlier picks already covered, so the second
+    // cut over-shoots by exactly that amount: 3 kW needed, 2 kW banked by the
+    // binary heater, and the charger then cut for another 2.9 kW — 4.9 kW of
+    // load removed to close 3 kW.
+    //
+    // The charger's meter is lagging at 2.9 kW while it runs at 28a, the
+    // `inc_26449fb9` shape: its active rungs price small, so no rung covers the
+    // opening 3 kW and the answer would be the off step. Against the 1 kW
+    // actually left when its turn comes, `6a` covers.
+    const state = createPlanEngineState();
+
+    const capacityGuard = {
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+    } as unknown as CapacityGuard;
+
+    const debugStructured = vi.fn();
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'heater',
+            name: 'Panel heater',
+            binaryControl: { on: true },
+            controllable: true,
+            currentDrawKw: 2, expectedPowerKw: 2,
+          }),
+          buildDevice({
+            id: 'charger',
+            name: 'EV charger',
+            controlModel: 'stepped_load',
+            steppedLoadProfile: {
+              steps: [
+                { id: 'off', planningPowerW: 0 },
+                { id: '6a', planningPowerW: 1380 },
+                { id: '10a', planningPowerW: 2300 },
+                { id: '16a', planningPowerW: 3680 },
+                { id: '20a', planningPowerW: 4600 },
+                { id: '24a', planningPowerW: 5520 },
+                { id: '28a', planningPowerW: 6440 },
+              ],
+            },
+            selectedStepId: '28a',
+            binaryControl: { on: true },
+            controllable: true,
+            currentDrawKw: 2.9,
+          }),
+        ],
+        total: 8.44,
+        softLimit: 5.44,
+        capacitySoftLimit: 5.44,
+        headroomRaw: -3,
+        headroom: -3,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        shortfallThresholdKw: 10,
+        powerTracker: { lastTimestamp: 970 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        // The heater is ranked to be limited first, and neither candidate can
+        // answer the opening deficit with a step reduction, so both follow
+        // ordinary priority ordering.
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'heater' ? 200 : 100),
+        log: vi.fn(),
+        debugStructured,
+      },
+    );
+
+    expect(result.shedSet.has('heater')).toBe(true);
+    expect(result.shedSet.has('charger')).toBe(true);
+    // `6a` frees 1.52 kW against the 1 kW left after the heater. The off step
+    // (2.9 kW priced, the whole charger delivered) is what a rung fixed at build
+    // time would have taken.
+    expect(result.shedStepTargets.get('charger')).toBe('6a');
+    expect(debugStructured).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'plan_shed_step_down',
+        deviceId: 'charger',
+        toStepId: '6a',
+        reliefKw: expect.closeTo(1.52, 6),
+      }),
+    );
+  });
+
+  it('sizes the next shed as though nothing moved when the one before it is unconfirmed', async () => {
+    // A candidate whose relief is unconfirmed banks nothing — the watts have not
+    // moved yet, and covering the deficit on a promise is how a breach gets
+    // declared closed while it is still open. Everything after it is therefore
+    // sized as though that candidate had not been taken, which is the honest
+    // answer and deliberately errs toward covering the breach.
+    //
+    // What must NOT happen is the rest of the cycle inheriting that: the binary
+    // heater's 1 kW IS confirmed, so the charger behind it is sized to the 2 kW
+    // left, not the 3 kW the cycle opened with. Asserting `6a` pins both halves —
+    // had the unconfirmed pump banked its 2 kW the answer would be `10a`, and had
+    // the heater's 1 kW not been banked it would be the off step.
+    const state = createPlanEngineState();
+
+    const capacityGuard = {
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+    } as unknown as CapacityGuard;
+
+    const debugStructured = vi.fn();
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'pump',
+            name: 'Pool pump',
+            controlModel: 'stepped_load',
+            steppedLoadProfile: {
+              steps: [
+                { id: 'off', planningPowerW: 0 },
+                { id: 'low', planningPowerW: 1000 },
+                { id: 'max', planningPowerW: 2000 },
+              ],
+            },
+            selectedStepId: 'max',
+            // A step-down to `low` is already commanded and unconfirmed, so the
+            // 2 kW this candidate is worth has not moved yet.
+            desiredStepId: 'low',
+            stepCommandPending: true,
+            binaryControl: { on: true },
+            controllable: true,
+            currentDrawKw: 2,
+          }),
+          buildDevice({
+            id: 'heater',
+            name: 'Panel heater',
+            binaryControl: { on: true },
+            controllable: true,
+            currentDrawKw: 1, expectedPowerKw: 1,
+          }),
+          buildDevice({
+            id: 'charger',
+            name: 'EV charger',
+            controlModel: 'stepped_load',
+            steppedLoadProfile: {
+              steps: [
+                { id: 'off', planningPowerW: 0 },
+                { id: '6a', planningPowerW: 1380 },
+                { id: '10a', planningPowerW: 2300 },
+                { id: '16a', planningPowerW: 3680 },
+                { id: '20a', planningPowerW: 4600 },
+                { id: '24a', planningPowerW: 5520 },
+                { id: '28a', planningPowerW: 6440 },
+              ],
+            },
+            selectedStepId: '28a',
+            binaryControl: { on: true },
+            controllable: true,
+            currentDrawKw: 4,
+          }),
+        ],
+        total: 10,
+        softLimit: 7,
+        capacitySoftLimit: 7,
+        headroomRaw: -3,
+        headroom: -3,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        shortfallThresholdKw: 10,
+        powerTracker: { lastTimestamp: 980 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: (deviceId: string) => {
+          if (deviceId === 'pump') return 300;
+          return deviceId === 'heater' ? 200 : 100;
+        },
+        log: vi.fn(),
+        debugStructured,
+      },
+    );
+
+    expect(result.shedSet.has('pump')).toBe(true);
+    expect(result.shedSet.has('heater')).toBe(true);
+    expect(result.shedSet.has('charger')).toBe(true);
+    expect(result.shedStepTargets.get('charger')).toBe('6a');
+    expect(debugStructured).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'plan_shed_step_down',
+        deviceId: 'charger',
+        toStepId: '6a',
+        reliefKw: expect.closeTo(2.62, 6),
+      }),
+    );
+  });
+
   it('steps down a higher stepped device before transitioning a lowest-active one to off', async () => {
     const state = createPlanEngineState();
 
@@ -2047,11 +2332,15 @@ describe('buildSheddingPlan', () => {
       },
     );
 
-    // heater-high should be stepped down (preemptive, above lowest active)
+    // heater-high is chosen first and gives everything it has: the meter shows it
+    // carrying 1.4 kW, so no rung of its ladder covers a 1.5 kW deficit and the
+    // walk ends at its deepest priced rung.
     expect(result.shedSet.has('heater-high')).toBe(true);
-    // heater-low should NOT be shed — preemptive step-down of heater-high breaks
-    // the loop, so only one device is acted on per cycle.
-    expect(result.shedSet.has('heater-low')).toBe(false);
+    // heater-low IS limited too. 0.1 kW of the breach is still open after
+    // heater-high has given all it has, and the cycle used to end there on a
+    // preemptive step-down worth 0.9 kW — leaving 0.6 kW of the breach standing
+    // with a device available that could close it.
+    expect(result.shedSet.has('heater-low')).toBe(true);
   });
 
   it('keeps shedding other devices when a binary shed command is still unconfirmed', async () => {
@@ -3041,8 +3330,13 @@ describe('buildSheddingPlan', () => {
     // Shared state across cycles — carries forward lastShedPlanMeasurementTs.
     const state = createPlanEngineState();
 
-    // Cycle 1: large overshoot — 5 kW needed. Preemptive step-down of stepped-a
-    // breaks the loop, so only one device is acted on.
+    // Cycle 1: 1.5 kW needed. stepped-a's `max -> low` frees 1.8 kW and covers it
+    // on its own, so the preemptive step-down sorts first, closes the deficit,
+    // and the loop ends — the higher-priority binary is never reached.
+    // (The deficit is deliberately one a step-down can cover: since the rung is
+    // sized to the deficit, a 5 kW breach would price every step-down as
+    // insufficient, take each device's whole draw, and shed all three — correct,
+    // but not the ordering this test exists to pin.)
     const result1 = await buildSheddingPlan(
       buildContext({
         devices: [
@@ -3050,11 +3344,11 @@ describe('buildSheddingPlan', () => {
           buildDevice({ ...steppedBBase, selectedStepId: 'max', currentDrawKw: 1.4 }),
           buildDevice(binaryBase),
         ],
-        total: 8,
+        total: 4.5,
         softLimit: 3,
         capacitySoftLimit: 3,
-        headroomRaw: -5,
-        headroom: -5,
+        headroomRaw: -1.5,
+        headroom: -1.5,
         softLimitSource: 'capacity',
       }),
       state,
@@ -3068,7 +3362,9 @@ describe('buildSheddingPlan', () => {
     // Apply state updates from cycle 1 (lastShedPlanMeasurementTs, lastInstabilityMs).
     Object.assign(state, result1.updates);
 
-    // Cycle 2: stepped-a now at low, stepped-b still at max (preemptive).
+    // Cycle 2: stepped-a now at low, stepped-b still at max (preemptive). Its
+    // `max -> low` frees 0.9 kW, which covers the 0.8 kW still needed, so again
+    // the step-down wins the cycle ahead of the higher-priority binary.
     const result2 = await buildSheddingPlan(
       buildContext({
         devices: [
@@ -3076,11 +3372,11 @@ describe('buildSheddingPlan', () => {
           buildDevice({ ...steppedBBase, selectedStepId: 'max', currentDrawKw: 1.4 }),
           buildDevice(binaryBase),
         ],
-        total: 5,
+        total: 3.8,
         softLimit: 3,
         capacitySoftLimit: 3,
-        headroomRaw: -2,
-        headroom: -2,
+        headroomRaw: -0.8,
+        headroom: -0.8,
         softLimitSource: 'capacity',
       }),
       state,
@@ -3671,8 +3967,8 @@ describe('buildSheddingPlan', () => {
 
   // A descent that lands on the off step is a full turn-off, not a step
   // reduction. If it were marked preemptive it would sort ahead of every other
-  // candidate regardless of priority and then stop the selection loop
-  // (`shouldStopAfterCandidate`), stranding the rest of the deficit for a cycle.
+  // candidate regardless of priority, spending a whole load ahead of devices the
+  // owner ranked as sheddable first.
   it('does not treat a descent to the off step as a preemptive step-down', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
@@ -3741,11 +4037,10 @@ describe('buildSheddingPlan', () => {
     const result = await buildSheddingPlan(
       buildContext({
         devices: [
-          // Same stale-measurement shape, but a `set_step` device does not
-          // descend at all — materialization recomputes its target as the
-          // adjacent rung — so the only rung priced is `medium`, which releases
-          // nothing. That is a real "cannot help", and it must now say so rather
-          // than vanish.
+          // Same stale-measurement shape, but a `set_step` device is offered its
+          // adjacent rung alone, so the only rung priced is `medium`, which
+          // releases nothing. That is a real "cannot help", and it must now say
+          // so rather than vanish.
           buildDevice({
             id: 'heater',
             name: 'Connected 300',
@@ -3935,6 +4230,86 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.has('stepped')).toBe(true);
     expect(result.shedSet.has('temp')).toBe(true);
+  });
+
+  it('sizes the rung to the measured deficit even while the hourly budget is exhausted', async () => {
+    // An exhausted hour passes `Number.POSITIVE_INFINITY` as `needed` — a
+    // severity sentinel that bypasses the recent-restore grace. It must not
+    // reach rung sizing: no rung can cover infinity, so every stepped
+    // `turn_off` candidate would collapse to its off rung and credit the whole
+    // meter draw. `deficitKw` carries the real 0.9 kW, which `28a -> 24a`
+    // (0.92 kW) covers. `shedAllCandidates` still limits everything — that flag
+    // decides WHO is limited, never how deep each cut is.
+    const state = createPlanEngineState();
+    state.hourlyBudgetExhausted = true;
+
+    const capacityGuard = {
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+    } as unknown as CapacityGuard;
+
+    const debugStructured = vi.fn();
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'charger',
+            name: 'EV charger',
+            controlModel: 'stepped_load',
+            steppedLoadProfile: {
+              steps: [
+                { id: 'off', planningPowerW: 0 },
+                { id: '6a', planningPowerW: 1380 },
+                { id: '10a', planningPowerW: 2300 },
+                { id: '16a', planningPowerW: 3680 },
+                { id: '20a', planningPowerW: 4600 },
+                { id: '24a', planningPowerW: 5520 },
+                { id: '28a', planningPowerW: 6440 },
+              ],
+            },
+            selectedStepId: '28a',
+            binaryControl: { on: true },
+            controllable: true,
+            currentDrawKw: 6.44,
+          }),
+          buildDevice({
+            id: 'bath',
+            name: 'Bathroom thermostat',
+            binaryControl: { on: true },
+            controllable: true,
+            currentDrawKw: 1.2, expectedPowerKw: 1.2,
+          }),
+        ],
+        total: 7.64,
+        softLimit: 6.74,
+        capacitySoftLimit: 6.74,
+        headroomRaw: -0.9,
+        headroom: -0.9,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        shortfallThresholdKw: 10,
+        powerTracker: { lastTimestamp: 1010 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        debugStructured,
+      },
+    );
+
+    expect(debugStructured).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'plan_shed_step_down',
+        deviceId: 'charger',
+        fromStepId: '28a',
+        toStepId: '24a',
+      }),
+    );
+    expect(result.shedSet.has('charger')).toBe(true);
+    expect(result.shedSet.has('bath')).toBe(true);
   });
 
   it('does not select or retarget zero-draw stepped loads when hourly budget is exhausted', async () => {

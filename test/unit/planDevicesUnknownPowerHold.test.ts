@@ -97,6 +97,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
+      shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
         ...defaultDeps,
@@ -160,6 +161,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
+      shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: { ...defaultDeps, holdsModeTargetRaisesWhilePowerUnknown: () => true },
     });
@@ -197,6 +199,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
+      shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: { ...defaultDeps, holdsModeTargetRaisesWhilePowerUnknown: () => true },
     })[0];
@@ -228,6 +231,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
+      shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: { ...defaultDeps, holdsModeTargetRaisesWhilePowerUnknown: () => true },
     })[0];
@@ -253,6 +257,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
+      shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: { ...defaultDeps, holdsModeTargetRaisesWhilePowerUnknown: () => true },
     });

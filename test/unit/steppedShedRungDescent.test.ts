@@ -1,4 +1,4 @@
-import { resolveSteppedShedRung } from '../../lib/plan/shedding/steppedCandidates';
+import { chooseShedRung, resolveSteppedShedLadder } from '../../lib/plan/shedding/steppedCandidates';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { getSteppedLoadShedTargetStep } from '../../lib/plan/planSteppedLoad';
 import { steppedInputDevice } from '../utils/planTestUtils';
@@ -32,6 +32,31 @@ const heater = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => st
   ...overrides,
 });
 
+// The 526 W the house was over the hard cap during `inc_26449fb9`.
+const BREACH_KW = 0.526;
+
+// A 1-phase EV charger ladder in amps, the shape behind the 11–17 Aug trim
+// decisions: adjacent rungs are worth ~1 kW each, so a multi-kW deficit needs
+// the walk to keep going.
+const chargerProfile: SteppedLoadProfile = {
+  steps: [
+    { id: 'off', planningPowerW: 0 },
+    { id: '6a', planningPowerW: 1380 },
+    { id: '10a', planningPowerW: 2300 },
+    { id: '16a', planningPowerW: 3680 },
+    { id: '20a', planningPowerW: 4600 },
+    { id: '24a', planningPowerW: 5520 },
+    { id: '28a', planningPowerW: 6440 },
+  ],
+};
+
+const charger = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => steppedInputDevice({
+  steppedLoadProfile: chargerProfile,
+  selectedStepId: '28a',
+  currentDrawKw: 6.44,
+  ...overrides,
+});
+
 const initialTargetFor = (
   device: PlanInputDevice,
   shedAction: 'turn_off' | 'set_step',
@@ -41,41 +66,40 @@ const initialTargetFor = (
   currentDesiredStepId: isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
 });
 
-describe('stepped shed rung descent', () => {
+const ladderFor = (
+  device: PlanInputDevice,
+  profile: SteppedLoadProfile,
+  shedAction: 'turn_off' | 'set_step',
+) => resolveSteppedShedLadder({
+  device,
+  profile,
+  initialTargetStep: initialTargetFor(device, shedAction),
+  shedAction,
+});
+
+describe('stepped shed ladder pricing', () => {
   it('descends to the off step when every active rung prices at zero relief', () => {
     // The 2026-08-05 hard-cap breach: `measure_power` is stale at the `low`-step
     // value while the device runs at `max`. Both `max -> medium` (1.193 - 1.193)
     // and `max -> low` (1.193 - 1.193) price at exactly zero, which is what made
     // the heater vanish from candidacy for 4.5 minutes.
-    const device = heater();
-    const result = resolveSteppedShedRung({
-      device,
-      profile: waterHeaterProfile,
-      initialTargetStep: initialTargetFor(device, 'turn_off'),
-      shedAction: 'turn_off',
-    });
+    const result = ladderFor(heater(), waterHeaterProfile, 'turn_off');
 
-    expect(result.kind).toBe('rung');
-    if (result.kind !== 'rung') return;
-    expect(result.rung.clampedTargetStep.id).toBe('off');
+    expect(result.kind).toBe('ladder');
+    if (result.kind !== 'ladder') return;
+    expect(result.fromStepId).toBe('max');
     // Meter-grounded: turning it off frees exactly what the meter reports, which
     // is more than double the 526 W the breach needed.
-    expect(result.rung.effectivePower).toBeCloseTo(1.193, 6);
-    expect(result.rung.selectedStep.id).toBe('max');
+    expect(result.rungs).toEqual([{ toStepId: 'off', reliefKw: expect.closeTo(1.193, 6) }]);
+    expect(chooseShedRung(result.rungs, BREACH_KW)?.toStepId).toBe('off');
   });
 
   it('does not descend at all for a set_step device', () => {
-    // Materialization recomputes a `set_step` target as the ADJACENT rung
-    // (`resolveSteppedLoadDirectShedStepId`) and never sees the candidate's
-    // `toStepId`, so only `medium` may be priced here. Turning it off is also not
-    // the shed behaviour its owner configured.
-    const device = heater();
-    const result = resolveSteppedShedRung({
-      device,
-      profile: waterHeaterProfile,
-      initialTargetStep: initialTargetFor(device, 'set_step'),
-      shedAction: 'set_step',
-    });
+    // `set_step` means "worst case, the lowest active step", and materialization
+    // honours the planner's rung — but the descent guard still keeps a `set_step`
+    // shed on its adjacent rung, so only `medium` may be priced here. Turning it
+    // off is also not the shed behaviour its owner configured.
+    const result = ladderFor(heater(), waterHeaterProfile, 'set_step');
 
     expect(result.kind).toBe('no_relief');
     if (result.kind !== 'no_relief') return;
@@ -89,74 +113,48 @@ describe('stepped shed rung descent', () => {
     // never commands, so selection would treat the breach as covered and skip the
     // device that could actually have helped — strictly worse than no candidate.
     const device = heater({ currentDrawKw: 1.5 });
-    const result = resolveSteppedShedRung({
-      device,
-      profile: waterHeaterProfile,
-      initialTargetStep: initialTargetFor(device, 'set_step'),
-      shedAction: 'set_step',
-    });
+    expect(ladderFor(device, waterHeaterProfile, 'set_step').kind).toBe('no_relief');
 
-    expect(result.kind).toBe('no_relief');
-
-    // The same device on `turn_off` may descend: there the executor commands the
-    // off step, so delivered relief is the whole draw and the credit under-states.
-    const turnOff = resolveSteppedShedRung({
-      device,
-      profile: waterHeaterProfile,
-      initialTargetStep: initialTargetFor(device, 'turn_off'),
-      shedAction: 'turn_off',
-    });
-    expect(turnOff.kind).toBe('rung');
-    if (turnOff.kind !== 'rung') return;
-    expect(turnOff.rung.clampedTargetStep.id).toBe('low');
-    expect(turnOff.rung.effectivePower).toBeCloseTo(0.307, 6);
+    // The same device on `turn_off` may descend the whole ladder.
+    const turnOff = ladderFor(device, waterHeaterProfile, 'turn_off');
+    expect(turnOff.kind).toBe('ladder');
+    if (turnOff.kind !== 'ladder') return;
+    expect(turnOff.rungs.map((rung) => rung.toStepId)).toEqual(['low', 'off']);
+    // A 0.3 kW deficit is covered by `max -> low`, so the choice stops there
+    // instead of taking the off rung.
+    const chosen = chooseShedRung(turnOff.rungs, 0.3);
+    expect(chosen?.toStepId).toBe('low');
+    expect(chosen?.reliefKw).toBeCloseTo(0.307, 6);
   });
 
   it('still takes the gentlest rung when the measurement has caught up', () => {
     // No-regression guard: once `measure_power` reports the real 2.865 kW,
-    // `max -> medium` releases 1.194 kW, so the descent must stop there rather
+    // `max -> medium` releases 1.194 kW, so the choice must stop there rather
     // than continuing to `off`. This reproduces the reliefKw logged at 20:06:33.
-    const device = heater({ currentDrawKw: 2.865 });
-    const result = resolveSteppedShedRung({
-      device,
-      profile: waterHeaterProfile,
-      initialTargetStep: initialTargetFor(device, 'turn_off'),
-      shedAction: 'turn_off',
-    });
+    const result = ladderFor(heater({ currentDrawKw: 2.865 }), waterHeaterProfile, 'turn_off');
 
-    expect(result.kind).toBe('rung');
-    if (result.kind !== 'rung') return;
-    expect(result.rung.clampedTargetStep.id).toBe('medium');
-    expect(result.rung.effectivePower).toBeCloseTo(1.194, 6);
+    expect(result.kind).toBe('ladder');
+    if (result.kind !== 'ladder') return;
+    const chosen = chooseShedRung(result.rungs, BREACH_KW);
+    expect(chosen?.toStepId).toBe('medium');
+    expect(chosen?.reliefKw).toBeCloseTo(1.194, 6);
   });
 
   it('reports no reachable step when the device is already at its lowest active step', () => {
     const device = heater({ selectedStepId: 'low', currentDrawKw: 1.193 });
-    const result = resolveSteppedShedRung({
-      device,
-      profile: waterHeaterProfile,
-      initialTargetStep: initialTargetFor(device, 'set_step'),
-      shedAction: 'set_step',
-    });
 
-    expect(result.kind).toBe('no_reachable_step');
+    expect(ladderFor(device, waterHeaterProfile, 'set_step').kind).toBe('no_reachable_step');
   });
 
   it('turns a lowest-active-step device off when its shed behaviour allows it', () => {
     // The mirror of the case above: same position, but `turn_off` puts the off
     // step on the ladder, and the meter says 1.193 kW is there to release.
     const device = heater({ selectedStepId: 'low', currentDrawKw: 1.193 });
-    const result = resolveSteppedShedRung({
-      device,
-      profile: waterHeaterProfile,
-      initialTargetStep: initialTargetFor(device, 'turn_off'),
-      shedAction: 'turn_off',
-    });
+    const result = ladderFor(device, waterHeaterProfile, 'turn_off');
 
-    expect(result.kind).toBe('rung');
-    if (result.kind !== 'rung') return;
-    expect(result.rung.clampedTargetStep.id).toBe('off');
-    expect(result.rung.effectivePower).toBeCloseTo(1.193, 6);
+    expect(result.kind).toBe('ladder');
+    if (result.kind !== 'ladder') return;
+    expect(result.rungs).toEqual([{ toStepId: 'off', reliefKw: expect.closeTo(1.193, 6) }]);
   });
 
   it('clamps each rung to a pending lower desired step without stalling on it', () => {
@@ -168,18 +166,72 @@ describe('stepped shed rung descent', () => {
       stepCommandPending: true,
       currentDrawKw: 1.193,
     });
-    const result = resolveSteppedShedRung({
-      device,
-      profile: waterHeaterProfile,
-      initialTargetStep: initialTargetFor(device, 'turn_off'),
-      shedAction: 'turn_off',
-    });
+    const result = ladderFor(device, waterHeaterProfile, 'turn_off');
 
-    expect(result.kind).toBe('rung');
-    if (result.kind !== 'rung') return;
-    expect(result.rung.clampedTargetStep.id).toBe('off');
-    expect(result.rung.effectivePower).toBeCloseTo(1.193, 6);
+    expect(result.kind).toBe('ladder');
+    if (result.kind !== 'ladder') return;
+    expect(result.rungs).toEqual([{ toStepId: 'off', reliefKw: expect.closeTo(1.193, 6) }]);
     // The pending command is unconfirmed, so the relief is not yet banked.
-    expect(result.rung.hasUnconfirmedLowerDesiredStep).toBe(true);
+    expect(result.unconfirmedRelief).toBe(true);
+  });
+
+  it('prices every rung of the ladder, gentlest first', () => {
+    // The 11–17 Aug charger shape. Priced from the 6.44 kW the meter reports,
+    // every rung down from 28a is offered with what it frees — selection then
+    // picks against whatever deficit is still open when this device's turn comes.
+    const result = ladderFor(charger(), chargerProfile, 'turn_off');
+
+    expect(result.kind).toBe('ladder');
+    if (result.kind !== 'ladder') return;
+    expect(result.rungs).toEqual([
+      { toStepId: '24a', reliefKw: expect.closeTo(0.92, 6) },
+      { toStepId: '20a', reliefKw: expect.closeTo(1.84, 6) },
+      { toStepId: '16a', reliefKw: expect.closeTo(2.76, 6) },
+      { toStepId: '10a', reliefKw: expect.closeTo(4.14, 6) },
+      { toStepId: '6a', reliefKw: expect.closeTo(5.06, 6) },
+      { toStepId: 'off', reliefKw: expect.closeTo(6.44, 6) },
+    ]);
+  });
+});
+
+describe('shed rung choice', () => {
+  const chargerRungs = () => {
+    const result = ladderFor(charger(), chargerProfile, 'turn_off');
+    if (result.kind !== 'ladder') throw new Error('expected a priced ladder');
+    return result.rungs;
+  };
+
+  it('walks past rungs that do not cover what is needed and stops at the first one that does', () => {
+    // The headline case from the 11–17 Aug charger logs: a 3.77 kW deficit was
+    // answered with the adjacent 28a -> 24a rung, worth 1.01 kW. 24a frees 0.92,
+    // 20a 1.84, 16a 2.76 — none of them close the breach. 10a frees 4.14 and does.
+    const chosen = chooseShedRung(chargerRungs(), 3.77);
+
+    expect(chosen?.toStepId).toBe('10a');
+    expect(chosen?.reliefKw).toBeCloseTo(4.14, 6);
+  });
+
+  it('takes the deepest rung that prices positive when no rung covers what is needed', () => {
+    // 8 kW needed from a charger the meter shows carrying 6.44 kW: nothing on
+    // the ladder covers it, so the answer is everything the device has. Still
+    // meter-bound — the credit is the reported draw, not the nameplate.
+    const chosen = chooseShedRung(chargerRungs(), 8);
+
+    expect(chosen?.toStepId).toBe('off');
+    expect(chosen?.reliefKw).toBeCloseTo(6.44, 6);
+  });
+
+  it('takes only the gentlest rung when a small remainder is left to close', () => {
+    // The over-shed this split exists to prevent: the same charger asked for a
+    // 0.5 kW remainder gives up one rung, not the 4.14 kW rung it would have been
+    // fixed at had the choice been made against the cycle's opening deficit.
+    const chosen = chooseShedRung(chargerRungs(), 0.5);
+
+    expect(chosen?.toStepId).toBe('24a');
+    expect(chosen?.reliefKw).toBeCloseTo(0.92, 6);
+  });
+
+  it('answers nothing for a device with no priced rung', () => {
+    expect(chooseShedRung([], 1)).toBeNull();
   });
 });

@@ -85,6 +85,8 @@ const buildPlan = (
           ?? resolvePlannedShedTargetKind({
             plannedState: deviceOverrides.plannedState ?? 'keep',
             shedAction: deviceOverrides.shedAction,
+            steppedLoadProfile: deviceOverrides.steppedLoadProfile,
+            plannedShedStepId: deviceOverrides.plannedShedStepId,
           }),
       }))) as DevicePlan['devices'][number],
     ],

@@ -419,6 +419,8 @@ DevicePlanDevice => {
       ?? resolvePlannedShedTargetKind({
         plannedState: overrides.plannedState ?? 'keep',
         shedAction: overrides.shedAction,
+        steppedLoadProfile: (overrides as SteppedDiscriminantProbe).steppedLoadProfile,
+        plannedShedStepId: overrides.plannedShedStepId,
       }),
     ...(reason !== undefined
       ? { reason: typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason }

@@ -38,6 +38,7 @@ import type {
   ReportedStepObservedProbe,
   SteppedLoadDecoration,
   SteppedLoadDescriptorProbe,
+  SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
@@ -102,6 +103,8 @@ const pd = (
       ?? resolvePlannedShedTargetKind({
         plannedState: loose.plannedState ?? 'keep',
         shedAction: loose.shedAction,
+        steppedLoadProfile: loose.steppedLoadProfile,
+        plannedShedStepId: loose.plannedShedStepId,
       }),
   })),
 ) as DevicePlanDevice;
@@ -1672,7 +1675,12 @@ describe('PlanExecutor stepped loads', () => {
           // declared property types are already widened — the double cast is the
           // same fixture-boundary move the other builders in this file make.
           plannedShedTargetKind: resolvePlannedShedTargetKind(
-            merged as unknown as { plannedState: 'shed' | 'keep' | 'inactive'; shedAction?: ShedAction },
+            merged as unknown as {
+              plannedState: 'shed' | 'keep' | 'inactive';
+              shedAction?: ShedAction;
+              steppedLoadProfile?: SteppedLoadProfile;
+              plannedShedStepId?: string;
+            },
           ),
         })),
       ],
@@ -3008,6 +3016,9 @@ describe('PlanExecutor stepped loads', () => {
       shedAction: 'turn_off',
       selectedStepId: 'max',
       desiredStepId: 'off',
+      // The planner took this shed all the way to the floor, so the decided end
+      // state IS the binary axis and the two-phase descent is what it asks for.
+      plannedShedStepId: 'off',
     }));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -3032,6 +3043,55 @@ describe('PlanExecutor stepped loads', () => {
       DEVICE_LAST_CONTROLLED_MS,
       expect.objectContaining({ 'dev-1': expect.any(Number) }),
     );
+  });
+
+  it('leaves a turn_off stepped shed running when the planner parked it at an intermediate rung', async () => {
+    // The sibling of the two-phase test above, and the whole point of the shed
+    // behaviour being a FLOOR: same `turn_off` device, same ladder, but this
+    // cycle decided `low` — the rung its relief was priced at. The step write is
+    // the whole actuation; reaching for the binary handle here would cut the
+    // load the rung was chosen to keep running.
+    const state = createPlanEngineState();
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        binaryCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        binaryControl: { on: true },
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      boostActive: false,
+      shedAction: 'turn_off',
+      reportedStepId: 'max',
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+      plannedShedStepId: 'low',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      effectiveTransition: 'step_down_while_on',
+      desiredStepId: 'low',
+      previousStepId: 'max',
+    }));
+    // No step-preparation phase, so nothing claims a binary transition is coming.
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      effectiveTransition: 'full_shed_to_off',
+    }));
+    expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
   });
 
   it('records shed actuation when a stepped device sheds by stepping down while remaining on', async () => {
@@ -3172,7 +3232,7 @@ describe('PlanExecutor stepped loads', () => {
     }
   });
 
-  it('does not set onoff=false for a shed stepped device not at off-step', async () => {
+  it('does not set onoff=false for a shed stepped device the plan parked at a step', async () => {
     const snapshot = [
       {
         id: 'dev-1',
@@ -3191,6 +3251,10 @@ describe('PlanExecutor stepped loads', () => {
       boostActive: false,
       selectedStepId: 'low',
       desiredStepId: 'low',
+      // The decision, not the policy: the plan parks this device at `low`. A
+      // `turn_off` behaviour is only the floor, so the binary axis is not this
+      // device's end state and must stay untouched.
+      plannedShedStepId: 'low',
     }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();

@@ -7,11 +7,7 @@ import {
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { resolveShedIntent } from '../device/deviceActionProjection';
 import { materializeShedSnapshotFields } from './planActionMaterialization';
-import type { PlanEngineState } from './planState';
-import {
-  resolveSteppedLoadDirectShedStepId,
-  resolveSteppedShedCurrentDesiredStepId,
-} from './planSteppedShedResolution';
+import { resolveSteppedLoadDirectShedStepId } from './planSteppedShedResolution';
 import {
   PLAN_REASON_CODES,
   type DeviceReason,
@@ -142,8 +138,6 @@ function producerResolvedDecisionFields(dev: PlanInputDevice): {
 
 export function buildBasePlanDevice(params: {
   dev: PlanInputDevice;
-  devices: PlanInputDevice[];
-  state: PlanEngineState;
   priority: number;
   recentlyRestored: boolean;
   binaryCommandPending: boolean;
@@ -152,6 +146,8 @@ export function buildBasePlanDevice(params: {
   controllable: boolean;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
   shedSet: Set<string>;
+  /** Per device, the rung the shedding planner priced this cycle's shed at. */
+  shedStepTargets: Map<string, string>;
   anyOtherDeviceLimited: boolean;
   shedReasons: Map<string, DeviceReason>;
   boostActive: boolean;
@@ -159,8 +155,6 @@ export function buildBasePlanDevice(params: {
 }): DevicePlanDevice {
   const {
     dev,
-    devices,
-    state,
     priority,
     recentlyRestored,
     binaryCommandPending,
@@ -169,6 +163,7 @@ export function buildBasePlanDevice(params: {
     controllable,
     shedBehavior,
     shedSet,
+    shedStepTargets,
     shedReasons,
     boostActive,
     surplusAbsorbActive,
@@ -177,11 +172,9 @@ export function buildBasePlanDevice(params: {
   const runtimeDesiredStepId = dev.desiredStepId ?? initialDesiredStepId;
   const directShedStepId = resolveSteppedLoadDirectShedStepId({
     dev,
-    devices,
-    state,
     shedBehavior,
     shouldShed: shedSet.has(dev.id),
-    currentDesiredStepId: resolveSteppedShedCurrentDesiredStepId(dev),
+    plannedShedStepId: shedStepTargets.get(dev.id),
   });
   const shedDesiredStepId = directShedStepId;
   const desiredStepId = shedDesiredStepId ?? runtimeDesiredStepId;
@@ -254,6 +247,7 @@ export function buildBasePlanDevice(params: {
     shedAction,
     shedTemperature,
     releaseShedStepId,
+    ...(shedDesiredStepId !== undefined ? { plannedShedStepId: shedDesiredStepId } : {}),
     ...pickPropagatedPlanFields(dev),
   })));
 }

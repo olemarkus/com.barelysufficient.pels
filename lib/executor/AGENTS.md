@@ -10,6 +10,13 @@
   onto the destination. Do not reintroduce a read of the policy, not even behind a helper: a
   device's configured shed behaviour is a FLOOR, the deepest the planner may go, not this cycle's
   decision, so re-reading it here can only re-derive a decision this layer was not handed.
+
+  That FLOOR is load-bearing, not a turn of phrase. A `turn_off` device is routinely left RUNNING
+  at an intermediate rung — the planner descends its ladder only as far as the deficit requires
+  (`lib/plan/shedding/AGENTS.md`) — and such a device arrives here as `plannedShedTargetKind:
+  'step'`. Its binary axis is undemanded, `resolveSteppedLoadTransition` does not enter
+  `full_shed_to_off`, and `applySteppedLoadShedOff` must not fire. Anything that answers "shed
+  behaviour is turn_off, so the device ends up off" cuts the whole load the rung was chosen to keep.
   Same rule for plan devices: project them onto a narrow executor-facing view first
   (`ExecutableConvergenceDevice`, `ExecutableSteppedLoadIntent`, …), never pass the whole plan
   device in.

@@ -1,6 +1,7 @@
 import type { ShedActionIntent } from '../device/deviceActionProjection';
-import type { PlannedDeviceState } from '../../packages/contracts/src/types';
+import type { PlannedDeviceState, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { PlannedShedTargetKind, ShedAction } from './planTypes';
+import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 
 /**
  * Materialises the snapshot-side shed-action triple
@@ -87,10 +88,18 @@ export function materializeShedSnapshotFields(input: ShedSnapshotMaterialization
  * device (a kept stepped device still carries `set_step`), so the policy alone
  * cannot answer "where does the plan want this device", and a consumer that
  * reads it is re-deriving a decision it was not handed.
+ *
+ * `turn_off` in particular is a FLOOR, not an end state — "worst case, turn it
+ * off". The planner may park a stepped device at any rung above that floor, and
+ * when it does the decided end state is a `step`: the device keeps running,
+ * lower. Reading the behaviour alone would answer `binary_off` for that device
+ * and cut the whole load the rung was chosen to preserve.
  */
 export function resolvePlannedShedTargetKind(device: {
   plannedState: PlannedDeviceState;
   shedAction?: ShedAction;
+  steppedLoadProfile?: SteppedLoadProfile;
+  plannedShedStepId?: string;
 }): PlannedShedTargetKind | undefined {
   if (device.plannedState !== 'shed') return undefined;
   // A device whose triple was never materialized falls back to the same binary
@@ -98,6 +107,21 @@ export function resolvePlannedShedTargetKind(device: {
   switch (device.shedAction ?? 'turn_off') {
     case 'set_step': return 'step';
     case 'set_temperature': return 'target_value';
-    default: return 'binary_off';
+    default: return isShedParkedAtActiveStep(device) ? 'step' : 'binary_off';
   }
+}
+
+/**
+ * True when this cycle decided to leave the device running at a rung of its own
+ * ladder rather than take it to the off step. A device with no step decision
+ * (not stepped, or shed by a later stage) is not parked anywhere, so it reaches
+ * its behaviour's floor.
+ */
+function isShedParkedAtActiveStep(device: {
+  steppedLoadProfile?: SteppedLoadProfile;
+  plannedShedStepId?: string;
+}): boolean {
+  const { steppedLoadProfile, plannedShedStepId } = device;
+  if (!steppedLoadProfile || plannedShedStepId === undefined) return false;
+  return !isSteppedLoadOffStep(steppedLoadProfile, plannedShedStepId);
 }

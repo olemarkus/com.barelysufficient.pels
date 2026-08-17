@@ -529,6 +529,22 @@ type DevicePlanDeviceBase = {
   shedTemperature?: number | null;
   releaseShedStepId?: string | null;
   /**
+   * The step THIS cycle's shed decision parks a stepped device at — the rung the
+   * shedding planner priced the shed at (`SheddingPlan.shedStepTargets`), or the
+   * configured behaviour's floor when no rung was chosen.
+   *
+   * Planner bookkeeping, and the input `resolvePlannedShedTargetKind` needs to
+   * tell a `turn_off` device left running at an intermediate rung (`step`) from
+   * one taken to its off step (`binary_off`). Absent means "this cycle's shed
+   * was not decided with a step", which is exactly the state of a device a LATER
+   * stage flipped to `shed` (a rejected restore) — its `desiredStepId` was
+   * resolved on the keep path and says nothing about a shed destination, which
+   * is why this field exists instead of reading that one.
+   *
+   * Executor code reads `plannedShedTargetKind` and `desiredStepId`, not this.
+   */
+  plannedShedStepId?: string;
+  /**
    * This cycle's shed END STATE — see `PlannedShedTargetKind`. Stamped once, by
    * `finalizePlanDevices`, from the device's FINAL `plannedState` + shed
    * triple: the restore, swap, and hold stages each revise `plannedState`

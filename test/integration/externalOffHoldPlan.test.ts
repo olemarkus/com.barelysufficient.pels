@@ -182,6 +182,7 @@ describe('external-off hold — plan-device propagation', () => {
     state: createPlanEngineState(),
     shedSet: new Set<string>(),
     shedReasons: new Map(),
+    shedStepTargets: new Map(),
     guardInShortfall: false,
     deps,
   })[0];

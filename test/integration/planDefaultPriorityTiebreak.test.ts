@@ -36,6 +36,7 @@ const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant(
 const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
   devices,
   needed: 1,
+  deficitKw: 1,
   limitSource: 'capacity',
   total: 10,
   capacitySoftLimit: 5,
