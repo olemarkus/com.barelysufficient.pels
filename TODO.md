@@ -730,7 +730,6 @@ What remains open is below.*
       still reaches diagnostics/starvation classification.) Source: prod investigation + test
       suite, 2026-07-25. [P2]
 
-
 - [ ] **"Raising target 6a to 6a".** `formatRestoreNeedUserFacing`
       (`packages/shared-domain/src/planReasonFormatting.ts` ~385-387) renders
       `Raising target ${fromTarget} to ${toTarget}` with no equality guard, and
@@ -917,353 +916,6 @@ program) remain deferred.*
       `?? 0` P1 above first. Source: safe-pace model review (2026-07-26); design in
       `notes/safe-pace-two-constraints.md`.
 
-- [ ] **Tighten the device-state snapshots to discriminated types.** `TargetDeviceSnapshot`,
-      `DevicePlanDevice`, and `PlanInputDevice` carry binary/temperature/stepped/EV/freshness/power
-      fields as one nullable bag; discriminate by control kind so the compiler enforces per-variant
-      field presence (removes a class of nullable-field bugs). Files: `packages/contracts/src/types.ts`,
-      `lib/plan/planTypes.ts`, `lib/plan/planBuilder.ts`, settings UI contract tests.
-      **Slice 1 (control-kind TYPE GUARDS) landed:** added narrowed helper types
-      `SteppedLoadKind` / `SteppedPlanDevice` / `SteppedPlanInputDevice` in `lib/plan/planTypes.ts`
-      and converted `isSteppedLoadDevice` (`lib/plan/planSteppedLoad.ts`) into a real type guard
-      (overloads narrow the two flat plan device types to their `Stepped*` slices, plus a generic
-      overload for `Pick`-typed callers). Migrated the ~11 plan/executor sites that already branch on
-      the stepped discriminant so they read `steppedLoadProfile` without `?.`/null-assert. **No fields
-      were moved off the base types** — the flat types keep every field optional; narrowing happens
-      only at the guard. **The plan-device half of this item is DONE as of the strict-contracts
-      train (2026-08-14).** Field-level variant discrimination now forbids cross-kind field reads
-      on the three clusters the planner has: temperature (`isTemperaturePlanDevice` +
-      `TemperatureClusterFields`, the trio all required), stepped (`isSteppedLoadDevice` +
-      `SteppedClusterFields`, including a required `selectedStepId`), and binary
-      (`isBinaryPlanDevice`).
-      **There is no EV cluster on the plan device, and there is not going to be one (2026-08-15,
-      owner ruling).** `EvKind` / `EvDiscriminantProbe` / `withEvDiscriminant` are deleted, and the
-      `isEvPlanDevice` guard that half a dozen docblocks in this repo cited never existed — a boost
-      threshold is configuration and a battery level is an observation, so the planner carries
-      neither. It carries one kind-free `boostActive` decision (`lib/plan/planBoost.ts`) resolved
-      from the producer's `boostSupported`/`boostRequested`; the settings UI reads the config and
-      the level from the seams that own them (`getEvBoostConfig` / `getObservedStateOfCharge` in
-      `createPlanService`). Do not re-add an EV cluster to either plan type.
-      Snapshot-side discrimination (`TargetDeviceSnapshot`) is complete — see the summary bullet
-      at the end of this entry, which supersedes any earlier "what is left" prose here.
-      The diagnostics and surplus lanes that asked `objectiveKind === 'ev_soc'` now read the
-      producer-resolved `hasStandingDemand` instead: being off means going without (a thermostat)
-      or it does not (a charger whose demand arrives with a car). `objectiveKind` itself stays —
-      it is the smart-task layer's discriminator, not a planner branch — but no `lib/plan` module
-      reads its `'ev_soc'` member any more.
-      **EV-observed guard landed (slice 1 of the observer-snapshot EV discrimination):** added
-      `isEvObserved(snapshot): snapshot is EvObservedSnapshot` + `EvObservedSnapshot` (=
-      `TargetDeviceSnapshot & { evChargingState: EvChargingState }`) — the observer-snapshot twin of
-      `isEvPlanDevice` (since relocated to `packages/shared-domain/src/evObservedState.ts` by the
-      field-move slice below). `getEvRestoreBlockReason` (`lib/device/deviceActionProjection.ts`)
-      narrows through it. Superseded 2026-08-09: an unreadable plug-state is no longer a state
-      to classify at all — the producer drops a device that claims `evcharger_charging_state`
-      and reports outside the enum.
-      **EV-vocabulary de-couple landed (2026-06-07, PRs #1528/#1531/#1540/#1544/#1554/#1561/#1568/#1570/#1571):**
-      every consumer in `lib/plan`/`lib/objectives`/`lib/executor`/settings-UI now reads producer-resolved
-      bits / shared-domain predicates (`isEvDevice`, the `evPlugState.ts` classifiers,
-      `isEvSessionInactiveForDevice`, `resolveEvBoostBlockReason`) instead of raw plug-state, and
-      `scripts/check-ev-vocab.mjs` (in `ci:checks`) forbids `plugged_*` literals in those three layers.
-      **EV field-move landed (2026-06-07): `evChargingState` removed from `EvPlanInputKind` /
-      `DevicePlanDevice` (`EvKind`) / `ObjectiveDeviceInput`.** The producer
-      (`setup/appInit/toPlanDevice.ts`) now resolves the observed plug-state ONCE into a flat
-      `evCommandability: EvCommandabilityResolution` (`{ blockReason, sessionInactive, chargerNotResumable }`,
-      new type in `@pels/contracts`) via `resolveEvCommandability` (shared-domain); it is threaded through
-      the `planDevices`/`planReconcileState` carriers and the `withEvDiscriminant` regrouper. The device-shaped
-      resolvers read the materialized flat bits only —
-      the raw-`evChargingState` consumer arm was retired once every caller passed materialized fields; the sole
-      reader of the raw plug-state was the producer `resolveCommandableNow`. **Reversed 2026-08-09:** the flat
-      bits duplicated a semantic the state already carries, so the plan device carries `evChargingState` on the
-      EV cluster again and every consumer derives from it through the shared classifiers, with
-      `scripts/check-ev-vocab.mjs` keeping plug-state literals out of plan/objectives/executor. Architectural
-      correction surfaced in review: the settings-UI read model used to read `evChargingState` off the plan
-      device — but the **observer** is its canonical owner (`ObservedDeviceState.evChargingState`), so
-      `settingsOverviewReadModel` now sources it via a `getObservedEvChargingState` planService dep wired to
-      `ctx.getObservedState(id)`. `evChargingState` stays on `TargetDeviceSnapshot`/`ObservedDeviceState`
-      (transport + observer + settings-UI display) as designed. Fixed in passing: `isEvPhysicallyUnplugged`
-      read the raw string directly (would have silently no-op'd on plan devices after the move) — now reads the
-      materialized `evSessionInactive` bit.
-      **`evChargingState` typed as the `EvChargingState` union (closed enum) — foundation landed.** Field +
-      every consumer type now use `EvChargingState` (no `string`, no `null`); the producer
-      (`getEvChargingState` + the two realtime seams) normalises any vendor value outside the capability enum
-      to `undefined`, which the parse boundary now treats as a capability-contract violation and
-      DROPS the device for (2026-08-09), and the verbose "unknown charging state 'X'" diagnostic
-      was dropped (unknown is ignored, not surfaced).
-      **EV-observed field-move landed (2026-06-12): `evChargingState` is OFF the base
-      `ObservedDeviceState`/`TargetDeviceSnapshot`.** An un-narrowed `snapshot.evChargingState` read is now a
-      hard TS2339; consumers narrow through `isEvObserved` (moved to
-      `packages/shared-domain/src/evObservedState.ts`, browser-safe, generic over the carrier so settings-UI
-      narrows the same way — first UI consumer: the EV-boost status in `deviceDetail/evBoost.ts`). New contracts
-      types: `EvObservedFields` (required `evChargingState`, the narrowed cluster) + `EvObservedProbe` (the
-      optional "might be EV-observed" loose shape). OWNER seams keep physical custody via probe-widened types:
-      `TransportDeviceSnapshot` (`lib/device/transportDeviceSnapshot.ts`) for transport's stored/mutated
-      snapshots (the transport halves swapped wholesale — they never leak outside `lib/device`), and
-      `readObservedEvChargingState` (`lib/observer/observedDeviceStateProjection.ts`) as the one sanctioned raw
-      accessor feeding the read-model's flat DTO field. `toPlanDevice` widens its param with the probe (it
-      resolves + strips, as before). Type-level only — zero runtime behavior change. NOT moved, deliberately:
-      `stateOfCharge` (independent presence semantics — SoC without plug-state is real, ~30 UI/widget/flowCard
-      readers; needs its own slice with its own cluster shape) and `evCharging` (transport-internal only, zero
-      outside readers).
-      **Atomic temperature-observed facet landed (2026-08-14): temperature support is OFF the base
-      `ObservedDeviceState`/`TargetDeviceSnapshot`.** Consumers narrow through `hasObservedTemperature`
-      (`packages/shared-domain/src/temperatureObservedState.ts`, browser-safe, generic over the carrier). The
-      narrowed `TemperatureObservedFields` carries one required `temperature` object containing BOTH a finite
-      `currentTemperature` and the exact finite `target_temperature` snapshot; `TemperatureObservedProbe` makes
-      only that complete facet optional at owner seams. There is no parallel flat/optional temperature reading
-      on `TransportDeviceSnapshot`; fresher-wins merging updates or removes the complete facet. Consumers migrated:
-      `lib/objectives/samples.ts`
-      (`isFreshTemperatureDevice` composes `isTemperatureControlDevice && hasObservedTemperature`), the
-      settings-UI deadline progress readers (`deadlinesList.ts`, `deadlinePlanResolvers.ts`), the smart-tasks
-      widget payload, and the `appDebugHelpers` dump. **The guard is presence-only:** the facet itself is the
-      capability proof; there is no unavailable/unsupported kind state. Admission requires exact structural
-      support for `measure_temperature` + `target_temperature` and finite values for both. Missing or malformed
-      input removes the whole temperature facet immediately while leaving valid binary and stepped-load facets
-      intact; a temperature-only device is omitted. A later valid realtime observation triggers a targeted pull
-      and restores the pair atomically. Suffixed target capabilities do not qualify. Downstream consumers trust
-      the pair directly and do not re-check finiteness or reconstruct a target fallback. The observer-to-plan
-      seam is strict now: `readObservedTemperatureState` returns the complete pair or `null` (never `undefined`),
-      and `TemperaturePlanInputKind` requires both `currentTemperature` and `currentTarget` after narrowing.
-      The planner-internal/output propagation landed too: `TemperatureKind` is fully required
-      (`currentTarget` / `currentTemperature` / `plannedTarget` all plain numbers), `withTemperatureDiscriminant`
-      is discriminated on `deviceType === 'temperature'` with producer-side `TemperatureClusterFields`
-      co-presence enforcement, `toPlanDevice` DERIVES `deviceType` from facet presence, and the
-      mode-target abandon-grace / skip lanes are deleted (the capability value can no longer be
-      transiently missing; only the missing-mode-target fallback + emit throttle survive).
-      **State-of-charge-observed field-move landed (2026-06-13): `stateOfCharge` is OFF the base
-      `ObservedDeviceState`/`TargetDeviceSnapshot`.** An un-narrowed `snapshot.stateOfCharge` read is now a hard
-      TS2339; consumers narrow through `hasObservedStateOfCharge`
-      (`packages/shared-domain/src/stateOfChargeObservedState.ts`, browser-safe, generic over the carrier). New
-      contracts types: `StateOfChargeObservedFields` (required `stateOfCharge`) + `StateOfChargeObservedProbe`
-      (optional owner-side widening); `TransportDeviceSnapshot` now intersects EV, temperature, and SoC probes.
-      **Presence-only, like the temperature guard:** it proves the `stateOfCharge` snapshot *object* is present,
-      NOT `status === 'fresh'` — that bag keeps its own `status`, so consumers retain their freshness/`status`
-      gates after narrowing (the guard only removes the outer `?.`/`if (!soc)`). The one spot that differs from
-      the scalar slices: `freezeObserved` (`lib/observer/observedDeviceStateProjection.ts`) still deep-freezes the
-      nested SoC bag. Consumers migrated: `lib/objectives/samples.ts` (EV-SoC sample composes `isEvDevice &&
-      hasObservedStateOfCharge && status === 'fresh'`), the EV-SoC freshness/boost seams in `app.ts` +
-      `flowCards/registerFlowCards.ts` (probe-widened owner reads), the settings-UI device-list + deadline readers,
-      and the smart-tasks widget payload. `percent` finiteness was already a producer guarantee
-      (`normalizeStateOfChargePercent`), so this is pure type-tightening — zero runtime behavior change.
-      **Boundary-finiteness sweep landed (2026-06-13): `measure_power` realtime seam was the last ungated one.**
-      A read-only audit (map + adversarial-verify) confirmed the producer layer validates finiteness everywhere
-      EXCEPT the `measure_power` branch of `applyFreshnessOnlyCapabilityUpdate` (`lib/device/transport/managerFreshness.ts`),
-      which gated only on `typeof === 'number'` — so a realtime `NaN`/`Infinity` power event was stored on
-      `measuredPowerKw` (the sibling of the temperature P1; it also rendered "NaN kW" via the unguarded
-      `planSteppedCardText` reader and falsely advanced the freshness clock). Fixed drop-at-source
-      (`&& Number.isFinite(value)` → no write, no freshness bump). Swept the same class in the load-setting
-      reads too: `getLoadSettingWatts` (`devicePowerEstimate.ts`) and `getSnapshotLoad`/`getApiLoad`
-      (`lib/device/load.ts`) now drop a non-finite settings/snapshot `load` instead of propagating an infinite
-      estimate. An exhaustive boundary unit test (`test/unit/managerFreshness.test.ts`) seals the freshness seam.
-      With this, "validate-and-drop at the Homey boundary; present-implies-finite" holds for every numeric
-      capability write seam and load-setting read — the invariant the observed-field clusters rely on.
-      **Measured-power-observed field-move landed (2026-06-13): `measuredPowerKw`/`measuredPowerObservedAtMs`
-      are OFF the base `ObservedDeviceState`/`TargetDeviceSnapshot`.** An un-narrowed `snapshot.measuredPowerKw`
-      read is now a hard TS2339; consumers narrow through `hasObservedMeasuredPower`
-      (`packages/shared-domain/src/measuredPowerObservedState.ts`, browser-safe, generic over the carrier). New
-      contracts types: `MeasuredPowerObservedFields` (required `measuredPowerKw` + optional
-      `measuredPowerObservedAtMs` — the two travel together) + `MeasuredPowerObservedProbe` (optional
-      owner-widening); `TransportDeviceSnapshot` now intersects all four observed probes. Power-measurement
-      absence is the legitimate common case, so the guard draws the present/absent line and "present implies a
-      finite, non-negative kW" is the producer invariant (the write seams store only finite values).
-      `sampleIngest` used to check `measuredPowerObservedAtMs` independently; that per-capability age gate is
-      retired (it distrusted a legitimately-unchanging reading), and `sampleIngest` is now the ONLY consumer
-      outside the producer that reads the cluster at all — for PRESENCE, to keep an unmetered device out of
-      the per-device energy buckets rather than booking it at 0. Consumers
-      migrated: objectives `resolveCredibleDevicePower`, `sampleIngest`, `executablePlanProjection`, the
-      transport calibration-store seams, and the settings-UI device-list/view carriers; the rest read off
-      local types (`PlanInputDevice`, etc.) that kept their own `measuredPowerKw?` and were unaffected — those
-      have since been collapsed onto a required `currentDrawKw`, and the raw field no longer crosses the
-      producer boundary at all.
-      **Retired the two NaN-blind `?? 0` restore-gap reads** (`planSteppedRestorePending`, `restore/accounting`)
-      into named helpers `resolveObservedDrawKw` / `resolveObservedDrawKwWithNameplate`
-      (`lib/plan/restore/observedDraw.ts`; both since superseded — the plan device carries a
-      required `currentDrawKw`, so both call sites read the field and the module is gone) — `isFiniteNumber`-gated, so a non-finite `powerKw` nameplate can no
-      longer propagate through `??` (the old `measuredPowerKw ?? powerKw ?? 0` was NaN-blind). Type-level +
-      one defensive-correctness improvement; no intended behavior change given the producer invariant.
-      **Stepped-descriptor field-move landed (2026-06-13): `steppedLoadProfile`/`targetPowerConfig` are OFF the
-      base `DeviceDescriptor` and `reportedStepId` is OFF the base `ObservedDeviceState` — the FINAL slice of
-      this P1.** An un-narrowed `snapshot.steppedLoadProfile`/`targetPowerConfig`/`reportedStepId` read is now a
-      hard TS2339. Two new browser-safe guards in `packages/shared-domain/src/steppedLoadObservedState.ts`:
-      `isSteppedLoadSnapshot` (narrows `SteppedLoadDescriptorFields` — the snapshot-shaped twin of
-      `lib/plan`'s `isSteppedLoadDevice`, so `steppedLoadProfile` IS the kind discriminant; it checked
-      `steppedLoadProfile?.model === 'stepped_load'` at the time, and is a plain presence check since
-      2026-08-12, when the `model` field was deleted) and the presence-only `hasObservedReportedStep` (narrows
-      `ReportedStepObservedFields`). New contracts types: `SteppedLoadDescriptorFields` (required
-      `steppedLoadProfile` + optional `targetPowerConfig`, which rides the cluster) + `SteppedLoadDescriptorProbe`
-      (optional owner-widening), and `ReportedStepObservedFields`/`ReportedStepObservedProbe`. `TransportDeviceSnapshot`
-      and `DecoratedDeviceSnapshot` now intersect both new probes (the transport produces and the app-layer
-      decorator re-resolves + writes these onto the carrier). `suggestedSteppedLoadProfile` STAYS on the base
-      (it is a CONFIGURE hint for non-stepped devices, not part of the stepped cluster). Consumers migrated:
-      objectives `resolveCredibleDevicePower`, the flow-card stepped-load + EV-phase paths,
-      `AppSmartTaskApi.deviceSupportsLimitLowerPriority`, and the settings-UI device-detail carrier + smart-tasks widget payload;
-      owner/producer seams (transport parse/calibration-store/native-EV/debug-snapshot) probe-widen instead.
-      `targetPowerConfig` reads stay owner-probe reads (a continuous EV preset carries it without a full stepped
-      profile), not `isSteppedLoadSnapshot` narrows. Type-level only — zero runtime behavior change.
-      **Temperature de-kind slice T1 landed (2026-06-07): planner branches on modality, not device kind.**
-      Moved the starvation device-class set and the `deviceType === 'temperature'` checks out of
-      `lib/plan/planDiagnostics.ts` into browser-safe shared-domain predicates (`isTemperatureControlDevice`,
-      `isStarvationSupportedDeviceClass` in `packages/shared-domain/src/temperatureDeviceKind.ts`), mirroring
-      `isEvDevice`. Added `scripts/check-device-kind-vocab.mjs` (in `ci:checks`) — an AST guard forbidding
-      deviceClass family-name literals and `deviceType`/`deviceClass` literal comparisons in `lib/plan` +
-      `lib/executor` (executor was already clean). Value-level only; no `TargetDeviceSnapshot` touch.
-      **Objectives de-kind slice T2a landed (2026-06-08): `lib/objectives` consumes shared predicates.**
-      Swapped the `deviceClass === 'evcharger'` / `deviceType === 'temperature'` power-estimation
-      fallbacks in `samples.ts` / `objectiveSteps.ts` / `planningSpeed.ts` to `isEvDevice` /
-      `isTemperatureControlDevice`. The EV swap intentionally widens to the canonical EV identity
-      (`isEvDevice` also matches the `evcharger_charging` capability, not just `deviceClass`), aligning
-      objectives with how every other layer identifies EV chargers; genuine `objectiveKind === 'temperature'`
-      branches (`admission.ts`, `coldStartRelease.ts`) are objective-kind, not device-kind, and stay.
-      `lib/objectives` is now in `check-device-kind-vocab.mjs`'s `consumerDirs`, so the guard enforces all
-      three consumer layers.
-      **Modality-predicate containment landed (2026-08-11): one runtime definition per discriminant.**
-      The temperature and EV axes had already collapsed to a single shared-domain predicate each; the two
-      CONTROL-MODALITY axes had not, and had drifted the furthest precisely because their discriminants read
-      as ordinary field handling rather than as classification. `controlCapabilityId === undefined` was
-      re-spelled at nine `lib/plan`/`lib/executor` call sites plus a private `hasBinaryCapability` copy in
-      `lib/observer/observedState.ts`, while `steppedLoadProfile?.model === 'stepped_load'` had three more
-      copies (`observedState.ts`, `planCurrentState.ts`, and the `withSteppedDiscriminant` regrouper) sitting
-      beside a guard that 118 other sites already used. New browser-safe `hasBinaryControlCapability`
-      (`packages/shared-domain/src/binaryControlKind.ts`) is now the one binary definition —
-      `isBinaryPlanDevice` and `withBinaryDiscriminant` delegate to it, mirroring how
-      `isTemperaturePlanDevice`/`isEvPlanDevice` delegate — and `isSteppedLoadDevice` +
-      `withSteppedDiscriminant` now delegate to the existing `isSteppedLoadSnapshot`, so the plan layer owns
-      only narrowing. `check-device-kind-vocab.mjs` gained `lib/observer` and a third rule failing the build on
-      either discriminant re-inlined in the four consumer layers — as a comparison (`=== undefined`,
-      `=== 'stepped_load'`; the stepped half of this rule was retired on 2026-08-12 with the field it
-      policed, so rule 3 is the binary axis only now) or, for the binary axis, as a truthiness read
-      (`!x.controlCapabilityId`,
-      `if (x.controlCapabilityId)`, `Boolean(...)`, and the control operand of a standalone
-      `x.controlCapabilityId && …` guard). The truthiness half is not decoration: review found two `lib/executor/shedReleaseActuation.ts`
-      branches already written that way and invisible to the comparison-only rule, so shipping without it would
-      have taught the next author the evasion instead of the predicate. It deliberately does NOT match the
-      producer-only `controlModel` setting, `??` defaulting reads, or `steppedLoadProfile` truthiness. (At the
-      time that last exclusion was justified as "mere presence — a different question from
-      `model === 'stepped_load'`". It no longer is: the very next change made presence the whole definition.
-      See the follow-up below.) Like its siblings it stays a tripwire,
-      not a sandbox: an intermediate variable, a destructure-then-compare, or `typeof` still evade it and remain
-      review-caught. Type-level and structural only; the one behavioural-shaped edit is a test fixture that had been passing `{ model: 'stepped_load' }` where a real
-      `SteppedLoadProfile` belonged, which the tightened `resolveSurplusOnlyPosture` param now rejects.
-      Producers keep their literals by design: the vocabulary still lives in `lib/device/**` (transport) and
-      `setup/appInit/toPlanDevice.ts`.
-      **Stepped half of rule 3 retired (2026-08-12): the field it policed is gone.** `SteppedLoadProfile.model`
-      was deleted outright. `DeviceControlProfile = SteppedLoadProfile` is a union of ONE, so `model:
-      'stepped_load'` was a discriminator that discriminated nothing: on an already-typed value every
-      `profile.model === 'stepped_load'` comparison was a presence check in costume, and 25 of them were
-      spelled across `lib/**`, `setup/**`, `flowCards/**` and `packages/**` (plus 4 more in tests). Deleting the field makes the
-      vacuous comparison UNREPRESENTABLE, which is strictly stronger than detecting it — so the `model` entry
-      left `MODALITY_DISCRIMINANTS` in `check-device-kind-vocab.mjs` and rule 3 is now the binary axis only.
-      The stepped discriminant is the PRESENCE of `steppedLoadProfile`, by construction; `isSteppedLoadSnapshot`
-      and `isSteppedLoadDevice` are presence-only. The one place the tag ever did work — the `unknown` parse
-      boundary in `normalizeSteppedLoadProfile` (contracts + its `lib/utils` mirror) — decides stepped-ness from
-      the ladder shape, keeping only a NEGATIVE check on the tag (see the boundary note below). A future SECOND
-      profile type reads its discriminator THERE, at the `unknown` boundary, never downstream. Persisted-schema
-      note: old records carrying `model: 'stepped_load'` parse unchanged and are rewritten without the tag;
-      newly written ones omit it, so a downgrade to a build that still gated on the tag would reject profiles
-      saved after this change. One deliberate BEHAVIOUR change at the boundary, found in review: dropping the tag check made
-      `{ model: <foreign>, steps: <valid ladder> }` parse as a stepped profile, and that blob is reachable —
-      Homey's app-setting endpoint lets an external writer PUT a JSON-encoded `device_control_profiles` map,
-      the repair pass would rewrite it WITHOUT its tag, and `resolveEffectiveSteppedLoadProfile` would then
-      drive stepped commands from a value that announced it was not a stepped load. Both normalizers therefore
-      accept an absent tag and the legacy `'stepped_load'`, and REJECT a present foreign value. Versus the
-      first cut of this change that is a NARROWING; versus the pre-PR behaviour it accepts the untagged blob
-      PELS now writes while still refusing a foreign tag exactly as before. `model` stays off `SteppedLoadProfile`
-      and out of every trusted consumer; the asymmetry is the boundary doctrine (the function takes
-      `value: unknown`, so it may inspect a property the TYPE does not have). Otherwise type-level and
-      fixture-level only — 29 comparison sites and 245 `model: 'stepped_load'` literals removed (13 runtime,
-      228 TS fixtures, 4 in the Playwright JS stub; the stub's `device_control_profiles` entries KEEP the tag
-      on purpose, labelled as legacy persisted data), no other intended reachable behaviour change.
-      Follow-ups resolved by the semantic-control refactor (2026-08-12): the settings UI now consumes the
-      producer-resolved `binaryControllable` bit, and `toPlanDevice` consumes normalized `binaryControl` while
-      stripping all raw transport bindings. `controlCapabilityId` no longer crosses the transport boundary, so
-      neither surface can re-inline that SDK discriminant.
-      Open follow-ups from the review of the modality-containment change (P2, deferred):
-      - *Producer-shaped functions stranded in `lib/plan`.* `withHeadroomCurrentOn` (`planHeadroomSupport.ts`,
-        its own comment: "the twin of `toPlanDevice`") and `resolveSurplusOnlyPosture` (`planSurplusAbsorb.ts`)
-        have no `lib/plan` callers at all — only `setup/**` and `flowCards/**`. Both take raw transport shapes
-        (`withHeadroomCurrentOn`'s input carries `binaryControl`, the field the plan kinds deliberately exclude).
-        They belong next to `toPlanDevice.ts` in `setup/`; the move is legal today, since `flowCards/` sits above
-        `setup/` and `no-lib-to-setup` does not block that import.
-      - *The stepped axis has no truthiness rule, and it is the only stepped rule that could exist.*
-        `isSteppedLoadSnapshot` became a plain presence check (2026-08-12, the `planningPowerKw` move), and
-        the `model` field it used to compare was deleted outright later the same day — `DeviceControlProfile`
-        is a union of one, so the tag discriminated nothing, and `normalizeSteppedLoadProfile` now decides
-        stepped-ness at the `unknown` parse boundary from the ladder shape alone. So there is no
-        `=== 'stepped_load'` left anywhere for a comparison rule to catch: the comparison form is
-        unrepresentable, not merely forbidden, and the stepped entry is gone from `MODALITY_DISCRIMINANTS`.
-        What remains open is only the truthiness form. A bare `steppedLoadProfile` presence read in a consumer
-        layer IS the discriminant re-spelled — but it is also how an ordinary optional-field null guard is
-        spelled before a dereference (`stepIsAtOff` in `lib/observer/observedState.ts` reads the profile, not
-        the kind), and the rule cannot tell those apart. Decide whether the observer site should ask the
-        predicate and the guard should then cover the axis, or whether presence-before-dereference stays
-        legitimate and the exclusion is permanent.
-      Remaining under this item:
-      - **type discrimination (snapshot side): COMPLETE.** All observed clusters (EV / temperature / SoC /
-        measured-power) AND the stepped clusters (descriptor `steppedLoadProfile`/`targetPowerConfig` off
-        `DeviceDescriptor`; observed `reportedStepId` off `ObservedDeviceState`) have moved off the base
-        snapshot types onto orthogonal `*Fields` clusters with `*Probe` owner-widening and shared-domain guards.
-        An un-narrowed read of any of these on a base-typed value is a hard TS2339.
-      - **type discrimination (plan side): COMPLETE (2026-08-15).** Stepped, temperature and binary are
-        discriminated on both plan types; the EV cluster was not discriminated but REMOVED, along with the
-        boost config and the battery level it existed to carry (see the owner ruling under "Slice 1" above).
-        What remains under this item is only the truthiness-form question above, plus the open P2/P3
-        follow-ups below.
-      - **binary on/off discrimination (plan side): `currentOn` slice landed (2026-06-14).** The on/off truth
-        is now a strict-boolean `currentOn` on the binary plan kinds (`BinaryPlanInputKind`/`BinaryControlKind`),
-        resolved once by the producer (`resolveCurrentOn` — binary axis AND stepped-off fold, no staleness gate)
-        and stamped at `toPlanDevice`/`planDevices`. The kind-agnostic `isObservedOff`/`isObservedOn` wrappers
-        were DELETED; all consumers narrow via `isBinaryPlanDevice` and read `currentOn` directly (list sites
-        partitioned by kind), so on/off is unaskable on a non-binary device and the four-valued `currentState`
-        survives only as a UI/reason label. Behaviour change (intended): on/off is the latched last value with no
-        staleness gate (stale-off = trusted-off, stale-on = trusted-on, active step = on).
-        **`binaryControl` drop landed:** `binaryControl` is OFF the consumer plan kinds
-        (`BinaryControlKind`/`BinaryPlanInputKind` carry only `currentOn`); `withBinaryDiscriminant` emits
-        `currentOn` and strips the raw axis. `toPlanDevice` now also resolves `currentState` so the plan path and
-        reconcile trust the producer instead of re-resolving from `binaryControl`; `observedPower`,
-        `planExecutionDrift` (via `observedBinaryState`, which prefers `currentOn`), `planHeadroomDevice`, restore
-        accounting read `currentOn`; the former plan-side deferred-objective terminal release is retired,
-        and lifecycle fallback now reads observer truth in the executor. Reconcile recombines
-        `currentOn` with the merged stepped profile (no raw axis). Transport/observer/shared-domain and the
-        executable-from-snapshot projection keep `binaryControl` as the observed binary axis.
-        **`observationStale` removal landed:** the field is OFF the plan kinds — the plan trusts
-        producer-resolved control state (no plan-side distrust gate), `resolveObservedCurrentState` resolves a
-        concrete latched label (never `unknown` from staleness), and the idle/overview/starvation freshness gates
-        source staleness from the observer (`getObservationStale` dep, `isDeviceObservationStale` over the
-        projection). With this the plan-side binary-discrimination program is complete (open P2/P3 below).
-        *Step-only stepper on/off resolved on the step axis (2026-06-14): a stepped device without `onoff` reads
-        off/on from its step; restore/usage/overshoot/reconcile/activation/swap-completion + the executor all fixed.*
-        Open follow-ups (P2/P3, deferred):
-        - *planSteppedLoad masking is emergent (P3).* The `planSteppedLoad.ts` direct-`currentOn` sites (L161/266/299)
-          are masked-safe for a step-only stepper ONLY because the lowest step is the single off step at sorted index
-          0, so "next higher from off" == "restore step". **Hypothesis:** a profile with multiple zero-power sub-steps
-          below the first active step would make those unequal, silently regressing the restore target. **Persona:**
-          an installer with a multi-step `target_power` heater. Add a `getSteppedLoadNextRestoreStep` regression test
-          pinning a step-only device on a `[off(0), idle(0), low(>0), …]` profile; not a code change now.
-        - *Fixture `currentOn` precedence (deferred, P2, test-only).* `resolveFixtureCurrentOn`
-          (`test/utils/planTestUtils.ts`) lets an explicit `currentState` label win over structural
-          (binary+stepped) resolution, diverging from production `currentOn` stamping (production never consults the
-          label). Reordering to resolve structurally first is more faithful but cascades: ~31 stepped fixtures
-          express off-ness via `currentState` alone without a structural `binaryControl: { on: false }` signal and
-          flip `currentOn` under the reorder. **Hypothesis:** those underspecified fixtures can mask a planner/
-          executor regression where production resolves `currentOn` differently than the fixture asserts.
-          **Persona:** a maintainer touching stepped shed/restore. Do it as a focused PR: reorder the helper, then
-          add explicit `binaryControl` to each fixture that intends "off". (CodeRabbit #1728.)
-        - *Activation-seam end-to-end coverage.* The realtime snapshot-refresh (`appSnapshotHelpers`) and Flow
-          headroom card now stamp `currentOn` onto raw snapshots (the Flow card stamps the whole `devices` array)
-          before the activation in/active reads, and a step-only stepper carries `steppedLoadProfile`/`selectedStepId`
-          to the same reads. Unit-covered via `resolveCurrentOn`/the predicates, but not driven end-to-end (the
-          appSnapshotHelpers test mocks `syncHeadroomCardState`). **Hypothesis:** a future change could drop the seam
-          stamp/propagation and silently degrade activation-attempt close/active detection. **Persona:** a maintainer
-          refactoring the headroom/snapshot wiring. Add an integration test driving the real
-          `syncHeadroomCardState`/`evaluateHeadroomForDevice` with (a) a raw-snapshot binary device and (b) a
-          step-only stepper parked at its off step, asserting the attempt closes as inactive.
-        - *Step-axis stale-trust is undocumented (P2).* `resolveRestoreObservedState` (and the new step-axis
-          predicates) read `selectedStepId` + profile with NO `observationStale` gate, so a stale step-only stepper
-          at its off step resolves authoritatively to off — sound (`selectedStepId` is PELS's latched last-commanded
-          step) and consistent with the documented "stale observation is trusted" invariant, but it extends
-          stale-trust from the binary axis to the step axis without a dedicated note or test. **Hypothesis:** a future
-          change to step latching could silently flip stale step-only restore eligibility. **Persona:** an installer
-          with a `target_power` load. Add a one-line note in `lib/observer/AGENTS.md` + an integration test pinning a
-          stale step-only stepper's restore/shed classification.
-
 - [ ] **COMMITTED v1.1 (dump-load train, own small PR): manual-on grace for "Run on solar surplus" devices.**
       Reconcile-after-drift corrects an externally-turned-ON surplus-held dump load (the v1 helper copy
       states this contract explicitly). The committed follow-up: suppress the correction for
@@ -1314,6 +966,51 @@ program) remain deferred.*
       (never over-draws), so low-stakes. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
 ## P2 Product, Observability, and Maintainability
+
+- [ ] **Two producer-shaped functions are stranded in `lib/plan` with no `lib/plan` callers.**
+      `withHeadroomCurrentOn` (`lib/plan/planHeadroomSupport.ts`, its own comment: "the twin of
+      `toPlanDevice`") and `resolveSurplusOnlyPosture` (`lib/plan/planSurplusAbsorb.ts`) are called
+      only from `setup/**` and `flowCards/**` — verified 2026-08-17, every `lib/` hit is a comment
+      mention, not a call. Both take raw transport shapes; `withHeadroomCurrentOn`'s input carries
+      `binaryControl`, the field the plan kinds deliberately exclude. They belong next to
+      `setup/appInit/toPlanDevice.ts`. The move is legal today: `flowCards/` sits above `setup/`, so
+      `no-lib-to-setup` does not block the import. Promoted 2026-08-17 out of the completed
+      snapshot-discrimination umbrella; originally found reviewing the modality-containment change. [P2]
+
+- [ ] **Decide whether the stepped axis gets a truthiness rule, or whether the exclusion is permanent.**
+      `check-device-kind-vocab.mjs` rule 3 is the binary axis only — `MODALITY_DISCRIMINANTS` holds
+      one entry (`currentOn`), verified 2026-08-17. The comparison form for the stepped axis is
+      unrepresentable rather than merely forbidden (`SteppedLoadProfile.model` was deleted, so
+      stepped-ness IS the presence of `steppedLoadProfile`), so only the truthiness form is left to
+      police. The catch: a bare presence read in a consumer layer IS the discriminant re-spelled, but
+      it is also how an ordinary null guard is spelled before a dereference — `stepIsAtOff`
+      (`lib/observer/observedState.ts:50`) reads `device.steppedLoadProfile` for exactly that reason,
+      and a rule cannot tell the two apart. Decide: either the observer site asks the predicate and
+      the guard covers the axis, or presence-before-dereference stays legitimate and the exclusion is
+      documented as permanent. Promoted 2026-08-17 out of the completed umbrella. [P2]
+
+- [ ] **The step axis extends stale-trust without a note or a test.**
+      `resolveRestoreObservedState` (`lib/plan/restore/devices.ts:53`) reads `selectedStepId` + the
+      profile with NO staleness gate, so a stale step-only stepper parked at its off step resolves
+      authoritatively to off. That is sound — `selectedStepId` is PELS's latched last-commanded step —
+      and consistent with stale-off = trusted-off, but `lib/observer/AGENTS.md` documents that
+      invariant for the BINARY axis only (`currentOn`); it says nothing about the step axis, verified
+      2026-08-17. *Hypothesis:* a future change to step latching silently flips stale step-only
+      restore eligibility with nothing pinning it. *Persona:* an installer with a `target_power` load.
+      Add the note to `lib/observer/AGENTS.md` plus an integration test pinning a stale step-only
+      stepper's restore/shed classification. Promoted 2026-08-17 out of the completed umbrella. [P2]
+
+- [ ] **Fixture `currentOn` precedence diverges from production (test-only).**
+      `resolveFixtureCurrentOn` (`test/utils/planTestUtils.ts:49-54`) lets an explicit `currentState`
+      label win over structural (binary + stepped) resolution; production `currentOn` stamping never
+      consults the label. Still present as described, verified 2026-08-17. Reordering to resolve
+      structurally first is more faithful but cascades: ~31 stepped fixtures express off-ness via
+      `currentState` alone with no structural `binaryControl: { on: false }` signal, and flip under the
+      reorder. *Hypothesis:* those underspecified fixtures can mask a planner/executor regression where
+      production resolves `currentOn` differently than the fixture asserts. *Persona:* a maintainer
+      touching stepped shed/restore. Do it as a focused PR: reorder the helper, then give each fixture
+      that intends "off" an explicit `binaryControl`. (CodeRabbit #1728.) Promoted 2026-08-17 out of the
+      completed umbrella. [P2]
 
 - [ ] **The overshoot delta mixes a measured current total with a baseline that may be stale.**
       `buildOvershootEntryDiagnostics` now takes its current half from `context.measuredDrawKw`
@@ -1806,21 +1503,6 @@ program) remain deferred.*
       (`setup/appRealtimeDeviceReconcileRuntime.ts`), so one realtime→rebuild path is throttled and
       the other is not. Pre-existing, but the floor added by the layering train makes the asymmetry
       newly visible. *Source: pels-layering-guardian on the same train.*
-
-- [x] **Move `PlanEngine` composition out of the planner.** Completed by #2082: setup constructs
-      `PlanBuilder` and `PlanExecutor` over one shared state and exposes the narrow `PlanEngine`
-      behavior. `lib/plan/planEngine.ts` is now a
-      type-only consumer contract; it cannot construct or subclass the concrete setup facade.
-      `PlanActuationResult` lives in `lib/planContract/`, so the cruiser rejects every compiled
-      plan→executor import with no `planEngine.ts` exception, while the `arch:grep` source AST guard
-      rejects type-only and dynamic forms before compilation can erase them.
-
-- [x] **Wire smart-task lifecycle fallback through the executor-owned port.** Completed by #2084:
-      #2083 provides `LifecycleFallbackPort` and command claims that serialize its binary, target,
-      and stepped writes against ordinary execution; #2084 routes satisfied/deadline lifecycle
-      transitions through that port. Lifecycle waiters refresh observer truth and retry the
-      fallback immediately when an in-flight ordinary claim releases; abandonment invalidates that
-      authority rather than replaying either clock's stale command.
 
 - [ ] **Remove the remaining drift consultation from the planner facade.** DELETE it instead of
       routing it. Call `applyPlanActions(plan)` on every non-dry-run rebuild and
@@ -3255,7 +2937,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       erodes the mode's honesty framing. Source: pels-ux-fit implementation gate on the
       card-grammar PR (2026-07-04). [P3]
 
-
 - [ ] **Solar-surplus hold renders at warn tone though it is the expected daily state.** A "Run on
       solar surplus" dump load waiting for export shows `Limited` + warn-toned "Waiting for solar
       surplus" every non-sunny hour — an alert treatment for its normal posture. Consider an
@@ -4067,6 +3748,31 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       Source: prod log review 2026-08-06. [P3]
 
 ## P3 Future and Exploratory Work
+
+- [ ] **`planSteppedLoad`'s direct-`currentOn` sites are masked-safe only by profile shape.**
+      The `lib/plan/planSteppedLoad.ts` direct-`currentOn` reads are safe for a step-only stepper ONLY
+      because the lowest step is the single off step at sorted index 0, so "next higher from off"
+      equals "restore step". *Hypothesis:* a profile with multiple zero-power sub-steps below the first
+      active step makes those unequal, silently regressing the restore target. *Persona:* an installer
+      with a multi-step `target_power` heater. Add a `getSteppedLoadNextRestoreStep` regression test
+      pinning a step-only device on a `[off(0), idle(0), low(>0), …]` profile; not a code change now.
+      Still uncovered as of 2026-08-17 — `test/integration/planSteppedLoad.test.ts` has a two-zero-step
+      `zeroOnlyProfile` case, but it drives the SHED direction (`getSteppedLoadShedTargetStep`) and has
+      no active step above the zeros, so the restore-direction hypothesis is untested. Promoted
+      2026-08-17 out of the completed snapshot-discrimination umbrella. [P3]
+
+- [ ] **The activation seam is unit-covered but never driven end to end.**
+      The realtime snapshot refresh (`setup/appSnapshotHelpers.ts`) and the Flow headroom card both
+      stamp `currentOn` onto raw snapshots before the activation in/active reads, and a step-only
+      stepper carries `steppedLoadProfile`/`selectedStepId` to the same reads. Covered only via
+      `resolveCurrentOn` and the predicates: `test/integration/appSnapshotHelpers.test.ts` still mocks
+      `syncHeadroomCardState` (`vi.fn()`), verified 2026-08-17, so nothing exercises the real seam.
+      *Hypothesis:* a future change drops the stamp or the propagation and silently degrades
+      activation-attempt close/active detection. *Persona:* a maintainer refactoring the
+      headroom/snapshot wiring. Add an integration test driving the real
+      `syncHeadroomCardState`/`evaluateHeadroomForDevice` with (a) a raw-snapshot binary device and
+      (b) a step-only stepper parked at its off step, asserting the attempt closes as inactive.
+      Promoted 2026-08-17 out of the completed umbrella. [P3]
 
 - [ ] **A sub-home meter area under `power_source = flow` renders nothing, forever.**
       `routeMeterReadings` (`setup/homeRuntime/homeRuntimeRegistry.ts`) drops every reading unless
