@@ -60,6 +60,13 @@ export function buildPelsStatus(params: {
   // (controlledKw/uncontrolledKw) is absent. The main home passes
   // `dryRunEffective: undefined`, so the field is JSON-omitted and its persisted
   // blob stays byte-identical.
+  //
+  // This overloads one optional boolean with two orthogonal meanings — actuation
+  // posture AND home kind. The first time the main home writes its own posture
+  // (reasonable enough; main has one too), `totalKw` starts appearing in main's
+  // persisted blob, changing a payload external Flow automations read. If you
+  // give main a posture, pass the area-total decision explicitly at the same
+  // time rather than leaving it inferred from `dryRunEffective !== undefined`.
   const areaTotalKw = dryRunEffective !== undefined && typeof plan.meta.totalKw === 'number'
     ? plan.meta.totalKw
     : undefined;

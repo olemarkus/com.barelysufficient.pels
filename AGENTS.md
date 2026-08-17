@@ -231,6 +231,7 @@ Module-scoped rules live in nested `AGENTS.md` files. Read the ones covering the
 | `lib/objectives/AGENTS.md` | Objectives orientation |
 | `lib/objectives/deferredObjectives/AGENTS.md` | Two-clock design + e2e rules for smart tasks |
 | `lib/price/AGENTS.md` | Price module orientation |
+| `drivers/pels_insights/AGENTS.md` | Insights driver: capability declarations are an app-wide compatibility floor |
 | `lib/dailyBudget/AGENTS.md` | Daily budget orientation |
 | `setup/AGENTS.md` | App-wiring conventions + boot-path map |
 | `test/AGENTS.md` | Test tier classification + placement |
@@ -270,6 +271,12 @@ Repo-specific review lenses exist for fan-out checks before opening a non-trivia
 | `pels-runtime-reality` | `lib/plan/**`, `lib/device/**`, `lib/power/**`, `lib/dailyBudget/**`, `lib/price/**`, `drivers/**`, persisted-state handling |
 
 Findings come back classified P0/P1/P2 — P0/P1 fix in the same PR; P2/P3 to `TODO.md`.
+
+A finding only earns a `TODO.md` entry if it clears the **Entry Bar** in that file's header: it
+names where the defect is, what change closes it, and how you would know it is done. A finding that
+cannot say all three is not a backlog item — fix it now, settle the question, or drop it. A durable
+constraint (rather than a change someone will make) belongs in the governing `AGENTS.md` or the code
+it constrains.
 
 ---
 
