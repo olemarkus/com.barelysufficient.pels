@@ -51,9 +51,10 @@ export type MainMeterArrangement = 'unknown' | 'identified' | 'idless_aggregate_
  * Cross-store meter ownership guard for a freshly composed area list, plus the
  * requirement that once ANY meter area exists the Main home names its own
  * meter. Automatic cannot prove which of several whole-home candidates belongs
- * to Main, and may have established an area's meter while it was the sole
- * readable candidate. The settings UI already nudges (`HOMES_MAIN_METER_NOTICE`); this is
- * the config invariant behind the nudge.
+ * to Main. Requiring an explicit selection prevents a valid saved configuration
+ * from ever assigning Automatic's sampled candidate to a meter area as well.
+ * The settings UI already nudges (`HOMES_MAIN_METER_NOTICE`); this is the config
+ * invariant behind the nudge.
  *
  * The Flow source is refused outright before that requirement is even asked:
  * meter areas and the Flow power source are mutually exclusive (a Flow power
@@ -197,9 +198,9 @@ export const saveMainMeterSelection = (
   const config = read.state === 'present' ? read.value : { subHomes: [] };
   const { subHomes } = config;
   // The same requirement the area path enforces, from the other side: going
-  // back to Automatic while meter areas are RUNNING would make the Main home
-  // read every area's meter as its own. No power-source gate here, unlike the
-  // area path: this endpoint is only reachable from the Whole-home meter
+  // back to Automatic while meter areas are RUNNING would leave no proven
+  // physical meter owner for the Main home. No power-source gate here, unlike
+  // the area path: this endpoint is only reachable from the Whole-home meter
   // picker, which renders on the Homey Energy source alone.
   //
   // Only this branch consults activation, so picking an explicit meter — the

@@ -17,21 +17,21 @@ import {
 
 /**
  * Shown when an area save is refused because the Main home is still on
- * Automatic. Carries its own consequence clause: the refusal fires from the
+ * Automatic. Carries its own reason clause: the refusal fires from the
  * EDITOR, where `HOMES_MAIN_METER_NOTICE` is not rendered (it belongs to the
  * list, and on a first area the area count is still zero), so a bare remedy
  * would arrive with no reason. Names the control as a setting, not as an
  * option in the picker — same shape as `HOMES_MAIN_METER_NOTICE`.
  */
-export const HOMES_AREA_NEEDS_MAIN_METER = 'Meter areas need the Main home’s own meter, or '
-  + 'Main home devices get limited by this area’s usage. Set “Whole-home meter” under '
+export const HOMES_AREA_NEEDS_MAIN_METER = 'Meter areas need the Main home’s own meter because '
+  + 'Automatic can’t prove which meter belongs to the Main home. Set “Whole-home meter” under '
   + 'Limits & safety, then save this area.';
 
 /**
  * The same rule from the other side: picking Automatic for the Whole-home
- * meter while meter areas exist. Automatic reads the combined total of every
- * meter, so the Main home would be limited by an area's usage. Names the panel
- * the other remedy lives on, which is not the one this renders over.
+ * meter while meter areas exist. Automatic cannot prove which physical meter
+ * belongs to the Main home. Names the panel the other remedy lives on, which
+ * is not the one this renders over.
  */
 export const HOMES_MAIN_METER_NEEDED_BY_AREAS = 'While meter areas exist, the Main home needs '
   + 'its own meter. Pick one, or remove your areas under Multiple meters first.';

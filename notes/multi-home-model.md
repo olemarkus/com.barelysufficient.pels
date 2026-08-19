@@ -26,32 +26,34 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   It is *never* Homey's runtime device uuid — it must survive device
   re-pairing, and it later doubles as a home-device `data.id`. **No `:` is
   allowed in an id** because `:` is the settings-key suffix separator (below).
-- An explicit meter device id has **exactly one owner across the Main home and
-  every meter area**. Main's `null`/Automatic fallback is not an explicit identity
-  and remains allowed when no meter areas run. That fallback is NOT a combined
-  total: the reader accepts the sole finite `cumulative` item in the Homey Energy
-  payload. If several exist, it retains the candidate proven during the current
-  process while that candidate remains present; otherwise the read is ambiguous and produces
-  no Main sample for that report. Ambiguity persists until a later report has one
-  usable candidate or the owner selects a meter explicitly. A sole candidate may
-  still be a superset of Main or an area's own meter. The sampled identity is resolved with
-  the reading, rides the sample into the admitted power ingest
+- **Saved ownership:** an explicit meter device id has exactly one owner across the Main home and
+  every meter area. The serialized `ui_homes_save` seam requires an explicit Main meter before an
+  area can run, refuses assigning that meter to an area, and refuses switching Main back to
+  Automatic while areas run. Those rules shipped with the generally available feature, so a valid
+  current configuration cannot be "Main on Automatic plus active areas" and cannot assign one
+  explicit meter to both Main and an area. Legacy, stale, or externally malformed cross-store state
+  still fails closed at the producer-owned Main actuation predicate until repaired.
+- **Sample provenance:** Main's `null`/Automatic fallback remains valid when no meter areas run. It
+  is not a combined total: the reader accepts the sole finite `cumulative` item in the Homey Energy
+  payload. If several exist, it retains the candidate proven during the current process while that
+  candidate remains present; otherwise the read is ambiguous and produces no Main sample. A sole
+  candidate may be a superset of Main. Independently of the saved selection, the identity of every
+  admitted sample is resolved with the reading and rides into the power ingest
   (`setup/powerSamplePipeline.ts` publishes it atomically with the watts), and
-  on a proven collision with an area meter fences Main actuation for exactly the
-  colliding sample's usable lifetime (`setup/homeMainMeterAuthority.ts`). The
-  identity is in-memory only, so a RESTART inside that lifetime is fenced too:
+  a proven collision with an area meter starts a Main-actuation fence episode
+  (`setup/homeMainMeterAuthority.ts`). Sample provenance itself is usable only for the sample's
+  freshness lifetime, but an observed fence episode stays latched beyond expiry until a later
+  admitted sample proves safe provenance and hands control to fresh-plan recovery. This is a defensive
+  transport state, not a second valid ownership model: it is reachable while invalid legacy state
+  is repaired, when an adapter temporarily misclassifies the configured selection, or when an
+  earlier in-flight read lands during that repair. The
+  identity is in-memory only, so a restart inside that lifetime is fenced too:
   the tracker reloads durable watts the planner still treats as fresh while no
-  ingest of the new process has attested them, and the sampled clause holds Main
-  closed until its first admitted sample re-proves provenance (or those restored
-  watts age out). Both ownership mutations share the
-  typed save endpoint: the UI validates while editing, and the endpoint checks
-  a fresh classified homes read before either area or Main-meter persistence,
-  so either concurrent write order refuses the second owner. The homes-store
-  boundary additionally treats duplicate area ownership as suspect. A legacy,
-  stale, or external cross-store collision fails closed at the producer-owned
-  Main actuation predicate (plan executor and terminal smart-task actuator)
-  until repaired. One physical sample must never drive two independent
-  controllers managing different device sets.
+  ingest of the new process has attested them. That restart fence means only "the current sample's
+  provenance did not survive restart"; it is not evidence that Main actually read an area's meter.
+  The sampled clause holds Main closed until the first admitted sample re-proves provenance. One
+  physical sample must never drive two independent controllers
+  managing different device sets.
 
 ## Membership resolution (zone rule + pin override)
 
@@ -76,7 +78,10 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   `undefined`, `null`, an empty key list, malformed values, and thrown SDK
   errors. Every downstream consumer sees only the semantic
   `MainMeterSelection` contract: a resolved explicit id/Automatic selection,
-  or `unavailable`. `unavailable` never degrades to Automatic.
+  or `unavailable`. `unavailable` must never degrade to Automatic. A known violation remains in
+  `readMainMeterSelection`: Homey's transient `null` can currently take the legitimate stored-null
+  branch and temporarily classify an explicit selection as Automatic. The P1 settings-reader entry
+  in `TODO.md` owns that fix; the sampled-identity fence limits its control impact in the meantime.
 - Constructor defaults are not ownership evidence. Main and sub-home control
   stay fenced until both homes and pin stores have each produced a
   non-suspect read; active meter areas additionally require a committed zone

@@ -1509,8 +1509,8 @@
       if (body.meterDeviceId !== null && meterDeviceId.length === 0) {
         return { ok: false, reason: 'invalid' };
       }
-      // Automatic while meter areas are RUNNING would read every area's meter
-      // as the Main home's own. Same activation term as production (a dormant
+      // Automatic while meter areas are RUNNING cannot prove which physical
+      // meter belongs to Main. Same activation term as production (a dormant
       // pre-GA config is not running, so it must not block Automatic).
       const areasRunning = current.length > 0
         && (raw?.activationVersion === 1 || settings.multi_home_enabled === true);

@@ -17,9 +17,21 @@
   toggle. `readTemperatureControlDisabledDevicesSetting` (`appSettingsHelpers.ts`) and
   `readConfiguredPowerSource` (`powerSourceSettings.ts`) are the reference readers.
   Where `null` is itself a stored value — the Main meter's "Automatic" — the read value cannot
-  distinguish unwritten from stored-null, so the key list is the only authority; see the
-  outstanding TODO for `mainMeterSettings.ts` and `homeRuntime/homeOperatingMode.ts`, which
-  still gate on `undefined` alone.
+  distinguish stored-null from a transient miss. The key list can prove only whether the key is
+  written; a listed key plus a `null` value still needs producer-owned last-good state, a companion
+  marker, or a bounded grace policy. See the outstanding TODO for `mainMeterSettings.ts` and
+  `homeRuntime/homeOperatingMode.ts`, which still gate on `undefined` alone.
+- **Configured meter ownership and sampled-meter provenance are different facts.** The
+  `ui_homes_save` seam requires an explicit Main meter before any meter area can run, refuses the
+  same explicit meter on both sides, and refuses switching Main back to Automatic while areas run.
+  A valid current configuration therefore cannot assign an Annex/area meter to Main. The sampled
+  fence in `homeMainMeterAuthority.ts` is defence for a different boundary: legacy or externally
+  malformed persisted state, an in-flight sample while such state is repaired, a fresh restored
+  sample whose meter identity did not survive restart, and adapter failures such as the outstanding
+  `mainMeterSettings.ts` null-read defect above. Describe those states as **sample provenance being
+  temporarily untrusted**, never as PELS confusing two valid configured owners. Fix a supported
+  path at the dirty producer; do not weaken the save invariant or turn the defensive fence into a
+  normal Multiple meters journey.
 - **An extracted body may re-assert a boot-window invariant by throwing, never by defaulting.** Six `AppContext` members are optional (`priceCoordinator`, `dailyBudgetService`, `deviceManager`, `planEngine`, `planService`, `deviceDiagnosticsService`) while `PelsApp` declares them definite, so a body moved out of `app.ts` behind `ctx: AppContext` inherits a nullability the original never had. `?.` or `?? someDefault` there silently converts a wiring bug into a plausible-looking value and violates the resolution-in-producer rule. Assert instead — `AppSmartTaskApi.requirePriceRateLabel` is the reference — or narrow the constructor to a `Pick<AppContext, …>` when every member you need is genuinely optional upstream too (`AppSmartTaskPayloads`).
 
 ## Boot path

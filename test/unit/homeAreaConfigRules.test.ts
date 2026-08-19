@@ -154,8 +154,8 @@ describe('composeHomeAreaSaveRefusalLine', () => {
     expect(composeHomeAreaSaveRefusalLine({ ok: false, reason: 'main_meter_required' }))
       .toBe(HOMES_AREA_NEEDS_MAIN_METER);
     // The editor does not render the standing main-meter notice, so the line
-    // has to carry its own consequence, not just the remedy.
-    expect(HOMES_AREA_NEEDS_MAIN_METER).toContain('get limited by this area’s usage');
+    // has to carry its own reason, not just the remedy.
+    expect(HOMES_AREA_NEEDS_MAIN_METER).toContain('Automatic can’t prove which meter belongs');
     expect(HOMES_AREA_NEEDS_MAIN_METER).toContain('“Whole-home meter” under Limits & safety');
     // The picker's own side of the same rule names the panel areas live on.
     expect(HOMES_MAIN_METER_NEEDED_BY_AREAS).toContain('under Multiple meters');

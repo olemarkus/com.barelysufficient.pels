@@ -1389,7 +1389,11 @@ rather than a generic failure. Three of them pin vocabulary:
   and choosing Automatic while areas run) and always names the same control:
   **Whole-home meter**, under **Limits & safety**. Name it as a setting to
   change, never as an option to pick — the picker's options are device names
-  plus `Automatic`.
+  plus `Automatic`. This is an enforced configuration invariant, not guidance the owner may ignore:
+  normal user-facing copy must never describe Main-on-Automatic plus running meter areas as a valid
+  steady state. A defensive sampled-meter fence is an internal response to untrusted sample
+  provenance, legacy state, or an in-flight repair; do not turn it into a normal setup story or say
+  PELS "confused" two configured meters.
 - **The Homey Energy requirement also runs both directions** (saving an area
   on the Flow source, and switching the source to Flow while areas run), and
   each side names the OTHER side's control: the area save points at
