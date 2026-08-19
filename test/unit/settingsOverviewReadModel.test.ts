@@ -7,6 +7,17 @@ import {
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 
+const absentTemperature = {
+  getObservedTemperature: () => ({ kind: 'absent' } as const),
+};
+
+const observedTemperature = (currentTarget: number, currentTemperature: number) => ({
+  getObservedTemperature: () => ({
+    kind: 'observed' as const,
+    value: { currentTarget, currentTemperature },
+  }),
+});
+
 describe('settingsOverviewReadModel', () => {
   it('projects capacity and effective hour budgets for settings overview', () => {
     const device = buildPlanDevice({
@@ -26,7 +37,7 @@ describe('settingsOverviewReadModel', () => {
         capacityLimitKw: 5,
         dailyBudgetHourKWh: 12}),
       devices: [device],
-    });
+    }, absentTemperature);
 
     // Only what the wire still carries. The inputs above are planner-meta
     // fields; most of them stopped crossing to the settings UI once the wire
@@ -62,7 +73,7 @@ describe('settingsOverviewReadModel', () => {
         capacityShortfall: false,
         dailyBudgetExceeded: false}),
       devices: [buildPlanDevice({ reason: { code: PLAN_REASON_CODES.keep, detail: null } })],
-    } as never);
+    } as never, absentTemperature);
 
     for (const dead of [
       'dailySoftLimitKw', 'powerNowKw', 'hasLivePowerSample', 'powerSampleAgeMs',
@@ -90,7 +101,7 @@ describe('settingsOverviewReadModel', () => {
         capacityLimitKw: 5,
         dailyBudgetHourKWh: 12}),
       devices: [heater, battery, solar],
-    });
+    }, absentTemperature);
 
     const ids = (readModel?.devices ?? []).map((d) => d.id);
     expect(ids).toContain('heater');
@@ -114,7 +125,7 @@ describe('settingsOverviewReadModel', () => {
         capacityLimitKw: 5,
         dailyBudgetHourKWh: 4.25}),
       devices: [device],
-    });
+    }, absentTemperature);
 
     // The daily allocation (4.25) is tighter than the capacity budget (9.5), so
     // it wins. Both inputs stay local to the read model — only the resolved
@@ -137,7 +148,7 @@ describe('settingsOverviewReadModel', () => {
       },
     });
 
-    expect(buildSettingsOverviewDeviceReadModel(device).steppedLoad).toEqual({
+    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).steppedLoad).toEqual({
       profile: isSteppedLoadDevice(device) ? device.steppedLoadProfile : undefined,
       reportedStepId: 'low',
       targetStepId: 'max',
@@ -163,7 +174,7 @@ describe('settingsOverviewReadModel', () => {
 
     expect(buildSettingsOverviewDeviceReadModel(
       device,
-      {},
+      absentTemperature,
       confirmedProfile,
     ).steppedLoad).toEqual(expect.objectContaining({
       profile: confirmedProfile,
@@ -197,7 +208,7 @@ describe('settingsOverviewReadModel', () => {
     };
     const corrected = confirmedProfile.steps.at(-1)?.id;
 
-    const readModel = buildSettingsOverviewDeviceReadModel(device, {}, confirmedProfile);
+    const readModel = buildSettingsOverviewDeviceReadModel(device, absentTemperature, confirmedProfile);
 
     expect(readModel.steppedLoad?.targetStepId).toBe(corrected);
     expect(readModel.steppedLoad?.targetStepId).not.toBe('max');
@@ -216,7 +227,7 @@ describe('settingsOverviewReadModel', () => {
       pendingTargetCommand: undefined,
     });
 
-    expect(buildSettingsOverviewDeviceReadModel(device).steppedLoad).toMatchObject({
+    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).steppedLoad).toMatchObject({
       commandPending: true,
     });
   });
@@ -230,7 +241,7 @@ describe('settingsOverviewReadModel', () => {
       desiredStepId: 'max',
     });
 
-    expect(buildSettingsOverviewDeviceReadModel(device).steppedLoad).toMatchObject({
+    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).steppedLoad).toMatchObject({
       reportedStepId: null,
       targetStepId: 'max',
     });
@@ -247,11 +258,12 @@ describe('settingsOverviewReadModel', () => {
 
     // The observer is the canonical owner; the read model must surface ITS value.
     expect(buildSettingsOverviewDeviceReadModel(device, {
+      ...absentTemperature,
       getObservedEvChargingState: (id) => (id === 'ev-1' ? 'plugged_in_charging' : undefined),
     }).evChargingState).toBe('plugged_in_charging');
 
     // With no observer dep wired, the plan device must not leak a raw plug-state.
-    expect(buildSettingsOverviewDeviceReadModel(device).evChargingState).toBeUndefined();
+    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).evChargingState).toBeUndefined();
   });
 
   it('surfaces the EV battery reading so the card can show it beside the level', () => {
@@ -262,18 +274,19 @@ describe('settingsOverviewReadModel', () => {
     // wire type declares: the observation layer's session bookkeeping is its own
     // business (`notes/ev-soc-layering.md`).
     expect(buildSettingsOverviewDeviceReadModel(device, {
+      ...absentTemperature,
       getObservedStateOfCharge: () => stateOfChargeFixture({
         percent: 64, observedAtMs: 1_000, sessionStartedAtMs: 500,
       }),
     }).stateOfCharge).toEqual({ level: { kind: 'known', percent: 64 } });
 
     // With no observer dep wired there is no reading to show.
-    expect(buildSettingsOverviewDeviceReadModel(device).stateOfCharge).toBeUndefined();
+    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).stateOfCharge).toBeUndefined();
   });
 
   it('emits no battery reading for a device that has none', () => {
     const device = buildPlanDevice({ id: 'heater-1' });
-    expect(buildSettingsOverviewDeviceReadModel(device).stateOfCharge).toBeUndefined();
+    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).stateOfCharge).toBeUndefined();
   });
 
   it('emits the two clusters the card selects on, and nothing else to select on', () => {
@@ -283,13 +296,13 @@ describe('settingsOverviewReadModel', () => {
     // presence for the stepped card, `temperature` presence for the temperature
     // card. A device carrying neither gets the generic card.
     const binary = buildPlanDevice({ id: 'bin-1' });
-    const binaryRead = buildSettingsOverviewDeviceReadModel(binary, {});
+    const binaryRead = buildSettingsOverviewDeviceReadModel(binary, absentTemperature);
     expect(binaryRead.steppedLoad).toBeUndefined();
     expect(binaryRead.temperature).toBeUndefined();
 
     // Stepped-ness comes from the device's own ladder, not from any label.
     const stepped = steppedPlanDevice({ id: 'step-1' });
-    expect(buildSettingsOverviewDeviceReadModel(stepped, {}).steppedLoad).toBeDefined();
+    expect(buildSettingsOverviewDeviceReadModel(stepped, absentTemperature).steppedLoad).toBeDefined();
   });
 
   it('keeps a stored-profile stepped device stepped', () => {
@@ -306,7 +319,7 @@ describe('settingsOverviewReadModel', () => {
     // same device as stepped. The device's own ladder is now the discriminant,
     // so there is no producer setting left to disagree with it.
     const stepped = steppedPlanDevice({ id: 'stored-profile-step' });
-    expect(buildSettingsOverviewDeviceReadModel(stepped, {}).steppedLoad).toBeDefined();
+    expect(buildSettingsOverviewDeviceReadModel(stepped, absentTemperature).steppedLoad).toBeDefined();
   });
 
   it('keeps observed temperature presentation when effective control is binary', () => {
@@ -318,7 +331,7 @@ describe('settingsOverviewReadModel', () => {
     });
     const readModel = buildSettingsOverviewReadModel(
       { generatedAtMs: 0, meta: buildPlanMeta({}), devices: [device] } as never,
-      { getObservedTemperature: () => ({ currentTarget: 22, currentTemperature: 20.3 }) },
+      observedTemperature(22, 20.3),
     );
 
     expect(readModel?.devices?.[0]).toMatchObject({
@@ -341,7 +354,7 @@ describe('settingsOverviewReadModel', () => {
       },
     });
 
-    expect(buildSettingsOverviewDeviceReadModel(device).reason).toEqual({
+    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).reason).toEqual({
       code: PLAN_REASON_CODES.cooldownRestore,
       remainingSec: 42,
       countdownStartedAtMs: 10,
@@ -366,7 +379,7 @@ describe('settingsOverviewReadModel', () => {
       currentDrawKw: 1.4,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     });
-    expect(buildSettingsOverviewDeviceReadModel(drawing).stateKind).not.toBe('idle');
+    expect(buildSettingsOverviewDeviceReadModel(drawing, observedTemperature(21, 22)).stateKind).not.toBe('idle');
 
     const settled = buildPlanDevice({
       id: 'thermo',
@@ -378,7 +391,7 @@ describe('settingsOverviewReadModel', () => {
       currentDrawKw: 0,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     });
-    expect(buildSettingsOverviewDeviceReadModel(settled).stateKind).toBe('idle');
+    expect(buildSettingsOverviewDeviceReadModel(settled, observedTemperature(21, 22)).stateKind).toBe('idle');
   });
   describe('boost on the wire', () => {
     // One bit, carried through as the planner decided it. The read model used to
@@ -394,12 +407,18 @@ describe('settingsOverviewReadModel', () => {
     });
 
     it('carries the boost decision through for a charger', () => {
-      const deps = { getObservedEvChargingState: () => 'plugged_in_charging' as const };
+      const deps = {
+        ...absentTemperature,
+        getObservedEvChargingState: () => 'plugged_in_charging' as const,
+      };
       expect(buildSettingsOverviewDeviceReadModel(boosting(), deps).boostActive).toBe(true);
     });
 
     it('carries the same bit for a temperature device, with no second answer beside it', () => {
-      const device = buildSettingsOverviewDeviceReadModel(boosting({ deviceType: 'temperature' }));
+      const device = buildSettingsOverviewDeviceReadModel(
+        boosting({ deviceType: 'temperature' }),
+        absentTemperature,
+      );
       expect(device.boostActive).toBe(true);
       // The retired pair must not come back: a snapshot carrying a per-axis flag
       // is a snapshot answering a question the plan never asked.
@@ -411,7 +430,7 @@ describe('settingsOverviewReadModel', () => {
       const device = buildSettingsOverviewDeviceReadModel(buildPlanDevice({
         id: 'dev',
         reason: { code: PLAN_REASON_CODES.keep, detail: null },
-      }));
+      }), absentTemperature);
       expect(device.boostActive).toBe(false);
     });
   });

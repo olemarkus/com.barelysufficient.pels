@@ -18,11 +18,12 @@ import type {
   SteppedLoadProfile,
   TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
-import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import type { PlannedTemperatureState } from '../../packages/shared-domain/src/plannedTemperatureState';
-import type { ObservedTemperatureState } from '../observer/observedDeviceStateProjection';
+import type { ObservedTemperatureRead } from '../observer/observedDeviceStateProjection';
 import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
 import { isBinaryPlanDevice } from './planBinaryDevice';
+import {
+  resolveOverviewTemperatureFacet,
+} from './planOverviewTemperatureState';
 
 export type SettingsOverviewReadModelDeps = {
   getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
@@ -42,7 +43,7 @@ export type SettingsOverviewReadModelDeps = {
   // the planner is not a courier for configuration it does not read.
   getEvBoostConfig?: (deviceId: string) => EvBoostConfig | undefined;
   getTemperatureBoostConfig?: (deviceId: string) => TemperatureBoostConfig | undefined;
-  getObservedTemperature?: (deviceId: string) => ObservedTemperatureState | null;
+  getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
   // Observation staleness is observer-owned freshness state — the plan device no
   // longer carries it (the plan has no right to distrust observer data). The
   // gray-state UI label is a display concern, so the read model sources staleness
@@ -132,33 +133,10 @@ function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsU
  * temperature CONTROL is disabled — the card keeps showing what the device
  * reports); `plannedTarget` is the planner's decision, defaulting to the
  * observed target ("no commanded change") when the device is not
- * temperature-planned this cycle. An observer `null` (the device is no longer
- * temperature-observed) drops the facet wholly — there are no partial or
- * nullable temperature fields on this DTO.
+ * temperature-planned this cycle. Explicit `absent` evidence (the device is no
+ * longer temperature-observed) drops the facet wholly — there are no partial
+ * or nullable temperature fields on this DTO.
  */
-function resolveOverviewTemperatureFacet(
-  device: DevicePlan['devices'][number],
-  deps: SettingsOverviewReadModelDeps,
-): PlannedTemperatureState | undefined {
-  const observed = deps.getObservedTemperature?.(device.id);
-  const planned = isTemperaturePlanDevice(device) ? device : null;
-  if (observed === null) return undefined;
-  if (observed !== undefined) {
-    return {
-      currentTarget: observed.currentTarget,
-      currentTemperature: observed.currentTemperature,
-      plannedTarget: planned?.plannedTarget ?? observed.currentTarget,
-    };
-  }
-  return planned
-    ? {
-      currentTarget: planned.currentTarget,
-      currentTemperature: planned.currentTemperature,
-      plannedTarget: planned.plannedTarget,
-    }
-    : undefined;
-}
-
 /**
  * The card's battery level, projected to the one property the wire type declares
  * rather than passed whole: the observation layer's session/invalidation
@@ -175,7 +153,7 @@ function resolveOverviewStateOfCharge(
 
 export function buildSettingsOverviewDeviceReadModel(
   device: DevicePlan['devices'][number],
-  deps: SettingsOverviewReadModelDeps = {},
+  deps: SettingsOverviewReadModelDeps,
   confirmedSteppedLoadProfile?: SteppedLoadProfile,
 ): SettingsUiPlanDeviceSnapshot {
   // EV boost config and battery level come from the seams that own them
@@ -183,8 +161,13 @@ export function buildSettingsOverviewDeviceReadModel(
   // `evChargingState` from the observer — its canonical owner. None of them ride
   // the plan device: there is no EV cluster on the plan types (owner ruling
   // 2026-08-15, `lib/plan/AGENTS.md`).
-  const temperature = resolveOverviewTemperatureFacet(device, deps);
-  const temperatureFields = temperature !== undefined ? { temperature } : {};
+  const temperature = resolveOverviewTemperatureFacet(
+    device,
+    deps.getObservedTemperature(device.id),
+  );
+  const temperatureFields = temperature.kind === 'present'
+    ? { temperature: temperature.value }
+    : {};
   // The stepped discriminant, from the device's own ladder. This site used to
   // reconstruct a `controlModel` setting producer-map-first, which made its
   // stepped rung unreachable — the map is built from the RAW snapshot and cannot
@@ -259,7 +242,7 @@ export function buildSettingsOverviewDeviceReadModel(
 
 export function buildSettingsOverviewReadModel(
   plan: DevicePlan | null,
-  deps: SettingsOverviewReadModelDeps = {},
+  deps: SettingsOverviewReadModelDeps,
 ): SettingsUiPlanSnapshot | null {
   if (!plan) return null;
   // Built once per serialize (not per device) so the raw-snapshot scan stays O(n).

@@ -188,6 +188,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
 
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -236,6 +237,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
 
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -275,6 +277,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
 
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),

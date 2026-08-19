@@ -65,19 +65,30 @@ export type ObservedTemperatureState = {
 };
 
 /**
+ * Semantic result at the observer boundary. Absence is explicit so adjacent
+ * layers never reinterpret a nullable reading as evidence or a default.
+ */
+export type ObservedTemperatureRead =
+    | { kind: 'observed'; value: ObservedTemperatureState }
+    | { kind: 'absent' };
+
+/**
  * Owner projection of the observed temperature cluster for producer wiring.
- * The observer facet is atomic: if this returns a value, both numbers were
- * admitted together by the transport boundary.
+ * The observer facet is atomic: `observed` always carries both numbers admitted
+ * together by the transport boundary; `absent` carries no fabricated stand-in.
  */
 export function readObservedTemperatureState(
     state: (ObservedDeviceState & TemperatureObservedProbe) | undefined,
-): ObservedTemperatureState | null {
-    if (state === undefined) return null;
+): ObservedTemperatureRead {
+    if (state === undefined) return { kind: 'absent' };
     const temperature = state.temperature;
-    if (!temperature) return null;
+    if (!temperature) return { kind: 'absent' };
     return {
-        currentTarget: temperature.target.value,
-        currentTemperature: temperature.currentTemperature,
+        kind: 'observed',
+        value: {
+            currentTarget: temperature.target.value,
+            currentTemperature: temperature.currentTemperature,
+        },
     };
 }
 
