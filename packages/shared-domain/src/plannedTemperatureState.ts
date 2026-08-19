@@ -22,7 +22,7 @@
  *
  * **Invariant, identical on both sides: all three values are finite numbers
  * wherever this shape exists.** The runtime producer
- * (`lib/plan/settingsOverviewReadModel`) resolves it from an atomic observer
+ * (`lib/plan/planOverviewTemperatureState`) resolves it from an atomic observer
  * facet plus the planner's decision. The WebView adapter
  * (`packages/settings-ui/src/ui/planSnapshotParse`) re-establishes it once on
  * the untrusted side of the API transport, dropping a malformed facet whole

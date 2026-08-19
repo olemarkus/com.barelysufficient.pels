@@ -76,6 +76,7 @@ describe('Price level flow cards', () => {
     });
 
     const planService = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       homey: mockHomeyInstance as any,

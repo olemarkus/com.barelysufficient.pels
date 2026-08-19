@@ -1218,25 +1218,6 @@ program) remain deferred.*
       logs a fully-malformed push via `logSettingsWarn` and is the natural home for a
       partially-degraded one. That is a signature change across every call site, which is why it
       is not folded into the validation PR. Source: Codex review of PR #2111. [P2]
-- [ ] **The overview log seam and the settings read model still build their own overview shape.**
-      Both carriers now emit the same ATOMIC temperature facet
-      (`temperature: { currentTarget, currentTemperature, plannedTarget }`), so the shape itself
-      no longer differs — but they still build it independently: the read model overlays the
-      OBSERVER's pair (`resolveOverviewTemperatureFacet` → `deps.getObservedTemperature`), while
-      the log seam (`planOverviewEmit`) builds it from the plan device's own narrowed cluster.
-      `isSatisfiedTargetOnlyDevice` reads that facet and feeds `stateKind`, which lands in both
-      the transition signature and the device-log entry, so a temperature device can still be
-      logged `active` while its card reads `idle` whenever the observer is fresher than the plan
-      device (a realtime event between build and serialize, or an idle-tick re-serialize). The
-      fix is to give both carriers ONE overview shape — one builder, one observer overlay —
-      rather than two nearly-identical ones.
-      **The STEPPED half of this converged on 2026-08-15** and is a worked example of the shape
-      the fix should take: both carriers already called `buildOverviewSteppedLoad`, but each also
-      carried flat step ids copied raw off the plan device, and the log seam had its own
-      `resolveOverviewTargetStepId` reading them — so the corrected target id had two uncorrected
-      twins. Deleting the flat copies left one builder and one answer. Temperature is the same
-      problem with the observer overlay as the extra input.
-
 - [ ] **`planningPowerKw` / `selectedStepId` are still flat on the DECORATED device snapshot.**
       The overview half landed 2026-08-15: `DeviceOverviewSnapshot` carries every stepped fact on
       the `steppedLoad` cluster (`planningPowerKw` and `selectedStepId` REQUIRED there), the flat

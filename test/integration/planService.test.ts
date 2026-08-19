@@ -97,6 +97,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
   const { loggers: loggerOverrides, ...rest } = overrides;
   const deps = {
     homeId: 'main',
+    getObservedTemperature: () => ({ kind: 'absent' } as const),
     planBuildGate: openPlanBuildGate(),
     homey: {
       settings: { set: vi.fn() },
@@ -143,12 +144,19 @@ describe('PlanService', () => {
   it('keeps detail-only plan changes in memory and emits realtime updates', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
+    let observedTarget = 19;
     const planEngine = {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
         .fn()
-        .mockResolvedValueOnce(buildPlan(19, 'keep'))
-        .mockResolvedValueOnce(buildPlan(21, 'keep')),
+        .mockImplementationOnce(async () => {
+          observedTarget = 19;
+          return buildPlan(19, 'keep');
+        })
+        .mockImplementationOnce(async () => {
+          observedTarget = 21;
+          return buildPlan(21, 'keep');
+        }),
       computeDynamicSoftLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -158,6 +166,10 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      getObservedTemperature: () => ({
+        kind: 'observed',
+        value: { currentTarget: observedTarget, currentTemperature: 21 },
+      }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -217,6 +229,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -743,6 +756,7 @@ describe('PlanService', () => {
         binaryCommandPending: true,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -797,6 +811,10 @@ describe('PlanService', () => {
 
   it('serializes enriched UI plan fields without changing the runtime snapshot', () => {
     const { service } = createPlanService({
+      getObservedTemperature: () => ({
+        kind: 'observed',
+        value: { currentTarget: 18, currentTemperature: 16 },
+      }),
       deviceDiagnostics: {
         getOverviewStarvation: vi.fn(() => ({
           isStarved: true,
@@ -905,6 +923,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -975,6 +994,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1008,6 +1028,7 @@ describe('PlanService', () => {
     const realtime = vi.fn().mockRejectedValue('boom');
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1062,6 +1083,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1108,6 +1130,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1194,6 +1217,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1274,6 +1298,10 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({
+        kind: 'observed',
+        value: { currentTarget: 18, currentTemperature: 21 },
+      }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1370,6 +1398,10 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({
+        kind: 'observed',
+        value: { currentTarget: 20, currentTemperature: 21 },
+      }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1441,6 +1473,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1520,6 +1553,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1626,6 +1660,7 @@ describe('PlanService', () => {
         },
       ];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1745,6 +1780,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1852,6 +1888,7 @@ describe('PlanService', () => {
         },
       ];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -1992,6 +2029,7 @@ describe('PlanService', () => {
         },
       ];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -2105,6 +2143,10 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({
+        kind: 'observed',
+        value: { currentTarget: 21, currentTemperature: 21 },
+      }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -2170,6 +2212,7 @@ describe('PlanService', () => {
     }));
     const applySheddingToDevice = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -2255,6 +2298,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -2311,6 +2355,7 @@ describe('PlanService', () => {
     const syncPendingBinaryCommands = vi.fn(() => false);
     const buildDevicePlanSnapshot = vi.fn().mockResolvedValue(buildPlan(20, 'keep'));
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -2402,6 +2447,7 @@ describe('PlanService', () => {
     }];
     const syncPendingBinaryCommands = vi.fn(() => false);
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -2482,6 +2528,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -2560,6 +2607,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -2607,6 +2655,7 @@ describe('PlanService', () => {
   it('reuses cached pels status computation when inputs are unchanged', () => {
     const buildPelsStatusSpy = vi.spyOn(pelsStatusModule, 'buildPelsStatus');
     const planService = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -2664,6 +2713,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       // The pels_status write is what `statusWriteMs` measures; route the injected
@@ -2720,6 +2770,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -3103,6 +3154,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -3161,6 +3213,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -3251,6 +3304,7 @@ describe('PlanService', () => {
         })];
       };
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -3300,6 +3354,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       }];
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -3343,6 +3398,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     const applySheddingToDevice = vi.fn().mockResolvedValue(true);
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
@@ -3380,6 +3436,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     const applySheddingToDevice = vi.fn().mockResolvedValue(false);
     const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),

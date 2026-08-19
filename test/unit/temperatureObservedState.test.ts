@@ -49,15 +49,18 @@ describe('hasObservedTemperature', () => {
 });
 
 describe('readObservedTemperatureState', () => {
-  it('represents both a missing device and a non-temperature device as null', () => {
-    expect(readObservedTemperatureState(undefined)).toBeNull();
-    expect(readObservedTemperatureState(snap({}))).toBeNull();
+  it('classifies both a missing device and a non-temperature device as absent', () => {
+    expect(readObservedTemperatureState(undefined)).toEqual({ kind: 'absent' });
+    expect(readObservedTemperatureState(snap({}))).toEqual({ kind: 'absent' });
   });
 
   it('returns both required values from an admitted temperature facet', () => {
     expect(readObservedTemperatureState(snap({ temperature: temperature(18.5, 22) }))).toEqual({
-      currentTemperature: 18.5,
-      currentTarget: 22,
+      kind: 'observed',
+      value: {
+        currentTemperature: 18.5,
+        currentTarget: 22,
+      },
     });
   });
 });

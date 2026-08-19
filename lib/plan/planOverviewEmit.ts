@@ -16,9 +16,12 @@ import {
   type DeviceOverviewLogRecorder,
 } from './deviceOverviewLog';
 import type { StructuredDebugEmitter } from '../logging/logger';
+import type { ObservedTemperatureRead } from '../observer/observedDeviceStateProjection';
 import type { DevicePlan } from './planTypes';
 import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
-import { isTemperaturePlanDevice } from './planTemperatureDevice';
+import {
+  resolveOverviewTemperatureFacet,
+} from './planOverviewTemperatureState';
 
 export type OverviewEmitDeps = {
   isOverviewDebugEnabled?: () => boolean;
@@ -29,6 +32,9 @@ export type OverviewEmitDeps = {
   // live-card read model (`settingsOverviewReadModel`) so the device-log/activity
   // view and the live overview card agree on the gray "unresponsive" state.
   getObservationStale?: (deviceId: string) => boolean;
+  // Same observer-owned current pair the live read model overlays. This seam
+  // must not reconstruct a second temperature view from the plan snapshot.
+  getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
 };
 
 // Per-device: detect a change against the last-known signature, capture it
@@ -41,6 +47,7 @@ type OverviewPassContext = {
   recorder: DeviceOverviewLogRecorder | undefined;
   debugEnabled: boolean;
   getObservationStale: (deviceId: string) => boolean;
+  getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
 };
 
 function recordOverviewChange(
@@ -56,26 +63,14 @@ function recordOverviewChange(
   // plan/apply cycle (that breaks the SDK-boundary e2es). See
   // `resolveOverviewControlModel` for the full rationale. This is display, not
   // planning.
+  const temperature = resolveOverviewTemperatureFacet(
+    device,
+    pass.getObservedTemperature(device.id),
+  );
   const overviewDevice = {
     ...device,
     steppedLoad: buildOverviewSteppedLoad(device),
-    // The temperature facet, built from the narrowed plan device — the same
-    // atomic shape the read model emits. Without it this seam would see no
-    // temperature at all (the overview shape carries the trio as ONE object,
-    // not as flat fields), and `isSatisfiedTargetOnlyDevice` could never
-    // classify a satisfied target-only device as idle: the log would say
-    // `active` while the card says `Idle`. The observer overlay the read model
-    // applies is deliberately NOT replicated here — see the P2 in `TODO.md`
-    // about giving both carriers one overview shape.
-    ...(isTemperaturePlanDevice(device)
-      ? {
-        temperature: {
-          currentTarget: device.currentTarget,
-          currentTemperature: device.currentTemperature,
-          plannedTarget: device.plannedTarget,
-        },
-      }
-      : {}),
+    ...(temperature.kind === 'present' ? { temperature: temperature.value } : {}),
     // The draw needs no adapter: the display/log helpers read `currentDrawKw`,
     // the producer-resolved field the plan device already carries — one value,
     // two seams, no second answer anywhere in the planner.
@@ -124,6 +119,7 @@ function buildOverviewPassContext(
     recorder,
     debugEnabled,
     getObservationStale: deps.getObservationStale ?? ((): boolean => false),
+    getObservedTemperature: deps.getObservedTemperature,
   };
 }
 
