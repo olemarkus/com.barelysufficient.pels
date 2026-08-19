@@ -98,7 +98,7 @@ For each device in each mode, you configure two things:
 For example, in **Night** mode you might set:
 - Bedroom heater: priority 1, target 20 °C — stays on as long as possible
 - Living room heater: priority 2, target 18 °C — turned down before the bedroom
-- Water heater: priority 3 — turned off first if needed
+- Water heater: priority 3 — limited first if needed
 
 ### Switch modes with Flows
 

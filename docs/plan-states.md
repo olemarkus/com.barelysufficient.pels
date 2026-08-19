@@ -65,8 +65,8 @@ The raw plan still uses older internal identifiers. These are implementation ter
 | `plannedState: "keep"` | Usually shown as **Running** or **Resuming**, depending on current device state. |
 | `plannedState: "shed"` | Usually shown as **Limited**. PELS may turn the device off, lower temperature, or reduce a step. |
 | `plannedState: "inactive"` | Shown as **Idle** while available/on, or **Off** when Homey explicitly reports the device off. PELS is not limiting it. |
-| `shedAction: "turn_off"` | Turn off while limiting. |
-| `shedAction: "set_temperature"` | Lower target temperature while limiting. |
+| `shedAction: "turn_off"` | The limit this device may go down to: off. PELS goes only as far as it needs, so a device with steps can be left running at a lower level instead. |
+| `shedAction: "set_temperature"` | The limit this device may go down to: its minimum target temperature. |
 | `reason: "staying off until turned on again"` | Off — the device was turned off elsewhere and PELS was asked to leave it off. |
 | `reason: "shed due to capacity"` | Limited; the card shows the power the device still needs. |
 | `reason: "shed due to daily budget"` | Limited by today's budget pacing; the card shows the power the device still needs, or offers **Let it run now**. |
