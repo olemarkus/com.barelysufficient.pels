@@ -62,7 +62,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
   });
   const state = createPlanEngineState();
   const deps: PlanExecutorDeps = {
-    getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+    getShedBehavior: () => ({ action: 'turn_off' }),
     getHomeDisplayName: () => 'Main home',
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
@@ -282,7 +282,7 @@ describe('P1 bug proofs', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
+        getShedBehavior: () => ({ action: 'set_step' }),
         getPriorityForDevice: () => 100,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),

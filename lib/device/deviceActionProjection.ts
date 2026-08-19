@@ -42,7 +42,6 @@ export {
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadOffStep,
-  getSteppedLoadStep,
 } from '../utils/deviceControlProfiles';
 
 // Trust gates (`getTrustedCurrentTemperatureC`, `getTrustedStateOfCharge`)
@@ -365,21 +364,24 @@ export type ShedActionIntent =
   | { kind: 'turn_off' }
   | { kind: 'set_temperature'; temperature: number }
   // `targetStepId` is the producer-resolved release-cascade target step
-  // (configured `shedBehavior.stepId` → lowest-active step → off-step). The
-  // lifecycle-end release consumer (`lib/executor/shedReleaseActuation.ts`)
-  // reads it directly instead of re-running the cascade at apply time. It is
-  // `null` only on a degenerate empty profile; the consumer gates on null.
+  // (lowest-active step → off-step). The lifecycle-end release consumer
+  // (`lib/executor/shedReleaseActuation.ts`) reads it directly instead of
+  // re-running the cascade at apply time. It is `null` only on a degenerate
+  // empty profile; the consumer gates on null.
   //
   // The cap-driven shed path (`lib/plan/planSteppedLoad.ts`) does NOT consult
   // this field — it picks the lowest-active step itself to maximise load drop.
   // That intentional semantic divergence is documented at both call sites.
   | { kind: 'set_step'; targetStepId: string | null };
 
-export type ShedIntentBehaviorInput = {
-  action: 'turn_off' | 'set_temperature' | 'set_step';
-  temperature: number | null;
-  stepId: string | null;
-};
+// Structural mirror of `ShedBehavior` (`lib/plan/planTypes.ts`). Duplicated on
+// purpose: `lib/device` must not import `lib/plan` (`no-device-to-plan`), and
+// the alternative — a nullable flat shape — is the impossible state the union
+// exists to forbid. Keep the two in step.
+export type ShedIntentBehaviorInput =
+  | { action: 'turn_off' }
+  | { action: 'set_temperature'; temperature: number }
+  | { action: 'set_step' };
 
 export type ShedIntentResolveInput = {
   shedBehavior: ShedIntentBehaviorInput;
@@ -397,15 +399,13 @@ const isSteppedLoadDeviceShape = (input: ShedIntentResolveInput): boolean => (
 const resolveSetStepTargetStepId = (input: ShedIntentResolveInput): string | null => {
   const profile = input.steppedLoadProfile;
   if (!profile) return null;
-  // Release cascade: honour the configured `shedBehavior.stepId` first, then fall back to
-  // the lowest-active step, then the off-step. Mirrors what `shedReleaseActuation.ts` used
-  // to resolve at apply time. Cap-driven sheds do not read this; they pick lowest-active
-  // independently in `planSteppedLoad.ts`.
-  const preferred = input.shedBehavior.stepId;
-  if (preferred) {
-    const exact = getSteppedLoadStep(profile, preferred);
-    if (exact) return exact.id;
-  }
+  // Release cascade: the lowest-active step, then the off-step. Mirrors what
+  // `shedReleaseActuation.ts` used to resolve at apply time. Cap-driven sheds do not read
+  // this; they pick lowest-active independently in `planSteppedLoad.ts`.
+  //
+  // There used to be a rung above these two — a configured `shedBehavior.stepId`. Nothing
+  // ever wrote one (`normalizeShedBehaviors` stores `set_step` as a bare `{ action }`), so
+  // that branch was unreachable; the ladder is the device's, not the owner's.
   const lowestActive = getSteppedLoadLowestActiveStep(profile);
   if (lowestActive) return lowestActive.id;
   const offStep = getSteppedLoadOffStep(profile);
@@ -421,7 +421,6 @@ export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionInte
   if (
     controllable
     && shedBehavior.action === 'set_temperature'
-    && shedBehavior.temperature !== null
     && primaryTarget
   ) {
     return {

@@ -77,7 +77,7 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanContext => (
 
 const deps = (surplusWilling: boolean, surplusDelta = SURPLUS_DELTA_C): PlanDevicesDeps => ({
   getPriorityForDevice: () => 100,
-  getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+  getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({
     [DEVICE_ID]: {

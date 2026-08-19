@@ -1,4 +1,6 @@
-import type { DevicePlanDevice } from './planTypes';
+import type {
+  DevicePlanDevice, ShedBehavior, TemperatureKind, TemperatureShedBehavior,
+} from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PlanEngineState } from './planState';
 import type { HeadroomReserve } from './admission';
@@ -66,7 +68,7 @@ function getProducerShedReason(params: {
 // `plannedTarget`, which this lane writes back every cycle.
 function isObservedAtShedFloor(
   dev: DevicePlanDevice,
-  behavior: { temperature: number | null },
+  behavior: TemperatureShedBehavior,
 ): boolean {
   return isTemperaturePlanDevice(dev)
     && dev.currentTarget === behavior.temperature;
@@ -96,7 +98,7 @@ function isObservedAtShedFloor(
  */
 function resolveHoldReason(params: {
   dev: DevicePlanDevice;
-  behavior: { temperature: number | null };
+  behavior: TemperatureShedBehavior;
   state: PlanEngineState;
   shedReasons: Map<string, DeviceReason>;
   timing: OffDeviceReasonTiming;
@@ -156,11 +158,7 @@ export type ShedHoldParams = {
   guardInShortfall?: boolean;
   debugStructured?: StructuredDebugEmitter;
   restoreCooldownPreview?: RestoreCooldownPreview | null;
-  getShedBehavior: (deviceId: string) => {
-    action: 'turn_off' | 'set_temperature' | 'set_step';
-    temperature: number | null;
-    stepId: string | null;
-  };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
 };
 
 export function applyShedTemperatureHold(params: ShedHoldParams): {
@@ -257,15 +255,9 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
   };
 }
 
-// A temperature device always carries both targets (atomic facet + total
-// planner resolution), so kind membership IS the answer.
-function hasTemperatureTarget(dev: DevicePlanDevice): boolean {
-  return isTemperaturePlanDevice(dev);
-}
-
 function resolveHoldGating(params: {
   dev: DevicePlanDevice;
-  behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null };
+  behavior: TemperatureShedBehavior;
   state: PlanEngineState;
   inShedWindow: boolean;
   holdDuringRestoreCooldown: boolean;
@@ -285,7 +277,7 @@ function resolveHoldGating(params: {
 
 function resolveHoldDecision(params: {
   dev: DevicePlanDevice;
-  behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null };
+  behavior: TemperatureShedBehavior;
   state: PlanEngineState;
   shedReasons: Map<string, DeviceReason>;
   inShedWindow: boolean;
@@ -324,12 +316,6 @@ function resolveHoldDecision(params: {
     return { type: 'skip' };
   }
 
-  if (behavior.action !== 'set_temperature' || behavior.temperature === null) {
-    return { type: 'skip' };
-  }
-  if (!hasTemperatureTarget(dev)) {
-    return { type: 'skip' };
-  }
 
   const { shouldAbortRestoreForShortfall, shouldHold, wasShedLastPlan } = resolveHoldGating({
     dev,
@@ -449,7 +435,7 @@ function resolvePostHoldRestoreDecision(params: {
 
 function applyHoldToDevice(params: {
   dev: DevicePlanDevice;
-  behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null };
+  behavior: ShedBehavior;
   state: PlanEngineState;
   shedReasons: Map<string, DeviceReason>;
   inShedWindow: boolean;
@@ -487,6 +473,15 @@ function applyHoldToDevice(params: {
   } = params;
 
   if (dev.plannedState === 'shed' && dev.reason.code === NEUTRAL_STARTUP_HOLD_REASON.code) {
+    return { device: dev, availableHeadroom, restoredOneThisCycle };
+  }
+
+  // This whole lane is the SETPOINT hold: everything below reads a shed floor and
+  // writes a `plannedTarget`, so it needs a device with a setpoint and a
+  // behaviour that names one. Both narrows used to sit inside
+  // `resolveHoldDecision` as `skip`s, which return this same value; they are
+  // hoisted so `applyHoldUpdate` inherits them instead of re-checking.
+  if (behavior.action !== 'set_temperature' || !isTemperaturePlanDevice(dev)) {
     return { device: dev, availableHeadroom, restoredOneThisCycle };
   }
 
@@ -532,18 +527,14 @@ function applyHoldToDevice(params: {
 function getPendingRestoreDelay(
   planDevices: DevicePlanDevice[],
   state: PlanEngineState,
-  getShedBehavior: (deviceId: string) => {
-    action: 'turn_off' | 'set_temperature' | 'set_step';
-    temperature: number | null;
-    stepId: string | null;
-  },
+  getShedBehavior: (deviceId: string) => ShedBehavior,
 ): PendingRestoreDelay | null {
   let maxRemainingMs = 0;
   let countdownStartedAtMs: number | null = null;
   const nowMs = Date.now();
   for (const dev of planDevices) {
     const behavior = getShedBehavior(dev.id);
-    if (behavior.action !== 'set_temperature' || behavior.temperature === null) continue;
+    if (behavior.action !== 'set_temperature') continue;
     if (!isTemperaturePlanDevice(dev)) continue;
     if (dev.currentTarget !== behavior.temperature) continue;
     if (dev.plannedTarget <= behavior.temperature) continue;
@@ -567,22 +558,23 @@ function getPendingRestoreDelay(
 }
 
 function applyHoldUpdate(
-  dev: DevicePlanDevice,
-  behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null },
+  dev: DevicePlanDevice & TemperatureKind,
+  behavior: TemperatureShedBehavior,
   reason: DeviceReason,
   availableHeadroom: number,
   restoredOneThisCycle: boolean,
 ): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
-  return {
-    device: {
-      ...dev,
-      plannedState: 'shed',
-      shedAction: 'set_temperature',
-      shedTemperature: behavior.temperature,
-      ...(behavior.temperature !== null ? { plannedTarget: behavior.temperature } : {}),
-      reason,
-    },
-    availableHeadroom,
-    restoredOneThisCycle,
+  // Annotated so `plannedTarget` lands on the temperature cluster rather than
+  // reading as a stray property on the bare union. It used to ride in through a
+  // `behavior.temperature !== null` conditional spread — a branch the caller's
+  // narrow has already decided, and one that could never have been false.
+  const device: DevicePlanDevice & TemperatureKind = {
+    ...dev,
+    plannedState: 'shed',
+    shedAction: 'set_temperature',
+    shedTemperature: behavior.temperature,
+    plannedTarget: behavior.temperature,
+    reason,
   };
+  return { device, availableHeadroom, restoredOneThisCycle };
 }

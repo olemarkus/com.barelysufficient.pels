@@ -97,7 +97,7 @@ describe('shed grace', () => {
       // The binding pace, well under the 6 kW hard cap — the deficit is real and
       // far above the soft-overshoot deadband.
       getDynamicSoftLimitOverride: () => 1.84,
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      getShedBehavior: () => ({ action: 'turn_off' }),
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,

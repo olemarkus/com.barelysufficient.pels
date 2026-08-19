@@ -213,7 +213,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(hoursInDay),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
     getPriorityForDevice: () => 1,
-    getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+    getShedBehavior: () => ({ action: 'turn_off' }),
     log: vi.fn(),
     logDebug: vi.fn(),
     pendingBinaryCommandStore: emptyPendingStore,

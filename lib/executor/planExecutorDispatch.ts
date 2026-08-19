@@ -1,4 +1,4 @@
-import type { DevicePlan, ShedAction } from '../plan/planTypes';
+import type { DevicePlan, ShedBehavior } from '../plan/planTypes';
 import type {
   ExecutableDeviceIntent,
 } from './executablePlan';
@@ -82,7 +82,7 @@ export type PlanExecutorCore = {
   buildTargetExecutorContext: () => PlanExecutorTargetContext;
   buildSteppedExecutorContext: () => PlanExecutorSteppedContext;
   buildBinaryExecutorContext: () => PlanExecutorBinaryContext;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
   getSteppedLoadCommandSession: (deviceId: string) => {
     initializationAssumedStepId?: string;
     hasPriorStepCommand: boolean;
@@ -495,9 +495,7 @@ export const applySheddingToDeviceImpl = async (
     const name = deviceName;
     const shedBehavior = core.getShedBehavior(deviceId);
     const target = snapshotState?.targets?.[0] ? 'temperature' as const : undefined;
-    const shedTemp = shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null
-      ? shedBehavior.temperature
-      : null;
+    const shedTemp = shedBehavior.action === 'set_temperature' ? shedBehavior.temperature : null;
     const canSetShedTemp = Boolean(target && shedTemp !== null);
     // Mark as pending before async operation
     core.state.pendingSheds.add(deviceId);

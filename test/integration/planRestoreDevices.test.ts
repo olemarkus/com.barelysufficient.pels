@@ -57,16 +57,16 @@ describe('plan restore device helpers', () => {
     expect(getOffDevices(devices).map((device) => device.id)).toEqual(['low', 'high']);
     expect(getOnDevices(devices, (deviceId) => (
       deviceId === 'temp-blocked'
-        ? { action: 'set_temperature', temperature: 21, stepId: null }
-        : { action: 'turn_off', temperature: null, stepId: null }
+        ? { action: 'set_temperature', temperature: 21 }
+        : { action: 'turn_off' }
     )).map((device) => device.id)).toEqual(['on', 'na']);
     expect(getOnDevices(
       [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 23, plannedTarget: 23 })],
-      () => ({ action: 'set_temperature', temperature: 20, stepId: null }),
+      () => ({ action: 'set_temperature', temperature: 20 }),
     ).map((device) => device.id)).toEqual(['temp']);
     expect(getOnDevices(
       [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 20, plannedTarget: 20 })],
-      () => ({ action: 'set_temperature', temperature: 20, stepId: null }),
+      () => ({ action: 'set_temperature', temperature: 20 }),
     )).toEqual([]);
   });
 
@@ -196,9 +196,9 @@ describe('plan restore device helpers', () => {
     expect(getSteppedRestoreCandidates(devices).map((device) => device.id))
       .toEqual(['unknown-step-off', 'fresh-step', 'stale-step', 'high-step-off', 'no-binary-step']);
     // Stale-on / stale-step are now trusted-on (last value), so they join the swap-out set.
-    expect(getOnDevices(devices, () => ({ action: 'turn_off', temperature: null, stepId: null }))
+    expect(getOnDevices(devices, () => ({ action: 'turn_off' }))
       .map((device) => device.id)).toEqual(['stale-on', 'fresh-on', 'stale-step', 'fresh-step']);
-    expect(getOnDevices(devices, () => ({ action: 'set_step', temperature: null, stepId: 'low' }))
+    expect(getOnDevices(devices, () => ({ action: 'set_step' }))
       .map((device) => device.id)).toEqual(['stale-on', 'fresh-on']);
   });
 

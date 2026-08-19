@@ -41,7 +41,7 @@ import type {
   ExecutableReleaseIntent,
 } from '../../lib/executor/executablePlan';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { ShedAction } from '../../lib/plan/planTypes';
+import type { ShedBehavior } from '../../lib/plan/planTypes';
 import { createTargetCommandClaim } from '../../lib/executor/targetCommandClaim';
 
 // ---------------------------------------------------------------------------
@@ -283,7 +283,7 @@ const buildObserved = (
 });
 
 const buildDeps = (params: {
-  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
+  shedBehavior: ShedBehavior;
   binaryCtx: PlanExecutorBinaryContext;
   targetCtx: PlanExecutorTargetContext;
 }) => ({
@@ -308,7 +308,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       const intent = buildIntent(heater.id, heater.name);
       const observed = buildObserved(heater.id, heater.name, heater);
       const deps = buildDeps({
-        shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
+        shedBehavior: { action: 'turn_off' },
         binaryCtx: harness.binaryCtx,
         targetCtx: harness.targetCtx,
       });
@@ -373,7 +373,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       const intent = buildIntent(heater.id, heater.name);
       const observed = buildObserved(heater.id, heater.name, racedSnap, { binaryControl: { on: true } });
       const deps = buildDeps({
-        shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
+        shedBehavior: { action: 'turn_off' },
         binaryCtx: harness.binaryCtx,
         targetCtx: harness.targetCtx,
       });
@@ -413,7 +413,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
         target: { target: 'temperature', observedValue: 22 },
       });
       const deps = buildDeps({
-        shedBehavior: { action: 'set_temperature', temperature: shedTemperature, stepId: null },
+        shedBehavior: { action: 'set_temperature', temperature: shedTemperature },
         binaryCtx: harness.binaryCtx,
         targetCtx: harness.targetCtx,
       });
@@ -480,7 +480,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
         target: { target: 'temperature', observedValue: 22 },
       });
       const deps = buildDeps({
-        shedBehavior: { action: 'set_temperature', temperature: shedTemperature, stepId: null },
+        shedBehavior: { action: 'set_temperature', temperature: shedTemperature },
         binaryCtx: harness.binaryCtx,
         targetCtx: harness.targetCtx,
       });

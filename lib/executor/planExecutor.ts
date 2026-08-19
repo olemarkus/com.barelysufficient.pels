@@ -1,5 +1,5 @@
 import type { DeviceObservation } from '../device/deviceObservation';
-import type { DevicePlan, PlanInputDevice, ShedAction } from '../plan/planTypes';
+import type { DevicePlan, PlanInputDevice, ShedBehavior } from '../plan/planTypes';
 import type { PendingTargetObservationSource } from '../plan/planTypes';
 import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 
@@ -76,7 +76,7 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & {
   actuator: Actuator;
   getCapacityDryRun: () => boolean;
   getOperatingMode: () => string;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
     desiredStepId: string;
@@ -235,7 +235,7 @@ export class PlanExecutor {
     this.deps.markSteppedLoadDesiredStepIssued(params);
   }
 
-  private getShedBehavior(deviceId: string): { action: ShedAction; temperature: number | null; stepId: string | null } {
+  private getShedBehavior(deviceId: string): ShedBehavior {
     return this.deps.getShedBehavior(deviceId);
   }
 

@@ -98,7 +98,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
-    const getShedBehavior = () => ({ action: 'turn_off' as const, temperature: null, stepId: null });
+    const getShedBehavior = () => ({ action: 'turn_off' as const });
 
     const sheddingPlan = await buildSheddingPlan(context, state, {
       capacityGuard,
@@ -173,7 +173,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });

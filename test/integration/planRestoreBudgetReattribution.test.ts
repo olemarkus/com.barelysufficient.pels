@@ -128,7 +128,7 @@ const buildBuilder = (params: {
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => (params.dailyBudget ? buildDailyBudgetSnapshot() : null),
   getPriorityForDevice: () => 100,
-  getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+  getShedBehavior: () => ({ action: 'turn_off' }),
   log: vi.fn(),
   logDebug: vi.fn(),
   pendingBinaryCommandStore: emptyPendingStore,

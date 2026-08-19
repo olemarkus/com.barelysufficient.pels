@@ -116,7 +116,7 @@ describe('restore cooldown backoff', () => {
 
     const deps = {
       powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
       logDebug: vi.fn(),
     };
@@ -152,7 +152,7 @@ describe('restore cooldown backoff', () => {
 
     const deps = {
       powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
       logDebug: vi.fn(),
     };
@@ -201,7 +201,7 @@ describe('restore cooldown backoff', () => {
 
     const deps = {
       powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
-      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
       logDebug: vi.fn(),
     };
@@ -231,7 +231,7 @@ describe('restore cooldown backoff', () => {
     const state = createPlanEngineState();
     const deps = {
       powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
-      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
       logDebug: vi.fn(),
     };
@@ -277,7 +277,7 @@ describe('restore cooldown backoff', () => {
     const state = createPlanEngineState();
     const deps = {
       powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
-      getShedBehavior: () => ({ action: 'set_step' as const, temperature: null, stepId: 'low' }),
+      getShedBehavior: () => ({ action: 'set_step' as const }),
       log: vi.fn(),
       logDebug: vi.fn(),
     };
@@ -321,7 +321,7 @@ describe('restore cooldown backoff', () => {
     const state = createPlanEngineState();
     const deps = {
       powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
-      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
       logDebug: vi.fn(),
     };
@@ -390,7 +390,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -435,7 +435,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -496,7 +496,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -544,7 +544,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -587,7 +587,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -639,7 +639,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
         logDebug: vi.fn(),
       },
     });
@@ -688,7 +688,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -998,7 +998,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1033,7 +1033,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1069,7 +1069,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1101,7 +1101,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1141,7 +1141,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1181,7 +1181,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1222,7 +1222,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1263,7 +1263,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1298,7 +1298,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1329,7 +1329,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1360,7 +1360,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1389,7 +1389,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1430,7 +1430,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1489,7 +1489,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1543,7 +1543,7 @@ describe('restore cooldown backoff', () => {
       deps: {
         // Stale whole-home sample (no fresh measurement past lastRestoreMs) → meter settling.
         powerTracker: { lastTimestamp: null } as unknown as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1596,7 +1596,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1650,7 +1650,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1705,7 +1705,7 @@ describe('restore cooldown backoff', () => {
       deps: {
         // Stale whole-home sample (no fresh measurement past lastRestoreMs) → meter settling.
         powerTracker: { lastTimestamp: null } as unknown as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -1743,7 +1743,7 @@ describe('restore cooldown backoff', () => {
     const context = buildContext({ headroomRaw: 5, headroom: 5 });
     const deps = {
       powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
-      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       logDebug: vi.fn(),
     };
 
@@ -1804,8 +1804,8 @@ describe('restore cooldown backoff', () => {
       }),
     ];
     const getShedBehavior = (deviceId: string) => deviceId === 'temp'
-      ? { action: 'set_temperature' as const, temperature: 16, stepId: null }
-      : { action: 'turn_off' as const, temperature: null, stepId: null };
+      ? { action: 'set_temperature' as const, temperature: 16 }
+      : { action: 'turn_off' as const };
     const restore = applyRestorePlan({
       planDevices,
       context: buildContext({ headroomRaw: 5, headroom: 5 }),
@@ -1864,7 +1864,7 @@ describe('restore cooldown backoff', () => {
     })];
     const deps = {
       powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
-      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       logDebug: vi.fn(),
     };
     const restore = applyRestorePlan({
@@ -1922,7 +1922,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: null } as unknown as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -2003,7 +2003,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -2048,7 +2048,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -2133,7 +2133,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -2168,7 +2168,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -2203,7 +2203,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -2239,7 +2239,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -2275,7 +2275,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -2312,7 +2312,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -2349,7 +2349,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -2385,7 +2385,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -2421,7 +2421,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 15, stepId: null }),
+        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 15 }),
         logDebug: vi.fn(),
       },
     });
@@ -2434,7 +2434,7 @@ describe('restore cooldown backoff', () => {
 // Shared deps factory for restore tests below
 const makeDeps = () => ({
   powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-  getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+  getShedBehavior: () => ({ action: 'turn_off' as const }),
   log: vi.fn(),
   logDebug: vi.fn(),
 });
@@ -3082,8 +3082,8 @@ describe('restore admission — headroom and penalty gates', () => {
       deps: {
         ...makeDeps(),
         getShedBehavior: (id: string) => id === 'dev-on'
-          ? { action: 'turn_off' as const, temperature: null, stepId: null }
-          : { action: 'turn_off' as const, temperature: null, stepId: null },
+          ? { action: 'turn_off' as const }
+          : { action: 'turn_off' as const },
       },
     });
 
@@ -3131,7 +3131,7 @@ describe('restore admission — headroom and penalty gates', () => {
       inStartupStabilization: false,
       restoreCooldownStartedAtMs: null,
       restoreCooldownTotalSec: null,
-      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18 }),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-temp');
@@ -3183,7 +3183,7 @@ describe('restore admission — headroom and penalty gates', () => {
       restoreCooldownStartedAtMs: null,
       restoreCooldownTotalSec: null,
       debugStructured,
-      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18 }),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-temp');
@@ -3223,7 +3223,7 @@ describe('restore admission — headroom and penalty gates', () => {
       guardInShortfall: true,
       deps: {
         powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -3257,7 +3257,7 @@ describe('restore admission — headroom and penalty gates', () => {
       guardInShortfall: true,
       deps: {
         powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'set_step' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'set_step' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -3295,7 +3295,7 @@ describe('restore admission — headroom and penalty gates', () => {
       guardInShortfall: true,
       deps: {
         powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -3315,7 +3315,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
 
   const makeDepsFloor = () => ({
     powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-    getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+    getShedBehavior: () => ({ action: 'turn_off' as const }),
     logDebug: vi.fn(),
   });
 
@@ -3383,7 +3383,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
       inStartupStabilization: false,
       restoreCooldownStartedAtMs: null,
       restoreCooldownTotalSec: null,
-      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     });
     const device = result.planDevices.find((d) => d.id === 'dev-temp');
     expect(device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined).toBe(16);
@@ -4204,7 +4204,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -4248,7 +4248,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -4293,7 +4293,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -4338,7 +4338,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -4381,7 +4381,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
         debugStructured,
       },
@@ -4446,7 +4446,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
         debugStructured,
       },
@@ -4498,7 +4498,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
         debugStructured,
       },
@@ -4569,7 +4569,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -4618,7 +4618,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -4654,7 +4654,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -4697,7 +4697,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -4743,7 +4743,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -4793,7 +4793,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -4837,7 +4837,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -4903,7 +4903,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });
@@ -4950,7 +4950,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 201 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
     });

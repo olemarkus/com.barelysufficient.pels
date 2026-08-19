@@ -112,7 +112,7 @@ const makeHarness = (params: {
     getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now() - (params.powerSampleAgeMs ?? 0), lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     getPriorityForDevice: () => 5,
-    getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+    getShedBehavior: () => ({ action: 'turn_off' }),
     ...(params.softLimitOverride !== null
       ? { getDynamicSoftLimitOverride: () => params.softLimitOverride ?? 10 }
       : {}),

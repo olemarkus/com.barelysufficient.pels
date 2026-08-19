@@ -50,7 +50,7 @@ const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuar
   shortfallThresholdKw: Number.POSITIVE_INFINITY,
   powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
   pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-  getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+  getShedBehavior: () => ({ action: 'turn_off' as const }),
   // Cap-less device sorts first (higher number sheds first).
   getPriorityForDevice: (id: string) => (id === 'unwritable' ? 200 : 100),
   log: vi.fn(),

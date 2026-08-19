@@ -1,5 +1,5 @@
 import { isBinaryControlled, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
-import type { ShedAction } from '../plan/planTypes';
+import type { ShedAction, ShedBehavior } from '../plan/planTypes';
 import type {
   ObservedDeviceState,
   SteppedLoadProfile,
@@ -51,7 +51,7 @@ const logger = getLogger('executor/shed-release');
 // release doesn't start a 5 s shed-throttle window that would interfere with later capacity
 // decisions for unrelated devices.
 export type ShedReleaseActuationDeps = {
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
   buildBinaryExecutorContext: () => PlanExecutorBinaryContext;
   buildTargetExecutorContext: () => PlanExecutorTargetContext;
   buildSteppedExecutorContext: () => PlanExecutorSteppedContext;
@@ -71,7 +71,7 @@ export const applyShedReleaseIntent = async (params: {
   } = params;
   if (intent.kind !== 'shed_release') return false;
   const behavior = deps.getShedBehavior(intent.deviceId);
-  if (behavior.action === 'set_temperature' && behavior.temperature !== null) {
+  if (behavior.action === 'set_temperature') {
     return applyShedReleaseTemperature({
       intent, shedTemperature: behavior.temperature, observed, forceAgainstReleasedOpposing, deps,
     });

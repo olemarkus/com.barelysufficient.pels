@@ -1,7 +1,7 @@
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isRestoreAdmissionHoldReason } from '../planContract/planDecisionSemantics';
 import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
-import type { DevicePlan, ShedAction } from '../plan/planTypes';
+import type { DevicePlan, ShedBehavior } from '../plan/planTypes';
 import type {
   ExecutableObservedDeviceState,
   ExecutableTargetCommand,
@@ -32,7 +32,7 @@ export function buildExecutableTargetIntent(dev: PlanDevice): ExecutableTargetIn
 export function buildExecutableTargetUpdate(
   intent: ExecutableTargetIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null },
+  getShedBehavior: (deviceId: string) => ShedBehavior,
 ): ExecutableTargetUpdate | null {
   if (!intent) return null;
   const command = buildExecutableTargetCommand(intent, observed);
@@ -67,13 +67,12 @@ export function buildExecutableTargetCommand(
 const isTargetRestore = (params: {
   intent: ExecutableTargetIntent;
   observedValue: unknown;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
 }): boolean => {
   const { intent, observedValue, getShedBehavior } = params;
   if (typeof observedValue !== 'number') return false;
   const shedBehavior = getShedBehavior(intent.deviceId);
   return shedBehavior.action === 'set_temperature'
-    && shedBehavior.temperature !== null
     && observedValue === shedBehavior.temperature
     && intent.desired > observedValue;
 };

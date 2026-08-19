@@ -230,7 +230,7 @@ export function buildSteppedCandidate(params: SteppedCandidateParams): ShedCandi
     return null;
   }
   const shedBehavior = getShedBehavior(device.id);
-  if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
+  if (shedBehavior.action === 'set_temperature') {
     return buildSteppedTemperatureCandidate(params, shedBehavior.temperature);
   }
   return buildSteppedStepDownCandidate(

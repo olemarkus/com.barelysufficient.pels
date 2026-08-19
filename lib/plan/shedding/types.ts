@@ -3,7 +3,7 @@ import type { PowerTrackerState } from '../../power/tracker';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanContext } from '../planContext';
 import type { PlanEngineState } from '../planState';
-import type { PlanInputDevice, ShedAction } from '../planTypes';
+import type { PlanInputDevice, ShedBehavior } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import type { ShedCandidateSkipSummary } from './candidateSkipLog';
 
@@ -82,7 +82,7 @@ export type SheddingDeps = {
   /** Producer-resolved `computeShortfallThreshold` for this build. */
   shortfallThresholdKw: number;
   powerTracker: PowerTrackerState;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
   getPriorityForDevice: (deviceId: string) => number;
   // Observer-owned pending-binary-command store; candidate builders read
   // unconfirmed-relief state through `peek(id)` (raw read) instead of

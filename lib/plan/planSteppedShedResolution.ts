@@ -1,5 +1,5 @@
 import type { PlanEngineState } from './planState';
-import type { PlanInputDevice, ShedAction } from './planTypes';
+import type { PlanInputDevice, ShedAction, ShedBehavior } from './planTypes';
 import { isNonSteppedDeviceRecovering } from './planShedRecovery';
 import {
   getSteppedLoadShedTargetStep,
@@ -39,7 +39,7 @@ import {
  */
 export function resolveSteppedLoadDirectShedStepId(params: {
   dev: PlanInputDevice;
-  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
+  shedBehavior: ShedBehavior;
   shouldShed: boolean;
   /** The rung the shedding planner priced this shed at, when it chose one. */
   plannedShedStepId: string | undefined;
@@ -83,7 +83,7 @@ export function resolveSteppedShedHypotheticalStepId(params: {
   dev: PlanInputDevice;
   devices: PlanInputDevice[];
   state: PlanEngineState;
-  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
+  shedBehavior: ShedBehavior;
   currentDesiredStepId?: string;
 }): string | undefined {
   const {

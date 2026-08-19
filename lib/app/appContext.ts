@@ -20,7 +20,7 @@ import type {
 import type { PlanEngine } from '../plan/planEngine';
 import type { ExternalOffHoldPolicy } from '../observer/externalOffHold';
 import type { SnapshotWarmupGate } from '../plan/snapshotWarmupGate';
-import type { PendingTargetObservationSource, ShedAction, ShedBehavior } from '../plan/planTypes';
+import type { PendingTargetObservationSource, ShedBehavior } from '../plan/planTypes';
 import type { PlanService } from '../plan/planService';
 import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatcher';
 import type { PriceLevel } from '../price/priceLevels';
@@ -174,11 +174,7 @@ export type AppContext = {
   isBudgetExempt: (deviceId: string) => boolean;
   getTemperatureBoostConfig: (deviceId: string) => TemperatureBoostConfig | undefined;
   getEvBoostConfig: (deviceId: string) => EvBoostConfig | undefined;
-  getShedBehavior: (deviceId: string) => {
-    action: ShedAction;
-    temperature: number | null;
-    stepId: string | null;
-  };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
   computeDynamicSoftLimit: () => number;
   getDynamicSoftLimitOverride: () => number | null;
   logTargetRetryComparison?: (params: {

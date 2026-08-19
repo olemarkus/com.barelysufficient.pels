@@ -1,5 +1,5 @@
 import type {
-  DevicePlanDevice, PlanInputDevice, ShedAction, SteppedClusterFields, TemperatureClusterFields,
+  DevicePlanDevice, PlanInputDevice, ShedAction, ShedBehavior, SteppedClusterFields, TemperatureClusterFields,
 } from './planTypes';
 import {
   withBinaryDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant,
@@ -144,7 +144,7 @@ export function buildBasePlanDevice(params: {
   currentState: string;
   plannedTarget: number | undefined;
   controllable: boolean;
-  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
+  shedBehavior: ShedBehavior;
   shedSet: Set<string>;
   /** Per device, the rung the shedding planner priced this cycle's shed at. */
   shedStepTargets: Map<string, string>;
@@ -296,7 +296,7 @@ function resolveShedAction(params: {
   dev: PlanInputDevice;
   controllable: boolean;
   shouldShed: boolean;
-  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
+  shedBehavior: ShedBehavior;
 }): { shedAction: ShedAction; shedTemperature: number | null; releaseShedStepId: string | null } {
   const { dev, controllable, shouldShed, shedBehavior } = params;
   // Single resolution site for the shed-action intent. Called once here with

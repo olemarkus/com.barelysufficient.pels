@@ -34,6 +34,7 @@ import { createSteppedCommandClaim } from '../../lib/executor/steppedCommandClai
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { resolveLifecycleFallbackRequest } from '../../setup/lifecycleFallbackRequest';
+import type { ShedBehavior } from '../../lib/plan/planTypes';
 import { projectLifecycleFallbackDevice } from '../../setup/lifecycleFallbackDeviceProjection';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
@@ -60,11 +61,7 @@ ExecutorDispatcherDeps,
   capacityDryRun?: () => boolean;
   getDevice: () => LegacyLifecycleFallbackDevice;
   getObservedState: () => LifecycleFallbackObservedState;
-  getShedBehavior: (deviceId: string) => {
-    action: 'turn_off' | 'set_temperature' | 'set_step';
-    temperature: number | null;
-    stepId: string | null;
-  };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
   buildSteppedExecutorContext: () => Omit<
     PlanExecutorSteppedContext,
     'steppedCommandClaim' | 'steppedCommandOwner' | 'binaryCommandClaim' | 'binaryCommandOwner'
@@ -303,7 +300,7 @@ describe('LifecycleFallbackDispatcher', () => {
         available: true,
         targets: [{ id: 'target_temperature', value: 21, unit: 'C', min: 5, max: 30, step: 1 }],
       },
-      configuredFallback: { action: 'set_temperature', temperature: 5, stepId: null },
+      configuredFallback: { action: 'set_temperature', temperature: 5 },
     })).toMatchObject({
       kind: 'target_fallback',
       desired: 5,
@@ -343,7 +340,7 @@ describe('LifecycleFallbackDispatcher', () => {
         targets: [],
         reportedStepId: 'high',
       },
-      configuredFallback: { action: 'set_step', temperature: null, stepId: 'low' },
+      configuredFallback: { action: 'set_step' },
     })).toMatchObject({
       kind: 'step_fallback',
       targetStepId: 'low',
@@ -384,7 +381,7 @@ describe('LifecycleFallbackDispatcher', () => {
           targets: [],
           reportedStepId,
         },
-      configuredFallback: { action: 'set_step', temperature: null, stepId: 'low' },
+      configuredFallback: { action: 'set_step' },
       });
     };
     const dispatcher = new ExecutorLifecycleFallbackDispatcher({
@@ -447,7 +444,7 @@ describe('LifecycleFallbackDispatcher', () => {
         targets: [],
         binaryControl: { on: true },
       },
-      configuredFallback: { action: 'turn_off', temperature: null, stepId: null },
+      configuredFallback: { action: 'turn_off' },
     })).toMatchObject({
       kind: 'binary_off',
     });
@@ -492,7 +489,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getDevice: () => device,
       getObservedState: () => observedFromDevice(device),
       targetCommandClaim: createTargetCommandClaim(),
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5 }),
       buildTargetExecutorContext: () => ({
         state: planState,
         targetCommandClaim: createTargetCommandClaim(),
@@ -548,7 +545,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getDevice: () => buildDevice(),
       getObservedState: () => observedFromDevice(buildDevice()),
       targetCommandClaim: createTargetCommandClaim(),
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5 }),
       buildTargetExecutorContext: () => ({
         state: createPlanEngineState(),
         targetCommandClaim: createTargetCommandClaim(),
@@ -597,7 +594,7 @@ describe('LifecycleFallbackDispatcher', () => {
         targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
       }),
       targetCommandClaim: createTargetCommandClaim(),
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5 }),
       buildTargetExecutorContext: () => ({
         state,
         targetCommandClaim: createTargetCommandClaim(),
@@ -635,7 +632,7 @@ describe('LifecycleFallbackDispatcher', () => {
         targets: [{ id: 'target_temperature', value: 5, unit: 'C' }],
       }),
       targetCommandClaim: createTargetCommandClaim(),
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5 }),
       buildTargetExecutorContext: () => ({ state, actuator } as never),
       buildBinaryExecutorContext: () => ({ actuator } as never),
       buildSteppedExecutorContext: () => ({ actuator } as never),
@@ -667,7 +664,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getDevice: () => device,
       getObservedState: () => observedFromDevice(device),
       targetCommandClaim: createTargetCommandClaim(),
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5 }),
       buildTargetExecutorContext: () => ({
         state,
         targetCommandClaim: createTargetCommandClaim(),
@@ -733,7 +730,7 @@ describe('LifecycleFallbackDispatcher', () => {
         binaryControl: { on: true },
       }),
       targetCommandClaim: createTargetCommandClaim(),
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      getShedBehavior: () => ({ action: 'turn_off' }),
       buildTargetExecutorContext: () => ({} as never),
       buildBinaryExecutorContext: () => ({
         state,
@@ -782,7 +779,7 @@ describe('LifecycleFallbackDispatcher', () => {
         binaryControl: { on: false },
       }),
       targetCommandClaim: createTargetCommandClaim(),
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      getShedBehavior: () => ({ action: 'turn_off' }),
       buildTargetExecutorContext: () => ({ actuator } as never),
       buildBinaryExecutorContext: () => ({ actuator } as never),
       buildSteppedExecutorContext: () => ({ actuator } as never),
@@ -795,8 +792,8 @@ describe('LifecycleFallbackDispatcher', () => {
   });
 
   it.each([
-    ['temperature control loses its target capability', { action: 'set_temperature', temperature: 5, stepId: 'low' }],
-    ['turn_off is configured for a stepped-only device', { action: 'turn_off', temperature: null, stepId: 'low' }],
+    ['temperature control loses its target capability', { action: 'set_temperature', temperature: 5 }],
+    ['turn_off is configured for a stepped-only device', { action: 'turn_off' }],
   ] as const)('falls back to the preferred safe step when %s', async (_scenario, behavior) => {
     const state = createPlanEngineState();
     const requestSteppedLoadStep = vi.fn().mockResolvedValue({ requested: true, transport: 'capability' });
@@ -884,7 +881,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getDevice: () => buildDevice(),
       getObservedState: () => observedFromDevice(buildDevice()),
       targetCommandClaim: createTargetCommandClaim(),
-      getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
+      getShedBehavior: () => ({ action: 'set_step' }),
       buildTargetExecutorContext: () => ({} as never),
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({
@@ -942,7 +939,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const request = resolveLifecycleFallbackRequest({
       device: withLifecycleAxes(device),
       observedState: observedFromDevice(device),
-      configuredFallback: { action: 'set_step', temperature: null, stepId: 'low' },
+      configuredFallback: { action: 'set_step' },
       nowMs: Date.now(),
     });
     expect(request).toMatchObject({
@@ -1084,7 +1081,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getDevice: () => device,
       getObservedState: () => observedFromDevice(device),
       targetCommandClaim: createTargetCommandClaim(),
-      getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
+      getShedBehavior: () => ({ action: 'set_step' }),
       buildTargetExecutorContext: () => ({} as never),
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({
@@ -1131,10 +1128,12 @@ describe('LifecycleFallbackDispatcher', () => {
     expect(requestSteppedLoadStep).toHaveBeenCalledTimes(1);
   });
 
+  // A third row used to cover "set_temperature is malformed" — a `set_temperature`
+  // carrying no temperature. `ShedBehavior` is a discriminated union, so that
+  // state is no longer constructible and there is nothing left to settle.
   it.each([
-    ['temperature control has no target capability', { action: 'set_temperature', temperature: 5, stepId: null }],
-    ['set_temperature is malformed', { action: 'set_temperature', temperature: null, stepId: null }],
-    ['turn_off has no executable control', { action: 'turn_off', temperature: null, stepId: null }],
+    ['temperature control has no target capability', { action: 'set_temperature', temperature: 5 }],
+    ['turn_off has no executable control', { action: 'turn_off' }],
   ] as const)('settles an unsupported fallback when %s', async (_scenario, behavior) => {
     const actuator = createTestActuator();
     const device = buildPlanInputDevice({
@@ -1176,7 +1175,7 @@ describe('LifecycleFallbackDispatcher', () => {
     expect(resolveLifecycleFallbackRequest({
       device: withLifecycleAxes(device),
       observedState: observedFromDevice(device),
-      configuredFallback: { action: 'set_temperature', temperature: 5, stepId: null },
+      configuredFallback: { action: 'set_temperature', temperature: 5 },
     })).toBeNull();
   });
 
@@ -1196,7 +1195,7 @@ describe('LifecycleFallbackDispatcher', () => {
     expect(resolveLifecycleFallbackRequest({
       device: withLifecycleAxes(device),
       observedState: observedFromDevice(device),
-      configuredFallback: { action: 'set_temperature', temperature: 5, stepId: null },
+      configuredFallback: { action: 'set_temperature', temperature: 5 },
     })).toMatchObject({
       kind: 'binary_off',
     });
@@ -1216,7 +1215,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getDevice: () => device,
       getObservedState: () => observedFromDevice(device),
       targetCommandClaim: createTargetCommandClaim(),
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5 }),
       buildTargetExecutorContext: () => ({
         state,
         targetCommandClaim: createTargetCommandClaim(),
@@ -1287,7 +1286,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getDevice: () => device,
       getObservedState: () => observedFromDevice(device),
       targetCommandClaim,
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5 }),
       buildTargetExecutorContext: () => targetContext,
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({} as PlanExecutorSteppedContext),
@@ -1367,7 +1366,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getDevice: () => device,
       getObservedState: () => observedFromDevice(device),
       targetCommandClaim,
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5 }),
       buildTargetExecutorContext: () => targetContext,
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({} as PlanExecutorSteppedContext),
@@ -1432,7 +1431,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getDevice: () => buildDevice(),
       getObservedState: () => observedFromDevice(buildDevice()),
       targetCommandClaim: createTargetCommandClaim(),
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5 }),
       buildTargetExecutorContext: () => ({
         state: planState,
         targetCommandClaim: createTargetCommandClaim(),
@@ -1509,7 +1508,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getDevice: () => device,
       getObservedState: () => observedFromDevice(device),
       targetCommandClaim,
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5 }),
       buildTargetExecutorContext: () => ordinaryContext,
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({} as PlanExecutorSteppedContext),
@@ -1571,7 +1570,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getDevice: () => device,
       getObservedState: () => observedFromDevice(device),
       targetCommandClaim,
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5 }),
       buildTargetExecutorContext: () => ordinaryContext,
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({} as PlanExecutorSteppedContext),
@@ -1732,7 +1731,7 @@ describe('LifecycleFallbackDispatcher', () => {
       getDevice: buildDevice,
       getObservedState: () => observedFromDevice(buildDevice()),
       targetCommandClaim,
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 5 }),
       buildTargetExecutorContext: () => ordinaryContext,
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({} as PlanExecutorSteppedContext),
@@ -1823,7 +1822,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const request = resolveLifecycleFallbackRequest({
       device: withLifecycleAxes(snapshot),
       observedState: { ...observedFromDevice(snapshot), binaryControl: { on: false } },
-      configuredFallback: { action: 'turn_off', temperature: null, stepId: null },
+      configuredFallback: { action: 'turn_off' },
     });
     expect(request).not.toBeNull();
     expect(dispatcher.converge(request!)).toEqual({ settled: true });
@@ -2066,7 +2065,7 @@ describe('LifecycleFallbackDispatcher', () => {
       const request = resolveLifecycleFallbackRequest({
         device: withLifecycleAxes({ ...snapshot, binaryWritable: true }),
         observedState: { ...observedFromDevice(snapshot), binaryControl: { on: false } },
-        configuredFallback: { action: 'turn_off', temperature: null, stepId: null },
+        configuredFallback: { action: 'turn_off' },
       });
       expect(dispatcher.converge(request!)).toEqual({ settled: false });
       if (abandon) dispatcher.abandon(snapshot.id);

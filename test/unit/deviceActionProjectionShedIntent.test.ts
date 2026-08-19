@@ -25,7 +25,7 @@ const steppedProfile = {
 describe('resolveShedIntent', () => {
   it('returns turn_off for a simple binary device with shedBehavior turn_off', () => {
     expect(resolveShedIntent({
-      shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
+      shedBehavior: { action: 'turn_off' },
       controllable: true,
       hasBinaryControl: true,
     })).toEqual({ kind: 'turn_off' });
@@ -33,7 +33,7 @@ describe('resolveShedIntent', () => {
 
   it('returns set_temperature with normalised setpoint when behaviour is set_temperature and a primary target exists', () => {
     expect(resolveShedIntent({
-      shedBehavior: { action: 'set_temperature', temperature: 17.3, stepId: null },
+      shedBehavior: { action: 'set_temperature', temperature: 17.3 },
       controllable: true,
       hasBinaryControl: true,
       primaryTarget: target({ step: 0.5 }),
@@ -42,7 +42,7 @@ describe('resolveShedIntent', () => {
 
   it('clamps the setpoint to the target capability min/max', () => {
     expect(resolveShedIntent({
-      shedBehavior: { action: 'set_temperature', temperature: 100, stepId: null },
+      shedBehavior: { action: 'set_temperature', temperature: 100 },
       controllable: true,
       hasBinaryControl: true,
       primaryTarget: target({ min: 5, max: 28 }),
@@ -51,52 +51,30 @@ describe('resolveShedIntent', () => {
 
   it('falls back to turn_off when set_temperature is configured but no primary target exists', () => {
     expect(resolveShedIntent({
-      shedBehavior: { action: 'set_temperature', temperature: 18, stepId: null },
+      shedBehavior: { action: 'set_temperature', temperature: 18 },
       controllable: true,
       hasBinaryControl: true,
       primaryTarget: null,
     })).toEqual({ kind: 'turn_off' });
   });
 
-  it('falls back to turn_off when set_temperature has a null temperature', () => {
-    expect(resolveShedIntent({
-      shedBehavior: { action: 'set_temperature', temperature: null, stepId: null },
-      controllable: true,
-      hasBinaryControl: true,
-      primaryTarget: target(),
-    })).toEqual({ kind: 'turn_off' });
-  });
-
-  it('returns set_step with the configured stepId resolved when behaviour is set_step on a stepped device', () => {
-    expect(resolveShedIntent({
-      shedBehavior: { action: 'set_step', temperature: null, stepId: 'low' },
-      controllable: true,
-      hasBinaryControl: true,
-      steppedLoadProfile: steppedProfile,
-    })).toEqual({ kind: 'set_step', targetStepId: 'low' });
-  });
-
-  it('falls back to the lowest active step when the configured stepId is null', () => {
-    expect(resolveShedIntent({
-      shedBehavior: { action: 'set_step', temperature: null, stepId: null },
-      controllable: true,
-      hasBinaryControl: false,
-      steppedLoadProfile: steppedProfile,
-    })).toEqual({ kind: 'set_step', targetStepId: 'low' });
-  });
-
-  it('falls back to the lowest active step when the configured stepId is unknown', () => {
-    expect(resolveShedIntent({
-      shedBehavior: { action: 'set_step', temperature: null, stepId: 'does_not_exist' },
-      controllable: true,
-      hasBinaryControl: false,
-      steppedLoadProfile: steppedProfile,
-    })).toEqual({ kind: 'set_step', targetStepId: 'low' });
+  // The rung is the DEVICE's lowest active step. This used to be three cases —
+  // configured stepId absent / matching / unknown — but a shed behaviour has
+  // never been able to carry one, so they were one case wearing three hats.
+  it('resolves set_step to the profile lowest active step, with or without binary control', () => {
+    for (const hasBinaryControl of [true, false]) {
+      expect(resolveShedIntent({
+        shedBehavior: { action: 'set_step' },
+        controllable: true,
+        hasBinaryControl,
+        steppedLoadProfile: steppedProfile,
+      })).toEqual({ kind: 'set_step', targetStepId: 'low' });
+    }
   });
 
   it('returns set_step for a stepped device with no binary control regardless of behaviour action', () => {
     expect(resolveShedIntent({
-      shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
+      shedBehavior: { action: 'turn_off' },
       controllable: true,
       hasBinaryControl: false,
       steppedLoadProfile: steppedProfile,
@@ -105,7 +83,7 @@ describe('resolveShedIntent', () => {
 
   it('returns turn_off for a stepped device with binary control and turn_off behaviour', () => {
     expect(resolveShedIntent({
-      shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
+      shedBehavior: { action: 'turn_off' },
       controllable: true,
       hasBinaryControl: true,
       steppedLoadProfile: steppedProfile,
@@ -114,7 +92,7 @@ describe('resolveShedIntent', () => {
 
   it('returns turn_off for a non-stepped device even when set_step is configured', () => {
     expect(resolveShedIntent({
-      shedBehavior: { action: 'set_step', temperature: null, stepId: 'low' },
+      shedBehavior: { action: 'set_step' },
       controllable: true,
       hasBinaryControl: true,
     })).toEqual({ kind: 'turn_off' });
@@ -130,7 +108,7 @@ describe('resolveShedIntent', () => {
   // absence. A device with no profile is not a stepped load, whatever else is set.
   it('returns turn_off for a device with no profile and no binary capability', () => {
     expect(resolveShedIntent({
-      shedBehavior: { action: 'set_step', temperature: null, stepId: 'low' },
+      shedBehavior: { action: 'set_step' },
       controllable: false,
       hasBinaryControl: false,
     })).toEqual({ kind: 'turn_off' });
@@ -140,7 +118,7 @@ describe('resolveShedIntent', () => {
   describe('controllable fold (PR A)', () => {
     it('collapses set_temperature to turn_off when controllable=false (non-stepped)', () => {
       expect(resolveShedIntent({
-        shedBehavior: { action: 'set_temperature', temperature: 17, stepId: null },
+        shedBehavior: { action: 'set_temperature', temperature: 17 },
         controllable: false,
         hasBinaryControl: true,
         primaryTarget: target(),
@@ -149,7 +127,7 @@ describe('resolveShedIntent', () => {
 
     it('collapses set_temperature to turn_off when controllable=false (stepped + binary)', () => {
       expect(resolveShedIntent({
-        shedBehavior: { action: 'set_temperature', temperature: 17, stepId: null },
+        shedBehavior: { action: 'set_temperature', temperature: 17 },
         controllable: false,
         hasBinaryControl: true,
         steppedLoadProfile: steppedProfile,
@@ -159,7 +137,7 @@ describe('resolveShedIntent', () => {
 
     it('keeps set_step for cap-off stepped device with no binary control (no other handle)', () => {
       expect(resolveShedIntent({
-        shedBehavior: { action: 'set_step', temperature: null, stepId: null },
+        shedBehavior: { action: 'set_step' },
         controllable: false,
         hasBinaryControl: false,
         steppedLoadProfile: steppedProfile,
@@ -168,7 +146,7 @@ describe('resolveShedIntent', () => {
 
     it('collapses set_step to turn_off when controllable=false on stepped+binary device', () => {
       expect(resolveShedIntent({
-        shedBehavior: { action: 'set_step', temperature: null, stepId: null },
+        shedBehavior: { action: 'set_step' },
         controllable: false,
         hasBinaryControl: true,
         steppedLoadProfile: steppedProfile,
@@ -195,7 +173,7 @@ describe('resolveShedIntent', () => {
 
     it('treats such a stepped device as non-binary (set_step), not turn_off', () => {
       expect(resolveShedIntent({
-        shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
+        shedBehavior: { action: 'turn_off' },
         controllable: true,
         // De-drift: no resolved control capability, so the binary gate is off.
         hasBinaryControl: false,

@@ -189,21 +189,21 @@ export function normalizeShedBehaviors(input: unknown): Record<string, ShedBehav
   return Object.fromEntries(entries);
 }
 
+/**
+ * The configured shed behaviour for one device, or `turn_off` for a device the
+ * owner never configured.
+ *
+ * A plain lookup on purpose: `normalizeShedBehaviors` is the only writer of the
+ * map, and it resolves every entry into one inhabited `ShedBehavior` member —
+ * so there is nothing left here to re-derive, re-clamp, or fall back from. This
+ * used to flatten the union into `{ action, temperature: number | null, stepId:
+ * string | null }` and re-run the ±50 clamp the producer had already applied.
+ */
 export function getShedBehavior(
   deviceId: string,
   shedBehaviors: Record<string, ShedBehavior>,
-): { action: ShedAction; temperature: number | null; stepId: string | null } {
-  const behavior = shedBehaviors[deviceId];
-  let action: ShedAction = 'turn_off';
-  if (behavior?.action === 'set_temperature') {
-    action = 'set_temperature';
-  } else if (behavior?.action === 'set_step') {
-    action = 'set_step';
-  }
-  const temp = behavior?.temperature;
-  const temperature = Number.isFinite(temp) ? Math.max(-50, Math.min(50, Number(temp))) : null;
-  const stepId = typeof behavior?.stepId === 'string' && behavior.stepId.trim() ? behavior.stepId.trim() : null;
-  return { action, temperature, stepId };
+): ShedBehavior {
+  return shedBehaviors[deviceId] ?? { action: 'turn_off' };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

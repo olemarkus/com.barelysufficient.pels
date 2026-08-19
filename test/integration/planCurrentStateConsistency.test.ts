@@ -106,7 +106,7 @@ describe('planner current-state consistency', () => {
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' }),
         getPriorityForDevice: () => 100,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         log: vi.fn(),

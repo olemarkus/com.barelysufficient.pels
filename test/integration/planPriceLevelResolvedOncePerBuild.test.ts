@@ -89,7 +89,7 @@ const buildBuilder = (params: {
     getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     getPriorityForDevice: () => 100,
-    getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+    getShedBehavior: () => ({ action: 'turn_off' }),
     getDynamicSoftLimitOverride: () => 10,
     deviceDiagnostics: params.deviceDiagnostics,
     log: vi.fn(),
