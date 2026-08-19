@@ -236,7 +236,10 @@ const isSteppedLoadRestoreStepIncrease = (
   desiredStepId: string,
   previousStepId: string | undefined,
 ): boolean => {
-  if (action.purpose !== 'keep' || !previousStepId) return false;
+  // Load-bearing, not cosmetic: this gates `recordRestoreActuation`, which
+  // stamps the restore cooldown. A shed device observed BELOW its decided rung
+  // is commanded up, so the power comparison alone would read that as a restore.
+  if (action.plannedShedTarget !== undefined || !previousStepId) return false;
   const previousStep = getSteppedLoadStep(action.steppedLoadProfile, previousStepId);
   const desiredStep = getSteppedLoadStep(action.steppedLoadProfile, desiredStepId);
   return Boolean(previousStep && desiredStep && desiredStep.planningPowerW > previousStep.planningPowerW);

@@ -212,7 +212,6 @@ const buildShedReleaseSteppedAction = (params: {
   return {
     id: intent.deviceId,
     name: intent.name,
-    purpose: 'shed',
     steppedLoadProfile: profile,
     communicationModel: steppedLoadIntent.communicationModel,
     controlAdapter: steppedLoadIntent.controlAdapter,

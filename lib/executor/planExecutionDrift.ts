@@ -157,7 +157,7 @@ function isPendingTargetCommandMatchingExpected(
 
 function hasNonTemperatureShedIntent(intent: ExecutableDeviceIntent): boolean {
   if (hasBinaryCommand(intent) && !intent.binary.desiredOn) return true;
-  return hasSteppedCommand(intent) && intent.steppedLoad.purpose === 'shed';
+  return hasSteppedCommand(intent) && intent.steppedLoad.plannedShedTarget !== undefined;
 }
 
 function hasExecutableBinaryExecutionDrift(
@@ -249,8 +249,7 @@ function resolveExpectedBinaryStateForSteppedIntent(
   }
   if (intent.desired.on === true) return 'on';
   if (intent.desired.on === false) return 'off';
-  if (intent.purpose === 'keep') return 'on';
-  return 'off';
+  return intent.plannedShedTarget === undefined ? 'on' : 'off';
 }
 
 function isPendingBinaryCommandMatchingExpected(

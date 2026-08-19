@@ -119,7 +119,6 @@ const buildSteppedIntent = (
 ): Extract<LifecycleFallbackRequest, { kind: 'step_fallback' }>['steppedLoad'] => ({
   id: device.id,
   name: device.name,
-  purpose: 'shed',
   steppedLoadProfile: posture.profile,
   communicationModel: device.communicationModel,
   controlAdapter: device.controlAdapter,
