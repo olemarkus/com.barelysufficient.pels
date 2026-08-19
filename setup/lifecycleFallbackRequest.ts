@@ -128,7 +128,8 @@ const buildSteppedIntent = (
   // the capacity path's — see
   // `notes/state-management/deferred-objective-lifecycle-carveout.md`.
   plannedShedTarget: { kind: 'step', stepId: posture.stepId },
-  desired: { on: false },
+  desiredOn: false,
+  desired: {},
   previousStepId: device.selectedStepId ?? device.previousStepId,
   transition: null,
   matchingRestoreAttempt: null,

@@ -1,4 +1,5 @@
 import type { DevicePlan, ShedBehavior } from '../plan/planTypes';
+import { isBinaryDrivenIntent } from './executableDesiredState';
 import type {
   ExecutableDeviceIntent,
 } from './executablePlan';
@@ -317,7 +318,7 @@ const applySteppedRestoreFromOffIntent = async (
   const { observed, snapshot, steppedAction, hasShedDevices, targetCommand } = ctx;
   let deviceWriteCount = 0;
   let commandRequestCount = 0;
-  if (steppedAction?.desired.on !== true) {
+  if (steppedAction === null || !isBinaryDrivenIntent(steppedAction) || !steppedAction.desiredOn) {
     if (await applyTargetIntent(core, targetCommand, observed)) deviceWriteCount += 1;
     return delta(deviceWriteCount, commandRequestCount);
   }

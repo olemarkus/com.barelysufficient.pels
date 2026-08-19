@@ -1,5 +1,6 @@
 import { isBinaryControlled, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import type { ShedAction, ShedBehavior } from '../plan/planTypes';
+import type { DesiredBinaryKind } from './executableDesiredState';
 import type {
   ObservedDeviceState,
   SteppedLoadProfile,
@@ -187,7 +188,7 @@ const buildShedReleaseSteppedAction = (params: {
   observed: ExecutableObservedDeviceState | undefined;
   targetStep: SteppedLoadStep;
   currentStepId: string | undefined;
-}): ExecutableSteppedLoadDevice => {
+}): ExecutableSteppedLoadDevice & DesiredBinaryKind => {
   const {
     intent, steppedLoadIntent, observed, targetStep, currentStepId,
   } = params;
@@ -231,11 +232,11 @@ const buildShedReleaseSteppedAction = (params: {
         : undefined,
       stepIsOffStep: currentStepId ? isSteppedLoadOffStep(profile, currentStepId) : false,
     },
+    // Drives the binary axis ON so `applySteppedLoadCommand` does not early-return
+    // on its `observed off + plan wants off` guard — this path dispatches a STEP
+    // command via the step capability, not a binary off.
+    desiredOn: true,
     desired: {
-      // Keep `on: true` so applySteppedLoadCommand does not early-return on the
-      // `currentOn === false && desired.on === false` guard — we are dispatching a step
-      // command via the step capability, not a binary off.
-      on: true,
       stepId: targetStep.id,
       plannedStepId: targetStep.id,
     },

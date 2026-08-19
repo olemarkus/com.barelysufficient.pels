@@ -1,5 +1,6 @@
 import type { PendingTargetCommandState } from '../plan/planState';
 import type { ShedBehavior } from '../plan/planTypes';
+import type { DesiredBinaryKind } from './executableDesiredState';
 import { getPendingTargetCommandDecision } from '../plan/planTargetControl';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { getLogger } from '../logging/logger';
@@ -41,7 +42,9 @@ export type LifecycleFallbackRequest = {
   kind: 'step_fallback';
   observed: ExecutableObservedDeviceState;
   targetStepId: string;
-  steppedLoad: ExecutableSteppedLoadIntent;
+  // The step fallback always drives the binary axis to its configured posture,
+  // so this carries the binary cluster rather than leaving it to be inferred.
+  steppedLoad: ExecutableSteppedLoadIntent & DesiredBinaryKind;
 };
 
 export type LifecycleFallbackResult = { settled: boolean };

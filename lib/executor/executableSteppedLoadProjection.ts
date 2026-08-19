@@ -3,6 +3,7 @@ import {
   isBinaryControlled,
   isBinaryOnOrUnknown,
 } from '../../packages/shared-domain/src/binaryControlState';
+import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
 import type { DevicePlan } from '../plan/planTypes';
 import {
   isSteppedLoadDevice,
@@ -48,14 +49,16 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
   };
   const plannedStepId = resolveSteppedKeepDesiredStepId(dev);
   const plannedTransition = resolveSteppedLoadTransition(dev, plannedStepId);
-  const desired = resolveDesiredState({
+  const { desired, desiredOn } = resolveDesiredState({
     dev,
     current: planningCurrent,
     plannedStepId,
     plannedTransition,
   });
   if (isUnderspecifiedSetStepShedIntent(dev, desired)) return undefined;
-  const transition = desiredMatchesTransition(desired, plannedTransition) ? plannedTransition : null;
+  const transition = desiredMatchesTransition(desired, desiredOn, plannedTransition)
+    ? plannedTransition
+    : null;
   const matchingRestoreAttempt = desired.stepId !== undefined
     ? resolveSteppedRestoreAttemptState(dev, desired.stepId)
     : null;
@@ -70,6 +73,12 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     controlAdapter: dev.controlAdapter,
     plannedShedTarget: toExecutableShedTarget(dev.plannedShedTargetKind, desired.stepId),
     desired,
+    // The binary axis is attached ONLY when this cycle's decision moves it.
+    // `resolveDesiredOn` answers `null` for the steady / step-up / step-down
+    // transitions, where the plan has something to say about the step and
+    // nothing about the on/off handle — previously that `null` travelled as a
+    // third value every consumer re-interpreted through `!== true`.
+    ...(desiredOn !== null ? { desiredOn } : {}),
     previousStepId: dev.selectedStepId,
     transition,
     matchingRestoreAttempt,
@@ -273,20 +282,13 @@ const resolveDesiredState = (params: {
   current: ExecutableSteppedLoadDevice['current'];
   plannedStepId?: string;
   plannedTransition: ReturnType<typeof resolveSteppedLoadTransition>;
-}): ExecutableSteppedLoadDevice['desired'] => {
+}): { desired: ExecutableSteppedLoadDevice['desired']; desiredOn: boolean | null } => {
   const {
     dev,
     current,
     plannedStepId,
     plannedTransition,
   } = params;
-  if (shouldHoldCurrentState(dev)) {
-    return {
-      on: current.on,
-      stepId: current.stepId,
-      plannedStepId,
-    };
-  }
   const desiredStepId = resolveDesiredStepId({
     dev,
     current,
@@ -294,9 +296,8 @@ const resolveDesiredState = (params: {
     plannedTransition,
   });
   return {
-    on: resolveDesiredOn({ dev, current, plannedTransition }),
-    stepId: desiredStepId,
-    plannedStepId,
+    desired: { stepId: desiredStepId, plannedStepId },
+    desiredOn: resolveDesiredOn({ dev, current, plannedTransition, desiredStepId }),
   };
 };
 
@@ -323,24 +324,70 @@ const resolveDesiredStepId = (params: {
 
 const desiredMatchesTransition = (
   desired: ExecutableSteppedLoadDevice['desired'],
+  desiredOn: boolean | null,
   transition: ReturnType<typeof resolveSteppedLoadTransition>,
 ): boolean => {
   if (!transition) return false;
   if (desired.stepId !== transition.commandStepId) return false;
-  return transition.binaryTarget === null || desired.on === transition.binaryTarget;
+  return transition.binaryTarget === null || desiredOn === transition.binaryTarget;
 };
 
 const resolveDesiredOn = (params: {
   dev: PlanDevice;
   current: ExecutableSteppedLoadDevice['current'];
   plannedTransition: ReturnType<typeof resolveSteppedLoadTransition>;
+  desiredStepId: string | undefined;
 }): boolean | null => {
-  const { dev, current, plannedTransition } = params;
+  const {
+    dev, current, plannedTransition, desiredStepId,
+  } = params;
   if (plannedTransition?.binaryTarget !== null && plannedTransition?.binaryTarget !== undefined) {
     return plannedTransition.binaryTarget;
   }
   if (dev.plannedState === 'shed' && current.stepIsOffStep) return false;
-  return current.on;
+  // A KEEP is a decision that the device should be running, so the binary axis
+  // is driven ON by that decision — exactly as `buildExecutableBinaryIntent`
+  // answers for a kept binary device. It must NOT be read off `current.on`: a
+  // DESIRED-state field has to carry a decision, never an observation. The old
+  // read made one field mean two things depending on which arm filled it, and
+  // let the executor drive a device from stale state. (Not the `inc_26449fb9`
+  // shape, which was a LANE-wide exemption from retry suppression and cooldown
+  // stamping — this was a field-level leak with no lane and no brake bypass.)
+  // Same value in the common case, decided rather than inferred.
+  // `inactive` is the third `PlannedDeviceState`, and it must not fall through to
+  // "the plan does not move this axis". PELS is not driving this device AT ALL —
+  // `getInactiveReason` sets it when the device is not commandable this cycle, or
+  // is held off by something outside PELS. Letting `desiredOn` go absent here
+  // removes `isSettledAtPlannedOff`'s skip, so a step command reaches a device
+  // that cannot answer it and stamps a shed cooldown or opens an activation
+  // attempt on its behalf. That is what `commandableNow === false` exists to
+  // prevent. `false` reproduces the pre-cluster value exactly (`current.on` was
+  // false for every inactive producer, all of which run on off devices).
+  //
+  // The honest shape is no stepped intent at all for an inactive device — the
+  // binary projection already filters that way, and `resolveConvergenceDesiredBinaryState`
+  // carves `inactive` out explicitly. That is a behaviour change, so it is filed
+  // rather than bundled here.
+  if (dev.plannedState === 'inactive') return false;
+  if (dev.plannedState === 'keep') {
+    // No binary handle means no binary axis to drive, so the plan drives none:
+    // a step-only stepper's restore rides the step axis (see
+    // `hasStableSteppedLoadBinaryRestoreActuation`). Answering `true` here would
+    // push it through the binary restore lane it has no use for — which is a
+    // behaviour change, not a rename.
+    if (!isBinaryPlanDevice(dev)) return null;
+    if (desiredStepId === undefined || !isSteppedLoadDevice(dev)) return true;
+    return !isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId);
+  }
+  // `null` = this cycle's decision does not move the binary axis. It must NOT
+  // fall back to `current.on`: a desired-state field carries a decision, never
+  // an observation. A device that moved on its own is an
+  // ordinary input — `scheduleAppRealtimeDeviceReconcile` queues a rebuild, and
+  // the planner answers with an explicit `restore_from_off_at_low` (binaryTarget
+  // true) or decides to leave it and shed something else. Inferring it here can
+  // only ever produce the first answer, which is the apply-without-decide path
+  // `inc_26449fb9` came from (`lib/plan/AGENTS.md`).
+  return null;
 };
 
 const shouldHoldCurrentState = (dev: PlanDevice): boolean => (

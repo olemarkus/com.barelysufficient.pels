@@ -76,10 +76,86 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 *(prior closures shipped on the v2.9 train via PRs #975, #977, #978, #980,
 #982, #983; surviving follow-ups demoted to P1/P2.)*
 
-No open P0 release blockers after the 2026-07-25 release-review cleanup. That
-pass partitioned realtime reconcile work by home, finite-gated saved meter-area
-limits, and corrected the Main-meter setup guide. Remaining multi-meter work is
-tracked as P1/P2/P3 follow-up below.
+The 2026-07-25 release-review cleanup closed the prior set: it partitioned realtime reconcile
+work by home, finite-gated saved meter-area limits, and corrected the Main-meter setup guide.
+Remaining multi-meter work is tracked as P1/P2/P3 follow-up below.
+
+- [ ] **Drift detection reads device state from the plan layer, not from the observation.**
+      `hasPlanExecutionDriftAgainstIntent` is documented as comparing "live observations against
+      planner INTENT", but the live side is a `PlanInputDevice`. `ExecutableObservedDeviceState`
+      says so in its own docblock: `observedBinaryState` is *"path-dependent by design"* — the
+      producer-resolved `currentOn` on the drift/reconcile path, the raw binary axis
+      (`isBinaryOnOrUnknown`) on the executor/dispatch path. One field, two meanings, selected by
+      which path constructed it. `hasPlanExecutionDrift` is worse in shape: it compares two
+      `DevicePlan`s positionally by array index, and its live side comes from `buildLiveStatePlan`
+      — which `lib/plan/AGENTS.md` calls out as *"by construction the OLD decision seen freshly …
+      for publishing snapshots, never for deciding to actuate"*.
+
+      **Where:** `lib/executor/executorConvergence.ts`, `lib/executor/planExecutionDrift.ts`,
+      `ExecutableObservedDeviceState` in `lib/executor/executablePlan.ts`,
+      `buildExecutableConvergenceDevice` in `lib/executor/executablePlanProjection.ts`.
+
+      **What changes:** drift compares planner INTENT against the OBSERVATION, sourced from the
+      observer rather than from a plan that had observations merged into it. One meaning for
+      `observedBinaryState`, not one per construction path. Confirm whether any actuation path
+      reaches the positional plan-to-plan form, or whether it is genuinely settle-only as its
+      comment claims — and if the former, that is the live half of this defect.
+
+      **Done when:** the drift path takes an observed-state input that no plan decision has passed
+      through, `observedBinaryState` has a single documented meaning, and no actuation decision is
+      made by comparing two `DevicePlan`s.
+
+      *Found while removing the executor's nullable desired state (#2155, #2158). It is why
+      `resolveDesiredOn` could read `resolveEffectiveCurrentOn(dev)` off a plan device and have
+      that look reasonable: on that path the executor never sees an observation, only a plan with
+      observations folded in.*
+
+- [ ] **Too many events trigger a plan rebuild, and a rebuild on a stale power reading decides
+      nothing meaningful.** A device control-state change queues a full plan rebuild:
+      `managerRealtimeHandlers.ts` gates on `observedControlStateChanged`, emits
+      `emitPlanReconcile`, and `scheduleAppRealtimeDeviceReconcile` calls
+      `planService.rebuildPlanFromCache('device_observation_changed')`. The gate keeps
+      non-control facets (temperature, SoC, measure_power) out, and the path is debounced with a
+      rebuild floor — but the planner's decision is a capacity decision, and a rebuild driven by a
+      device observation runs against a whole-home reading that has not changed. `lib/plan/AGENTS.md`
+      states the planner trusts power and holds no concept of staleness, so it cannot tell it is
+      re-deciding on a reading it has no reason to think is current.
+
+      **Where:** `lib/device/transport/managerRealtimeHandlers.ts` (the `emitPlanReconcile` gate),
+      `setup/appRealtimeDeviceReconcileRuntime.ts` (`requestRebuild`),
+      `setup/appServiceWiring.ts` (`scheduleRealtimeDeviceReconcile`).
+
+      **What changes:** rule on which signals may trigger a rebuild. Owner ruling 2026-08-20 is
+      that a fresh whole-home measurement should be the trigger, with device state changes handled
+      by executor drift rather than by re-planning.
+
+      **That ruling supersedes two documents, which must be amended with the change, not left to
+      contradict it.** `lib/plan/AGENTS.md` § "The planner does not import the executor" states
+      *"`PlanService` therefore has exactly one way to converge a device — `rebuildPlanFromCache`.
+      Do not add an apply-without-decide path back; if a rebuild is too slow for some caller, make
+      the rebuild cheaper."* Root `AGENTS.md` § Control Flow states *"A power sample and an observed
+      device change are both ordinary inputs here; each triggers a rebuild"* and *"There is no
+      separate reconciliation phase."* Those exist because a lane that re-applies a committed plan
+      can only ever answer "put it back", never "leave it and shed something else" — which is how
+      `inc_26449fb9` breached the hard cap. Whatever replaces the device-observation trigger has to
+      preserve that second answer, or it is the reconcile lane returning under a new name.
+
+      **A precondition, discovered 2026-08-20 and blocking on its own:** `PlanOverview.tsx` and
+      `PlanHero.tsx` iterate `plan.devices` for the Overview's device list, while `/ui_devices`
+      already serves the full transport snapshot (`app.latestTargetSnapshot`) and the read model
+      already joins twelve observer-owned fields onto each device. So the plan is not supplying the
+      UI's state — it is supplying the UI's MEMBERSHIP, and "not planned" therefore means "not
+      shown". That is what blocks every filtering question: an uncontrolled device would lose the
+      hero's capacity-control-off copy, and a `plugged_out` charger would lose its
+      `Inactive (car unplugged)` card. Anchor the Overview loop on the managed device set and join
+      plan decisions onto it, absent where there is none, and all of them unblock at once.
+
+      Ordered behind the entry above: removing the device-observation trigger is only safe once
+      drift can act on observations directly.
+
+      **Done when:** the set of rebuild triggers is decided and enforced, every remaining trigger
+      runs against a power reading the planner has reason to treat as current, and device
+      control-state changes converge through the executor without requiring a new plan.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
@@ -917,17 +993,6 @@ program) remain deferred.*
       `nextRetryAtMs`, preserving `startedMs`/`pendingMs`, and never deletes. Three axes now have
       three hand-rolled `catch` policies; a shared write-outcome policy is the larger prize but the
       stepped gap is fixable on its own. Found 2026-08-17. [P2]
-
-- [ ] **`stepped_load_restore_binary_undriven` fires 15/15 on deliberate sheds.**
-      `lib/executor/steppedLoadRestoreDiagnostics.ts` is the detector for the "stuck off while cold"
-      incident class (prod: Høiax "Connected 300"), and its docblock says it "only fires in the
-      anomalous shape". In a 2 h prod window it fired 15 times, all on Connected 300, and every one
-      carried `transition: full_shed_to_off`, `desiredOn: false`, `binaryTarget: false` — an
-      unambiguous *intentional* shed. The guard treats `desired.stepId = 'low'` as a non-off step
-      (`currentStepIsOffStep: false`) without also checking that the desired binary is explicitly
-      `false`. Consequence: the alarm cries wolf on every normal shed, so a genuine recurrence would
-      be indistinguishable from noise. Fix is a guard clause — bail when `desired.on === false` or
-      `binaryTarget === false` — plus a regression test. Found 2026-08-17. [P2]
 
 - [ ] **Two producer-shaped functions are stranded in `lib/plan` with no `lib/plan` callers.**
       `withHeadroomCurrentOn` (`lib/plan/planHeadroomSupport.ts`, its own comment: "the twin of

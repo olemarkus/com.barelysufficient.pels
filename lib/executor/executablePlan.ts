@@ -315,7 +315,14 @@ export type ExecutableSteppedLoadCurrentState = ExecutableSteppedLoadState & {
   stepIsOffStep: boolean;
 };
 
-export type ExecutableSteppedLoadDesiredState = ExecutableSteppedLoadState & {
+/**
+ * What the plan wants a stepped device's STEP axis to be. The binary axis is
+ * NOT here: it rides `DesiredBinaryKind` on the intent, attached only when this
+ * cycle's decision actually moves the on/off handle, so an un-narrowed read is
+ * a compile error rather than a `boolean | null` every consumer re-interprets.
+ */
+export type ExecutableSteppedLoadDesiredState = {
+  stepId?: string;
   plannedStepId?: string;
 };
 

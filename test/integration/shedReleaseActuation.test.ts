@@ -1,4 +1,5 @@
 import { applyShedReleaseIntent, type ShedReleaseActuationDeps } from '../../lib/executor/shedReleaseActuation';
+import type { DesiredBinaryKind } from '../../lib/executor/executableDesiredState';
 import type {
   ExecutableObservedDeviceState,
   ExecutableReleaseIntent,
@@ -57,12 +58,12 @@ const buildSteppedLoadProfile = (): SteppedLoadProfile => ({
 } as never);
 
 const buildSteppedLoadIntent = (
-  overrides?: Partial<ExecutableSteppedLoadIntent>,
-): ExecutableSteppedLoadIntent => ({
+  overrides?: Partial<ExecutableSteppedLoadIntent & DesiredBinaryKind>,
+): ExecutableSteppedLoadIntent & DesiredBinaryKind => ({
   id: 'dev-1',
   name: 'Device 1',
   steppedLoadProfile: buildSteppedLoadProfile(),
-  desired: { on: true, stepId: 'high' },
+  desiredOn: true, desired: { stepId: 'high' },
   transition: null,
   matchingRestoreAttempt: null,
   matchingCommandAttempt: null,
@@ -304,7 +305,10 @@ describe('applyShedReleaseIntent', () => {
     expect(action).toMatchObject({
       id: 'dev-1',
       plannedShedTarget: { kind: 'step', stepId: 'low' },
-      desired: { stepId: 'low', on: true },
+      // Load-bearing: the release path drives the binary axis ON so
+      // `applySteppedLoadCommand` does not early-return on its observed-off guard.
+      desiredOn: true,
+      desired: { stepId: 'low' },
     });
     expect(mockedApplyBinarySheddingToDevice).not.toHaveBeenCalled();
     // The synthesized release action carries `transition: null`; applySteppedLoadCommand
