@@ -57,10 +57,10 @@ export type SettingsUiHomesSaveRequest =
  *   would swallow the whole home.
  * - `meter_in_use` — identifies the meter area that already owns a requested
  *   Main-home meter.
- * - `main_meter_required` — a meter area cannot exist while the Main home
- *   still reads the combined total of every meter, so the Main home must name
- *   its own whole-home meter (both directions: saving an area, and selecting
- *   Automatic while areas exist).
+ * - `main_meter_required` — Automatic cannot prove which meter belongs to the
+ *   Main home once meter areas exist, so the Main home must name its own
+ *   whole-home meter (both directions: saving an area, and selecting Automatic
+ *   while areas exist).
  * - `meter_unnameable` — the same requirement on a home where it can never be
  *   satisfied: the whole-home reading comes from an id-less aggregate (the
  *   report's only cumulative item carries no device id), so no whole-home

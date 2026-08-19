@@ -345,9 +345,9 @@ const AddButtonRow = ({ zonesAvailable, configDegraded, mutationsLocked, onAddCl
 );
 
 /**
- * Main-home meter nudge: Homey Energy homes with meter areas but no explicit
- * whole-home meter read the combined total of every meter. Links to the real
- * control's panel (Limits & safety) via the global settings-target handler.
+ * Main-home meter nudge: Automatic cannot prove which physical meter belongs
+ * to the Main home once meter areas exist. Links to the real control's panel
+ * (Limits & safety) via the global settings-target handler.
  */
 const MainMeterNotice = () => (
   <section class="pels-notice-warning homes-settings__notice" id="homes-main-meter-notice">

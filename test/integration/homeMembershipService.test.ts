@@ -181,8 +181,8 @@ const makeWiredHealthyHomey = (legacyMultiHomeEnabled = true): WiredHealthyHomey
   }
   // The healthy path now includes the Main home naming its own meter: on the
   // Homey Energy source an area upsert is refused while Main is on Automatic
-  // (it would read every area's meter as its own). Tests that pin a specific
-  // Main meter set it before calling this.
+  // because Automatic cannot prove which physical meter belongs to Main. Tests
+  // that pin a specific Main meter set it before calling this.
   if (!mockHomeyInstance.settings.getKeys().includes(HOMEY_ENERGY_METER_DEVICE_ID)) {
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, MAIN_METER_ID);
   }

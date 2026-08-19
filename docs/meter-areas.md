@@ -57,10 +57,12 @@ entirely remotely.
   total. Add the meter to Homey first, then pick it here.
 - **The Main home's own meter picked.** Before you can save your first meter
   area, select the Main home's **Whole-home meter** under **Settings → Limits &
-  safety**. Automatic cannot reliably identify the Main home's meter when
-  several whole-home readings exist, so Main may receive no reading or may have
-  established an area's meter while it was the sole readable candidate. The
-  [Giving the Main home its own meter](#giving-the-main-home-its-own-meter)
+  safety**. Automatic can be used only when there are no meter areas; it cannot
+  prove which of several meters belongs to the Main home. PELS therefore refuses
+  to save an area until the Main home's **Whole-home meter** is selected
+  explicitly, refuses assigning that same meter to an area, and refuses
+  switching the Main home back to Automatic while areas are running.
+  The [Giving the Main home its own meter](#giving-the-main-home-its-own-meter)
   section explains why. A few Homey setups read the whole home through an
   aggregate that doesn't report a device id. There the picker has nothing to
   offer, and meter areas aren't supported yet; PELS says so when you try to
@@ -160,30 +162,32 @@ the **Showing** bar to see its live status and its own recorded history.
 
 ## Giving the Main home its own meter
 
-If you've added meter areas but haven't told PELS which meter belongs to the
-**Main home**, it has no reliable way to choose among them. **Automatic** starts
-only when one whole-home meter is readable and retains that meter if more later
-appear during the current app session. If several are present before one is
-established, PELS cannot read current power for the Main home. If an area's meter
-was temporarily the sole candidate, Automatic may already have established that
-meter instead.
+**Automatic** is useful before you configure meter areas: it can establish one
+readable whole-home meter and retain it if more later appear during the current
+app session. Once you split the home across meters, that is not enough evidence
+of ownership. PELS requires you to select the Main home's **Whole-home meter**
+before the first area can be saved. A supported running setup therefore never
+has the Main home on Automatic alongside meter areas, and the same explicit
+meter cannot belong to both the Main home and an area.
+
+An explicit selection tells PELS which meter you intend to use for the Main
+home. PELS cannot infer what that physical meter covers, so choose one whose
+reading excludes every meter area.
 
 **A combined total that already includes a meter area.** PELS cannot detect
-this one, so it keeps limiting the Main home against a figure that includes your
-areas: Main-home devices get limited for usage that isn't theirs.
+that composition from the number alone. If you select it for the Main home,
+Main-home devices may then be limited for usage that belongs to an area.
 
-**A meter area's own meter.** When PELS can see that the reading belongs to one
-of your meter areas, it stops limiting Main-home devices rather than act on a
-meter that already has an owner. That is the safe choice for the area, but it is
-the more serious of the two for you: nothing is keeping the Main home under its
-hard cap until you pick its meter.
+**A meter area's own meter.** PELS refuses assigning the same explicit meter to
+both the Main home and an area. Its runtime safety checks also refuse Main-home
+commands if a legacy or transient sample can be proven to carry an area's meter
+identity. That is recovery protection, not a supported way to configure the
+home.
 
-The fix is a one-time pick: set the Main home's own meter under **Settings →
-Limits & safety → Whole-home meter**. Because the problem is silent, PELS treats
-it as a requirement rather than a suggestion: saving a meter area asks for the
-Whole-home meter first, and switching it back to *Automatic* while meter areas
-are running is refused. Once the Main home reads its own meter, each part (the Main home and
-every meter area) is measured and limited on its own.
+Make the one-time pick under **Settings → Limits & safety → Whole-home meter**.
+Once the Main home has a meter whose reading excludes every meter area, each
+part is measured and limited on its own. If no such meter exists, PELS cannot
+separate the Main home from those areas.
 
 ## What a meter area governs
 
@@ -240,8 +244,9 @@ you *where* to go and switch something off.
 - **The apartment's devices aren't being limited.** Check that **"Control
   devices in this area"** is on for that area; a new area simulates until you
   turn control on. Also confirm your power source is **Homey Energy**.
-- **PELS says it can't tell which meter it's reading for the Main home.** Set the
-  Main home's **Whole-home meter** (see above) so each part is measured on its own.
+- **Saving the first area asks for the Main home's meter.** Set the Main home's
+  **Whole-home meter** (see above), then save the area again. PELS will not save
+  the meter area while the Main home is still on Automatic.
 - **Saving an area is refused over its name.** Each area needs a name of its own:
   not blank, not another area's name (spelling it differently in upper or lower
   case still counts), not "Main home" (that is what PELS calls everything outside

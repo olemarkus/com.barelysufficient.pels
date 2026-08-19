@@ -83,38 +83,6 @@ tracked as P1/P2/P3 follow-up below.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
-- [ ] **A device write is awaited inside the rebuild lock, so one slow device stalls every decision.**
-      `maybeApplyPlanChanges` awaits `planEngine.applyPlanActions` (`lib/plan/planServiceRebuild.ts`),
-      and the scheduler holds `activeIntent` (`lib/plan/rebuildScheduler/scheduler.ts`) plus the FIFO
-      `planOperationQueue` (`lib/plan/planService.ts`) for that whole time. The device loop in
-      `planExecutorDispatch.ts` is a sequential `for … await`, so timeouts are additive. A `hardCap`
-      intent gets `dueMs = nowMs` and priority 0, but that only wins the *pending* slot — there is no
-      preemption, cancellation, or deadline on an active rebuild, and `CapacityGuard` is state-only
-      ("the Plan is still the single decision-maker for shedding"), so no second path exists.
-      *Prod evidence (`/tmp/pels`, suffix `0a4464c3`, 6 days, 1475 rebuilds):* `buildMs` is a stable
-      102–143 ms; **all** variance is `applyMs`. 177 rebuilds (12%) held the lock ≥5 s, 68 for 9–30 s,
-      11 at the full 30 s. On 2026-08-11 22:01–22:06 eleven consecutive rebuilds each burned ~30.02 s
-      with `deviceWriteCount: 0` — a ~5.5-minute near-total stall (harmless that night: 0.45 kW draw,
-      4.6 kW headroom). Nine of the 177 ran with <1 kW hard-cap headroom, worst 2026-08-16T00:04:17Z
-      at 4.847 kW against a 5.0 kW cap — **153 W of margin, soft headroom already −0.206 kW** — with
-      the loop blind for 5.1 s. No breach is traceable to it, so this is exposure, not a proven
-      incident. Note `HTTP_TIMEOUT_MS = 30_000` is a socket-**idle** timer, not a deadline, so 30 s is
-      not actually a bound. **Shortening the timeout is not the fix** — see the completed
-      timeout-is-unknown change.
-      **Owner ruling 2026-08-17: a rebuild MAY return before its writes land.** That settles the
-      design question and makes this ordinary work. Three changes follow: (a) `deviceWriteCount` and
-      `writtenDeviceIds` key off *dispatch issued* rather than *write completed*; (b)
-      `schedulePostActuationRefresh` likewise, so the refresh is armed at dispatch; (c) the
-      pending-command guard becomes the thing that stops an overlapping re-issue — load-bearing in a
-      way it is not today, so it needs its own coverage before the lock is released early. The
-      constraint to respect is that this must not become a second actuation lane: `lib/plan/AGENTS.md`
-      allows exactly one way to converge a device, and the reason is inc_26449fb9. Releasing the lock
-      early is not a second lane — the same dispatch still owns the write — but a retry path that
-      re-issues behind the guard would be. Parallelising the device loop is ruled out.
-      Done when `applyMs` no longer gates `activeIntent`/`planOperationQueue`: a rebuild during a slow
-      device write returns and re-decides, and an SDK-boundary e2e pins that a second rebuild arriving
-      mid-write neither double-issues nor loses the pending command. Found 2026-08-17. [P1]
-
 - [ ] **The pending-restore reservation runs on one fixed clock against a 20 s-to-never distribution.**
       `PENDING_RESTORE_WINDOW_MS = 3 min` (`lib/plan/planConstants.ts`) reserves headroom for a
       device that has been restored but has not yet drawn. Its own comment gives a thermostat
@@ -230,16 +198,21 @@ patch releases, not release blockers; each item carries its own source/date.
       tighten the gap ceiling — which changes export accounting for homes already running on flow.
       Persona: the prosumer on the flow source reading the Solar card (`notes/personas.md`).
 
-- [ ] **Three settings readers still gate their key-list cross-check on `undefined` alone, so
-      their transient-miss protection is unreachable on a real Homey.** `settings.get()` answers
-      an unset key with `null`, so in `setup/mainMeterSettings.ts:22-27` the `raw === null` early
-      return fires before the cross-check, and in `setup/homeRuntime/homeOperatingMode.ts`
-      (`resolveForHome`) the whole suspect ladder (`malformed_key_list` / `empty_key_list` /
-      `missing_existing_key`) is skipped. Both then resolve a transient miss to a real value:
-      Main silently reverts to Automatic (changing which physical meter drives its capacity
-      budget), and a pinned meter area silently reverts to the global operating mode (different
-      device targets, and nothing logs it — no production path emits a pin fault) — each
-      contradicting its own docstring.
+- [ ] **A transient `null` makes an explicitly configured Main meter read as Automatic; two
+      sibling nullable settings readers have the same destructive fallback.** `settings.get()`
+      answers an unset key and some transient misses with `null`, so the `raw === null` return in
+      `setup/mainMeterSettings.ts:22-27` bypasses the key-list check and turns a valid explicit Main
+      selection into real Automatic authority. The saved ownership remains correct, but the next
+      poll can select another physical `cumulative` meter. If that id belongs to an area,
+      `homeMainMeterAuthority` correctly fences Main before actuation; a combined/superset meter
+      whose id is not an area's configured meter cannot be detected and can still make Main respond
+      conservatively to area usage. This is the supported-runtime path formerly misdescribed by a
+      separate sampled-fence UI entry — it is a dirty producer, not configured Main/Annex
+      ownership confusion.
+      `setup/homeRuntime/homeOperatingMode.ts` (`resolveForHome`) has the same early-null shape: its
+      suspect ladder (`malformed_key_list` / `empty_key_list` / `missing_existing_key`) is skipped
+      and a pinned meter area silently reverts to the global operating mode (different device
+      targets, with no production pin-fault log).
       `setup/externalOffHoldAdapter.ts:61` is the same class with no cross-check at all: one bad
       read makes every de-opted device look un-opted, so PELS resumes loads the owner turned off
       by hand.
@@ -250,7 +223,10 @@ patch releases, not release blockers; each item carries its own source/date.
       temperature-control regression fixed in `readTemperatureControlDisabledDevicesSetting`;
       the rule now lives in `setup/AGENTS.md`. Their unit specs
       (`test/unit/mainMeterSettings.test.ts:14,21,25`) pin `get: () => undefined` exclusively and
-      so assert branches the device cannot reach — fix the specs with the readers.
+      so assert branches the device cannot reach — fix the specs with the readers. Done when a
+      real-Homey `get() => null` miss cannot replace any of the three last-good semantic values,
+      deliberate stored-null/cleared writes still take effect, and an integration test proves a
+      transient Main-meter miss neither fetches nor admits an Automatic whole-home sample.
       Source: 2026-08-02 adversarial review of the temperature-control policy fix. [P1]
 
 - [ ] **The editor client still revokes a standing limit-only grant on any permission toggle.**
@@ -548,45 +524,6 @@ What remains open is below.*
       devices and concludes PELS is broken; hypothesis: naming the exhausted daily budget is the
       single highest-value line on the screen and it is absent. Source: prod screenshot + log,
       2026-07-26. [P1]
-
-- [ ] **A fenced Main home stops protecting its physical hard cap, and the UI can only warn that it
-      MIGHT be happening, not that it IS.**
-      *Persona:* multi-meter owner on the DEFAULT Automatic whole-home meter whose area meter is the
-      sole readable `cumulative` item before the Main meter appears. *Hypothesis:* the Main actuation fence
-      refuses ALL commands including sheds (`setup/appInit/createPlanEngine.ts:30-33`), so a proven
-      sampled-meter collision suspends hard-cap protection. The hard cap is the hourly grid tariff
-      step (effekttrinn), and not a tuning knob. It is not breaker protection and cannot be: an
-      hourly average says nothing about the peak inside the hour, so the copy this entry directs
-      must never promise it (`notes/ui-terminology.md`, "Hard cap is an hourly ceiling").
-      That trade-off is deliberate (the reading really is unattributable). `HOMES_MAIN_METER_NOTICE`
-      now names BOTH consequences, including that PELS may have stopped limiting Main entirely, so
-      the notice is no longer wrong — and the EXPLICIT-selection clash is now surfaced outright:
-      `ui_homes` carries `mainMeterConflictAreaName` (resolved from the same classifiers the save
-      gate uses) and the Multiple meters panel leads with "PELS has stopped limiting your Main
-      home", naming the area. The remaining gap is every SAMPLED-clause fence state — this entry's
-      Automatic persona, but also an explicit selection inside the switchover window, where the
-      configured id is already clean (so `mainMeterConflictAreaName` is null) while the last
-      admitted sample still belongs to the area until the replacement poll lands
-      (`homeMainMeterAuthority`, the sampled clause). `HomeMembershipService.getDiagnostics()`
-      still does not expose that fence, so an owner who is currently unprotected reads the same
-      MIGHT-sentence as one who is merely over-limited. Expose the sampled-clause fence state in
-      diagnostics and render state-specific copy. Note PR 4 (require an explicit Main meter)
-      removes the reachable Automatic configuration, so that arm may reduce to a transitional
-      state; the switchover window remains.
-      Source: pels-runtime-reality review of the multi-home finishing train PR 2.
-
-- [ ] **An id-less whole-home aggregate can be an area's meter, and the signal that detects it is discarded.**
-      *Persona:* owner whose ONLY device marked "tracks total home energy consumption" is the annex
-      meter. *Hypothesis:* Homey then emits an aggregate `cumulative` item with no id whose value is
-      that meter alone (`lib/device/managerEnergy.ts` already documents id-less aggregates), so Main
-      plans against the annex's physical sample while the annex bundle plans the same sample over a
-      disjoint device set — the `notes/multi-home-model.md` violation — with `sampledDeviceId === null`
-      and therefore no fence. `cumulativeItemCount` is already computed and logged but never consumed;
-      `cumulativeItemCount >= 1 && sampledDeviceId === null && areas have meters` is a usable detector
-      and should at least warn. Related: the fence's stated harm is "one sample driving two
-      controllers" but its trigger is an id match, so it fences areas that are not actuating while not
-      fencing equally unattributable readings. Pick one framing and make code and docs agree.
-      Source: pels-runtime-reality review of the multi-home finishing train PR 2.
 
 - [ ] **`has_headroom_for_device` answers about a meter-area device with the Main home's guard, and
       mutates Main's cooldown state doing it.**
@@ -2830,11 +2767,8 @@ split follow-ups from this batch are fixed by the solar-accounting follow-up; re
       keyed to the sample's own freshness horizon. It cannot simply be consumed by the composer, because it is
       unproven at the collector's boot-time `start()` reconcile (the primary invalidation edge): composing
       `undefined` there would skip the boot reconcile for Automatic homes entirely, and falling back to a constant
-      arm would flip-flop against the resolved arm and strip learned state spuriously. Sharpened by the round-5
-      narrowing: the fingerprint no longer carries the per-area meter roster (area meters are fenced out of Main's
-      samples, so an area re-meter must not strip Main's history), which makes the Automatic arm the ONLY remaining
-      way a roster edit can silently move Main's sampled device — an area claiming the very device Automatic had
-      elected. The sound design is a mid-run reconcile edge: expose the current sampled id through the
+      arm would flip-flop against the resolved arm and strip learned state spuriously. The sound design is a
+      mid-run reconcile edge: expose the current sampled id through the
       membership port, fire an identity-proven/changed callback from `MainMeterAuthority.noteResolvedHomeMeter`,
       and have the wiring compare the freshly composed signature against
       `weatherCollector.getHistoryStateSnapshot().meterScopeSignature`, driving `reloadWeatherCollector` only on a

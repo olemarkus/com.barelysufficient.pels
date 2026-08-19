@@ -11,14 +11,16 @@
  * and `readMainMeterSelection` is side-effecting (latches + an authority-
  * unresolved callback), so it fired twice per gate evaluation.
  *
- * Why Automatic needs the sampled identity at all: with Main on Automatic the
- * CONFIGURED id is `null` and proves nothing, while the whole-home reading comes
- * from a sole readable `cumulative` item or a meter proven by an earlier
- * unambiguous Automatic poll. In a multi-meter house that item can still be a
- * meter area's own meter when it is temporarily the sole readable candidate,
- * which would drive
- * two independent controllers from ONE physical sample over disjoint device sets
- * — the invariant `notes/multi-home-model.md` forbids.
+ * Why Automatic needs the sampled identity at all: a valid current save never
+ * leaves Main on Automatic while meter areas run. The fence still has to cover
+ * legacy or externally malformed state, and a transient adapter miss can
+ * temporarily misclassify an explicit selection as Automatic (tracked in
+ * TODO.md). In those states the CONFIGURED id is `null` and proves nothing,
+ * while the whole-home reading comes from a sole readable `cumulative` item or
+ * a meter proven by an earlier unambiguous Automatic poll. If that item is an
+ * area's meter, it would drive two independent controllers from ONE physical
+ * sample over disjoint device sets — the invariant `notes/multi-home-model.md`
+ * forbids.
  *
  * An EXPLICIT selection needs it too, for the switchover window: the moment the
  * user picks a non-colliding Main meter the configured id is proven clean, but
@@ -324,8 +326,9 @@ export class MainMeterAuthority {
     // The sampled clause guards the WATTS the tracker currently serves, not
     // the selection, so it runs for explicit selections too. An explicit id
     // was just proven collision-free, but right after a switch away from a
-    // colliding pick (Automatic that sampled an area's meter, or an explicit
-    // area meter) the last ADMITTED sample is still the area's — the
+    // colliding legacy/transient selection (Automatic that sampled an area's
+    // meter, or an explicit area meter) the last ADMITTED sample is still the
+    // area's — the
     // replacement poll is started without being awaited
     // (`handleHomeyEnergyMeterChange`), and a slow or failed poll would
     // otherwise reconcile the fenced plan against the old area's watts. The

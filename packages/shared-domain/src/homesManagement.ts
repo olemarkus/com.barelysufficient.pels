@@ -324,11 +324,9 @@ export const previewAreaDeviceCount = (params: {
 }).length;
 
 /**
- * Whether to prompt for the Main home's own meter: once any meter area
- * exists, a Homey Energy home without an explicitly configured whole-home
- * meter reads the combined total of every meter, so Main home devices would
- * be limited to make room for the areas' usage. Pure display predicate — a
- * UX nudge, never a gate.
+ * Whether to prompt for the Main home's own meter: once any meter area exists,
+ * Automatic cannot prove which physical meter belongs to the Main home. Pure
+ * display predicate — a UX nudge, never a gate.
  */
 export const shouldPromptMainHomeMeter = (params: {
   subHomeCount: number;

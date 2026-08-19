@@ -64,7 +64,9 @@ total home energy consumption** in Homey Energy. If more marked meters appear
 later during the current app session, PELS keeps using that established meter.
 If several are already present before one has been established, choose the right one in the **Whole-home
 meter** selector below **Power source**; PELS does not guess between them. You
-can also select a specific meter when none carries the marking.
+can also select a specific meter when none carries the marking. Automatic can be
+used only when there are no [meter areas](/meter-areas). Before adding one,
+select the Main home's **Whole-home meter** explicitly.
 
 ### Per-device energy reporting
 
