@@ -110,7 +110,7 @@ Device detail sections. The page composes per device kind — an EV charger, a t
 | **Price response** | Temperature devices | Cheap-hour boost and expensive-hour reduction. Stays visible with a hint naming the switch that enables it when price control is off. |
 | **Solar surplus** (prosumer) | Homes with solar | **Use solar surplus** lifts a device's target while your panels are exporting, and **Run on solar surplus** runs an on/off device only while there is surplus. See [Solar and Self-Consumption](/solar). |
 | **Stepped load profile** | Stepped loads | Step names, planning power values, target-power range, and temperature boost. Hidden for EV chargers using an EV preset — the preset owns the steps. |
-| **Power limiting** | All devices PELS can limit | Turn off or set temperature / set step when there is a real choice; a device with only one possible action gets a statement of what PELS does instead of a one-button choice. |
+| **Power limiting** | All devices PELS can limit | How far PELS may go when limiting this device — off, a minimum temperature, or a lowest step — when there is a real choice; a device with only one possible limit gets a statement of what PELS does instead of a one-button choice. PELS goes only as deep as it needs. |
 | **Setup** | All devices | Managed by PELS, power-limit control, disable temperature control, leave off until turned on again, price-based control, budget exemption, built-in device control, control model, and **Power when running**. Opens automatically for devices that are not set up yet. |
 | **Activity log** | All devices | Recent state changes PELS recorded for this device. |
 | **Advanced diagnostics** | All devices | Read-only history of waiting time, failed restarts, and restart backoff. |

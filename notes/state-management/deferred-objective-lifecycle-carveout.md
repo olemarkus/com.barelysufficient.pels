@@ -83,6 +83,21 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
 - Today's `shedBehavior` / `OVERSHOOT_BEHAVIORS` config *is* the device's fallback posture.
   Renaming that config vocabulary touches settings keys + UI + logs — a **follow-up**, not in
   scope here.
+- **The two paths read that config differently, deliberately (2026-08-17).** On the *capacity*
+  path it is a **floor** — the deepest the planner may go — so a `turn_off` device is routinely
+  parked at an intermediate step and left running; the planner names the step and the executor
+  commands exactly that (`lib/plan/planSteppedShedResolution.ts`). On *this* lifecycle path there
+  is no partial posture — fallback drives the device all the way down, because the cause is "this
+  objective is over", not "we are short of power". Read "fully off = disable" above as the
+  lifecycle reading only.
+- **Which** posture that is, is decided by `resolveLifecycleFallbackRequest`
+  (`setup/lifecycleFallbackRequest.ts`) and is not simply the configured one: it honours
+  `set_temperature` only when the target axis is writable, then prefers a **writable binary axis
+  over the configured action**, and reaches `set_step` only for a device with no binary handle.
+  So a stepped device that exposes both controls and is configured to stop at its lowest active
+  step is switched **off** here, not stepped down. Whether that precedence is right is a separate
+  question from this carve-out; it is recorded so the next reader does not infer the config is
+  followed literally.
 
 ## Target architecture (three components)
 

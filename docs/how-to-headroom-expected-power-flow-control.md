@@ -65,8 +65,10 @@ If your device app exposes a direct level trigger, prefer reporting the step dir
 
 1. In the PELS device settings, set `Control model` to `Stepped load`.
 2. Define the device steps and planning power values.
-3. Choose the normal **When limiting** behavior:
-   `Turn off` or `Set to step`
+3. Choose how far **When limiting** may go:
+   `Turn off` (as far as off) or `Set to step` (as far as the lowest active step).
+   PELS goes only as deep as it needs, so a stepped device will often be left
+   running at a lower step either way.
 4. Create the outbound Flow from **Stepped device target changed** for [device] to the vendor action cards.
 5. Create the inbound feedback Flow with either:
    **Report stepped load for [device] as [step]**

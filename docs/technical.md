@@ -197,7 +197,7 @@ For devices configured with the built-in **stepped load** control model, resume 
 - The selected step, measured power, and planning power are intentionally separate values.
 - `measure_power = 0` does **not** imply the device is set to `off`; it only means the device is not drawing right now.
 - The **Set expected power for device** Flow action is rejected for stepped-load devices.
-- Capacity limiting uses the device's normal **When limiting** behavior: either `Turn off` or `Set to step`.
+- Capacity limiting reads the device's **When limiting** behavior as the *limit* it may go down to — `Turn off` means "as far as off", `Set to step` means "as far as the lowest active step". PELS goes only as deep as the shortfall requires, so a device set to `Turn off` is often left running at a lower step rather than switched off.
 - Step resume starts at the lowest active step and only climbs toward the highest step when available power and budget allow it.
 - PELS expects vendor-specific flows to report the selected step back through **Report stepped load for [device] as [step]** or **Report stepped load for [device] matching [power]** unless the device exposes that state generically.
 - For supported stepped-load devices (such as compatible water heaters), **built-in device control** lets PELS set the level directly instead of routing through your own Flow cards, and is on by default. PELS automatically leaves it off — with a notice on the device — when it detects a Homey Flow of yours already writing that device's level, so the two never fight; you can override from the device's **Setup** section.
