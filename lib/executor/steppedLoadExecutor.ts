@@ -2,8 +2,8 @@ import {
   isBinaryObservedOff,
   isBinaryOnOrUnknown,
 } from '../../packages/shared-domain/src/binaryControlState';
+import { isBinaryDrivenIntent } from './executableDesiredState';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
-import { logSteppedLoadRestoreBinaryUndriven } from './steppedLoadRestoreDiagnostics';
 import { runBinaryControl } from './binaryControlShared';
 import type {
   ExecutableSteppedLoadDevice,
@@ -78,6 +78,20 @@ const suppressRecentSteppedBinaryRestore = (
   return true;
 };
 
+/**
+ * The device is already where the plan wants it on the binary axis: observed off,
+ * and this cycle's decision drives that axis OFF. A step command would be writing
+ * to a device the plan wants dark.
+ *
+ * Absence of the binary cluster is NOT this case — it means the decision does not
+ * move the on/off handle at all (the steady / step-up / step-down transitions),
+ * where the step command is exactly the point.
+ */
+const isSettledAtPlannedOff = (
+  action: ExecutableSteppedLoadDevice,
+  currentOn: boolean | null,
+): boolean => currentOn === false && isBinaryDrivenIntent(action) && !action.desiredOn;
+
 const shouldForceSteppedLoadCommand = (options: {
   force?: boolean;
   forceAgainstReleasedOpposing?: boolean;
@@ -111,7 +125,7 @@ export const applySteppedLoadCommand = async (
   const currentOn = resolveCurrentOn(action, snapshot);
   const forceCommand = shouldForceSteppedLoadCommand(options);
   const initializesUnknownStep = action.transition?.effectiveTransition === 'initialize_unknown_step_at_low';
-  if (currentOn === false && action.desired.on === false) return false;
+  if (isSettledAtPlannedOff(action, currentOn)) return false;
   if (!commandStepId) return false;
   if (!forceCommand && isSteppedLoadStepCommandRedundant(action, commandStepId)) return false;
   const desiredStep = getSteppedLoadStep(action.steppedLoadProfile, commandStepId);
@@ -154,8 +168,7 @@ export const applySteppedLoadRestore = async (
     hasShedDevices,
   } = params;
   const name = action.name;
-  if (action.desired.on !== true) {
-    logSteppedLoadRestoreBinaryUndriven(action);
+  if (!isBinaryDrivenIntent(action) || !action.desiredOn) {
     return NOT_RESTORED;
   }
   const {
@@ -229,7 +242,7 @@ export const applySteppedLoadShedOff = async (
   action: ExecutableSteppedLoadDevice,
   snapshot: ExecutorDeviceSnapshot | undefined,
 ): Promise<boolean> => {
-  if (action.desired.on !== false) return false;
+  if (!isBinaryDrivenIntent(action) || action.desiredOn) return false;
   const atOffStep = action.current.stepIsOffStep;
   // The binary axis is this device's own end state only when the plan decided
   // the device should be off. A plan that wants it parked at a step (or at a

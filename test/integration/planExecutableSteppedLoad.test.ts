@@ -10,6 +10,7 @@ import {
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
+import { isBinaryDrivenIntent } from '../../lib/executor/executableDesiredState';
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { steppedPlanDevice } from '../utils/planTestUtils';
 
@@ -66,8 +67,10 @@ describe('planExecutableSteppedLoad', () => {
         on: false,
         stepId: 'low',
       },
+      // The binary drive moved off the `desired` bag onto the intent; still
+      // asserted, so this keeps proving the plan wants the device ON.
+      desiredOn: true,
       desired: {
-        on: true,
         stepId: 'low',
         plannedStepId: 'low',
       },
@@ -181,6 +184,32 @@ describe('planExecutableSteppedLoad', () => {
       kind: 'not_materialized',
       reason: 'fallback_only',
     });
+  });
+
+  // `inactive` is the third PlannedDeviceState, and it is the one an EV charger
+  // lands in when it is unplugged: `commandableNow === false` ->
+  // `getInactiveReason` -> `plannedState: 'inactive'`, while `available` stays
+  // true so `shouldSkipUnavailable` does NOT fire and plug-state is not an
+  // external-off hold. If the binary axis reads as "not driven" for such a
+  // device, `isSettledAtPlannedOff` stops skipping and the executor writes a step
+  // command to a device that cannot answer it — stamping a shed cooldown or
+  // opening an activation attempt on its behalf. `commandableNow === false`
+  // exists to prevent exactly that.
+  it('drives the binary axis OFF for an inactive stepped device, never "not driven"', () => {
+    const intent = buildExecutableSteppedLoadIntent(steppedPlanDevice({
+      plannedState: 'inactive',
+      commandableNow: false,
+      currentState: 'off',
+      currentOn: false,
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+    }));
+
+    // Absence would mean "this cycle does not move the on/off handle", which is
+    // the opposite of what inactive means: PELS is not driving this device at all.
+    expect(intent).toBeDefined();
+    expect(intent && isBinaryDrivenIntent(intent)).toBe(true);
+    expect(intent && isBinaryDrivenIntent(intent) && intent.desiredOn).toBe(false);
   });
 
   it('does not project underspecified set_step shed intent without a requested step', () => {

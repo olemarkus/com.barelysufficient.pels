@@ -28,3 +28,18 @@
 export type DesiredBinaryKind = {
   desiredOn: boolean;
 };
+
+/**
+ * Narrows to a command whose binary axis the plan DRIVES this cycle.
+ *
+ * The runtime predicate is the producer-resolved presence of `desiredOn`,
+ * mirroring `isBinaryPlanDevice`. Absence is not "off" and not "unknown": it is
+ * "this cycle's decision does not move the on/off axis", which for a stepped
+ * device is the ordinary steady / step-up / step-down case where the plan only
+ * has something to say about the step.
+ */
+export const isBinaryDrivenIntent = <T extends object>(
+  intent: T,
+): intent is T & DesiredBinaryKind => (
+  'desiredOn' in intent && typeof (intent as DesiredBinaryKind).desiredOn === 'boolean'
+);

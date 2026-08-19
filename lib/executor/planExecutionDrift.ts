@@ -1,4 +1,5 @@
 import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
+import { isBinaryDrivenIntent } from './executableDesiredState';
 import {
   hasBinaryCommand,
   hasReleaseCommand,
@@ -247,9 +248,11 @@ function resolveExpectedBinaryStateForSteppedIntent(
     if (!shedTarget.stepId) return undefined;
     return isSteppedLoadOffStep(intent.steppedLoadProfile, shedTarget.stepId) ? 'off' : 'on';
   }
-  if (intent.desired.on === true) return 'on';
-  if (intent.desired.on === false) return 'off';
-  return intent.plannedShedTarget === undefined ? 'on' : 'off';
+  if (isBinaryDrivenIntent(intent)) return intent.desiredOn ? 'on' : 'off';
+  // Neither a binary drive nor a shed target defines the axis, so this cycle
+  // demands nothing of it. Answering 'on' here would invent an expectation the
+  // plan never made and drive a restore off it.
+  return undefined;
 }
 
 function isPendingBinaryCommandMatchingExpected(
