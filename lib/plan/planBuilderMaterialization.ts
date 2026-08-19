@@ -16,7 +16,7 @@
  * membership into per-device `plannedState`/shed actions, or decline to lift an
  * existing shed.
  */
-import type { DevicePlanDevice, ShedAction } from './planTypes';
+import type { DevicePlanDevice, ShedBehavior } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import type { SheddingPlan } from './shedding';
@@ -48,7 +48,7 @@ import { trackPlanStage } from './planStageTiming';
  * Read live off that shared object every cycle, never snapshotted.
  */
 export type PlanMaterializationDeps = {
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
   getInferredSurplusKw?: () => number | null;

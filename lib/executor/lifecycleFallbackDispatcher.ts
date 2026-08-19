@@ -1,4 +1,5 @@
 import type { PendingTargetCommandState } from '../plan/planState';
+import type { ShedBehavior } from '../plan/planTypes';
 import { getPendingTargetCommandDecision } from '../plan/planTargetControl';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { getLogger } from '../logging/logger';
@@ -320,7 +321,7 @@ export class LifecycleFallbackDispatcher {
       authorityToken,
       intent,
       steppedLoad: null,
-      behavior: { action: 'set_temperature', temperature: desired, stepId: null },
+      behavior: { action: 'set_temperature', temperature: desired },
       forceAgainstReleasedOpposing: options.forceAgainstReleasedOpposing,
     });
   }
@@ -340,7 +341,7 @@ export class LifecycleFallbackDispatcher {
       authorityToken,
       intent,
       steppedLoad,
-      behavior: { action: 'set_step', temperature: null, stepId: targetStepId },
+      behavior: { action: 'set_step' },
       forceAgainstReleasedOpposing: options.forceAgainstReleasedOpposing,
     });
   }
@@ -350,7 +351,7 @@ export class LifecycleFallbackDispatcher {
     authorityToken: object;
     intent: ExecutableReleaseIntent;
     steppedLoad: ExecutableSteppedLoadIntent | null;
-    behavior: { action: 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null };
+    behavior: Exclude<ShedBehavior, { action: 'turn_off' }>;
     forceAgainstReleasedOpposing: boolean;
   }): void {
     const { observed, authorityToken } = params;
@@ -366,7 +367,7 @@ export class LifecycleFallbackDispatcher {
     authorityToken: object;
     intent: ExecutableReleaseIntent;
     steppedLoad: ExecutableSteppedLoadIntent | null;
-    behavior: { action: 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null };
+    behavior: Exclude<ShedBehavior, { action: 'turn_off' }>;
     forceAgainstReleasedOpposing: boolean;
   }): Promise<boolean> {
     const {
@@ -376,7 +377,6 @@ export class LifecycleFallbackDispatcher {
     const targetContext = this.deps.buildTargetExecutorContext();
     const ordinaryPendingDecision = (
       behavior.action === 'set_temperature'
-      && behavior.temperature !== null
       && observed.target
     ) ? getPendingTargetCommandDecision({
         state: targetContext.state,

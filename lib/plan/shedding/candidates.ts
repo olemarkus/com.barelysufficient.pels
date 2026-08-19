@@ -194,7 +194,7 @@ function addCandidatePower(params: {
     });
   }
   const shedBehavior = deps.getShedBehavior(device.id);
-  if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
+  if (shedBehavior.action === 'set_temperature') {
     const target = device.targets?.[0];
     if (target?.id) {
       return buildTemperatureCandidate({

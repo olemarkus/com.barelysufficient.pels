@@ -220,7 +220,7 @@ const buildBuilder = (
       const mode = overrides.modeRef?.current ?? 'Home';
       return overrides.priorityByModeRef?.current?.[mode]?.[deviceId] ?? 1;
     },
-    getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+    getShedBehavior: () => ({ action: 'turn_off' }),
     log: vi.fn(),
     logDebug: vi.fn(),
     pendingBinaryCommandStore: emptyPendingStore,
@@ -357,7 +357,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
       decorateDeferredObjectives: (input) => deferredController.decorate(input),
       getPriorityForDevice: () => 1,
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      getShedBehavior: () => ({ action: 'turn_off' }),
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
@@ -611,7 +611,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
       decorateDeferredObjectives: (input) => deferredController.decorate(input),
       getPriorityForDevice: () => 1,
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      getShedBehavior: () => ({ action: 'turn_off' }),
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,

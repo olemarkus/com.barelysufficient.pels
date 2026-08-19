@@ -5,7 +5,7 @@ import {
 } from '../../utils/deviceControlProfiles';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { resolveCommandabilityDetail } from '../../../packages/shared-domain/src/commandableNowReason';
-import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
+import type { DevicePlanDevice, ShedBehavior, SteppedPlanDevice } from '../planTypes';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
@@ -142,11 +142,7 @@ export function getRestoreCandidates(planDevices: DevicePlanDevice[]): RestoreCa
 
 export function getOnDevices(
   planDevices: DevicePlanDevice[],
-  getShedBehavior: (deviceId: string) => {
-    action: 'turn_off' | 'set_temperature' | 'set_step';
-    temperature: number | null;
-    stepId: string | null;
-  },
+  getShedBehavior: (deviceId: string) => ShedBehavior,
 ): DevicePlanDevice[] {
   const filtered = planDevices
     .filter((device) => {
@@ -214,9 +210,9 @@ export function markOffDevicesStayOff(params: {
 
 function canSwapOutDevice(
   dev: DevicePlanDevice,
-  behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null },
+  behavior: ShedBehavior,
 ): boolean {
-  if (behavior.action !== 'set_temperature' || behavior.temperature === null) return true;
+  if (behavior.action !== 'set_temperature') return true;
   // A non-temperature device has no setpoint to compare — swappable. The old
   // fail-open on a null observed target is gone with the nullable field.
   if (!isTemperaturePlanDevice(dev)) return true;

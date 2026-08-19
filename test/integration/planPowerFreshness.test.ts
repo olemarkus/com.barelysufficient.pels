@@ -245,7 +245,7 @@ describe('planner behavior under stale power freshness states', () => {
       getPowerTracker: () => params.tracker,
       getDailyBudgetSnapshot: () => null,
       getPriorityForDevice: () => 100,
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      getShedBehavior: () => ({ action: 'turn_off' }),
       structuredLog: params.structuredLog as never,
       log: vi.fn(),
       logDebug: vi.fn(),

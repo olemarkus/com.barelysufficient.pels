@@ -210,7 +210,7 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
     getCapacityPaceKw: () => 9.5,
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
-    getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+    getShedBehavior: () => ({ action: 'turn_off' as const }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false }),
     logTargetRetryComparison: vi.fn(),

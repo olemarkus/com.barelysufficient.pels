@@ -163,7 +163,7 @@ describe('external-off hold — plan-device propagation', () => {
 
   const deps: PlanDevicesDeps = {
     getPriorityForDevice: () => 100,
-    getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+    getShedBehavior: () => ({ action: 'turn_off' }),
     getPriceOptimizationEnabled: () => false,
     getPriceOptimizationSettings: () => ({}),
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),

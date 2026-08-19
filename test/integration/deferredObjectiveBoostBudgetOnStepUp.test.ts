@@ -277,7 +277,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(nowMs),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
     getPriorityForDevice: (deviceId) => (deviceId === STEP_DEVICE_ID ? 1 : 5),
-    getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+    getShedBehavior: () => ({ action: 'turn_off' }),
     log: vi.fn(),
     logDebug: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),

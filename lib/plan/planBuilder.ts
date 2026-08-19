@@ -26,7 +26,7 @@ import CapacityGuard from '../power/capacityGuard';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import type { PowerTrackerState } from '../power/tracker';
 import { PowerFreshnessMonitor, type PowerCycleDisplay } from '../power/powerCycleReading';
-import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
+import type { DevicePlan, PlanInputDevice, ShedBehavior } from './planTypes';
 import type { PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import {
@@ -82,7 +82,7 @@ export type PlanBuilderDeps = {
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
   getPriorityForDevice: (deviceId: string) => number;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
   getDynamicSoftLimitOverride?: () => number | null;
   // Observer-owned pending-binary-command store. Plan-side reads consult
   // `peek(id)` (raw read) through this facade rather than touching

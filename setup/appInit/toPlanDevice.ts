@@ -386,15 +386,14 @@ function resolveEffectiveShedBehavior(
   const configured = ctx.getShedBehavior(device.id);
   if (configured.action === 'set_temperature') {
     if (device.temperature === undefined) return resolveShedBehaviorWithoutTemperature(device);
-    return typeof configured.temperature === 'number' && Number.isFinite(configured.temperature)
-      ? { action: 'set_temperature', temperature: configured.temperature }
-      : { action: 'turn_off' };
+    return { action: 'set_temperature', temperature: configured.temperature };
   }
   if (configured.action === 'set_step') {
-    const stepId = configured.stepId
-      ?? (isSteppedLoadSnapshot(device)
-        ? getSteppedLoadLowestActiveStep(device.steppedLoadProfile)?.id
-        : undefined);
+    // The rung is the device's own — a configured step id used to take
+    // precedence here, but nothing ever wrote one.
+    const stepId = isSteppedLoadSnapshot(device)
+      ? getSteppedLoadLowestActiveStep(device.steppedLoadProfile)?.id
+      : undefined;
     return stepId ? { action: 'set_step', stepId } : { action: 'turn_off' };
   }
   return { action: 'turn_off' };

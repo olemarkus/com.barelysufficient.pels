@@ -136,7 +136,7 @@ const emptyRestoreResult: RestorePlanResult = {
 
 const defaultDeps: PlanDevicesDeps = {
   getPriorityForDevice: () => 100,
-  getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+  getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
@@ -207,7 +207,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' }),
         getPriorityForDevice: () => 100,
         pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
         log: () => undefined,

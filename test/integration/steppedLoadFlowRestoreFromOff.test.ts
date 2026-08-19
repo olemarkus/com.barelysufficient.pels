@@ -283,7 +283,7 @@ const buildHarness = (
     getCapacityPaceKw: () => 9.5,
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
-    getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+    getShedBehavior: () => ({ action: 'turn_off' as const }),
     // REAL pending-command bookkeeping: the executor's step command lands in the
     // helper's runtime state, decoration surfaces it as
     // stepCommandPending/stepCommandStatus, and the flow report has to confirm

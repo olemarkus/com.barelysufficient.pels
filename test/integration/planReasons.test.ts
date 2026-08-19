@@ -944,7 +944,7 @@ describe('applyShedTemperatureHold', () => {
         inStartupStabilization: false,
         restoreCooldownStartedAtMs: null,
         restoreCooldownTotalSec: null,
-        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       });
     };
 
@@ -987,7 +987,7 @@ describe('applyShedTemperatureHold', () => {
       inStartupStabilization: false,
       restoreCooldownStartedAtMs: null,
       restoreCooldownTotalSec: null,
-      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     });
 
     expect(reasonText(result.planDevices[0]?.reason)).toBe('swap pending');
@@ -1024,7 +1024,7 @@ describe('applyShedTemperatureHold', () => {
       inStartupStabilization: false,
       restoreCooldownStartedAtMs: null,
       restoreCooldownTotalSec: null,
-      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     });
 
     expect(result.planDevices[0]?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
@@ -1069,7 +1069,7 @@ describe('applyShedTemperatureHold', () => {
       restoreCooldownStartedAtMs: null,
       restoreCooldownTotalSec: null,
       guardInShortfall: true,
-      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     });
 
     const [device] = normalizeShedReasons({
@@ -1143,7 +1143,7 @@ describe('applyShedTemperatureHold', () => {
         restoreCooldownRemainingSec: 45,
         restoreCooldownStartedAtMs: COOLDOWN_STARTED_AT_MS,
         restoreCooldownTotalSec: 60,
-        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
         ...params.timing,
       });
     };

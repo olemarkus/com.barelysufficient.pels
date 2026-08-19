@@ -1,6 +1,6 @@
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
 import type { HeadroomReserve } from '../admission';
-import type { DevicePlanDevice } from '../planTypes';
+import type { DevicePlanDevice, ShedBehavior } from '../planTypes';
 import type { SwapStateSnapshot } from '../swap';
 import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
 import type { PowerTrackerState } from '../../power/tracker';
@@ -9,11 +9,7 @@ import type { RestoreTiming } from './timing';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
-  getShedBehavior: (deviceId: string) => {
-    action: 'turn_off' | 'set_temperature' | 'set_step';
-    temperature: number | null;
-    stepId: string | null;
-  };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;

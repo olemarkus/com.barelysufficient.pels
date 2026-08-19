@@ -100,7 +100,7 @@ const runLane = (params: {
     sheddingActive: true,
     deps: {
       powerTracker: { lastTimestamp: Date.now() } as PowerTrackerState,
-      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
       logDebug: vi.fn(),
     },
   });
@@ -360,7 +360,7 @@ const buildBuilder = (params: {
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
   getPriorityForDevice: (deviceId: string) => (deviceId === THERMOSTAT_ID ? 1 : 100),
-  getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+  getShedBehavior: () => ({ action: 'turn_off' }),
   log: vi.fn(),
   logDebug: vi.fn(),
   pendingBinaryCommandStore: emptyPendingStore,

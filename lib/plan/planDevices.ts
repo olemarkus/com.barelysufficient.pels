@@ -1,4 +1,4 @@
-import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
+import type { DevicePlanDevice, PlanInputDevice, ShedBehavior } from './planTypes';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import type { PlanEngineState } from './planState';
 import type { CurrentHourPriceLevel, PlanContext } from './planContext';
@@ -37,7 +37,7 @@ const logger = getLogger('plan/devices');
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
   // Producer-resolved inferred curtailed-surplus term (kW) for the surplus
@@ -131,11 +131,11 @@ export function buildInitialPlanDevices(params: {
     }
     const currentState = resolveCurrentState(dev);
     const controllable = dev.controllable;
-    const shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null } = (
+    const shedBehavior: ShedBehavior = (
       isSteppedLoadDevice(dev) || isTemperaturePlanDevice(dev)
     )
       ? deps.getShedBehavior(dev.id)
-      : { action: 'turn_off', temperature: null, stepId: null };
+      : { action: 'turn_off' };
     const previousBoostActive = state.boostActiveByDevice[dev.id] === true;
     const boostActive = resolveBoostActive(dev);
     emitBoostStateChange({ dev, previousActive: previousBoostActive, active: boostActive });

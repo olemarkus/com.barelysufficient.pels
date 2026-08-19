@@ -8,19 +8,13 @@ import { getCurrentDrawKw } from '../lib/observer/observedPower';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadOffStep,
-  getSteppedLoadStep,
 } from '../lib/utils/deviceControlProfiles';
-
-type ConfiguredFallback = {
-  action: 'turn_off' | 'set_temperature' | 'set_step';
-  temperature: number | null;
-  stepId: string | null;
-};
+import type { ShedBehavior } from '../lib/plan/planTypes';
 
 export const resolveLifecycleFallbackRequest = (params: {
   device: LifecycleFallbackDevice;
   observedState: LifecycleFallbackObservedState;
-  configuredFallback: ConfiguredFallback;
+  configuredFallback: ShedBehavior;
   nowMs?: number;
 }): LifecycleFallbackRequest | null => {
   const {
@@ -39,7 +33,7 @@ export const resolveLifecycleFallbackRequest = (params: {
     currentDrawKw: getCurrentDrawKw(observedState),
   });
   if (behavior.action === 'turn_off') return { kind: 'binary_off', observed };
-  if (behavior.action === 'set_temperature' && behavior.temperature !== null) {
+  if (behavior.action === 'set_temperature') {
     return { kind: 'target_fallback', observed, desired: behavior.temperature };
   }
   const targetStepId = resolveShedStepId(device, behavior);
@@ -53,34 +47,36 @@ export const resolveLifecycleFallbackRequest = (params: {
 
 const resolveBehavior = (
   device: LifecycleFallbackDevice,
-  configured: ConfiguredFallback,
-): ConfiguredFallback | null => {
-  if (
-    device.targetAxis.state === 'writable'
-    && configured.action === 'set_temperature'
-    && configured.temperature !== null
-  ) {
+  configured: ShedBehavior,
+): ShedBehavior | null => {
+  if (device.targetAxis.state === 'writable' && configured.action === 'set_temperature') {
     return configured;
   }
   if (device.binaryAxis.state === 'writable') {
-    return { action: 'turn_off', temperature: null, stepId: null };
+    return { action: 'turn_off' };
   }
   if (device.stepAxis.state === 'writable') {
-    return { action: 'set_step', temperature: null, stepId: configured.stepId };
+    return { action: 'set_step' };
   }
   return null;
 };
 
+/**
+ * The rung a step-axis fallback lands on: the device's lowest active step, or
+ * its off step.
+ *
+ * The ladder is the DEVICE's. A configured step id used to sit above these two,
+ * but nothing ever wrote one — `normalizeShedBehaviors` stores `set_step` as a
+ * bare `{ action }` — so that branch could not be reached from settings.
+ */
 const resolveShedStepId = (
   device: LifecycleFallbackDevice,
-  behavior: ConfiguredFallback,
+  behavior: ShedBehavior,
 ): string | null => {
   if (behavior.action !== 'set_step' || device.stepAxis.state !== 'writable') return null;
   const profile = device.stepAxis.profile;
-  const preferred = behavior.stepId ? getSteppedLoadStep(profile, behavior.stepId) : null;
   return (
-    preferred
-    ?? getSteppedLoadLowestActiveStep(profile)
+    getSteppedLoadLowestActiveStep(profile)
     ?? getSteppedLoadOffStep(profile)
   )?.id ?? null;
 };

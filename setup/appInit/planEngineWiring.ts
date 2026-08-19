@@ -5,7 +5,7 @@ import type { PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../lib/logging/logger';
 import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingBinaryCommands';
 import type { PlanBuilderDeps } from '../../lib/plan/planBuilder';
-import type { PendingTargetObservationSource, ShedAction } from '../../lib/plan/planTypes';
+import type { PendingTargetObservationSource, ShedBehavior } from '../../lib/plan/planTypes';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 
@@ -40,11 +40,7 @@ export type PlanEngineWiring = {
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
   decorateDeferredObjectives?: PlanBuilderDeps['decorateDeferredObjectives'];
-  getShedBehavior: (deviceId: string) => {
-    action: ShedAction;
-    temperature: number | null;
-    stepId: string | null;
-  };
+  getShedBehavior: (deviceId: string) => ShedBehavior;
   getPriorityForDevice: (deviceId: string) => number;
   getDynamicSoftLimitOverride?: () => number | null;
   holdsModeTargetRaisesWhilePowerUnknown?: () => boolean;

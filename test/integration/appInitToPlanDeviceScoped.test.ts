@@ -95,7 +95,6 @@ describe('toPlanDevice — R7b per-home options', () => {
     ctx.getShedBehavior = vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({
       action: 'set_temperature',
       temperature: 16,
-      stepId: null,
     }));
     const binarySurvivor = {
       ...buildSurplusWillingSnapshot(),
@@ -141,7 +140,6 @@ describe('toPlanDevice — R7b per-home options', () => {
     ctx.getShedBehavior = vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({
       action: 'set_temperature',
       temperature: 16,
-      stepId: null,
     }));
     const steppedSurvivor = {
       available: true,

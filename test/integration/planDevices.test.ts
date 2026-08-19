@@ -108,7 +108,7 @@ const pendingStoreFor = (state: PlanEngineState) =>
 
 const defaultDeps: PlanDevicesDeps = {
   getPriorityForDevice: () => 100,
-  getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+  getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   pendingBinaryCommandStore: emptyPendingStore,
@@ -343,7 +343,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'set_temperature', temperature: 55, stepId: null }),
+        getShedBehavior: () => ({ action: 'set_temperature', temperature: 55 }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -388,7 +388,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -435,7 +435,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -483,7 +483,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -521,7 +521,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -568,7 +568,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -611,7 +611,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -643,7 +643,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -676,7 +676,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: pendingStoreFor(state),
@@ -702,7 +702,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
+        getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -724,7 +724,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -754,7 +754,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: pendingStoreFor(state),
@@ -787,7 +787,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -821,7 +821,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: true, // Shortfall!
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
+        getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -856,7 +856,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -887,7 +887,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: true,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
+        getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -923,7 +923,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -958,7 +958,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -992,7 +992,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -1022,7 +1022,7 @@ describe('buildInitialPlanDevices', () => {
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: emptyPendingStore,
@@ -1042,7 +1042,7 @@ describe('buildInitialPlanDevices', () => {
 
 const buildTurnOffDeps = (overrides: Partial<PlanDevicesDeps> = {}): PlanDevicesDeps => ({
   getPriorityForDevice: () => 100,
-  getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+  getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
   pendingBinaryCommandStore: emptyPendingStore,
@@ -1456,7 +1456,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         guardInShortfall: false,
         deps: {
           ...defaultDeps,
-          getShedBehavior: () => ({ action: 'set_temperature', temperature: 40, stepId: null }),
+          getShedBehavior: () => ({ action: 'set_temperature', temperature: 40 }),
         },
       });
 
@@ -1915,7 +1915,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         guardInShortfall: false,
         deps: {
           ...defaultDeps,
-          getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+          getShedBehavior: () => ({ action: 'set_step' }),
         },
       });
 

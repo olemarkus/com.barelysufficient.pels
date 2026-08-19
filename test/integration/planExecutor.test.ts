@@ -286,7 +286,7 @@ const buildExecutor = (
     getCapacityPaceKw: () => 9.5,
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
-    getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+    getShedBehavior: () => ({ action: 'turn_off' as const }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false }),
     logTargetRetryComparison: vi.fn(),
@@ -1148,7 +1148,7 @@ describe('PlanExecutor restore logging', () => {
         targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
       },
     ], {
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 16, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
     });
 
     await executor.applyPlanActions(buildTargetPlan(16, 23));
@@ -1322,7 +1322,7 @@ describe('PlanExecutor pending target commands', () => {
         targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
       },
     ], {
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
     });
     deviceManager.setCapability.mockImplementation(async (_deviceId: string, capabilityId: string) => {
       if (capabilityId === 'target_temperature') throw failure;
@@ -1352,7 +1352,7 @@ describe('PlanExecutor pending target commands', () => {
         targets: [{ id: 'target_temperature', value: 15, unit: '°C' }],
       },
     ], {
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
     });
 
     await expect(executor.applySheddingToDevice('dev-1', 'Heater')).resolves.toBe(false);
@@ -1431,7 +1431,7 @@ describe('PlanExecutor pending target commands', () => {
         targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
       },
     ], {
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
     });
 
     await executor.applyPlanActions({

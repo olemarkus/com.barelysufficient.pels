@@ -144,7 +144,7 @@ const buildBuilder = (params: {
   // axis before the exempt candidate admits (mirrors prod, where the
   // non-exempt device was admitted out of the reservation first).
   getPriorityForDevice: (deviceId: string) => (deviceId === THERMOSTAT_ID ? 1 : 100),
-  getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+  getShedBehavior: () => ({ action: 'turn_off' }),
   log: vi.fn(),
   logDebug: vi.fn(),
   pendingBinaryCommandStore: emptyPendingStore,

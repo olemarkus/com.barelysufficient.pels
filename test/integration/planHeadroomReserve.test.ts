@@ -7,6 +7,7 @@ import {
   type PlanInputDevice,
   type TemperatureDiscriminantProbe,
   withBinaryDiscriminant,
+  type ShedBehavior,
 } from '../../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -46,7 +47,7 @@ const makeBuilder = (params: {
   totalKw: number;
   priorities?: Record<string, number>;
   softLimitKw?: number;
-  shedBehaviors?: Record<string, { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null }>;
+  shedBehaviors?: Record<string, ShedBehavior>;
 }): {
   builder: PlanBuilder;
   reportTotalPower: (kw: number) => void;
@@ -74,7 +75,7 @@ const makeBuilder = (params: {
     // heater is priority 1 (top); everything else lower (higher number sheds first).
     getPriorityForDevice: (deviceId: string) => params.priorities?.[deviceId] ?? (deviceId === 'heater' ? 1 : 10),
     getShedBehavior: (deviceId: string) => params.shedBehaviors?.[deviceId]
-      ?? { action: 'turn_off', temperature: null, stepId: null },
+      ?? { action: 'turn_off' },
     getDynamicSoftLimitOverride: () => softLimitKw,
     log: vi.fn(),
     logDebug: vi.fn(),
@@ -246,7 +247,7 @@ describe('PlanBuilder startup power reservation', () => {
   describe('setpoint-shed (hold lane) admission', () => {
     const SHED_FLOOR_C = 12;
     const setpointBehaviors = {
-      thermostat: { action: 'set_temperature' as const, temperature: SHED_FLOOR_C, stepId: null },
+      thermostat: { action: 'set_temperature' as const, temperature: SHED_FLOOR_C },
     };
 
     const setpointThermostat = (over?: DeviceOverride) => buildInputDevice({

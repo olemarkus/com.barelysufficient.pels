@@ -122,7 +122,7 @@ describe('planExecutablePlan', () => {
     expect(buildExecutableTargetUpdate(
       intent,
       observed,
-      () => ({ action: 'set_temperature', temperature: 16, stepId: null }),
+      () => ({ action: 'set_temperature', temperature: 16 }),
     )).toEqual({
       deviceId: 'thermostat-1',
       name: 'Thermostat',
@@ -345,7 +345,7 @@ describe('planExecutablePlan', () => {
     expect(buildExecutableTargetUpdate(
       intent,
       observed,
-      () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      () => ({ action: 'turn_off' }),
     )).toEqual({
       deviceId: 'thermostat-1',
       name: 'Thermostat',
