@@ -335,7 +335,6 @@ export type ExecutableSteppedLoadCurrentFallback = {
 export type ExecutableSteppedLoadIntent = {
   id: string;
   name: string;
-  purpose: 'keep' | 'shed';
   steppedLoadProfile: SteppedLoadProfile;
   communicationModel?: 'local' | 'cloud';
   controlAdapter?: DeviceControlAdapterSnapshot;
@@ -358,7 +357,6 @@ export type ExecutableSteppedLoadIntent = {
 export type ExecutableSteppedLoadDevice = {
   id: string;
   name: string;
-  purpose: 'keep' | 'shed';
   steppedLoadProfile: SteppedLoadProfile;
   communicationModel?: 'local' | 'cloud';
   controlAdapter?: DeviceControlAdapterSnapshot;

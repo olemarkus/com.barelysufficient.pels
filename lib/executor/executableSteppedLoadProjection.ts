@@ -65,7 +65,6 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
   const intent: ExecutableSteppedLoadIntent = {
     id: dev.id,
     name: dev.name,
-    purpose: dev.plannedState === 'shed' ? 'shed' : 'keep',
     steppedLoadProfile: dev.steppedLoadProfile,
     communicationModel: dev.communicationModel,
     controlAdapter: dev.controlAdapter,
@@ -188,7 +187,9 @@ const resolveInitializationStepId = (
   observed: ExecutableObservedDeviceState | undefined,
   commandSession: ExecutableSteppedLoadCommandSession | undefined,
 ): string | undefined => {
-  if (intent.purpose !== 'keep') return undefined;
+  // Initialization is a KEEP-side concern: a shed already has a decided
+  // destination (`plannedShedTarget`), so there is no unknown step to seed.
+  if (intent.plannedShedTarget !== undefined) return undefined;
   if (!isBinaryControlled(observed) || !getBinaryOn(observed)) return undefined;
   if (observed.steppedLoad?.reportedStepId !== undefined) return undefined;
   if (commandSession?.reportedStepId !== undefined) return undefined;

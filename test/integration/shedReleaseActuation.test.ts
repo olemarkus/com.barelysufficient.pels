@@ -61,7 +61,6 @@ const buildSteppedLoadIntent = (
 ): ExecutableSteppedLoadIntent => ({
   id: 'dev-1',
   name: 'Device 1',
-  purpose: 'keep',
   steppedLoadProfile: buildSteppedLoadProfile(),
   desired: { on: true, stepId: 'high' },
   transition: null,
@@ -304,7 +303,7 @@ describe('applyShedReleaseIntent', () => {
     const [, action] = mockedApplySteppedLoadCommand.mock.calls[0];
     expect(action).toMatchObject({
       id: 'dev-1',
-      purpose: 'shed',
+      plannedShedTarget: { kind: 'step', stepId: 'low' },
       desired: { stepId: 'low', on: true },
     });
     expect(mockedApplyBinarySheddingToDevice).not.toHaveBeenCalled();

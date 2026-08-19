@@ -82,7 +82,8 @@ export function isSteppedLoadRestoreFromOff(
   intent: ExecutableSteppedLoadIntent | undefined,
   action: ExecutableSteppedLoadDevice | null,
 ): boolean {
-  return Boolean(intent?.purpose === 'keep' && action?.current.on === false);
+  return Boolean(intent !== undefined && intent.plannedShedTarget === undefined
+    && action?.current.on === false);
 }
 
 const shouldInitializeUnknownRunningStep = (
