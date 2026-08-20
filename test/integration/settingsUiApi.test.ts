@@ -29,6 +29,7 @@ describe('settingsUiApi', () => {
       settings?: Record<string, unknown>;
       latestDevicesOverride?: Record<string, unknown>[];
       uiPickerDevices?: Record<string, unknown>[];
+      observedStateById?: Record<string, Record<string, unknown>>;
     } = {},
   ) => {
     const store = new Map<string, unknown>([
@@ -201,6 +202,7 @@ describe('settingsUiApi', () => {
         return latestDevices;
       },
       getUiPickerDevices: () => options.uiPickerDevices ?? [],
+      getObservedState: (deviceId: string) => options.observedStateById?.[deviceId],
       get powerTracker() {
         return powerTracker;
       },
@@ -548,6 +550,124 @@ describe('settingsUiApi', () => {
     // Although the PV device is excluded from `devices`, its presence is still reported as
     // the home-level solar flag so the UI can gate the per-device "Use solar surplus" control.
     expect(getSettingsUiDevicesPayload({ homey: homey as never }).hasManagedSolarDevice).toBe(true);
+  });
+
+  it('serves the observer projection\'s observed state, not the stored snapshot\'s', () => {
+    // `latestTargetSnapshot` is rebuilt only at :25/:55, so the observed half it
+    // carries goes up to half an hour stale. The projection is the observer's
+    // current answer, and `/ui_devices` is read continuously — so the payload
+    // must reflect the projection.
+    const homey = createHomey({
+      latestDevicesOverride: [{
+        id: 'heater-1',
+        name: 'Heater',
+        deviceType: 'temperature',
+        capabilities: ['onoff', 'target_temperature'],
+        available: true,
+        measuredPowerKw: 0.4,
+        binaryControl: { on: true },
+      }],
+      observedStateById: {
+        'heater-1': {
+          id: 'heater-1',
+          name: 'Heater',
+          available: false,
+          measuredPowerKw: 2.7,
+          binaryControl: { on: false },
+        },
+      },
+    });
+
+    // One structural assertion covers both halves: the raw-observed fields are
+    // the projection's, and every descriptor field is still the stored one.
+    // `binaryControl` IS refreshed here — this device is not a stepped load, so
+    // nothing resolved it and the stored value is just an older observation.
+    expect(getSettingsUiDevicesPayload({ homey: homey as never }).devices).toEqual([{
+      id: 'heater-1',
+      name: 'Heater',
+      deviceType: 'temperature',
+      capabilities: ['onoff', 'target_temperature'],
+      available: false,
+      measuredPowerKw: 2.7,
+      binaryControl: { on: false },
+    }]);
+  });
+
+  it('does not let the raw observation overwrite what the control decorator resolved', () => {
+    // `decorateSnapshotWithDeviceControl` RESOLVES a stepped load's binary axis
+    // from its selected rung, and clears `reportedStepId` for a
+    // temperature-control-disabled device. Both look like observations and are
+    // not — refreshing them from raw transport state would put the decorator's
+    // answer back to the un-resolved one.
+    const homey = createHomey({
+      latestDevicesOverride: [{
+        id: 'heater-1',
+        name: 'Heater',
+        controlModel: 'stepped_load',
+        selectedStepId: 'off',
+        binaryControl: { on: false },
+        reportedStepId: undefined,
+        measuredPowerKw: 0.1,
+      }],
+      observedStateById: {
+        'heater-1': {
+          id: 'heater-1',
+          name: 'Heater',
+          binaryControl: { on: true },
+          reportedStepId: 'low',
+          measuredPowerKw: 3.3,
+        },
+      },
+    });
+
+    const [device] = getSettingsUiDevicesPayload({ homey: homey as never }).devices;
+
+    expect(device.binaryControl).toEqual({ on: false });
+    expect(device.reportedStepId).toBeUndefined();
+    // The raw-observed field beside them IS refreshed, so this is a targeted
+    // exclusion and not the overlay failing to run. The `binaryControl`
+    // exclusion is scoped to `stepped_load` — the test above covers an ordinary
+    // binary device, whose on/off IS refreshed.
+    expect(device).toMatchObject({ measuredPowerKw: 3.3 });
+  });
+
+  it('serves an unmanaged picker device from its cached parse', () => {
+    // The projection is fed from the committed runtime snapshot, which drops
+    // unmanaged devices — so a picker row has no entry and is NOT refreshed
+    // here. Pinned so the absence is a known limit rather than a surprise.
+    const homey = createHomey({
+      latestDevicesOverride: [],
+      uiPickerDevices: [{ id: 'pump-9', name: 'Pump', available: true }],
+      observedStateById: {},
+    });
+
+    expect(getSettingsUiDevicesPayload({ homey: homey as never }).devices).toEqual([
+      { id: 'pump-9', name: 'Pump', available: true },
+    ]);
+  });
+
+  it('keeps the stored snapshot for a device the projection has no entry for', () => {
+    // Absence in the projection means "never observed yet", not "observed to be
+    // nothing" — blanking the device's observed state on it would invent a
+    // reading PELS never took.
+    const homey = createHomey({
+      latestDevicesOverride: [{
+        id: 'heater-1',
+        name: 'Heater',
+        available: true,
+        measuredPowerKw: 0.4,
+        binaryControl: { on: true },
+      }],
+      observedStateById: {},
+    });
+
+    expect(getSettingsUiDevicesPayload({ homey: homey as never }).devices).toEqual([{
+      id: 'heater-1',
+      name: 'Heater',
+      available: true,
+      measuredPowerKw: 0.4,
+      binaryControl: { on: true },
+    }]);
   });
 
   it('reports hasManagedSolarDevice=false when the home has only a battery and no PV', () => {
