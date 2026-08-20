@@ -3243,6 +3243,22 @@ non-blocking follow-ups.*
       snapshot and expose a producer-resolved "measurement predates last command" bit.
       Source: prod log review 2026-08-06. [P3]
 
+- [ ] **The deployed runtime ships unminified tsc output, and the module graph is the heap.**
+      A heap snapshot of the real `homey-app-runner` image (2026-08-20, SIGUSR2 via a non-remote
+      `homey app run`) shows the app's 31 MB shallow heap is 12.3 MB module-source strings plus
+      10.5 MB compiled code — live runtime data is ~3-5 MB. V8 retains every loaded file's source
+      as a string (two-byte when the file has any non-ASCII character), so the bytes tsc emits are
+      the bytes the heap holds. Spot check: the 205 KB `create_smart_task` bundle minifies to
+      129 KB with whitespace+syntax only (identifiers kept, stack traces readable) or 96 KB full.
+      Emitting the runtime graph through a minify pass — esbuild whitespace+syntax over the tsc
+      output into `.homeybuild/`, sourcemaps kept out of the package — is worth an estimated
+      4-6 MB of heap on a runtime with ~15 MB of RSS headroom since firmware 13.4.0 counted every
+      app's shared runtime pages (`homey:manager:apps` insights, fleet-wide step 2026-07-28), and
+      also removes the on-device tsc pass behind the boot cpuwarns. Done when a non-remote SHS
+      boot's heap snapshot shows module-source strings at or under ~8 MB, `check:homeybuild` still
+      walks the packaged require graph cleanly, and prod insights RSS steps down after deploy.
+      Found 2026-08-20. [P2]
+
 ## P3 Future and Exploratory Work
 
 - [ ] **`planSteppedLoad`'s direct-`currentOn` sites are masked-safe only by profile shape.**
