@@ -16,13 +16,13 @@ import type {
 } from '../packages/contracts/src/types';
 import type { LifecycleFallbackDevice } from '../lib/executor/lifecycleFallbackDispatcher';
 import { projectLifecycleFallbackDevice } from './lifecycleFallbackDeviceProjection';
+import { resolveTemperatureDeniedControlModel } from './temperatureControlDenial';
 import {
   buildSteppedLoadSnapshotStepFields,
   resolveNativeSteppedLoadProfile,
   resolveSteppedLoadCurrentOn,
 } from './appDeviceControlSteppedState';
 import {
-  clearSteppedLoadCommandAxisForDevice,
   confirmSteppedLoadDesiredStep,
   expireConfirmedDesiredStepOnBinaryOff,
   markSteppedLoadDesiredStepIssued,
@@ -54,7 +54,6 @@ import {
 // module is the wiring surface app code and tests import from.
 export {
   STEPPED_LOAD_COMMAND_STALE_MS,
-  clearSteppedLoadCommandAxisForDevice,
   createDeviceControlRuntimeState,
   markSteppedLoadDesiredStepIssued,
   pruneStaleSteppedLoadCommandStates,
@@ -158,26 +157,18 @@ export const decorateSnapshotWithDeviceControl = (params: {
   const {
     snapshot, profiles, runtimeState, temperatureControlDisabled = false, nowMs = Date.now(),
   } = params;
-  if (temperatureControlDisabled) {
-    clearSteppedLoadCommandAxisForDevice({ runtimeState, deviceId: snapshot.id });
-    return {
-      ...snapshot,
-      controlModel: 'binary_power',
-      steppedLoadProfile: undefined,
-      reportedStepId: undefined,
-      selectedStepId: undefined,
-      planningPowerKw: undefined,
-      targetStepId: undefined,
-      desiredStepId: undefined,
-      previousStepId: undefined,
-      lastStepCommandIssuedAt: undefined,
-      stepCommandRetryCount: undefined,
-      nextStepCommandRetryAtMs: undefined,
-      stepCommandPending: undefined,
-      stepCommandStatus: undefined,
-      temperatureControlDisabled: true,
-    };
-  }
+  // The denial is a stamp, not a demotion. The step cluster below is resolved
+  // exactly as it is for any other device — the flag says nothing about a
+  // ladder. Deliberately no command-state teardown here either:
+  // `decorateTargetSnapshotList` is a mutating read run once per power sample,
+  // so wiping the command axis from it would clear live state every few
+  // seconds — no command would ever confirm, retry back-off would die, and the
+  // lowest-step initialization latch would never latch. Stale state is already
+  // covered by `pruneStaleSteppedLoadCommandStates` and
+  // `expireConfirmedDesiredStepOnBinaryOff`.
+  const temperatureDenial = temperatureControlDisabled
+    ? { temperatureControlDisabled: true as const }
+    : {};
   const nativeProfile = resolveNativeSteppedLoadProfile(snapshot);
   const profile = resolveEffectiveSteppedLoadProfile({
     snapshot,
@@ -185,9 +176,13 @@ export const decorateSnapshotWithDeviceControl = (params: {
     deviceId: snapshot.id,
   });
   if (!profile) {
+    const defaultControlModel = resolveDefaultControlModel(snapshot);
     return {
       ...snapshot,
-      controlModel: resolveDefaultControlModel(snapshot),
+      ...temperatureDenial,
+      controlModel: temperatureControlDisabled
+        ? resolveTemperatureDeniedControlModel(defaultControlModel)
+        : defaultControlModel,
     };
   }
 
@@ -240,6 +235,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
 
   return {
     ...snapshot,
+    ...temperatureDenial,
     controlModel: 'stepped_load',
     steppedLoadProfile: profile,
     reportedStepId: stepFields.reportedStepId,
@@ -280,8 +276,10 @@ export class AppDeviceControlHelpers {
     debugStructured: StructuredDebugEmitter;
   }) {}
 
+  // No temperature-control gate: a ladder is the step axis, and the flag denies
+  // only `target_temperature` writes. Gating here left the Overview card binary
+  // for a flagged stepped device and starved its command session of a profile.
   getSteppedLoadProfile(deviceId: string): SteppedLoadProfile | null {
-    if (this.deps.isTemperatureControlDisabled?.(deviceId) === true) return null;
     const snapshot = this.deps.getDeviceSnapshots().find((device) => device.id === deviceId);
     const profile = resolveEffectiveSteppedLoadProfile({
       snapshot,
@@ -528,7 +526,8 @@ export class AppDeviceControlHelpers {
     snapshot: TargetDeviceSnapshot | undefined,
     storedProfiles: DeviceControlProfiles,
   ): SteppedLoadProfile | null {
-    if (this.deps.isTemperatureControlDisabled?.(deviceId) === true) return null;
+    // Same axis rule as `getSteppedLoadProfile`: a flagged stepped device must
+    // still learn which rung it reports, or its restored ladder never tracks.
     return resolveEffectiveSteppedLoadProfile({
       snapshot,
       profiles: storedProfiles,

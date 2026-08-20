@@ -22,9 +22,21 @@ export const makeFlowBackedBinaryTrigger = (
 };
 
 /**
+ * The one command family the fence governs: a command that would reach the
+ * `target_temperature` capability. Binary and stepped commands drive different
+ * axes of the device and are none of this setting's business — fencing `step`
+ * here made the planner believe it had trimmed a stepped device while the
+ * actuator silently swallowed the command as `{ requested: false }`.
+ */
+const isTemperatureTargetCommand = (command: DeviceCommand): boolean => (
+  command.kind === 'target' && command.target === 'temperature'
+);
+
+/**
  * Live point-of-use authorization fence for "Disable temperature control".
- * Binary capacity control remains available; every richer command is refused
- * before it reaches transport, including stale retries and lifecycle fallback.
+ * Binary and stepped capacity control remain available; a setpoint write is
+ * refused before it reaches transport, including stale retries and lifecycle
+ * fallback.
  */
 export const createTemperatureControlFencedActuator = (
   base: Actuator,
@@ -32,24 +44,20 @@ export const createTemperatureControlFencedActuator = (
 ): Actuator => ({
   resolveTemperatureTarget: base.resolveTemperatureTarget.bind(base),
   apply: (command) => (
-    command.kind !== 'binary' && shouldFence(command)
+    isTemperatureTargetCommand(command) && shouldFence(command)
       ? Promise.resolve({ requested: false })
       : base.apply(command)
   ),
 });
 
-const shouldFenceTemperatureCommand = (ctx: AppContext, command: DeviceCommand): boolean => {
-  if (command.kind === 'binary') return false;
-  if (ctx.isTemperatureControlDisabled(command.deviceId)) return true;
-  // A queued target can outlive its source snapshot. While the cold-boot policy
-  // remains unavailable, its capability still identifies it as temperature
-  // control even if the device has disappeared from the current snapshot.
-  return ctx.temperatureControlPolicyState === 'unavailable'
-    && command.kind === 'target'
-    && (
-      command.target === 'temperature'
-    );
-};
+const shouldFenceTemperatureCommand = (ctx: AppContext, command: DeviceCommand): boolean => (
+  ctx.isTemperatureControlDisabled(command.deviceId)
+  // A queued setpoint can outlive its source snapshot. While the cold-boot
+  // policy remains unavailable, the command's own temperature target still
+  // identifies it as temperature control even if the device has disappeared
+  // from the current snapshot.
+  || ctx.temperatureControlPolicyState === 'unavailable'
+);
 
 // Compose the device actuator from app wiring: the device-manager writes plus a
 // flow-backed binary control trigger (Homey Flow card) for devices whose binary

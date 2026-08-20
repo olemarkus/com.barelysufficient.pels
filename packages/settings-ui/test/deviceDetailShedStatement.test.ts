@@ -88,7 +88,7 @@ const loadShedStatementHarness = async () => {
     });
   };
 
-  return { state, statement, segmented, segmentedLabel, hint, render };
+  return { state, statement, segmented, segmentedLabel, hint, shedAction, options, render };
 };
 
 afterEach(() => {
@@ -202,6 +202,56 @@ describe('limiting card statement vs radiogroup', () => {
       'Temperature control is off for this device. '
       + 'When limiting it, PELS turns it off and turns it back on when power allows.',
     );
+  });
+
+  // The segmented control must show an action the device actually offers. A
+  // saved action whose option is hidden used to be written to `.value` anyway,
+  // leaving the control with NEITHER visible option checked while the runtime
+  // turned the device off — a state that is neither what is saved nor what
+  // happens.
+  it('shows turn off for a stepped device whose saved set_temperature option is hidden', async () => {
+    const {
+      state, statement, segmented, shedAction, options, render,
+    } = await loadShedStatementHarness();
+    const device = buildDevice({
+      deviceClass: 'boiler',
+      deviceType: 'temperature',
+      targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+    });
+    state.managedMap = { [device.id]: true };
+    state.controllableMap = { [device.id]: true };
+    // A stepped water heater whose setpoint another Flow owns: the ladder stays,
+    // the setpoint arm goes.
+    state.deviceControlProfiles = {
+      [device.id]: { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }] },
+    };
+    state.temperatureControlDisabledMap = { [device.id]: true };
+    state.shedBehaviors = { [device.id]: { action: 'set_temperature', temperature: 45 } };
+
+    render(device);
+
+    // Two real options, so the owner gets the chooser rather than a statement.
+    expect(statement.hidden).toBe(true);
+    expect(segmented.hidden).toBe(false);
+    expect(options.turn_off.hidden).toBe(false);
+    expect(options.set_step.hidden).toBe(false);
+    expect(options.set_temperature.hidden).toBe(true);
+    expect(shedAction.value).toBe('turn_off');
+  });
+
+  it('shows turn off for a device whose saved set_step option is hidden', async () => {
+    const { state, shedAction, options, render } = await loadShedStatementHarness();
+    // The mirror case: a plain binary device carrying a saved step action, e.g.
+    // one whose stepped control model was switched back off.
+    const device = buildDevice({ deviceClass: 'kettle', deviceType: 'onoff' });
+    state.managedMap = { [device.id]: true };
+    state.controllableMap = { [device.id]: true };
+    state.shedBehaviors = { [device.id]: { action: 'set_step' } };
+
+    render(device);
+
+    expect(options.set_step.hidden).toBe(true);
+    expect(shedAction.value).toBe('turn_off');
   });
 
   it('states that PELS does not limit a device without power support', async () => {

@@ -41,6 +41,7 @@ import {
   getSteppedLoadLowestActiveStep,
   resolveSteppedLoadPlanningPowerKw,
 } from '../../lib/utils/deviceControlProfiles';
+import { resolveTemperatureDeniedControlModel } from '../temperatureControlDenial';
 import { resolveSurplusOnlyPosture } from '../../lib/plan/planSurplusAbsorb';
 import { resolveSurplusPoolReachable } from '../../packages/shared-domain/src/solar/surplusPoolReachable';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
@@ -353,26 +354,16 @@ function projectEffectiveControlDevice(
 ): DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe
   & TemperatureObservedProbe & StateOfChargeObservedProbe {
   if (device.temperatureControlDisabled !== true) return device;
+  // Strictly the temperature axis. The step cluster, `targetPowerConfig` and
+  // `controlAdapter` stay: they carry no setpoint write, and clearing them left
+  // a flagged stepped device with no ladder (so PELS could only switch it off)
+  // and no native stepped wiring.
   return {
     ...device,
     targets: [],
     temperature: undefined,
     deviceType: 'onoff',
-    controlModel: 'binary_power',
-    steppedLoadProfile: undefined,
-    targetPowerConfig: undefined,
-    controlAdapter: undefined,
-    reportedStepId: undefined,
-    selectedStepId: undefined,
-    planningPowerKw: undefined,
-    targetStepId: undefined,
-    desiredStepId: undefined,
-    previousStepId: undefined,
-    lastStepCommandIssuedAt: undefined,
-    stepCommandRetryCount: undefined,
-    nextStepCommandRetryAtMs: undefined,
-    stepCommandPending: undefined,
-    stepCommandStatus: undefined,
+    controlModel: resolveTemperatureDeniedControlModel(device.controlModel),
   };
 }
 
@@ -380,12 +371,16 @@ function resolveEffectiveShedBehavior(
   ctx: AppContext,
   device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
 ): ResidualKwForPlanDeviceShedBehavior {
-  if (device.temperatureControlDisabled === true) {
-    return { action: 'turn_off' };
-  }
   const configured = ctx.getShedBehavior(device.id);
   if (configured.action === 'set_temperature') {
-    if (device.temperature === undefined) return resolveShedBehaviorWithoutTemperature(device);
+    // The setpoint arm — and only it — is denied when the owner switched
+    // temperature control off. Relaxing this to "the fence will catch it" would
+    // let a stale persisted setpoint shed reach the planner: a stepped device
+    // routes its release through `shed_release`, which would issue a `target`
+    // command the fence refuses, leaving the device shed with no way back.
+    if (device.temperatureControlDisabled === true || device.temperature === undefined) {
+      return resolveShedBehaviorWithoutTemperature(device);
+    }
     return { action: 'set_temperature', temperature: configured.temperature };
   }
   if (configured.action === 'set_step') {

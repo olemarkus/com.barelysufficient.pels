@@ -89,20 +89,6 @@ export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => 
   steppedLoadLastBinaryOnByDeviceId: new Map(),
 });
 
-/**
- * Revoke PELS-owned stepped command intent when a device becomes binary-only.
- * Flow-reported state is retained as observation evidence for a later re-enable.
- */
-export const clearSteppedLoadCommandAxisForDevice = (params: {
-  runtimeState: DeviceControlRuntimeState;
-  deviceId: string;
-}): void => {
-  const { runtimeState, deviceId } = params;
-  runtimeState.steppedLoadDesiredByDeviceId.delete(deviceId);
-  runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.delete(deviceId);
-  runtimeState.steppedLoadStepCommandIssuedByDeviceId.delete(deviceId);
-};
-
 // A command is evidence about the device's configuration AT THE TIME it was
 // given. Once the device transitions on→off, that command-axis state belongs to
 // the ended on-session and must not suppress initialization after a later

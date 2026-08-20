@@ -32,7 +32,10 @@ export const projectLifecycleFallbackDevice = (
     targetAxis: device.temperatureControlDisabled !== true && targetDescriptor
       ? { state: 'writable', target: 'temperature' }
       : { state: 'unavailable' },
-    stepAxis: device.temperatureControlDisabled !== true && device.steppedLoadProfile
+    // Only `targetAxis` above answers to "Disable temperature control". A
+    // ladder is a separate axis and stays writable, so a flagged stepped device
+    // can still be trimmed to a lower rung by lifecycle fallback.
+    stepAxis: device.steppedLoadProfile
       ? { state: 'writable', profile: device.steppedLoadProfile }
       : { state: 'unavailable' },
   };

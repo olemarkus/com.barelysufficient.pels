@@ -459,7 +459,7 @@ describe('LifecycleFallbackDispatcher', () => {
     });
   });
 
-  it('projects temperature policy as target and step denial without denying binary', () => {
+  it('projects temperature policy as target denial only, leaving binary and step writable', () => {
     const projected = projectLifecycleFallbackDevice({
       id: 'heater-1',
       name: 'Hybrid heater',
@@ -474,10 +474,12 @@ describe('LifecycleFallbackDispatcher', () => {
       steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }] },
     } as DecoratedDeviceSnapshot);
 
+    // The step axis is a different axis from the setpoint, so lifecycle
+    // fallback can still trim this heater to a lower rung.
     expect(projected).toMatchObject({
       binaryAxis: { state: 'writable' },
       targetAxis: { state: 'unavailable' },
-      stepAxis: { state: 'unavailable' },
+      stepAxis: { state: 'writable' },
     });
   });
 

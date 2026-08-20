@@ -231,9 +231,11 @@ const setDeviceDetailControlStates = (deviceId: string) => {
     const nativeSteppedLoadLocked = isNativeSteppedLoadProfileActive(device);
     syncDeviceDetailControlModeOptions(deviceDetailControlModel, device, effectiveControlMode);
     deviceDetailControlModel.value = effectiveControlMode;
+    // Not gated on "Disable temperature control": picking a control model is
+    // configuration, not a `target_temperature` write, and locking the select
+    // is what kept a flagged device from ever being given a step ladder.
     deviceDetailControlModel.disabled = !controlState.canManageDevice
-      || nativeSteppedLoadLocked
-      || state.temperatureControlDisabledMap[deviceId] === true;
+      || nativeSteppedLoadLocked;
     deviceDetailControlModelRow.hidden = !controlState.canManageDevice;
   }
 

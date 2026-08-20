@@ -2,11 +2,7 @@ import type {
   DeviceTargetPowerConfigs,
   TargetPowerSteppedLoadConfig,
 } from '../../../../contracts/src/types.ts';
-import {
-  supportsTemperatureControlDevice,
-  supportsTemperatureDevice,
-  type SettingsUiDeviceDetailItem,
-} from '../deviceUtils.ts';
+import { type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { DEVICE_TARGET_POWER_CONFIGS } from '../../../../contracts/src/settingsKeys.ts';
 import { createEvTargetPowerConfig } from '../../../../shared-domain/src/evTargetPowerConfig.ts';
 import {
@@ -72,9 +68,9 @@ const resolveSeedStepW = (maxW: number): number => Math.max(
 export const renderTargetPowerConfig = (device: SettingsUiDeviceDetailItem) => {
   if (!deviceDetailTargetPowerConfig) return;
   const config = state.deviceTargetPowerConfigs[device.id] ?? device.targetPowerConfig;
-  const temperatureControlAvailable = !supportsTemperatureDevice(device)
-    || supportsTemperatureControlDevice(device);
-  const showRange = temperatureControlAvailable && Boolean(config && !config.preset);
+  // Same axis rule as the step editor: a power range generates rungs, and
+  // "Disable temperature control" denies setpoint writes, not rungs.
+  const showRange = Boolean(config && !config.preset);
   deviceDetailTargetPowerConfig.hidden = !showRange;
   if (deviceDetailTargetPowerFields) deviceDetailTargetPowerFields.hidden = !showRange;
   if (!showRange) return;

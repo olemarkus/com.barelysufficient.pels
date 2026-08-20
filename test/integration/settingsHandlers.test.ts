@@ -171,7 +171,7 @@ describe('createSettingsHandler', () => {
     expect(rebuildAllHomeRuntimePlansForDeviceControlChange).toHaveBeenCalledTimes(1);
   });
 
-  it('publishes the temperature command fence before a parked settings queue drains', async () => {
+  it('publishes the setpoint command fence before a parked settings queue drains', async () => {
     let releaseRefresh: (() => void) | undefined;
     const parkedRefresh = new Promise<void>((resolve) => { releaseRefresh = resolve; });
     let temperatureControlDisabled = false;
@@ -198,6 +198,8 @@ describe('createSettingsHandler', () => {
     await expect(actuator.apply({
       kind: 'target', deviceId: 'thermostat', target: 'temperature', value: 18,
     })).resolves.toEqual({ requested: false });
+    // Only the setpoint is fenced: the step axis is untouched by this setting
+    // and reaches the base actuator.
     await expect(actuator.apply({
       kind: 'step',
       deviceId: 'thermostat',
@@ -206,7 +208,8 @@ describe('createSettingsHandler', () => {
       planningPowerW: 0,
       planningCurrentA: 0,
     })).resolves.toEqual({ requested: false });
-    expect(apply).not.toHaveBeenCalled();
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledWith(expect.objectContaining({ kind: 'step' }));
 
     releaseRefresh?.();
     await Promise.all([parkedWrite, temperatureToggle]);

@@ -459,11 +459,18 @@ reintroduce it. Canonical sentences (source:
 | EV charger on an amp preset (`ev_charger_1_phase` / `ev_charger_3_phase`) | `When limiting this charger, PELS lowers the charging level, and pauses charging only if lowering is not enough. It resumes when power allows.` |
 | EV charger with no level preset (the executor pauses the charging capability) | `When limiting this charger, PELS pauses charging and resumes it when power allows.` |
 | Plain binary device | `When limiting this device, PELS turns it off and turns it back on when power allows.` |
-| Temperature control disabled | `Temperature control is off for this device. When limiting it, PELS turns it off and turns it back on when power allows.` |
+| Temperature control disabled, no power-level ladder | `Temperature control is off for this device. When limiting it, PELS turns it off and turns it back on when power allows.` |
 | Forced temperature-only | `When limiting this device, PELS lowers its temperature instead of turning it off.` |
 | Forced step-only | `When limiting this device, PELS steps it down and back up as power allows.` |
 | Power-limit control off | `Power-limit control is off — PELS will not limit this charger/device.` |
 | No power reading | `PELS does not limit this charger/device.` |
+
+The temperature-control-disabled row is qualified because the setting denies ONE
+axis — anything PELS would write to `target_temperature`. A flagged device that
+still has a power-level ladder keeps it, so it gets the real "turn off / step
+down" choice (no statement at all), or the forced step-only sentence when it has
+no on/off control. The row above is reached only when the flag leaves the device
+with nothing but its binary axis, where the sentence is still exactly true.
 
 The two charger rows split on 2026-08-17. A preset charger's amp ladder is
 exactly what the planner now parks at an intermediate charging level, so the
