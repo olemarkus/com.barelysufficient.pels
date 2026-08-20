@@ -454,9 +454,10 @@ type DevicePlanDeviceBase = {
   // No `evBoost` / `stateOfCharge` / `temperatureBoost`: a boost threshold is
   // configuration and a battery level is an observation, and the plan device
   // carries neither. It carries the DECISION they produced (`boostActive`
-  // below), resolved once by the producer; the settings UI reads the config and
-  // the level from the seams that own them (`getEvBoostConfig` /
-  // `getObservedStateOfCharge` in `createPlanService`).
+  // below), resolved once by the producer. The battery level reaches the
+  // settings UI from the seam that owns it (`getObservedStateOfCharge` in
+  // `createPlanService`); the configured thresholds never cross the plan wire at
+  // all — the settings UI reads them straight from the settings store.
   /**
    * Producer-resolved commandability, REQUIRED so no consumer can read absence
    * as an answer. It was optional through the dual-read transition, and the

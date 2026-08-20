@@ -13,10 +13,8 @@ import { normalizePlanMeta } from './planStatusHelpers';
 import type { DevicePlan } from './planTypes';
 import type {
   DeviceStateOfChargeSnapshot,
-  EvBoostConfig,
   EvChargingState,
   SteppedLoadProfile,
-  TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
 import type { ObservedTemperatureRead } from '../observer/observedDeviceStateProjection';
 import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
@@ -38,11 +36,6 @@ export type SettingsOverviewReadModelDeps = {
   // plug-state above: the plan device carries the boost DECISION, never the
   // reading it was made from.
   getObservedStateOfCharge?: (deviceId: string) => DeviceStateOfChargeSnapshot | undefined;
-  // The owner's configured boost thresholds, for the card's boost panel. These
-  // are settings, so they come from the producer that owns the settings seam —
-  // the planner is not a courier for configuration it does not read.
-  getEvBoostConfig?: (deviceId: string) => EvBoostConfig | undefined;
-  getTemperatureBoostConfig?: (deviceId: string) => TemperatureBoostConfig | undefined;
   getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
   // Observation staleness is observer-owned freshness state — the plan device no
   // longer carries it (the plan has no right to distrust observer data). The
@@ -156,11 +149,12 @@ export function buildSettingsOverviewDeviceReadModel(
   deps: SettingsOverviewReadModelDeps,
   confirmedSteppedLoadProfile?: SteppedLoadProfile,
 ): SettingsUiPlanDeviceSnapshot {
-  // EV boost config and battery level come from the seams that own them
-  // (`getEvBoostConfig` / `getObservedStateOfCharge`), and the raw
-  // `evChargingState` from the observer — its canonical owner. None of them ride
-  // the plan device: there is no EV cluster on the plan types (owner ruling
-  // 2026-08-15, `lib/plan/AGENTS.md`).
+  // The battery level comes from the seam that owns it
+  // (`getObservedStateOfCharge`), and the raw `evChargingState` from the
+  // observer — its canonical owner. Neither rides the plan device: there is no
+  // EV cluster on the plan types (owner ruling 2026-08-15, `lib/plan/AGENTS.md`).
+  // The owner's configured boost THRESHOLDS reach the settings UI from the
+  // settings store directly and are not on this wire at all.
   const temperature = resolveOverviewTemperatureFacet(
     device,
     deps.getObservedTemperature(device.id),
@@ -202,9 +196,7 @@ export function buildSettingsOverviewDeviceReadModel(
     expectedPowerKw: device.expectedPowerKw,
 
     budgetExempt: device.budgetExempt,
-    temperatureBoost: deps.getTemperatureBoostConfig?.(device.id),
     surplusAbsorbActive: device.surplusAbsorbActive,
-    evBoost: deps.getEvBoostConfig?.(device.id),
     // One boost bit, carried through as the planner decided it. The read model
     // used to re-derive WHICH axis was boosting by presence-sniffing two
     // unrelated seams; the card's wording is the view's job, and the axis was

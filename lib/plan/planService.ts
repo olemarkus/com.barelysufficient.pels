@@ -95,8 +95,6 @@ const serializePlanForUi = (
     getObservedEvChargingState: (deviceId) => deps.getObservedEvChargingState?.(deviceId),
     getAssociatedCarChargingState: (deviceId) => deps.getAssociatedCarChargingState?.(deviceId),
     getObservedStateOfCharge: (deviceId) => deps.getObservedStateOfCharge?.(deviceId),
-    getEvBoostConfig: (deviceId) => deps.getEvBoostConfig?.(deviceId),
-    getTemperatureBoostConfig: (deviceId) => deps.getTemperatureBoostConfig?.(deviceId),
     getObservedTemperature: deps.getObservedTemperature,
     getObservationStale: (deviceId) => deps.getObservationStale?.(deviceId) ?? false,
     getSteppedLoadProfileById: deps.getSteppedLoadProfileById,
