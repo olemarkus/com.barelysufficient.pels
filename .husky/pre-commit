@@ -1,1 +1,1 @@
-node scripts/with-validation-lock.mjs pre-commit -- node scripts/pre-commit-checks.mjs
+node scripts/pre-commit-checks.mjs

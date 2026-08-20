@@ -1,1 +1,1 @@
-node scripts/with-validation-lock.mjs pre-push -- node scripts/pre-push-checks.mjs "$@"
+node scripts/pre-push-checks.mjs "$@"

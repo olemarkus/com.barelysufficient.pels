@@ -10,8 +10,7 @@
     "npm": "12.0.2"
   },
   "scripts": {
-    "build": "node scripts/with-validation-lock.mjs build -- npm run build:unlocked",
-    "build:unlocked": "tsc && npm run build:settings && npm run build:widgets && npm run sanitize:homey-build",
+    "build": "tsc && npm run build:settings && npm run build:widgets && npm run sanitize:homey-build",
     "build:settings": "npm --workspace @pels/settings-ui run build && node scripts/sync-settings-ui.mjs",
     "build:widgets": "node scripts/build-widgets.mjs",
     "build:nettleie-fallback": "node scripts/build-nettleie-fallback.mjs",
@@ -50,7 +49,7 @@
     "test:integration": "node scripts/with-validation-lock.mjs test:integration -- vitest run --config vitest.config.integration.mts",
     "test:e2e:runtime": "node scripts/with-validation-lock.mjs test:e2e:runtime -- vitest run --config vitest.config.e2e.mts",
     "test:coverage": "node scripts/with-validation-lock.mjs test:coverage -- vitest run --config vitest.config.mts",
-    "ci:checks": "node scripts/with-validation-lock.mjs ci:checks -- node scripts/ci-checks.mjs",
+    "ci:checks": "node scripts/ci-checks.mjs",
     "ci:test:runtime": "node scripts/with-validation-lock.mjs ci:test:runtime -- node scripts/ci-test-runtime.mjs",
     "ci:test:settings-ui": "npm run test:ui",
     "ci:test:playwright:quick": "npm --workspace @pels/settings-ui run build && CI=1 PELS_E2E_BUILD=0 npm --workspace @pels/settings-ui run test:e2e -- --project=chromium-mobile-width",
@@ -72,7 +71,7 @@
     "**/*.{ts,mts}": [
       "eslint --max-warnings=0 --no-warn-ignored",
       "node scripts/pre-commit-typecheck.mjs",
-      "node scripts/pre-commit-tests.mjs"
+      "node scripts/with-validation-lock.mjs pre-commit:test -- node scripts/pre-commit-tests.mjs"
     ],
     "**/*.{js,mjs,cjs}": [
       "eslint --max-warnings=0 --no-warn-ignored"

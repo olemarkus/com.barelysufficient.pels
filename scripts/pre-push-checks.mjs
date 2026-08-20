@@ -16,6 +16,16 @@ const ZERO_SHA_PATTERN = /^0+$/;
 const DRY_RUN = process.env.PELS_PRE_PUSH_DRY_RUN === '1';
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
+const withTestLock = (entry) => ({ ...entry, testLock: true });
+
+const resolveCommand = (entry) => entry.testLock
+  ? {
+      label: entry.label,
+      command: 'node',
+      args: ['scripts/with-validation-lock.mjs', entry.label, '--', entry.command, ...entry.args],
+    }
+  : entry;
+
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 
 const tryGit = (...args) => {
@@ -93,7 +103,7 @@ const planCommands = (changedFiles, deletedFiles) => {
     const runtimeFiles = selectMatchingPaths(changedFiles, RUNTIME_PATHS);
     const hasWiringChange = matchesAnyPath(changedFiles, RUNTIME_TEST_WIRING_PATHS)
       || matchesAnyPath(deletedFiles, RUNTIME_PATHS);
-    commands.push(hasWiringChange
+    commands.push(withTestLock(hasWiringChange
       ? {
         label: 'test:runtime',
         command: 'npx',
@@ -110,14 +120,14 @@ const planCommands = (changedFiles, deletedFiles) => {
           '--passWithNoTests',
           ...runtimeFiles,
         ],
-      });
-    commands.push({
+      }));
+    commands.push(withTestLock({
       label: hasWiringChange ? 'test:unit:tz' : 'test:unit:tz:related',
       command: 'node',
       args: hasWiringChange
         ? ['scripts/run-timezone-tests.mjs']
         : ['scripts/run-timezone-tests.mjs', '--related', ...runtimeFiles],
-    });
+    }));
   }
 
   if (matchesAnyPath(changedFiles, SETTINGS_UI_UNIT_PATHS)) {
@@ -127,7 +137,7 @@ const planCommands = (changedFiles, deletedFiles) => {
         : `../../${file}`);
     const hasWiringChange = matchesAnyPath(changedFiles, SETTINGS_UI_TEST_WIRING_PATHS)
       || matchesAnyPath(deletedFiles, SETTINGS_UI_UNIT_PATHS);
-    commands.push(hasWiringChange
+    commands.push(withTestLock(hasWiringChange
       ? {
         label: 'test:ui:unit',
         command: 'npm',
@@ -148,7 +158,7 @@ const planCommands = (changedFiles, deletedFiles) => {
           '--passWithNoTests',
           ...settingsFiles,
         ],
-      });
+      }));
   }
 
   if (matchesAnyPath(changedFiles, MANIFEST_PATHS)) {
@@ -160,7 +170,8 @@ const planCommands = (changedFiles, deletedFiles) => {
 
 const announce = (commands) => {
   for (const entry of commands) {
-    console.log(`pre-push: running ${entry.command} ${entry.args.join(' ')}`);
+    const suffix = entry.testLock ? ' [test lock]' : '';
+    console.log(`pre-push: running ${entry.command} ${entry.args.join(' ')}${suffix}`);
   }
 };
 
@@ -191,7 +202,7 @@ const main = async () => {
 
   if (DRY_RUN) return;
 
-  await runSequential(commands);
+  await runSequential(commands.map(resolveCommand));
 };
 
 await main();

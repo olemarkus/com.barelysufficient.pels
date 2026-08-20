@@ -146,10 +146,12 @@ npm run test:e2e:capture    # Explicit local screenshot/documentation capture ha
 npm run ci:full             # Complete CI: checks + runtime + settings UI + Playwright
 ```
 
-**Shared-machine resource safety.** Standard build, check, test, and Git-hook
-entrypoints coordinate through one per-user Linux `flock` across every PELS
-worktree. Do not bypass the npm scripts with raw `npx vitest` or `playwright`
-commands. Vitest and local Playwright accept only one or two workers through
+**Shared-machine resource safety.** Test entrypoints and test-only Git-hook
+phases coordinate through one per-user Linux `flock` across every PELS
+worktree. Builds, static checks, Homey validation/deploy commands, and non-test
+hook phases do not acquire the lock. Do not bypass the npm scripts with raw
+`npx vitest` or `playwright` commands. Vitest and local Playwright accept only
+one or two workers through
 `PELS_TEST_WORKERS` and `PELS_PLAYWRIGHT_WORKERS`; two is the default. In a
 multi-agent session, the lead agent owns broad validation. Review agents run
 read-only analysis or request a targeted run from the lead instead of launching

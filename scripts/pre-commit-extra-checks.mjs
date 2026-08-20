@@ -14,6 +14,11 @@ const getStagedFiles = () => {
 
 const hasStagedFile = (files, paths) => files.some((file) => paths.includes(file));
 
+const withTestLock = (label, command, args) => [
+  'node',
+  ['scripts/with-validation-lock.mjs', label, '--', command, ...args],
+];
+
 const run = (command, args) => {
   console.log(`pre-commit-extra: running ${command} ${args.join(' ')}`);
   const result = spawnSync(command, args, { stdio: 'inherit', env: process.env });
@@ -25,7 +30,11 @@ const stagedFiles = getStagedFiles();
 const commands = [];
 
 if (hasStagedFile(stagedFiles, ['.husky/pre-commit', 'scripts/pre-commit-extra-checks.mjs', 'scripts/pre-push-checks.mjs'])) {
-  commands.push(['npx', ['vitest', 'run', '--config', 'vitest.config.integration.mts', 'test/integration/prePushChecks.test.ts']]);
+  commands.push(withTestLock(
+    'pre-commit:test:routing',
+    'npx',
+    ['vitest', 'run', '--config', 'vitest.config.integration.mts', 'test/integration/prePushChecks.test.ts'],
+  ));
 }
 
 if (hasStagedFile(stagedFiles, ['.husky/pre-commit', 'scripts/pre-commit-extra-checks.mjs', 'scripts/pre-commit-typecheck.mjs'])) {
@@ -33,7 +42,11 @@ if (hasStagedFile(stagedFiles, ['.husky/pre-commit', 'scripts/pre-commit-extra-c
 }
 
 if (hasStagedFile(stagedFiles, ['.husky/pre-commit', 'scripts/pre-commit-extra-checks.mjs', 'scripts/pre-commit-tests.mjs'])) {
-  commands.push(['node', ['scripts/pre-commit-tests.mjs', 'test/integration/prePushChecks.test.ts']]);
+  commands.push(withTestLock(
+    'pre-commit:test:selection',
+    'node',
+    ['scripts/pre-commit-tests.mjs', 'test/integration/prePushChecks.test.ts'],
+  ));
 }
 
 if (commands.length === 0) {
