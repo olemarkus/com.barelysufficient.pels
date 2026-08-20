@@ -43,7 +43,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
-import { hasPlanExecutionDrift } from '../../lib/executor/executorConvergence';
+import { hasLiveStateDivergedFromSnapshot } from '../../lib/executor/executorConvergence';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
@@ -3403,7 +3403,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
 
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
-    expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
+    expect(hasLiveStateDivergedFromSnapshot(appliedPlan, livePlan)).toBe(true);
     expect(livePlan.devices[0].currentState).toBe('off');
 
     const { executor, deviceManager } = buildExecutor(undefined, buildSnapshot({
@@ -3454,7 +3454,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const liveDevices = buildLiveDevices({ binaryControl: { on: false }, selectedStepId: 'off' });
 
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
-    expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
+    expect(hasLiveStateDivergedFromSnapshot(appliedPlan, livePlan)).toBe(true);
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: false } }));
     await executor.applyPlanActions(livePlan);
@@ -3874,7 +3874,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
 
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
-    expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
+    expect(hasLiveStateDivergedFromSnapshot(appliedPlan, livePlan)).toBe(true);
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: true } }));
     await executor.applyPlanActions(livePlan);
@@ -3918,7 +3918,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       selectedStepId: 'max',
       reportedStepId: undefined,
     }));
-    expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
+    expect(hasLiveStateDivergedFromSnapshot(appliedPlan, livePlan)).toBe(true);
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: true } }));
     await executor.applyPlanActions(livePlan);

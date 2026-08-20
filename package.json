@@ -38,6 +38,7 @@
     "device-kind:vocab": "node scripts/check-device-kind-vocab.mjs",
     "binary:vocab": "node scripts/check-binary-vocab.mjs",
     "binary:seam": "node scripts/check-binary-seam.mjs",
+    "executor:settle-seam": "node scripts/check-executor-settle-seam.mjs",
     "deadcode:check": "knip",
     "sanitize:homey-build": "node scripts/sanitize-homey-build.mjs",
     "check:homeybuild": "node scripts/check-homeybuild-requires.mjs",
