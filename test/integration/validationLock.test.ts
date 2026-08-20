@@ -29,6 +29,39 @@ describe('machine-wide validation lock', () => {
     }
   });
 
+  it('is reserved for test entrypoints and test-only hook phases', () => {
+    const packagePaths = [
+      path.resolve(__dirname, '../../package.json'),
+      path.resolve(__dirname, '../../packages/settings-ui/package.json'),
+    ];
+
+    for (const packagePath of packagePaths) {
+      const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8')) as {
+        scripts: Record<string, string>;
+        'lint-staged'?: Record<string, string[]>;
+      };
+      const lockedScripts = Object.entries(packageJson.scripts)
+        .filter(([, command]) => command.includes('with-validation-lock.mjs'));
+
+      expect(lockedScripts.length).toBeGreaterThan(0);
+      for (const [name] of lockedScripts) {
+        expect(name).toMatch(/(?:^|:)test(?::|$)/u);
+      }
+
+      for (const commands of Object.values(packageJson['lint-staged'] ?? {})) {
+        const testCommands = commands.filter((command) => command.includes('pre-commit-tests.mjs'));
+        for (const command of testCommands) {
+          expect(command).toContain('with-validation-lock.mjs');
+        }
+      }
+    }
+
+    for (const hook of ['pre-commit', 'pre-push']) {
+      const hookScript = fs.readFileSync(path.resolve(__dirname, `../../.husky/${hook}`), 'utf8');
+      expect(hookScript).not.toContain('with-validation-lock.mjs');
+    }
+  });
+
   it('serializes contenders that share a lock file', async () => {
     const dir = makeTempDir();
     const lockPath = path.join(dir, 'validation.lock');

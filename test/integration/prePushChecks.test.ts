@@ -146,6 +146,8 @@ describe('pre-push checks script', () => {
     expect(result.stdout).toContain('pre-push: running npx vitest related --config vitest.config.changed.mts');
     expect(result.stdout).toContain('pre-push: running node scripts/run-timezone-tests.mjs --related');
     expect(result.stdout).toContain('pre-push: running npm --workspace @pels/settings-ui exec -- vitest related --config vitest.config.ts');
+    expect(result.stdout).toContain('--passWithNoTests packages/contracts/src/targetCapabilities.ts [test lock]');
+    expect(result.stdout).not.toContain('pre-push: running npm run ci:checks [test lock]');
     expect(result.stdout).not.toContain('playwright');
     expect(result.stdout).not.toContain('ci:test:runtime');
     expect(result.stdout).not.toContain('ci:full');
