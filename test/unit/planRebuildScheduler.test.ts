@@ -75,16 +75,16 @@ describe('PlanRebuildScheduler', () => {
   it('coalesces flow and signal requests down to the highest-priority reason', async () => {
     const harness = createHarness();
 
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
+    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
     harness.scheduler.request({ kind: 'signal', reason: 'headroom_tight' });
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card:ignored' });
+    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'ignored' });
 
     expect(harness.executed).toEqual([{ kind: 'signal', reason: 'headroom_tight' }]);
     expect(harness.replacedEvents).toEqual([{
-      previous: { kind: 'flow', reason: 'flow_card:first' },
+      previous: { kind: 'flow', reason: 'flow_card', detail: 'first' },
       next: { kind: 'signal', reason: 'headroom_tight' },
     }]);
-    expect(harness.scheduler.now().pendingIntent).toEqual({ kind: 'flow', reason: 'flow_card:ignored' });
+    expect(harness.scheduler.now().pendingIntent).toEqual({ kind: 'flow', reason: 'flow_card', detail: 'ignored' });
     expect(harness.droppedEvents).toEqual([]);
     expect(harness.timers.size).toBe(0);
 
@@ -95,44 +95,44 @@ describe('PlanRebuildScheduler', () => {
   it('clears a lower-priority timer when an immediate higher-priority intent replaces it', () => {
     const harness = createHarness();
 
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
+    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
     expect(harness.timers.size).toBe(1);
 
     harness.scheduler.request({ kind: 'signal', reason: 'headroom_tight' });
     expect(harness.timers.size).toBe(0);
 
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card:ignored' });
+    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'ignored' });
     expect(harness.timers.size).toBe(0);
-    expect(harness.scheduler.now().pendingIntent).toEqual({ kind: 'flow', reason: 'flow_card:ignored' });
+    expect(harness.scheduler.now().pendingIntent).toEqual({ kind: 'flow', reason: 'flow_card', detail: 'ignored' });
   });
 
   it('coalesces within a kind and keeps the latest reason', async () => {
     const harness = createHarness();
 
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card:latest' });
+    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
+    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'latest' });
 
     expect(harness.replacedEvents).toEqual([{
-      previous: { kind: 'flow', reason: 'flow_card:first' },
-      next: { kind: 'flow', reason: 'flow_card:latest' },
+      previous: { kind: 'flow', reason: 'flow_card', detail: 'first' },
+      next: { kind: 'flow', reason: 'flow_card', detail: 'latest' },
     }]);
 
     await harness.advance(30_000);
 
-    expect(harness.executed).toEqual([{ kind: 'flow', reason: 'flow_card:latest' }]);
+    expect(harness.executed).toEqual([{ kind: 'flow', reason: 'flow_card', detail: 'latest' }]);
   });
 
   it('cancels the pending timer and reports the cancelled intent', () => {
     const harness = createHarness();
 
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
+    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
     expect(harness.timers.size).toBe(1);
 
     harness.scheduler.cancelAll('app_uninit');
 
     expect(harness.timers.size).toBe(0);
     expect(harness.cancelledEvents).toEqual([{
-      intent: { kind: 'flow', reason: 'flow_card:first' },
+      intent: { kind: 'flow', reason: 'flow_card', detail: 'first' },
       reason: 'app_uninit',
     }]);
   });
@@ -141,12 +141,12 @@ describe('PlanRebuildScheduler', () => {
     const harness = createHarness();
     const dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => 123456789);
 
-    harness.scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
+    harness.scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
     expect(harness.scheduler.now().pendingDueMs).toBe(harness.getNowMs() + 30_000);
 
     await harness.advance(30_000);
 
-    expect(harness.executed).toEqual([{ kind: 'flow', reason: 'flow_card:first' }]);
+    expect(harness.executed).toEqual([{ kind: 'flow', reason: 'flow_card', detail: 'first' }]);
     dateNowSpy.mockRestore();
   });
 
@@ -179,12 +179,12 @@ describe('PlanRebuildScheduler', () => {
       shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
     });
 
-    scheduler.request({ kind: 'hardCap', reason: 'limit_exceeded' });
-    expect(executed).toEqual([{ kind: 'hardCap', reason: 'limit_exceeded' }]);
+    scheduler.request({ kind: 'hardCap', reason: 'hard_cap_breach' });
+    expect(executed).toEqual([{ kind: 'hardCap', reason: 'hard_cap_breach' }]);
 
-    scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
+    scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
 
-    expect(scheduler.now().pendingIntent).toEqual({ kind: 'flow', reason: 'flow_card:first' });
+    expect(scheduler.now().pendingIntent).toEqual({ kind: 'flow', reason: 'flow_card', detail: 'first' });
     expect(timers.size).toBe(0);
 
     deferred.resolve();
@@ -204,8 +204,8 @@ describe('PlanRebuildScheduler', () => {
     await Promise.resolve();
 
     expect(executed).toEqual([
-      { kind: 'hardCap', reason: 'limit_exceeded' },
-      { kind: 'flow', reason: 'flow_card:first' },
+      { kind: 'hardCap', reason: 'hard_cap_breach' },
+      { kind: 'flow', reason: 'flow_card', detail: 'first' },
     ]);
   });
 
@@ -235,7 +235,7 @@ describe('PlanRebuildScheduler', () => {
       shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
     });
 
-    scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
+    scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
     expect(timers.size).toBe(1);
 
     const timer = [...timers.values()][0];
@@ -243,11 +243,11 @@ describe('PlanRebuildScheduler', () => {
     timer.callback();
     await Promise.resolve();
 
-    expect(executed).toEqual([{ kind: 'flow', reason: 'flow_card:first' }]);
-    expect(scheduler.now().activeIntent).toEqual({ kind: 'flow', reason: 'flow_card:first' });
+    expect(executed).toEqual([{ kind: 'flow', reason: 'flow_card', detail: 'first' }]);
+    expect(scheduler.now().activeIntent).toEqual({ kind: 'flow', reason: 'flow_card', detail: 'first' });
 
     scheduler.request({ kind: 'signal', reason: 'headroom_tight' });
-    expect(executed).toEqual([{ kind: 'flow', reason: 'flow_card:first' }]);
+    expect(executed).toEqual([{ kind: 'flow', reason: 'flow_card', detail: 'first' }]);
     expect(scheduler.now().pendingIntent).toEqual({ kind: 'signal', reason: 'headroom_tight' });
     expect(timers.size).toBe(0);
 
@@ -258,7 +258,7 @@ describe('PlanRebuildScheduler', () => {
     await Promise.resolve();
 
     expect(executed).toEqual([
-      { kind: 'flow', reason: 'flow_card:first' },
+      { kind: 'flow', reason: 'flow_card', detail: 'first' },
       { kind: 'signal', reason: 'headroom_tight' },
     ]);
   });
@@ -282,7 +282,7 @@ describe('PlanRebuildScheduler', () => {
       },
     });
 
-    scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
+    scheduler.request({ kind: 'flow', reason: 'flow_card', detail: 'first' });
     expect(harness.timers.size).toBe(1);
 
     allowFlow = false;

@@ -475,8 +475,10 @@ export function initSettingsHandlerForApp(
       options?.onHomeOwnershipConfigurationRecomputed?.();
     },
     loadCapacitySettings: ctx.loadCapacitySettings,
-    rebuildPlanFromCache: async (reason) => {
-      await planService.rebuildPlanFromCache(reason);
+    // The handlers name the settings SOURCE that moved; naming the trigger is
+    // this seam's job, not theirs.
+    rebuildPlanFromCache: async (settingsSource) => {
+      await planService.rebuildPlanFromCache('settings', { detail: settingsSource });
     },
     refreshTargetDevicesSnapshot: () => ctx.refreshTargetDevicesSnapshot(),
     loadPowerTracker: () => ctx.loadPowerTracker(),

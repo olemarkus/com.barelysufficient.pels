@@ -71,7 +71,13 @@ export type PriceServiceLike = {
 export type SettingsHandlerDeps = {
   homey: HomeyRuntime;
   loadCapacitySettings: () => void;
-  rebuildPlanFromCache: (reason?: string) => Promise<void>;
+  /**
+   * Names the SETTINGS SOURCE that moved, not a rebuild trigger. The wiring that
+   * supplies this (`setup/appSettingsHelpers.ts`) is what turns it into the
+   * `settings` trigger — this module keeps its own vocabulary and stays off the
+   * planner's.
+   */
+  rebuildPlanFromCache: (settingsSource: string) => Promise<void>;
   refreshTargetDevicesSnapshot: () => Promise<void>;
   loadPowerTracker: () => void;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
@@ -644,7 +650,7 @@ function recordSettingsRebuildRequest(source: string): void {
 
 async function rebuildPlanFromSettings(deps: SettingsHandlerDeps, source: string): Promise<void> {
   recordSettingsRebuildRequest(source);
-  await deps.rebuildPlanFromCache(`settings:${source}`);
+  await deps.rebuildPlanFromCache(source);
 }
 
 async function refreshSnapshotWithLog(deps: SettingsHandlerDeps, reasonCode: string): Promise<void> {

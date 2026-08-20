@@ -1,0 +1,100 @@
+/**
+ * The complete set of things that may cause PELS to re-decide.
+ *
+ * This file only CLOSES the set; it does not change it. Every trigger PELS had
+ * is named here, `device_observation_changed` included, and every one still
+ * fires exactly as before. Adding a name is now the deliberate act it should be:
+ * reach for this list rather than a free-form string.
+ *
+ * The `reason` it replaces was never purely decorative — three call sites read
+ * it back: `resolveRestoreDecisionPhase` (startup vs runtime restore admission),
+ * `isTightReason` (tight-noop backoff bookkeeping), and `getPlanRebuildLogLevel`,
+ * which additionally sniffed `startsWith('settings:')`. Each matched raw strings
+ * that nothing guaranteed a caller would spell the same way.
+ */
+
+/**
+ * Resolved by the power lane's own policy (`rebuildScheduler/policy.ts`) from the
+ * sample it just admitted. These are the only triggers whose subject is the
+ * whole-home reading itself.
+ */
+export const POWER_SAMPLE_REBUILD_TRIGGERS = [
+  'initial',
+  'shortfall',
+  'hard_cap_breach',
+  'headroom_tight',
+  'power_sample_convergence',
+  'power_delta',
+  'max_interval',
+  /** The policy wanted a rebuild but no branch claimed it; kept so that stays visible. */
+  'unknown',
+] as const;
+
+export type PowerSampleRebuildTrigger = (typeof POWER_SAMPLE_REBUILD_TRIGGERS)[number];
+
+export const PLAN_REBUILD_TRIGGERS = [
+  ...POWER_SAMPLE_REBUILD_TRIGGERS,
+
+  // The power lane speaking about the ABSENCE of a reading.
+  'freshness_heartbeat',
+
+  // An input other than the reading changed, so a re-decision is owed regardless
+  // of how current the reading is. Each of these carries a `detail`.
+  'settings',
+  'price',
+  'flow_card',
+
+  // A device observation moved something PELS may or may not command. These are
+  // the trigger this file exists to argue with; they are removed with the
+  // observation lane.
+  'device_observation_changed',
+  'external_off_hold_started',
+  'external_off_hold_cleared',
+  'realtime_ev_soc',
+
+  // Startup and per-home lifecycle.
+  'startup_snapshot_bootstrap',
+  'home_bundle_created',
+  'home_membership_ready',
+  'home_membership_changed',
+  'home_membership_settled',
+  'home_ownership_ready',
+  'home_ownership_generation_prepared',
+  'home_source_authority_recovered',
+
+  // What PELS is able to command changed.
+  'binary_command_reachability_changed',
+  'binary_command_reachability_deadline',
+  'target_power_reachability_updated',
+  'target_power_probe_due',
+  'native_wiring_auto_decision',
+] as const;
+
+export type PlanRebuildTrigger = (typeof PLAN_REBUILD_TRIGGERS)[number];
+
+export type PlanRebuildRequestOptions = {
+  /**
+   * Narrows an open-ended trigger for the log line: the settings key that moved,
+   * the flow card that fired, the price mode that resolved. Free text on purpose
+   * — those sets are genuinely unbounded — and it reaches the log and nothing
+   * else. No decision, counter, or gate reads it.
+   */
+  detail?: string;
+  shouldAbort?: () => boolean;
+  onAbort?: () => void;
+};
+
+/**
+ * The log label for a rebuild. Composed rather than passed, so the trigger stays
+ * a closed value everywhere a decision touches it while logs keep the exact
+ * strings they have always carried.
+ */
+export const describePlanRebuildTrigger = (
+  trigger: PlanRebuildTrigger,
+  detail?: string,
+): string => {
+  if (detail === undefined) return trigger;
+  // The one label that is a sentence rather than a path.
+  if (trigger === 'price') return `price optimization (${detail} hour)`;
+  return `${trigger}:${detail}`;
+};

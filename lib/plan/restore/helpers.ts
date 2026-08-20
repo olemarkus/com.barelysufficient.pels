@@ -199,7 +199,7 @@ export function planRestoreForSteppedDevice(params: {
     delete state.steppedRestoreRejectedByDevice[dev.id];
   }
 
-  const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
+  const phase = resolveRestoreDecisionPhase(state.currentRebuildTrigger);
   // Active stepped devices (ON but below their target step) must not be blocked by the global
   // restore cooldown or meter-settling gate — per-device restore timing still applies. Resolve
   // "active" via the step axis so a step-only stepper (no binary handle) is recognised too.

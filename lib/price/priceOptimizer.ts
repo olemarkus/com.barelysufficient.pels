@@ -34,7 +34,8 @@ export type PriceOptimizerDeps = {
   isEnabled: () => boolean;
   getThresholdPercent: () => number;
   getMinDiffOre: () => number;
-  rebuildPlan: (reason: string) => Promise<void>;
+  /** Names the price MODE that just resolved (`cheap` / `expensive` / `normal`). */
+  rebuildPlan: (priceMode: string) => Promise<void>;
   debugStructured: StructuredDebugEmitter;
   structuredLog?: PinoLogger;
 };
@@ -106,7 +107,7 @@ export class PriceOptimizer {
       'plan_rebuild_requested.price_optimizer_total',
       `plan_rebuild_requested.price_optimizer.${resultingMode}_total`,
     ]);
-    await this.deps.rebuildPlan(`price optimization (${resultingMode} hour)`);
+    await this.deps.rebuildPlan(resultingMode);
   }
 
   async start(applyImmediately = true): Promise<void> {

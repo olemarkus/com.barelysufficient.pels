@@ -1,6 +1,7 @@
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import type { DevicePlan, PlanRebuildOutcome } from './planTypes';
+import type { PlanRebuildTrigger } from './planRebuildTrigger';
 
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 
@@ -91,14 +92,14 @@ export const recordPlanRebuildMetrics = (params: {
 };
 
 export const getPlanRebuildLogLevel = (
-  reason: string,
+  trigger: PlanRebuildTrigger,
   durationMs: number,
   outcome: PlanRebuildOutcome,
 ): 'info' | 'debug' | null => {
   if (outcome.failed) return 'info';
   if (outcome.appliedActions) return 'info';
   if (durationMs >= SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS) return 'info';
-  if (reason === 'initial' || reason === 'startup_snapshot_bootstrap' || reason.startsWith('settings:')) {
+  if (trigger === 'initial' || trigger === 'startup_snapshot_bootstrap' || trigger === 'settings') {
     return 'info';
   }
   // actionChanged-only: plan decisions changed but no commands were issued — plan debug topic

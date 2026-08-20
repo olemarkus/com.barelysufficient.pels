@@ -4,6 +4,7 @@ import { normalizeError } from '../lib/utils/errorUtils';
 import type { TargetPowerReachabilityState } from '../packages/contracts/src/types';
 import { writeTargetPowerReachabilityForApp } from './targetPowerReachabilitySettings';
 import { resolvePlanService } from './appInit/contextGuards';
+import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 
 const PERSISTENCE_RETRY_MS = 60 * 1000;
 
@@ -16,13 +17,13 @@ export const createTargetPowerReachabilityAppWiring = (
   // assigned the ctx member at all.
   rebuildOwningHomePlanForDevice = (
     deviceId: string,
-    reason: string,
+    trigger: PlanRebuildTrigger,
   ): Promise<unknown> => {
-    const routed = ctx.rebuildOwningHomePlanForDevice?.(deviceId, reason);
+    const routed = ctx.rebuildOwningHomePlanForDevice?.(deviceId, trigger);
     if (routed) return routed;
     const resolved = resolvePlanService(ctx);
     if (resolved.state !== 'ready') return Promise.resolve();
-    return resolved.planService.rebuildPlanFromCache(reason);
+    return resolved.planService.rebuildPlanFromCache(trigger);
   },
 ) => {
   const pendingPersistenceByDevice = new Map<string, TargetPowerReachabilityState>();

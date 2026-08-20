@@ -3,6 +3,7 @@ import type { PlanService } from '../../lib/plan/planService';
 import { installHomeCapacityBundleSourceRecovery } from '../../setup/homeRuntime/homeCapacityBundleSourceRecovery';
 import type { StableSampleRevision } from '../../setup/powerSamplePipeline';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
 
 describe('sub-home source-authority actuation recovery', () => {
   beforeEach(() => {
@@ -19,10 +20,10 @@ describe('sub-home source-authority actuation recovery', () => {
     let sample: StableSampleRevision = { state: 'pending' };
     const abortDecisions: boolean[] = [];
     const rebuildPlanFromCache = vi.fn().mockImplementation(async (
-      _reason?: string,
-      shouldAbort?: () => boolean,
+      _trigger: PlanRebuildTrigger,
+      options?: PlanRebuildRequestOptions,
     ) => {
-      abortDecisions.push(shouldAbort?.() ?? false);
+      abortDecisions.push(options?.shouldAbort?.() ?? false);
       return { failed: false, appliedActions: false };
     });
     const endPreparedReconcile = vi.fn();
@@ -54,8 +55,10 @@ describe('sub-home source-authority actuation recovery', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledOnce();
     expect(rebuildPlanFromCache).toHaveBeenCalledWith(
       'home_source_authority_recovered',
-      expect.any(Function),
-      expect.any(Function),
+      expect.objectContaining({
+        shouldAbort: expect.any(Function),
+        onAbort: expect.any(Function),
+      }),
     );
     expect(beginPreparedReconcile).toHaveBeenCalledWith(7);
     // The rebuild ran behind a clean fence — one convergence, not a rebuild

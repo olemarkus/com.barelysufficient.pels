@@ -1,5 +1,6 @@
 import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
+import type { PlanRebuildTrigger } from './planRebuildTrigger';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,
@@ -306,7 +307,7 @@ export class PlanEngineState {
 
   startupRestoreBlockedUntilMs: number | null = null;
 
-  currentRebuildReason: string | null = null;
+  currentRebuildTrigger: PlanRebuildTrigger | null = null;
 
   hourlyBudgetExhausted: boolean = false;
 

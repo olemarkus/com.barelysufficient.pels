@@ -42,6 +42,7 @@ import type { ExternalOffHoldPolicy } from '../lib/observer/externalOffHold';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import { isEvSessionInactive } from '../packages/shared-domain/src/evPlugState';
 import { isEvObserved } from '../packages/shared-domain/src/evObservedState';
+import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import type {
   EvObservedProbe,
   TargetDeviceSnapshot,
@@ -103,7 +104,7 @@ export function toExternalOffHoldObservedDevice(
 export type ExternalOffHoldReconcileHooks = {
   hasPendingBinaryCommand: (deviceId: string) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string) => void;
-  rebuild: (reason: string) => Promise<unknown>;
+  rebuild: (trigger: PlanRebuildTrigger) => Promise<unknown>;
 };
 
 export type ExternalOffHoldSyncDeps = {

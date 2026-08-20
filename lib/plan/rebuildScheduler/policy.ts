@@ -1,3 +1,5 @@
+import type { PlanRebuildTrigger, PowerSampleRebuildTrigger } from '../planRebuildTrigger';
+
 
 export type RebuildDecisionState = {
   lastMs: number;
@@ -241,7 +243,7 @@ export const resolveRebuildReason = (params: {
   isInShortfall?: boolean;
   hardCapBreach?: HardCapBreach;
   planConvergenceActive?: boolean;
-}): string => {
+}): PowerSampleRebuildTrigger => {
   const { state, decision, isInShortfall, hardCapBreach, planConvergenceActive } = params;
   if (state.lastMs === 0) return 'initial';
   if (isInShortfall) return 'shortfall';
@@ -259,7 +261,7 @@ export const resolveRebuildIntentKind = (params: {
   params.hardCapBreach?.breached === true ? 'hardCap' : 'signal'
 );
 
-export const isTightReason = (reason: string): boolean => (
+export const isTightReason = (reason: PlanRebuildTrigger): boolean => (
   reason === 'headroom_tight' || reason === 'shortfall' || reason === 'hard_cap_breach'
 );
 
@@ -290,19 +292,19 @@ export const resolveTightNoopBackoffMs = (streak: number): number => {
   );
 };
 
-export const shouldApplyTightNoopBackoff = (reason: string, outcome: RebuildOutcome | void): boolean => {
+export const shouldApplyTightNoopBackoff = (reason: PlanRebuildTrigger, outcome: RebuildOutcome | void): boolean => {
   if (!isTightReason(reason) || !outcome) return false;
   return outcome.actionChanged === false
     && outcome.appliedActions === false
     && outcome.failed === false;
 };
 
-export const isTightNoopOutcome = (reason: string, outcome: RebuildOutcome | void): boolean => (
+export const isTightNoopOutcome = (reason: PlanRebuildTrigger, outcome: RebuildOutcome | void): boolean => (
   shouldApplyTightNoopBackoff(reason, outcome)
 );
 
 export const shouldApplyTightMitigationHoldoff = (
-  reason: string,
+  reason: PlanRebuildTrigger,
   outcome: RebuildOutcome | void,
 ): boolean => {
   if (!isTightReason(reason) || !outcome || outcome.failed) return false;

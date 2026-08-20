@@ -1,9 +1,15 @@
-export type RebuildReason = string;
+import type { PlanRebuildTrigger } from '../planRebuildTrigger';
 
+/**
+ * `detail` is carried alongside the trigger rather than spliced into it, so the
+ * intent stays a closed value: `flow_card` + `set_deadline`, never the string
+ * `flow_card:set_deadline`. The log label is composed at the edge by
+ * `describePlanRebuildTrigger`.
+ */
 export type RebuildIntent =
-  | { kind: 'hardCap'; reason: RebuildReason }
-  | { kind: 'signal'; reason: RebuildReason }
-  | { kind: 'flow'; reason: RebuildReason };
+  | { kind: 'hardCap'; reason: PlanRebuildTrigger; detail?: string }
+  | { kind: 'signal'; reason: PlanRebuildTrigger; detail?: string }
+  | { kind: 'flow'; reason: PlanRebuildTrigger; detail?: string };
 
 type RebuildIntentKind = RebuildIntent['kind'];
 

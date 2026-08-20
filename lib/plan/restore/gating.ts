@@ -72,7 +72,7 @@ export function planRestoreForDevice(params: {
   } = params;
 
   const inactiveReason = getInactiveReason(dev);
-  const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
+  const phase = resolveRestoreDecisionPhase(state.currentRebuildTrigger);
   const restoreDebugKey = `binary:${dev.id}`;
   if (inactiveReason) {
     clearRestoreDebugEvent(state, restoreDebugKey);

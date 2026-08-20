@@ -1,5 +1,6 @@
 import type { PlanRebuildScheduler } from './scheduler';
 import type { HardCapBreach } from './policy';
+import type { PowerSampleRebuildTrigger } from '../planRebuildTrigger';
 import {
   handleSkippedRebuildDecision,
   requestPowerSampleRebuild,
@@ -30,7 +31,7 @@ export type PowerSampleRebuildState = {
   pendingReject?: (error: Error) => void;
   pendingPowerW?: number;
   pendingSoftLimitKw?: number;
-  pendingReason?: string;
+  pendingReason?: PowerSampleRebuildTrigger;
   pendingDueMs?: number;
   pendingHardCapBreach?: HardCapBreach;
   pendingIsInShortfall?: boolean;

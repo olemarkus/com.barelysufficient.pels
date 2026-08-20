@@ -25,6 +25,7 @@ import {
   recordPlanRebuildMetrics,
 } from './planRebuildMetrics';
 import { normalizePlanMeta } from './planStatusHelpers';
+import { describePlanRebuildTrigger, type PlanRebuildTrigger } from './planRebuildTrigger';
 import { buildLiveStatePlan } from './planLiveStateMerge';
 import type { PlanServiceDeps } from './planServiceDeps';
 import type {
@@ -57,9 +58,17 @@ export type PlanRebuildHost = {
 
 export async function performPlanRebuild(
   host: PlanRebuildHost,
-  params: { reason: string; queueWaitMs: number; queueDepth: number },
+  params: {
+    trigger: PlanRebuildTrigger;
+    detail?: string;
+    queueWaitMs: number;
+    queueDepth: number;
+  },
 ): Promise<PlanRebuildOutcome> {
-  const { reason, queueWaitMs, queueDepth } = params;
+  const { trigger, detail, queueWaitMs, queueDepth } = params;
+  // The composed label is for humans reading logs. Everything that DECIDES
+  // anything keeps the closed `trigger` value.
+  const reason = describePlanRebuildTrigger(trigger, detail);
   const isDryRun = host.deps.getCapacityDryRun();
   const rebuildId = `rb_${randomUUID()}`;
   const rebuildStart = Date.now();
@@ -69,7 +78,7 @@ export async function performPlanRebuild(
 
   const run = async (): Promise<void> => {
     try {
-      await executePlanRebuild(host, reason, isDryRun, outcome);
+      await executePlanRebuild(host, trigger, isDryRun, outcome);
     } catch (error) {
       outcome.failed = true;
       incPerfCounter('plan_rebuild_failed_total');
@@ -81,7 +90,7 @@ export async function performPlanRebuild(
       });
       recordOpRssDelta('plan_rebuild_ms', rssBefore, safeRss());
       stopSpan();
-      const rebuildLogLevel = getPlanRebuildLogLevel(reason, durationMs, outcome);
+      const rebuildLogLevel = getPlanRebuildLogLevel(trigger, durationMs, outcome);
       if (rebuildLogLevel) {
         (host.deps.loggers?.structuredLog ?? logger)[rebuildLogLevel]({
           event: 'plan_rebuild_completed',
@@ -115,11 +124,11 @@ export async function performPlanRebuild(
 
 async function executePlanRebuild(
   host: PlanRebuildHost,
-  reason: string,
+  trigger: PlanRebuildTrigger,
   isDryRun: boolean,
   outcome: PlanRebuildOutcome,
 ): Promise<void> {
-  const { plan, buildMs, observationRevision } = await buildPlanForRebuild(host, reason);
+  const { plan, buildMs, observationRevision } = await buildPlanForRebuild(host, trigger);
   const nowMs = Date.now();
   const stampedPlan = host.stampPlanGeneratedAt(plan, nowMs);
   host.setLatestPlanSnapshot(stampedPlan);
@@ -165,7 +174,7 @@ async function executePlanRebuild(
 
 async function buildPlanForRebuild(
   host: PlanRebuildHost,
-  reason: string,
+  trigger: PlanRebuildTrigger,
 ): Promise<{ plan: DevicePlan; buildMs: number; observationRevision: number }> {
   const { planEngine } = host.deps;
   planEngine.syncPendingBinaryCommands(host.settleDevices(), 'rebuild');
@@ -177,16 +186,16 @@ async function buildPlanForRebuild(
   planEngine.syncPendingTargetCommands(liveDevices, 'rebuild');
   const buildStart = Date.now();
   if (planEngine.state) {
-    // Restore/target planning reads the active rebuild reason from shared plan state so
+    // Restore/target planning reads the active rebuild trigger from shared plan state so
     // nested helpers do not need another plumbing parameter through the entire call stack.
-    planEngine.state.currentRebuildReason = reason;
+    planEngine.state.currentRebuildTrigger = trigger;
   }
   let plan: DevicePlan;
   try {
     plan = await planEngine.buildDevicePlanSnapshot(liveDevices);
   } finally {
     if (planEngine.state) {
-      planEngine.state.currentRebuildReason = null;
+      planEngine.state.currentRebuildTrigger = null;
     }
   }
   planEngine.prunePendingTargetCommands(plan);

@@ -1,6 +1,7 @@
 import {
   RESTORE_ADMISSION_RESERVE_KW,
 } from '../planConstants';
+import type { PlanRebuildTrigger } from '../planRebuildTrigger';
 
 export type RestoreAdmissionMetrics = {
   admissionReserveKw: number;
@@ -38,8 +39,10 @@ export function buildRestoreAdmissionLogFields(
   };
 }
 
-export function resolveRestoreDecisionPhase(rebuildReason: string | null | undefined): RestoreDecisionPhase {
-  if (rebuildReason === 'initial' || rebuildReason === 'startup_snapshot_bootstrap') {
+export function resolveRestoreDecisionPhase(
+  rebuildTrigger: PlanRebuildTrigger | null | undefined,
+): RestoreDecisionPhase {
+  if (rebuildTrigger === 'initial' || rebuildTrigger === 'startup_snapshot_bootstrap') {
     return 'startup';
   }
   return 'runtime';

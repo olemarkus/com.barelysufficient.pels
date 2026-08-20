@@ -11,9 +11,9 @@ import { PlanRebuildIntentPolicy } from '../../setup/planRebuildIntentPolicy';
 const FLOW_COOLDOWN_MS = 1000;
 const NOW_MS = 10_000;
 
-const hardCap: RebuildIntent = { kind: 'hardCap', reason: 'hard_cap' };
-const signal: RebuildIntent = { kind: 'signal', reason: 'power_sample' };
-const flow: RebuildIntent = { kind: 'flow', reason: 'flow_card:set_deadline' };
+const hardCap: RebuildIntent = { kind: 'hardCap', reason: 'hard_cap_breach' };
+const signal: RebuildIntent = { kind: 'signal', reason: 'power_delta' };
+const flow: RebuildIntent = { kind: 'flow', reason: 'flow_card', detail: 'set_deadline' };
 
 const buildSchedulerState = (overrides: Partial<SchedulerState> = {}): SchedulerState => ({
   nowMs: NOW_MS,
@@ -89,16 +89,16 @@ describe('PlanRebuildIntentPolicy.executeIntent', () => {
   it('routes a flow intent straight to a cache rebuild carrying its reason', async () => {
     const { policy, rebuildPlanFromCache } = buildPolicy();
     await expect(policy.executeIntent(flow)).resolves.toBeUndefined();
-    expect(rebuildPlanFromCache).toHaveBeenCalledWith('flow_card:set_deadline');
+    expect(rebuildPlanFromCache).toHaveBeenCalledWith('flow_card', { detail: 'set_deadline' });
   });
 
   it('routes power-driven intents through the pending-rebuild state machine', async () => {
     const { policy, rebuildPlanFromCache, getRebuildState } = buildPolicy({
-      rebuildState: { lastMs: 0, pendingReason: 'power_sample' },
+      rebuildState: { lastMs: 0, pendingReason: 'power_delta' },
       planRebuildNowMs: 42_000,
     });
     await policy.executeIntent(signal);
-    expect(rebuildPlanFromCache).toHaveBeenCalledWith('power_sample');
+    expect(rebuildPlanFromCache).toHaveBeenCalledWith('power_delta');
     // The state machine stamped the execution time through the injected setter.
     expect(getRebuildState().lastMs).toBe(42_000);
   });

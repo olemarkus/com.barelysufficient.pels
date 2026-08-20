@@ -104,7 +104,13 @@ function buildNextPowerState(params: {
 async function persistPowerSample(params: {
   nextState: PowerTrackerState;
   saveState: (state: PowerTrackerState) => void;
-  rebuildPlanFromCache: (reason?: string) => Promise<void>;
+  /**
+   * The power lane's own "the latch moved, decide again" callback. It takes no
+   * trigger: the pipeline that supplies it resolves one from the sample it just
+   * admitted (`schedulePlanRebuildFromSignal`). It used to be handed the string
+   * `'power_tracker_persist'`, which every implementation discarded.
+   */
+  rebuildPlanFromCache: () => Promise<void>;
 }): Promise<void> {
   const {
     nextState,
@@ -117,7 +123,7 @@ async function persistPowerSample(params: {
   saveState(nextState);
   const rebuildWaitStart = Date.now();
   try {
-    await rebuildPlanFromCache('power_tracker_persist');
+    await rebuildPlanFromCache();
   } finally {
     addPerfDuration('power_sample_rebuild_wait_ms', Date.now() - rebuildWaitStart);
   }

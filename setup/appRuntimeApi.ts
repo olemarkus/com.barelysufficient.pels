@@ -96,7 +96,7 @@ abstract class AppRuntimeApi extends Base {
     this.updateDailyBudgetAndRecordCap(options);
   }
   public requestFlowPlanRebuild(source: string): void {
-    this.planRebuildScheduler.request({ kind: 'flow', reason: `flow_card:${source}` });
+    this.planRebuildScheduler.request({ kind: 'flow', reason: 'flow_card', detail: source });
   }
   public getObservationRevision(): number {
     return this.observedDeviceStateProjection.getRevision();

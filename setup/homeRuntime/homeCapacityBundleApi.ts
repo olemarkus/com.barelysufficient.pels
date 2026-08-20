@@ -157,16 +157,15 @@ const buildOwnershipGenerationOperations = (params: {
       let failed: boolean;
       const endPreparedReconcile = beginPreparedOwnershipReconcile(sampleRevision);
       try {
-        const outcome = await planService.rebuildPlanFromCache(
-          'home_ownership_generation_prepared',
-          () => {
+        const outcome = await planService.rebuildPlanFromCache('home_ownership_generation_prepared', {
+          shouldAbort: () => {
             const current = getStableSampleRevision();
             return isTornDown()
               || current.state !== 'stable'
               || current.revision !== sampleRevision;
           },
-          () => { aborted = true; },
-        );
+          onAbort: () => { aborted = true; },
+        });
         failed = outcome.failed;
       } finally {
         endPreparedReconcile();
@@ -195,7 +194,7 @@ const buildSettingsRebuild = (params: {
   logger: () => ReturnType<AppContext['getStructuredLogger']>;
   planService: PlanService;
   isTornDown: () => boolean;
-  reason: string;
+  settingsSource: string;
   failureEvent: string;
 }): (() => void) => () => {
   if (params.isTornDown()) return;
@@ -205,19 +204,20 @@ const buildSettingsRebuild = (params: {
   // above is the precedent. No retry here: the next mode/settings write or
   // power-sample rebuild re-runs the closures, and the log makes the miss
   // visible instead of silent.
-  void params.planService.rebuildPlanFromCache(params.reason).then((outcome) => {
-    if (!outcome.failed || params.isTornDown()) return;
-    params.logger()?.error({
-      event: params.failureEvent,
-      homeId: params.homeId,
+  void params.planService.rebuildPlanFromCache('settings', { detail: params.settingsSource })
+    .then((outcome) => {
+      if (!outcome.failed || params.isTornDown()) return;
+      params.logger()?.error({
+        event: params.failureEvent,
+        homeId: params.homeId,
+      });
+    }).catch((error: unknown) => {
+      params.logger()?.error({
+        event: params.failureEvent,
+        homeId: params.homeId,
+        err: normalizeError(error),
+      });
     });
-  }).catch((error: unknown) => {
-    params.logger()?.error({
-      event: params.failureEvent,
-      homeId: params.homeId,
-      err: normalizeError(error),
-    });
-  });
 };
 
 /**
@@ -418,7 +418,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       ),
       clearRecentBinaryOffCommand: (deviceId) => (
         planEngine.clearRecentBinaryOffCommand(deviceId)),
-      rebuild: (reason) => planService.rebuildPlanFromCache(reason),
+      rebuild: (trigger) => planService.rebuildPlanFromCache(trigger),
     }),
     updateHomeConfig: (next) => {
       setHome(next);
@@ -428,7 +428,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       logger,
       planService,
       isTornDown,
-      reason: 'settings:mode_targets',
+      settingsSource: 'mode_targets',
       failureEvent: 'home_mode_targets_rebuild_failed',
     }),
     rebuildForDeviceControlSettingsChange: buildSettingsRebuild({
@@ -436,7 +436,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       logger,
       planService,
       isTornDown,
-      reason: 'settings:temperature_control_disabled_devices',
+      settingsSource: 'temperature_control_disabled_devices',
       failureEvent: 'home_device_control_settings_rebuild_failed',
     }),
     reloadModeCatalog,
@@ -483,7 +483,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       //
       // Direct rebuild, mirroring the main home's settings path
       // (`handleCapacityLimitChange` also bypasses the sample scheduler).
-      void planService.rebuildPlanFromCache('settings:home_capacity_scalars')
+      void planService.rebuildPlanFromCache('settings', { detail: 'home_capacity_scalars' })
         .catch((error: unknown) => {
           logger()?.error({ event: 'home_capacity_reload_rebuild_failed', homeId, err: normalizeError(error) });
         });
