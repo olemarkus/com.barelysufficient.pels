@@ -25,25 +25,20 @@ const buildWidgetCss = async (widgetDir) => {
   await writeFile(path.join(widgetDir, 'public', 'index.css'), out);
 };
 
-const buildWidget = async ({ name, apiEntries, bundleApi = false }) => {
+// Only the BROWSER side of a widget is bundled here. The API side (the code the
+// Homey widget runtime loads inside the app process) is deliberately NOT
+// bundled any more: each widget's committed `api.js` is a thin hand-written
+// shim that requires `./src/api`, compiled to `.homeybuild` by the root tsc
+// build (`tsconfig.json` includes `widgets/*/src/api.ts`). Bundling used to
+// inline a private copy of every transitive shared-domain helper into each
+// widget — five copies of code the app process had already loaded once for
+// `lib/**`, each held in the V8 heap as source string + compiled code, on a
+// runtime with ~15 MB of RSS headroom. `scripts/check-homeybuild-requires.mjs`
+// walks the packaged require graph in CI, so a shim import that would not
+// resolve in the shipped layout fails the build, not the boot.
+const buildWidget = async ({ name }) => {
   const widgetDir = path.join(rootDir, 'widgets', name);
   const widgetSrcDir = path.join(widgetDir, 'src');
-
-  // Note: when `bundleApi: true`, the compiled CJS output inlines transitive
-  // imports (e.g. shared-domain helpers). Required for widgets whose API
-  // imports values — not just types — from packages outside their own tree,
-  // because the .homeybuild relative-path layout drops one nesting level
-  // from src/ and would otherwise fail Node's module resolution at runtime.
-  await build({
-    entryPoints: apiEntries.map((entry) => path.join(widgetSrcDir, entry)),
-    outdir: widgetDir,
-    outbase: widgetSrcDir,
-    platform: 'node',
-    format: 'cjs',
-    target: 'node22',
-    bundle: bundleApi,
-    banner: { js: generatedBanner },
-  });
 
   await build({
     entryPoints: [path.join(widgetSrcDir, 'public', 'index.ts')],
@@ -58,39 +53,8 @@ const buildWidget = async ({ name, apiEntries, bundleApi = false }) => {
   await buildWidgetCss(widgetDir);
 };
 
-await buildWidget({
-  name: 'plan_budget',
-  apiEntries: ['api.ts', 'planPriceWidgetPayload.ts'],
-  // bundleApi inlines the shared-domain copy/cost helpers the payload builder
-  // imports — required because the .homeybuild layout drops a nesting level and
-  // would otherwise fail Node's relative-path resolution at runtime.
-  bundleApi: true,
-});
-
-await buildWidget({
-  name: 'headroom',
-  apiEntries: ['api.ts', 'headroomWidgetPayload.ts'],
-  // The payload builder value-imports `packages/shared-domain/headroomWidgetCopy`,
-  // which lives outside the widget tree; inline transitive deps into the CJS API
-  // bundle so the Homey widget runtime can load `getHeadroom` (otherwise the
-  // relative require resolves to MODULE_NOT_FOUND in production).
-  bundleApi: true,
-});
-
-await buildWidget({
-  name: 'smart_tasks',
-  apiEntries: ['api.ts', 'smartTasksWidgetPayload.ts'],
-  bundleApi: true,
-});
-
-await buildWidget({
-  name: 'create_smart_task',
-  apiEntries: ['api.ts', 'createSmartTaskWidgetPayload.ts'],
-  bundleApi: true,
-});
-
-await buildWidget({
-  name: 'starvation_rescue',
-  apiEntries: ['api.ts', 'starvationRescueWidgetPayload.ts'],
-  bundleApi: true,
-});
+await buildWidget({ name: 'plan_budget' });
+await buildWidget({ name: 'headroom' });
+await buildWidget({ name: 'smart_tasks' });
+await buildWidget({ name: 'create_smart_task' });
+await buildWidget({ name: 'starvation_rescue' });
