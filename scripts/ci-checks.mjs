@@ -16,5 +16,6 @@ await runParallel([
   { label: 'device-kind:vocab', command: 'npm', args: ['run', 'device-kind:vocab'] },
   { label: 'binary:vocab', command: 'npm', args: ['run', 'binary:vocab'] },
   { label: 'binary:seam', command: 'npm', args: ['run', 'binary:seam'] },
+  { label: 'executor:settle-seam', command: 'npm', args: ['run', 'executor:settle-seam'] },
   { label: 'deadcode', command: 'npm', args: ['run', 'deadcode:check'] },
 ]);

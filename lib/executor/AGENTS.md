@@ -24,6 +24,16 @@
   `executorConvergence.ts` answers "does the executor still have work to do?" (and the settle
   question "has what I dispatched materialized?"); `planExecutionDrift.ts` answers it per device.
   Both live here because the planner must not consult them — see `no-plan-to-executor`.
+
+  **Exactly one predicate may inform an actuation decision: `hasPlanExecutionDriftAgainstIntent`.**
+  It compares planner intent against an OBSERVATION. Its neighbour
+  `hasLiveStateDivergedFromSnapshot` compares two `DevicePlan`s positionally, and the live side is
+  always `buildLiveStatePlan` output — the old decision seen freshly. It exists solely as the
+  precondition of `canRefreshPlanSnapshotFromLiveState`, whose callers only adopt a refreshed
+  snapshot and emit `planUpdated`; deciding to actuate from it would be an apply-without-decide
+  path under a new name (`inc_26449fb9`). `scripts/check-executor-settle-seam.mjs` keeps every
+  reference to it out of runtime code outside `executorConvergence.ts` — if a caller needs the
+  answer, it is asking the wrong question.
 - **There is exactly one actuation LANE.** There used to be a second, privileged mode
   (`PlanActuationMode = 'plan' | 'reconcile'`) for re-applying a committed plan after drift. It
   bypassed pending-target retry suppression and skipped stamping the restore cooldown, and together

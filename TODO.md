@@ -86,10 +86,19 @@ Remaining multi-meter work is tracked as P1/P2/P3 follow-up below.
       says so in its own docblock: `observedBinaryState` is *"path-dependent by design"* — the
       producer-resolved `currentOn` on the drift/reconcile path, the raw binary axis
       (`isBinaryOnOrUnknown`) on the executor/dispatch path. One field, two meanings, selected by
-      which path constructed it. `hasPlanExecutionDrift` is worse in shape: it compares two
-      `DevicePlan`s positionally by array index, and its live side comes from `buildLiveStatePlan`
-      — which `lib/plan/AGENTS.md` calls out as *"by construction the OLD decision seen freshly …
-      for publishing snapshots, never for deciding to actuate"*.
+      which path constructed it. `hasLiveStateDivergedFromSnapshot` (was `hasPlanExecutionDrift`)
+      is worse in shape: it compares two `DevicePlan`s positionally by array index, and its live
+      side comes from `buildLiveStatePlan` — which `lib/plan/AGENTS.md` calls out as *"by
+      construction the OLD decision seen freshly … for publishing snapshots, never for deciding to
+      actuate"*.
+
+      **Settled 2026-08-20:** the positional form is genuinely settle-only, as its comment claimed.
+      Its sole caller is `canRefreshPlanSnapshotFromLiveState`, whose two production callers
+      (`PlanService.syncLivePlanStateInlineInContext`, `refreshLatestPlanSnapshotFromSettledLiveState`)
+      only adopt the refreshed snapshot and emit `planUpdated`. It has been renamed to say what it
+      is, and `scripts/check-executor-settle-seam.mjs` now keeps it out of every other runtime
+      call site — so the third "Done when" clause below is closed and cannot regress. The two
+      remaining clauses are the observation-input swap and the `observedBinaryState` split.
 
       **Where:** `lib/executor/executorConvergence.ts`, `lib/executor/planExecutionDrift.ts`,
       `ExecutableObservedDeviceState` in `lib/executor/executablePlan.ts`,
@@ -97,9 +106,9 @@ Remaining multi-meter work is tracked as P1/P2/P3 follow-up below.
 
       **What changes:** drift compares planner INTENT against the OBSERVATION, sourced from the
       observer rather than from a plan that had observations merged into it. One meaning for
-      `observedBinaryState`, not one per construction path. Confirm whether any actuation path
-      reaches the positional plan-to-plan form, or whether it is genuinely settle-only as its
-      comment claims — and if the former, that is the live half of this defect.
+      `observedBinaryState`, not one per construction path — noting that the two meanings are both
+      wanted (drift needs the stepped-off fold, `shedReleaseActuation` needs the raw binary axis),
+      so one meaning each means splitting the field, not picking a winner.
 
       **Done when:** the drift path takes an observed-state input that no plan decision has passed
       through, `observedBinaryState` has a single documented meaning, and no actuation decision is

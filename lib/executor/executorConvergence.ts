@@ -14,13 +14,27 @@
  * Callers can rely on:
  * - `hasPlanExecutionDriftAgainstIntent` compares live observations against
  *   planner INTENT, per device, via `hasPlanDeviceExecutionDrift`. This is the
- *   predicate that answers "does the executor have work to do?".
- * - `hasPlanExecutionDrift` compares two plan snapshots positionally and is the
- *   cheaper snapshot-to-snapshot form used by the settle path below.
+ *   ONLY predicate here that answers "does the executor have work to do?", and
+ *   the only one an actuation decision may consult.
  * - `canRefreshPlanSnapshotFromLiveState` is a SETTLE question, not a drift
  *   question: it reports whether every dispatched actuation in `basePlan` has
  *   materialized in `livePlan`, so the caller may safely adopt the live merge
  *   as its new base snapshot.
+ * - `hasLiveStateDivergedFromSnapshot` is a PRECONDITION of that settle
+ *   question and nothing else. It compares two `DevicePlan`s positionally by
+ *   array index, and its live side is always `buildLiveStatePlan` output —
+ *   which `lib/plan/AGENTS.md` calls "by construction the OLD decision seen
+ *   freshly … for publishing snapshots, never for deciding to actuate". Acting
+ *   on it would be an apply-without-decide path, the shape that breached the
+ *   hard cap in production (`TODO.md`, inc_26449fb9).
+ *
+ *   No actuation path reaches it, and that is enforced rather than trusted:
+ *   its only caller is `canRefreshPlanSnapshotFromLiveState` below, whose two
+ *   production callers — `PlanService.syncLivePlanStateInlineInContext` and
+ *   `refreshLatestPlanSnapshotFromSettledLiveState` in `planServiceRebuild.ts`
+ *   — do exactly one thing with the verdict: adopt the refreshed snapshot and
+ *   emit `planUpdated`. `scripts/check-executor-settle-seam.mjs` keeps every
+ *   other reference out of runtime code.
  *
  * Governing reference: `notes/state-management/README.md`.
  */
@@ -29,7 +43,7 @@ import type { ExecutableConvergenceDevice } from './executablePlan';
 import { buildExecutableConvergenceDevice } from './executablePlanProjection';
 import { hasPlanDeviceExecutionDrift } from './planExecutionDrift';
 
-export function hasPlanExecutionDrift(previousPlan: DevicePlan, livePlan: DevicePlan): boolean {
+export function hasLiveStateDivergedFromSnapshot(previousPlan: DevicePlan, livePlan: DevicePlan): boolean {
   if (previousPlan.devices.length !== livePlan.devices.length) return true;
   for (let index = 0; index < previousPlan.devices.length; index += 1) {
     const previous = buildExecutableConvergenceDevice(previousPlan.devices[index]);
@@ -45,7 +59,7 @@ export function canRefreshPlanSnapshotFromLiveState(
   basePlan: DevicePlan,
   livePlan: DevicePlan,
 ): boolean {
-  if (!hasPlanExecutionDrift(basePlan, livePlan)) return false;
+  if (!hasLiveStateDivergedFromSnapshot(basePlan, livePlan)) return false;
   if (basePlan.devices.length !== livePlan.devices.length) return false;
 
   for (let index = 0; index < basePlan.devices.length; index += 1) {

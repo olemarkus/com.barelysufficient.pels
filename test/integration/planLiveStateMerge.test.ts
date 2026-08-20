@@ -3,7 +3,7 @@ import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
 import {
   canRefreshPlanSnapshotFromLiveState,
-  hasPlanExecutionDrift,
+  hasLiveStateDivergedFromSnapshot,
 } from '../../lib/executor/executorConvergence';
 import {
   asOutputDevice,
@@ -64,7 +64,7 @@ describe('planLiveStateMerge', () => {
       expect('currentTarget' in merged).toBe(false);
       // Losing the tracked setpoint IS execution drift, and the pending target
       // cannot settle against a facet-less live device.
-      expect(hasPlanExecutionDrift(plan, buildLiveStatePlan(plan, [liveDemoted]))).toBe(true);
+      expect(hasLiveStateDivergedFromSnapshot(plan, buildLiveStatePlan(plan, [liveDemoted]))).toBe(true);
       expect(canRefreshPlanSnapshotFromLiveState(plan, buildLiveStatePlan(plan, [liveDemoted]))).toBe(false);
     });
 
@@ -188,7 +188,7 @@ describe('planLiveStateMerge', () => {
 
       const result = buildLiveStatePlan(plan, liveDevices);
 
-      expect(hasPlanExecutionDrift(plan, result)).toBe(true);
+      expect(hasLiveStateDivergedFromSnapshot(plan, result)).toBe(true);
       expect(canRefreshPlanSnapshotFromLiveState(plan, result)).toBe(true);
     });
 
@@ -454,7 +454,7 @@ describe('inactive devices do not demand a binary restore', () => {
     const live = buildLiveStatePlan(plan, liveDevices());
 
     // The shed device moved on -> off, so there is drift to settle against.
-    expect(hasPlanExecutionDrift(plan, live)).toBe(true);
+    expect(hasLiveStateDivergedFromSnapshot(plan, live)).toBe(true);
     expect(canRefreshPlanSnapshotFromLiveState(plan, live)).toBe(true);
   });
 });
