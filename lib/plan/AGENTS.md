@@ -22,10 +22,11 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   `isEvPlanDevice` guard that several docblocks used to cite never existed at all. A boost threshold
   is configuration, so the planner does not carry one: it carries a single kind-free `boostActive`
   decision (`planBoost.ts`) resolved from the producer's `boostSupported`/`boostRequested`, and the
-  settings UI reads the config and the battery level from the seams that own them (`getEvBoostConfig`
-  / `getObservedStateOfCharge` in `createPlanService`). The three clusters the planner discriminates
-  are temperature, stepped, and binary — do not add a fourth for EV. (`EvObservedFields` on the
-  OBSERVER snapshot is a different thing and stays.)
+  settings UI reads the battery level from the seam that owns it (`getObservedStateOfCharge` in
+  `createPlanService`) and the configured thresholds straight from the settings store — those never
+  cross the plan wire at all. The three clusters the planner discriminates are temperature, stepped,
+  and binary — do not add a fourth for EV. (`EvObservedFields` on the OBSERVER snapshot is a
+  different thing and stays.)
   **Scope: this is about the EV CLUSTER and the output `DevicePlanDevice`.** It is not licence to
   strip `stateOfCharge` from `PlanInputDevice`. That field rides the input device undeclared —
   `toPlanDevice` deliberately does not strip it, because `ObjectiveDeviceInput` reads it in

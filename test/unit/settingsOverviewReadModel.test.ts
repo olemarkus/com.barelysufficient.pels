@@ -426,6 +426,16 @@ describe('settingsOverviewReadModel', () => {
       expect('temperatureBoostActive' in device).toBe(false);
     });
 
+    it('does not courier the configured boost thresholds onto the wire', () => {
+      const device = buildSettingsOverviewDeviceReadModel(boosting(), absentTemperature);
+      // The THRESHOLDS are settings. The settings UI reads them from the settings
+      // store it already owns (`state.{temperature,ev}BoostSettings`), so a copy
+      // on the plan wire is a second source for one fact and nothing ever read
+      // it. Only the DECISION (`boostActive`, asserted above) belongs here.
+      expect('temperatureBoost' in device).toBe(false);
+      expect('evBoost' in device).toBe(false);
+    });
+
     it('reports not boosting when the device is not boosting', () => {
       const device = buildSettingsOverviewDeviceReadModel(buildPlanDevice({
         id: 'dev',

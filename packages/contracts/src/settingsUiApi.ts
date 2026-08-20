@@ -5,10 +5,8 @@ import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsType
 import type { PowerTrackerState } from './powerTrackerTypes.js';
 import type {
   DecoratedDeviceSnapshot,
-  EvBoostConfig,
   EvChargingState,
   SettingsUiLogEntry,
-  TemperatureBoostConfig,
 } from './types.js';
 import type {
   DeviceOverviewSnapshot,
@@ -251,7 +249,6 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   priority?: number;
   zone?: string;
   budgetExempt?: boolean;
-  temperatureBoost?: TemperatureBoostConfig;
   /**
    * The device's one boost decision, as the planner made it
    * (`resolveBoostActive`, `lib/plan/planBoost.ts`). There is no kind behind it
@@ -277,7 +274,6 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   // True when a surplus-absorb lift is the binding cause of this device's planned target
   // (raised to self-consume solar). Drives the "Raised to use your solar power" reason line.
   surplusAbsorbActive?: boolean;
-  evBoost?: EvBoostConfig;
   /**
    * The charging state of the CAR associated with this charger (distinct from
    * the charger's own `evChargingState` on `DeviceOverviewSnapshot`). Read by
