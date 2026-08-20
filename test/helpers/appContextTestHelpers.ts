@@ -1,6 +1,11 @@
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import { vi } from 'vitest';
-import type { AppContext, FlowBackedCapabilityReportOutcome } from '../../lib/app/appContext';
+import {
+  requireInitializedAppContext,
+  type AppContext,
+  type FlowBackedCapabilityReportOutcome,
+  type InitializedAppContext,
+} from '../../lib/app/appContext';
 import { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
 import { GenerationPollSource } from '../../lib/power/sources/generationPoll';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
@@ -340,6 +345,25 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   };
 
   Object.assign(context, overrides);
+  return context;
+}
+
+/** A live-phase context with the smallest service surfaces used by lifecycle tests. */
+export function createInitializedAppContextMock(options: AppContextMockOptions = {}): InitializedAppContext {
+  const context = createAppContextMock({
+    deviceDiagnosticsService: {
+      getCurrentStarvedDeviceCount: vi.fn(() => 0),
+    } as never,
+    deviceManager: {
+      getSnapshot: vi.fn(() => []),
+      getPeriodicStatusMetrics: vi.fn(() => null),
+    } as never,
+    planEngine: {
+      state: { sheddingActive: false },
+    } as never,
+    ...options,
+  });
+  requireInitializedAppContext(context);
   return context;
 }
   const defaultFlowBackedCapabilityReportOutcome: FlowBackedCapabilityReportOutcome = {

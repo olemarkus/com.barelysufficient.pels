@@ -3,7 +3,6 @@ import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
 import type { ObservedHomePower } from '../lib/observer/observedHomePower';
 import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
-import { resolvePlanService } from './appInit/contextGuards';
 import type { PlanService } from '../lib/plan/planService';
 import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
@@ -20,7 +19,11 @@ import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { WeatherCollector } from '../lib/weather/weatherCollector';
 import type { PowerTrackerPersistReason } from '../lib/power/sampleIngest';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import type { AppContext, StartupBootstrapConfig } from '../lib/app/appContext';
+import {
+  requireInitializedAppContext,
+  type AppContext,
+  type StartupBootstrapConfig,
+} from '../lib/app/appContext';
 import {
   createDeferredObjectiveActivePlanRecorder,
   createDeferredObjectivePlanHistoryRecorder,
@@ -31,6 +34,7 @@ import {
   createPriceCoordinator,
   createPriceFlowTagPublisher,
   persistDeferredObjectiveObservationWatermark,
+  resolvePlanService,
   subscribePlanObservedState,
 } from './appInit';
 import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
@@ -241,7 +245,10 @@ export class AppServiceWiring {
     await runStartupStep('initSettingsHandler', () => this.deps.initSettingsHandler(), logStartupStepFailure);
     await runStartupStep('initHomeRuntimeRegistry', () => this.initHomeRuntimeRegistry(), logStartupStepFailure);
     ctx.lastNotifiedOperatingMode = ctx.operatingMode;
-    await runStartupStep('startAppServices', () => startAppServices(ctx), logStartupStepFailure);
+    await runStartupStep('startAppServices', () => {
+      requireInitializedAppContext(ctx);
+      return startAppServices(ctx);
+    }, logStartupStepFailure);
     await runStartupStep(
       'startPriceLowestTriggerChecker',
       () => this.deps.backgroundTasks.startPriceLowestTriggerChecker(),
@@ -255,7 +262,9 @@ export class AppServiceWiring {
   }
 
   startPostStartupBackgroundTasks(): void {
-    startPostStartupBackgroundTasks(this.deps);
+    const { ctx } = this.deps;
+    requireInitializedAppContext(ctx);
+    startPostStartupBackgroundTasks({ ...this.deps, ctx });
   }
 
   async initPriceCoordinator(): Promise<void> {
@@ -297,7 +306,6 @@ export class AppServiceWiring {
       installStructuredLogger: () => this.installStructuredLogger(),
       getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
       getHomeMembershipService: () => this.homeMembershipService,
-      scheduleRealtimeDeviceReconcile: (event) => this.scheduleRealtimeDeviceReconcile(event),
     });
   }
 
@@ -462,7 +470,7 @@ export class AppServiceWiring {
     );
   }
 
-  // Body in `setup/appInit/wireDeviceTransport.ts`. Deliberately NOT folded into
+  // Body in `setup/appInit/planObservedStateSubscription.ts`. Deliberately NOT folded into
   // `initDeviceManager`: these listeners reach the plan service, so they may not
   // be live before `initPlanService`.
   subscribePlanObservedState(): void {

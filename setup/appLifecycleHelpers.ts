@@ -1,22 +1,10 @@
 import { incPerfCounters } from '../lib/utils/perfCounters';
 import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
 import { normalizeError } from '../lib/utils/errorUtils';
-import type { AppContext } from '../lib/app/appContext';
-import { requirePlanService } from './appInit/contextGuards';
-
-function requirePriceCoordinator(ctx: AppContext) {
-  if (!ctx.priceCoordinator) {
-    throw new Error('PriceCoordinator must be initialized before app services start.');
-  }
-  return ctx.priceCoordinator;
-}
-
-function requireDailyBudgetService(ctx: AppContext) {
-  if (!ctx.dailyBudgetService) {
-    throw new Error('DailyBudgetService must be initialized before app services start.');
-  }
-  return ctx.dailyBudgetService;
-}
+import {
+  type AppContext,
+  type InitializedAppContext,
+} from '../lib/app/appContext';
 
 /** Shutdown flush for the daily-budget state blob; never throws into `onUninit`. */
 export function flushDailyBudgetStateOnUninit(ctx: AppContext): void {
@@ -102,11 +90,9 @@ export const runStartupStep = async <T>(
   }
 };
 
-export async function startAppServices(ctx: AppContext): Promise<void> {
+export async function startAppServices(ctx: InitializedAppContext): Promise<void> {
   const appContext = ctx;
-  const priceCoordinator = requirePriceCoordinator(appContext);
-  const planService = requirePlanService(appContext);
-  const dailyBudgetService = requireDailyBudgetService(appContext);
+  const { dailyBudgetService, planService, priceCoordinator } = appContext;
   const {
     logStartupStepFailure: logError,
     snapshotPlanBootstrapDelayMs = 0,

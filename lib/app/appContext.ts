@@ -336,3 +336,28 @@ export type AppContext = {
   readonly deviceControlHelpers: AppDeviceControlHelpers;
   readonly timers: TimerRegistry;
 };
+
+type InitializedServiceKey =
+  | 'dailyBudgetService'
+  | 'deviceDiagnosticsService'
+  | 'priceCoordinator'
+  | 'deviceManager'
+  | 'planEngine'
+  | 'planService';
+
+/**
+ * Trusted context after ordered startup has constructed every required service.
+ * Boot wiring carries {@link AppContext}; post-startup wiring crosses this
+ * assertion-backed boundary once and then consumes required service handles.
+ */
+export type InitializedAppContext = AppContext & Required<Pick<AppContext, InitializedServiceKey>>;
+
+/** Assert the single transition from boot wiring to the trusted live context. */
+export function requireInitializedAppContext(ctx: AppContext): asserts ctx is InitializedAppContext {
+  if (!ctx.dailyBudgetService) throw new Error('DailyBudgetService must be initialized');
+  if (!ctx.deviceDiagnosticsService) throw new Error('DeviceDiagnosticsService must be initialized');
+  if (!ctx.priceCoordinator) throw new Error('PriceCoordinator must be initialized');
+  if (!ctx.deviceManager) throw new Error('DeviceTransport must be initialized');
+  if (!ctx.planEngine) throw new Error('PlanEngine must be initialized');
+  if (!ctx.planService) throw new Error('PlanService must be initialized');
+}
