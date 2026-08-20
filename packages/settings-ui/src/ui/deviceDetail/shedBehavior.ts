@@ -138,18 +138,35 @@ const isShedActionOptionVisible = (action: ShedAction): boolean => {
   return Boolean(option && !option.hidden);
 };
 
+/**
+ * The action the segmented control shows — which must be an action this device
+ * actually offers here.
+ *
+ * A SAVED action whose option is hidden is answered with the behaviour the owner
+ * will really get (`turn_off`, the runtime's own fallback). Rendering the hidden
+ * value instead leaves the control with NEITHER visible option checked while the
+ * device is turned off at limiting time — a state that is neither what is saved
+ * nor what happens. Both arms need it: a stepped device can lose its ladder, and
+ * a stepped device with on/off can carry a saved `set_temperature` from before
+ * "Disable temperature control" was switched on.
+ */
 const resolveShedActionValue = (params: {
   canConfigure: boolean;
   forceTurnOffOnly: boolean;
   forceTemperatureOnly: boolean;
   forceStepOnly: boolean;
+  supportsTemperature: boolean;
+  supportsStep: boolean;
   configuredAction: ShedAction | undefined;
 }): ShedAction => {
   if (!params.canConfigure) return 'turn_off';
   if (params.forceTurnOffOnly) return 'turn_off';
   if (params.forceTemperatureOnly) return 'set_temperature';
   if (params.forceStepOnly) return 'set_step';
-  if (params.configuredAction === 'set_step') return 'set_step';
+  if (params.configuredAction === 'set_step') return params.supportsStep ? 'set_step' : 'turn_off';
+  if (params.configuredAction === 'set_temperature') {
+    return params.supportsTemperature ? 'set_temperature' : 'turn_off';
+  }
   return params.configuredAction || 'turn_off';
 };
 
@@ -268,11 +285,10 @@ const resolveShedControlCapabilities = (params: {
   const supportsTemperature = supportsTemperatureControlDevice(device);
   const supportsPower = supportsPowerDevice(device);
   const forceTurnOffOnly = hasEvTargetPowerPreset(device);
-  const temperatureControlAvailable = !supportsTemperatureDevice(device)
-    || supportsTemperatureControlDevice(device);
-  const supportsStep = temperatureControlAvailable
-    && isSteppedLoadControlModel(device)
-    && !forceTurnOffOnly;
+  // The step arm is its own axis: "Disable temperature control" denies the
+  // setpoint, never the ladder, so a flagged stepped device still offers
+  // "step down" alongside "turn off".
+  const supportsStep = isSteppedLoadControlModel(device) && !forceTurnOffOnly;
   const canConfigure = supportsPower && (forceTurnOffOnly || supportsTemperature || supportsStep);
   const forceTemperatureOnly = canConfigure && !supportsStep && isTemperatureDeviceWithoutOnOff(device);
   const hasBinaryControl = device?.capabilities?.includes('onoff') === true
@@ -398,14 +414,15 @@ export const setDeviceDetailShedBehavior = (params: {
   });
 
   if (deviceDetailShedAction) {
-    const nextAction = resolveShedActionValue({
+    deviceDetailShedAction.value = resolveShedActionValue({
       canConfigure: shedControls.canConfigure,
       forceTurnOffOnly: shedControls.forceTurnOffOnly,
       forceTemperatureOnly: shedControls.forceTemperatureOnly,
       forceStepOnly: shedControls.forceStepOnly,
+      supportsTemperature: shedControls.supportsTemperature,
+      supportsStep: shedControls.supportsStep,
       configuredAction: shedConfig?.action,
     });
-    deviceDetailShedAction.value = nextAction === 'set_step' && !shedControls.supportsStep ? 'turn_off' : nextAction;
     deviceDetailShedAction.dispatchEvent(new Event('pels:segmented-refresh'));
   }
 
@@ -465,7 +482,6 @@ const saveShedBehavior = async (params: {
   if (supportsPowerDevice(device)) {
     if (
       isSteppedLoadControlModel(device)
-      && (!supportsTemperatureDevice(device) || supportsTemperatureControlDevice(device))
       && !hasEvTargetPowerPreset(device)
       && deviceDetailShedAction?.value === 'set_step'
     ) {

@@ -401,7 +401,7 @@ test.describe('Device detail panel', () => {
     expect(consoleErrors).toEqual([]);
   });
 
-  test('Disable temperature control preserves configuration and uses on/off-only controls', async ({ page }) => {
+  test('Disable temperature control preserves configuration and denies only the temperature axis', async ({ page }) => {
     await openDeviceDetail(page, 'dev_heatpump');
     await page.locator('#device-detail-setup-section summary').click();
 
@@ -425,7 +425,10 @@ test.describe('Device detail panel', () => {
     }, { timeout: 3000 }).toBe(true);
 
     await expect.poll(() => readMaterialDisabled(page, '#device-detail-price-opt')).toBe(true);
-    await expect.poll(() => readMaterialDisabled(page, '#device-detail-control-model')).toBe(true);
+    // The control model is not the temperature axis: choosing whether this device
+    // is stepped or binary never writes `target_temperature`, so the flag must not
+    // disable it. Disabling it also stopped the owner configuring a ladder at all.
+    await expect.poll(() => readMaterialDisabled(page, '#device-detail-control-model')).toBe(false);
     await expect(page.locator('#device-detail-modes-section')).toBeVisible();
     await expect.poll(() => readMaterialDisabled(
       page,

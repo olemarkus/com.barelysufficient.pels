@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import {
   createDeviceControlRuntimeState,
   decorateSnapshotWithDeviceControl,
@@ -132,7 +133,11 @@ describe('disabled temperature control', () => {
     })).toBe(true);
   });
 
-  it('preserves observations while decorating the effective model as binary', () => {
+  // The flag denies ONE axis. It used to demote the device wholesale — a
+  // `binary_power` rewrite plus a wipe of the whole stepped cluster and its
+  // command state — so a stepped water heater whose setpoint another Flow owns
+  // could only be switched off, never trimmed to a lower rung.
+  it('keeps the stepped axis and its command state while stamping the denial', () => {
     const raw = thermostat();
     const profile = {
       steps: [
@@ -148,12 +153,14 @@ describe('disabled temperature control', () => {
       desiredStepId: 'high',
       issuedAtMs: 100,
     });
-    runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.set(raw.id, 'off');
+    // The ladder's lowest ACTIVE rung, so the decorator's ordinary
+    // re-initialization check leaves the latch alone.
+    runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.set(raw.id, 'high');
     expect(reportSteppedLoadActualStep({
       runtimeState,
       profiles,
       deviceId: raw.id,
-      stepId: 'off',
+      stepId: 'high',
       reportedAtMs: 90,
     })).toBe('changed');
     const decorated = decorateSnapshotWithDeviceControl({
@@ -161,39 +168,52 @@ describe('disabled temperature control', () => {
       profiles,
       runtimeState,
       temperatureControlDisabled: true,
+      nowMs: 110,
     });
 
     expect(decorated.deviceType).toBe('temperature');
     expect(decorated.targets).toEqual(raw.targets);
-    expect(decorated.controlModel).toBe('binary_power');
     expect(decorated.temperatureControlDisabled).toBe(true);
-    expect(runtimeState.steppedLoadDesiredByDeviceId.has(raw.id)).toBe(false);
-    expect(runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.has(raw.id)).toBe(false);
-    expect(runtimeState.steppedLoadStepCommandIssuedByDeviceId.has(raw.id)).toBe(false);
-    expect(runtimeState.steppedLoadReportedByDeviceId.get(raw.id)?.stepId).toBe('off');
-
-    const reenabled = decorateSnapshotWithDeviceControl({
-      snapshot: {
-        ...raw,
-        controlModel: 'stepped_load',
-        steppedLoadProfile: profile,
-      },
-      profiles,
-      runtimeState,
-      temperatureControlDisabled: false,
-      nowMs: 110,
-    });
-    expect(reenabled.reportedStepId).toBe('off');
-    expect(reenabled.desiredStepId).toBeUndefined();
-    expect(reenabled.stepCommandPending).toBe(false);
+    expect(decorated.controlModel).toBe('stepped_load');
+    expect(decorated.steppedLoadProfile).toEqual(profile);
+    expect(decorated.reportedStepId).toBe('high');
+    // Live command state survives the decoration. It has to:
+    // `decorateTargetSnapshotList` is a MUTATING read run once per power
+    // sample, so tearing the command axis down here would wipe it every few
+    // seconds — no command would ever confirm, retry back-off would die, and
+    // the lowest-step initialization latch would never latch.
+    expect(runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.get(raw.id)).toBe('high');
+    expect(runtimeState.steppedLoadStepCommandIssuedByDeviceId.has(raw.id)).toBe(true);
+    expect(runtimeState.steppedLoadReportedByDeviceId.get(raw.id)?.stepId).toBe('high');
   });
 
-  it('fences target and step commands live while allowing binary commands', async () => {
-    const apply = vi.fn(async (command) => (
-      command.kind === 'binary'
-        ? { requested: true as const, kind: 'binary' as const }
-        : { requested: false as const }
-    ));
+  it('falls the temperature model back to binary when there is no ladder to keep', () => {
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: thermostat(),
+      profiles: {},
+      runtimeState: createDeviceControlRuntimeState(),
+      temperatureControlDisabled: true,
+      nowMs: 110,
+    });
+
+    expect(decorated.controlModel).toBe('binary_power');
+    expect(decorated.temperatureControlDisabled).toBe(true);
+    expect(decorated.deviceType).toBe('temperature');
+  });
+
+  // The fence governs the `target_temperature` capability, nothing else. It used
+  // to refuse every non-binary command, `kind: 'step'` included, so a planner
+  // that had decided to trim a stepped device watched the actuator swallow the
+  // command as `{ requested: false }` — the plan believed it had trimmed the
+  // device and nothing surfaced the divergence.
+  it('fences the setpoint live while letting binary and step commands through', async () => {
+    const apply = vi.fn(async (command: DeviceCommand): Promise<ActuatorOutcome> => {
+      if (command.kind === 'binary') return { requested: true, kind: 'binary' };
+      if (command.kind === 'step') {
+        return { requested: true, kind: 'step', steppedResult: { requested: true, transport: 'native_capability' } };
+      }
+      return { requested: true, kind: 'target', requestedTargetValue: command.value };
+    });
     let disabled = true;
     const actuator = createTemperatureControlFencedActuator(
       {
@@ -209,11 +229,15 @@ describe('disabled temperature control', () => {
     await expect(actuator.apply({
       kind: 'step',
       deviceId: 'thermostat-1',
-      profile: { steps: [{ id: 'off', planningPowerW: 0 }] },
-      desiredStepId: 'off',
-      planningPowerW: 0,
-      planningCurrentA: 0,
-    })).resolves.toEqual({ requested: false });
+      profile: { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'high', planningPowerW: 2_000 }] },
+      desiredStepId: 'high',
+      planningPowerW: 2_000,
+      planningCurrentA: 9,
+    })).resolves.toEqual({
+      requested: true,
+      kind: 'step',
+      steppedResult: { requested: true, transport: 'native_capability' },
+    });
     await expect(actuator.apply({
       kind: 'binary', deviceId: 'thermostat-1', desired: false,
     })).resolves.toEqual({
@@ -226,12 +250,13 @@ describe('disabled temperature control', () => {
       requested: true,
       kind: 'binary',
     });
-    expect(apply).toHaveBeenCalledTimes(2);
+    // Everything but the setpoint reached the base actuator.
+    expect(apply).toHaveBeenCalledTimes(3);
 
     disabled = false;
     await actuator.apply({
       kind: 'target', deviceId: 'thermostat-1', target: 'temperature', value: 20,
     });
-    expect(apply).toHaveBeenCalledTimes(3);
+    expect(apply).toHaveBeenCalledTimes(4);
   });
 });

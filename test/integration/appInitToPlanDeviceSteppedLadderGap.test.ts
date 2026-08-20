@@ -117,17 +117,19 @@ describe('toPlanDevice step-ladder gap', () => {
     expect('steppedLadderMissing' in planDevice).toBe(false);
   });
 
-  it('leaves the bit off for a stepped device whose temperature control is disabled', () => {
-    // `projectEffectiveControlDevice` re-projects this device to plain binary
-    // power for the whole cycle — it is honestly not stepped right now, so there
-    // is no ladder to be missing.
+  it('keeps the ladder for a stepped device whose temperature control is disabled', () => {
+    // "Disable temperature control" denies the `target_temperature` capability,
+    // not the step axis. `projectEffectiveControlDevice` used to re-project this
+    // device to plain binary power for the whole cycle, which cost a stepped
+    // water heater its ladder — PELS could only switch it off, never trim it.
     const planDevice = toPlanDevice(createAppContextMock(), buildSnapshot({
       controlModel: 'stepped_load',
       steppedLoadProfile: USABLE_LADDER,
+      selectedStepId: 'low',
       temperatureControlDisabled: true,
     }));
 
-    expect(isSteppedLoadDevice(planDevice)).toBe(false);
+    expect(isSteppedLoadDevice(planDevice)).toBe(true);
     expect('steppedLadderMissing' in planDevice).toBe(false);
   });
 });

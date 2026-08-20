@@ -5,11 +5,7 @@ import {
 } from '../../../../contracts/src/deviceControlProfiles.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 import { formatStepDisplayLabel } from '../../../../shared-domain/src/planSteppedCardText.ts';
-import {
-  supportsTemperatureControlDevice,
-  supportsTemperatureDevice,
-  type SettingsUiDeviceDetailItem,
-} from '../deviceUtils.ts';
+import { type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import {
   deviceDetailShedAction,
   deviceDetailSteppedAddStep,
@@ -248,9 +244,9 @@ export const updateSetStepOptionLabel = (
 export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
   if (!deviceDetailSteppedSection || !deviceDetailSteppedSteps) return;
 
-  const temperatureControlAvailable = !supportsTemperatureDevice(device)
-    || supportsTemperatureControlDevice(device);
-  const showStepEditor = temperatureControlAvailable && isSteppedLoadControlModel(device);
+  // The step editor edits the ladder, not the setpoint, so "Disable temperature
+  // control" has no say here.
+  const showStepEditor = isSteppedLoadControlModel(device);
   const setEditorVisibility = (hidden: boolean) => {
     deviceDetailSteppedSteps.hidden = hidden;
     if (deviceDetailSteppedAddStep) deviceDetailSteppedAddStep.hidden = hidden;
