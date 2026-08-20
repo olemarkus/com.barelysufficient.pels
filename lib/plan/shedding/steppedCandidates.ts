@@ -77,17 +77,30 @@ type SteppedShedLadderResult =
 /**
  * Ordered shed targets from `initialTargetStep` downwards, gentlest first.
  *
- * **Only a `turn_off` device descends past its adjacent rung**; a `set_step`
- * device is offered `initialTargetStep` alone. That restriction is now a
- * deliberate hold, not a consequence of anything here: materialization commands
- * the rung this module chooses for either behaviour
- * (`resolveSteppedLoadDirectShedStepId`), so a `set_step` descent would be
- * delivered as credited. Letting it descend is a separate change — the
- * behaviour's meaning to its owner ("lower it a step") is a product question,
- * not a pricing one.
+ * **Both behaviours descend; they differ only in where the descent stops.** A
+ * `set_step` shed ends at the deepest rung that is not OFF-CLASSIFIED — the
+ * owner's "lower it" means as far down the ladder as the deficit needs, and
+ * never off. A `turn_off` shed walks the same rungs and then gets the off step
+ * appended.
  *
- * Within the `turn_off` ladder: `getSteppedLoadNextLowerStep` floors at the
- * lowest ACTIVE step, so the off step is not on it and has to be appended.
+ * "Not off-classified" is deliberately not "the lowest rung with power". The
+ * walk floors on `getSteppedLoadLowestActiveStep`, which tests `planningPowerW >
+ * 0` alone, while `isSteppedLoadOffStep` also counts a step NAMED `off`; on a
+ * hand-configured profile those two answers differ, so the `set_step` floor is
+ * taken from the off rule and not from the floor the walk happened to use.
+ *
+ * `set_step` used to be offered `initialTargetStep` alone, and that was a
+ * pricing constraint rather than a product one: materialization recomputed the
+ * step from the device, so crediting a deeper rung would have decremented the
+ * deficit by relief the executor never commanded. That is no longer how it
+ * works — `resolveSteppedLoadDirectShedStepId` takes `plannedShedStepId`, the
+ * rung this module priced the shed at, and returns it unchanged. Credited relief
+ * equals delivered relief for both behaviours, so the widened ladder cannot
+ * over-credit.
+ *
+ * Widening the ladder does not deepen a shed on its own: which rung is taken is
+ * still `chooseShedRung` at spend time, gentlest one that covers the remaining
+ * deficit.
  */
 function buildSteppedShedDescentTargets(params: {
   profile: SteppedLoadProfile;
@@ -95,7 +108,6 @@ function buildSteppedShedDescentTargets(params: {
   shedAction: 'turn_off' | 'set_step';
 }): SteppedLoadStep[] {
   const { profile, initialTargetStep, shedAction } = params;
-  if (shedAction !== 'turn_off') return [initialTargetStep];
   const targets: SteppedLoadStep[] = [initialTargetStep];
   const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
   if (lowestActiveStep) {
@@ -112,6 +124,19 @@ function buildSteppedShedDescentTargets(params: {
       targets.push(next);
       cursor = next;
     }
+  }
+  // The off step is `turn_off`'s alone, and for `set_step` "not off" has to be
+  // asked of `isSteppedLoadOffStep` rather than inferred from the floor the walk
+  // used. The two rules disagree: `getSteppedLoadLowestActiveStep` floors on
+  // `planningPowerW > 0` and ignores the step's NAME, while the off rule also
+  // counts a step called `off`. A hand-configured `{ id: 'off', planningPowerW:
+  // 1200 }` satisfies the first and fails the second, so the walk floors ON that
+  // rung and a deficit large enough to want it would have `chooseShedRung`
+  // command the one step this behaviour promises never to reach. Filtering here
+  // keeps the single authority at this call site; the two helpers keep their
+  // meanings for every other caller.
+  if (shedAction !== 'turn_off') {
+    return targets.filter((step) => !isSteppedLoadOffStep(profile, step.id));
   }
   const offStep = getSteppedLoadOffStep(profile) ?? getSteppedLoadLowestStep(profile);
   if (offStep && !targets.some((step) => step.id === offStep.id)) targets.push(offStep);

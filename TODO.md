@@ -352,8 +352,8 @@ patch releases, not release blockers; each item carries its own source/date.
       `[]` on a successful read, keep last-good only on error. Source: 2026-08-02 release review,
       pels-ux-fit rendered walk (rendered proof captured). [P1]
 - [ ] **Disabling temperature control on a currently-limited thermostat strands the shed
-      setpoint.** The command fence (`setup/appInit/buildDeviceActuator.ts:24-52`) refuses every
-      non-binary write once the toggle is on — including the restore/terminal-release write-back —
+      setpoint.** The command fence (`setup/appInit/buildDeviceActuator.ts`) refuses every setpoint
+      write once the toggle is on — including the restore/terminal-release write-back —
       and `toPlanDevice` strips the target axis, so a thermostat shed to its floor (e.g. 12 °C)
       stays there indefinitely with nothing warning the owner; the UI blocks the flip only for an
       active smart task (`temperatureControlDisabled.ts:83-90`), not for an active setpoint shed.
@@ -1420,16 +1420,6 @@ program) remain deferred.*
       at level `debug`, so this adds CI minutes rather than swapping them. Source: 2026-08-07
       build-size audit, adversarial pass on PR #2006. [P2]
 
-- [ ] **`lib/executor/executorConvergence.ts` speaks the planner's vocabulary, not the executor's.**
-      It imports `DevicePlan`/`PlanInputDevice` and the three plan-device type guards, then reads
-      `plannedState`, `shedAction`, `desiredStepId`, `plannedTarget` and `reportedStepId` straight
-      off plan devices — while its sibling `planExecutionDrift.ts` goes through
-      `buildExecutableDeviceIntent`/`buildExecutableObservedDeviceState` as `lib/AGENTS.md` asks
-      ("avoid passing broad planner device shapes into executor modules"). The move that created
-      this file was deliberately behaviour-free, so the code arrived in the executor without
-      arriving at its vocabulary, and `lib/executor` now has two drift dialects. Convert it to the
-      executable intent/observed split. *Source: pels-layering-guardian on the same train.*
-
 - [ ] **A rejected actuator write no longer accrues a realtime circuit-breaker strike.** The
       breaker now counts `PlanRebuildOutcome.writtenDeviceIds`, which lists devices the rebuild
       SUCCEEDED in writing or requesting. Before, the reconcile lane reported success once it had
@@ -1502,21 +1492,27 @@ program) remain deferred.*
       which is a larger judgement call than the descent (which stays meter-grounded).
       Source: prod log review 2026-08-06. [P2]
 
-- [ ] **Materialization recomputes a stepped device's shed step instead of honouring the one the
-      planner priced, so a `set_step` device cannot descend past a zero-relief rung.**
-      `resolveSteppedLoadDirectShedStepId` (`lib/plan/planSteppedShedResolution.ts`, reached from
-      `planDevicesBase`) derives the commanded step from the device alone; the shed candidate's
-      `toStepId` never crosses the boundary — only `shedSet` membership does. For `turn_off` this
-      is harmless (the resolver answers the off step, so credited relief under-states delivery),
-      but it forces `buildSteppedShedDescentTargets` to refuse to descend for `set_step`, because
-      crediting a deeper rung the executor never commands would decrement the deficit by relief
-      that never arrives. Cost: a `set_step` device whose measured draw sits between two step
-      admission estimates — adjacent rung prices zero, deeper rung is positive — stays unshed
-      where a deeper step-down would have helped. Fixing it means letting materialization honour
-      the planner's chosen target for devices already in `shedSet`, which is not the same as
-      materialization *selecting* a device and so does not breach the shedding boundary rule —
-      but it needs care around `resolveSteppedShedCurrentDesiredStepId` and the forced
-      lowest-active-step path. Source: Codex review of PR #1996, 2026-08-06. [P2]
+- [ ] **`getSteppedLoadLowestActiveStep` and the off rule disagree, so two more call sites can still
+      land on an off-classified rung.** `getSteppedLoadLowestActiveStep` picks the first rung with
+      `planningPowerW > 0` and never reads the id, while `isOffStep` treats
+      `planningPowerW <= 0 || id === 'off'` as off. On a hand-configured profile carrying a
+      positive-power rung named `off`, the two answer differently. The shed-candidate walk was
+      reconciled at its call site (`lib/plan/shedding/steppedCandidates.ts`, filters the `set_step`
+      targets through `isSteppedLoadOffStep`), but two callers were left:
+      `resolveShedBehaviorFloorStepId` (`lib/plan/planSteppedShedResolution.ts`) returns that rung
+      as the `set_step` floor whenever no planner rung was decided — a shed decided outside the
+      shedding planner, or a prepared-binary-off candidate — so materialization can still park a
+      `set_step` device on a rung the behaviour promises never to reach; and
+      `getSteppedLoadRestoreStep` (`lib/utils/deviceControlProfiles.ts`) feeds restore sizing
+      (`lib/plan/restore/helpers.ts`, `lib/executor/steppedLoadExecutorRestore.ts`), so a *restore*
+      can target a rung the rest of the system classifies as off — the inverse contradiction.
+      Fix each at its call site, as the shedding one was; changing either helper globally would
+      move meaning under every other caller. The `hasUsableSteppedLoadLadder` docblock
+      (`packages/contracts/src/deviceControlProfiles.ts`) also assumes the two agree, and needs a
+      line if this is taken. Not reachable on any PELS-generated profile — every one carries a real
+      zero-power `off` — and `hasUsableSteppedLoadLadder` rejects an all-off ladder at the parse
+      boundary, so this needs a mixed hand-configured profile. Source: Codex review of PR #2170,
+      2026-08-20. [P3]
 
 - [ ] **A `turn_off` stepped device whose profile has no zero-power step can never be fully turned
       off.** `getSteppedLoadOffStep` returns null for such a profile and
@@ -1938,11 +1934,11 @@ program) remain deferred.*
 
 - [ ] **The unchanged-reading shed hold freezes shed membership, not shed depth, so a stepped device
       still deepens one notch per held cycle.** `holdSheddingAtLastDecision` re-asserts the decided
-      devices into `shedSet`, but materialization recomputes a stepped device's target from its
-      CURRENT confirmed step (`planSteppedShedResolution.ts`), so membership means "one step below
-      wherever you are now" every cycle. An EV charger on `set_step` shed behaviour at 16 A therefore
-      walks 10 A → 6 A → lowest active step across a 30 s hold, on readings the module itself has
-      declared to be non-evidence. Bounded (it leaves the candidate set at the lowest active step)
+      devices into `shedSet`, but `PlanEngineState` carries only their ids (`lastShedPlanShedIds`),
+      so each held cycle re-prices the ladder from wherever the device now sits and re-chooses a
+      rung against the same unchanged deficit. An EV charger on `set_step` shed behaviour at 16 A
+      therefore walks 10 A → 6 A → lowest active step across a 30 s hold, on readings the module
+      itself has declared to be non-evidence. Bounded (it leaves the candidate set at the lowest active step)
       and not a regression versus the pre-hold behaviour, which stepped it down on those same cycles
       — but it means the incident class is only closed for binary devices, and priority-ranked
       stepped loads are exactly what users notice. Fix needs the hold to carry the decided target
