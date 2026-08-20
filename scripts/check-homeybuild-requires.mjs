@@ -70,6 +70,28 @@ const collectEntries = () => {
       }
     }
   }
+  // Widget APIs are loaded by the Homey widget runtime, never required from
+  // the app graph, so they need their own seeds. Expectations derive from the
+  // SOURCE tree: every widget directory must have its compiled API in the
+  // build — the committed api.js shim requires ./src/api, and a tsconfig
+  // regression that stops emitting it would otherwise pass this smoke and
+  // MODULE_NOT_FOUND at boot. The shim itself is only present in fully
+  // assembled builds (the Homey CLI copies static files after tsc); seed it
+  // too when present so its own require is walked.
+  const widgetsSourceDir = path.resolve(process.cwd(), 'widgets');
+  if (existsSync(widgetsSourceDir)) {
+    for (const widget of readdirSync(widgetsSourceDir)) {
+      if (widget.startsWith('_') || !statSync(path.join(widgetsSourceDir, widget)).isDirectory()) continue;
+      const compiledApi = path.join(buildDir, 'widgets', widget, 'src', 'api.js');
+      if (existsSync(compiledApi)) {
+        entries.push(compiledApi);
+      } else {
+        missingWidgetApis.push(`widgets/${widget}/src/api.js`);
+      }
+      const shim = path.join(buildDir, 'widgets', widget, 'api.js');
+      if (existsSync(shim)) entries.push(shim);
+    }
+  }
   return entries;
 };
 
@@ -86,11 +108,20 @@ const prunedBarePrefixes = [...new Set([...prunedNodeModules, ...homeyIgnorePrun
   .filter((prefix) => prefix !== '.bin');
 
 const seen = new Set();
+const missingWidgetApis = [];
 const queue = collectEntries();
 const missing = [];
 
 if (queue.length === 0) {
   console.error('check-homeybuild-requires: no entry modules found in .homeybuild — packaging layout changed?');
+  process.exit(1);
+}
+
+if (missingWidgetApis.length > 0) {
+  console.error('check-homeybuild-requires: compiled widget APIs missing from the build (the api.js shim would crash at boot with MODULE_NOT_FOUND):');
+  for (const entry of missingWidgetApis) {
+    console.error(`  ${entry}`);
+  }
   process.exit(1);
 }
 
