@@ -282,9 +282,18 @@ const buildSettingsHomeyState = (settings: Record<string, unknown> = {}) => {
 };
 
 const installSettingsHomeyMock = (settings: Record<string, unknown> = {}) => {
-  const explicitDevices = Object.prototype.hasOwnProperty.call(settings, 'target_devices_snapshot')
+  const requestedDevices = Object.prototype.hasOwnProperty.call(settings, 'target_devices_snapshot')
     ? settings.target_devices_snapshot
     : DEFAULT_SETTINGS_DEVICES;
+  // The Overview renders the DEVICE list joined to the plan, so a fixture that
+  // supplies a plan and an EMPTY device list draws no cards. Production's
+  // device list is a superset of the plan's devices, so fall back to mirroring
+  // the plan's ids rather than leaving the surface empty. A fixture that names
+  // its own devices still wins.
+  const planDevices = (settings.planSnapshot as { devices?: Array<Record<string, unknown>> } | undefined)?.devices;
+  const explicitDevices = Array.isArray(requestedDevices) && requestedDevices.length === 0 && Array.isArray(planDevices)
+    ? planDevices.map((device) => ({ id: device.id, name: device.name, priority: device.priority, targets: [] }))
+    : requestedDevices;
   return installHomeyMock({
     settings: buildSettingsHomeyState(settings),
     uiState: {
@@ -1765,7 +1774,16 @@ describe('Plan sorting', () => {
   const setupPlanHomeyMock = (planSnapshot: any) => {
     installSettingsHomeyMock({
       planSnapshot: planSnapshot,
-      target_devices_snapshot: [],
+      // The Overview renders the DEVICE list joined to the plan, so a plan
+      // fixture alone draws no cards. Production's device list is a superset of
+      // the plan's devices; mirroring the plan's ids is the faithful minimum.
+      target_devices_snapshot: (planSnapshot?.devices ?? []).map((device: any) => ({
+        id: device.id,
+        name: device.name,
+        priority: device.priority,
+        targets: [],
+        available: true,
+      })),
       // Simulation OFF: under the card grammar a simulated plan renders the
       // FACTUAL device state (nothing is actually held), so held/rescue
       // assertions need real mode.
@@ -2331,6 +2349,16 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
     ],
   };
 
+  // Mirrors the plan's devices: production's device list is a superset of the
+  // plan's, and the Overview joins the two on device id.
+  const budgetHeldPlanDevices = budgetHeldPlan.devices.map((device) => ({
+    id: device.id,
+    name: device.name,
+    priority: device.priority,
+    targets: [],
+    available: true,
+  })) as unknown as TargetDeviceSnapshot[];
+
   const rescueChipButton = (): HTMLButtonElement | null => (
     document.querySelector('#plan-cards .plan-card__rescue button')
   );
@@ -2344,7 +2372,9 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
       // nothing; see planCardGrammar.ts).
       settings: buildSettingsHomeyState({ capacity_dry_run: false }),
       uiState: {
-        devices: [],
+        // The Overview's cards are device rows now, so the gate's chip needs
+        // the device this plan decides about to be in the device list too.
+        devices: budgetHeldPlanDevices,
         plan: budgetHeldPlan,
         starvationRescuableDeviceIds: [],
       },
@@ -2377,7 +2407,9 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
     const homey = installHomeyMock({
       settings: buildSettingsHomeyState({ capacity_dry_run: false }),
       uiState: {
-        devices: [],
+        // The Overview's cards are device rows now, so the gate's chip needs
+        // the device this plan decides about to be in the device list too.
+        devices: budgetHeldPlanDevices,
         plan: budgetHeldPlan,
         starvationRescuableDeviceIds: ['heater-1'],
       },

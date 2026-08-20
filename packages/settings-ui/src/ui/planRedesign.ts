@@ -13,10 +13,13 @@ import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
 import { callApi, getApiReadModel } from './homey.ts';
 import { getHomeScope } from './homeScope.ts';
 import { readAreaSimulationPosture, readOverviewPlan } from './overviewPlanRead.ts';
+import { readOverviewDevices } from './overviewDevicesRead.ts';
+import type { SettingsUiOverviewDevice } from './overviewDeviceRows.ts';
 import { readUsagePower } from './usagePowerRead.ts';
 import { getPricesReadModel } from './prices.ts';
 import { renderPlanOverview } from './views/PlanOverview.tsx';
 import { planNeedsLiveUpdates } from './planLiveData.ts';
+import { buildOverviewDeviceRows } from './overviewDeviceRows.ts';
 import { parsePlanSnapshot } from './planSnapshotParse.ts';
 import { registerPlanSurfaceRenderer } from './planSurfaceRefresh.ts';
 import { state } from './state.ts';
@@ -84,6 +87,28 @@ type OverviewScope =
 
 let overviewScope: OverviewScope = { kind: 'main' };
 
+// A selected meter area's OWN devices, from its `?homeId=` read.
+//
+// Main deliberately does NOT use this: its device list is the bare-URI one
+// `state.latestDevices` already holds and every other surface shares, kept
+// current by `refreshDevicesForUi` on this surface's own cadence. An area
+// cannot borrow that list — it is Main's, and rendering it under the area's
+// scope chip is the cross-home lie the scope bar promises not to tell.
+let scopedDevices: readonly SettingsUiOverviewDevice[] = [];
+let scopedDevicesReceived = false;
+
+// The device list the surface is currently about, resolved by scope.
+const overviewDevices = (): readonly SettingsUiOverviewDevice[] => (
+  overviewScope.kind === 'main' ? state.latestDevices : scopedDevices
+);
+
+// Whether that list has been DELIVERED. The empty state is a device-list
+// verdict, so it must wait for the device list or it renders "No managed
+// devices" for the moment before the first response.
+const overviewDevicesResolved = (): boolean => (
+  overviewScope.kind === 'main' ? state.devicesLoaded : scopedDevicesReceived
+);
+
 const toSolarNowInput = (tracker: SettingsUiPowerPayload['tracker']): SolarNowInput | null => (
   tracker && typeof tracker === 'object'
     ? {
@@ -137,6 +162,10 @@ const doRender = () => {
   }
   const now = Date.now();
   renderPlanOverview(surface, {
+    // Membership and order come from the DEVICE list; the decision comes from
+    // the plan. Resolved here so the view stays props-in.
+    rows: buildOverviewDeviceRows({ devices: overviewDevices(), plan: currentPlan }),
+    devicesResolved: overviewDevicesResolved(),
     plan: currentPlan,
     planResolved: planPayloadReceived,
     scopeUnavailable: overviewScope.kind === 'area' && overviewScope.read === 'unavailable',
@@ -388,8 +417,9 @@ let planRefreshGeneration = 0;
 const refreshAreaPlan = async (homeId: string): Promise<void> => {
   planRefreshGeneration += 1;
   const generation = planRefreshGeneration;
-  const [planRead, power, prices, simulating] = await Promise.all([
+  const [planRead, devicesRead, power, prices, simulating] = await Promise.all([
     readOverviewPlan(),
+    readOverviewDevices(),
     readScopedPowerForPlanRefresh(),
     readPricesForPlanRefresh(),
     readAreaSimulationPosture(homeId),
@@ -406,11 +436,19 @@ const refreshAreaPlan = async (homeId: string): Promise<void> => {
     // honest notice, never `plan: null` dressed as "no plan committed yet".
     cachedPowerStatus = null;
     cachedSolarNowInput = null;
+    scopedDevices = [];
+    scopedDevicesReceived = false;
     commitPlan(null, { kind: 'area', homeId, read: 'unavailable', simulating });
     return;
   }
   cachedPowerStatus = power.status;
   cachedSolarNowInput = power.solarNowInput;
+  // An `unavailable` device read leaves the area's cards empty but does NOT
+  // blank the plan: the two channels fail independently, and a device-list
+  // failure is not evidence about the plan. It stays unresolved so the empty
+  // state does not claim this area manages nothing.
+  scopedDevices = devicesRead.state === 'served' ? devicesRead.payload.devices : [];
+  scopedDevicesReceived = devicesRead.state === 'served';
   // The reader already resolved the payload to a snapshot: a `served` plan is
   // either a valid snapshot or a genuine "no plan committed yet". Re-parsing
   // here would re-validate a typed invariant the producer owns.

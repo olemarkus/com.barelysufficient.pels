@@ -45,6 +45,11 @@ const REDESIGN_SETTINGS_SECTIONS = new Set([
 ]);
 
 const DEVICE_DEPENDENT_TABS = new Set([
+  // The Overview renders its cards from the DEVICE list joined to the plan
+  // (`buildOverviewDeviceRows`), so it needs the payload like every other
+  // device surface. Before that join it read the plan only, which is why it
+  // was absent here.
+  'overview',
   'devices',
   'modes',
   'electricity-prices',

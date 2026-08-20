@@ -110,6 +110,29 @@ const installClient = async ({ api, settings = {}, holdUris = [] }: InstallOptio
   const calledUris: string[] = [];
   const heldCalls: HeldCall[] = [];
   const listeners: Record<string, Array<(payload?: unknown) => void>> = {};
+  // The Overview renders the DEVICE list joined to the plan, so a test that
+  // serves only a plan draws no cards. Default each `/ui_devices` read from the
+  // plan this scope serves — production's device list is a superset of the
+  // plan's devices, so mirroring its ids is the faithful minimum. A test that
+  // stubs `/ui_devices` explicitly still wins.
+  const devicesFor = (uri: string): unknown => {
+    const planUri = uri.replace('/ui_devices', '/ui_plan');
+    const served = api[planUri] as { plan?: { devices?: Array<Record<string, unknown>> } } | undefined;
+    const scoped = api[planUri] as { homeScope?: unknown } | undefined;
+    return {
+      devices: (served?.plan?.devices ?? []).map((device) => ({
+        id: device.id,
+        name: device.name,
+        priority: device.priority,
+        targets: [],
+        available: true,
+      })),
+      // The scoped device read discriminates the producer's `homeScope` before
+      // any flat field, exactly as the plan read does — so a scoped stub must
+      // carry the same envelope or it resolves `unavailable`.
+      ...(scoped?.homeScope ? { homeScope: scoped.homeScope } : {}),
+    };
+  };
   const { setHomeyClient } = await import('../src/ui/homey.ts');
   const client: HomeySettingsClient = {
     ready: () => Promise.resolve(),
@@ -125,6 +148,10 @@ const installClient = async ({ api, settings = {}, holdUris = [] }: InstallOptio
         }
         if (Object.prototype.hasOwnProperty.call(api, uri)) {
           callback(null, api[uri]);
+          return;
+        }
+        if (uri.startsWith('/ui_devices')) {
+          callback(null, devicesFor(uri));
           return;
         }
         callback(new Error(`unexpected uri ${uri}`));
@@ -278,6 +305,15 @@ describe('Overview under a selected meter area', () => {
     await selectArea();
     const { refreshPlan } = await import('../src/ui/plan.ts');
     const homeScope = await import('../src/ui/homeScope.ts');
+    // Main's Overview renders the bare-URI device list every surface shares
+    // (`state.latestDevices`), so seed it for the Main leg below. The AREA leg
+    // deliberately does NOT use it — it reads its own `?homeId=` device list,
+    // which is the whole point of the assertions that follow.
+    const { state } = await import('../src/ui/state.ts');
+    state.latestDevices = [{
+      id: 'dev_main_heater', name: 'Main Heater', targets: [], available: true,
+    }] as unknown as typeof state.latestDevices;
+    state.devicesLoaded = true;
 
     await refreshPlan();
 

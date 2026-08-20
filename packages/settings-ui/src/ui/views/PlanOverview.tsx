@@ -12,6 +12,8 @@ import {
 import { PlanSteppedCard } from './PlanSteppedCard.tsx';
 import { PlanGenericCard, PlanTemperatureCard } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
+import type { OverviewDeviceRow } from '../overviewDeviceRows.ts';
+import { DEVICE_OVERVIEW_AWAITING_FIRST_READING } from '../../../../shared-domain/src/deviceOverviewStrings.ts';
 import type {
   SettingsUiPowerStatus,
   SettingsUiPricesPayload,
@@ -19,6 +21,16 @@ import type {
 import type { SolarNowInput } from '../../../../shared-domain/src/solar/solarNow.ts';
 
 type OverviewProps = {
+  // One row per device PELS manages, from the DEVICE list joined to this
+  // cycle's plan (`buildOverviewDeviceRows`). The device list is the list: a
+  // row can be `undecided`, which is a device without a decision rather than a
+  // missing device.
+  rows: readonly OverviewDeviceRow[];
+  // True once the DEVICE payload has been delivered. The empty state is a
+  // device-list verdict now, so it must wait for the device list — otherwise a
+  // session that opens on the Overview renders "No managed devices" for the
+  // moment before the first `/ui_devices` response.
+  devicesResolved: boolean;
   plan: PlanSnapshot | null;
   // True once a plan payload has been delivered (even a null one). While
   // false the overview is still loading: keep showing the hero skeleton and
@@ -107,6 +119,24 @@ const PlanCard = ({
   return <PlanGenericCard dev={dev} plan={plan} dryRun={dryRun} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
 };
 
+/**
+ * A device PELS manages but has not decided anything for this cycle.
+ *
+ * Renders the device rather than a gap. Before this existed the whole surface
+ * went blank whenever the plan was missing, so a missing CONTROL artefact was
+ * indistinguishable from having no devices at all.
+ *
+ * It deliberately shows no state chip and no reason line: there is no decision
+ * to describe, and a placeholder one would be a decision the planner never made.
+ */
+const PlanUndecidedCard = ({ name }: { name: string }) => (
+  <section class="pels-surface-card plan-card plan-card--undecided">
+    <MdElevation aria-hidden="true" />
+    <p class="plan-card__title">{name}</p>
+    <p class="pels-card-supporting">{DEVICE_OVERVIEW_AWAITING_FIRST_READING}</p>
+  </section>
+);
+
 // Honest per-home state (multi-home), the Usage tab's `#usage-scope-unavailable`
 // contract on the Preact surface: one notice card INSTEAD of the data sections.
 // Copy comes from shared-domain (`homeScopeCopy.ts`) so the words can never
@@ -124,27 +154,25 @@ const ScopeUnavailableNotice = () => (
 );
 
 const PlanOverviewRoot = ({
-  plan, planResolved, scopeUnavailable, power, prices, solarNowInput, smartTaskRow, context, renderedAtMs, nowMs,
+  rows, devicesResolved, plan, planResolved, scopeUnavailable, power, prices, solarNowInput, smartTaskRow, context, renderedAtMs, nowMs,
 }: OverviewProps) => {
   if (scopeUnavailable) {
     return <div><ScopeUnavailableNotice /></div>;
   }
-  const devices = plan
-    ? [...(plan.devices ?? [])].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
-    : [];
 
-  let emptyMessage: string | null = null;
-  let showManageDevicesLink = false;
-  if (plan === null) {
-    // The global no-power-data banner (with its power-source link) explains
-    // how to get data flowing; this line only states what the blank means.
-    if (planResolved) emptyMessage = 'No plan available yet. PELS builds one after the first power reading.';
-  } else if (devices.length === 0) {
+  // The empty state is now a DEVICE-list question, not a plan question. It used
+  // to be both: with no plan the surface said "No plan available yet" and drew
+  // no cards, so an owner with ten managed devices and no power reading saw the
+  // same blank page as an owner with none. The cards come from the device list,
+  // so a missing plan costs the DECISIONS, not the devices.
+  //
+  // `planResolved` still gates it. Before the first payload has been delivered
+  // the surface is loading, and an empty-state verdict then would be a guess.
+  const emptyMessage = planResolved && devicesResolved && rows.length === 0
     // No "yet" — a returning user who unmanages their last device reaches
     // this state too (notes/ui-terminology.md, empty-state headline rule).
-    emptyMessage = 'No managed devices. Pick the devices PELS may manage.';
-    showManageDevicesLink = true;
-  }
+    ? 'No managed devices. Pick the devices PELS may manage.'
+    : null;
 
   return (
     <div>
@@ -159,11 +187,13 @@ const PlanOverviewRoot = ({
       />
       <div id="plan-hour-strip" class="plan-hour-strip" hidden />
       {smartTaskRow !== null && <SmartTaskRow row={smartTaskRow} />}
-      {emptyMessage && !showManageDevicesLink && <p id="plan-empty" class="muted">{emptyMessage}</p>}
-      {emptyMessage && showManageDevicesLink && (
+      {emptyMessage && (
         // Same carded "empty → go configure" treatment as the Price-aware
         // devices zero state; on-surface text, not .muted — this line is the
-        // page's primary instruction when nothing is managed.
+        // page's primary instruction when nothing is managed. There is only one
+        // empty state now: with the cards sourced from the device list, "no
+        // devices" is the only way this surface can be empty, and it always has
+        // the same next step.
         <div class="settings-form-card">
           <p id="plan-empty">{emptyMessage}</p>
           <div class="form__actions">
@@ -174,15 +204,19 @@ const PlanOverviewRoot = ({
         </div>
       )}
       <div id="plan-cards" class="plan-cards">
-        {devices.map((dev) => (
-          <PlanCard
-            key={dev.id}
-            dev={dev}
-            plan={plan}
-            dryRun={context.dryRun}
-            renderedAtMs={renderedAtMs}
-            nowMs={nowMs}
-          />
+        {rows.map((row) => (
+          row.kind === 'decided' ? (
+            <PlanCard
+              key={row.device.id}
+              dev={row.plan}
+              plan={plan}
+              dryRun={context.dryRun}
+              renderedAtMs={renderedAtMs}
+              nowMs={nowMs}
+            />
+          ) : (
+            <PlanUndecidedCard key={row.device.id} name={row.device.name} />
+          )
         ))}
       </div>
     </div>

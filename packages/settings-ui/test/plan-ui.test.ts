@@ -49,8 +49,22 @@ describe('Redesign plan UI', () => {
   const renderPlanSnapshot = async (plan: unknown) => {
     vi.resetModules();
     setupPlanDom();
+    const normalized = normalizePlanSnapshot(plan) as { devices?: Array<Record<string, unknown>> };
+    // The Overview renders the DEVICE list joined to the plan, so a plan
+    // fixture alone no longer draws cards. Seed the device payload these
+    // fixtures imply: in production the device list is a superset of the plan's
+    // devices, so mirroring the plan's ids is the faithful minimum.
+    const { state } = await import('../src/ui/state.ts');
+    state.latestDevices = (normalized.devices ?? []).map((device: Record<string, unknown>) => ({
+      id: device.id,
+      name: device.name,
+      priority: device.priority,
+      targets: [],
+      available: true,
+    })) as unknown as typeof state.latestDevices;
+    state.devicesLoaded = true;
     const { renderPlan } = await import('../src/ui/plan.ts');
-    renderPlan(normalizePlanSnapshot(plan) as Parameters<typeof renderPlan>[0]);
+    renderPlan(normalized as Parameters<typeof renderPlan>[0]);
   };
   
   const getFirstPlanCard = (): HTMLElement | null => (
@@ -1052,12 +1066,13 @@ describe('Redesign plan UI', () => {
       expect(row.getAttribute('aria-label')).toBe('Open device details for Overview Device');
     });
   
-    it('shows empty states for missing plans and missing devices', async () => {
-      await renderPlanSnapshot(null);
-      expect((document.querySelector('#plan-empty') as HTMLElement | null)?.textContent)
-        .toContain('No plan available yet');
-      expect(document.querySelector('#plan-empty-manage-devices')).toBeNull();
-
+    it('shows the empty state only when the home genuinely manages no devices', async () => {
+      // There is ONE empty state now, and it is a device-list verdict. A
+      // missing plan used to produce its own "No plan available yet" blank
+      // page, which meant an owner with ten managed devices and no power
+      // reading saw exactly what an owner with none saw. The cards come from
+      // the device list, so a missing plan costs the DECISIONS, not the
+      // devices — see the undecided-card test below.
       await renderPlanSnapshot({
         meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5, headroomKw: 5}),
         devices: [],
@@ -1070,9 +1085,35 @@ describe('Redesign plan UI', () => {
       expect(manageLink?.getAttribute('data-settings-target')).toBe('devices');
     });
 
-    it('clears previously rendered cards when the plan later becomes unavailable', async () => {
+    it('renders a card per managed device when PELS has not decided yet', async () => {
+      // The state before the first power reading. The device list is known and
+      // the plan is not, so the owner sees their devices and what PELS is
+      // waiting on — not a blank page.
       vi.resetModules();
       setupPlanDom();
+      const { state } = await import('../src/ui/state.ts');
+      state.latestDevices = [
+        { id: 'dev-1', name: 'Heater', targets: [], available: true },
+      ] as unknown as typeof state.latestDevices;
+      state.devicesLoaded = true;
+      const { renderPlan } = await import('../src/ui/plan.ts');
+
+      renderPlan(null);
+
+      expect(document.querySelector('#plan-empty')).toBeNull();
+      expect(document.querySelector('#plan-cards')?.textContent).toContain('Heater');
+      expect(document.querySelector('#plan-cards')?.textContent)
+        .toContain('Waiting for the first power reading');
+    });
+
+    it('keeps the device but drops its decision when the plan later becomes unavailable', async () => {
+      vi.resetModules();
+      setupPlanDom();
+      // The Overview's cards are device rows, so seed the device list this
+      // fixture implies.
+      const { state } = await import('../src/ui/state.ts');
+      state.latestDevices = [{ id: 'dev-clear', name: 'Device to clear', targets: [], available: true }] as unknown as typeof state.latestDevices;
+      state.devicesLoaded = true;
       const { renderPlan } = await import('../src/ui/plan.ts');
 
       renderPlan(normalizePlanSnapshot({
@@ -1084,14 +1125,25 @@ describe('Redesign plan UI', () => {
 
       renderPlan(null);
 
+      // The DECISION is gone, so the decided card is: `data-device-id` is
+      // stamped by the plan-backed cards only. The DEVICE is not gone — losing
+      // the plan is losing PELS's answer about the device, not the device
+      // itself, and the surface says which one it lost.
       expect(document.querySelector('[data-device-id="dev-clear"]')).toBeNull();
-      expect((document.querySelector('#plan-empty') as HTMLElement | null)?.textContent)
-        .toContain('No plan available yet');
+      expect(document.querySelector('#plan-empty')).toBeNull();
+      expect(document.querySelector('#plan-cards')?.textContent).toContain('Device to clear');
+      expect(document.querySelector('#plan-cards')?.textContent)
+        .toContain('Waiting for the first power reading');
     });
 
     it('refreshes the plan when the power endpoint fails', async () => {
       vi.resetModules();
       setupPlanDom();
+      // The Overview's cards are device rows, so seed the device list this
+      // fixture implies.
+      const { state } = await import('../src/ui/state.ts');
+      state.latestDevices = [{ id: 'dev-refresh', name: 'Refreshed device', targets: [], available: true }] as unknown as typeof state.latestDevices;
+      state.devicesLoaded = true;
       const homey = installHomeyMock({
         uiState: {
           plan: normalizePlanSnapshot({
