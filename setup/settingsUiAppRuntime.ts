@@ -4,7 +4,11 @@ import type {
   SettingsUiPlanDevice,
   SettingsUiPlanSnapshot,
 } from '../packages/contracts/src/settingsUiApi';
-import type { AssociatedCarSnapshot, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type {
+  AssociatedCarSnapshot,
+  ProjectedObservedDeviceState,
+  TargetDeviceSnapshot,
+} from '../packages/contracts/src/types';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
 // Sentinel prefix the settings UI matches to detect the PELS boot/restart
@@ -23,6 +27,7 @@ type SettingsUiRuntimeApp = Homey.App & {
   latestTargetSnapshot?: TargetDeviceSnapshot[];
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
   deviceManager?: { getAssociatedCar?: (chargerId: string) => AssociatedCarSnapshot | undefined };
+  getObservedState?: (deviceId: string) => ProjectedObservedDeviceState | undefined;
   powerTracker?: PowerTrackerState;
   canContributeCurtailmentSurplus?: () => boolean;
   getLatestPlanSnapshotForUi?: () => SettingsUiPlanSnapshot | null;
@@ -79,6 +84,26 @@ export const getAssociatedCarForUiFromApp = (
   chargerId: string,
 ): AssociatedCarSnapshot | undefined => (
   getRuntimeApp(homey)?.deviceManager?.getAssociatedCar?.(chargerId)
+);
+
+/**
+ * The live observed-state read, from the observer projection that owns it.
+ *
+ * Same reason as the car association above: the stored device snapshot is
+ * rebuilt only at :25/:55, so its observed half is up to half an hour stale by
+ * the time the settings UI reads it. The projection is the observer's current
+ * answer, so `/ui_devices` overlays it per read rather than serving the stored
+ * copy.
+ *
+ * `undefined` means the projection holds no entry for this device yet (never
+ * observed). That is an absence, not a reading — the caller keeps the stored
+ * snapshot rather than blanking it.
+ */
+export const getObservedStateForUiFromApp = (
+  homey: Homey.App['homey'],
+  deviceId: string,
+): ProjectedObservedDeviceState | undefined => (
+  getRuntimeApp(homey)?.getObservedState?.(deviceId)
 );
 
 export const getUiPickerDevicesFromApp = (homey: Homey.App['homey']): TargetDeviceSnapshot[] => {
