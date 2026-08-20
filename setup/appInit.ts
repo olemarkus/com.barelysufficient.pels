@@ -19,6 +19,7 @@ export {
   type CancelDeferredObjectiveOutcome,
 } from './appInit/deferredObjectiveCancel';
 export { createDeferredObjectiveLifecycleEmitter } from './appInit/deferredObjectiveLifecycle';
+export { subscribePlanObservedState } from './appInit/planObservedStateSubscription';
 export { createDeviceDiagnosticsService } from './appInit/deviceDiagnosticsService';
 export { createDailyBudgetService } from './appInit/createDailyBudgetService';
 export { createPlanEngine, createPlanEngineComposition } from './appInit/createPlanEngine';

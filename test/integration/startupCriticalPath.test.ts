@@ -242,7 +242,7 @@ describe('startup critical path perf guardrails', () => {
     delete params.ctx.planService;
 
     await expect(startAppServices(params.ctx)).rejects.toThrow(
-      'PlanService must be initialized before app services start.',
+      'PlanService must be initialized before use.',
     );
   });
 

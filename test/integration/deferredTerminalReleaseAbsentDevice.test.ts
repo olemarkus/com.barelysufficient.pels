@@ -151,3 +151,57 @@ describe('handleDeferredDeadlineReached — observer availability is authoritati
     expect((settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
   });
 });
+
+/**
+ * A device with no commandable axis at all — a target-only thermostat whose
+ * owner switched temperature control off has no target axis (the flag), no step
+ * axis (the producer strips the ladder with the same flag) and no binary axis.
+ * `getPlanDevices()` filters on MANAGED status, not axis presence, so such a
+ * device legitimately reaches the terminal release.
+ */
+describe('handleDeferredDeadlineReached — undriveable device must not disarm within grace', () => {
+  const buildCtxWithUndriveableDevice = () => {
+    const built = buildCtx();
+    built.ctx.deviceControlHelpers.getLifecycleFallbackDevice = () => ({
+      id: 'd1',
+      name: 'Thermostat',
+      communicationModel: 'local',
+      binaryAxis: { state: 'unavailable' },
+      targetAxis: { state: 'unavailable' },
+      stepAxis: { state: 'unavailable' },
+    });
+    built.ctx.getObservedState = () => ({
+      id: 'd1',
+      name: 'Thermostat',
+      available: true,
+      targets: [],
+    }) as unknown as ReturnType<AppContext['getObservedState']>;
+    return built;
+  };
+
+  it('does NOT disarm a task whose device has no writable axis while within grace', () => {
+    const { ctx, settingsStore, forgetDevice } = buildCtxWithUndriveableDevice();
+
+    handleDeferredDeadlineReached(ctx, 'd1', DEADLINE, DEADLINE + 60_000);
+
+    expect((settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(true);
+    expect(forgetDevice).not.toHaveBeenCalled();
+  });
+
+  it('gives up and disarms once the grace window has elapsed', () => {
+    const { ctx, settingsStore, forgetDevice } = buildCtxWithUndriveableDevice();
+
+    handleDeferredDeadlineReached(ctx, 'd1', DEADLINE, DEADLINE + GRACE_MS + 1);
+
+    expect((settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
+    expect(forgetDevice).toHaveBeenCalledWith('d1');
+  });
+
+  // The whole reason this is a result and not a throw: the caller loops over
+  // every task's diagnostic with no per-device guard.
+  it('returns rather than throwing, so the rest of the lifecycle tick still runs', () => {
+    const { ctx } = buildCtxWithUndriveableDevice();
+
+    expect(() => handleDeferredDeadlineReached(ctx, 'd1', DEADLINE, DEADLINE + 60_000)).not.toThrow();
+  });
+});

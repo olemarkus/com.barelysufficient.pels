@@ -11,11 +11,7 @@
  */
 import type Homey from 'homey';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
-import type {
-  ObservedStateChangedEvent,
-  ObservedStateEmitter,
-  PlanReconcileObservedEvent,
-} from '../../lib/observer/observedStateEvents';
+import type { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import type { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
@@ -23,8 +19,6 @@ import {
   createCalibrationSnapshotMutationHook,
   type PowerCalibrationStore,
 } from '../../lib/device/devicePowerCalibrationStore';
-import { isStateOfChargeCapabilityId } from '../../lib/device/transport/stateOfCharge';
-import { incPerfCounters } from '../../lib/utils/perfCounters';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
@@ -84,70 +78,37 @@ export type DeviceTransportWiringDeps = {
   scheduleRealtimeDeviceReconcile: (event: RealtimeDeviceReconcileEvent) => void;
 };
 
-function shouldRebuildPlanForRealtimeEvSocObservation(
-  deps: DeviceTransportWiringDeps,
-  event: ObservedStateChangedEvent,
-): boolean {
-  const capabilityIds = [
-    ...(event.capabilityId ? [event.capabilityId] : []),
-    ...(event.observedCapabilityIds ?? []),
-  ];
-  if (!capabilityIds.some((capabilityId) => isStateOfChargeCapabilityId(capabilityId))) return false;
-  return deps.hasEnabledEvBoostForSnapshot(deps.getSnapshotDevice(event.deviceId));
-}
-
-function subscribeObservedState(deps: DeviceTransportWiringDeps): void {
-  const { ctx } = deps;
+/**
+ * Feeds the observer-owned projection. Registered with the transport (inside
+ * `initDeviceManager`) because it depends on nothing but the projection itself
+ * — the plan-dependent listeners are registered separately, later, by
+ * {@link subscribePlanObservedState}.
+ *
+ * Wiring subscribes to the observer-owned emitter rather than the transport-side
+ * EventEmitter. Transport's dispatcher routes every post-translation event
+ * through `observedStateEmitter`, which is the single source of truth for
+ * realtime fan-out post-PR #5. See
+ * notes/state-management/observer-transport-split.md.
+ *
+ * These two register FIRST, before any listener that reads the projection.
+ * Listeners fire in registration order, and `syncLivePlanState` in the plan-side
+ * subscription reads the projection (via `toPlanDevice`'s
+ * `currentOn`/`currentState`); applying the event here first ensures that pass
+ * sees the freshly-merged observed value for the same event instead of the
+ * previous one (stage 4b). Splitting the subscription in two PRESERVES that
+ * order — the plan-side listeners can only ever register later.
+ *
+ * NB: the projection is seeded lazily on the first plan build
+ * (`createPlanService.getPlanDevices` → `ctx.seedObservedStateFromSnapshot`),
+ * not here: right after this wiring the transport's `getSnapshot()` is still
+ * empty (transport `init()` only attaches the live feed; the first snapshot
+ * arrives with the bootstrap refresh, which dispatches its own refresh into
+ * the projection). Seeding here would be a guaranteed no-op.
+ */
+function subscribeObservedStateProjection(deps: DeviceTransportWiringDeps): void {
   const emitter = deps.getObservedStateEmitter();
-  // Wiring subscribes to the observer-owned emitter rather than the
-  // transport-side EventEmitter. Transport's dispatcher routes every
-  // post-translation event through `observedStateEmitter`, which is the
-  // single source of truth for realtime fan-out post-PR #5. See
-  // notes/state-management/observer-transport-split.md.
-  emitter.onPlanReconcile((event: PlanReconcileObservedEvent) => {
-    deps.scheduleRealtimeDeviceReconcile(event);
-  });
-  // Feed the projection FIRST, before any listener that reads it. Listeners
-  // fire in registration order, and `syncLivePlanState` below reads the
-  // projection (via `toPlanDevice`'s `currentOn`/`currentState`); applying the
-  // event here first ensures that pass sees the freshly-merged observed value for
-  // the same event instead of the previous one (stage 4b).
   emitter.onObservedStateChanged((e) => deps.getObservedDeviceStateProjection().applyDelta(e));
   emitter.onObservedStateRefresh((e) => deps.getObservedDeviceStateProjection().applyRefresh(e));
-  // NB: the projection is seeded lazily on the first plan build
-  // (`createPlanService.getPlanDevices` → `ctx.seedObservedStateFromSnapshot`),
-  // not here: right after this wiring the transport's `getSnapshot()` is still
-  // empty (transport `init()` only attaches the live feed; the first snapshot
-  // arrives with the bootstrap refresh, which dispatches its own refresh into
-  // the projection). Seeding here would be a guaranteed no-op.
-  emitter.onObservedStateChanged((event: ObservedStateChangedEvent) => {
-    if (shouldRebuildPlanForRealtimeEvSocObservation(deps, event)) {
-      incPerfCounters([
-        'plan_rebuild_requested_total',
-        'plan_rebuild_requested.flow_total',
-        'plan_rebuild_requested.flow.realtime_ev_soc_total',
-      ]);
-      deps.planRebuildScheduler.request({
-        kind: 'flow',
-        reason: 'realtime_ev_soc',
-      });
-    }
-    if (
-      event.measurePowerBecameSignificantlyPositive === true
-      && ctx.isCapacityControlEnabled(event.deviceId)
-    ) {
-      // eslint-disable-next-line functional/immutable-data -- shared AppContext write
-      ctx.powerSampleRebuildState = {
-        ...ctx.powerSampleRebuildState,
-        shortfallSuppressionInvalidated: true,
-      };
-    }
-    // `?.` is load-bearing, NOT a default (`setup/AGENTS.md`): this wiring runs
-    // before `initPlanService`, so an observed-state event inside the boot
-    // window has no plan service to sync and is dropped by design. Asserting
-    // here would break boot; the call yields no value, so nothing is fabricated.
-    void ctx.planService?.syncLivePlanState(event.source);
-  });
 }
 
 export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Promise<void> {
@@ -220,5 +181,5 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
     () => ctx.deviceManager?.tickEvCarLink(Date.now()),
     EV_CAR_LINK_TICK_INTERVAL_MS,
   ));
-  subscribeObservedState(deps);
+  subscribeObservedStateProjection(deps);
 }

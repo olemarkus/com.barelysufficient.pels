@@ -17,6 +17,7 @@ import type { RealtimeReconcileHooks } from './homeRuntime/createHomeCapacityBun
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import { normalizeError } from '../lib/utils/errorUtils';
+import { requirePlanService } from './appInit/contextGuards';
 
 /**
  * Structural slice of the home-runtime registry the reconcile router consumes
@@ -65,13 +66,15 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
     ? 'realtimeDeviceReconcile'
     : `realtimeDeviceReconcile:${subHomeRoute.homeId}`;
   const targetSnapshotForEvent = perEventCache(() => ctx.latestTargetSnapshot);
+  // This lane is only reachable from `subscribePlanObservedState`, which the
+  // startup sequence registers after `initPlanService` — so the plan service is
+  // present, and `null` here means "no plan built yet", never "no service".
   const getLatestPlanSnapshot = subHomeHooks?.getLatestPlanSnapshot
-    ?? ((): DevicePlan | null => ctx.planService?.getLatestPlanSnapshot() ?? null);
+    ?? ((): DevicePlan | null => requirePlanService(ctx).getLatestPlanSnapshot());
   const requestRebuild = subHomeHooks?.requestRebuild
-    ?? (async (): Promise<string[]> => {
-      const outcome = await ctx.planService?.rebuildPlanFromCache('device_observation_changed');
-      return outcome?.writtenDeviceIds ?? [];
-    });
+    ?? (async (): Promise<string[]> => (
+      (await requirePlanService(ctx).rebuildPlanFromCache('device_observation_changed')).writtenDeviceIds
+    ));
   if (applyExternalOffHoldToReconcile({
     ctx,
     event,
@@ -143,7 +146,7 @@ function buildExternalOffHoldHooks(
         ctx.planEngine?.clearRecentBinaryOffCommand(deviceId);
       }),
     rebuild: subHomeHooks?.rebuild
-      ?? ((reason: string) => ctx.planService?.rebuildPlanFromCache(reason) ?? Promise.resolve()),
+      ?? ((reason: string): Promise<unknown> => requirePlanService(ctx).rebuildPlanFromCache(reason)),
   };
 }
 

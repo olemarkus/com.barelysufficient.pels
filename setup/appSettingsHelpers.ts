@@ -65,6 +65,7 @@ import type { PriceCoordinator } from '../lib/price/priceCoordinator';
 import type { SettingsHandler } from '../lib/utils/settingsHandlers';
 import type { AppContext } from '../lib/app/appContext';
 import { resolveTemperatureControlDisabled } from './appDeviceControlHelpers';
+import { requirePlanService } from './appInit/contextGuards';
 
 export type CapacitySettingsSnapshot = {
   capacitySettings: { limitKw: number; marginKw: number };
@@ -412,13 +413,6 @@ function requirePriceCoordinator(ctx: AppContext): PriceCoordinator {
     throw new Error('PriceCoordinator must be initialized before settings handler setup.');
   }
   return ctx.priceCoordinator;
-}
-
-function requirePlanService(ctx: AppContext) {
-  if (!ctx.planService) {
-    throw new Error('PlanService must be initialized before settings handler setup.');
-  }
-  return ctx.planService;
 }
 
 function requireDailyBudgetService(ctx: AppContext) {

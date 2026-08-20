@@ -23,6 +23,7 @@
  * target with no capacity pressure at all — exactly as main does. That is the
  * restore anchor; see `getModeDeviceTargets` below.
  */
+import { requirePlanService } from '../appInit/contextGuards';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -218,13 +219,15 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
   });
   const binaryCommandReachability = createBinaryCommandReachability({
     requestRebuild: () => {
-      queueMicrotask(() => { void ctx.planService?.rebuildPlanFromCache('binary_command_reachability_changed'); });
+      queueMicrotask(() => {
+        void requirePlanService(ctx).rebuildPlanFromCache('binary_command_reachability_changed');
+      });
     },
     scheduleRebuild: (deviceId, dueAtMs) => {
       const key = `binaryCommandReachability:${homeId}:${deviceId}`;
       ctx.timers.registerTimeout(key, setTimeout(() => {
         ctx.timers.clear(key);
-        void ctx.planService?.rebuildPlanFromCache('binary_command_reachability_deadline');
+        void requirePlanService(ctx).rebuildPlanFromCache('binary_command_reachability_deadline');
       }, Math.max(0, dueAtMs - Date.now())));
     },
     clearScheduledRebuild: (deviceId) => {

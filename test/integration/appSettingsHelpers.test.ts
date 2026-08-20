@@ -274,7 +274,7 @@ describe('initSettingsHandlerForApp', () => {
     delete ctx.planService;
 
     expect(() => initSettingsHandlerForApp(ctx)).toThrow(
-      'PlanService must be initialized before settings handler setup.',
+      'PlanService must be initialized before use.',
     );
   });
 

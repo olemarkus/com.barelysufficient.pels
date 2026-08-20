@@ -782,6 +782,6 @@ describe('app init plan service wiring', () => {
     expect(
       () => (capturedPriceCoordinatorDeps.current as { rebuildPlanFromCache: (reason?: string) => Promise<void> })
         .rebuildPlanFromCache('price_refresh'),
-    ).toThrow('PlanService must be initialized before price coordinator wiring.');
+    ).toThrow('PlanService must be initialized before use.');
   });
 });

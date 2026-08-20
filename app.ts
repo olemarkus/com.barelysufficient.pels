@@ -394,7 +394,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     ...this.targetPowerReachabilityWiring.deviceControlDeps,
     isTemperatureControlDisabled: (deviceId) => this.isTemperatureControlDisabled(deviceId),
     getDeviceSnapshots: () => this.deviceManager?.getSnapshot() ?? [],
-    getLatestPlanSnapshot: () => this.planService?.getLatestPlanSnapshot() ?? null,
+    getLatestPlanSnapshot: () => this.planService.getLatestPlanSnapshot(),
     getStructuredLogger: (component) => this.getStructuredLogger(component),
     debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
   });
@@ -413,7 +413,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     getExpectedPowerKwOverrides: () => this.expectedPowerKwOverrides,
     getLearnedPowerPeaks: () => this.lastKnownPowerKw,
     timers: this.timers,
-    syncHeadroomUsageObservation: (params) => { this.planService?.syncHeadroomUsageObservation(params); },
+    syncHeadroomUsageObservation: (params) => { this.planService.syncHeadroomUsageObservation(params); },
   });
   private readonly nativeWiring = new AppNativeWiring({
     getNativeWiringUninitializing: () => this.nativeWiringUninitializing,
@@ -507,6 +507,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     initCapacityGuard: () => this.initCapacityGuard(),
     initDeviceDiagnosticsService: () => this.initDeviceDiagnosticsService(),
     initPlanService: () => this.initPlanService(),
+    subscribePlanObservedState: () => this.subscribePlanObservedState(),
     captureDefaultDynamicSoftLimit: () => this.captureDefaultDynamicSoftLimit(),
     initSettingsHandler: () => this.initSettingsHandler(),
   });
@@ -593,7 +594,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   }
 
   public syncLivePlanStateAfterTargetActuation(source: PendingTargetObservationSource): boolean | void {
-    return this.planService?.syncLivePlanStateInline(source) ?? false;
+    return this.planService.syncLivePlanStateInline(source);
   }
 
   public evaluateHeadroomForDevice(
@@ -655,6 +656,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   }
   private initPlanService(): void {
     this.serviceWiring.initPlanService();
+  }
+  private subscribePlanObservedState(): void {
+    this.serviceWiring.subscribePlanObservedState();
   }
   private getPlanRebuildNowMs(): number {
     return this.planRebuildScheduler.now().nowMs;
@@ -783,7 +787,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     return this.dailyBudgetService.applyModelSettings(settings);
   }
   public getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null {
-    return this.planService?.getLatestPlanSnapshotForUi() ?? null;
+    return this.planService.getLatestPlanSnapshotForUi();
   }
   public updateOverheadToken = async (value?: number): Promise<void> => {
     const overhead = Number.isFinite(value) ? Number(value) : this.capacitySettings.marginKw;
@@ -859,7 +863,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   }
   public getCurrentPriceLevel(): PriceLevel {
     const status = this.homey.settings.get('pels_status') as { priceLevel?: PriceLevel } | null;
-    return (status?.priceLevel || this.planService?.getLastNotifiedPriceLevel() || PriceLevel.UNKNOWN) as PriceLevel;
+    return (status?.priceLevel || this.planService.getLastNotifiedPriceLevel() || PriceLevel.UNKNOWN) as PriceLevel;
   }
   private logPeriodicStatus(options: { includeDeviceHealth?: boolean } = {}): void {
     const periodicStatusParams = {
@@ -1009,7 +1013,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
       ?? { generatedAt: Date.now(), windowDays: 21, diagnosticsByDeviceId: {} };
   }
   public getDeviceLogUiPayload(): SettingsUiDeviceLogPayload {
-    return this.planService?.getDeviceLogUiPayload() ?? { version: 1, entriesByDeviceId: {} };
+    return this.planService.getDeviceLogUiPayload();
   }
   // Hidden weather-insight readout (null = flag off → structural UI absence).
   public getWeatherAdvisorReadout(): Promise<WeatherAdvisorReadoutPayload | null> {

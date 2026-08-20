@@ -3,6 +3,7 @@ import { computeShortfallThreshold } from '../../lib/plan/planBudget';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import { getLogger } from '../../lib/logging/logger';
 import type { AppContext } from '../../lib/app/appContext';
+import { requirePlanService } from './contextGuards';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import {
   createCapacityShortfallSideEffectGate,
@@ -45,8 +46,8 @@ export const createMainCapacityGuard = (params: {
     isTemporarilyFenced: params.isTemporarilyFenced,
     shouldHoldDeferredForPreparedApply: params.isPreparedReconcileActive,
     scheduleRetry: scheduleShortfallRetry,
-    applyShortfall: async (deficitKw) => ctx.planService?.handleShortfall(deficitKw),
-    applyClear: async () => ctx.planService?.handleShortfallCleared(),
+    applyShortfall: (deficitKw) => requirePlanService(ctx).handleShortfall(deficitKw),
+    applyClear: () => requirePlanService(ctx).handleShortfallCleared(),
   });
   const shortfallAlertDispatch = createCapacityShortfallAlertDispatch({
     homeId: MAIN_HOME_ID,
