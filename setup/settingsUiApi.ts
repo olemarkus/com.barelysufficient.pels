@@ -31,13 +31,18 @@ import type {
   SettingsUiPricesPayload,
   SettingsUiResetPowerStatsResponse,
 } from '../packages/contracts/src/settingsUiApi';
-import type { DecoratedDeviceSnapshot, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type {
+  DecoratedDeviceSnapshot,
+  ProjectedObservedDeviceState,
+  TargetDeviceSnapshot,
+} from '../packages/contracts/src/types';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { hasSolarProductionCandidate } from '../lib/device/solarPresence';
 import type { WeatherAdvisorReadoutPayload } from '../packages/contracts/src/weatherAdvisorTypes';
 import {
   getAssociatedCarForUiFromApp,
   getLatestDevicesForUiFromApp,
+  getObservedStateForUiFromApp,
   getPlanSnapshotForUiFromHomey,
   getCurtailmentCanContributeForUiFromApp,
   getPowerTrackerForUiFromApp,
@@ -123,8 +128,105 @@ const asDailyBudgetModelSettings = (value: unknown): Partial<DailyBudgetModelSet
 const getRawSettingsUiDeviceCandidates = ({ homey }: ApiContext): DecoratedDeviceSnapshot[] => {
   const managed = getLatestDevicesForUiFromApp(homey) ?? [];
   const unmanagedEligible = getUiPickerDevicesFromApp(homey);
-  return withAssociatedCars(homey, [...managed, ...unmanagedEligible]);
+  return withLiveObservedState(homey, withAssociatedCars(homey, [...managed, ...unmanagedEligible]));
 };
+
+/**
+ * The observed fields `/ui_devices` refreshes from the observer projection.
+ *
+ * An explicit list, not a spread of the whole projection, because the payload
+ * is the DECORATED snapshot and two of the projection's fields are decoration
+ * outputs rather than raw observations:
+ *
+ * - `binaryControl` — `decorateSnapshotWithDeviceControl` RESOLVES it from the
+ *   selected rung for a STEPPED LOAD (`resolveSteppedLoadCurrentOn`). A stepped
+ *   device whose raw on/off axis is on while its resolved rung is the off step
+ *   is correctly `{ on: false }` after decoration; overlaying the raw value
+ *   would put the resolved answer back to the un-resolved one. That is the only
+ *   branch that resolves it, so for every OTHER device the stored value is the
+ *   same raw observation the projection holds, only older — and the principal
+ *   on/off axis is exactly what this seam exists to keep current. Hence the
+ *   per-device list below rather than a blanket exclusion.
+ * - `reportedStepId` — the decorator normalizes it for a stepped load and
+ *   clears it outright for a temperature-control-disabled device, which is
+ *   `binary_power` by then. Both branches own it, so it is never refreshed.
+ *
+ * `id` and `name` are the join keys and are the descriptor's, not an
+ * observation; they are never overlaid.
+ *
+ * Keeping this a list rather than an exclusion set is the point: a field is
+ * refreshed only once someone has decided it is raw-observed, so a decoration
+ * added later cannot be silently clobbered by this seam.
+ */
+const LIVE_OBSERVED_FIELDS = [
+  'available',
+  'targets',
+  'binaryControlObservation',
+  'measuredPowerKw',
+  'measuredPowerObservedAtMs',
+  'temperature',
+  'stateOfCharge',
+  'evCharging',
+  'evChargingObservedAtMs',
+  'evChargingState',
+  'lastFreshDataMs',
+  'lastLocalWriteMs',
+  'lastUpdated',
+] as const satisfies readonly (keyof ProjectedObservedDeviceState)[];
+
+/**
+ * Refreshes each device's observed state from the observer projection that owns
+ * it.
+ *
+ * Same read-time treatment, and the same reason, as `withAssociatedCars` below:
+ * `latestTargetSnapshot` is rebuilt on `SNAPSHOT_REFRESH_MINUTE_INTERVALS`
+ * (:25/:55), so the observed values it carries are up to half an hour old while
+ * the settings UI re-reads this payload continuously.
+ *
+ * Two absences are deliberately no-ops rather than writes, because neither is a
+ * reading PELS took:
+ *
+ * - a device with no projection entry keeps its stored snapshot. For a managed
+ *   device that means "not observed yet" (boot). It is also the permanent state
+ *   of an unmanaged PICKER device: the projection is fed from the committed
+ *   runtime snapshot, which drops unmanaged devices, so picker rows are served
+ *   from their cached parse and are NOT refreshed here. See `TODO.md`.
+ * - a field the projection does not carry keeps its stored value, rather than
+ *   being blanked to `undefined`.
+ */
+const withLiveObservedState = (
+  homey: ApiContext['homey'],
+  devices: DecoratedDeviceSnapshot[],
+): DecoratedDeviceSnapshot[] => devices.map((device) => {
+  const observed = getObservedStateForUiFromApp(homey, device.id);
+  return observed
+    ? { ...device, ...pickLiveObservedFields(observed, resolveLiveObservedFields(device)) }
+    : device;
+});
+
+// The stepped branch of the decorator is the only one that resolves
+// `binaryControl`, and it is the only branch that stamps this control model —
+// so this is the exact condition under which the stored value is a decision
+// rather than an observation.
+const resolveLiveObservedFields = (
+  device: DecoratedDeviceSnapshot,
+): readonly (keyof ProjectedObservedDeviceState)[] => (
+  device.controlModel === 'stepped_load'
+    ? LIVE_OBSERVED_FIELDS
+    : [...LIVE_OBSERVED_FIELDS, 'binaryControl']
+);
+
+// The listed fields the projection actually carries, as a patch. A field the
+// projection omits is left out rather than written as `undefined`, so the
+// stored value carries forward instead of being blanked.
+const pickLiveObservedFields = (
+  observed: ProjectedObservedDeviceState,
+  fields: readonly (keyof ProjectedObservedDeviceState)[],
+): Partial<DecoratedDeviceSnapshot> => Object.fromEntries(
+  fields
+    .filter((field) => observed[field] !== undefined)
+    .map((field) => [field, observed[field]]),
+);
 
 /**
  * Decorates each device with the car associated with it right now, resolved from

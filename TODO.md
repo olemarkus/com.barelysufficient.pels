@@ -977,6 +977,31 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Unmanaged picker devices are served from a cached parse, so their observed state is
+      up to half an hour stale.** `/ui_devices` merges the managed snapshot with the
+      unmanaged-but-eligible picker list, and `withLiveObservedState`
+      (`setup/settingsUiApi.ts`) refreshes only the devices the observer projection holds. The
+      projection is fed from the committed runtime snapshot
+      (`lib/device/transport/snapshotRefresh.ts`), and runtime parsing drops unmanaged devices
+      (`lib/device/transport/managerManagedFilter.ts`), so a picker row never has an entry.
+      Its availability and control state are whatever the last snapshot rebuild parsed.
+
+      **Where:** `withLiveObservedState` in `setup/settingsUiApi.ts`, the picker reparse in
+      `lib/device/transport/snapshotRefresh.ts`.
+
+      **What changes:** rule on whether eligible-but-unmanaged devices get observer coverage.
+      Either feed their observations into an observer-owned read model so the same projection
+      answers for them, or add a separate live picker-state accessor and refresh from that.
+      Doing neither is also a decision — say so where the limit is, and the entry closes.
+
+      **Done when:** a picker-only device whose availability changes between snapshot rebuilds is
+      served its current value by `/ui_devices`, pinned by a test alongside the existing
+      picker-cached-parse case in `test/integration/settingsUiApi.test.ts`.
+
+      *Found by adversarial review of the live-observed-state change (2026-08-20). Pre-existing
+      staleness — that change made managed devices live and left this population behind, rather
+      than introducing it.* [P2]
+
 - [ ] **A stepped write that throws records nothing, so the next cycle re-commands with no backoff.**
       `executeSteppedLoadCommand` (`lib/executor/steppedLoadExecutorCommand.ts`) calls
       `recordAcceptedSteppedLoadCommand` — which is what marks the desired step issued — only on the
