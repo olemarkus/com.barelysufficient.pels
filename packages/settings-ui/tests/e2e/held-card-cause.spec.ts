@@ -80,7 +80,7 @@ const applyProdHeldState = async (page: Page) => {
 };
 
 const reasonLine = (page: Page) => page.locator(
-  '[data-device-id="dev_bedroom"] :is(.plan-card__reason, .plan-card__temp-reason, .plan-card__status-line)',
+  '#plan-cards [data-device-id="dev_bedroom"] :is(.plan-card__reason, .plan-card__temp-reason, .plan-card__status-line)',
 );
 
 // Scoped to the Power-now section: the hero has several sublines and the daily
@@ -107,7 +107,10 @@ test('the card never repeats the ceiling or claims PELS turned the device off', 
   await page.waitForTimeout(600);
   await applyProdHeldState(page);
 
-  const card = page.locator('[data-device-id="dev_bedroom"]');
+  // Scoped to the Overview's card container: `data-device-id` is also stamped
+  // on the Devices list row and the Modes row/target input, and those panels
+  // paint at boot now that the Overview loads the device payload.
+  const card = page.locator('#plan-cards [data-device-id="dev_bedroom"]');
   const text = (await card.textContent()) ?? '';
   for (const retired of [
     'Turned off by PELS',

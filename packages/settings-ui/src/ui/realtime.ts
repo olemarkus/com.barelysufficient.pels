@@ -31,6 +31,7 @@ import { createSettingsSetHandler, createSettingsUnsetHandler } from './settings
 import {
   isPanelVisible,
   loadDevicesOnce,
+  loadDevicesForOverview,
   refreshDevicesForUi,
   refreshPlanForUi,
   refreshPowerDataIfVisible,
@@ -201,6 +202,12 @@ export const startStaleDataRefreshInterval = () => {
     refreshStaleDataStatus('staleDataInterval');
     if (isPanelVisible('#overview-panel')) {
       refreshPlanForUi('periodicRefresh');
+      // The Overview's cards are device rows, so the device payload is on this
+      // surface's critical path and shares its cadence. `/ui_devices` resolves
+      // observed state per read, so this is what makes a card's draw and
+      // availability current rather than whatever the last snapshot rebuild
+      // (:25/:55) parsed.
+      loadDevicesForOverview();
     }
   }, 30 * 1000);
 };

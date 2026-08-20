@@ -20,6 +20,8 @@ import {
   refreshWeatherInsightOnWeatherPanel,
 } from './weatherInsight.ts';
 import {
+  ensureDevicePanelsPainted,
+  loadDevicesForOverview,
   loadDevicesOnce,
   refreshPowerData,
   runLoggedTask,
@@ -69,6 +71,10 @@ const refreshHomeSettingsPanel = (tabId: string): void => {
 const runTabActivationSideEffects = (tabId: string) => {
   if (tabId === 'overview') {
     document.dispatchEvent(new Event('overview-tab-activated'));
+    // The Overview's cards are device rows, so it needs the device payload —
+    // without repainting the hidden device panels, which paint on their own
+    // activation.
+    loadDevicesForOverview();
     // Scope-aware panel activation hook (multi-home, the Usage pattern below):
     // settle the meter-area roster — and a persisted or just-invalidated area
     // pick — BEFORE resolving which home's plan to read. A roster-refresh
@@ -192,7 +198,11 @@ export const showTab = (tabId: string) => {
   // `display:none` → visible, leaving SVG widths stuck at the 480 px fallback.
   document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId } }));
   runTabActivationSideEffects(tabId);
-  if (DEVICE_DEPENDENT_TABS.has(tabId) && !state.devicesLoaded && !state.devicesLoading) {
-    loadDevicesOnce();
+  if (DEVICE_DEPENDENT_TABS.has(tabId)) {
+    // The Overview may have loaded the payload already (its cards are device
+    // rows), and `loadDevicesOnce` short-circuits once loaded — so an opening
+    // device panel repaints from the store instead of being left empty.
+    if (!state.devicesLoaded && !state.devicesLoading) loadDevicesOnce();
+    else ensureDevicePanelsPainted();
   }
 };

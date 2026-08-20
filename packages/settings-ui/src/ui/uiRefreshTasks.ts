@@ -162,7 +162,51 @@ const renderLatestDevices = (devices: Awaited<ReturnType<typeof getTargetDevices
   renderDevices(devices);
   updatePriceConfigDevices(devices);
   refreshAdvancedDeviceCleanup();
+  // The Overview's cards are DEVICE rows, so a new device list is a reason to
+  // repaint it — the plan alone no longer determines what it shows. Without
+  // this, a device list that arrives after the plan leaves the Overview blank
+  // until the next plan or power event, which on a flow-powered install can be
+  // an unbounded wait.
+  refreshOverviewPlanIfVisible('devicesUpdated');
   document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
+};
+
+/**
+ * Loads the device payload for the OVERVIEW without repainting anything else.
+ *
+ * The Overview needs `state.latestDevices` because its cards are device rows
+ * now, but it does not need the Devices list, the priority rows, or the
+ * price-optimization list painted — those panels are hidden, and painting them
+ * from here made their DOM appear at boot, before the settings those rows read
+ * had loaded. Each device panel still paints on its own activation
+ * (`ensureDevicePanelsPainted`), which is where it always did.
+ */
+export const loadDevicesForOverview = () => {
+  if (state.devicesLoaded || state.devicesLoading) return;
+  state.devicesLoading = true;
+  getTargetDevices()
+    .then((devices) => {
+      state.devicesLoaded = true;
+      state.latestDevices = devices;
+      refreshOverviewPlanIfVisible('overviewDeviceLoad');
+    })
+    .catch((error) => {
+      void logSettingsError('Failed to load devices', error, 'loadDevicesForOverview');
+    })
+    .finally(() => {
+      state.devicesLoading = false;
+    });
+};
+
+/**
+ * A device panel is opening and the payload is already in the store — repaint
+ * from it. Needed because the Overview may have loaded the devices first, and
+ * `loadDevicesOnce` short-circuits once they are loaded, which would otherwise
+ * leave the opening panel empty.
+ */
+export const ensureDevicePanelsPainted = () => {
+  if (!state.devicesLoaded) return;
+  renderLatestDevices(state.latestDevices);
 };
 
 export const loadDevicesOnce = () => {

@@ -13,10 +13,13 @@ import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
 import { callApi, getApiReadModel } from './homey.ts';
 import { getHomeScope } from './homeScope.ts';
 import { readAreaSimulationPosture, readOverviewPlan } from './overviewPlanRead.ts';
+import { readOverviewDevices } from './overviewDevicesRead.ts';
+import type { SettingsUiOverviewDevice } from './overviewDeviceRows.ts';
 import { readUsagePower } from './usagePowerRead.ts';
 import { getPricesReadModel } from './prices.ts';
 import { renderPlanOverview } from './views/PlanOverview.tsx';
 import { planNeedsLiveUpdates } from './planLiveData.ts';
+import { buildOverviewDeviceRows } from './overviewDeviceRows.ts';
 import { parsePlanSnapshot } from './planSnapshotParse.ts';
 import { registerPlanSurfaceRenderer } from './planSurfaceRefresh.ts';
 import { state } from './state.ts';
@@ -84,6 +87,32 @@ type OverviewScope =
 
 let overviewScope: OverviewScope = { kind: 'main' };
 
+// A selected meter area's OWN devices, from its `?homeId=` read.
+//
+// Main deliberately does NOT use this: its device list is the bare-URI one
+// `state.latestDevices` already holds and every other surface shares, kept
+// current by `refreshDevicesForUi` on this surface's own cadence. An area
+// cannot borrow that list — it is Main's, and rendering it under the area's
+// scope chip is the cross-home lie the scope bar promises not to tell.
+// KEYED BY HOME, not a bare list. Switching area A -> B changes the scope and
+// repaints before B's read lands, so an unkeyed cache would render A's devices
+// under B's chip — the same cross-home lie the scoped read exists to prevent.
+// A cache for a home that is not the one on screen is simply not used.
+let scopedDevices: { homeId: string; devices: readonly SettingsUiOverviewDevice[] } | null = null;
+
+// The device list the surface is currently about, resolved by scope.
+const overviewDevices = (): readonly SettingsUiOverviewDevice[] => {
+  if (overviewScope.kind === 'main') return state.latestDevices;
+  return scopedDevices?.homeId === overviewScope.homeId ? scopedDevices.devices : [];
+};
+
+// Whether that list has been DELIVERED. The empty state is a device-list
+// verdict, so it must wait for the device list or it renders "No managed
+// devices" for the moment before the first response.
+const overviewDevicesResolved = (): boolean => (
+  overviewScope.kind === 'main' ? state.devicesLoaded : scopedDevices?.homeId === overviewScope.homeId
+);
+
 const toSolarNowInput = (tracker: SettingsUiPowerPayload['tracker']): SolarNowInput | null => (
   tracker && typeof tracker === 'object'
     ? {
@@ -137,6 +166,10 @@ const doRender = () => {
   }
   const now = Date.now();
   renderPlanOverview(surface, {
+    // Membership and order come from the DEVICE list; the decision comes from
+    // the plan. Resolved here so the view stays props-in.
+    rows: buildOverviewDeviceRows({ devices: overviewDevices(), plan: currentPlan }),
+    devicesResolved: overviewDevicesResolved(),
     plan: currentPlan,
     planResolved: planPayloadReceived,
     scopeUnavailable: overviewScope.kind === 'area' && overviewScope.read === 'unavailable',
@@ -388,8 +421,9 @@ let planRefreshGeneration = 0;
 const refreshAreaPlan = async (homeId: string): Promise<void> => {
   planRefreshGeneration += 1;
   const generation = planRefreshGeneration;
-  const [planRead, power, prices, simulating] = await Promise.all([
+  const [planRead, devicesRead, power, prices, simulating] = await Promise.all([
     readOverviewPlan(),
+    readOverviewDevices(),
     readScopedPowerForPlanRefresh(),
     readPricesForPlanRefresh(),
     readAreaSimulationPosture(homeId),
@@ -411,6 +445,15 @@ const refreshAreaPlan = async (homeId: string): Promise<void> => {
   }
   cachedPowerStatus = power.status;
   cachedSolarNowInput = power.solarNowInput;
+  // An `unavailable` device read is a NO-OP, not an empty list. The two
+  // channels fail independently, and a transient device-read failure is no
+  // evidence about the home's devices — blanking the cards on it would strip a
+  // rendered surface back to nothing and, with the plan still served, claim
+  // this area manages no devices. The last good list for THIS home carries
+  // forward (root AGENTS.md: a transient external failure is a no-op).
+  if (devicesRead.state === 'served') {
+    scopedDevices = { homeId, devices: devicesRead.payload.devices };
+  }
   // The reader already resolved the payload to a snapshot: a `served` plan is
   // either a valid snapshot or a genuine "no plan committed yet". Re-parsing
   // here would re-validate a typed invariant the producer owns.
