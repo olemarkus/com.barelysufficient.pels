@@ -187,8 +187,8 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache();
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(settingsSet).not.toHaveBeenCalledWith(LEGACY_PLAN_SNAPSHOT_SETTING, expect.anything());
     const latestDevice = service.getLatestPlanSnapshot()?.devices[0];
@@ -249,12 +249,12 @@ describe('PlanService', () => {
       isOverviewDebugEnabled: () => true,
     });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
     settingsSet.mockClear();
     realtime.mockClear();
     overviewDebugStructured.mockClear();
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     const snapshotWrites = settingsSet.mock.calls
       .filter((call: unknown[]) => call[0] === LEGACY_PLAN_SNAPSHOT_SETTING);
@@ -349,8 +349,8 @@ describe('PlanService', () => {
       loggers: { debugStructured },
     });
 
-    await service.rebuildPlanFromCache();
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(debugStructured).toHaveBeenCalledTimes(1);
     expect(debugStructured).toHaveBeenCalledWith({
@@ -390,7 +390,7 @@ describe('PlanService', () => {
       overviewDebugStructured,
     });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     const overview = formatDeviceOverview({
       currentState: 'on',
@@ -447,7 +447,7 @@ describe('PlanService', () => {
       deviceOverviewLogRecorder: recorder,
     });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     // Debug log is gated off, but the recorder still captured the entry.
     expect(overviewDebugStructured).not.toHaveBeenCalled();
@@ -509,7 +509,7 @@ describe('PlanService', () => {
       overviewDebugStructured,
     });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
     expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
@@ -560,7 +560,7 @@ describe('PlanService', () => {
       overviewDebugStructured,
     });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'device_overview_changed',
@@ -593,8 +593,8 @@ describe('PlanService', () => {
       overviewDebugStructured,
     });
 
-    await service.rebuildPlanFromCache();
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
   });
@@ -636,12 +636,12 @@ describe('PlanService', () => {
       overviewDebugStructured,
     });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
     overviewDebugStructured.mockClear();
     settingsSet.mockClear();
     realtime.mockClear();
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
     expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
     expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'device_overview_changed',
@@ -692,12 +692,12 @@ describe('PlanService', () => {
       overviewDebugStructured,
     });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
     overviewDebugStructured.mockClear();
     settingsSet.mockClear();
     realtime.mockClear();
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(overviewDebugStructured).not.toHaveBeenCalled();
     expect(settingsSet.mock.calls.filter((call: unknown[]) => call[0] === LEGACY_PLAN_SNAPSHOT_SETTING)).toHaveLength(0);
@@ -727,7 +727,7 @@ describe('PlanService', () => {
       isOverviewDebugEnabled: () => true,
     });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     expect((service as any).lastOverviewSignatureByDeviceId.size).toBe(0);
   });
@@ -961,7 +961,7 @@ describe('PlanService', () => {
       isOverviewDebugEnabled: () => true,
     });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(overviewDebugStructured).toHaveBeenCalledTimes(2);
     expect(overviewDebugStructured.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
@@ -1012,8 +1012,8 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache();
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(settingsSet).not.toHaveBeenCalledWith(LEGACY_PLAN_SNAPSHOT_SETTING, expect.anything());
     expect(service.getLatestPlanSnapshot()?.devices[0].priority).toBe(1);
@@ -1060,7 +1060,7 @@ describe('PlanService', () => {
       loggers: { structuredLog: structuredLog as any },
           });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
     await Promise.resolve();
 
     expect(structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
@@ -1105,8 +1105,8 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache();
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(settingsSet).not.toHaveBeenCalledWith(LEGACY_PLAN_SNAPSHOT_SETTING, expect.anything());
     expect(service.getLatestPlanSnapshot()?.meta.totalKw).toBe(1.2);
@@ -1258,7 +1258,9 @@ describe('PlanService', () => {
 
     // Predicate reports the revision moved → the rebuild aborts before planning
     // or touching devices.
-    const outcome = await service.rebuildPlanFromCache('stale_revision', () => true, onAbort);
+    const outcome = await service.rebuildPlanFromCache('power_delta', {
+      detail: 'stale_revision', shouldAbort: () => true, onAbort,
+    });
     expect(onAbort).toHaveBeenCalledTimes(1);
     expect(outcome.failed).toBe(false);
     expect(outcome.appliedActions).toBe(false);
@@ -1724,7 +1726,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
       devices: [
@@ -1817,7 +1819,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
       devices: [
@@ -1950,7 +1952,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
       devices: [
@@ -2093,7 +2095,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
       devices: [
@@ -2184,7 +2186,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
 
     expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
       devices: [
@@ -2243,7 +2245,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    const rebuildPromise = service.rebuildPlanFromCache('serialize_rebuild');
+    const rebuildPromise = service.rebuildPlanFromCache('power_delta', { detail: 'serialize_rebuild' });
     await Promise.resolve();
     await Promise.resolve();
 
@@ -2320,7 +2322,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    const rebuildPromise = service.rebuildPlanFromCache('serialize_rebuild');
+    const rebuildPromise = service.rebuildPlanFromCache('power_delta', { detail: 'serialize_rebuild' });
     await Promise.resolve();
     await Promise.resolve();
 
@@ -2393,7 +2395,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache('capture_live_devices_once');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'capture_live_devices_once' });
 
     expect(getPlanDevices).toHaveBeenCalledTimes(1);
     expect(syncPendingTargetCommands).toHaveBeenCalledWith(firstLiveDevices, 'rebuild');
@@ -2482,7 +2484,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache('binary_evidence_snapshot_refresh');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'binary_evidence_snapshot_refresh' });
     expect(syncPendingBinaryCommands).toHaveBeenCalledWith([
       expect.objectContaining({
         binaryCommandConfirmation: expect.objectContaining({
@@ -2550,8 +2552,8 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache('test_identical.first');
-    await service.rebuildPlanFromCache('test_identical.second');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'test_identical.first' });
+    await service.rebuildPlanFromCache('power_delta', { detail: 'test_identical.second' });
 
     expect(applyPlanActions).toHaveBeenCalledTimes(1);
   });
@@ -2655,10 +2657,10 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
     });
 
-    await service.rebuildPlanFromCache('seed_expected_on_state');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'seed_expected_on_state' });
     applyPlanActions.mockClear();
 
-    await service.rebuildPlanFromCache('observer_moved_mid_build');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'observer_moved_mid_build' });
 
     // Drift WOULD have reported work — the device reads off against a keep plan.
     // The epoch gate is what declines it.
@@ -2737,7 +2739,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache('seed_expected_on_state');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'seed_expected_on_state' });
     expect(applyPlanActions).toHaveBeenCalledTimes(1);
     applyPlanActions.mockClear();
 
@@ -2750,7 +2752,7 @@ describe('PlanService', () => {
 
     // The rebuild itself now closes the gap: plan says keep/on, device reads
     // off, so the executor has work outstanding even though no decision moved.
-    await service.rebuildPlanFromCache('detail_only_live_off');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'detail_only_live_off' });
     expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
       devices: [
         expect.objectContaining({
@@ -2846,11 +2848,11 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    await service.rebuildPlanFromCache('test_reason.phase_trace');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'test_reason.phase_trace' });
 
     const trace = getRecentPlanRebuildTraces(1)[0];
     expect(trace).toEqual(expect.objectContaining({
-      reason: 'test_reason.phase_trace',
+      reason: 'power_delta:test_reason.phase_trace',
       queueDepth: 1,
       actionChanged: true,
       appliedActions: true,
@@ -2902,7 +2904,7 @@ describe('PlanService', () => {
           });
 
     const beforePerf = getPerfSnapshot();
-    await service.rebuildPlanFromCache('test_reason.failed');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'test_reason.failed' });
     const afterPerf = getPerfSnapshot();
 
     expect((afterPerf.counts.plan_rebuild_total || 0) - (beforePerf.counts.plan_rebuild_total || 0)).toBe(1);
@@ -2916,7 +2918,7 @@ describe('PlanService', () => {
 
     const trace = getRecentPlanRebuildTraces(1)[0];
     expect(trace).toEqual(expect.objectContaining({
-      reason: 'test_reason.failed',
+      reason: 'power_delta:test_reason.failed',
       failed: true,
       queueDepth: 1,
     }));
@@ -2929,7 +2931,7 @@ describe('PlanService', () => {
       loggers: { structuredLog: structuredLog as any },
     });
 
-    await service.rebuildPlanFromCache('seed');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
     structuredLog.info.mockClear();
 
     await service.rebuildPlanFromCache('power_delta');
@@ -2943,7 +2945,7 @@ describe('PlanService', () => {
       loggers: { structuredLog: structuredLog as any },
     });
 
-    await service.rebuildPlanFromCache('seed');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
     structuredLog.info.mockClear();
 
     await service.rebuildPlanFromCache('initial');
@@ -3008,7 +3010,7 @@ describe('PlanService', () => {
           buildDevicePlanSnapshot: vi.fn().mockRejectedValue(new Error('expected test failure')),
         },
       };
-      await createPlanService(failingOverrides).service.rebuildPlanFromCache('failure_test');
+      await createPlanService(failingOverrides).service.rebuildPlanFromCache('power_delta', { detail: 'failure_test' });
 
       const events = lines.join('').trim().split('\n').map((line) => JSON.parse(line));
       for (const homeId of homeIds) {
@@ -3043,7 +3045,7 @@ describe('PlanService', () => {
       loggers: { structuredLog: structuredLog as any },
     });
 
-    await service.rebuildPlanFromCache('seed');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
     structuredLog.info.mockClear();
     (deps.planEngine.buildDevicePlanSnapshot as Mock).mockImplementation(async () => {
       vi.advanceTimersByTime(1501);
@@ -3072,7 +3074,7 @@ describe('PlanService', () => {
     });
 
     // Seed
-    await service.rebuildPlanFromCache('seed');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
     structuredLog.info.mockClear();
     structuredLog.debug.mockClear();
 
@@ -3112,7 +3114,7 @@ describe('PlanService', () => {
       } as any,
     });
 
-    await service.rebuildPlanFromCache('seed');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
     structuredLog.info.mockClear();
     structuredLog.debug.mockClear();
 
@@ -3151,7 +3153,7 @@ describe('PlanService', () => {
       } as any,
     });
 
-    await service.rebuildPlanFromCache('seed');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
     structuredLog.info.mockClear();
     structuredLog.debug.mockClear();
     schedulePostActuationRefresh.mockClear();
@@ -3201,7 +3203,7 @@ describe('PlanService', () => {
       } as any,
     });
 
-    await service.rebuildPlanFromCache('seed');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
     structuredLog.info.mockClear();
     structuredLog.debug.mockClear();
 
@@ -3298,7 +3300,7 @@ describe('PlanService', () => {
       schedulePostActuationRefresh,
           });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
     expect(applyPlanActions).toHaveBeenCalled();
     expect(schedulePostActuationRefresh).toHaveBeenCalledTimes(1);
   });
@@ -3357,7 +3359,7 @@ describe('PlanService', () => {
       schedulePostActuationRefresh,
           });
 
-    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache('power_delta');
     expect(applyPlanActions).toHaveBeenCalled();
     expect(schedulePostActuationRefresh).not.toHaveBeenCalled();
   });
@@ -3501,7 +3503,7 @@ describe('PlanService', () => {
           });
 
     // The plan wants the device on; it reads off, so the rebuild has work to do.
-    await service.rebuildPlanFromCache('post_actuation_refresh');
+    await service.rebuildPlanFromCache('power_delta', { detail: 'post_actuation_refresh' });
     expect(applyPlanActions).toHaveBeenCalled();
     expect(schedulePostActuationRefresh).toHaveBeenCalledTimes(1);
   });

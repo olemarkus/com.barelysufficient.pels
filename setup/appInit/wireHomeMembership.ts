@@ -139,14 +139,13 @@ const reconcilePreparedPlans = async (params: {
   // source no later sample is guaranteed, which would strand the prepared
   // actions indefinitely.
   const [mainOutcome, subHomesReconciled] = await Promise.all([
-    planService.rebuildPlanFromCache(
-      'home_membership_settled',
-      () => !isStableSampleRevision(getMainStableSampleRevision(), mainSampleRevision),
-      () => {
+    planService.rebuildPlanFromCache('home_membership_settled', {
+      shouldAbort: () => !isStableSampleRevision(getMainStableSampleRevision(), mainSampleRevision),
+      onAbort: () => {
         mainReconcileAborted = true;
         schedule();
       },
-    ),
+    }),
     generationPending && ownershipGenerationRuntime
       ? ownershipGenerationRuntime.reconcile()
       : Promise.resolve(true),

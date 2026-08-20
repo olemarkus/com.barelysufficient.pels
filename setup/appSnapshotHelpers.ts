@@ -19,6 +19,7 @@ import { normalizeError } from '../lib/utils/errorUtils';
 import { runWithoutContext } from '../lib/logging/alsContext';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { ResolveOperatingModeForDevice } from './appDeviceSupport';
+import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import {
   TargetPowerProbeScheduler,
   type DueTargetPowerProbe,
@@ -122,7 +123,7 @@ export class AppSnapshotHelpers {
     reconcileTargetPowerReachability?: (snapshot: TargetDeviceSnapshot[], nowMs: number) => void;
     getNextTargetPowerProbe?: () => DueTargetPowerProbe | undefined;
     hasPendingTargetPowerProbe?: () => boolean;
-    rebuildOwningHomePlanForDevice?: (deviceId: string, reason: string) => Promise<unknown>;
+    rebuildOwningHomePlanForDevice?: (deviceId: string, trigger: PlanRebuildTrigger) => Promise<unknown>;
   }) {
     this.targetPowerProbeScheduler = new TargetPowerProbeScheduler({
       timers: deps.timers,

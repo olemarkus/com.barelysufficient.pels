@@ -45,7 +45,8 @@ export type PriceCoordinatorDeps = {
   getTimeZone: () => string;
   getHomeyEnergyApi?: () => import('../utils/homeyEnergy').HomeyEnergyApi | null;
   getCurrentPriceLevel: () => PriceLevel;
-  rebuildPlanFromCache: (reason: string) => Promise<void>;
+  /** Names the price MODE; the wiring turns it into the `price` rebuild trigger. */
+  rebuildPlanFromCache: (priceMode: string) => Promise<void>;
   log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
@@ -126,9 +127,9 @@ export class PriceCoordinator {
       isEnabled: () => this.priceOptimizationEnabled,
       getThresholdPercent: () => this.deps.priceOptimizationSettingsStore.getThresholdPercent(),
       getMinDiffOre: () => this.deps.priceOptimizationSettingsStore.getMinDiffOre(),
-      rebuildPlan: async (reason) => {
-        this.deps.debugStructured({ event: 'price_optimization_plan_rebuild_triggered', reason });
-        await this.deps.rebuildPlanFromCache(reason);
+      rebuildPlan: async (priceMode) => {
+        this.deps.debugStructured({ event: 'price_optimization_plan_rebuild_triggered', priceMode });
+        await this.deps.rebuildPlanFromCache(priceMode);
       },
       debugStructured: this.deps.debugStructured,
       structuredLog: this.deps.structuredLog,

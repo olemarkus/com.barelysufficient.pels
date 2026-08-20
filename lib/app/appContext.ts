@@ -58,6 +58,7 @@ import type {
 } from '../device/transport/flowReportedCapabilities';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
+import type { PlanRebuildTrigger } from '../plan/planRebuildTrigger';
 
 export type FlowBackedCapabilityReportOutcome = {
   kind: 'state_changed' | 'freshness_only' | 'noop';
@@ -141,7 +142,10 @@ export type AppContext = {
   updateDailyBudgetState: (options?: DailyBudgetUpdateStateOptions) => void;
   requestFlowPlanRebuild: (source: string) => void;
   /** App-wiring route to the PlanService that owns one device (main or sub-home). */
-  rebuildOwningHomePlanForDevice?: (deviceId: string, reason: string) => Promise<unknown>;
+  rebuildOwningHomePlanForDevice?: (
+    deviceId: string,
+    trigger: PlanRebuildTrigger,
+  ) => Promise<unknown>;
   getFlowReportedCapabilitiesForDevice: (deviceId: string) => FlowReportedCapabilitiesForDevice;
   getFlowReportedDeviceIds: () => string[];
   reportFlowBackedCapability: (params: {

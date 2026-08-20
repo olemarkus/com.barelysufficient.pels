@@ -86,9 +86,11 @@ export class PlanRebuildIntentPolicy {
           this.deps.setPowerSampleRebuildState(state);
         },
         getNowMs: () => this.deps.getPlanRebuildNowMs(),
-        rebuildPlanFromCache: (reason?: string) => this.deps.getPlanService().rebuildPlanFromCache(reason),
+        rebuildPlanFromCache: (trigger) => this.deps.getPlanService().rebuildPlanFromCache(trigger),
       });
     }
-    return this.deps.getPlanService().rebuildPlanFromCache(intent.reason).then(() => undefined);
+    return this.deps.getPlanService()
+      .rebuildPlanFromCache(intent.reason, { detail: intent.detail })
+      .then(() => undefined);
   }
 }

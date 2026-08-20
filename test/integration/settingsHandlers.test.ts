@@ -135,7 +135,7 @@ describe('createSettingsHandler', () => {
 
     expect(deps.loadCapacitySettings).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(`settings:${OVERSHOOT_BEHAVIORS}`);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(OVERSHOOT_BEHAVIORS);
     expect(rebuildHomeRuntimePlansForModeChange).toHaveBeenCalledTimes(1);
   });
 
@@ -149,7 +149,7 @@ describe('createSettingsHandler', () => {
     expect(deps.loadCapacitySettings).toHaveBeenCalledTimes(1);
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(
-      `settings:${TEMPERATURE_CONTROL_DISABLED_DEVICES}`,
+      TEMPERATURE_CONTROL_DISABLED_DEVICES,
     );
     expect(rebuildAllHomeRuntimePlansForDeviceControlChange).toHaveBeenCalledTimes(1);
   });
@@ -166,7 +166,7 @@ describe('createSettingsHandler', () => {
     expect(deps.reloadExpectedPowerOverrides).toHaveBeenCalledTimes(1);
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(
-      `settings:${DEVICE_EXPECTED_POWER_OVERRIDES}`,
+      DEVICE_EXPECTED_POWER_OVERRIDES,
     );
     expect(rebuildAllHomeRuntimePlansForDeviceControlChange).toHaveBeenCalledTimes(1);
   });
@@ -264,7 +264,7 @@ describe('createSettingsHandler', () => {
 
     expect(deps.loadCapacitySettings).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(`settings:${DEVICE_DRIVER_OVERRIDES}`);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(DEVICE_DRIVER_OVERRIDES);
   });
 
   it('reloads capacity settings, refreshes snapshot, and rebuilds when target power configs change', async () => {
@@ -275,7 +275,7 @@ describe('createSettingsHandler', () => {
 
     expect(deps.loadCapacitySettings).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(`settings:${DEVICE_TARGET_POWER_CONFIGS}`);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(DEVICE_TARGET_POWER_CONFIGS);
   });
 
   it('logs when a refresh snapshot fails', async () => {
@@ -565,7 +565,7 @@ describe('createSettingsHandler', () => {
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
     expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:daily_budget_settings');
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('daily_budget_settings');
   });
 
   it('resets the daily budget debounce window when another write arrives later', async () => {
@@ -641,7 +641,7 @@ describe('createSettingsHandler', () => {
     expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(2);
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(2);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
-    expect((deps.rebuildPlanFromCache as Mock).mock.calls[1]?.[0]).toBe('settings:daily_budget_settings');
+    expect((deps.rebuildPlanFromCache as Mock).mock.calls[1]?.[0]).toBe('daily_budget_settings');
   });
 
   it('cancels pending debounced daily budget syncs on stop', async () => {
@@ -684,7 +684,7 @@ describe('createSettingsHandler', () => {
     expect(deps.loadCapacitySettings).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(`settings:${BUDGET_EXEMPT_DEVICES}`);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(BUDGET_EXEMPT_DEVICES);
   });
 
   it('refreshes snapshot, restarts poll, and rebuilds plan when power source changes', async () => {
@@ -709,7 +709,7 @@ describe('createSettingsHandler', () => {
     // must hit the collector's restart edge so its reconcile can invalidate.
     expect(reloadWeatherAdvisor).toHaveBeenCalledTimes(1);
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:power_source');
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('power_source');
   });
 
   it('restarts the poll and rebuilds the plan when the whole-home meter changes', async () => {
@@ -724,7 +724,7 @@ describe('createSettingsHandler', () => {
     // untouched — the source itself did not change.
     expect(deps.stopFlowPowerSampleFreshnessClock).not.toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:homey_energy_meter');
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('homey_energy_meter');
   });
 
   it('invalidates an old-meter poll before a queued settings handler can restart it', async () => {

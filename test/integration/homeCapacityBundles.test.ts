@@ -61,6 +61,7 @@ import { drainPending, drainUntil } from '../utils/asyncDrain';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance } from '../mocks/homey';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
+import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -736,7 +737,8 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await drainPending();
 
     expect(rebuild.mock.calls.filter(
-      ([reason]) => reason === 'settings:temperature_control_disabled_devices',
+      ([trigger, options]) => trigger === 'settings'
+        && options?.detail === 'temperature_control_disabled_devices',
     )).toHaveLength(2);
   });
 
@@ -1137,12 +1139,11 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache')
       .mockImplementation(function reroute(
         this: PlanService,
-        reason?: string,
-        shouldAbort?: () => boolean,
-        onAbort?: () => void,
+        trigger: PlanRebuildTrigger,
+        options?: PlanRebuildRequestOptions,
       ) {
-        if (reason !== 'home_membership_ready') return realRebuild.call(this, reason, shouldAbort, onAbort);
-        capturedShouldAbort = shouldAbort;
+        if (trigger !== 'home_membership_ready') return realRebuild.call(this, trigger, options);
+        capturedShouldAbort = options?.shouldAbort;
         return new Promise<PlanRebuildOutcome>((resolve) => handler(resolve));
       });
     return { readAbortDecision: () => capturedShouldAbort?.() ?? false };
@@ -1169,14 +1170,13 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     const rebuildSpy = vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache')
       .mockImplementation(function reroute(
         this: PlanService,
-        reason?: string,
-        shouldAbort?: () => boolean,
-        onAbort?: () => void,
+        trigger: PlanRebuildTrigger,
+        options?: PlanRebuildRequestOptions,
       ) {
-        if (reason === 'home_membership_ready') {
+        if (trigger === 'home_membership_ready') {
           return Promise.resolve({ ...createPlanRebuildOutcome(false), failed: failReady });
         }
-        return realRebuild.call(this, reason, shouldAbort, onAbort);
+        return realRebuild.call(this, trigger, options);
       });
 
     rig.registry.onMembershipReady();
@@ -1311,12 +1311,12 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     let heartbeats = 0;
     const realRebuild = PlanService.prototype.rebuildPlanFromCache;
     vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache')
-      .mockImplementation(function reroute(this: PlanService, reason?: string) {
-        if (reason === 'freshness_heartbeat') {
+      .mockImplementation(function reroute(this: PlanService, trigger: PlanRebuildTrigger) {
+        if (trigger === 'freshness_heartbeat') {
           heartbeats += 1;
           return Promise.resolve({ ...createPlanRebuildOutcome(false), failed: true });
         }
-        return realRebuild.call(this, reason);
+        return realRebuild.call(this, trigger);
       });
 
     await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 30_000);
@@ -1620,17 +1620,16 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache')
       .mockImplementation(function wrapped(
         this: PlanService,
-        reason?: string,
-        shouldAbort?: () => boolean,
-        onAbort?: () => void,
+        trigger: PlanRebuildTrigger,
+        options?: PlanRebuildRequestOptions,
       ): Promise<PlanRebuildOutcome> {
-        if (reason !== 'home_membership_ready') return realRebuild.call(this, reason, shouldAbort, onAbort);
+        if (trigger !== 'home_membership_ready') return realRebuild.call(this, trigger, options);
         if (!injectedOnce) {
           injectedOnce = true;
           rig.registry.routeMeterReadings({ 'm-a': 5000 }, Date.now());
         }
-        abortDecisions.push(shouldAbort?.() ?? false);
-        return realRebuild.call(this, reason, shouldAbort, onAbort);
+        abortDecisions.push(options?.shouldAbort?.() ?? false);
+        return realRebuild.call(this, trigger, options);
       });
 
     rig.registry.onMembershipReady();

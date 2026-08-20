@@ -216,7 +216,7 @@ export function buildSteppedSwapExecutor(params: {
       deviceMap,
       onDevices,
       swapState,
-      phase: resolveRestoreDecisionPhase(state.currentRebuildReason),
+      phase: resolveRestoreDecisionPhase(state.currentRebuildTrigger),
       availableHeadroom,
       restoreNeed: { needed, devPower, penaltyLevel: 0, penaltyExtraKw: 0 },
       measurementTs: timing.measurementTs,

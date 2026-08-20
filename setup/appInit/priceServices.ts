@@ -14,7 +14,9 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
     getTimeZone: () => ctx.getTimeZone(),
     getHomeyEnergyApi: () => resolveHomeyEnergyApiFromSdk(ctx.homey),
     getCurrentPriceLevel: () => ctx.getCurrentPriceLevel(),
-    rebuildPlanFromCache: (reason) => requirePlanService(ctx).rebuildPlanFromCache(reason).then(() => undefined),
+    rebuildPlanFromCache: (priceMode) => requirePlanService(ctx)
+      .rebuildPlanFromCache('price', { detail: priceMode })
+      .then(() => undefined),
     log: (...args: unknown[]) => ctx.log(...args),
     debugStructured: ctx.getStructuredDebugEmitter('price', 'price'),
     error: (...args: unknown[]) => ctx.error(...args),

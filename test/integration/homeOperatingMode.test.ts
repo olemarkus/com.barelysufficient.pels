@@ -402,7 +402,9 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       // The sibling home keeps following the global mode.
       expect(diagnosticsFor(rig.registry, 'h_b').operatingMode).toBe('Home');
       // Exactly ONE bundle re-planned on the mode write.
-      expect(rebuild.mock.calls.filter(([reason]) => reason === 'settings:mode_targets'))
+      expect(rebuild.mock.calls.filter(
+        ([trigger, options]) => trigger === 'settings' && options?.detail === 'mode_targets',
+      ))
         .toHaveLength(1);
 
       // Mutation guards: the suffixed write must never fall through to the
@@ -442,7 +444,9 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       await drainPending();
 
       expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Home');
-      expect(rebuild.mock.calls.filter(([reason]) => reason === 'settings:mode_targets'))
+      expect(rebuild.mock.calls.filter(
+        ([trigger, options]) => trigger === 'settings' && options?.detail === 'mode_targets',
+      ))
         .toHaveLength(1);
       expect(rig.ctx.loadCapacitySettings).not.toHaveBeenCalled();
       expect(rig.ctx.notifyOperatingModeChanged).not.toHaveBeenCalled();
@@ -488,7 +492,8 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
       const rebuild = vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache');
       const countModeRebuilds = (): number => rebuild.mock.calls
-        .filter(([reason]) => reason === 'settings:mode_targets').length;
+        .filter(([trigger, options]) => trigger === 'settings' && options?.detail === 'mode_targets')
+        .length;
       const transitionsBefore = logs.findEvents('home_operating_mode_changed')
         .filter((event) => event.homeId === 'h_a').length;
 
@@ -549,7 +554,8 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
       const rebuild = vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache');
       const countBundleRebuilds = (): number => rebuild.mock.calls
-        .filter(([reason]) => reason === 'settings:mode_targets').length;
+        .filter(([trigger, options]) => trigger === 'settings' && options?.detail === 'mode_targets')
+        .length;
 
       // Reorder the pinned mode's ranking. Priorities are ranked per mode and
       // a sub-home resolves them through its OWN effective mode, so this write

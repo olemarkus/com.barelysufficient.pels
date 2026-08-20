@@ -327,7 +327,7 @@ export function resolveRestoreDecision(params: {
     debugStructured, cooldownPreview,
   } = params;
 
-  const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
+  const phase = resolveRestoreDecisionPhase(state.currentRebuildTrigger);
   const restoreDebugKey = `target:${dev.id}`;
   const setbackHold = resolveActivationBackoffHold({
     dev, state, availableHeadroom, phase, restoreDebugKey, debugStructured,

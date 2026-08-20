@@ -53,8 +53,10 @@ const applySourceRecovery = async (
     let rebuildAborted = false;
     const outcome = await params.planService.rebuildPlanFromCache(
       'home_source_authority_recovered',
-      () => !isSourceRecoveryCurrent(params, sampleRevision),
-      () => { rebuildAborted = true; },
+      {
+        shouldAbort: () => !isSourceRecoveryCurrent(params, sampleRevision),
+        onAbort: () => { rebuildAborted = true; },
+      },
     );
     // A gated skip applied nothing, so the recovery has not happened — report it
     // as not-recovered and let the retry chain keep running, exactly as a failure

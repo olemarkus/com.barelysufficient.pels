@@ -170,7 +170,7 @@ describe('bootstrapSnapshotAndPlan warmup gate integration', () => {
 
     // After the gate released, follow-up rebuild calls run without waiting.
     let secondSettled = false;
-    void ctx.planService!.rebuildPlanFromCache('post_warmup').then(() => {
+    void ctx.planService!.rebuildPlanFromCache('power_delta', { detail: 'post_warmup' }).then(() => {
       secondSettled = true;
     });
     await flushMicrotasks();
@@ -211,7 +211,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     });
 
     let rebuildSettled = false;
-    void planService.rebuildPlanFromCache('test').then(() => {
+    void planService.rebuildPlanFromCache('power_delta', { detail: 'test' }).then(() => {
       rebuildSettled = true;
     });
     await flushMicrotasks();
@@ -261,9 +261,9 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     });
 
     // Simulate a price-coordinator rebuild arriving during the warmup window.
-    void planService.rebuildPlanFromCache('price optimization (cheap hour)');
-    void planService.rebuildPlanFromCache('settings:capacity_changed');
-    void planService.rebuildPlanFromCache('flow_card:set_priority');
+    void planService.rebuildPlanFromCache('price', { detail: 'cheap' });
+    void planService.rebuildPlanFromCache('settings', { detail: 'capacity_changed' });
+    void planService.rebuildPlanFromCache('flow_card', { detail: 'set_priority' });
     await flushMicrotasks();
     expect(buildDevicePlanSnapshot).not.toHaveBeenCalled();
 
@@ -301,7 +301,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
       snapshotWarmupGate: warmupGate,
     });
 
-    void planService.rebuildPlanFromCache('test');
+    void planService.rebuildPlanFromCache('power_delta', { detail: 'test' });
     await flushMicrotasks();
     expect(buildDevicePlanSnapshot).toHaveBeenCalled();
   });

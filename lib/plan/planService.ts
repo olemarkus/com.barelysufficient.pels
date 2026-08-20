@@ -78,6 +78,7 @@ import type { PlanActuationResult } from '../planContract/planActuationResult';
 import { PlanChangeTracker } from './planChangeTracker';
 import { emitDeviceOverviewTransitions } from './planOverviewEmit';
 import { performPlanRebuild, type PlanRebuildHost } from './planServiceRebuild';
+import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from './planRebuildTrigger';
 import type { PlanServiceDeps } from './planServiceDeps';
 
 const logger = getLogger('plan/service');
@@ -350,10 +351,10 @@ export class PlanService {
    * plain no-op must NOT re-arm). Callers passing neither are unaffected.
    */
   async rebuildPlanFromCache(
-    reason = 'unspecified',
-    shouldAbort?: () => boolean,
-    onAbort?: () => void,
+    trigger: PlanRebuildTrigger,
+    options?: PlanRebuildRequestOptions,
   ): Promise<PlanRebuildOutcome> {
+    const { detail, shouldAbort, onAbort } = options ?? {};
     // Hold the first rebuild until the warmup gate releases (snapshot ready
     // or bound elapsed). Awaiting here — before enqueuing — means the gate
     // does not block `enqueuePlanOperation` ordering and, once released,
@@ -401,7 +402,9 @@ export class PlanService {
           incPerfCounter('plan_rebuild_aborted_stale_total');
           return createPlanRebuildOutcome(this.deps.getCapacityDryRun());
         }
-        return performPlanRebuild(this.rebuildHost, { reason, queueWaitMs: waitMs, queueDepth });
+        return performPlanRebuild(this.rebuildHost, {
+          trigger, detail, queueWaitMs: waitMs, queueDepth,
+        });
       },
       'Failed to rebuild plan',
       fallbackOutcome,

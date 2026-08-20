@@ -81,6 +81,6 @@ export type RecordPowerSampleParams = {
   currentDevicePowerWById?: Record<string, number>;
   nowMs?: number;
   hourBudgetKWh?: number;
-  rebuildPlanFromCache: (reason?: string) => Promise<void>;
+  rebuildPlanFromCache: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
 };

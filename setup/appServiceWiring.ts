@@ -57,6 +57,7 @@ import { BackgroundTasksController } from './backgroundTasksController';
 import type { AppNativeWiring } from './appNativeWiring';
 import * as realtimeReconcile from './appRealtimeDeviceReconcile';
 import { scheduleAppRealtimeDeviceReconcileForApp } from './appRealtimeDeviceReconcileRuntime';
+import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 // Bound the warmup wait so a failed/slow Homey Manager fetch can never deadlock
@@ -175,8 +176,8 @@ export class AppServiceWiring {
     this.mainPreparedReconcileFence = createPreparedMainReconcileFence(
       deps.getStablePowerSampleRevision,
     );
-    ctx.rebuildOwningHomePlanForDevice = (deviceId, reason) => (
-      this.rebuildOwningHomePlanForDevice(deviceId, reason)
+    ctx.rebuildOwningHomePlanForDevice = (deviceId, trigger) => (
+      this.rebuildOwningHomePlanForDevice(deviceId, trigger)
     );
   }
 
@@ -525,12 +526,12 @@ export class AppServiceWiring {
    * is no plan to rebuild and nothing to record — the first plan build reads the
    * freshly written reachability anyway.
    */
-  rebuildOwningHomePlanForDevice(deviceId: string, reason: string): Promise<unknown> {
+  rebuildOwningHomePlanForDevice(deviceId: string, trigger: PlanRebuildTrigger): Promise<unknown> {
     const subHomeRoute = this.homeRuntimeRegistry?.getReconcileRouteForDevice(deviceId);
-    if (subHomeRoute) return subHomeRoute.hooks.rebuild(reason);
+    if (subHomeRoute) return subHomeRoute.hooks.rebuild(trigger);
     const resolved = resolvePlanService(this.deps.ctx);
     if (resolved.state !== 'ready') return Promise.resolve();
-    return resolved.planService.rebuildPlanFromCache(reason);
+    return resolved.planService.rebuildPlanFromCache(trigger);
   }
 
   async runUninit(): Promise<void> {

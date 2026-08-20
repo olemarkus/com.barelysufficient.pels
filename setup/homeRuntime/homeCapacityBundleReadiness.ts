@@ -106,12 +106,11 @@ const applyMembershipReadyPlan = async (params: {
     // `isActuationFenced` in `createHomeCapacityBundle` — but a fence the caller
     // owns should not depend on a fence further in.)
     let rebuildAborted = false;
-    const outcome = await params.planService.rebuildPlanFromCache(
-      'home_membership_ready',
-      () => params.isTornDown()
+    const outcome = await params.planService.rebuildPlanFromCache('home_membership_ready', {
+      shouldAbort: () => params.isTornDown()
         || !isCurrentSampleRevision(params.getStableSampleRevision, params.revision),
-      () => { rebuildAborted = true; },
-    );
+      onAbort: () => { rebuildAborted = true; },
+    });
     if (params.isTornDown()) return 'stopped';
     if (outcome.failed) {
       params.logger()?.warn({

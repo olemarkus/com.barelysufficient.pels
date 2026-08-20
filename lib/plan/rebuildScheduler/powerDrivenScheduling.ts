@@ -22,6 +22,7 @@ import {
   type RebuildOutcome,
 } from './policy';
 import type { PowerSampleRebuildState } from './powerDriven';
+import type { PlanRebuildTrigger, PowerSampleRebuildTrigger } from '../planRebuildTrigger';
 
 const hasTightNoopBackoffState = (state: PowerSampleRebuildState): boolean => (
   (state.tightNoopStreak ?? 0) > 0
@@ -68,7 +69,7 @@ export const handleSkippedRebuildDecision = (params: {
 
 const updateTightRebuildSuppression = (
   snapshot: PowerSampleRebuildState,
-  reason: string,
+  reason: PlanRebuildTrigger,
   outcome: RebuildOutcome | void,
   nowMs: number,
 ): PowerSampleRebuildState => {
@@ -95,7 +96,7 @@ const updateTightRebuildSuppression = (
 
 const updateTightRebuildSuppressionAfterError = (
   snapshot: PowerSampleRebuildState,
-  reason: string,
+  reason: PlanRebuildTrigger,
   nowMs: number,
 ): PowerSampleRebuildState => {
   if (!isTightReason(reason)) {
@@ -169,7 +170,7 @@ const stagePendingRebuildRequest = (params: {
   minIntervalMs: number;
   currentPowerW?: number;
   softLimitKw?: number;
-  triggerReason: string;
+  triggerReason: PowerSampleRebuildTrigger;
   hardCapBreach?: HardCapBreach;
   isInShortfall?: boolean;
   onTightNoopHardCapBreach?: (deficitKw: number) => Promise<void>;
@@ -225,7 +226,7 @@ const stagePendingRebuildRequest = (params: {
 };
 
 const recordPendingRebuildQueueState = (params: {
-  triggerReason: string;
+  triggerReason: PowerSampleRebuildTrigger;
   hadPending: boolean;
   previousDueMs?: number;
   pendingDueMs?: number;
@@ -248,7 +249,7 @@ const recordPendingRebuildQueueState = (params: {
   incPerfCounter('plan_rebuild_pending_coalesced_total');
 };
 
-const recordPowerSampleRebuildRequest = (reason: string): void => {
+const recordPowerSampleRebuildRequest = (reason: PowerSampleRebuildTrigger): void => {
   incPerfCounters([
     'plan_rebuild_requested_total',
     'plan_rebuild_requested.power_sample_total',
@@ -256,7 +257,7 @@ const recordPowerSampleRebuildRequest = (reason: string): void => {
   incReasonCounter('plan_rebuild_requested.power_sample_reason', reason);
 };
 
-const recordPowerSampleRebuildExecution = (reason: string): void => {
+const recordPowerSampleRebuildExecution = (reason: PowerSampleRebuildTrigger): void => {
   incPerfCounters([
     'plan_rebuild_execute_total',
     'plan_rebuild_execute.power_sample_total',
@@ -268,7 +269,7 @@ export function executePendingPowerRebuild(params: {
   getState: () => PowerSampleRebuildState;
   setState: (state: PowerSampleRebuildState) => void;
   getNowMs: () => number;
-  rebuildPlanFromCache: (reason?: string) => Promise<RebuildOutcome | void>;
+  rebuildPlanFromCache: (trigger: PowerSampleRebuildTrigger) => Promise<RebuildOutcome | void>;
 }): Promise<void> {
   const {
     getState,
@@ -353,7 +354,7 @@ export const resolvePowerSampleDecision = (params: {
   hardCapBreach?: HardCapBreach;
   planConvergenceActive?: boolean;
   unactionable?: boolean;
-}): { decision: RebuildDecision; triggerReason: string } => {
+}): { decision: RebuildDecision; triggerReason: PowerSampleRebuildTrigger } => {
   const {
     state,
     nowMs,
@@ -402,7 +403,7 @@ export const requestPowerSampleRebuild = (params: {
   minIntervalMs: number;
   currentPowerW?: number;
   softLimitKw?: number;
-  triggerReason: string;
+  triggerReason: PowerSampleRebuildTrigger;
   hardCapBreach?: HardCapBreach;
   isInShortfall?: boolean;
   onTightNoopHardCapBreach?: (deficitKw: number) => Promise<void>;

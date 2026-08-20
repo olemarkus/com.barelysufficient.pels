@@ -92,6 +92,7 @@ import {
 } from './suffixedTrackerPersistence';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import { createBundleCapacityGuard } from './createBundleCapacityGuard';
+import type { PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
 
 // A sub-home's OWN fallback seed for its capacity store. Mirrors the app-boot
 // defaults (`PelsApp.capacitySettings` / `capacityDryRun`) but is deliberately
@@ -161,7 +162,7 @@ export type RealtimeReconcileHooks = {
    */
   hasPendingBinaryCommand: (deviceId: string) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string) => void;
-  rebuild: (reason: string) => Promise<unknown>;
+  rebuild: (trigger: PlanRebuildTrigger) => Promise<unknown>;
 };
 
 export type HomeCapacityBundle = {
@@ -264,10 +265,12 @@ function createBundleRebuildScheduler(params: {
           getState: getRebuildState,
           setState: setRebuildState,
           getNowMs: nowMs,
-          rebuildPlanFromCache: (reason?: string) => getPlanService().rebuildPlanFromCache(reason),
+          rebuildPlanFromCache: (trigger) => getPlanService().rebuildPlanFromCache(trigger),
         });
       }
-      return getPlanService().rebuildPlanFromCache(intent.reason).then(() => undefined);
+      return getPlanService()
+        .rebuildPlanFromCache(intent.reason, { detail: intent.detail })
+        .then(() => undefined);
     },
     shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
     setTimeoutFn: (callback, delayMs) => (

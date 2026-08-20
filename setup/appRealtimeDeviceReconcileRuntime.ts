@@ -18,6 +18,7 @@ import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { requirePlanService } from './appInit/contextGuards';
+import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 
 /**
  * Structural slice of the home-runtime registry the reconcile router consumes
@@ -146,7 +147,9 @@ function buildExternalOffHoldHooks(
         ctx.planEngine?.clearRecentBinaryOffCommand(deviceId);
       }),
     rebuild: subHomeHooks?.rebuild
-      ?? ((reason: string): Promise<unknown> => requirePlanService(ctx).rebuildPlanFromCache(reason)),
+      ?? ((trigger: PlanRebuildTrigger): Promise<unknown> => (
+        requirePlanService(ctx).rebuildPlanFromCache(trigger)
+      )),
   };
 }
 
