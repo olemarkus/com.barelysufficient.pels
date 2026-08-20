@@ -22,6 +22,7 @@ import {
 } from './deferredRecorders';
 import { resolveLifecycleFallbackRequest } from '../lifecycleFallbackRequest';
 import { projectLifecycleFallbackCommandState } from '../lifecycleFallbackDeviceProjection';
+import { requirePlanService } from './contextGuards';
 
 // Disarm grace: keep re-attempting the terminal release for this long after the
 // deadline (the diagnostic survives because the task stays enabled) before giving
@@ -78,21 +79,34 @@ const abandonLifecycleFallback = (ctx: AppContext, deviceId: string): void => {
 const convergeLifecycleFallback = (
   ctx: AppContext,
   deviceId: string,
-): 'settled' | 'pending' | 'unavailable' | 'unsupported' => {
+): 'settled' | 'pending' | 'unavailable' | 'undriveable' => {
   const commandState = projectLifecycleFallbackCommandState({
     device: ctx.deviceControlHelpers.getLifecycleFallbackDevice(deviceId),
     observedState: ctx.getObservedState(deviceId),
   });
   if (commandState.state === 'unavailable') return 'unavailable';
-  const lifecycleFallback = ctx.lifecycleFallback;
-  if (!lifecycleFallback) throw new Error('Lifecycle fallback must be initialized before deferred objectives.');
-  const request = resolveLifecycleFallbackRequest({
+  // Resolved BEFORE the executor port is required: answering "there is nothing
+  // on this device to command" needs no dispatcher, and must not depend on one.
+  const resolution = resolveLifecycleFallbackRequest({
     device: commandState.device,
     observedState: commandState.observedState,
     configuredFallback: ctx.getShedBehavior(deviceId),
   });
-  if (!request) return 'unsupported';
-  return lifecycleFallback.converge(request).settled ? 'settled' : 'pending';
+  if (resolution.state === 'no_writable_axis') {
+    // The one thing the old `'unsupported'` arm never did: say so. A device with
+    // no commandable axis (a temperature-control-disabled thermostat with no
+    // `onoff`) is a real configuration, so it takes the same graced retry as a
+    // device PELS cannot observe — never an immediate, silent disarm.
+    ctx.getStructuredLogger('deferred_objectives')?.warn({
+      event: 'smart_task_fallback_device_undriveable',
+      reasonCode: 'no_writable_axis',
+      deviceId,
+    });
+    return 'undriveable';
+  }
+  const lifecycleFallback = ctx.lifecycleFallback;
+  if (!lifecycleFallback) throw new Error('Lifecycle fallback must be initialized before deferred objectives.');
+  return lifecycleFallback.converge(resolution.request).settled ? 'settled' : 'pending';
 };
 
 const handleDeferredTerminalFallback = (
@@ -122,14 +136,11 @@ const handleDeferredTerminalFallback = (
   // deadline grace. The app-owned producer resolves that classification before
   // a neutral request crosses into the executor.
   const outcome = convergeLifecycleFallback(ctx, deviceId);
-  if (outcome === 'unavailable') {
+  // A device PELS cannot observe and a device PELS cannot command share one
+  // ending: keep retrying, and give up only once the deadline grace has run.
+  if (outcome === 'unavailable' || outcome === 'undriveable') {
     abandonLifecycleFallback(ctx, deviceId);
     if (graceElapsed) disarm();
-    return;
-  }
-  if (outcome === 'unsupported') {
-    abandonLifecycleFallback(ctx, deviceId);
-    disarm();
     return;
   }
   if (outcome === 'settled' && timing.kind === 'satisfied') return;
@@ -199,7 +210,7 @@ export function createDeferredObjectiveLifecycleEmitter(
       return readTrustedObjectiveSettings();
     },
     getTimeZone: () => ctx.getTimeZone(),
-    getDevices: () => ctx.planService?.getPlanDevices() ?? [],
+    getDevices: () => requirePlanService(ctx).getPlanDevices(),
     getPowerTracker: () => ctx.powerTracker,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
     // Allocation-horizon price source, resolved from the price layer; shared
@@ -274,6 +285,6 @@ export function createDeferredObjectiveLifecycleEmitter(
       recorder.observe(diagnostics, nowMs);
       recorder.flushIfDirty();
     },
-    getStallClassification: (deviceId) => ctx.planService?.getStallClassification(deviceId),
+    getStallClassification: (deviceId) => requirePlanService(ctx).getStallClassification(deviceId),
   });
 }

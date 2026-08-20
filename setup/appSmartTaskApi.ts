@@ -33,6 +33,7 @@ import {
   type CancelDeferredObjectiveOutcome,
 } from './appInit';
 import { createObjectivePriceHorizonBuilder } from './appInit/objectivePriceHorizon';
+import { requirePlanService } from './appInit/contextGuards';
 import {
   isSmartTaskDeviceInMainHome,
   mapObjectiveWriteRefusalReason,
@@ -124,14 +125,6 @@ export class AppSmartTaskApi {
       throw new Error('DailyBudgetService must be initialized before previewing a smart task.');
     }
     return service.getSnapshot();
-  }
-
-  private requirePlanService(): NonNullable<AppContext['planService']> {
-    const service = this.ctx.planService;
-    if (!service) {
-      throw new Error('PlanService must be initialized before previewing a smart task.');
-    }
-    return service;
   }
 
   private requireActivePlanRecorder(): NonNullable<AppContext['deferredObjectiveActivePlanRecorder']> {
@@ -340,7 +333,7 @@ export class AppSmartTaskApi {
     // settings read. Missing services are wiring errors, not an empty plan.
     const dailyBudgetSnapshot = this.requireDailyBudgetSnapshot();
     const priceRateLabel = this.requirePriceRateLabel();
-    const planService = this.requirePlanService();
+    const planService = requirePlanService(this.ctx);
     const activePlanRecorder = this.requireActivePlanRecorder();
     const roster = readDeferredObjectiveRoster(this.ctx.homey.settings);
     if (roster.status === 'unavailable') {

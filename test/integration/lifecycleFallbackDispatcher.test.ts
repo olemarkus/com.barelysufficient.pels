@@ -36,6 +36,20 @@ import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { resolveLifecycleFallbackRequest } from '../../setup/lifecycleFallbackRequest';
 import type { ShedBehavior } from '../../lib/plan/planTypes';
 import { projectLifecycleFallbackDevice } from '../../setup/lifecycleFallbackDeviceProjection';
+
+/**
+ * Unwraps the seam's per-device result for the cases under test that expect a
+ * drivable device. `no_writable_axis` has its own dedicated test.
+ */
+const resolveRequest = (
+  params: Parameters<typeof resolveLifecycleFallbackRequest>[0],
+): LifecycleFallbackRequest => {
+  const resolution = resolveLifecycleFallbackRequest(params);
+  if (resolution.state !== 'resolved') {
+    throw new Error(`expected a resolved lifecycle fallback request, got ${resolution.state}`);
+  }
+  return resolution.request;
+};
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { DeviceCommand } from '../../lib/actuator/deviceCommand';
@@ -125,16 +139,11 @@ class LifecycleFallbackDispatcher {
   public converge(request: { deviceId: string; objectiveKind: 'ev_soc' | 'temperature' }) {
     const candidate = this.deps.getDevice();
     const device = withLifecycleAxes(candidate);
-    const resolved = resolveLifecycleFallbackRequest({
+    return this.delegate.converge(resolveRequest({
       device,
       observedState: this.deps.getObservedState(),
       configuredFallback: this.deps.getShedBehavior(request.deviceId),
-    });
-    if (!resolved) {
-      this.delegate.abandon(request.deviceId);
-      return { settled: true };
-    }
-    return this.delegate.converge(resolved);
+    }));
   }
 
   public abandon(deviceId: string): void {
@@ -292,7 +301,7 @@ describe('LifecycleFallbackDispatcher', () => {
       targetAxis: { state: 'writable' },
       stepAxis: { state: 'unavailable' },
     });
-    expect(resolveLifecycleFallbackRequest({
+    expect(resolveRequest({
       device: projected,
       observedState: {
         id: projected.id,
@@ -331,7 +340,7 @@ describe('LifecycleFallbackDispatcher', () => {
       targetAxis: { state: 'unavailable' },
       stepAxis: { state: 'writable' },
     });
-    expect(resolveLifecycleFallbackRequest({
+    expect(resolveRequest({
       device: projected,
       observedState: {
         id: projected.id,
@@ -372,7 +381,7 @@ describe('LifecycleFallbackDispatcher', () => {
         reportedStepId,
       } as DecoratedDeviceSnapshot;
       const device = projectLifecycleFallbackDevice(raw);
-      return resolveLifecycleFallbackRequest({
+      return resolveRequest({
         device,
         observedState: {
           id: raw.id,
@@ -411,7 +420,7 @@ describe('LifecycleFallbackDispatcher', () => {
       kind: 'step_fallback',
       targetStepId: 'low',
     });
-    expect(dispatcher.converge(request!)).toEqual({ settled: false });
+    expect(dispatcher.converge(request)).toEqual({ settled: false });
     await flush();
     expect(requestSteppedLoadStep).toHaveBeenCalledWith(expect.objectContaining({
       deviceId: 'charger-1',
@@ -435,7 +444,7 @@ describe('LifecycleFallbackDispatcher', () => {
       binaryControl: { on: true },
     } as DecoratedDeviceSnapshot);
 
-    expect(resolveLifecycleFallbackRequest({
+    expect(resolveRequest({
       device: projected,
       observedState: {
         id: projected.id,
@@ -936,7 +945,7 @@ describe('LifecycleFallbackDispatcher', () => {
         ],
       },
     });
-    const request = resolveLifecycleFallbackRequest({
+    const request = resolveRequest({
       device: withLifecycleAxes(device),
       observedState: observedFromDevice(device),
       configuredFallback: { action: 'set_step' },
@@ -974,7 +983,7 @@ describe('LifecycleFallbackDispatcher', () => {
     });
 
     expect(request).not.toBeNull();
-    expect(dispatcher.converge(request!)).toEqual({ settled: false });
+    expect(dispatcher.converge(request)).toEqual({ settled: false });
     await flush();
 
     expect(requestSteppedLoadStep).toHaveBeenCalledWith(expect.objectContaining({
@@ -1128,38 +1137,25 @@ describe('LifecycleFallbackDispatcher', () => {
     expect(requestSteppedLoadStep).toHaveBeenCalledTimes(1);
   });
 
-  // A third row used to cover "set_temperature is malformed" — a `set_temperature`
-  // carrying no temperature. `ShedBehavior` is a discriminated union, so that
-  // state is no longer constructible and there is nothing left to settle.
-  it.each([
-    ['temperature control has no target capability', { action: 'set_temperature', temperature: 5 }],
-    ['turn_off has no executable control', { action: 'turn_off' }],
-  ] as const)('settles an unsupported fallback when %s', async (_scenario, behavior) => {
-    const actuator = createTestActuator();
-    const device = buildPlanInputDevice({
-      id: 'heater-1',
-      name: 'Unsupported heater',
-      controllable: false,
-      available: true,
-      targets: [],
-    });
-    const dispatcher = new LifecycleFallbackDispatcher({
-      getDevice: () => device,
-      getObservedState: () => observedFromDevice(device),
-      targetCommandClaim: createTargetCommandClaim(),
-      getShedBehavior: () => behavior,
-      buildTargetExecutorContext: () => ({ actuator } as never),
-      buildBinaryExecutorContext: () => ({ actuator } as never),
-      buildSteppedExecutorContext: () => ({ actuator } as never),
-      recordReleaseShedActuation: vi.fn(),
-    });
+  // Two rows used to cover an "unsupported fallback" — a device with no writable
+  // axis, which the resolver answered with `null` and the caller settled by
+  // disarming the owner's task. That outcome is gone: such a device cannot reach
+  // this seam, and the resolver now says so. See the assertion test below.
+  // A third row covered a `set_temperature` carrying no temperature;
+  // `ShedBehavior` is a discriminated union, so that state is not constructible.
 
-    expect(dispatcher.converge({ deviceId: device.id, objectiveKind: 'temperature' })).toEqual({ settled: true });
-    await flush();
-    expect(actuator.apply).not.toHaveBeenCalled();
-  });
-
-  it('refuses binary fallback when the producer denies binary authority', () => {
+  // A device with no writable axis cannot reach this seam: the lifecycle
+  // emitter's device list is `planService.getPlanDevices()`. The resolver used
+  // to answer `null` here, which the caller turned into `'unsupported'` and
+  // answered by permanently disarming the owner's task, unlogged. It asserts
+  // now, so the broken invariant surfaces instead of destroying configuration.
+  // A device with no commandable axis is a real configuration — `getPlanDevices()`
+  // filters on managed status, not on axis presence — so this must be a RESULT.
+  // It may not throw: the caller loops over every task's diagnostic with no
+  // per-device guard, so a throw would skip every later device in the tick. Nor
+  // may it be a bare null, which is what used to become `'unsupported'` and
+  // permanently disarmed the owner's task.
+  it('reports a per-device result when the producer denies every write axis', () => {
     const device = {
       ...buildPlanInputDevice({
         id: 'heater-1',
@@ -1176,7 +1172,7 @@ describe('LifecycleFallbackDispatcher', () => {
       device: withLifecycleAxes(device),
       observedState: observedFromDevice(device),
       configuredFallback: { action: 'set_temperature', temperature: 5 },
-    })).toBeNull();
+    })).toEqual({ state: 'no_writable_axis' });
   });
 
   it('reduces temperature-disabled fallback to the allowed binary axis', () => {
@@ -1192,7 +1188,7 @@ describe('LifecycleFallbackDispatcher', () => {
       targetWritable: false,
       stepWritable: false,
     };
-    expect(resolveLifecycleFallbackRequest({
+    expect(resolveRequest({
       device: withLifecycleAxes(device),
       observedState: observedFromDevice(device),
       configuredFallback: { action: 'set_temperature', temperature: 5 },
@@ -1819,24 +1815,24 @@ describe('LifecycleFallbackDispatcher', () => {
       isLifecycleFallbackActive: (deviceId) => dispatcher.isActive(deviceId),
       };
     }
-    const request = resolveLifecycleFallbackRequest({
+    const request = resolveRequest({
       device: withLifecycleAxes(snapshot),
       observedState: { ...observedFromDevice(snapshot), binaryControl: { on: false } },
       configuredFallback: { action: 'turn_off' },
     });
     expect(request).not.toBeNull();
-    expect(dispatcher.converge(request!)).toEqual({ settled: true });
+    expect(dispatcher.converge(request)).toEqual({ settled: true });
     expect(dispatcher.isActive(snapshot.id)).toBe(true);
 
     expect(await applyDeferredBinaryCommand(buildBinaryContext(), {
       kind: 'binary_restore', deviceId: snapshot.id, name: snapshot.name,
-    }, request!.observed)).toBe(false);
+    }, request.observed)).toBe(false);
     expect(actuator.apply).not.toHaveBeenCalled();
 
     dispatcher.abandon(snapshot.id);
     expect(await applyDeferredBinaryCommand(buildBinaryContext(), {
       kind: 'binary_restore', deviceId: snapshot.id, name: snapshot.name,
-    }, request!.observed)).toBe(true);
+    }, request.observed)).toBe(true);
     expect(actuator.apply).toHaveBeenCalledWith(expect.objectContaining({ desired: true }));
   });
 
@@ -2062,12 +2058,12 @@ describe('LifecycleFallbackDispatcher', () => {
         ctx: buildBinaryContext(), deviceId: snapshot.id, name: snapshot.name,
         desired: true, snapshot, logContext: 'capacity',
       });
-      const request = resolveLifecycleFallbackRequest({
+      const request = resolveRequest({
         device: withLifecycleAxes({ ...snapshot, binaryWritable: true }),
         observedState: { ...observedFromDevice(snapshot), binaryControl: { on: false } },
         configuredFallback: { action: 'turn_off' },
       });
-      expect(dispatcher.converge(request!)).toEqual({ settled: false });
+      expect(dispatcher.converge(request)).toEqual({ settled: false });
       if (abandon) dispatcher.abandon(snapshot.id);
       expect(actuator.apply).toHaveBeenCalledTimes(1);
 
@@ -2083,10 +2079,10 @@ describe('LifecycleFallbackDispatcher', () => {
           snapshot: { binaryControl: { on: false } },
         });
         observedOn = true;
-        expect(dispatcher.converge({ ...request!, observed: buildExecutableObservedDeviceState(buildSnapshot()) }))
+        expect(dispatcher.converge({ ...request, observed: buildExecutableObservedDeviceState(buildSnapshot()) }))
           .toEqual({ settled: false });
         observedOn = false;
-        expect(dispatcher.converge({ ...request!, observed: buildExecutableObservedDeviceState(buildSnapshot()) }))
+        expect(dispatcher.converge({ ...request, observed: buildExecutableObservedDeviceState(buildSnapshot()) }))
           .toEqual({ settled: true });
       }
     },

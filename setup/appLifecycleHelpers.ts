@@ -2,19 +2,13 @@ import { incPerfCounters } from '../lib/utils/perfCounters';
 import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { AppContext } from '../lib/app/appContext';
+import { requirePlanService } from './appInit/contextGuards';
 
 function requirePriceCoordinator(ctx: AppContext) {
   if (!ctx.priceCoordinator) {
     throw new Error('PriceCoordinator must be initialized before app services start.');
   }
   return ctx.priceCoordinator;
-}
-
-function requirePlanService(ctx: AppContext) {
-  if (!ctx.planService) {
-    throw new Error('PlanService must be initialized before app services start.');
-  }
-  return ctx.planService;
 }
 
 function requireDailyBudgetService(ctx: AppContext) {

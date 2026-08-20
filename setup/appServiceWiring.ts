@@ -3,6 +3,7 @@ import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
 import type { ObservedHomePower } from '../lib/observer/observedHomePower';
 import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
+import { resolvePlanService } from './appInit/contextGuards';
 import type { PlanService } from '../lib/plan/planService';
 import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
@@ -30,6 +31,7 @@ import {
   createPriceCoordinator,
   createPriceFlowTagPublisher,
   persistDeferredObjectiveObservationWatermark,
+  subscribePlanObservedState,
 } from './appInit';
 import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
 import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
@@ -123,6 +125,7 @@ export type AppServiceWiringDeps = {
   initCapacityGuard: () => void;
   initDeviceDiagnosticsService: () => void;
   initPlanService: () => void;
+  subscribePlanObservedState: () => void;
   captureDefaultDynamicSoftLimit: () => void;
   initSettingsHandler: () => void;
 };
@@ -229,8 +232,7 @@ export class AppServiceWiring {
     };
     ctx.startupBootstrap = startupBootstrap;
     await runStartupStep('initCapacityGuard', () => this.deps.initCapacityGuard(), logStartupStepFailure);
-    await runStartupStep('initPlanEngine', () => this.deps.initPlanEngine(), logStartupStepFailure);
-    await runStartupStep('initPlanService', () => this.deps.initPlanService(), logStartupStepFailure);
+    await this.runPlanStackStartupSteps(logStartupStepFailure);
     await runStartupStep(
       'captureDefaultDynamicSoftLimit',
       () => this.deps.captureDefaultDynamicSoftLimit(),
@@ -438,6 +440,38 @@ export class AppServiceWiring {
     ctx.planService = createPlanService(ctx, this.mainHomeScope);
   }
 
+  /**
+   * The plan stack, in the one order that works: the engine, then the service,
+   * then the observed-state listeners that reach it.
+   *
+   * The last step is ORDERING, not a guard. Registering those listeners with the
+   * transport (inside `initDeviceManager`, three awaited steps earlier) left a
+   * window in which a device event either lost its `syncLivePlanState` or queued
+   * a rebuild intent that would dereference an unwired service. Keep the three
+   * together and in this order; do not hoist the subscription.
+   */
+  private async runPlanStackStartupSteps(
+    logStartupStepFailure: (label: string, error: Error) => void,
+  ): Promise<void> {
+    await runStartupStep('initPlanEngine', () => this.deps.initPlanEngine(), logStartupStepFailure);
+    await runStartupStep('initPlanService', () => this.deps.initPlanService(), logStartupStepFailure);
+    await runStartupStep(
+      'subscribePlanObservedState',
+      () => this.deps.subscribePlanObservedState(),
+      logStartupStepFailure,
+    );
+  }
+
+  // Body in `setup/appInit/wireDeviceTransport.ts`. Deliberately NOT folded into
+  // `initDeviceManager`: these listeners reach the plan service, so they may not
+  // be live before `initPlanService`.
+  subscribePlanObservedState(): void {
+    subscribePlanObservedState({
+      ...this.deps,
+      scheduleRealtimeDeviceReconcile: (event) => this.scheduleRealtimeDeviceReconcile(event),
+    });
+  }
+
   captureDefaultDynamicSoftLimit(): void {
     const { ctx } = this.deps;
     ctx.defaultComputeDynamicSoftLimit = ctx.computeDynamicSoftLimit;
@@ -472,11 +506,23 @@ export class AppServiceWiring {
     });
   }
 
+  /**
+   * Rebuild the plan of whichever home owns this device.
+   *
+   * Resolved, not asserted: the target-power reachability lane calls this as a
+   * fire-and-forget `void` from a snapshot-mutation hook that is bound during
+   * `initDeviceManager`. A synchronous throw there escapes the `.catch` chained
+   * at the call site and the `void` around it, so a pre-`initPlanService`
+   * mutation would crash boot rather than log. Before the service exists there
+   * is no plan to rebuild and nothing to record — the first plan build reads the
+   * freshly written reachability anyway.
+   */
   rebuildOwningHomePlanForDevice(deviceId: string, reason: string): Promise<unknown> {
     const subHomeRoute = this.homeRuntimeRegistry?.getReconcileRouteForDevice(deviceId);
-    return subHomeRoute?.hooks.rebuild(reason)
-      ?? this.deps.ctx.planService?.rebuildPlanFromCache(reason)
-      ?? Promise.resolve();
+    if (subHomeRoute) return subHomeRoute.hooks.rebuild(reason);
+    const resolved = resolvePlanService(this.deps.ctx);
+    if (resolved.state !== 'ready') return Promise.resolve();
+    return resolved.planService.rebuildPlanFromCache(reason);
   }
 
   async runUninit(): Promise<void> {

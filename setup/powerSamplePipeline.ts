@@ -308,10 +308,10 @@ export class PowerSamplePipeline {
       const planService = this.deps.getPlanService();
       const planState = planEngine?.state;
       const latestPlanSummary = buildPlanCapacityStateSummary(
-        planService?.getLatestPlanSnapshot(),
+        planService.getLatestPlanSnapshot(),
         {
           summarySource: 'plan_snapshot',
-          summarySourceAtMs: planService?.getLatestPlanSnapshotUpdatedAtMs() ?? null,
+          summarySourceAtMs: planService.getLatestPlanSnapshotUpdatedAtMs(),
         },
       );
       const skipWhileShortfallUnrecoverable = shouldSkipShortfallRebuildFromPlanSummary({
