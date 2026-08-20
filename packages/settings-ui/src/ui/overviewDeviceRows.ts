@@ -44,15 +44,23 @@ const byPriority = (a: SettingsUiOverviewDevice, b: SettingsUiOverviewDevice): n
 /**
  * Joins the device list to this cycle's plan on device id.
  *
- * The device list is the list: a device with no plan row renders as a device
- * without a decision, not as a missing device. That is the whole point of the
- * split — the plan is a decision ABOUT devices and is legitimately absent
- * (before the first power reading, on a build failure), while the device list
- * is known as soon as the app has parsed its devices.
+ * With NO plan, every managed device is `undecided`: the plan is a decision
+ * ABOUT devices and is legitimately absent — before the first power reading,
+ * after a restart — while the device list is known as soon as the app has
+ * parsed its devices. Rendering nothing in that window is what made a missing
+ * CONTROL artefact look like a missing device.
  *
- * A plan row with no matching device is dropped rather than rendered. The two
- * payloads refresh independently, so one can carry a device the other has not
- * caught up to; the device channel owns membership, so it wins.
+ * With a plan, the plan also answers MEMBERSHIP for the home on screen, and a
+ * device it does not name is dropped. `undecided` means PELS has not decided
+ * anything YET — not "this device is not mine". The distinction is load-bearing
+ * under multi-home: Main's device payload is the whole home's and includes
+ * devices belonging to a meter area, while Main's plan correctly excludes them.
+ * Treating those as undecided would park another home's devices on Main's
+ * Overview forever, waiting for a reading that is never coming for them.
+ *
+ * A plan row with no matching device is dropped either way — the two payloads
+ * refresh independently, and a decision about a device this scope cannot show
+ * has nothing to render on.
  */
 export const buildOverviewDeviceRows = (params: {
   devices: readonly SettingsUiOverviewDevice[];
@@ -61,12 +69,14 @@ export const buildOverviewDeviceRows = (params: {
   const planById = new Map<string, PlanDeviceSnapshot>(
     (params.plan?.devices ?? []).map((device) => [device.id, device]),
   );
+  const planExists = params.plan !== null;
   return params.devices
     .filter(isOverviewMember)
     .slice()
     .sort(byPriority)
-    .map((device) => {
+    .flatMap((device): OverviewDeviceRow[] => {
       const plan = planById.get(device.id);
-      return plan ? { kind: 'decided' as const, device, plan } : { kind: 'undecided' as const, device };
+      if (plan) return [{ kind: 'decided', device, plan }];
+      return planExists ? [] : [{ kind: 'undecided', device }];
     });
 };

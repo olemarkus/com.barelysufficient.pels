@@ -93,7 +93,16 @@ test.describe('Overview follows the shown home', () => {
   test('a meter area shows its own hero and cards, live on its suffixed stream', async ({ page }) => {
     await installStubSettings(page, {
       homes_config: rentalAreaConfig(true),
-      [`plan_snapshot:${AREA_ID}`]: buildPlanFixture(0.7, { id: 'dev_rental_heater', name: 'Rental heater' }),
+      // Pin a real device into the area. The Overview renders the area's DEVICE
+      // list joined to its plan, so the plan must be about a device that is
+      // actually a member — a plan device with no device row is a shape the
+      // producer cannot build.
+      device_home_assignments: { dev_bedroom: AREA_ID },
+      // ...and Main's plan must stop naming it, which is what the runtime does
+      // when a device moves to a meter area. The default fixture plan is static
+      // and would otherwise keep deciding for a device Main no longer owns.
+      plan_snapshot: buildPlanFixture(1.5, { id: 'dev_heatpump', name: 'Living Room Heat Pump' }),
+      [`plan_snapshot:${AREA_ID}`]: buildPlanFixture(0.7, { id: 'dev_bedroom', name: 'Bedroom Thermostat' }),
       [`pels_status:${AREA_ID}`]: { powerFreshnessState: 'fresh' },
     });
     await openOverview(page);
@@ -109,8 +118,8 @@ test.describe('Overview follows the shown home', () => {
     // a badge, and the Main-only smart-task row is omitted as not-applicable.
     await pickHomeScope(page, AREA_ID);
     await expect(heroPowerValue(page)).toHaveText('0.7');
-    await expect(page.locator('[data-device-id="dev_rental_heater"]')).toBeVisible();
-    await expect(page.locator('[data-device-id="dev_heatpump"]')).toHaveCount(0);
+    await expect(page.locator('#plan-cards [data-device-id="dev_bedroom"]')).toBeVisible();
+    await expect(page.locator('#plan-cards [data-device-id="dev_heatpump"]')).toHaveCount(0);
     await expect(page.locator('#plan-smart-task-row')).toHaveCount(0);
 
     // The area's suffixed `pels_status:<id>` write is its only realtime
@@ -119,7 +128,7 @@ test.describe('Overview follows the shown home', () => {
     await seedStubSetting(
       page,
       `plan_snapshot:${AREA_ID}`,
-      buildPlanFixture(1.2, { id: 'dev_rental_heater', name: 'Rental heater' }),
+      buildPlanFixture(1.2, { id: 'dev_bedroom', name: 'Bedroom Thermostat' }),
     );
     await emitStubSettingSet(page, `pels_status:${AREA_ID}`);
     await expect(heroPowerValue(page)).toHaveText('1.2');
@@ -132,13 +141,13 @@ test.describe('Overview follows the shown home', () => {
       buildPlanFixture(6.4, { id: 'dev_heatpump', name: 'Living Room Heat Pump' }),
     );
     await expect(heroPowerValue(page)).toHaveText('1.2');
-    await expect(page.locator('[data-device-id="dev_heatpump"]')).toHaveCount(0);
+    await expect(page.locator('#plan-cards [data-device-id="dev_heatpump"]')).toHaveCount(0);
 
     // Back to Main: the whole-home Overview returns, smart-task row included.
     await pickHomeScope(page, 'main');
     await expect(heroPowerValue(page)).toHaveText('1.5');
-    await expect(page.locator('[data-device-id="dev_heatpump"]')).toBeVisible();
-    await expect(page.locator('[data-device-id="dev_rental_heater"]')).toHaveCount(0);
+    await expect(page.locator('#plan-cards [data-device-id="dev_heatpump"]')).toBeVisible();
+    await expect(page.locator('#plan-cards [data-device-id="dev_bedroom"]')).toHaveCount(0);
     await expect(page.locator('#plan-smart-task-row')).toBeVisible();
   });
 

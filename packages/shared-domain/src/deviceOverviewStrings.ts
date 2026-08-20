@@ -35,6 +35,20 @@ export const DEVICE_OVERVIEW_RESUME_REQUESTED = 'Resume requested';
 export const DEVICE_OVERVIEW_RESUMING = 'Resuming';
 
 // Active variants for non-EV devices.
+/**
+ * A device PELS knows about and has not decided anything for this cycle — the
+ * ordinary state before the first power reading, and again after a restart.
+ *
+ * States what PELS is waiting ON rather than what it lacks: the owner's device
+ * is fine, the measurement has not arrived. Reuses the wording of the Overview's
+ * own no-plan sentence so the card and the page cannot drift apart.
+ *
+ * Deliberately NOT "yet"-framed as a first-run message — a returning user
+ * reaches this state on every restart, and "first" framing would misdescribe it
+ * (`notes/ui-terminology.md` §"Empty-state headlines").
+ */
+export const DEVICE_OVERVIEW_AWAITING_FIRST_READING = 'Waiting for the first power reading';
+
 export const DEVICE_OVERVIEW_ACTIVE = 'Active';
 export const DEVICE_OVERVIEW_ACTIVE_TEMPERATURE_MANAGED = 'Active (temperature-managed)';
 
