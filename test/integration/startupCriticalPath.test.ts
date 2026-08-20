@@ -2,7 +2,8 @@ import { runStartupStep, startAppServices } from '../../setup/appLifecycleHelper
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { createPlanRebuildOutcome } from '../../lib/plan/planRebuildMetrics';
 import type { Logger } from '../../lib/logging/logger';
-import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { requireInitializedAppContext, type AppContext } from '../../lib/app/appContext';
+import { createInitializedAppContextMock } from '../helpers/appContextTestHelpers';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -29,7 +30,7 @@ const flushMicrotasks = async (iterations = 8): Promise<void> => {
 const buildContext = () => {
   const startupLogger = { error: vi.fn() };
   const timers = new TimerRegistry();
-  const ctx = createAppContextMock({
+  const ctx = createInitializedAppContextMock({
     timers,
     getStructuredLogger: (component: string): Logger | undefined =>
       component === 'startup' ? (startupLogger as unknown as Logger) : undefined,
@@ -228,31 +229,18 @@ describe('startup critical path perf guardrails', () => {
     }));
   });
 
-  it('fails fast when price coordinator wiring is missing', async () => {
-    const params = buildContext();
-    delete params.ctx.priceCoordinator;
+  it.each([
+    ['dailyBudgetService', 'DailyBudgetService'],
+    ['deviceDiagnosticsService', 'DeviceDiagnosticsService'],
+    ['priceCoordinator', 'PriceCoordinator'],
+    ['deviceManager', 'DeviceTransport'],
+    ['planEngine', 'PlanEngine'],
+    ['planService', 'PlanService'],
+  ] as const)('refuses the live phase without %s', (serviceKey, serviceName) => {
+    const ctx: AppContext = buildContext().ctx;
+    Reflect.deleteProperty(ctx, serviceKey);
 
-    await expect(startAppServices(params.ctx)).rejects.toThrow(
-      'PriceCoordinator must be initialized before app services start.',
-    );
-  });
-
-  it('fails fast when plan service wiring is missing', async () => {
-    const params = buildContext();
-    delete params.ctx.planService;
-
-    await expect(startAppServices(params.ctx)).rejects.toThrow(
-      'PlanService must be initialized before use.',
-    );
-  });
-
-  it('fails fast when daily budget service wiring is missing', async () => {
-    const params = buildContext();
-    delete params.ctx.dailyBudgetService;
-
-    await expect(startAppServices(params.ctx)).rejects.toThrow(
-      'DailyBudgetService must be initialized before app services start.',
-    );
+    expect(() => requireInitializedAppContext(ctx)).toThrow(`${serviceName} must be initialized`);
   });
 
   it('invokes startup-step failure hooks before rethrowing', async () => {

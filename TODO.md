@@ -2792,19 +2792,13 @@ split follow-ups from this batch are fixed by the solar-accounting follow-up; re
       behaviour, and nothing fails. P2. Source: adversarial review, multi-home headroom PR.
 
 - [ ] **The starvation-rescue preview return shape is written out inline in four places.**
-      `{ estimate; deadlineAtMs; hasExistingObjective }` appears at `app.ts` (the stub),
+      `{ estimate; deadlineAtMs; hasExistingObjective }` appears at `setup/appHostApi.ts` (the stub),
       `setup/appSmartTaskApi.ts`, `setup/settingsUiStarvationRescueApi.ts` and
       `packages/contracts/src/widgetHostApi.ts`. Three predate the headroom PR; the extraction added the fourth.
       Fix: name it in `packages/contracts/src/starvationRescue.ts` and alias it at all four sites (type-only, so no
       bundle churn). Persona: contributor adding a field to the rescue preview; hypothesis: a four-way inline shape
       means adding a field is four edits and missing one is a silent structural mismatch at whichever site is
       typed loosest. P3. Source: adversarial review, multi-home headroom PR.
-
-- [ ] **`notes/state-management/snapshot-decomposition.md` cites line numbers that no longer exist.** Line 102 cites
-      `app.ts:1841 latestTargetSnapshot` (app.ts is now ~1060 raw lines) and line 273 says "`app.ts` (×5)"
-      `getSnapshot()` pullers where there are 6. Fix: repoint to symbol names rather than line numbers. Persona:
-      contributor picking up the remaining snapshot-decomposition stages; hypothesis: a wrong line number sends the
-      reader to unrelated code and erodes trust in the whole note. P3.
 
 - [ ] **Gate the device-detail Price-response + Solar-surplus sections on `canManageDevice`, not just `resolveManagedState`.**
       Both sections (and the Price/Surplus Control toggles) gate visibility/enable on `resolveManagedState`
@@ -3116,34 +3110,11 @@ split follow-ups from this batch are fixed by the solar-accounting follow-up; re
       *Persona:* Contributor changing the restore gates. Source: adversarial-review on
       preemptive-power-reservation, 2026-08-01. *P2*
 
-- [ ] Split app lifecycle context into initialized vs initializing phases so services that are
-      required after startup are not exposed forever as optional fields.
-      Files: `lib/app/appContext.ts`, `app.ts`, app init/service tests.
 - [ ] Split planner state from render-only explanation data so keep/shed/inactive decisions no
       longer depend on UI-facing `reason` objects.
       Files: `lib/plan/restore/index.ts` (returns `{ plannedState, reason }` bundled),
       `lib/plan/planReasons.ts` (mixes reason normalization with shed-temperature hold decisions),
       plan/executor/rendering boundaries.
-- [ ] **Split the `PelsApp` class so `app.ts` reaches <=500** — the last Bucket-B god-file still
-      carrying a `max-lines` override (lowered 1907→1110→950 by successive trains, not deleted).
-      Every other Bucket-B god-file was decomposed under 500 and its override deleted (the
-      eslint-cleanup train, PRs #1786–#1796: deviceTransport 2261→491, restore/index 1340→379,
-      registerFlowCards 1148→148, deviceDiagnosticsService 1200→320, plus planBuilder / planReasons /
-      planService / planExecutor / steppedLoadExecutor / managerObservation / planDevices /
-      activePlanRecorder / diagnosticsBridge / deferredPlanHistory(+Receipt) / powerDriven /
-      appDebugHelpers). Remaining: `app.ts` is the `Homey.App` composition root (~40 service fields +
-      the `implements AppContext` delegator surface); the smart-task API cluster and the plan-rebuild
-      intent policy came out in the multi-home headroom PR (override lowered 1110→950), so reaching
-      <500 now needs the per-domain delegator surface split into sub-controllers — a large entrypoint
-      restructure, out of scope for the behavior-neutral exemption sweep. The `import-x/max-dependencies` overrides on `app.ts` (50) and
-      `setup/appServiceWiring.ts` — the two composition roots — are accountable here too. Update: the
-      `appServiceWiring.ts` override was DELETED by the PR-3b headroom pass (the `wireDeviceTransport`
-      extraction took its fan-in to 19, under the shared cap of 20), so only `app.ts` (50) remains.
-      **`setup/appServiceWiring.ts` is at 19/20 — ONE value-import slot left.** A PR that needs a 21st
-      must extract, not re-add an override. Note the breach surfaces late: `test.yml` fires only on
-      `pull_request: branches: [main]`, so a stacked train branch first sees it at the merge into
-      `main`, not on the PR that caused it. `import-x/max-dependencies` is severity ERROR.
-      Persona: contributor.
 *Smart-task controller extraction (2026-05-30 → PR-E #1338): COMPLETE. The planner knows nothing
 about smart tasks — `no-plan-to-smarttasks` is `error` and green. Design of record:
 `notes/state-management/deferred-objective-lifecycle-carveout.md`. The items below are
@@ -3426,20 +3397,17 @@ non-blocking follow-ups.*
       `.homeycompose` flow trigger card (en/no titles) + the pool-remainder token from the allocator.
       From the PR-7 ladder ruling, 2026-07-01. *Persona:* prosumer with PV + home battery.
 
-- [ ] **Observe-only device wiring: extract it out of the recurring-ceiling god-files (`app.ts`, `deviceTransport.ts`).**
+- [ ] **Observe-only device wiring: consolidate the host and transport classification seams.**
       *Persona:* Contributor (`notes/personas.md`) extending the observe-only-device family (battery, solar,
-      and any future tracked-but-uncontrolled role) without re-tripping the `max-lines` ceilings.
-      *Hypothesis:* the managed-observe-only feature spreads thin wiring across two Bucket-B god-files — the
+      and any future tracked-but-uncontrolled role) without updating dispersed role checks.
+      *Hypothesis:* the managed-observe-only feature spreads thin wiring across two layers — the
       deviceId-only `isObserveOnlyRoleDevice`/`resolveManagedState`/`isCapacityControlEnabled` resolution in
-      `app.ts`, and the producer fields + `observeBatteryStateFromList` + `note*Device` realtime top-ups in
-      `lib/device/deviceTransport.ts`. Each new observe-only role nudges both ceilings up again (battery:
-      app.ts 1900→1906, deviceTransport 2234→2250; solar: 1906→1907, 2250→2261), so the bumps are a smell, not
-      a fix.
+      `setup/appHostApi.ts`, and the producer fields + `observeBatteryStateFromList` + `note*Device` realtime
+      top-ups under `lib/device/transport/`.
       *Why it's needed:* a small `ObserveOnlyDeviceRegistry` (owning the per-role producers + the membership-set
-      resolution) would let app.ts/deviceTransport delegate instead of grow, and make the next role a localized
-      add. Update: `deviceTransport.ts` was since decomposed to 491 lines with its `max-lines` override DELETED
-      (eslint-cleanup train), so the deviceTransport-ceiling motivation no longer applies; this is now a cohesion
-      improvement (and helps the remaining `app.ts` class-split above). Source: PR-D runtime-reality review, 2026-06-27.
+      resolution) would let both seams delegate and make the next role a localized addition. This is now a
+      cohesion improvement; the former `app.ts` and `deviceTransport.ts` line-ceiling motivations are complete.
+      Source: PR-D runtime-reality review, 2026-06-27.
 
 - [ ] **Home battery: distinguish a real home battery from a controllable load mislabeled with the `homeBattery` energy role.**
       *Persona:* Orchestrator (`notes/personas.md`) running a third-party driver that sets

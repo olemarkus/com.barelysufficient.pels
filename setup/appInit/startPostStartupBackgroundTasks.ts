@@ -1,4 +1,4 @@
-import type { AppContext } from '../../lib/app/appContext';
+import type { InitializedAppContext } from '../../lib/app/appContext';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { WeatherCollector } from '../../lib/weather/weatherCollector';
@@ -12,7 +12,7 @@ import { wireCurtailmentSurplus } from './wireCurtailmentSurplus';
 const NATIVE_WIRING_REQUERY_INTERVAL_MS = 30 * 60 * 1000;
 
 export type PostStartupBackgroundDeps = {
-  ctx: AppContext;
+  ctx: InitializedAppContext;
   backgroundTasks: BackgroundTasksController;
   timers: TimerRegistry;
   startPowerTrackerPruning: () => void;
@@ -36,7 +36,7 @@ export const startPostStartupBackgroundTasks = (
   wireBudgetPrice(ctx, (ms) => deps.getPvForecast()?.service.forecast([ms])?.[0]?.generationKwh);
   deps.getPvForecast()?.setOnRefreshed(() => {
     try {
-      ctx.priceCoordinator?.updateCombinedPrices();
+      ctx.priceCoordinator.updateCombinedPrices();
     } catch (error) {
       ctx.getStructuredLogger('solar')?.warn({
         event: 'pv_forecast_price_recompute_failed',

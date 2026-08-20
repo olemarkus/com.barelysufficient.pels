@@ -111,7 +111,7 @@ helpers. The observer was created but never handed the observation contract.
    entirely.** `planningPowerKw` is already off the snapshot (DEAD-SNAP); the
    observer surface carries **no** planning projection.
 
-`toPlanDevice` (`setup/appInit.ts:335`) is the existing "snapshot → curated
+`toPlanDevice` (`setup/appInit/toPlanDevice.ts`) is the existing "snapshot → curated
 projection" seam (builds `PlanInputDevice`). Post-split it takes
 `(descriptor, observedState)` instead of one `TargetDeviceSnapshot`, and the
 `...device` spread becomes explicit field copies.
@@ -122,16 +122,17 @@ The original audit checked only the **transport** parse/merge/realtime pipeline 
 concluded the step-command/planning fields were dead. **That was wrong.** A second
 producer writes them onto the snapshot *after* `getSnapshot()`:
 
-`lib/app/appDeviceControlHelpers.ts:172-189` `decorateSnapshotWithDeviceControl`
+`setup/appDeviceControlHelpers.ts`'s `decorateSnapshotWithDeviceControl`
 returns a `TargetDeviceSnapshot` with `targetStepId`, `selectedStepId`,
 `desiredStepId`, `previousStepId`, `planningPowerKw`, `lastStepCommandIssuedAt`,
 `stepCommandRetryCount`, `nextStepCommandRetryAtMs`, `stepCommandPending`,
 `stepCommandStatus`, `lastDesiredStepChangeAt` written on it for stepped-load devices.
-`app.ts:1841 latestTargetSnapshot` returns the **decorated** list; `getPlanDevices` →
-`toPlanDevice`'s `...device` spread (`setup/appInit.ts:382`) carries those live values
+`AppHostApi.latestTargetSnapshot` in `setup/appHostApi.ts` returns the **decorated** list; `getPlanDevices` →
+`toPlanDevice`'s explicit stepped-field projection (`setup/appInit/toPlanDevice.ts`) carries those live values
 into `PlanInputDevice` (which independently declares the same fields). And they ARE
-read off the decorated snapshot: `residualKwForPlanDevice.ts:97,135` (`selectedStepId`),
-`:102` (`planningPowerKw`), `calibrationViews.ts:61` (`planningPowerKw`).
+read off the decorated snapshot by `setup/appInit/residualKwForPlanDevice.ts`
+(`selectedStepId` and `planningPowerKw`) and `setup/appInit/calibrationViews.ts`
+(`planningPowerKw`).
 
 So these fields are **path-dependent**: *live* on the decorated planner path, *dead*
 on the raw executor path (`buildObservedSteppedLoadState` reads `selectedStepId` off the
@@ -298,7 +299,8 @@ store, because:
 6. **Convert `toPlanDevice` to `(descriptor, observed)`**; replace `...device` spread
    with explicit copies; `getPlanDevices` zips the two.
 7. **Seal `getSnapshot()` inside transport** once no external caller remains; cruiser-
-   enforce. External pullers to clear first: `app.ts` (×5), `setup/flowConflictProbe`,
+   enforce. External pullers to clear first: the `app.ts` composition callbacks,
+   `AppHostApi`/`AppRuntimeApi`, `setup/flowConflictProbe`,
    `lib/executor/{binaryExecutor,binaryControlDispatch,targetExecutor,planExecutor}`,
    `setup/appDebugHelpers`, and the plan-layer `DeviceObservation` consumers.
 

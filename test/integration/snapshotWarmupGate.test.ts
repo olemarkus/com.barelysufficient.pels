@@ -1,7 +1,7 @@
 import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 import { startAppServices } from '../../setup/appLifecycleHelpers';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
-import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { createInitializedAppContextMock } from '../helpers/appContextTestHelpers';
 import { openPlanBuildGate } from '../utils/planTestUtils';
 
 type Deferred<T> = {
@@ -99,7 +99,7 @@ describe('SnapshotWarmupGate', () => {
 
 const buildBootstrapContext = () => {
   const timers = new TimerRegistry();
-  const ctx = createAppContextMock({ timers });
+  const ctx = createInitializedAppContextMock({ timers });
   const warmupGate = new SnapshotWarmupGate({ timeoutMs: 60_000 });
   ctx.snapshotWarmupGate = warmupGate;
 

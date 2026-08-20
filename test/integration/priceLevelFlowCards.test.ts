@@ -60,6 +60,28 @@ describe('Price level flow cards', () => {
     await expect(listener({ level: PriceLevel.CHEAP })).resolves.toBe(false);
   });
 
+  it('uses the last live level when persisted status is malformed', async () => {
+    const app = createApp();
+    (app as any).planService = { getLastNotifiedPriceLevel: () => PriceLevel.CHEAP };
+    (app as any).registerFlowCards();
+    mockHomeyInstance.settings.set('pels_status', { priceLevel: 'premium' });
+
+    const listener = mockHomeyInstance.flow._conditionCardListeners.price_level_is;
+    await expect(listener({ level: PriceLevel.CHEAP })).resolves.toBe(true);
+  });
+
+  it('uses the last live level when persisted status cannot be read', async () => {
+    const app = createApp();
+    (app as any).planService = { getLastNotifiedPriceLevel: () => PriceLevel.EXPENSIVE };
+    (app as any).registerFlowCards();
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementationOnce(() => {
+      throw new Error('settings unavailable');
+    });
+
+    const listener = mockHomeyInstance.flow._conditionCardListeners.price_level_is;
+    await expect(listener({ level: PriceLevel.EXPENSIVE })).resolves.toBe(true);
+  });
+
   it('emits price_level_changed with state when level flips', () => {
     const app = createApp();
     (app as any).priceCoordinator = {

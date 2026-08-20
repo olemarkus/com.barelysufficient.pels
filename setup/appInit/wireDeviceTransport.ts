@@ -4,28 +4,25 @@
  * budget. This is the whole former `AppServiceWiring.initDeviceManager` body:
  * the observed-state projection epoch, the boundary-resolved whole-home meter
  * authority, the four transport dep bags, and the observer-emitter
- * subscriptions that feed the projection and drive plan rebuilds.
+ * subscriptions that feed the projection. Plan-dependent subscriptions are
+ * wired later by `planObservedStateSubscription.ts`.
  *
- * Behaviour is byte-for-byte unchanged, including the ORDER of the emitter
- * subscriptions (the projection must be fed before any listener that reads it).
+ * The projection subscriptions retain their load-bearing registration order.
  */
 import type Homey from 'homey';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import type { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
-import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import {
   createCalibrationSnapshotMutationHook,
   type PowerCalibrationStore,
 } from '../../lib/device/devicePowerCalibrationStore';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import type { HomeMembershipService } from '../homeMembership';
-import type { RealtimeDeviceReconcileEvent } from '../appRealtimeDeviceReconcile';
 import { buildDeviceParseProviders } from './buildDeviceParseProviders';
 import { createExternalOffHoldPolicy } from '../externalOffHoldAdapter';
 import { createPersistedEvCarLinkAccess } from './evCarLinkAccess';
@@ -53,7 +50,6 @@ const resolveHomeyEnergyMeterSelection = (homey: Homey.App['homey']): MainMeterS
 export type DeviceTransportWiringDeps = {
   ctx: AppContext;
   homeyApp: Homey.App;
-  planRebuildScheduler: PlanRebuildScheduler;
   getStructuredLogger: () => PinoLogger | undefined;
   installStructuredLogger: () => PinoLogger;
   getPowerCalibrationStore: () => PowerCalibrationStore;
@@ -67,15 +63,12 @@ export type DeviceTransportWiringDeps = {
   resolveNativeWiringEnabled: (deviceId: string) => boolean;
   getDeviceDriverIdOverride: (deviceId: string) => string | undefined;
   getFlowConflict: (deviceId: string) => { conflictingCapabilities: readonly string[]; flowName?: string } | undefined;
-  getSnapshotDevice: (deviceId: string) => TargetDeviceSnapshot | undefined;
-  hasEnabledEvBoostForSnapshot: (device: TargetDeviceSnapshot | undefined) => boolean;
   /** Owns the `evCarLinkTick` heartbeat registered after transport init. */
   timers: TimerRegistry;
   /** Lazy over `AppServiceWiring`'s private field — the registry is built later. */
   getHomeRuntimeRegistry: () => HomeRuntimeRegistry | undefined;
   /** Lazy for the same reason: the membership service is built after the transport. */
   getHomeMembershipService: () => HomeMembershipService | undefined;
-  scheduleRealtimeDeviceReconcile: (event: RealtimeDeviceReconcileEvent) => void;
 };
 
 /**

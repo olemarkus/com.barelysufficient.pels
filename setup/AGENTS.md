@@ -32,20 +32,43 @@
   temporarily untrusted**, never as PELS confusing two valid configured owners. Fix a supported
   path at the dirty producer; do not weaken the save invariant or turn the defensive fence into a
   normal Multiple meters journey.
-- **An extracted body may re-assert a boot-window invariant by throwing, never by defaulting.** Six `AppContext` members are optional (`priceCoordinator`, `dailyBudgetService`, `deviceManager`, `planEngine`, `planService`, `deviceDiagnosticsService`) while `PelsApp` declares them definite, so a body moved out of `app.ts` behind `ctx: AppContext` inherits a nullability the original never had. `?.` or `?? someDefault` there silently converts a wiring bug into a plausible-looking value and violates the resolution-in-producer rule. Assert instead — `AppSmartTaskApi.requirePriceRateLabel` is the reference — or narrow the constructor to a `Pick<AppContext, …>` when every member you need is genuinely optional upstream too (`AppSmartTaskPayloads`).
-  `planService` has exactly ONE guard, `appInit/contextGuards.requirePlanService`; three files had each grown a private copy with its own message, so add call sites to that one rather than a fourth. The observed-state lane's boot window was CLOSED rather than guarded: its plan-dependent listeners used to be registered with the transport inside `initDeviceManager`, three awaited steps before `initPlanService`, so a device event in that gap either dropped its `syncLivePlanState` or queued a rebuild intent that would dereference `undefined` (`PlanRebuildIntentPolicy.executeIntent` reads `getPlanService()` non-optionally). They now register in their own startup step, `subscribePlanObservedState`, after `initPlanService`. **Keep that step after `initPlanService`, and do not fold it back into `initDeviceManager`** — the projection-feeding listeners stay with the transport, and splitting the two preserves the projection-first registration order.
-  One lane still runs earlier and keeps the explicit `resolvePlanService` (`ready | not_wired`) instead: target-power reachability, whose snapshot-mutation hook is bound with the transport and which requests its rebuild through a fire-and-forget `void`. **A `require*` guard is the wrong tool behind a `void` call** — it throws SYNCHRONOUSLY, so it escapes both the `.catch` chained at the call site and the `void`, and nothing can handle it. Assert only where the caller can surface the error; resolve where it cannot.
+- **An extracted body re-asserts a boot-window invariant by throwing, never by defaulting.** Six
+  `AppContext` services are optional while ordered startup constructs them. The lifecycle wiring
+  calls `requireInitializedAppContext` before crossing into `InitializedAppContext`, whose service
+  fields are all required. A narrower controller may assert only the service it needs —
+  `AppHostApi.requirePriceCoordinator` is the reference. `?.` or `?? someDefault` must not turn a
+  missing required service into a plausible business value. Use a narrow `Pick<AppContext, …>` only
+  when absence is genuinely part of the upstream contract.
+  `planService` has exactly ONE guard, `appInit/contextGuards.requirePlanService`; add call sites to
+  that one rather than another private copy. The observed-state lane's boot window was closed rather
+  than guarded: its plan-dependent listeners now register in their own startup step,
+  `subscribePlanObservedState`, after `initPlanService`. **Keep that step after `initPlanService`, and
+  do not fold it back into `initDeviceManager`** — the projection-feeding listeners stay with the
+  transport, and splitting the two preserves projection-first registration order.
+  Target-power reachability still uses `resolvePlanService` (`ready | not_wired`): its mutation hook
+  is live with the transport and requests a rebuild through fire-and-forget `void`. A synchronous
+  `require*` throw there escapes the promise `.catch`; assert only where the caller can surface the
+  error, and resolve where it cannot.
 
 ## Boot path
 
-- `app.ts` `onInit` imports `setup/appInit.ts` — a thin barrel over `setup/appInit/` (30 focused factory/registrar files: `createPlanEngine`, `createPlanService`, `priceServices`, `createDailyBudgetService`, `registerAppFlowCards`, `deferredRecorders`, …). Keep the barrel's export surface stable; add new boot wiring as a new `setup/appInit/` file.
+- `app.ts` injects `Homey.App` into the setup façades; `AppRuntimeApi.onInit` delegates to
+  `AppServiceWiring`, which consumes `setup/appInit.ts` — a thin barrel over `setup/appInit/` (31
+  focused factory/registrar files: `createPlanEngine`, `createPlanService`, `priceServices`,
+  `createDailyBudgetService`, `registerAppFlowCards`, `deferredRecorders`, …). Keep the barrel's
+  export surface stable; add new boot wiring as a new `setup/appInit/` file.
 - Load-bearing root files:
   - `appLifecycleHelpers.ts` — `runStartupStep` / `startAppServices`: ordered, traced startup sequencing. The order is load-bearing where a step's listeners reach a service a later step constructs: `initDeviceManager` → `initHomeMembership` → `initCapacityGuard` → `initPlanEngine` → `initPlanService` → `subscribePlanObservedState`.
   - `powerSamplePipeline.ts` — `PowerSamplePipeline`: routes power samples into capacity tracking and plan-rebuild scheduling.
   - `backgroundTasksController.ts` — `BackgroundTasksController`: owns periodic tasks (perf logging, price-lowest triggers, deferred-objective lifecycle clock).
   - `settingsRepository.ts` — `SettingsRepository`: typed reads of persisted Homey settings at boot.
   - `settingsUiApi.ts` — the handlers `api.ts` delegates to for the settings-UI bootstrap/read/refresh endpoints. Two endpoint families have their own root files `api.ts` imports directly: `settingsUiHomesApi.ts` (`ui_homes` + the `ui_homes_save` ownership-write seam) and `settingsUiStarvationRescueApi.ts` (the overview device-card budget-exempt rescue), alongside the existing `settingsUiSmartTaskApi.ts`.
-  - `appSmartTaskApi.ts` / `appSmartTaskPayloads.ts` — the smart-task (deferred-objective) preview+write lanes and the read-only UI payload assembly. `app.ts` keeps thin delegating stubs because the widget host API and the settings-UI handlers reach them through `homey.app`.
+  - `appSmartTaskApi.ts` / `appSmartTaskPayloads.ts` — the smart-task (deferred-objective)
+    preview+write lanes and the read-only UI payload assembly. `AppHostApi` keeps the thin delegating
+    stubs because widget and settings-UI handlers reach them through `homey.app`.
+  - `appRuntimeApi.ts` / `appHostApi.ts` — inherited runtime/lifecycle and Homey/widget/settings-API
+    façades. `PelsApp` stays the concrete state/composition root; inherited methods preserve the
+    external `homey.app` surface and receiver binding without keeping their bodies in `app.ts`.
   - `planRebuildIntentPolicy.ts` — `getAppPlanRebuildNowMs` plus the due-time/execution decisions `PlanRebuildScheduler` delegates back to the app.
   - `appSettingsHelpers.ts` — loads/normalizes capacity settings and reacts to settings changes.
   - `homeRuntime/` — per-home wiring (multi-home): the `HomeScope` closure bundle the plan factories consume, the pipeline factory, and the R7b capacity-only sub-home bundles (`homeRuntimeRegistry.ts` + `createHomeCapacityBundle.ts`, reconciled against `homes_config`; the main home never routes through the bundle factory).

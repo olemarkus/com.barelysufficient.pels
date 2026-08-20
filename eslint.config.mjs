@@ -637,23 +637,6 @@ export default tseslint.config(
     },
   },
   {
-    // app.ts is the central Homey app-lifecycle/service-wiring entrypoint: it owns the
-    // app class that constructs and connects every runtime service. The boot/teardown
-    // orchestration and per-service construction live in `setup/appServiceWiring.ts`,
-    // the smart-task/deferred-objective cluster in `setup/appSmartTaskApi.ts` +
-    // `setup/appSmartTaskPayloads.ts`, and the rebuild-intent policy in
-    // `setup/planRebuildIntentPolicy.ts`; app.ts keeps slim `onInit`/`onUninit` plus the
-    // thin `init*` delegators the integration-test boot helper calls directly. What
-    // remains is irreducible without breaking documented test seams: the field/helper
-    // declarations and the ~70 thin AppContext/PelsWidgetHostApi delegators.
-    // Ceiling just above current. Target: <=500 needs the per-domain delegator surface
-    // extracted next (TODO "Split the `PelsApp` class so `app.ts` reaches <=500").
-    files: ['app.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 950, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // packages/settings-ui/src/ui/deviceDetail/index.ts is the device-detail
     // orchestrator: it binds every Setup control's reflect + handler pair to the
     // shared open/refresh lifecycle. Each new per-device setting costs it ~3
@@ -708,17 +691,16 @@ export default tseslint.config(
       'import-x/max-dependencies': ['error', { max: 20, ignoreTypeImports: true }],
     },
   },
-  // app.ts is the Homey.App composition root: it constructs and wires the ~22
+  // app.ts is the Homey.App composition root: it constructs and wires the runtime
   // service/adapter objects as fields, so its runtime fan-in is inherently high
-  // and not reducible without laundering the imports into another setup/* file
-  // that would breach the same cap. The single principled exception (the only
-  // backend file over 20 after the type-only conversions; deviceTransport was
-  // brought under 20 instead of overridden).
+  // and not reducible without laundering its field initializers into another
+  // setup/* file. Public/runtime behavior now lives behind AppHostApi and
+  // AppRuntimeApi; this exact-current 31 ceiling is the single backend exception over 20.
   {
     files: ['app.ts'],
     plugins: { 'import-x': importX },
     rules: {
-      'import-x/max-dependencies': ['error', { max: 50, ignoreTypeImports: true }],
+      'import-x/max-dependencies': ['error', { max: 31, ignoreTypeImports: true }],
     },
   },
   // AGENTS.md: "Use shared, type-safe mock helpers instead of ad-hoc `as any` casts so mocks stay

@@ -6,6 +6,7 @@ import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/sched
 import type { PlanService } from '../../lib/plan/planService';
 import { subscribePlanObservedState } from '../../setup/appInit/planObservedStateSubscription';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { cleanupApps, createApp } from '../utils/appTestUtils';
 
 /**
  * Ordering pin. The plan-dependent observed-state listeners are registered by
@@ -27,6 +28,30 @@ const buildDeps = (planService: PlanService | undefined) => {
 };
 
 describe('subscribePlanObservedState', () => {
+  afterEach(async () => {
+    await cleanupApps();
+  });
+
+  it('registers the production subscription only after the plan stack exists', async () => {
+    const app = createApp();
+    const callOrder: string[] = [];
+    const runtime = app as unknown as {
+      initPlanEngine: () => void;
+      initPlanService: () => void;
+      subscribePlanObservedState: () => void;
+      serviceWiring: {
+        runPlanStackStartupSteps: (onFailure: (label: string, error: Error) => void) => Promise<void>;
+      };
+    };
+    runtime.initPlanEngine = () => { callOrder.push('engine'); };
+    runtime.initPlanService = () => { callOrder.push('service'); };
+    runtime.subscribePlanObservedState = () => { callOrder.push('subscription'); };
+
+    await runtime.serviceWiring.runPlanStackStartupSteps(() => undefined);
+
+    expect(callOrder).toEqual(['engine', 'service', 'subscription']);
+  });
+
   it('syncs live plan state for an observation once the plan service is wired', () => {
     const syncLivePlanState = vi.fn().mockResolvedValue(true);
     const deps = buildDeps({ syncLivePlanState } as unknown as PlanService);
