@@ -26,9 +26,12 @@ The rule above is about the ANSWER, not about how hard you looked for it. For a 
 
 `resolveSteppedLoadImmediateReliefKw` caps *both* sides of the step delta by the current measurement, so the moment measured draw sits at or below the next rung's admission estimate the delta is exactly zero — for any from-step. A device pinned at `max` and one idling at `low` price identically. Prod 2026-08-05 (`inc_26449fb9`): a water heater's `measure_power` lagged its step-up by ~5 minutes, `max → medium` priced at 0, the heater was never a candidate, and the house sat 526 W over the hard cap for 4.5 minutes while the meter showed it drawing 2.9 kW.
 
-`resolveSteppedShedLadder` (`steppedCandidates.ts`) prices the WHOLE ladder — every reachable step down, gentlest first, each with the relief it releases — and drops the rungs that release nothing. It cannot invent relief: every rung goes through the same `resolveSteppedCandidatePower`, so the deepest rung buys the device's whole reported draw and no more. One constraint on which rungs are offered:
+`resolveSteppedShedLadder` (`steppedCandidates.ts`) prices the WHOLE ladder — every reachable step down, gentlest first, each with the relief it releases — and drops the rungs that release nothing. It cannot invent relief: every rung goes through the same `resolveSteppedCandidatePower`, so the deepest rung buys the device's whole reported draw and no more. Both shed behaviours descend the whole ladder; they differ only in where the descent stops:
 
-- **Only `turn_off` descends past the adjacent rung.** A `set_step` shed still offers its adjacent rung alone. Lifting that is a separate change; do not fold it in here.
+- **`set_step` descends to the deepest NOT-OFF-CLASSIFIED rung and never reaches the off step.** The owner's "lower it" means as far down as the deficit needs, never off. That floor is asked of `isSteppedLoadOffStep`, NOT read off the floor the walk used: `getSteppedLoadLowestActiveStep` tests `planningPowerW > 0` and ignores the step's name, while the off rule also counts a step named `off`, so a hand-configured `{ id: 'off', planningPowerW: 1200 }` is active to the first and off to the second. Keep the reconciliation at the call site in `buildSteppedShedDescentTargets` — the two helpers' meanings are load-bearing for their other callers.
+- **`turn_off` descends the same rungs and then gets the off step appended**, because the floor above keeps the off step off the walk.
+
+`set_step` used to be offered its adjacent rung alone. That was a pricing constraint, not a product one: materialization recomputed the step from the device, so a credited deeper rung would have decremented the deficit by relief the executor never commanded. It no longer recomputes (below), so credited relief equals delivered relief for both behaviours.
 
 ## The rung is chosen when the candidate is SPENT, not when it is built
 

@@ -1250,13 +1250,14 @@ describe('buildSheddingPlan', () => {
       },
     );
 
-    // The stepped load is still chosen first, but `max -> mid` is worth only
-    // 0.8 kW against a 1.1 kW deficit, and a `set_step` device may not descend
-    // further (materialization would command the adjacent rung anyway). The
-    // remaining 0.3 kW is a real, still-open breach, so selection carries on to
-    // the next candidate instead of ending the cycle on a partial answer.
+    // The stepped load is chosen first, and `max -> mid` is worth only 0.8 kW
+    // against the 1.1 kW deficit — so the descent keeps going to `low`, worth
+    // 1.8 kW, which closes the breach on its own. `low` is the gentlest rung
+    // that covers it, and it is what materialization commands, so the thermostat
+    // the owner ranked below it stays on.
     expect(result.shedSet.has('connected-300')).toBe(true);
-    expect(result.shedSet.has('bath')).toBe(true);
+    expect(result.shedStepTargets.get('connected-300')).toBe('low');
+    expect(result.shedSet.has('bath')).toBe(false);
   });
 
   it('keeps stepping a stepped load down to its lowest active step before shedding other devices', async () => {
@@ -4037,10 +4038,11 @@ describe('buildSheddingPlan', () => {
     const result = await buildSheddingPlan(
       buildContext({
         devices: [
-          // Same stale-measurement shape, but a `set_step` device is offered its
-          // adjacent rung alone, so the only rung priced is `medium`, which
-          // releases nothing. That is a real "cannot help", and it must now say
-          // so rather than vanish.
+          // Same stale-measurement shape on a `set_step` device. The walk now
+          // tries every ACTIVE rung — `medium` and `low` — and the stale meter
+          // prices both at exactly zero. That is a real "cannot help", reached
+          // by exhausting the ladder rather than by stopping at the first rung,
+          // and it must say so rather than vanish.
           buildDevice({
             id: 'heater',
             name: 'Connected 300',
@@ -4094,9 +4096,77 @@ describe('buildSheddingPlan', () => {
         deviceId: 'heater',
         reasonCode: 'zero_step_relief',
         currentDrawKw: 1.193,
-        rungsTried: ['medium'],
+        // Both active rungs, in descent order — the off step is never offered to
+        // a `set_step` shed, so `low` is where the ladder ends.
+        rungsTried: ['medium', 'low'],
       })],
     }));
+  });
+
+  it('sheds a set_step device at a deeper rung when its adjacent rung prices at zero', async () => {
+    const state = createPlanEngineState();
+    const debugStructured = vi.fn();
+    const capacityGuard = {
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          // The `inc_26449fb9` stale-meter shape, one notch less stale: the
+          // reported 1.5 kW sits between `low`'s calibrated admission (1.193)
+          // and `medium`'s (1.671), so `max -> medium` prices at exactly zero
+          // while `max -> low` releases 0.307 kW. Stopping the ladder at the
+          // adjacent rung dropped this device from candidacy entirely.
+          buildDevice({
+            id: 'heater',
+            name: 'Connected 300',
+            controllable: true,
+            controlModel: 'stepped_load',
+            selectedStepId: 'max',
+            desiredStepId: 'max',
+            currentDrawKw: 1.5,
+            stepPowerCalibration: {
+              low: { admissionPowerKw: 1.193, deliveryPowerKw: 1.193 },
+              medium: { admissionPowerKw: 1.671, deliveryPowerKw: 1.671 },
+              max: { admissionPowerKw: 3, deliveryPowerKw: 3 },
+            },
+            steppedLoadProfile: {
+              steps: [
+                { id: 'off', planningPowerW: 0 },
+                { id: 'low', planningPowerW: 1250 },
+                { id: 'medium', planningPowerW: 1750 },
+                { id: 'max', planningPowerW: 3000 },
+              ],
+            },
+          }),
+        ],
+        total: 5,
+        softLimit: 4.7,
+        capacitySoftLimit: 4.7,
+        headroomRaw: -0.3,
+        headroom: -0.3,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        shortfallThresholdKw: 5.04,
+        powerTracker: { lastTimestamp: 2003 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'set_step' }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        debugStructured,
+      },
+    );
+
+    expect(result.shedSet.has('heater')).toBe(true);
+    // `low` is both the rung that was priced and the rung materialization
+    // commands — never `off`, which a `set_step` shed may not reach.
+    expect(result.shedStepTargets.get('heater')).toBe('low');
+    expect(result.overshootStats?.skippedCandidateReasons ?? []).toEqual([]);
   });
 
   it('sheds all eligible non-exempt devices through the shedding planner when hourly budget is exhausted', async () => {
