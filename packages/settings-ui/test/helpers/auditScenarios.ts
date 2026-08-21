@@ -254,7 +254,6 @@ const buildPressurePlanSnapshot = (): SettingsUiPlanSnapshot => {
       name: 'Water Heater',
       currentState: 'on',
       plannedState: 'shed',
-      priority: 2,
       controllable: true,
       available: true,
       boostActive: false,
@@ -269,7 +268,6 @@ const buildPressurePlanSnapshot = (): SettingsUiPlanSnapshot => {
       currentState: 'on',
       plannedState: 'shed',
       // No step ladder in this fixture — the charger is shed by turning it off.
-      priority: 6,
       controllable: true,
       available: true,
       boostActive: false,
@@ -332,7 +330,6 @@ const buildDenseDevicePlan = (): SettingsUiPlanSnapshot => {
       plannedState: 'keep',
       deviceClass: 'thermostat',
       temperature: { currentTarget: 21, currentTemperature: 19 + (i % 5), plannedTarget: 21 },
-      priority: 1 + (i % 5),
       controllable: true,
       available: true,
       boostActive: false,

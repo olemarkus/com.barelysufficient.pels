@@ -426,6 +426,16 @@ describe('settingsOverviewReadModel', () => {
       expect('temperatureBoostActive' in device).toBe(false);
     });
 
+    it('does not courier the device\'s identity or ordering onto the wire', () => {
+      const device = buildSettingsOverviewDeviceReadModel(boosting(), absentTemperature);
+      // `priority` and `zone` are settings/registry facts about the DEVICE. The
+      // Overview reads them from the device list it already renders from — the
+      // list owns membership and order — so a copy here is a second source for
+      // one fact, and since that surface moved, nothing read this one.
+      expect('priority' in device).toBe(false);
+      expect('zone' in device).toBe(false);
+    });
+
     it('does not courier the configured boost thresholds onto the wire', () => {
       const device = buildSettingsOverviewDeviceReadModel(boosting(), absentTemperature);
       // The THRESHOLDS are settings. The settings UI reads them from the settings

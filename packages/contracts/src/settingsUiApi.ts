@@ -246,8 +246,6 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   id: string;
   name: string;
   deviceClass?: string;
-  priority?: number;
-  zone?: string;
   budgetExempt?: boolean;
   /**
    * The device's one boost decision, as the planner made it

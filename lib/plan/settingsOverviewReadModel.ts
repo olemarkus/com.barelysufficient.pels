@@ -181,8 +181,6 @@ export function buildSettingsOverviewDeviceReadModel(
     id: device.id,
     name: device.name,
     deviceClass: device.deviceClass,
-    priority: device.priority,
-    zone: device.zone,
     controllable: device.controllable,
     available: device.available,
     currentState: device.currentState,
