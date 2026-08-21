@@ -1018,10 +1018,14 @@ describe('PlanService', () => {
     expect(settingsSet).not.toHaveBeenCalledWith(LEGACY_PLAN_SNAPSHOT_SETTING, expect.anything());
     expect(service.getLatestPlanSnapshot()?.devices[0].priority).toBe(1);
 
+    // The invariant is that the second rebuild is NOT deduped away: a priority
+    // change with no action change still publishes. It is observed on the
+    // internal plan above rather than on the emitted payload, because priority
+    // is a settings fact about the device and no longer rides the plan wire —
+    // the Overview reads it from the device list it orders by.
     const planUpdatedCalls = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
     expect(planUpdatedCalls).toHaveLength(2);
-    expect(planUpdatedCalls[0][1].devices[0].priority).toBe(10);
-    expect(planUpdatedCalls[1][1].devices[0].priority).toBe(1);
+    expect(planUpdatedCalls[0][1].devices[0]).not.toHaveProperty('priority');
   });
 
   it('normalizes plan_updated emission failures before logging', async () => {
