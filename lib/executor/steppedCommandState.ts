@@ -1,14 +1,16 @@
-import { getSteppedLoadStep } from '../lib/utils/deviceControlProfiles';
-import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from '../lib/plan/planConstants';
-import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../lib/plan/planObservationPolicy';
+import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from '../plan/planConstants';
+import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../plan/planObservationPolicy';
+import { PELS_TARGET_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import {
-  PELS_MEASURE_STEP_CAPABILITY_ID,
-  PELS_TARGET_STEP_CAPABILITY_ID,
-} from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+  buildSteppedLoadReportedState,
+  hasSteppedLoadReportChanged,
+  type SteppedLoadReportedRuntimeState,
+} from '../observer/steppedReportedStep';
 import type {
   DeviceControlProfiles,
   SteppedLoadCommandStatus,
-} from '../packages/contracts/src/types';
+} from '../../packages/contracts/src/types';
 
 /**
  * Stepped-load command runtime state: the tracked desired-step command per
@@ -40,14 +42,6 @@ export type SteppedLoadDesiredRuntimeState = {
   targetPowerProbeConfirmedMaxPowerW?: number;
   /** First issue time for this probe; same-rung command retries must not slide settlement. */
   targetPowerProbeStartedAtMs?: number;
-};
-
-export type SteppedLoadReportedRuntimeState = {
-  capabilityId: typeof PELS_MEASURE_STEP_CAPABILITY_ID;
-  stepId: string;
-  updatedAtMs: number;
-  source: 'flow';
-  planningPowerW?: number;
 };
 
 export type DeviceControlRuntimeState = {
@@ -281,13 +275,10 @@ export const reportSteppedLoadActualStep = (params: {
   }
 
   const previousReport = runtimeState.steppedLoadReportedByDeviceId.get(deviceId);
-  runtimeState.steppedLoadReportedByDeviceId.set(deviceId, {
-    capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-    stepId,
-    updatedAtMs: reportedAtMs,
-    source: 'flow',
-    ...(planningPowerW !== undefined ? { planningPowerW } : {}),
-  });
+  // The ladder check above is this layer's to make (it holds the profile); the
+  // record itself is the observer's shape, built by the observer.
+  const report = buildSteppedLoadReportedState({ stepId, reportedAtMs, planningPowerW });
+  runtimeState.steppedLoadReportedByDeviceId.set(deviceId, report);
 
   const desired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
   if (desired?.stepId === stepId) {
@@ -304,11 +295,7 @@ export const reportSteppedLoadActualStep = (params: {
     });
   }
 
-  if (!previousReport) return 'changed';
-  return previousReport.stepId !== stepId
-    || previousReport.planningPowerW !== planningPowerW
-    ? 'changed'
-    : 'unchanged';
+  return hasSteppedLoadReportChanged(previousReport, report) ? 'changed' : 'unchanged';
 };
 
 export const pruneStaleSteppedLoadCommandStates = (

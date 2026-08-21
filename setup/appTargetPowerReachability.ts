@@ -26,7 +26,7 @@ import {
   confirmSteppedLoadDesiredStep,
   type DeviceControlRuntimeState,
   type SteppedLoadDesiredRuntimeState,
-} from './appDeviceControlSteppedCommandState';
+} from '../lib/executor/steppedCommandState';
 
 type ReachabilitySnapshot = TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe;
 

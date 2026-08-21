@@ -6,7 +6,7 @@ import {
 import { getSteppedLoadStep } from '../lib/utils/deviceControlProfiles';
 import type { DevicePlan } from '../lib/plan/planTypes';
 import type { SteppedLoadProfile } from '../packages/contracts/src/types';
-import type { SteppedLoadDesiredRuntimeState } from './appDeviceControlSteppedCommandState';
+import type { SteppedLoadDesiredRuntimeState } from '../lib/executor/steppedCommandState';
 
 export function isValidSteppedLoadFeedbackProfile(
   profile: SteppedLoadProfile | null,
