@@ -2,12 +2,12 @@
 // - createFencedActuator: final point-of-use actuator gate. It passes the
 //   command device id to the caller so ownership, source-epoch, and teardown
 //   changes can decline stale writes without touching the base actuator.
-// - freshnessHeartbeatIntervalMs: deterministic per-home jitter so bundles'
+// - freshnessEscalationIntervalMs: deterministic per-home jitter so bundles'
 //   freshness heartbeats do not fire on one phase-aligned tick.
 import { describe, expect, it, vi } from 'vitest';
 import { createFencedActuator } from '../../setup/appInit/createPlanEngine';
 import { createPreparedBundleSampleFence } from '../../setup/homeRuntime/homeCapacityBundleApi';
-import { freshnessHeartbeatIntervalMs } from '../../setup/homeRuntime/homeCapacityBundleReadiness';
+import { freshnessEscalationIntervalMs } from '../../setup/powerSampleFreshnessEscalation';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import type { StableSampleRevision } from '../../setup/powerSamplePipeline';
@@ -88,16 +88,16 @@ describe('prepared bundle sample fence', () => {
   });
 });
 
-describe('freshnessHeartbeatIntervalMs (per-home jitter — R7b P1#4)', () => {
+describe('freshnessEscalationIntervalMs (per-home jitter — R7b P1#4)', () => {
   it('is deterministic per homeId and within [base, base + base/4)', () => {
     // Test base is 5000 ms (NODE_ENV=test); the jitter is a fraction of the base.
-    expect(freshnessHeartbeatIntervalMs('h_a')).toBe(freshnessHeartbeatIntervalMs('h_a'));
-    expect(freshnessHeartbeatIntervalMs('h_a')).toBeGreaterThanOrEqual(5000);
-    expect(freshnessHeartbeatIntervalMs('h_a')).toBeLessThan(5000 + 5000 / 4);
+    expect(freshnessEscalationIntervalMs('h_a')).toBe(freshnessEscalationIntervalMs('h_a'));
+    expect(freshnessEscalationIntervalMs('h_a')).toBeGreaterThanOrEqual(5000);
+    expect(freshnessEscalationIntervalMs('h_a')).toBeLessThan(5000 + 5000 / 4);
   });
 
   it('spreads intervals across homeIds so bundles do not all fire on the same tick', () => {
-    const intervals = ['h_a', 'h_b', 'h_c', 'annex', 'cabin'].map(freshnessHeartbeatIntervalMs);
+    const intervals = ['h_a', 'h_b', 'h_c', 'annex', 'cabin'].map(freshnessEscalationIntervalMs);
     expect(new Set(intervals).size).toBeGreaterThan(1);
   });
 });

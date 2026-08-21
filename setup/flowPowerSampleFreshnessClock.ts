@@ -59,8 +59,6 @@ export function syncFlowPowerSampleFreshnessClock(
 export class FlowPowerSampleFreshnessClock {
   private lastSampleAtMs: number | null = null;
 
-  private staleHoldRebuildRequested = false;
-
   private failClosedRebuildRequested = false;
 
   private sourceReadRetryAttempt = 0;
@@ -106,7 +104,6 @@ export class FlowPowerSampleFreshnessClock {
   stop(): void {
     clearFlowPowerSampleFreshnessTimer(this.deps.timers);
     this.lastSampleAtMs = null;
-    this.staleHoldRebuildRequested = false;
     this.failClosedRebuildRequested = false;
     this.sourceReadRetryAttempt = 0;
   }
@@ -132,11 +129,11 @@ export class FlowPowerSampleFreshnessClock {
       return;
     }
 
+    // Between the freshness threshold and the shed timeout the clock keeps its
+    // schedule but asks for nothing: the last reading carries forward, and there
+    // is no new decision to take. It used to request a `stale_hold` rebuild here,
+    // which re-planned on the strength of a sample merely being a minute old.
     if (ageMs < POWER_SAMPLE_STALE_SHED_TIMEOUT_MS) {
-      if (!this.staleHoldRebuildRequested) {
-        this.staleHoldRebuildRequested = true;
-        this.deps.requestPlanRebuild('flow_power_sample_stale_hold');
-      }
       this.scheduleNext();
       return;
     }
@@ -157,11 +154,6 @@ export class FlowPowerSampleFreshnessClock {
       return true;
     }
 
-    if (ageMs >= POWER_SAMPLE_STALE_THRESHOLD_MS) {
-      this.staleHoldRebuildRequested = true;
-      this.deps.requestPlanRebuild('flow_power_sample_stale_hold');
-    }
-
     return false;
   }
 
@@ -180,7 +172,6 @@ export class FlowPowerSampleFreshnessClock {
   private adoptSample(sampleAtMs: number): boolean {
     if (this.lastSampleAtMs !== null && sampleAtMs < this.lastSampleAtMs) return false;
     this.lastSampleAtMs = sampleAtMs;
-    this.staleHoldRebuildRequested = false;
     this.failClosedRebuildRequested = false;
     return true;
   }
