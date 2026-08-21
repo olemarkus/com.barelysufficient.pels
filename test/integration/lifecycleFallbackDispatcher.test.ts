@@ -2076,7 +2076,8 @@ describe('LifecycleFallbackDispatcher', () => {
       if (!abandon) {
         expect(actuator.apply).toHaveBeenLastCalledWith(expect.objectContaining({ desired: false }));
         expect(lastRefreshedObserved).toMatchObject({
-          observedBinaryState: 'off',
+          observedBinaryAxis: 'off',
+          observedEffectiveOn: false,
           binaryControl: { on: false },
           snapshot: { binaryControl: { on: false } },
         });

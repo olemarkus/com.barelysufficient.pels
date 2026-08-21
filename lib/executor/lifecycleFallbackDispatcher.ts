@@ -150,7 +150,7 @@ export class LifecycleFallbackDispatcher {
     switch (request.kind) {
       case 'binary_off':
         if (
-          observed.observedBinaryState === 'off'
+          observed.observedBinaryAxis === 'off'
           && !hasReleasedOpposingCommand(releasedOpposing, request.kind)
         ) {
           return { settled: true };

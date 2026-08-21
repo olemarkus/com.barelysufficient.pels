@@ -193,11 +193,11 @@ function hasExecutableBinaryReleaseExecutionDrift(
   if (intent.kind === 'binary_restore') {
     // Restore drift: still off-but-commandable (released) — transition not yet seen.
     // Both fields are producer-resolved by the observed-state projection.
-    return observed.observedBinaryState === 'off'
+    return !observed.observedEffectiveOn
       && observed.commandableNow;
   }
   // Release drift: still on — transition not yet seen.
-  return observed.observedBinaryState !== 'off';
+  return observed.observedEffectiveOn;
 }
 
 function hasExecutableSteppedLoadExecutionDrift(
@@ -222,7 +222,7 @@ function hasBinaryStateDrift(params: {
   const { expectedBinaryState, observed, pendingBinary } = params;
   if (!expectedBinaryState) return false;
   if (isPendingBinaryCommandMatchingExpected(pendingBinary, expectedBinaryState)) return false;
-  const observedBinaryState = observed.observedBinaryState;
+  const observedBinaryState: BinaryState = observed.observedEffectiveOn ? 'on' : 'off';
   return observedBinaryState !== expectedBinaryState;
 }
 
@@ -351,8 +351,8 @@ function isObservedBinaryStateForTransition(
   transition: ExecutableSteppedLoadTransition,
   observed: ExecutableObservedDeviceState,
 ): boolean {
-  if (transition.effectiveTransition === 'restore_from_off_at_low') return observed.observedBinaryState === 'off';
-  if (transition.effectiveTransition === 'full_shed_to_off') return observed.observedBinaryState === 'on';
+  if (transition.effectiveTransition === 'restore_from_off_at_low') return !observed.observedEffectiveOn;
+  if (transition.effectiveTransition === 'full_shed_to_off') return observed.observedEffectiveOn;
   return false;
 }
 

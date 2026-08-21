@@ -275,7 +275,8 @@ const buildObserved = (
   snapshot,
   available: true,
   binaryControl: snapshot.binaryControl,
-  observedBinaryState: (snapshot.binaryControl?.on ?? true) ? 'on' : 'off',
+  observedBinaryAxis: (snapshot.binaryControl?.on ?? true) ? 'on' : 'off',
+  observedEffectiveOn: snapshot.binaryControl?.on ?? true,
   target: null,
   steppedLoad: null,
   ...overrides,
@@ -339,7 +340,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       const secondResult = await applyShedReleaseIntent({
         intent,
         steppedLoadIntent: undefined,
-        observed: buildObserved(heater.id, heater.name, refreshedSnapshot, { binaryControl: { on: false }, observedBinaryState: 'off' }),
+        observed: buildObserved(heater.id, heater.name, refreshedSnapshot, { binaryControl: { on: false }, observedBinaryAxis: 'off', observedEffectiveOn: false }),
         snapshot: refreshedSnapshot,
         deps,
       });

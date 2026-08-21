@@ -26,7 +26,6 @@
  */
 import { getCurrentDrawKw } from '../observer/observedPower';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
-import { resolveCurrentOn } from '../observer/observedState';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
@@ -96,11 +95,11 @@ export const resolveObservedSelectedStepId = (
  * The observed device state the drift comparison reads, assembled from the
  * observer's reading and the configured ladder.
  *
- * `currentOn` is resolved HERE, once, by the observer's own fold
- * (`resolveCurrentOn`): a stepped device parked at its off step reads off even
- * while its binary axis reads on. Resolving at this seam is what lets the
- * comparison downstream read a single settled value instead of re-deciding what
- * an absent `binaryControl` meant.
+ * The on/off fold is NOT applied here. It is applied once, at the single seam
+ * that builds `ExecutableObservedDeviceState`, which resolves both the raw axis
+ * and the fold for every caller — so this hands over the raw ingredients (the
+ * binary bag, the ladder, the resolved rung) and lets that seam answer both
+ * questions the same way on every path.
  */
 export const buildDriftObservedSnapshot = (
   observed: ObserverDeviceRead,
@@ -111,11 +110,6 @@ export const buildDriftObservedSnapshot = (
     ...observed,
     ...(profile !== undefined ? { steppedLoadProfile: profile } : {}),
     ...(selectedStepId !== undefined ? { selectedStepId } : {}),
-    currentOn: resolveCurrentOn({
-      binaryControl: observed.binaryControl,
-      steppedLoadProfile: profile,
-      selectedStepId,
-    }),
     commandableNow: resolveCommandableNow(observed),
     currentDrawKw: getCurrentDrawKw(observed),
   };

@@ -23,35 +23,56 @@ const planWithDevices = (devices: DevicePlan['devices']): DevicePlan => ({
 });
 
 describe('planExecutablePlan', () => {
-  describe('observedBinaryState fold preference', () => {
-    it('prefers the producer-resolved currentOn (folds stepped-off) over the raw binary axis', () => {
-      // Drift-path input: a binary+stepped device whose onoff axis reads on but is
-      // parked at its off step → producer-resolved `currentOn` is false. The
-      // executable observed state must reflect the folded on/off truth, NOT the raw
-      // binary axis (which would say 'on'). A revert to reading only `binaryControl`
-      // would make this assertion fail.
-      const folded = buildExecutableObservedDeviceStateFromSnapshot({
+  describe('observed binary axis vs effective on', () => {
+    // These two fields were ONE field whose meaning depended on which path
+    // constructed it. They are separate because two different questions are
+    // asked of the same device, and for a binary+stepped device parked at its
+    // off step the honest answers differ.
+    const steppedProfileAtOff = {
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'low', planningPowerW: 1250 },
+      ],
+    };
+
+    it('answers both questions for a stepped device parked at its off rung with the switch armed', () => {
+      const observed = buildExecutableObservedDeviceStateFromSnapshot({
         available: true,
         id: 'dev-1',
         name: 'Tank',
-        currentOn: false,
         binaryControl: { on: true },
+        steppedLoadProfile: steppedProfileAtOff,
+        selectedStepId: 'off',
         targets: [],
       });
-      expect(folded.observedBinaryState).toBe('off');
+
+      // The handle IS on — `shedReleaseActuation` must not treat a binary-off
+      // write as a no-op here.
+      expect(observed.observedBinaryAxis).toBe('on');
+      // ...and the device is nonetheless off, so convergence has nothing to fix.
+      expect(observed.observedEffectiveOn).toBe(false);
     });
 
-    it('falls back to the raw binary axis when no producer currentOn is present (executor/dispatch path)', () => {
-      // Raw transport-snapshot input carries `binaryControl` but no `currentOn`, so
-      // the projection reads the binary axis directly.
-      const rawOn = buildExecutableObservedDeviceStateFromSnapshot({
-        available: true,
-        id: 'dev-1',
-        name: 'Tank',
-        binaryControl: { on: true },
-        targets: [],
+    it('agrees on both fields for a pure-binary device', () => {
+      const on = buildExecutableObservedDeviceStateFromSnapshot({
+        available: true, id: 'dev-1', name: 'Tank', binaryControl: { on: true }, targets: [],
       });
-      expect(rawOn.observedBinaryState).toBe('on');
+      expect(on.observedBinaryAxis).toBe('on');
+      expect(on.observedEffectiveOn).toBe(true);
+
+      const off = buildExecutableObservedDeviceStateFromSnapshot({
+        available: true, id: 'dev-1', name: 'Tank', binaryControl: { on: false }, targets: [],
+      });
+      expect(off.observedBinaryAxis).toBe('off');
+      expect(off.observedEffectiveOn).toBe(false);
+    });
+
+    it('reads an unobserved binary control as on — "may draw, stays sheddable"', () => {
+      const unobserved = buildExecutableObservedDeviceStateFromSnapshot({
+        available: true, id: 'dev-1', name: 'Tank', targets: [],
+      });
+      expect(unobserved.observedBinaryAxis).toBe('on');
+      expect(unobserved.observedEffectiveOn).toBe(true);
     });
   });
 

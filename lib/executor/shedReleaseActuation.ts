@@ -168,7 +168,7 @@ const applyShedReleaseBinaryOff = async (params: {
   // already in shed posture (no-op). Observed binary state is the producer-resolved
   // `currentOn` (an honest boolean — an unobserved binary control resolves to a
   // non-optimistic `false`), so there is no separate 'unknown' to grace here.
-  if (forceAgainstReleasedOpposing !== true && (!observed || observed.observedBinaryState !== 'on')) return false;
+  if (forceAgainstReleasedOpposing !== true && (!observed || observed.observedBinaryAxis !== 'on')) return false;
   return applyBinarySheddingToDevice(deps.buildBinaryExecutorContext(), {
     deviceId: intent.deviceId,
     deviceName: intent.name,
