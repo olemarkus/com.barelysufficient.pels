@@ -133,20 +133,24 @@ Post-release executor boundary rollout:
   capabilities are control-relevant, and nothing more.
 - Realtime event flow (post-PR #5 of the observer/transport split): transport translates the
   raw Homey event, observer's emitter fans out the typed `observed-state-changed` /
-  `plan-reconcile-observed` events (via a dispatcher callback injected into transport at
-  construction time so transport never imports observer), and wiring (`setup/`) requests a plan
-  REBUILD for the owning home. See `notes/state-management/observer-transport-split.md`.
+  `observed-control-state-changed` events (via a dispatcher callback injected into transport at
+  construction time so transport never imports observer), and wiring (`setup/`) updates observed
+  state, the external-off hold, and the rebuild suppression latches. See
+  `notes/state-management/observer-transport-split.md`.
 
-  The wiring layer no longer runs a drift gate of its own. It used to compare the device against the
-  committed plan and, on disagreement, ask `PlanService` to re-apply that plan — which meant the
-  answer was only ever used to decide whether to re-assert a decision made before the observation.
-  That lane caused a hard-cap breach in production (inc_26449fb9). Consulting a planner comparison
-  from `setup/` was the second of the three layering inversions behind it; the others were the
-  producer naming a plan operation, and the planner hosting an apply-without-decide operation.
+  **Wiring requests no plan rebuild for an observation.** It once compared the device against the
+  committed plan and asked `PlanService` to re-apply it, which caused a hard-cap breach in
+  production (inc_26449fb9); consulting a planner comparison from `setup/` was the second of the
+  three layering inversions behind it. Replacing the re-assert with a full re-decide fixed the
+  inversion but left the device event as the TRIGGER for a capacity decision — and a rebuild driven
+  by a device event runs against a whole-home reading taken before the change. A meter reading is
+  the trigger now (root `AGENTS.md` § Control Flow); the observation reaches the planner as state,
+  in the reading that carries it.
 
-  What bounds the cost now is the producer's control-relevance filter plus the coalescing debounce
-  and the 2 s rebuild floor in `setup/appRealtimeDeviceReconcile.ts` — not a gate that guesses
-  whether the planner would have anything to say.
+  What an observation may still do is clear the rebuild suppressions
+  (`lib/plan/rebuildScheduler/observationSuppression.ts`), so the reading already on its way is not
+  throttled away by an "unactionable" verdict about a house that has since changed. That changes
+  whether the next reading decides, never what it decides from.
 - Transitional stepped-load action adapters may still use planner-effective step fields as command
   baselines, such as a previous step id for request metadata. Materialization and binary restore
   readiness must still come from reported/admitted snapshot evidence.
@@ -548,18 +552,22 @@ During that window, PELS should:
 
 ## Practical Rules For Convergence Work
 
-There is one lane: an observation triggers a plan REBUILD, and the rebuild actuates when the
-executor still has work outstanding against the plan it just built. The old second lane —
-re-applying the committed plan without re-deciding it — is gone (see inc_26449fb9 above).
+There is one lane: a whole-home meter reading triggers a plan REBUILD, and the rebuild actuates
+when the executor still has work outstanding against the plan it just built. The executor has no
+clock of its own — `applyPlanActions` is reachable only from `maybeApplyPlanChanges` — so every
+executor tick IS a rebuild. The old second lane, re-applying the committed plan without re-deciding
+it, is gone (see inc_26449fb9 above).
 
 When changing convergence logic, prefer these rules:
 
 1. Convergence compares observed state against the plan's intended state, not against the last
    stored snapshot value.
 2. Realtime updates must update the observed view before convergence evaluation reads that field.
-3. An observation is a planner INPUT, not an actuation trigger. If a device moved, re-plan; do not
-   re-assert. The planner is entitled to answer "leave it where it landed and shed something else",
-   and a re-assert can never reach that answer.
+3. An observation is a planner INPUT, not an actuation trigger and not a rebuild trigger. If a
+   device moved, the next reading re-plans with it; do not re-assert, and do not re-plan off the
+   device event either — that decides a capacity question from a reading that never saw the change.
+   The planner is entitled to answer "leave it where it landed and shed something else", and a
+   re-assert can never reach that answer.
 4. Logs should distinguish:
    - observed transition
    - planned target

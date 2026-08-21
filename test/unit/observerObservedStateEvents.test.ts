@@ -2,15 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   OBSERVED_STATE_CHANGED_EVENT,
   ObservedStateEmitter,
-  PLAN_RECONCILE_OBSERVED_EVENT,
+  OBSERVED_CONTROL_STATE_CHANGED_EVENT,
   type ObservedStateChangedEvent,
   type ObservedStateEmitterDispatcher,
-  type PlanReconcileObservedEvent,
+  type ObservedControlStateChangedEvent,
 } from '../../lib/observer/observedStateEvents';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import {
   PLAN_LIVE_STATE_OBSERVED_EVENT,
-  PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
+  OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT,
   type TransportObservedStateDispatcher,
 } from '../../lib/device/deviceTransport';
 
@@ -36,9 +36,9 @@ const _observedStateChangedEventParity: _MutuallyAssignable<
   Parameters<TransportObservedStateDispatcher['observedStateChanged']>[0]
 > = [true, true];
 
-const _planReconcileEventParity: _MutuallyAssignable<
-  Parameters<ObservedStateEmitterDispatcher['planReconcile']>[0],
-  Parameters<TransportObservedStateDispatcher['planReconcile']>[0]
+const _observedControlStateChangedEventParity: _MutuallyAssignable<
+  Parameters<ObservedStateEmitterDispatcher['observedControlStateChanged']>[0],
+  Parameters<TransportObservedStateDispatcher['observedControlStateChanged']>[0]
 > = [true, true];
 
 const _setHomePowerWParity: _MutuallyAssignable<
@@ -48,17 +48,18 @@ const _setHomePowerWParity: _MutuallyAssignable<
 
 // Reference the values so the compiler doesn't strip them as unused.
 void _observedStateChangedEventParity;
-void _planReconcileEventParity;
+void _observedControlStateChangedEventParity;
 void _setHomePowerWParity;
 
 describe('ObservedStateEmitter', () => {
-  it('preserves the legacy event-name strings for operator/log compatibility', () => {
-    // These literals are identity-bearing: operator log queries, debug
-    // tooling, and the legacy transport-side back-compat emit path all
-    // match on the same values. PR #5 of the observer/transport split
-    // moved the emitter, not the strings.
+  it('pins the event-name strings the two declaration sites share', () => {
+    // These literals are the channel names on the EventEmitter, and the legacy
+    // transport-side back-compat emit path matches on the same values. They are
+    // NOT log fields — grep finds them nowhere but these two declarations, which
+    // is why `plan_reconcile_realtime_update` could be renamed with the lane it
+    // was named after (root `AGENTS.md` § Control Flow).
     expect(OBSERVED_STATE_CHANGED_EVENT).toBe('plan_live_state_observed');
-    expect(PLAN_RECONCILE_OBSERVED_EVENT).toBe('plan_reconcile_realtime_update');
+    expect(OBSERVED_CONTROL_STATE_CHANGED_EVENT).toBe('observed_control_state_changed');
   });
 
   it('keeps the observer-side and transport-side event constants in lockstep', () => {
@@ -69,7 +70,7 @@ describe('ObservedStateEmitter', () => {
     // one-sided rename before it silently fragments operator log queries
     // or routes the dispatcher and fallback to different event names.
     expect(OBSERVED_STATE_CHANGED_EVENT).toBe(PLAN_LIVE_STATE_OBSERVED_EVENT);
-    expect(PLAN_RECONCILE_OBSERVED_EVENT).toBe(PLAN_RECONCILE_REALTIME_UPDATE_EVENT);
+    expect(OBSERVED_CONTROL_STATE_CHANGED_EVENT).toBe(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT);
   });
 
   it('emits observed-state-changed events through the dispatcher to subscribed listeners', () => {
@@ -91,13 +92,13 @@ describe('ObservedStateEmitter', () => {
     expect(listener).toHaveBeenCalledWith(event);
   });
 
-  it('emits plan-reconcile events through the dispatcher to subscribed listeners', () => {
+  it('emits observed-control-state-changed events through the dispatcher to subscribed listeners', () => {
     const emitter = new ObservedStateEmitter();
     const dispatcher = emitter.asDispatcher(new ObservedHomePower());
     const listener = vi.fn();
-    emitter.onPlanReconcile(listener);
+    emitter.onObservedControlStateChanged(listener);
 
-    const event: PlanReconcileObservedEvent = {
+    const event: ObservedControlStateChangedEvent = {
       deviceId: 'dev-2',
       observationSeq: 3,
       observedAtMs: 200,
@@ -108,7 +109,7 @@ describe('ObservedStateEmitter', () => {
         nextValue: 'off',
       }],
     };
-    dispatcher.planReconcile(event);
+    dispatcher.observedControlStateChanged(event);
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith(event);
@@ -119,13 +120,13 @@ describe('ObservedStateEmitter', () => {
     const observedListener = vi.fn();
     const reconcileListener = vi.fn();
     emitter.onObservedStateChanged(observedListener);
-    emitter.onPlanReconcile(reconcileListener);
+    emitter.onObservedControlStateChanged(reconcileListener);
 
     emitter.emitObservedStateChanged({
       source: 'device_update',
       deviceId: 'dev-3',
     });
-    emitter.emitPlanReconcile({
+    emitter.emitObservedControlStateChanged({
       deviceId: 'dev-3',
     });
 
@@ -133,12 +134,12 @@ describe('ObservedStateEmitter', () => {
     expect(reconcileListener).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps observed-state and plan-reconcile channels independent', () => {
+  it('keeps the observed-state and observed-control-state-changed channels independent', () => {
     const emitter = new ObservedStateEmitter();
     const observedListener = vi.fn();
     const reconcileListener = vi.fn();
     emitter.onObservedStateChanged(observedListener);
-    emitter.onPlanReconcile(reconcileListener);
+    emitter.onObservedControlStateChanged(reconcileListener);
 
     emitter.emitObservedStateChanged({
       source: 'realtime_capability',

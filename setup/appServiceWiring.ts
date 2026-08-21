@@ -18,7 +18,6 @@ import { normalizeError } from '../lib/utils/errorUtils';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { WeatherCollector } from '../lib/weather/weatherCollector';
 import type { PowerTrackerPersistReason } from '../lib/power/sampleIngest';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import {
   requireInitializedAppContext,
   type AppContext,
@@ -55,8 +54,11 @@ import { createMainCapacityGuard } from './appInit/createMainCapacityGuard';
 import { startPostStartupBackgroundTasks } from './appInit/startPostStartupBackgroundTasks';
 import { BackgroundTasksController } from './backgroundTasksController';
 import type { AppNativeWiring } from './appNativeWiring';
-import * as realtimeReconcile from './appRealtimeDeviceReconcile';
-import { scheduleAppRealtimeDeviceReconcileForApp } from './appRealtimeDeviceReconcileRuntime';
+import {
+  invalidateOwningHomeRebuildSuppression,
+  syncExternalOffHoldForObservation,
+} from './appObservedControlStateRuntime';
+import type { ObservedControlStateChangedEvent } from '../lib/observer/observedStateEvents';
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
@@ -93,7 +95,6 @@ export type AppServiceWiringDeps = {
   getObservedHomePower: () => ObservedHomePower;
   getObservedDeviceStateProjection: () => ObservedDeviceStateProjection;
   setObservedDeviceStateProjection: (projection: ObservedDeviceStateProjection) => void;
-  getRealtimeDeviceReconcileState: () => realtimeReconcile.RealtimeDeviceReconcileState;
   setStopSettingsHandler: (stop: (() => void) | undefined) => void;
   getStopSettingsHandler: () => (() => void) | undefined;
   setWeatherCollector: (collector: WeatherCollector | undefined) => void;
@@ -106,12 +107,10 @@ export type AppServiceWiringDeps = {
   getDeviceDriverIdOverride: (deviceId: string) => string | undefined;
   getFlowConflict: (deviceId: string) => { conflictingCapabilities: readonly string[]; flowName?: string } | undefined;
   computeShortfallThreshold: () => number;
-  getSnapshotDevice: (deviceId: string) => TargetDeviceSnapshot | undefined;
   retryDeferredOvershootSeed: (
     membership: HomeMembershipService,
     allowPendingOwnershipGeneration: boolean,
   ) => void;
-  hasEnabledEvBoostForSnapshot: (device: TargetDeviceSnapshot | undefined) => boolean;
   loadPersistedState: () => void;
   persistLearnedPowerPeaks: () => void;
   flushLearnedPowerPeaks: () => void;
@@ -477,7 +476,18 @@ export class AppServiceWiring {
   subscribePlanObservedState(): void {
     subscribePlanObservedState({
       ...this.deps,
-      scheduleRealtimeDeviceReconcile: (event) => this.scheduleRealtimeDeviceReconcile(event),
+      syncExternalOffHold: (event) => this.syncExternalOffHold(event),
+      invalidateRebuildSuppression: (deviceId) => this.invalidateRebuildSuppression(deviceId),
+    });
+  }
+
+  // Body in `setup/appObservedControlStateRuntime.ts`, beside the external-off
+  // hold it is routed alongside.
+  invalidateRebuildSuppression(deviceId: string): void {
+    invalidateOwningHomeRebuildSuppression({
+      ctx: this.deps.ctx,
+      deviceId,
+      getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
     });
   }
 
@@ -500,17 +510,15 @@ export class AppServiceWiring {
     }));
   }
 
-  // Body in `setup/appRealtimeDeviceReconcileRuntime.ts`; kept as a method so
-  // the emitter subscription and test seams keep their call site.
-  scheduleRealtimeDeviceReconcile(event: realtimeReconcile.RealtimeDeviceReconcileEvent): void {
-    scheduleAppRealtimeDeviceReconcileForApp({
+  // Body in `setup/appExternalOffHoldRuntime.ts`; kept as a method so the
+  // emitter subscription and test seams keep their call site.
+  syncExternalOffHold(event: ObservedControlStateChangedEvent): void {
+    syncExternalOffHoldForObservation({
       ctx: this.deps.ctx,
       event,
-      state: this.deps.getRealtimeDeviceReconcileState(),
-      timers: this.deps.timers,
-      // Route a sub-home device's reconcile through its own bundle (R7b P1#1);
-      // lazy over the registry field so it stays byte-identical (undefined →
-      // main closures) before `initHomeRuntimeRegistry` and with no sub-homes.
+      // Route a sub-home device through its own bundle (R7b P1#1); lazy over the
+      // registry field so it stays byte-identical (undefined → main closures)
+      // before `initHomeRuntimeRegistry` and with no sub-homes.
       getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
     });
   }
@@ -527,8 +535,8 @@ export class AppServiceWiring {
    * freshly written reachability anyway.
    */
   rebuildOwningHomePlanForDevice(deviceId: string, trigger: PlanRebuildTrigger): Promise<unknown> {
-    const subHomeRoute = this.homeRuntimeRegistry?.getReconcileRouteForDevice(deviceId);
-    if (subHomeRoute) return subHomeRoute.hooks.rebuild(trigger);
+    const subHomeRoute = this.homeRuntimeRegistry?.getOwningHomeRouteForDevice(deviceId);
+    if (subHomeRoute) return subHomeRoute.hooks.rebuildPlan(trigger);
     const resolved = resolvePlanService(this.deps.ctx);
     if (resolved.state !== 'ready') return Promise.resolve();
     return resolved.planService.rebuildPlanFromCache(trigger);
@@ -553,7 +561,6 @@ export class AppServiceWiring {
     this.homeRuntimeRegistry = undefined;
     ctx.homeRuntimeRead = undefined;
     this.clearUninitTimers();
-    realtimeReconcile.clearRealtimeDeviceReconcileState(this.deps.getRealtimeDeviceReconcileState());
     this.stopUninitServices();
     // Detach the membership recompute triggers BEFORE the transport teardown
     // so a still-in-flight refresh dispatch or detached zone-tree commit can

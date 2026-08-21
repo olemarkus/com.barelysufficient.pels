@@ -8,7 +8,7 @@
  * one point where every required fact is available at once — the observed state,
  * the observed transition, and the owning home's pending commands — and it
  * covers both push ingest routes (`realtime_capability` and
- * `device_update` each dispatch through `plan_reconcile`).
+ * `device_update` each dispatch through `observed_control_state_changed`).
  *
  * A HOLD NEEDS A TRANSITION, NOT A LEVEL. The single most dangerous mistake here
  * is reading "device is off while the plan says keep" as a user action: that is
@@ -42,7 +42,6 @@ import type { ExternalOffHoldPolicy } from '../lib/observer/externalOffHold';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import { isEvSessionInactive } from '../packages/shared-domain/src/evPlugState';
 import { isEvObserved } from '../packages/shared-domain/src/evObservedState';
-import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import type {
   EvObservedProbe,
   TargetDeviceSnapshot,
@@ -95,17 +94,6 @@ export function toExternalOffHoldObservedDevice(
     evSessionInactive: isEvObserved(device) && isEvSessionInactive(device.evChargingState),
   };
 }
-
-/**
- * Per-home seams the reconcile wrapper binds for the device's OWNING home.
- * Both are wrong if taken from main for a sub-home device: its pending commands
- * live in its own engine, and its rebuild belongs to its own service.
- */
-export type ExternalOffHoldReconcileHooks = {
-  hasPendingBinaryCommand: (deviceId: string) => boolean;
-  clearRecentBinaryOffCommand: (deviceId: string) => void;
-  rebuild: (trigger: PlanRebuildTrigger) => Promise<unknown>;
-};
 
 export type ExternalOffHoldSyncDeps = {
   policy: ExternalOffHoldPolicy | undefined;
@@ -252,7 +240,7 @@ export function syncExternalOffHoldForDevice(params: {
  * Pull-path release sweep: drops any hold whose device is currently observed ON.
  *
  * Detection is push-only (a full snapshot refresh never dispatches
- * `plan_reconcile`), and that is the safe direction for STARTING a hold. Release
+ * `observed_control_state_changed`), and that is the safe direction for STARTING a hold. Release
  * is the opposite: if the ON that should have released a hold arrives while the
  * live feed is down — or is swallowed because a pull already wrote `on: true`, so
  * the realtime event carries no change — the hold would survive on a running

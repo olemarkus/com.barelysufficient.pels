@@ -52,11 +52,15 @@ export function hasPlanDeviceExecutionDrift(params: {
   } = params;
   // "Leave off until turned on again": the device is off because the user turned
   // it off, and the producer only sets this bit while it is STILL observed off.
-  // A plan built before the hold still says `keep`, so without this every
-  // observation would report drift, drive another rebuild, and trip the
-  // per-device circuit breaker (3 in 30 s → 60 s suppression) — which would then
-  // mask GENUINE drift on that device too. The rebuild scheduled alongside the
-  // hold marks it inactive; until then there is nothing to converge.
+  // A plan built before the hold started still says `keep`, and converging that
+  // would command the device straight back on — undoing the user, from a decision
+  // taken before they acted. The next rebuild reads the hold and plans the device
+  // inactive; until then there is nothing here to converge.
+  //
+  // (This used to cite a rebuild scheduled alongside the hold and a per-device
+  // circuit breaker. Neither exists: an observation triggers no rebuild, and the
+  // breaker went with the lane it throttled — root `AGENTS.md` § Control Flow.)
+  //
   // The hold is only ever set while the device is STILL observed off, so it is
   // a posture rather than a reading, and this layer never asks why.
   if (externalOffHeld) return false;

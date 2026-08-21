@@ -79,7 +79,7 @@ export type SteppedLoadFlowTriggerCard = {
 export type TransportObservedStateDispatcher = {
     observedStateChanged: (event: ObservedDeviceStateEvent) => void;
     observedStateRefresh: (event: ObservedDeviceStateRefreshEvent) => void;
-    planReconcile: (event: PlanRealtimeUpdateEvent) => void;
+    observedControlStateChanged: (event: PlanRealtimeUpdateEvent) => void;
     /**
      * Push the whole-home power scalar resolved from a Homey SDK energy report
      * into observer's home-power holder. PR2a of the observer/transport split:
@@ -121,7 +121,7 @@ export type DeviceTransportOptions = {
      *
      * When omitted (legacy direct-`DeviceTransport` tests), transport falls
      * back to emitting `PLAN_LIVE_STATE_OBSERVED_EVENT` and
-     * `PLAN_RECONCILE_REALTIME_UPDATE_EVENT` through its own EventEmitter so
+     * `OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT` through its own EventEmitter so
      * existing `deviceManager.on(...)` test subscriptions keep working with
      * the same event-name strings.
      *

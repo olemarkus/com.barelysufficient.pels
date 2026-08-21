@@ -4,7 +4,7 @@ import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import {
   DeviceTransport,
   PLAN_LIVE_STATE_OBSERVED_EVENT,
-  PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
+  OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT,
 } from '../../lib/device/deviceTransport';
 import {
   resolveNativeSteppedLoadCommand,
@@ -1284,7 +1284,7 @@ describe('native stepped-load wiring', () => {
       const liveStateObserved = vi.fn();
       const realtimeReconcile = vi.fn();
       deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateObserved);
-      deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeReconcile);
+      deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeReconcile);
       deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', '3');
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -1355,7 +1355,7 @@ describe('native stepped-load wiring', () => {
       const observed = vi.fn();
       const reconcile = vi.fn();
       deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, observed);
-      deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcile);
+      deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcile);
 
       // First power-step changes the reported step (medium -> max): the
       // reported-step-changed branch dispatches both observed + reconcile.
@@ -1369,7 +1369,7 @@ describe('native stepped-load wiring', () => {
 
       // Same power-step again (max -> max): no reported-step change, but the
       // freshness bump must still surface as an observed-state delta — and NOT a
-      // plan-reconcile (nothing reconcilable changed).
+      // control-state change (nothing control-relevant changed).
       deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', '3');
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ reportedStepId: 'max' }));
       expect(observed).toHaveBeenCalledTimes(1);
@@ -1613,7 +1613,7 @@ describe('native stepped-load wiring', () => {
       const liveStateObserved = vi.fn();
       const realtimeReconcile = vi.fn();
       deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateObserved);
-      deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeReconcile);
+      deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeReconcile);
 
       await expect(setObservedNativeSteppedLoadStep({
         owner: deviceManager,
@@ -1723,7 +1723,7 @@ describe('native stepped-load wiring', () => {
       }));
 
       const realtimeReconcile = vi.fn();
-      deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeReconcile);
+      deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeReconcile);
       deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'onoff', true);
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({

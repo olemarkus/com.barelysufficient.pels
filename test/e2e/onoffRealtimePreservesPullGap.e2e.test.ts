@@ -272,7 +272,12 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
     putSpy.mockClear();
 
     totalW = 10_000;
-    await vi.advanceTimersByTimeAsync(10_000);
+    // 20 s, not 10: the shed comes from the POLL now. The realtime observation
+    // used to request a rebuild directly, bypassing the scheduler and with it
+    // `TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS` — the 15 s execution floor
+    // that applies to every other load switching on. Removing that bypass is the
+    // point (`lib/plan/planRebuildTrigger.ts`); what is asserted is unchanged.
+    await vi.advanceTimersByTimeAsync(20_000);
     // Wait for the detached poll→plan→execute chain to reach the SDK write
     // instead of a fixed flush, which flakes to zero calls under full-suite CPU
     // load (notes/testing-taxonomy.md). The toHaveBeenCalledWith below then gives

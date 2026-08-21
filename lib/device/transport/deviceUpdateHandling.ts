@@ -178,7 +178,7 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
           emit(event);
         },
         createObservationCursor: (nextDeviceId) => ctx.nextObservationCursor(nextDeviceId),
-        emitPlanReconcile: (event) => ctx.emitPlanReconcileEvent(event),
+        emitObservedControlStateChanged: (event) => ctx.emitObservedControlStateChangedEvent(event),
         emitObservedState: (event: ObservedDeviceStateEvent) => deferredObservedStateEvents.push(event),
     });
     const currentSnapshot = deviceId

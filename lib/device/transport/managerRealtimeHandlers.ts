@@ -139,7 +139,7 @@ export function handleRealtimeDeviceUpdate(params: {
   hasPendingBinarySettleWindow?: (deviceId: string, capabilityId: string) => boolean;
   emitDeviceUpdateProcessed?: (event: DeviceUpdateProcessedDebugEvent) => void;
   createObservationCursor?: (deviceId: string) => DeviceObservationCursor;
-  emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => void;
+  emitObservedControlStateChanged: (event: PlanRealtimeUpdateEvent) => void;
   emitObservedState: (event: ObservedDeviceStateEvent) => void;
 }): HandleRealtimeDeviceUpdateResult {
   const {
@@ -154,7 +154,7 @@ export function handleRealtimeDeviceUpdate(params: {
     hasPendingBinarySettleWindow,
     emitDeviceUpdateProcessed,
     createObservationCursor,
-    emitPlanReconcile,
+    emitObservedControlStateChanged,
     emitObservedState,
   } = params;
   const deviceId = device.id;
@@ -230,7 +230,7 @@ export function handleRealtimeDeviceUpdate(params: {
     measurePowerBecameSignificantlyPositive,
     createObservationCursor,
     emitObservedState,
-    emitPlanReconcile,
+    emitObservedControlStateChanged,
   });
   if (!observedControlStateChanged) {
     return {
@@ -260,7 +260,7 @@ function emitDeviceObservationEvents(params: {
   cursor?: DeviceObservationCursor;
   measurePowerBecameSignificantlyPositive: boolean;
   createObservationCursor?: (deviceId: string) => DeviceObservationCursor;
-  emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => void;
+  emitObservedControlStateChanged: (event: PlanRealtimeUpdateEvent) => void;
   emitObservedState: (event: ObservedDeviceStateEvent) => void;
 }): void {
   const {
@@ -274,7 +274,7 @@ function emitDeviceObservationEvents(params: {
     measurePowerBecameSignificantlyPositive,
     createObservationCursor,
     emitObservedState,
-    emitPlanReconcile,
+    emitObservedControlStateChanged,
   } = params;
   const observedNonControlFacet = observedCapabilityIds.some((capabilityId) => (
     capabilityId === 'measure_temperature' || isStateOfChargeCapabilityId(capabilityId)
@@ -289,7 +289,7 @@ function emitDeviceObservationEvents(params: {
     measurePowerBecameSignificantlyPositive,
   });
   if (!observedControlStateChanged) return;
-  emitPlanReconcile({
+  emitObservedControlStateChanged({
     deviceId,
     ...eventCursor,
     name: label,

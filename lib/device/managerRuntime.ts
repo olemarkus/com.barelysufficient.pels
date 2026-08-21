@@ -181,7 +181,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
     latestSnapshot.push(resolvedParsed);
   }
 
-  const changes = getPlanReconcileRealtimeChanges(previous, resolvedParsed, {
+  const changes = getControlRelevantRealtimeChanges(previous, resolvedParsed, {
     binaryValueExplicitlyObserved: explicitBinaryValueAccepted === true,
   });
   const observedCapabilityIds = getObservedCapabilityIds(previous, resolvedParsed, {
@@ -426,7 +426,7 @@ function resolveBinaryReconcileChange(
   };
 }
 
-function getPlanReconcileRealtimeChanges(
+function getControlRelevantRealtimeChanges(
   previous: TransportDeviceSnapshot | null,
   next: TransportDeviceSnapshot,
   options: { binaryValueExplicitlyObserved: boolean },

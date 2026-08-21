@@ -32,6 +32,8 @@ import type {
 } from './createHomeCapacityBundle';
 import type { SuffixedTrackerPersistence } from './suffixedTrackerPersistence';
 import type { StableSampleRevision } from '../powerSamplePipeline';
+import { invalidateRebuildSuppressionForObservation } from '../../lib/plan/rebuildScheduler/observationSuppression';
+import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';
 
 export type PreparedBundleSampleFence = {
   bindReader: (reader: () => StableSampleRevision) => void;
@@ -365,6 +367,9 @@ type HomeCapacityBundleApiParams = {
   markTornDown: () => void;
   reloadModeCatalog: (allowPendingOwnershipGeneration?: boolean) => void;
   isModeCatalogInitialized: () => boolean;
+  /** THIS bundle's own rebuild state (never main's) — see `OwningHomeHooks`. */
+  getRebuildState: () => PowerSampleRebuildState;
+  setRebuildState: (state: PowerSampleRebuildState) => void;
 };
 
 export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams): HomeCapacityBundle {
@@ -400,25 +405,21 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     getHomeConfig: () => ({ ...getHome() }),
     getMeterDeviceId: () => getHome().meterDeviceId,
     ...readOperations,
-    // Realtime-reconcile routing (P1#1): the wrapper binds these when a drifting
-    // device resolves to THIS home. `getLiveDevices` reuses the scope's own
-    // membership-filtered, own-engine pending-binary plan view (NOT main's
-    // `toPlanDevice`), so the drift check reads this bundle's device set exactly.
-    getReconcileHooks: () => ({
-      getLatestPlanSnapshot: () => planService.getLatestPlanSnapshot(),
-      requestRebuild: async () => {
-        const outcome = await planService.rebuildPlanFromCache('device_observation_changed');
-        return outcome.writtenDeviceIds;
-      },
-      // External-off hold: both must come from THIS bundle. Main's pending store
-      // never saw this device's commands, so it would report PELS's own write as
-      // an outside action; main's plan does not contain the device at all.
+    // Owning-home routing (P1#1): bound when an observed device resolves to THIS
+    // home. Every member must come from THIS bundle — main's pending store never
+    // saw this device's commands (so it would report PELS's own write as an
+    // outside action), main's plan does not contain the device, and main's
+    // rebuild state describes a different house.
+    getOwningHomeHooks: () => ({
       hasPendingBinaryCommand: (deviceId) => (
         planEngine.hasAttributablePendingBinaryCommand(deviceId)
       ),
       clearRecentBinaryOffCommand: (deviceId) => (
         planEngine.clearRecentBinaryOffCommand(deviceId)),
-      rebuild: (trigger) => planService.rebuildPlanFromCache(trigger),
+      rebuildPlan: (trigger) => planService.rebuildPlanFromCache(trigger),
+      invalidateRebuildSuppression: () => {
+        params.setRebuildState(invalidateRebuildSuppressionForObservation(params.getRebuildState()));
+      },
     }),
     updateHomeConfig: (next) => {
       setHome(next);

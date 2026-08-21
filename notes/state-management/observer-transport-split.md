@@ -253,6 +253,14 @@ and reapply triggering all in one file. Post-split:
   (`lib/app/`). Observer emits "observed state changed for these capabilities"
   + cursor; wiring orchestrates the reapply.
 
+> **Superseded since:** the wiring-layer reapply this section describes is gone
+> in two steps — first its drift gate, then the device-event rebuild trigger
+> itself (a capacity decision must not be triggered by a device event; see
+> `notes/state-management/README.md` § Realtime event flow and root `AGENTS.md`
+> § Control Flow). `appRealtimeDeviceReconcileRuntime.ts` no longer exists; what
+> remains of that lane is `setup/appExternalOffHoldRuntime.ts`. The emitter
+> ownership this train shipped is unchanged.
+
 Post-PR #5 reality check: the drift-against-plan-intent code already lived in
 `lib/executor/planExecutionDrift.ts` (since PR #1b of this train), and
 wiring's `appRealtimeDeviceReconcileRuntime.ts` already consulted it before
@@ -332,7 +340,7 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    their pre-PR transport-side declarations); transport accepts an
    `observedStateDispatcher` callback bag supplied by wiring (`app.ts`) and
    routes every post-translation fan-out through it via two new private
-   helpers (`dispatchObservedStateChanged`, `dispatchPlanReconcile`).
+   helpers (`dispatchObservedStateChanged`, `dispatchObservedControlStateChanged`).
    Transport's own EventEmitter still fires the legacy events when no
    dispatcher is wired, so legacy direct-`DeviceTransport` tests continue
    to subscribe with the same event-name strings without behaviour drift.
@@ -349,7 +357,10 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    Superseded in part by the drift/reconcile layering train (2026-08-06): the
    wiring layer no longer consults a drift predicate at all, and the trigger
    requests a plan REBUILD rather than a reapply. The boolean is now
-   `observedControlStateChanged`. See `README.md` in this directory.)
+   `observedControlStateChanged`. Superseded again 2026-08-20: there is no
+   device-event trigger at all — a whole-home meter reading is what rebuilds, and
+   `appRealtimeDeviceReconcileRuntime.ts` is gone. See `lib/plan/planRebuildTrigger.ts`,
+   root `AGENTS.md` § Control Flow, and `README.md` in this directory.)
 
 ## Secondary cleanups surfaced during review
 

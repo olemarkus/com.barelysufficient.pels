@@ -119,12 +119,13 @@ The rules behind this DAG (`no-power-to-plan`, `no-power-to-device`, `no-device-
 
 ### Realtime event flow
 
-Realtime device events (capability updates, full device updates from Homey) cross three peer layers between SDK ingress and a planner reapply:
+Realtime device events (capability updates, full device updates from Homey) cross two peer layers between SDK ingress and the observed state the planner reads:
 
-1. **Translation** — `lib/device/` (`DeviceTransport` + `lib/device/transport/managerRealtimeHandlers.ts`) parses the raw Homey payload, runs the admit-or-suppress flow-vs-binary rule and pending-binary-command echo suppression, and produces normalized `observed-state-changed` / `plan-reconcile-observed` events.
+1. **Translation** — `lib/device/` (`DeviceTransport` + `lib/device/transport/managerRealtimeHandlers.ts`) parses the raw Homey payload, runs the admit-or-suppress flow-vs-binary rule and pending-binary-command echo suppression, and produces normalized `observed-state-changed` / `observed-control-state-changed` events.
 2. **Observer fan-out** — `lib/observer/observedStateEvents.ts` owns the typed-event emitter (`ObservedStateEmitter`). Transport routes each event through a dispatcher callback bag (`observedStateDispatcher`) injected at construction time by wiring, so `lib/device/` → `lib/observer/` stays free of static imports (the `no-device-to-peer-except-power` cruiser rule holds).
-3. **Drift verdict** — `lib/executor/planExecutionDrift.ts` compares the observed state against the executor-facing plan intent (`ExecutableDeviceIntent` vs `ExecutableObservedDeviceState`). Observer and transport never see plan intent.
-4. **Re-plan trigger** — `setup/appRealtimeDeviceReconcileRuntime.ts` subscribes to the observer-owned emitter and requests a plan rebuild for the owning home. It consults no drift predicate: comparing a device against the committed plan was a planner question the wiring layer had no business answering, and the answer was only ever used to decide whether to RE-APPLY that plan — the lane that breached the hard cap in production (`TODO.md`, inc_26449fb9). An observation is now an ordinary planner input, and the planner decides, including deciding to do nothing.
+3. **Wiring** — `setup/appInit/planObservedStateSubscription.ts` subscribes to the observer-owned emitter and updates the observed view, the external-off hold, and the rebuild-suppression latches (both routed to the device's owning home, `setup/appObservedControlStateRuntime.ts`). It requests **no** plan rebuild. Two things had to go here in turn: first the wiring-layer drift gate, which asked a planner question `setup/` had no business answering and used the answer only to decide whether to RE-APPLY the committed plan — the lane that breached the hard cap in production (`TODO.md`, inc_26449fb9); then the device-event rebuild trigger itself, because a capacity decision taken on a device event runs against a whole-home reading taken before the change. The trigger is a meter reading (`lib/plan/planRebuildTrigger.ts`), and the observation reaches the planner as state, in the reading that carries it.
+
+The executor's drift verdict (`lib/executor/planExecutionDrift.ts`, `ExecutableDeviceIntent` vs `ExecutableObservedDeviceState`) is deliberately **not** a step in this flow: it runs inside a rebuild's apply phase, not on the realtime path. Observer and transport never see plan intent.
 
 See `notes/state-management/observer-transport-split.md` for the layering rationale and the six-step split-train history.
 

@@ -2,7 +2,7 @@
  * Realtime per-capability update handling for `DeviceTransport`, extracted as
  * homey-free free functions over a shared `TransportContext`. Translates an
  * incoming Web-API capability event into snapshot mutations + observed-state /
- * plan-reconcile dispatches, honouring target/step echo suppression, pending
+ * observed-control-state dispatches, honouring target/step echo suppression, pending
  * binary-command confirmation, native stepped-load drift, and freshness-only capabilities. Low-level helpers
  * live in `realtimeCapabilityShared`; native stepped-load handling in
  * `nativeSteppedRealtime`.
@@ -149,7 +149,7 @@ function handleFreshnessOnlyCapabilityUpdate(
             capabilityId: reconcileChange.capabilityId,
             changes: [reconcileChange],
         });
-        ctx.dispatchPlanReconcile({
+        ctx.dispatchObservedControlStateChanged({
             deviceId,
             ...cursor,
             name: snapshot.name,
@@ -214,7 +214,7 @@ function dispatchTemperatureFacetRemoval(
         capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
         changes,
     });
-    ctx.dispatchPlanReconcile({ deviceId, ...cursor, name: snapshot.name, changes });
+    ctx.dispatchObservedControlStateChanged({ deviceId, ...cursor, name: snapshot.name, changes });
 }
 
 function dropDeviceWithoutRemainingControlFacet(
@@ -391,7 +391,7 @@ function handleReconcileCapabilityUpdate(ctx: TransportContext, params: {
         ...cursor,
         capabilityId,
     });
-    ctx.dispatchPlanReconcile({
+    ctx.dispatchObservedControlStateChanged({
         deviceId,
         ...cursor,
         name: snapshot.name,

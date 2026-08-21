@@ -32,6 +32,13 @@ export type PowerSampleRebuildState = {
   pendingPowerW?: number;
   pendingSoftLimitKw?: number;
   pendingReason?: PowerSampleRebuildTrigger;
+  /**
+   * Bumped by every device observation (`invalidateRebuildSuppressionForObservation`).
+   * A rebuild captures it at dispatch and compares on completion: if it moved, the
+   * house changed after the rebuild read its devices, so that rebuild's
+   * "nothing is actionable" verdict must not be allowed to install a backoff.
+   */
+  observationSeq?: number;
   pendingDueMs?: number;
   pendingHardCapBreach?: HardCapBreach;
   pendingIsInShortfall?: boolean;

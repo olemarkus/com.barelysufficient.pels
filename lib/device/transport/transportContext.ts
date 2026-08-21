@@ -113,8 +113,8 @@ export type TransportContext = {
 
   nextObservationCursor(deviceId: string, nowMs?: number): ObservationCursor;
   dispatchObservedStateChanged(event: ObservedDeviceStateEvent): void;
-  dispatchPlanReconcile(event: PlanRealtimeUpdateEvent): void;
-  emitPlanReconcileEvent(event: PlanRealtimeUpdateEvent): void;
+  dispatchObservedControlStateChanged(event: PlanRealtimeUpdateEvent): void;
+  emitObservedControlStateChangedEvent(event: PlanRealtimeUpdateEvent): void;
   shouldTrackRealtimeDevice(deviceId: string): boolean;
 
   applyDeviceDriverOverride(device: HomeyDeviceLike): HomeyDeviceLike;

@@ -30,12 +30,17 @@ import type { ObservedHomePower } from './observedHomePower';
 export const OBSERVED_STATE_CHANGED_EVENT = 'plan_live_state_observed';
 
 /**
- * Emitted when an observed change is significant enough that wiring should
- * consider asking the planner to reapply. Wiring still consults the executor's
- * drift detector (`lib/executor/planExecutionDrift.ts`) before scheduling a
- * rebuild — this event only filters out no-op snapshot updates.
+ * Emitted when a realtime observation moved a CONTROL-relevant capability — the
+ * binary axis or a target — as opposed to a temperature, SoC or power reading.
+ * A fact about the observation, and the producer's judgement of which
+ * capabilities are control-relevant; not a plan operation and not an instruction
+ * to anyone. It was called `plan-reconcile`, after a lane that no longer exists
+ * (root `AGENTS.md` § Control Flow): an observed change triggers no rebuild.
+ *
+ * Wiring consumes it for the external-off hold and the rebuild-suppression
+ * latches (`setup/appInit/planObservedStateSubscription.ts`).
  */
-export const PLAN_RECONCILE_OBSERVED_EVENT = 'plan_reconcile_realtime_update';
+export const OBSERVED_CONTROL_STATE_CHANGED_EVENT = 'observed_control_state_changed';
 
 /**
  * Emitted once per full snapshot refresh (the batch counterpart to the
@@ -80,7 +85,7 @@ export type ObservedStateChangedEvent = {
  */
 export type ObservedStateRefreshEvent = ObservedDeviceStateRefreshPayload;
 
-export type PlanReconcileObservedEvent = {
+export type ObservedControlStateChangedEvent = {
     deviceId: string;
     observationSeq?: number;
     observedAtMs?: number;
@@ -102,7 +107,7 @@ export type PlanReconcileObservedEvent = {
 export type ObservedStateEmitterDispatcher = {
     observedStateChanged: (event: ObservedStateChangedEvent) => void;
     observedStateRefresh: (event: ObservedStateRefreshEvent) => void;
-    planReconcile: (event: PlanReconcileObservedEvent) => void;
+    observedControlStateChanged: (event: ObservedControlStateChangedEvent) => void;
     /**
      * Push the latest whole-home power reading (watts) into observer's
      * `ObservedHomePower` holder. The *source* is a Homey SDK energy report
@@ -137,8 +142,8 @@ export class ObservedStateEmitter {
         this.emitter.emit(OBSERVED_STATE_REFRESH_EVENT, event);
     }
 
-    emitPlanReconcile(event: PlanReconcileObservedEvent): void {
-        this.emitter.emit(PLAN_RECONCILE_OBSERVED_EVENT, event);
+    emitObservedControlStateChanged(event: ObservedControlStateChangedEvent): void {
+        this.emitter.emit(OBSERVED_CONTROL_STATE_CHANGED_EVENT, event);
     }
 
     onObservedStateChanged(listener: (event: ObservedStateChangedEvent) => void): void {
@@ -156,8 +161,8 @@ export class ObservedStateEmitter {
         return () => { this.emitter.off(OBSERVED_STATE_REFRESH_EVENT, listener); };
     }
 
-    onPlanReconcile(listener: (event: PlanReconcileObservedEvent) => void): void {
-        this.emitter.on(PLAN_RECONCILE_OBSERVED_EVENT, listener);
+    onObservedControlStateChanged(listener: (event: ObservedControlStateChangedEvent) => void): void {
+        this.emitter.on(OBSERVED_CONTROL_STATE_CHANGED_EVENT, listener);
     }
 
     /**
@@ -171,7 +176,7 @@ export class ObservedStateEmitter {
         return {
             observedStateChanged: (event) => this.emitObservedStateChanged(event),
             observedStateRefresh: (event) => this.emitObservedStateRefresh(event),
-            planReconcile: (event) => this.emitPlanReconcile(event),
+            observedControlStateChanged: (event) => this.emitObservedControlStateChanged(event),
             setHomePowerW: (w) => homePower.setHomePowerW(w),
             setGenerationW: (w, observedAtMs) => homePower.setGenerationW(w, observedAtMs),
         };

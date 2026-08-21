@@ -19,6 +19,12 @@
  * devices only through a PLAN, so every write is admitted. The old lane could
  * write without planning at all; there is now no such path.
  *
+ * It also pins the second half, added when the device-event rebuild trigger went
+ * away: the observation schedules NOTHING. Replacing the re-assert with a
+ * re-plan fixed the admission bypass but still let a device event decide a
+ * whole-home capacity question from a reading taken before the device moved.
+ * The reading that sees the drift is the one that re-plans.
+ *
  * Integration tier (not e2e) because realtime observations cannot enter through
  * the e2e SDK boundary: the live feed is stubbed off in `test/setup.ts`, so
  * `injectDeviceUpdateForTest` — the transport's documented inbound seam, the
@@ -29,6 +35,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { drainPending } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -51,7 +58,7 @@ type AppLike = {
   deviceManager?: {
     injectCapabilityUpdateForTest: (deviceId: string, capabilityId: string, value: unknown) => void;
   };
-  planService?: { rebuildPlanFromCache: (reason?: string) => Promise<unknown> };
+  planService?: { rebuildPlanFromCache: (...args: never[]) => Promise<unknown> };
 };
 
 /**
@@ -59,7 +66,7 @@ type AppLike = {
  *
  * A stepped device's own step move arrives on the realtime CAPABILITY seam
  * (`handleRealtimeCapabilityUpdate` -> `nativeSteppedRealtime`), not through
- * `device.update`: `getPlanReconcileRealtimeChanges` reports binary and target
+ * `device.update`: `getControlRelevantRealtimeChanges` reports binary and target
  * changes only, so a `device.update` carrying a new step reports no
  * control-relevant change at all. The production log line for this incident is
  * `realtime_capability_drift` on `pels_measure_step`, which is this path.
@@ -111,9 +118,13 @@ const startApp = async (): Promise<AppLike> => {
   return app;
 };
 
-/** Let the observation debounce and the rebuild it schedules settle. */
-const settle = async () => {
-  await vi.advanceTimersByTimeAsync(10_000);
+/**
+ * Advance past the next Homey Energy poll (10 s) and the rebuild floor it feeds.
+ * This is the ONLY thing that re-plans now — the observation itself schedules
+ * nothing, so a test that only drains microtasks sees no rebuild at all.
+ */
+const settleThroughNextReading = async () => {
+  await vi.advanceTimersByTimeAsync(15_000);
 };
 
 describe('stepped device drifting down from the planned step', () => {
@@ -136,7 +147,7 @@ describe('stepped device drifting down from the planned step', () => {
     vi.useRealTimers();
   });
 
-  it('routes the drift through a re-plan instead of re-asserting the pre-drift step', async () => {
+  it('decides nothing on the observation itself, and never re-asserts the pre-drift step', async () => {
     // Tight house: 4500 W against a 4727 W cap leaves 227 W, far short of the
     // 1.75 kW that stepping low -> max would add. This is the production
     // condition under which the re-assert fired anyway.
@@ -147,16 +158,24 @@ describe('stepped device drifting down from the planned step', () => {
 
     // The device drifts DOWN on its own — the production 20:01:29 event.
     announceStep(app, STEP_LOW);
-    await settle();
+    // 5 s, deliberately: longer than the deleted lane's 250 ms debounce and 2 s
+    // rebuild floor, shorter than the 10 s poll. `drainPending` alone advances no
+    // clock, so it would let the removed trigger pass unnoticed.
+    await vi.advanceTimersByTimeAsync(5_000);
+    await drainPending();
 
-    // The observation reached the planner, not the actuator: a re-plan was
-    // requested for it. Before this change the same observation went straight to
-    // `reconcileLatestPlanState`, which wrote without planning.
-    expect(rebuildSpy.mock.calls.some(
-      ([reason]) => reason === 'device_observation_changed',
-    )).toBe(true);
+    // Nothing at all happens on the event. The 281 ms re-assert is gone, and so
+    // is the re-plan that replaced it: a capacity decision taken here would run
+    // against a whole-home reading taken before the device moved.
+    expect(rebuildSpy).not.toHaveBeenCalled();
+    expect(putSpy.mock.calls.filter(([path]) => path === HEATER_STEP_PATH)).toEqual([]);
 
-    // And nothing pushed the heater back up to max, because no plan asked for it.
+    // The reading that DOES see the drift arrives on the poll, and it re-plans.
+    await settleThroughNextReading();
+    expect(rebuildSpy).toHaveBeenCalled();
+
+    // It still does not push the heater back to max: no plan asked for it, and
+    // the admission gate that the re-assert bypassed would have refused.
     const stepUpWrites = putSpy.mock.calls.filter(
       ([path, body]) => path === HEATER_STEP_PATH && (body as { value?: unknown })?.value === STEP_MAX,
     );
@@ -170,15 +189,12 @@ describe('stepped device drifting down from the planned step', () => {
     // Make every rebuild a no-op decision. Any capability write that still lands
     // after this point did NOT come from a plan — which is exactly the shape of
     // the re-assert lane, and must be impossible now.
-    const rebuildSpy = vi.spyOn(app.planService!, 'rebuildPlanFromCache')
+    vi.spyOn(app.planService!, 'rebuildPlanFromCache')
       .mockResolvedValue({ failed: false, appliedActions: false } as never);
 
     announceStep(app, STEP_LOW);
-    await settle();
+    await settleThroughNextReading();
 
-    expect(rebuildSpy.mock.calls.some(
-      ([reason]) => reason === 'device_observation_changed',
-    )).toBe(true);
     expect(putSpy.mock.calls.filter(([path]) => path === HEATER_STEP_PATH)).toEqual([]);
   });
 });

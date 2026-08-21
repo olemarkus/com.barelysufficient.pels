@@ -1,10 +1,22 @@
 /**
  * The complete set of things that may cause PELS to re-decide.
  *
- * This file only CLOSES the set; it does not change it. Every trigger PELS had
- * is named here, `device_observation_changed` included, and every one still
- * fires exactly as before. Adding a name is now the deliberate act it should be:
- * reach for this list rather than a free-form string.
+ * A **device observation is deliberately absent**, and that absence is the whole
+ * point of this file. An observed device change is planner INPUT, not a reason to
+ * re-run a capacity decision: the decision is about the whole-home reading, and a
+ * rebuild driven by a device event runs against a reading that never saw it. The
+ * reading arrives on its own cadence and carries the change with it. See root
+ * `AGENTS.md` § Control Flow.
+ *
+ * What an observation MAY do is invalidate a rebuild suppression, so the reading
+ * already on its way is not throttled away
+ * (`setup/appInit/planObservedStateSubscription.ts`). Invalidating a suppression
+ * is not triggering a rebuild: it changes WHETHER the next measurement decides,
+ * never WHAT it decides from.
+ *
+ * Adding a name here is the deliberate act it should be. Do not reach for a
+ * free-form string, and do not add an observation trigger back without changing
+ * that document first.
  *
  * The `reason` it replaces was never purely decorative — three call sites read
  * it back: `resolveRestoreDecisionPhase` (startup vs runtime restore admission),
@@ -44,14 +56,6 @@ export const PLAN_REBUILD_TRIGGERS = [
   'price',
   'flow_card',
 
-  // A device observation moved something PELS may or may not command. These are
-  // the trigger this file exists to argue with; they are removed with the
-  // observation lane.
-  'device_observation_changed',
-  'external_off_hold_started',
-  'external_off_hold_cleared',
-  'realtime_ev_soc',
-
   // Startup and per-home lifecycle.
   'startup_snapshot_bootstrap',
   'home_bundle_created',
@@ -71,6 +75,7 @@ export const PLAN_REBUILD_TRIGGERS = [
 ] as const;
 
 export type PlanRebuildTrigger = (typeof PLAN_REBUILD_TRIGGERS)[number];
+
 
 export type PlanRebuildRequestOptions = {
   /**

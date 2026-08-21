@@ -381,11 +381,11 @@ describe('MyApp initialization', () => {
     (app as any).debugLoggingTopics = new Set(['diagnostics']);
 
     const emitDebug = (app as any).getStructuredDebugEmitter('reconcile', 'diagnostics');
-    emitDebug({ event: 'realtime_reconcile_queued', deviceId: 'dev-1' });
+    emitDebug({ event: 'device_update_processed', deviceId: 'dev-1' });
 
     expect(child).toHaveBeenCalledWith({ component: 'reconcile' }, { level: 'debug' });
     expect(childLogger.debug).toHaveBeenCalledWith({
-      event: 'realtime_reconcile_queued',
+      event: 'device_update_processed',
       deviceId: 'dev-1',
       debugTopic: 'diagnostics',
     });
@@ -400,7 +400,7 @@ describe('MyApp initialization', () => {
     (app as any).debugLoggingTopics = new Set();
 
     const emitDebug = (app as any).getStructuredDebugEmitter('reconcile', 'diagnostics');
-    emitDebug({ event: 'realtime_reconcile_queued', deviceId: 'dev-1' });
+    emitDebug({ event: 'device_update_processed', deviceId: 'dev-1' });
 
     expect(child).not.toHaveBeenCalled();
     expect(childLogger.debug).not.toHaveBeenCalled();
@@ -1401,7 +1401,7 @@ describe('MyApp initialization', () => {
     }
   });
 
-  it('re-plans after an external target drift', async () => {
+  it('records an external target drift as observed state without asking for a re-plan', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('measure_temperature', 21);
     await heater.setCapabilityValue('target_temperature', 20);
@@ -1433,22 +1433,22 @@ describe('MyApp initialization', () => {
       },
     });
 
-    // The setpoint moved outside PELS. That is an ordinary planner input now: the
-    // observation requests a RE-PLAN, which decides afresh from current device
-    // state and whole-home usage. It used to request a re-assert of the committed
-    // plan instead, which is the lane that breached the hard cap in production
-    // (inc_26449fb9) by re-applying a decision made before the observation.
-    await waitFor(() => rebuildSpy.mock.calls.some(
-      (call: unknown[]) => call[0] === 'device_observation_changed',
-    ));
+    // The setpoint moved outside PELS. The observation lands in observed state
+    // and stops there. It used to request a re-assert of the committed plan —
+    // the lane that breached the hard cap in production (inc_26449fb9) by
+    // re-applying a decision made before the observation — and then, for a
+    // while, a re-plan, which still decided a capacity question from a
+    // whole-home reading taken before the device moved. The reading that sees
+    // it is what re-plans.
+    await waitFor(() => (app as any).latestTargetSnapshot
+      .find((device: { id: string }) => device.id === 'dev-1')
+      ?.targets?.some((t: { id: string; value: unknown }) => t.id === 'target_temperature' && t.value === 18));
     await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
 
-    expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
-      targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
-    });
+    expect(rebuildSpy).not.toHaveBeenCalled();
   });
 
-  it('schedules a plan rebuild when native EV state of charge changes and EV boost is configured', async () => {
+  it('requests no plan rebuild when native EV state of charge changes, even with EV boost configured', async () => {
     mockHomeyInstance.settings.set(EV_BOOST_SETTINGS, {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     });
@@ -1481,13 +1481,14 @@ describe('MyApp initialization', () => {
       },
     });
 
-    expect(requestSpy).toHaveBeenCalledWith({
-      kind: 'flow',
-      reason: 'realtime_ev_soc',
-    });
+    // An SoC reading is a device observation, and a device observation is not a
+    // capacity trigger — this one used to request a `realtime_ev_soc` rebuild.
+    // The boost decision it feeds is made from the next whole-home reading
+    // instead, at most one poll interval later.
+    expect(requestSpy).not.toHaveBeenCalled();
   });
 
-  it('still sheds via binary control while the target reconcile breaker is open', async () => {
+  it('writes nothing on an external target drift, and still sheds on the next power sample', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('measure_temperature', 21);
     await heater.setCapabilityValue('measure_power', 360);
@@ -1550,12 +1551,10 @@ describe('MyApp initialization', () => {
     });
 
     try {
-      (app as any).realtimeDeviceReconcileState.circuitState.set('dev-1', {
-        windowStartedAt: Date.now(),
-        reconcileCount: 0,
-        suppressedUntil: Date.now() + 60_000,
-      });
-
+      // The setpoint moves outside PELS. Nothing is written back: the
+      // observation triggers no rebuild, and there is no lane that re-asserts
+      // the committed plan. This used to need a suppressed circuit breaker to
+      // reach the same assertion.
       heater.setActualCapabilityValue('target_temperature', 25, {
         updateActual: true,
         updateApi: true,
@@ -1569,10 +1568,6 @@ describe('MyApp initialization', () => {
         && (body as { value?: unknown } | undefined)?.value === 23
       )).length;
       expect(targetWritesBeforeShedding).toBe(0);
-      expect(logSpy.mock.calls.some(
-        (call) => typeof call[0] === 'string'
-          && call[0].includes('Realtime device drift detected; reapplying current plan: Heater (dev-1) via target_temperature'),
-      )).toBe(false);
 
       (app as any).computeDynamicSoftLimit = () => 0.1;
       (app as any).computeDynamicSoftLimit = () => 0.1;
@@ -1601,7 +1596,7 @@ describe('MyApp initialization', () => {
     }
   });
 
-  it('does not re-plan for temperature-only realtime device updates', async () => {
+  it('leaves the rebuild suppressions alone for a temperature-only realtime device update', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('measure_temperature', 21);
     await heater.setCapabilityValue('target_temperature', 20);
@@ -1616,7 +1611,9 @@ describe('MyApp initialization', () => {
 
     const app = createApp();
     await initApp(app);
-    const observationRebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    (app as any).powerSampleRebuildState = {
+      ...(app as any).powerSampleRebuildState, tightNoopStreak: 3, backoffUntilMs: 120_000,
+    };
 
     (app as any).deviceManager.injectDeviceUpdateForTest({
       id: 'dev-1',
@@ -1634,13 +1631,14 @@ describe('MyApp initialization', () => {
     await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
 
     // `measure_temperature` is not a control capability, so the producer reports
-    // `observedControlStateChanged: false` and no re-plan is requested. This is the
-    // filter that keeps a chatty sensor from driving a rebuild every few seconds —
-    // it is the producer's job, and it is what makes dropping the wiring-layer
-    // drift gate affordable.
-    expect(observationRebuildSpy.mock.calls.filter(
-      (call: unknown[]) => call[0] === 'device_observation_changed',
-    )).toEqual([]);
+    // `observedControlStateChanged: false` and the observation reaches neither the
+    // external-off hold nor the suppression latches — the tight-noop backoff
+    // stands. That filter is the producer's job, and it is what keeps a chatty
+    // sensor from un-suppressing a rebuild every few seconds.
+    expect((app as any).powerSampleRebuildState).toMatchObject({
+      tightNoopStreak: 3,
+      backoffUntilMs: 120_000,
+    });
     expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
       temperature: {
         currentTemperature: 23,
@@ -3834,11 +3832,11 @@ describe('periodic snapshot refresh scheduling', () => {
     expect(dispatchObservedStateForDevice).toHaveBeenCalledWith('dev-1', 'onoff');
   });
 
-  it('does not dispatch (or re-trigger an EV-SoC rebuild) for an already-fresh EV SoC heartbeat', async () => {
+  it('does not dispatch for an already-fresh EV SoC heartbeat', async () => {
     // Regression: the EV-SoC freshness branch must NOT dispatch the SoC capability
-    // into the projection — doing so would re-advertise measure_battery and trip
-    // shouldRebuildPlanForRealtimeEvSocObservation into the very plan rebuild that
-    // shouldRebuildPlanForFlowEvSocReport deliberately skips for a fresh heartbeat.
+    // into the projection — doing so would re-advertise measure_battery, which is
+    // the work `shouldRebuildPlanForFlowEvSocReport` deliberately skips for a
+    // fresh heartbeat.
     const app = createApp();
     const initialReportedAt = Date.now();
     const nextReportedAt = initialReportedAt + 60_000;
@@ -3874,9 +3872,10 @@ describe('periodic snapshot refresh scheduling', () => {
     });
 
     expect(dispatchObservedStateForDevice).not.toHaveBeenCalled();
-    expect(rebuildSpy).not.toHaveBeenCalledWith(
-      expect.objectContaining({ reason: 'realtime_ev_soc' }),
-    );
+    // Falsifiable replacement for the old `reason: 'realtime_ev_soc'` clause,
+    // which named a trigger that no longer exists: a fresh heartbeat asks the
+    // scheduler for nothing at all.
+    expect(rebuildSpy).not.toHaveBeenCalled();
   });
 
   it('treats resumable-only flow heartbeats as freshness updates', async () => {

@@ -1,5 +1,5 @@
 import type { Mock } from 'vitest';
-import { DeviceTransport, PLAN_LIVE_STATE_OBSERVED_EVENT, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from '../../lib/device/deviceTransport';
+import { DeviceTransport, PLAN_LIVE_STATE_OBSERVED_EVENT, OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT } from '../../lib/device/deviceTransport';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 import {
     createObservationState,
@@ -939,7 +939,7 @@ describe('DeviceTransport', () => {
                 observedStateDispatcher: {
                     observedStateChanged: vi.fn(),
                     observedStateRefresh: vi.fn(),
-                    planReconcile: vi.fn(),
+                    observedControlStateChanged: vi.fn(),
                     setHomePowerW,
                     setGenerationW,
                 },
@@ -984,7 +984,7 @@ describe('DeviceTransport', () => {
                 observedStateDispatcher: {
                     observedStateChanged: vi.fn(),
                     observedStateRefresh: vi.fn(),
-                    planReconcile: vi.fn(),
+                    observedControlStateChanged: vi.fn(),
                     setHomePowerW,
                     setGenerationW,
                 },
@@ -1016,7 +1016,7 @@ describe('DeviceTransport', () => {
                 observedStateDispatcher: {
                     observedStateChanged: vi.fn(),
                     observedStateRefresh: vi.fn(),
-                    planReconcile: vi.fn(),
+                    observedControlStateChanged: vi.fn(),
                     setHomePowerW,
                     setGenerationW,
                 },
@@ -1772,7 +1772,7 @@ describe('DeviceTransport', () => {
 
             await managedDeviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            managedDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             // device.update for unmanaged dev2 should be ignored
             managedDeviceManager.injectDeviceUpdateForTest({
@@ -1803,7 +1803,7 @@ describe('DeviceTransport', () => {
 
             await managedDeviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            managedDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             // device.update should be ignored while unmanaged
             managedDeviceManager.injectDeviceUpdateForTest({
@@ -2129,7 +2129,7 @@ describe('DeviceTransport', () => {
             }]);
 
             const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -2472,7 +2472,7 @@ describe('DeviceTransport', () => {
                 evChargingState: 'plugged_in_paused',
             }] as (TransportDeviceSnapshot & EvObservedProbe)[]);
             const reconcileListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'ev1',
@@ -2528,7 +2528,7 @@ describe('DeviceTransport', () => {
                 },
             }] as (TransportDeviceSnapshot & EvObservedProbe)[]);
             const reconcileListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'ev1',
@@ -2620,7 +2620,7 @@ describe('DeviceTransport', () => {
             }));
 
             const reconcileListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
             deviceManager.injectDeviceUpdateForTest({
                 id: 'ev1',
                 name: 'Charger',
@@ -2677,7 +2677,7 @@ describe('DeviceTransport', () => {
                 },
             }] as (TransportDeviceSnapshot & EvObservedProbe)[]);
             const reconcileListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'ev1',
@@ -2726,7 +2726,7 @@ describe('DeviceTransport', () => {
                 evChargingStateObservedAtMs: newerObservedAtMs,
             }] as (TransportDeviceSnapshot & EvObservedProbe)[]);
             const reconcileListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'ev1',
@@ -3489,7 +3489,7 @@ describe('DeviceTransport', () => {
             });
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
             debugStructuredMock.mockClear();
 
             deviceManager.injectDeviceUpdateForTest({
@@ -3551,7 +3551,7 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             await deviceManager.setCapability('dev1', 'onoff', true);
 
@@ -3593,7 +3593,7 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             const setCapabilityPromise = deviceManager.setCapability('dev1', 'onoff', true);
 
@@ -3635,7 +3635,7 @@ describe('DeviceTransport', () => {
             const liveStateListener = vi.fn();
             const realtimeListener = vi.fn();
             deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             await deviceManager.setCapability('dev1', 'onoff', false);
 
@@ -3687,7 +3687,7 @@ describe('DeviceTransport', () => {
                 currentOnAtReconcile.push(deviceManager.getSnapshot()[0]?.binaryControl?.on);
             });
             deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
 
@@ -3717,7 +3717,7 @@ describe('DeviceTransport', () => {
             await deviceManager.setCapability('dev1', 'onoff', false);
 
             const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
 
@@ -3747,7 +3747,7 @@ describe('DeviceTransport', () => {
 
                 await deviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: true } }));
@@ -3805,7 +3805,7 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             await deviceManager.setCapability('dev1', 'onoff', false);
 
@@ -3859,7 +3859,7 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             await deviceManager.setCapability('dev1', 'onoff', false);
 
@@ -3899,7 +3899,7 @@ describe('DeviceTransport', () => {
 
                 await deviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 deviceManager.setSnapshotForTests([]);
@@ -3930,7 +3930,7 @@ describe('DeviceTransport', () => {
 
                 await deviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 deviceManager.injectDeviceUpdateForTest({
@@ -3970,7 +3970,7 @@ describe('DeviceTransport', () => {
 
                 await deviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -4032,7 +4032,7 @@ describe('DeviceTransport', () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
                 await deviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
@@ -4045,7 +4045,7 @@ describe('DeviceTransport', () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
                 await deviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
@@ -4058,7 +4058,7 @@ describe('DeviceTransport', () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
                 await deviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 deviceManager.injectDeviceUpdateForTest(heaterOffDevice());
@@ -4071,7 +4071,7 @@ describe('DeviceTransport', () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
                 await deviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 deviceManager.injectDeviceUpdateForTest(heaterOnDevice());
@@ -4084,7 +4084,7 @@ describe('DeviceTransport', () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOffDevice() });
                 await deviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', true);
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
@@ -4097,7 +4097,7 @@ describe('DeviceTransport', () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOffDevice() });
                 await deviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', true);
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
@@ -4131,7 +4131,7 @@ describe('DeviceTransport', () => {
                     });
                     await evDeviceManager.refreshSnapshot();
                     const realtimeListener = vi.fn();
-                    evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                    evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                     await evDeviceManager.setCapability('ev1', 'evcharger_charging', true);
                     evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging', true);
@@ -4179,7 +4179,7 @@ describe('DeviceTransport', () => {
                 });
                 await evDeviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging', true);
 
@@ -4233,7 +4233,7 @@ describe('DeviceTransport', () => {
                     true,
                 );
                 const realtimeListener = vi.fn();
-                evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 evDeviceManager.injectDeviceUpdateForTest(evDevice(false, 'plugged_in_paused'));
                 evDeviceManager.injectDeviceUpdateForTest(evDevice(true, 'plugged_in'));
@@ -4285,7 +4285,7 @@ describe('DeviceTransport', () => {
                     const liveStateListener = vi.fn();
                     const realtimeListener = vi.fn();
                     evDeviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
-                    evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                    evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                     await evDeviceManager.setCapability('ev1', 'evcharger_charging', true);
                     vi.setSystemTime(new Date('2026-04-01T12:00:01.000Z'));
@@ -4315,7 +4315,7 @@ describe('DeviceTransport', () => {
                     mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
                     await deviceManager.refreshSnapshot();
                     const realtimeListener = vi.fn();
-                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                    deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                     // Accepted writes do not fabricate observed state.
                     await deviceManager.setCapability('dev1', 'onoff', false);
@@ -4527,7 +4527,7 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -4962,7 +4962,7 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             // device.update with target changed from 20 to 18
             deviceManager.injectDeviceUpdateForTest({
@@ -5068,7 +5068,7 @@ describe('DeviceTransport', () => {
             });
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -5118,7 +5118,7 @@ describe('DeviceTransport', () => {
                 await deviceManager.refreshSnapshot();
 
                 const freshnessSeenAtEmit: Array<number | undefined> = [];
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, () => {
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, () => {
                     freshnessSeenAtEmit.push(deviceManager.getSnapshot()[0]?.lastFreshDataMs);
                 });
 
@@ -5215,7 +5215,7 @@ describe('DeviceTransport', () => {
 
             await evDeviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             evDeviceManager.injectDeviceUpdateForTest({
                 id: 'ev1',
@@ -5267,7 +5267,7 @@ describe('DeviceTransport', () => {
 
             await evDeviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging_state', 'plugged_out');
 
@@ -5300,7 +5300,7 @@ describe('DeviceTransport', () => {
 
             await evDeviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging_state', 'plugged_in_paused');
 
@@ -5402,7 +5402,7 @@ describe('DeviceTransport', () => {
             }
         });
 
-        it('emits observed state for device.update EV state of charge changes without plan reconcile changes', async () => {
+        it('emits observed state for device.update EV state of charge changes without a control-state change', async () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
@@ -5441,7 +5441,7 @@ describe('DeviceTransport', () => {
                 const liveStateListener = vi.fn();
                 const reconcileListener = vi.fn();
                 evDeviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
-                evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+                evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
                 evDeviceManager.injectDeviceUpdateForTest({
                     id: 'ev1',
@@ -5525,7 +5525,7 @@ describe('DeviceTransport', () => {
 
             await evDeviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging_state', 'plugged_in_charging');
 
@@ -6345,7 +6345,7 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             await deviceManager.setCapability('dev1', 'onoff', false);
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -6388,7 +6388,7 @@ describe('DeviceTransport', () => {
 
                 await deviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
 
@@ -6448,7 +6448,7 @@ describe('DeviceTransport', () => {
 
                 await evDeviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await evDeviceManager.setCapability('ev1', 'evcharger_charging', false);
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -6526,7 +6526,7 @@ describe('DeviceTransport', () => {
 
                 await evDeviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 await evDeviceManager.setCapability('ev1', 'evcharger_charging', false);
 
@@ -6699,7 +6699,7 @@ describe('DeviceTransport', () => {
 
                 await evDeviceManager.refreshSnapshot();
                 const realtimeListener = vi.fn();
-                evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 vi.setSystemTime(new Date('2026-04-01T11:59:59.000Z'));
                 await evDeviceManager.setCapability('ev1', 'evcharger_charging', false);
@@ -6769,7 +6769,7 @@ describe('DeviceTransport', () => {
 
             await evDeviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            evDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             await evDeviceManager.setCapability('ev1', 'evcharger_charging', false);
             evDeviceManager.injectCapabilityUpdateForTest('ev1', 'charging_button', false);
@@ -6817,7 +6817,7 @@ describe('DeviceTransport', () => {
             await managedDeviceManager.init();
             await managedDeviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            managedDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -6853,7 +6853,7 @@ describe('DeviceTransport', () => {
             });
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -6875,13 +6875,13 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot();
 
             const planListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, planListener);
-            expect(deviceManager.listenerCount(PLAN_RECONCILE_REALTIME_UPDATE_EVENT)).toBe(1);
+            deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, planListener);
+            expect(deviceManager.listenerCount(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT)).toBe(1);
 
             deviceManager.destroy();
 
             // EventEmitter listeners are removed
-            expect(deviceManager.listenerCount(PLAN_RECONCILE_REALTIME_UPDATE_EVENT)).toBe(0);
+            expect(deviceManager.listenerCount(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT)).toBe(0);
             // Live feed health is gone after destroy
             expect(deviceManager.getLiveFeedHealth()).toBeNull();
         });
@@ -6919,7 +6919,7 @@ describe('DeviceTransport', () => {
                 await deviceManager.refreshSnapshot();
 
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
 
@@ -6938,7 +6938,7 @@ describe('DeviceTransport', () => {
                 await deviceManager.refreshSnapshot();
 
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 23.5);
 
@@ -6965,7 +6965,7 @@ describe('DeviceTransport', () => {
                 await deviceManager.setCapability('dev1', 'target_temperature', 16);
 
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 // Same value echoed back from the live feed — should be suppressed
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 16);
@@ -6981,7 +6981,7 @@ describe('DeviceTransport', () => {
                 await deviceManager.setCapability('dev1', 'target_temperature', 21.5);
 
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 21.49);
 
@@ -6998,7 +6998,7 @@ describe('DeviceTransport', () => {
                 await deviceManager.refreshSnapshot();
 
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 deviceManager.injectCapabilityUpdateForTest('unknown-device', 'onoff', false);
 
@@ -7010,7 +7010,7 @@ describe('DeviceTransport', () => {
                 await deviceManager.refreshSnapshot();
 
                 const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
                 // Same value as current snapshot state
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
@@ -7105,7 +7105,7 @@ describe('DeviceTransport', () => {
                     const liveStateListener = vi.fn();
                     const reconcileListener = vi.fn();
                     deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
-                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+                    deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
 
@@ -7137,7 +7137,7 @@ describe('DeviceTransport', () => {
                     const liveStateListener = vi.fn();
                     const reconcileListener = vi.fn();
                     deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
-                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+                    deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 22);
 
@@ -7188,7 +7188,7 @@ describe('DeviceTransport', () => {
                     const liveStateListener = vi.fn();
                     const reconcileListener = vi.fn();
                     deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
-                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+                    deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 18);
 
@@ -7242,7 +7242,7 @@ describe('DeviceTransport', () => {
                     const liveStateListener = vi.fn();
                     const reconcileListener = vi.fn();
                     deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
-                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+                    deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_power', 2000);
 
@@ -7335,7 +7335,7 @@ describe('DeviceTransport', () => {
                     const liveStateListener = vi.fn();
                     const reconcileListener = vi.fn();
                     deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
-                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+                    deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
 
@@ -7368,7 +7368,7 @@ describe('DeviceTransport', () => {
                     const liveStateListener = vi.fn();
                     const reconcileListener = vi.fn();
                     deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
-                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+                    deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
                     // Keep the targeted recovery pull malformed too, so this assertion
                     // observes the boundary state rather than immediately recovering.
@@ -7421,7 +7421,7 @@ describe('DeviceTransport', () => {
                     mockApiGet.mockResolvedValue(buildThermostatDevice());
                     await deviceManager.refreshSnapshot();
                     const reconcileListener = vi.fn();
-                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+                    deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
                     deviceManager.injectCapabilityUpdateForTest('dev1', capabilityId, Number.NaN);
                     expect(hasObservedTemperature(
@@ -7470,7 +7470,7 @@ describe('DeviceTransport', () => {
                     return validDevices;
                 });
                 const reconcileListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+                deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
                 const refreshSpy = vi.spyOn(deviceManager, 'refreshSnapshot');
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
 
@@ -8032,7 +8032,7 @@ describe('DeviceTransport', () => {
 
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
                     const reconcileListener = vi.fn();
-                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+                    deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcileListener);
 
                     deviceManager.injectDeviceUpdateForTest({
                         id: 'dev1',
@@ -8278,7 +8278,7 @@ describe('DeviceTransport', () => {
             await managedDeviceManager.refreshSnapshot();
 
             const realtimeListener = vi.fn();
-            managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            managedDeviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeListener);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',

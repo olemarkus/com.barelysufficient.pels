@@ -111,7 +111,7 @@ import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/
 
 const moduleLogger = getLogger('device/transport');
 
-export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
+export const OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT = 'observed_control_state_changed';
 export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
 // Fallback event-name for the full-refresh batch when no dispatcher is injected
 // (legacy direct-`DeviceTransport` tests). Mirrors observer's
@@ -279,8 +279,8 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             getFlowTriggerCard: t.getFlowTriggerCard,
             nextObservationCursor: (deviceId, nowMs) => t.nextObservationCursor(deviceId, nowMs),
             dispatchObservedStateChanged: (event) => t.dispatchObservedStateChanged(event),
-            dispatchPlanReconcile: (event) => t.dispatchPlanReconcile(event),
-            emitPlanReconcileEvent: (event) => t.emitPlanReconcileEvent(event),
+            dispatchObservedControlStateChanged: (event) => t.dispatchObservedControlStateChanged(event),
+            emitObservedControlStateChangedEvent: (event) => t.emitObservedControlStateChangedEvent(event),
             shouldTrackRealtimeDevice: (deviceId) => t.shouldTrackRealtimeDevice(deviceId),
             applyDeviceDriverOverride: (device) => (
                 applyDeviceDriverOverride(device, t.providers.getDeviceDriverIdOverride)
@@ -340,11 +340,11 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         };
     }
 
-    private emitPlanReconcileEvent(event: PlanRealtimeUpdateEvent): void {
+    private emitObservedControlStateChangedEvent(event: PlanRealtimeUpdateEvent): void {
         const cursor = event.observationSeq === undefined || event.observedAtMs === undefined
             ? this.nextObservationCursor(event.deviceId)
             : {};
-        this.dispatchPlanReconcile({
+        this.dispatchObservedControlStateChanged({
             ...event,
             ...cursor,
         });
@@ -688,16 +688,16 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     /**
-     * Post-translation fan-out of a `plan-reconcile-observed` event.
+     * Post-translation fan-out of a `observed-control-state-changed` event.
      * See `dispatchObservedStateChanged` for the dispatcher-vs-fallback
-     * contract; same fallback shape for `PLAN_RECONCILE_REALTIME_UPDATE_EVENT`.
+     * contract; same fallback shape for `OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT`.
      */
-    private dispatchPlanReconcile(event: PlanRealtimeUpdateEvent): void {
+    private dispatchObservedControlStateChanged(event: PlanRealtimeUpdateEvent): void {
         if (this.observedStateDispatcher) {
-            this.observedStateDispatcher.planReconcile(event);
+            this.observedStateDispatcher.observedControlStateChanged(event);
             return;
         }
-        this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event);
+        this.emit(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, event);
     }
 
     private syncLatestSnapshotIndex(): void { this.latestSnapshotById

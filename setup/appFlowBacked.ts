@@ -422,7 +422,7 @@ export class AppFlowBacked {
       // Deliberately NOT dispatched into the projection here: this branch only
       // advances `stateOfCharge` freshness (no `lastFreshDataMs` change), which
       // no projection reader consumes yet, and re-advertising the SoC capability
-      // on this event would trip `shouldRebuildPlanForRealtimeEvSocObservation`
+      // on this event would trip `the realtime SoC dispatch`
       // into the very plan rebuild this freshness-only heartbeat is meant to
       // skip. A future SoC-freshness projection reader handles its own dispatch.
       return;

@@ -2,7 +2,7 @@
  * Native stepped-load realtime handling: translates a `target_power` /
  * stepped-load / `available_installation_current` capability change into a
  * reported-step update on the held snapshot and the matching observed-state /
- * plan-reconcile dispatches. Split out of `realtimeCapabilityHandling` to keep
+ * observed-control-state dispatches. Split out of `realtimeCapabilityHandling` to keep
  * each module under the line ceiling.
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
@@ -94,7 +94,7 @@ function emitNativeSteppedLoadReportedStepChanged(ctx: TransportContext, params:
         ...cursor,
         capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
     });
-    ctx.dispatchPlanReconcile({
+    ctx.dispatchObservedControlStateChanged({
         deviceId,
         ...cursor,
         name: deviceName,

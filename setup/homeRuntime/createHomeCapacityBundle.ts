@@ -48,7 +48,6 @@ import type {
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
 import type { PlanService } from '../../lib/plan/planService';
 import { createBinaryCommandReachability } from '../../lib/plan/admission/binaryCommandReachability';
-import type { DevicePlan } from '../../lib/plan/planTypes';
 import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';
 import type { RebuildIntent, SchedulerState } from '../../lib/plan/rebuildScheduler/scheduler';
 import CapacityGuard from '../../lib/power/capacityGuard';
@@ -137,32 +136,36 @@ export type HomeCapacityBundleDeps = {
 export type HomeCapacityBundleDiagnostics = HomeRuntimeDiagnostics;
 
 /**
- * The realtime-observation routing seam for a device THIS home owns (multi-home
- * R7b P1#1). The app's realtime-device wrapper binds these closures when a
- * device that moved resolves to a sub-home, so the re-plan runs against THAT
- * home's plan and device set — main's plan filters sub-home members out, so it
- * would never see the device at all. Shapes mirror the main-home closures the
- * wrapper otherwise uses.
+ * Every seam that must be answered by the home that OWNS a device rather than by
+ * main (multi-home R7b P1#1). Main filters sub-home members out of its plan and
+ * never saw their commands, so main's answer to any of these is wrong in a way
+ * that looks plausible: a fabricated external-off hold (PELS's own write reads
+ * as an outside action), a rebuild of a plan that does not contain the device,
+ * or a suppression cleared on a house that did not change.
+ *
+ * It used to be named for the reconcile lane and carried that lane's
+ * `requestRebuild` and plan snapshot. Both are gone — a device event is not what
+ * a capacity decision is about (root `AGENTS.md` § Control Flow) — and what is
+ * left serves three different callers, so it is named for the routing rather
+ * than for any one of them.
  */
-export type RealtimeReconcileHooks = {
-  getLatestPlanSnapshot: () => DevicePlan | null;
-  /**
-   * Re-plan THIS home from current device state and whole-home usage, resolving
-   * the ids of the devices the rebuild actually wrote to. Not "re-apply this
-   * home's committed plan" — that lane is gone (see `PlanService`'s docblock).
-   * Per-device, not a boolean: the realtime circuit breaker charges a strike
-   * against the device it wrote, never against everything in the batch.
-   */
-  requestRebuild: () => Promise<string[]>;
-  /**
-   * "Leave off until turned on again" seams, routed to THIS home. Its pending
-   * commands live in this bundle's engine and its plan in this bundle's service,
-   * so answering either from MAIN would fabricate holds (PELS's own write looks
-   * external) and rebuild a plan that does not contain the device.
-   */
+export type OwningHomeHooks = {
   hasPendingBinaryCommand: (deviceId: string) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string) => void;
-  rebuild: (trigger: PlanRebuildTrigger) => Promise<unknown>;
+  /**
+   * Re-plan THIS home. Used by the reachability lane, which learns that a device
+   * PELS thought it could command has become uncommandable (or the reverse) —
+   * a change to what the planner may DO, not an observation of what a device is
+   * doing, so it is a trigger in its own right.
+   */
+  rebuildPlan: (trigger: PlanRebuildTrigger) => Promise<unknown>;
+  /**
+   * Clear THIS home's rebuild suppressions after one of its devices moved.
+   * Each bundle owns a separate `PowerSampleRebuildState`, so clearing main's
+   * would leave the owning home holding a "nothing is actionable" verdict about
+   * a house that has since changed — for up to the 120 s tight-noop backoff.
+   */
+  invalidateRebuildSuppression: () => void;
 };
 
 export type HomeCapacityBundle = {
@@ -182,11 +185,11 @@ export type HomeCapacityBundle = {
    */
   getReadModel: () => HomeRuntimeReading;
   /**
-   * Realtime-reconcile routing hooks (see {@link RealtimeReconcileHooks}): the
-   * reconcile wrapper binds these for a device this home owns so the drift is
-   * reconciled through THIS bundle's plan, not main's.
+   * Owning-home routing hooks (see {@link OwningHomeHooks}): the observed-control-state
+   * wiring binds these for a device this home owns, so the hold, the suppressions
+   * and any rebuild are answered by THIS bundle rather than main's.
    */
-  getReconcileHooks: () => RealtimeReconcileHooks;
+  getOwningHomeHooks: () => OwningHomeHooks;
   /** Adopt a same-meter config change (root-zone/name) without teardown. */
   updateHomeConfig: (home: SubHomeConfig) => void;
   /** Rebuild the plan after this area's mode catalog changes. */
@@ -674,5 +677,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     markTornDown: () => { tornDown = true; },
     reloadModeCatalog: modeCatalog.reload,
     isModeCatalogInitialized: modeCatalog.isInitialized,
+    getRebuildState: () => rebuildState,
+    setRebuildState: (state) => { rebuildState = state; },
   });
 }
