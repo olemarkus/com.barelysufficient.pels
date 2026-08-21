@@ -83,13 +83,20 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   `no-plan-to-executor` enforces value edges for every `lib/plan` module; the same source AST guard
   behind `npm run arch:grep` also rejects type-only and dynamic executor imports.
 
-  Be precise about what that buys: `planServiceRebuild.maybeApplyPlanChanges` still READS a drift verdict
-  (through `planEngine.hasExecutionWorkOutstanding`) to decide whether a rebuild that changed no
-  decisions should actuate anyway. That is a cost optimization, not a decision — the plan it would
-  apply is the one just built from these very observations — but it is a drift question on the
-  planner's side of the wall, and the boundary is about imports until it is gone. Removing it means
-  actuating unconditionally on every non-dry-run rebuild and letting the executor no-op per device;
-  see the P2 in `TODO.md`.
+  Be precise about what that buys: `planServiceRebuild.maybeApplyPlanChanges` still READS a drift
+  verdict (through `planEngine.hasExecutionWorkOutstanding`) to decide whether a rebuild that changed
+  no decisions should actuate anyway. That is a cost optimization, not a decision, and it is a drift
+  question on the planner's side of the wall; the boundary is about imports until it is gone.
+  Removing it means actuating unconditionally on every non-dry-run rebuild and letting the executor
+  no-op per device; see the P2 in `TODO.md`.
+
+  What the planner no longer does is supply the live side of that verdict. It used to pass the same
+  `PlanInputDevice[]` the plan was built from, which meant the executor never saw an observation —
+  only a plan with observations folded into it, and one whose `observedBinaryState` therefore meant
+  two different things by construction path (`TODO.md`, the drift P0). The executor now reads the
+  observation from the observer and the in-flight command state from its own stores. Do not hand it
+  a device list again: the moment a plan-layer shape carries the live side, the executor is once
+  more comparing intent against something the planner produced.
 
   A device that moved on its own is an ordinary input, so the honest answers include *"put it back"*
   and *"leave it there and shed something else instead"*. The second one is why this matters: a lane

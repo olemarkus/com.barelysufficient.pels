@@ -87,7 +87,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
     markSteppedLoadDesiredStepIssued: vi.fn(),
-    getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false }),
+    getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
     logTargetRetryComparison: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   };

@@ -88,6 +88,7 @@ export type PlanExecutorCore = {
     initializationAssumedStepId?: string;
     hasPriorStepCommand: boolean;
     reportedStepId?: string;
+    stepCommandPending: boolean;
   };
   recordReleaseShedActuation: (deviceId: string, name: string, now: number) => void;
   latestTargetSnapshot: () => ExecutorDeviceSnapshot[];

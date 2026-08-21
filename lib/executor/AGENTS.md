@@ -25,6 +25,12 @@
   question "has what I dispatched materialized?"); `planExecutionDrift.ts` answers it per device.
   Both live here because the planner must not consult them — see `no-plan-to-executor`.
 
+  **The live side of that comparison comes from the OWNERS, never from a plan.** The observation is
+  read per device from the observer projection; the in-flight command state comes from this layer's
+  own stores (`pendingBinaryCommandStore`, `steppedCommandState`); the ladder is configuration and
+  rides the intent. `driftObservedDevice.ts` is the seam that joins them, and `PlanExecutor.driftObservationDeps()`
+  is where they are bound. A device the observer has not seen yet is SKIPPED, not assumed to agree.
+
   **Exactly one predicate may inform an actuation decision: `hasPlanExecutionDriftAgainstIntent`.**
   It compares planner intent against an OBSERVATION. Its neighbour
   `hasLiveStateDivergedFromSnapshot` compares two `DevicePlan`s positionally, and the live side is

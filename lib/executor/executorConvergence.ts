@@ -38,7 +38,8 @@
  *
  * Governing reference: `notes/state-management/README.md`.
  */
-import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
+import type { DevicePlan } from '../plan/planTypes';
+import type { DriftObservationDeps } from './driftObservedDevice';
 import type { ExecutableConvergenceDevice } from './executablePlan';
 import { buildExecutableConvergenceDevice } from './executablePlanProjection';
 import { hasPlanDeviceExecutionDrift } from './planExecutionDrift';
@@ -72,15 +73,29 @@ export function canRefreshPlanSnapshotFromLiveState(
   }
   return true;
 }
+/**
+ * Does the executor have work to do against this plan?
+ *
+ * Takes READERS, not a device list. The observation is pulled per device from
+ * the observer and the in-flight command state from this layer's own stores, so
+ * nothing the planner produced reaches the live side of the comparison. A
+ * device with no observation yet is skipped rather than assumed: absence is not
+ * evidence of agreement, and inventing a reading here would hand control a
+ * value more favourable than anything measured.
+ */
 export function hasPlanExecutionDriftAgainstIntent(
   previousPlan: DevicePlan,
-  liveDevices: PlanInputDevice[],
+  deps: DriftObservationDeps,
 ): boolean {
-  const liveById = new Map(liveDevices.map((device) => [device.id, device]));
   for (const previous of previousPlan.devices) {
-    const live = liveById.get(previous.id);
-    if (!live) continue;
-    if (hasPlanDeviceExecutionDrift({ planDevice: previous, liveDevice: live })) return true;
+    const observed = deps.getObservedState(previous.id);
+    if (!observed) continue;
+    if (hasPlanDeviceExecutionDrift({
+      planDevice: previous,
+      observed,
+      command: deps.getCommandState(previous.id),
+      externalOffHeld: deps.isExternalOffHeld(previous.id),
+    })) return true;
   }
   return false;
 }

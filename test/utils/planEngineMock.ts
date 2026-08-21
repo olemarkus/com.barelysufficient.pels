@@ -6,6 +6,16 @@ import {
   hasPlanExecutionDriftAgainstIntent,
 } from '../../lib/executor/executorConvergence';
 import { buildPlanMeta } from './planTestUtils';
+import { driftDepsFromPlanInputs } from './driftObservationTestUtils';
+
+/**
+ * Specs that exercise drift supply the fixtures the observer would have served.
+ * Absent, the engine sees no observations at all — which the predicate skips,
+ * matching a device the observer has not yet seen.
+ */
+export type MockPlanEngineOptions = {
+  getDriftDevices?: () => PlanInputDevice[];
+};
 
 /**
  * Default-stubbed shape of `PlanEngine` for tests. PlanService calls these
@@ -15,7 +25,7 @@ import { buildPlanMeta } from './planTestUtils';
  *
  * Tests spread overrides on top: `{ ...createMockPlanEngine(), buildDevicePlanSnapshot: ... }`.
  */
-export const createMockPlanEngine = () => ({
+export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
   state: createPlanEngineState(),
   buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
     meta: buildPlanMeta({
@@ -47,9 +57,14 @@ export const createMockPlanEngine = () => ({
   hasSettledActuation: vi.fn(
     (basePlan: DevicePlan, livePlan: DevicePlan) => canRefreshPlanSnapshotFromLiveState(basePlan, livePlan),
   ),
+  // Still the REAL predicate (see the note above), now fed the way production
+  // feeds it: readers, not a device list. A spec that wants drift supplies the
+  // fixtures via `getDriftDevices`; one that does not gets no observations,
+  // which the predicate skips rather than treating as agreement.
   hasExecutionWorkOutstanding: vi.fn(
-    (plannedSnapshot: DevicePlan, liveDevices: PlanInputDevice[]) => (
-      hasPlanExecutionDriftAgainstIntent(plannedSnapshot, liveDevices)
+    (plannedSnapshot: DevicePlan) => hasPlanExecutionDriftAgainstIntent(
+      plannedSnapshot,
+      driftDepsFromPlanInputs(options?.getDriftDevices ?? (() => [])),
     ),
   ),
   decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),

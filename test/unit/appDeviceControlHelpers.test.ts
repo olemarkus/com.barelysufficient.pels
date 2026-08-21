@@ -593,6 +593,9 @@ describe('appDeviceControlHelpers', () => {
       initializationAssumedStepId: undefined,
       hasPriorStepCommand: false,
       reportedStepId: undefined,
+      // Preserved planner intent is not an in-flight command, so the commanded
+      // axis reports nothing pending for drift to dampen against.
+      stepCommandPending: false,
     });
   });
 

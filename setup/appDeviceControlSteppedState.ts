@@ -1,7 +1,6 @@
 import {
   getSteppedLoadStep,
   hasUsableSteppedLoadLadder,
-  isSteppedLoadOffStep,
 } from '../lib/utils/deviceControlProfiles';
 import { serializeLegacyStepFieldsFromEvidence } from '../lib/plan/planSteppedLoadState';
 import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
@@ -44,17 +43,6 @@ export const resolveNativeSteppedLoadProfile = (snapshot: TargetDeviceSnapshot):
     ? snapshot.suggestedSteppedLoadProfile
     : null
 );
-
-export const resolveSteppedLoadCurrentOn = (params: {
-  snapshot: TargetDeviceSnapshot;
-  profile: SteppedLoadProfile;
-  selectedStepId?: string;
-}): boolean => {
-  const { snapshot, profile, selectedStepId } = params;
-  if (snapshot.binaryControl?.on === false) return false;
-  if (!selectedStepId) return true;
-  return !isSteppedLoadOffStep(profile, selectedStepId);
-};
 
 export function buildSteppedLoadSnapshotStepFields(params: {
   profile: SteppedLoadProfile;

@@ -55,6 +55,7 @@ import { createTargetCommandClaim } from './targetCommandClaim';
 import { createSteppedCommandClaim } from './steppedCommandClaim';
 import { createBinaryCommandClaim } from './binaryCommandClaim';
 import { buildExecutableObservedDeviceStateFromSnapshot } from './executablePlanProjection';
+import type { DriftObservationDeps, ObserverDeviceRead } from './driftObservedDevice';
 
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 
@@ -89,6 +90,8 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & {
     initializationAssumedStepId?: string;
     hasPriorStepCommand: boolean;
     reportedStepId?: string;
+    /** Commanded-axis: a step command is issued and not yet settled. */
+    stepCommandPending: boolean;
   };
   logTargetRetryComparison?: (params: {
     deviceId: string;
@@ -457,6 +460,31 @@ export class PlanExecutor {
 
   public async applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<boolean> {
     return applySheddingToDeviceImpl(this.getDispatchCore(), deviceId, deviceName, reason);
+  }
+
+  /**
+   * The three readers the drift comparison needs, each bound to the layer that
+   * owns its answer: the observer projection for what the device is doing, this
+   * executor's own stores for what PELS asked it to do, and the external-off
+   * posture. Exposed as a bundle so the caller composes nothing itself — and so
+   * no `PlanInputDevice` has to travel here to carry an observation.
+   */
+  public driftObservationDeps(): DriftObservationDeps {
+    return {
+      getObservedState: (deviceId) => this.deps.getObservedState(deviceId) as ObserverDeviceRead | undefined,
+      getCommandState: (deviceId) => {
+        const pendingBinary = this.deps.pendingBinaryCommandStore.get(deviceId);
+        return {
+          binary: pendingBinary
+            ? { kind: 'pending', desired: pendingBinary.desired }
+            : { kind: 'none' },
+          step: this.deps.getSteppedLoadCommandSession(deviceId).stepCommandPending
+            ? { kind: 'pending' }
+            : { kind: 'none' },
+        };
+      },
+      isExternalOffHeld: (deviceId) => this.state.isExternalOffHeld?.(deviceId) === true,
+    };
   }
 
   public hasStablePlanActuation(plan: DevicePlan): boolean {

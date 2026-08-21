@@ -70,6 +70,7 @@ export type PlanEngineWiring = {
     initializationAssumedStepId?: string;
     hasPriorStepCommand: boolean;
     reportedStepId?: string;
+    stepCommandPending: boolean;
   };
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;

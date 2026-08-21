@@ -1,6 +1,7 @@
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import { hasLiveStateDivergedFromSnapshot } from '../../lib/executor/executorConvergence';
-import { hasPlanExecutionDriftForDevice as hasExecutorPlanExecutionDriftForDevice } from '../../lib/executor/planExecutionDrift';
+import { hasPlanDeviceExecutionDrift } from '../../lib/executor/planExecutionDrift';
+import { splitPlanInputDevice } from '../utils/driftObservationTestUtils';
 import { buildBinaryObservation } from '../utils/binaryObservationTestUtils';
 import { buildPlanMeta, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import {
@@ -19,7 +20,12 @@ const hasPlanExecutionDriftForDevice = (
   plan: DevicePlan,
   liveDevices: PlanInputDevice[],
   deviceId: string,
-): boolean => hasExecutorPlanExecutionDriftForDevice({ plan, liveDevices, deviceId });
+): boolean => {
+  const planDevice = plan.devices.find((device) => device.id === deviceId);
+  const live = liveDevices.find((device) => device.id === deviceId);
+  if (!planDevice || !live) return false;
+  return hasPlanDeviceExecutionDrift({ planDevice, ...splitPlanInputDevice(live) });
+};
 
 describe('executorConvergence stepped device drift', () => {
   describe('hasLiveStateDivergedFromSnapshot', () => {
@@ -425,7 +431,20 @@ describe('executorConvergence stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
     });
 
-    it('does not let a stale off-step identity mask fresh binary on drift', () => {
+    // Was 'does not let a stale off-step identity mask fresh binary on drift',
+    // asserting TRUE. It passed for a fixture-only reason: `inputDevice` stamps
+    // `currentOn` only when `binaryCapabilityId` is set, this fixture omits it,
+    // so the old drift path fell through to the RAW binary axis and read 'on'.
+    // Production cannot produce that shape — `toPlanDevice` stamps `currentOn`
+    // whenever `binaryControl` exists and strips `binaryControl` — so the real
+    // drift path always folded, always answered 'off', and never reported this
+    // as drift. The test pinned an invariant the app did not hold.
+    //
+    // The fold is also the right answer: a stepped device parked at its off rung
+    // IS off, even with its switch still armed (`lib/observer/AGENTS.md`). A
+    // device that is genuinely still drawing shows it on the STEP axis, by
+    // reporting a non-off rung — which the case below covers.
+    it('folds an armed binary axis at the off rung to off, matching the shed intent', () => {
       const plan = buildPlan([buildSteppedDevice({
         currentState: 'off',
         plannedState: 'shed',
@@ -439,6 +458,31 @@ describe('executorConvergence stepped device drift', () => {
         name: 'Tank',
         binaryControl: { on: true },
         selectedStepId: 'off',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+        binaryControlObservation: buildBinaryObservation('onoff', true),
+      })];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
+    });
+
+    it('reports drift when the device attests a rung above the shed target', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'off',
+        plannedState: 'shed',
+        shedAction: 'turn_off',
+        selectedStepId: 'off',
+        desiredStepId: 'off',
+        binaryCapabilityId: 'onoff',
+      })]);
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-1',
+        name: 'Tank',
+        binaryControl: { on: true },
+        // The device's OWN report, and the only evidence that separates "shed
+        // succeeded" from "still drawing" once the binary axis stays armed.
+        selectedStepId: 'max',
         targets: [],
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
