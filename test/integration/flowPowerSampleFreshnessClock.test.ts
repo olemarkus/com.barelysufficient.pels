@@ -40,7 +40,7 @@ describe('FlowPowerSampleFreshnessClock', () => {
     };
   };
 
-  it('requests planning-only hold ticks, then stale-hold and fail-closed transitions', async () => {
+  it('heartbeats while fresh, holds quietly, and escalates only at the shed timeout', async () => {
     const { clock, requests } = createClock();
 
     clock.noteSample(Date.now());
@@ -49,28 +49,17 @@ describe('FlowPowerSampleFreshnessClock', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(requests).toEqual(['flow_power_sample_hold', 'flow_power_sample_hold']);
 
+    // Past the freshness threshold the clock asks for NOTHING: the sample being a
+    // minute old is not a new decision, and the last reading carries forward.
     await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_THRESHOLD_MS - 20_000);
-    expect(requests).toEqual([
-      'flow_power_sample_hold',
-      'flow_power_sample_hold',
-      'flow_power_sample_hold',
-      'flow_power_sample_hold',
-      'flow_power_sample_hold',
-      'flow_power_sample_stale_hold',
-    ]);
+    expect(requests.every((reason) => reason === 'flow_power_sample_hold')).toBe(true);
+    const beforeTimeout = requests.length;
 
+    // The shed timeout is the one escalation, and it is a one-shot.
     await vi.advanceTimersByTimeAsync(
       POWER_SAMPLE_STALE_SHED_TIMEOUT_MS - POWER_SAMPLE_STALE_THRESHOLD_MS,
     );
-    expect(requests).toEqual([
-      'flow_power_sample_hold',
-      'flow_power_sample_hold',
-      'flow_power_sample_hold',
-      'flow_power_sample_hold',
-      'flow_power_sample_hold',
-      'flow_power_sample_stale_hold',
-      'flow_power_sample_fail_closed',
-    ]);
+    expect(requests.slice(beforeTimeout)).toEqual(['flow_power_sample_fail_closed']);
   });
 
   it('seeds the silence ladder from a persisted fresh sample timestamp', async () => {
@@ -82,19 +71,16 @@ describe('FlowPowerSampleFreshnessClock', () => {
     expect(requests).toEqual(['flow_power_sample_hold']);
   });
 
-  it('requests missed stale and fail-closed transitions when seeding an already old sample', async () => {
+  it('holds quietly for a sample already past freshness, then escalates at the timeout', async () => {
     const { clock, requests } = createClock();
 
     clock.syncLatestSample(Date.now() - POWER_SAMPLE_STALE_THRESHOLD_MS);
-    expect(requests).toEqual(['flow_power_sample_stale_hold']);
+    expect(requests).toEqual([]);
 
     await vi.advanceTimersByTimeAsync(
       POWER_SAMPLE_STALE_SHED_TIMEOUT_MS - POWER_SAMPLE_STALE_THRESHOLD_MS,
     );
-    expect(requests).toEqual([
-      'flow_power_sample_stale_hold',
-      'flow_power_sample_fail_closed',
-    ]);
+    expect(requests).toEqual(['flow_power_sample_fail_closed']);
   });
 
   it('requests fail-closed immediately when seeding a sample past the fail-closed timeout', () => {
@@ -124,8 +110,10 @@ describe('FlowPowerSampleFreshnessClock', () => {
       'flow_power_sample_hold',
     ]);
 
+    // Crossing the threshold asks for nothing; the ladder is quiet until the
+    // shed timeout.
     await vi.advanceTimersByTimeAsync(15_000);
-    expect(requests.at(-1)).toBe('flow_power_sample_stale_hold');
+    expect(requests.at(-1)).toBe('flow_power_sample_hold');
   });
 
   it('stops without requesting rebuilds when the power source is not flow', async () => {
@@ -235,7 +223,9 @@ describe('FlowPowerSampleFreshnessClock', () => {
 
     sourceReadFails = false;
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(requests).toEqual(['flow_power_sample_stale_hold']);
+    // Recovered, past freshness, before the timeout: nothing requested, still armed
+    // for the escalation the timeout owes.
+    expect(requests).toEqual([]);
     expect(timers.has('flowPowerSampleFreshness')).toBe(true);
   });
 });

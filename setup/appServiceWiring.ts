@@ -60,6 +60,7 @@ import {
 } from './appObservedControlStateRuntime';
 import type { ObservedControlStateChangedEvent } from '../lib/observer/observedStateEvents';
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
+import { installMainFreshnessEscalation } from './appMainFreshnessEscalation';
 
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 // Bound the warmup wait so a failed/slow Homey Manager fetch can never deadlock
@@ -446,6 +447,7 @@ export class AppServiceWiring {
   initPlanService(): void {
     const { ctx } = this.deps;
     ctx.planService = createPlanService(ctx, this.mainHomeScope);
+    installMainFreshnessEscalation(ctx, () => this.mainActuationStopped);
   }
 
   /**
