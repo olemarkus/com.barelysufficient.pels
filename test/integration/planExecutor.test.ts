@@ -288,7 +288,7 @@ const buildExecutor = (
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off' as const }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
-    getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false }),
+    getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
     logTargetRetryComparison: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     ...depsOverrides,
@@ -1739,6 +1739,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         getSteppedLoadCommandSession: () => ({
           hasPriorStepCommand: false,
+          stepCommandPending: false,
           reportedStepId: 'low',
         }),
       },
@@ -1767,6 +1768,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         getSteppedLoadCommandSession: () => ({
           hasPriorStepCommand: false,
+          stepCommandPending: false,
           reportedStepId: 'max',
         }),
       },
@@ -1828,6 +1830,7 @@ describe('PlanExecutor stepped loads', () => {
         getSteppedLoadCommandSession: () => ({
           initializationAssumedStepId: 'low',
           hasPriorStepCommand: false,
+          stepCommandPending: false,
         }),
       },
     );
@@ -1867,6 +1870,7 @@ describe('PlanExecutor stepped loads', () => {
         getSteppedLoadCommandSession: () => ({
           initializationAssumedStepId: 'low',
           hasPriorStepCommand: false,
+          stepCommandPending: false,
         }),
       },
     );
@@ -1986,7 +1990,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(
       undefined,
       snapshot,
-      { getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: true }) },
+      { getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: true, stepCommandPending: false }) },
     );
     desiredSteppedTrigger.trigger.mockImplementation(async () => {
       Object.assign(snapshot[0], {
@@ -2017,7 +2021,7 @@ describe('PlanExecutor stepped loads', () => {
       binaryControl: { on: true },
       binaryControlObservation: onoffObservation(true),
     }], {
-      getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: true }),
+      getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: true, stepCommandPending: false }),
     });
     observeNativeSteppedLoadCommandAdapter({
       owner: deviceManager,

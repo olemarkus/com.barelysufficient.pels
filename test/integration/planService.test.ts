@@ -2587,7 +2587,9 @@ describe('PlanService', () => {
     })) as PlanInputDevice];
 
     const planEngine = {
-      ...createMockPlanEngine(),
+      // The executor reads its live side from the observer now, so the drift
+      // this test is about only exists if the observation says so.
+      ...createMockPlanEngine({ getDriftDevices: () => liveDevices }),
       buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {

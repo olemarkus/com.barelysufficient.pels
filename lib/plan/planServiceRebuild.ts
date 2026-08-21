@@ -30,7 +30,6 @@ import type { PlanServiceDeps } from './planServiceDeps';
 import type {
   DevicePlan,
   PlanChangeSet,
-  PlanInputDevice,
   PlanRebuildOutcome,
   StatusPlanChanges,
 } from './planTypes';
@@ -120,7 +119,7 @@ async function executePlanRebuild(
   isDryRun: boolean,
   outcome: PlanRebuildOutcome,
 ): Promise<void> {
-  const { plan, buildMs, liveDevices } = await buildPlanForRebuild(host, reason);
+  const { plan, buildMs } = await buildPlanForRebuild(host, reason);
   const nowMs = Date.now();
   const stampedPlan = host.stampPlanGeneratedAt(plan, nowMs);
   host.setLatestPlanSnapshot(stampedPlan);
@@ -144,7 +143,6 @@ async function executePlanRebuild(
     stampedPlan,
     changes,
     isDryRun,
-    liveDevices,
   );
   Object.assign(outcome, {
     buildMs,
@@ -167,7 +165,7 @@ async function executePlanRebuild(
 async function buildPlanForRebuild(
   host: PlanRebuildHost,
   reason: string,
-): Promise<{ plan: DevicePlan; buildMs: number; liveDevices: PlanInputDevice[] }> {
+): Promise<{ plan: DevicePlan; buildMs: number }> {
   const { planEngine } = host.deps;
   planEngine.syncPendingBinaryCommands(host.settleDevices(), 'rebuild');
   const liveDevices = host.deps.getPlanDevices();
@@ -191,7 +189,6 @@ async function buildPlanForRebuild(
   return {
     plan,
     buildMs: Date.now() - buildStart,
-    liveDevices,
   };
 }
 
@@ -243,10 +240,18 @@ function measureStatusUpdate(host: PlanRebuildHost, plan: DevicePlan, changes: P
  * device by 281 ms and re-asserted a step-up its own admission gate would have
  * rejected.
  *
- * `liveDevices` is the SAME set the plan was built from, not a fresh read. The
- * question being asked is "did the planner ask for something these devices are
- * not already doing?", and a re-read would compare intent against observations
- * the planner never saw.
+ * The planner hands over NO live side any more. It used to pass the same
+ * `PlanInputDevice[]` the plan was built from, on the reasoning that a re-read
+ * would compare intent against observations the planner never saw. That
+ * reasoning protected the wrong thing: the risk it named is re-asserting a
+ * DECISION nobody re-made, and the plan being applied here is the one just
+ * built. Meanwhile it forced the executor's live side to be a plan-layer shape,
+ * which is what gave `observedBinaryState` two meanings (`TODO.md`, the drift
+ * P0). The executor now reads the observation from the observer and the
+ * in-flight command state from its own stores, so this asks "does the device
+ * disagree with what we decided?" against the freshest answer available — and
+ * an observation that landed since the build is a reason to act, not one to
+ * discard.
  *
  * `shouldApplyStablePlanActions` stays alongside it rather than being subsumed:
  * it covers cases the intent-drift predicate deliberately excludes — an
@@ -259,12 +264,11 @@ function shouldApplyPlan(
   plan: DevicePlan,
   changes: PlanChangeSet,
   isDryRun: boolean,
-  liveDevices: PlanInputDevice[],
 ): boolean {
   if (isDryRun) return false;
   if (changes.actionChanged) return true;
   if (host.deps.planEngine.shouldApplyStablePlanActions(plan)) return true;
-  return host.deps.planEngine.hasExecutionWorkOutstanding(plan, liveDevices);
+  return host.deps.planEngine.hasExecutionWorkOutstanding(plan);
 }
 
 async function maybeApplyPlanChanges(
@@ -272,7 +276,6 @@ async function maybeApplyPlanChanges(
   plan: DevicePlan,
   changes: PlanChangeSet,
   isDryRun: boolean,
-  liveDevices: PlanInputDevice[],
 ): Promise<{
   applyMs: number;
   appliedActions: boolean;
@@ -280,7 +283,7 @@ async function maybeApplyPlanChanges(
   commandRequestCount: number;
   writtenDeviceIds: string[];
 }> {
-  if (!shouldApplyPlan(host, plan, changes, isDryRun, liveDevices)) {
+  if (!shouldApplyPlan(host, plan, changes, isDryRun)) {
     return {
       applyMs: 0, appliedActions: false, deviceWriteCount: 0, commandRequestCount: 0, writtenDeviceIds: [],
     };

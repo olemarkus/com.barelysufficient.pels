@@ -31,10 +31,12 @@ export type PlanEngine = {
   applyPlanActions: (plan: DevicePlan) => Promise<PlanActuationResult>;
   shouldApplyStablePlanActions: (plan: DevicePlan) => boolean;
   hasSettledActuation: (basePlan: DevicePlan, livePlan: DevicePlan) => boolean;
-  hasExecutionWorkOutstanding: (
-    plannedSnapshot: DevicePlan,
-    liveDevices: PlanInputDevice[],
-  ) => boolean;
+  /**
+   * Does the executor still have work to do against this plan? Takes no device
+   * list: the executor reads the observation from the observer and the in-flight
+   * command state from its own stores. The planner has no live side to hand it.
+   */
+  hasExecutionWorkOutstanding: (plannedSnapshot: DevicePlan) => boolean;
   syncPendingTargetCommands: (
     devices: PlanInputDevice[],
     source: PendingTargetObservationSource,

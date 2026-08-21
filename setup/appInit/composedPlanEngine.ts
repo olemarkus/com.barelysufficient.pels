@@ -45,6 +45,7 @@ export type PlanEngineComposition = {
     | 'applyPlanActions'
     | 'hasStablePlanActuation'
     | 'handleConfirmedBinaryCommand'
+    | 'driftObservationDeps'
     | 'applySheddingToDevice'>;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   debugStructured?: StructuredDebugEmitter;
@@ -104,11 +105,8 @@ export class ComposedPlanEngine implements PlanEngine {
     return canRefreshPlanSnapshotFromLiveState(basePlan, livePlan);
   }
 
-  public hasExecutionWorkOutstanding(
-    plannedSnapshot: DevicePlan,
-    liveDevices: PlanInputDevice[],
-  ): boolean {
-    return hasPlanExecutionDriftAgainstIntent(plannedSnapshot, liveDevices);
+  public hasExecutionWorkOutstanding(plannedSnapshot: DevicePlan): boolean {
+    return hasPlanExecutionDriftAgainstIntent(plannedSnapshot, this.executor.driftObservationDeps());
   }
 
   public syncPendingTargetCommands(

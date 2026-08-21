@@ -114,6 +114,22 @@ Remaining multi-meter work is tracked as P1/P2/P3 follow-up below.
       through, `observedBinaryState` has a single documented meaning, and no actuation decision is
       made by comparing two `DevicePlan`s.
 
+      **Closed 2026-08-21, clause 1:** `hasPlanExecutionDriftAgainstIntent` takes READERS, not a
+      device list. The observation comes per device from the observer projection, the in-flight
+      command state from the executor's own stores, and the ladder from the intent;
+      `PlanEngine.hasExecutionWorkOutstanding` dropped its `PlanInputDevice[]` parameter and
+      `lib/executor/planExecutionDrift.ts` no longer imports the type at all. The commanded axis and
+      the device's flow-reported rung moved to their owning layers first (`lib/executor/steppedCommandState.ts`,
+      `lib/observer/steppedReportedStep.ts`).
+
+      Only the `observedBinaryState` split is left. Note what the migration turned up: the drift
+      suite's "does not let a stale off-step identity mask fresh binary on drift" case had been green
+      on a shape production cannot build — `inputDevice` stamps `currentOn` only when
+      `binaryCapabilityId` is set, so that fixture fell through to the RAW binary axis, while
+      `toPlanDevice` always stamps `currentOn` and strips `binaryControl`. It pinned an invariant the
+      app never held. Rewritten to assert the fold, with the genuine still-drawing case (the device
+      attesting a rung above the shed target) covered alongside it.
+
       *Found while removing the executor's nullable desired state (#2155, #2158). It is why
       `resolveDesiredOn` could read `resolveEffectiveCurrentOn(dev)` off a plan device and have
       that look reasonable: on that path the executor never sees an observation, only a plan with

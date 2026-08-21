@@ -1,4 +1,9 @@
-import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
+import type { DevicePlan } from '../plan/planTypes';
+import {
+  buildDriftObservedSnapshot,
+  type DriftCommandRead,
+  type ObserverDeviceRead,
+} from './driftObservedDevice';
 import { isBinaryDrivenIntent } from './executableDesiredState';
 import {
   hasBinaryCommand,
@@ -36,25 +41,15 @@ type DriftRuntimeState = {
 };
 type ExecutableSteppedLoadTransition = NonNullable<ExecutableSteppedLoadIntent['transition']>;
 
-export function hasPlanExecutionDriftForDevice(params: {
-  plan: DevicePlan;
-  liveDevices: PlanInputDevice[];
-  deviceId: string;
-}): boolean {
-  const { plan, liveDevices, deviceId } = params;
-  const previous = plan.devices.find((device) => device.id === deviceId);
-  if (!previous) return false;
-
-  const live = liveDevices.find((device) => device.id === deviceId);
-  if (!live) return false;
-  return hasPlanDeviceExecutionDrift({ planDevice: previous, liveDevice: live });
-}
-
 export function hasPlanDeviceExecutionDrift(params: {
   planDevice: PlanDevice;
-  liveDevice: PlanInputDevice;
+  observed: ObserverDeviceRead;
+  command: DriftCommandRead;
+  externalOffHeld: boolean;
 }): boolean {
-  const { planDevice, liveDevice } = params;
+  const {
+    planDevice, observed, command, externalOffHeld,
+  } = params;
   // "Leave off until turned on again": the device is off because the user turned
   // it off, and the producer only sets this bit while it is STILL observed off.
   // A plan built before the hold still says `keep`, so without this every
@@ -62,15 +57,23 @@ export function hasPlanDeviceExecutionDrift(params: {
   // per-device circuit breaker (3 in 30 s → 60 s suppression) — which would then
   // mask GENUINE drift on that device too. The rebuild scheduled alongside the
   // hold marks it inactive; until then there is nothing to converge.
-  if (liveDevice.externalOffHoldActive === true) return false;
+  // The hold is only ever set while the device is STILL observed off, so it is
+  // a posture rather than a reading, and this layer never asks why.
+  if (externalOffHeld) return false;
+  const intent = buildExecutableDeviceIntent(planDevice);
   return hasExecutableDeviceExecutionDrift({
-    intent: buildExecutableDeviceIntent(planDevice),
-    // The plan device carries the producer-resolved `currentDrawKw` the observed
-    // state requires, so it passes straight through. The raw-snapshot callers go
-    // via `buildExecutableObservedDeviceStateFromSnapshot`, which resolves the
-    // draw at that boundary instead.
-    observed: buildExecutableObservedDeviceState(liveDevice),
-    runtime: buildDriftRuntimeState(planDevice, liveDevice),
+    intent,
+    // The observation comes from the observer and the ladder from the intent —
+    // no plan decision passes through either. `buildDriftObservedSnapshot`
+    // resolves the rung, the on/off fold and the draw at this one seam, so the
+    // comparison below reads settled values.
+    observed: buildExecutableObservedDeviceState(
+      buildDriftObservedSnapshot(
+        observed,
+        hasSteppedCommand(intent) ? intent.steppedLoad.steppedLoadProfile : undefined,
+      ),
+    ),
+    runtime: buildDriftRuntimeState(planDevice, command),
     // The planned current step is the plan device's producer-resolved effective
     // step; drift compares it against the live observed step. It is read from the
     // plan device (narrowed — a non-stepped plan device tracks no step), not
@@ -113,7 +116,7 @@ function hasExecutableDeviceExecutionDrift(params: {
 // across cycles, independent of the executor.
 function buildDriftRuntimeState(
   planDevice: PlanDevice,
-  liveDevice: PlanInputDevice,
+  command: DriftCommandRead,
 ): DriftRuntimeState {
   // `pendingTargetCommand` is engine state, projected onto the plan device by
   // `planBuilder.shouldExposePendingTargetCommand`. The plan snapshot is the
@@ -121,15 +124,8 @@ function buildDriftRuntimeState(
   // carries observed capability values.
   const pendingTarget = planDevice.pendingTargetCommand;
   return {
-    pendingBinary: liveDevice.binaryCommandPending === true
-      ? {
-        kind: 'pending',
-        desired: typeof liveDevice.binaryCommandPendingDesired === 'boolean'
-          ? liveDevice.binaryCommandPendingDesired
-          : 'unknown',
-      }
-      : { kind: 'none' },
-    pendingStep: liveDevice.stepCommandPending === true ? { kind: 'pending' } : { kind: 'none' },
+    pendingBinary: command.binary,
+    pendingStep: command.step,
     pendingTarget: pendingTarget
       ? { kind: 'pending', desired: pendingTarget.desired }
       : { kind: 'none' },

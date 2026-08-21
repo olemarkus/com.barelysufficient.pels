@@ -3,6 +3,7 @@ import {
   hasUsableSteppedLoadLadder, isSteppedLoadOffStep,
   normalizeDeviceControlProfiles, resolveSteppedLoadPlanningPowerKw,
 } from '../lib/utils/deviceControlProfiles';
+import { resolveCurrentOn } from '../lib/observer/observedState';
 import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import type { DevicePlan } from '../lib/plan/planTypes';
@@ -20,7 +21,6 @@ import { resolveTemperatureDeniedControlModel } from './temperatureControlDenial
 import {
   buildSteppedLoadSnapshotStepFields,
   resolveNativeSteppedLoadProfile,
-  resolveSteppedLoadCurrentOn,
 } from './appDeviceControlSteppedState';
 import {
   confirmSteppedLoadDesiredStep,
@@ -246,7 +246,17 @@ export const decorateSnapshotWithDeviceControl = (params: {
     desiredStepId: stepFields.desiredStepId,
     previousStepId: currentDesired?.previousStepId,
     planningPowerKw,
-    binaryControl: { on: resolveSteppedLoadCurrentOn({ snapshot, profile, selectedStepId }) },
+    // The rung fold has ONE definition, and the observer owns it: a stepped
+    // device is off when its binary axis reads off OR its selected rung is the
+    // off step. The setup-local twin this used to call was the same expression
+    // written twice, which is one edit away from two answers.
+    binaryControl: {
+      on: resolveCurrentOn({
+        binaryControl: snapshot.binaryControl,
+        steppedLoadProfile: profile,
+        selectedStepId,
+      }),
+    },
     lastStepCommandIssuedAt: currentDesired?.lastIssuedAtMs,
     stepCommandRetryCount: currentDesired?.retryCount,
     nextStepCommandRetryAtMs: currentDesired?.nextRetryAtMs,
@@ -318,6 +328,7 @@ export class AppDeviceControlHelpers {
     initializationAssumedStepId?: string;
     hasPriorStepCommand: boolean;
     reportedStepId?: string;
+    stepCommandPending: boolean;
   } {
     const profile = this.getSteppedLoadProfile(deviceId);
     const lowestStepId = profile
@@ -341,6 +352,10 @@ export class AppDeviceControlHelpers {
           this.runtimeState.steppedLoadReportedByDeviceId.get(deviceId)?.stepId,
         )?.id
         : undefined,
+      // Whether a step command is in flight. Read from the commanded axis, not
+      // from a decorated snapshot: the decoration is a once-per-cycle copy, and
+      // drift asks this between cycles.
+      stepCommandPending: this.runtimeState.steppedLoadDesiredByDeviceId.get(deviceId)?.pending === true,
     };
   }
 
