@@ -59,7 +59,7 @@ import {
   createHomeCapacityBundle,
   type HomeCapacityBundle,
   type HomeCapacityBundleDiagnostics,
-  type RealtimeReconcileHooks,
+  type OwningHomeHooks,
 } from './createHomeCapacityBundle';
 import {
   preparePersistedHomeTrackerForMeter,
@@ -182,24 +182,25 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
   }
 
   /**
-   * Realtime-reconcile routing (R7b P1#1): resolve a drifting device to the
-   * OWNING sub-home bundle's reconcile hooks. An external on/off change to a
-   * sub-home load must be reconciled through THAT home's plan — main's plan
-   * filters sub-home members out, so `hasPlanExecutionDriftForDevice` against
-   * main's plan is always false and the change would be silently dropped.
+   * Per-home routing (R7b P1#1): resolve a device to the OWNING sub-home
+   * bundle's seams — its external-off-hold state and its plan rebuild. Both are
+   * wrong if taken from main: main's plan filters sub-home members out, so it
+   * does not contain the device, and its pending-command store never saw the
+   * device's commands.
+   *
    * Returns `undefined` for a main-home device, an unknown device, or a home
-   * with no live bundle; the caller then reconciles through main's plan service
+   * with no live bundle; the caller then goes through main's plan service
    * exactly as before (the no-sub-homes path stays byte-identical).
    */
-  getReconcileRouteForDevice(deviceId: string): {
+  getOwningHomeRouteForDevice(deviceId: string): {
     homeId: HomeId;
-    hooks: RealtimeReconcileHooks;
+    hooks: OwningHomeHooks;
   } | undefined {
     const homeId = this.deps.ctx.homeMembership?.getHomeIdForDevice(deviceId) ?? MAIN_HOME_ID;
     if (homeId === MAIN_HOME_ID) return undefined;
     const bundle = this.bundles.get(homeId);
     return bundle?.isTornDown() === false
-      ? { homeId, hooks: bundle.getReconcileHooks() }
+      ? { homeId, hooks: bundle.getOwningHomeHooks() }
       : undefined;
   }
 

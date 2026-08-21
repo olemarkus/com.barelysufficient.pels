@@ -102,7 +102,7 @@ the cycle merely passes through it twice.
                   ▼                                              │   │
         ┌───────────────────┐                                   │   │
         │     OBSERVER       │  store · staleness · alive ◀──────┘   │
-        │ consolidated state │  resolves settle → plan_reconcile     │
+        │ consolidated state │  resolves settle → observed_change    │
         └─────────┬──────────┘                                       │
                   │ flat, plan-blind values                          │
                   ▼                                                  │

@@ -87,53 +87,6 @@ observation from the observer and the command state from the executor's own stor
 the observation revision the plan was built from; and `observedBinaryState` split into
 `observedBinaryAxis` and `observedEffectiveOn`, one meaning each on every construction path.*
 
-- [ ] **Too many events trigger a plan rebuild, and a rebuild on a stale power reading decides
-      nothing meaningful.** A device control-state change queues a full plan rebuild:
-      `managerRealtimeHandlers.ts` gates on `observedControlStateChanged`, emits
-      `emitPlanReconcile`, and `scheduleAppRealtimeDeviceReconcile` calls
-      `planService.rebuildPlanFromCache('device_observation_changed')`. The gate keeps
-      non-control facets (temperature, SoC, measure_power) out, and the path is debounced with a
-      rebuild floor — but the planner's decision is a capacity decision, and a rebuild driven by a
-      device observation runs against a whole-home reading that has not changed. `lib/plan/AGENTS.md`
-      states the planner trusts power and holds no concept of staleness, so it cannot tell it is
-      re-deciding on a reading it has no reason to think is current.
-
-      **Where:** `lib/device/transport/managerRealtimeHandlers.ts` (the `emitPlanReconcile` gate),
-      `setup/appRealtimeDeviceReconcileRuntime.ts` (`requestRebuild`),
-      `setup/appServiceWiring.ts` (`scheduleRealtimeDeviceReconcile`).
-
-      **What changes:** rule on which signals may trigger a rebuild. Owner ruling 2026-08-20 is
-      that a fresh whole-home measurement should be the trigger, with device state changes handled
-      by executor drift rather than by re-planning.
-
-      **That ruling supersedes two documents, which must be amended with the change, not left to
-      contradict it.** `lib/plan/AGENTS.md` § "The planner does not import the executor" states
-      *"`PlanService` therefore has exactly one way to converge a device — `rebuildPlanFromCache`.
-      Do not add an apply-without-decide path back; if a rebuild is too slow for some caller, make
-      the rebuild cheaper."* Root `AGENTS.md` § Control Flow states *"A power sample and an observed
-      device change are both ordinary inputs here; each triggers a rebuild"* and *"There is no
-      separate reconciliation phase."* Those exist because a lane that re-applies a committed plan
-      can only ever answer "put it back", never "leave it and shed something else" — which is how
-      `inc_26449fb9` breached the hard cap. Whatever replaces the device-observation trigger has to
-      preserve that second answer, or it is the reconcile lane returning under a new name.
-
-      **A precondition, discovered 2026-08-20 and blocking on its own:** `PlanOverview.tsx` and
-      `PlanHero.tsx` iterate `plan.devices` for the Overview's device list, while `/ui_devices`
-      already serves the full transport snapshot (`app.latestTargetSnapshot`) and the read model
-      already joins twelve observer-owned fields onto each device. So the plan is not supplying the
-      UI's state — it is supplying the UI's MEMBERSHIP, and "not planned" therefore means "not
-      shown". That is what blocks every filtering question: an uncontrolled device would lose the
-      hero's capacity-control-off copy, and a `plugged_out` charger would lose its
-      `Inactive (car unplugged)` card. Anchor the Overview loop on the managed device set and join
-      plan decisions onto it, absent where there is none, and all of them unblock at once.
-
-      Ordered behind the entry above: removing the device-observation trigger is only safe once
-      drift can act on observations directly.
-
-      **Done when:** the set of rebuild triggers is decided and enforced, every remaining trigger
-      runs against a power reading the planner has reason to treat as current, and device
-      control-state changes converge through the executor without requiring a new plan.
-
 ## P1 Correctness, Data Integrity, and Supported UX
 
 - [ ] **The pending-restore reservation runs on one fixed clock against a 20 s-to-never distribution.**
@@ -1388,25 +1341,6 @@ program) remain deferred.*
       at level `debug`, so this adds CI minutes rather than swapping them. Source: 2026-08-07
       build-size audit, adversarial pass on PR #2006. [P2]
 
-- [ ] **A rejected actuator write no longer accrues a realtime circuit-breaker strike.** The
-      breaker now counts `PlanRebuildOutcome.writtenDeviceIds`, which lists devices the rebuild
-      SUCCEEDED in writing or requesting. Before, the reconcile lane reported success once it had
-      attempted a correction, so a device that kept drifting was charged even when the SDK write
-      failed. Now a rejected binary or stepped command contributes no id and
-      `flushRealtimeDeviceReconcileQueue` returns before recording an attempt
-      (`setup/appRealtimeDeviceReconcile.ts`). If Homey repeatedly rejects a command while the
-      device (or another automation) keeps emitting control-state changes, every event drives
-      another rebuild and another failed write while the three-strike breaker stays empty —
-      sustained SDK and CPU churn with nothing to stop it. Attribute attempted-but-rejected writes
-      too, which needs the dispatch layer to distinguish "did not try" from "tried and was
-      refused". *Source: Codex review of the drift/reconcile layering train, 2026-08-07.*
-
-- [ ] **The external-off-hold rebuild bypasses the observation lane's debounce and rebuild floor.**
-      `applyExternalOffHoldToReconcile` calls `hooks.rebuild(...)` directly
-      (`setup/appRealtimeDeviceReconcileRuntime.ts`), so one realtime→rebuild path is throttled and
-      the other is not. Pre-existing, but the floor added by the layering train makes the asymmetry
-      newly visible. *Source: pels-layering-guardian on the same train.*
-
 - [ ] **Remove the remaining drift consultation from the planner facade.** DELETE it instead of
       routing it. Call `applyPlanActions(plan)` on every non-dry-run rebuild and
       let the executor no-op per device — it is already built for that (`handleTargetCommandPreflight`
@@ -2174,7 +2108,7 @@ program) remain deferred.*
 - [ ] **"Leave off until turned on again" only STARTS a hold from a push-delivered off.**
       Detection runs at the realtime-reconcile gate (`setup/externalOffHoldDetection.ts`), so it
       fires on `realtime_capability` / `device_update` observations. A full snapshot refresh does
-      not dispatch `plan_reconcile`, so an outside-off discovered only by a pull (live feed down
+      not dispatch `observed_control_state_changed`, so an outside-off discovered only by a pull (live feed down
       for the whole window) starts no hold and the device is managed as usual. Deliberate for v1 —
       a pull cannot distinguish "the user just turned it off" from "PELS turned it off before the
       last restart", which is the cold-start ambiguity the spec refuses to guess at. Revisit only

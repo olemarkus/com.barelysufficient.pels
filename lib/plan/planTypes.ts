@@ -731,10 +731,14 @@ export type PlanRebuildOutcome = {
   appliedActions: boolean;
   deviceWriteCount: number;
   /**
-   * Ids of the devices this rebuild actually wrote to. `appliedActions` says
-   * only that SOMETHING was written; a consumer acting per device (the realtime
-   * circuit breaker) needs to know which, or it charges a strike to a device
-   * that merely reported a change while a different one was actuated.
+   * Ids of the devices this rebuild actually wrote to. `appliedActions` says only
+   * that SOMETHING was written; this says which.
+   *
+   * Its original consumer was the realtime circuit breaker, which needed per-device
+   * attribution to avoid charging a strike to a device that merely reported a
+   * change while a different one was actuated. That breaker went with the
+   * observation lane, so nothing reads this today — it survives as the honest
+   * shape of the answer, and as what a per-device consumer would need.
    */
   writtenDeviceIds: string[];
   commandRequestCount: number;

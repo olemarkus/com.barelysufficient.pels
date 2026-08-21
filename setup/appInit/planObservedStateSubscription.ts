@@ -1,14 +1,10 @@
 import type {
   ObservedStateChangedEvent,
   ObservedStateEmitter,
-  PlanReconcileObservedEvent,
+  ObservedControlStateChangedEvent,
 } from '../../lib/observer/observedStateEvents';
-import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
-import { incPerfCounters } from '../../lib/utils/perfCounters';
-import { isStateOfChargeCapabilityId } from '../../lib/device/transport/stateOfCharge';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { incPerfCounter } from '../../lib/utils/perfCounters';
 import type { AppContext } from '../../lib/app/appContext';
-import type { RealtimeDeviceReconcileEvent } from '../appRealtimeDeviceReconcile';
 import { requirePlanService } from './contextGuards';
 
 /**
@@ -19,69 +15,58 @@ import { requirePlanService } from './contextGuards';
  */
 export type PlanObservedStateSubscriptionDeps = {
   ctx: AppContext;
-  planRebuildScheduler: PlanRebuildScheduler;
   getObservedStateEmitter: () => ObservedStateEmitter;
-  getSnapshotDevice: (deviceId: string) => TargetDeviceSnapshot | undefined;
-  hasEnabledEvBoostForSnapshot: (device: TargetDeviceSnapshot | undefined) => boolean;
-  scheduleRealtimeDeviceReconcile: (event: RealtimeDeviceReconcileEvent) => void;
+  /**
+   * Update "leave it off until turned on again" for a device whose observed
+   * control state moved, routed to its owning home. No rebuild: the hold is
+   * state the next build reads off the live device.
+   */
+  syncExternalOffHold: (event: ObservedControlStateChangedEvent) => void;
+  /**
+   * Clear the rebuild suppressions of the home that OWNS this device. Routed for
+   * the same reason the hold above it is: each bundle keeps a separate
+   * `PowerSampleRebuildState`, so clearing main's for a sub-home device clears
+   * the wrong house and leaves the right one throttled.
+   */
+  invalidateRebuildSuppression: (deviceId: string) => void;
 };
-
-function shouldRebuildPlanForRealtimeEvSocObservation(
-  deps: PlanObservedStateSubscriptionDeps,
-  event: ObservedStateChangedEvent,
-): boolean {
-  const capabilityIds = [
-    ...(event.capabilityId ? [event.capabilityId] : []),
-    ...(event.observedCapabilityIds ?? []),
-  ];
-  if (!capabilityIds.some((capabilityId) => isStateOfChargeCapabilityId(capabilityId))) return false;
-  return deps.hasEnabledEvBoostForSnapshot(deps.getSnapshotDevice(event.deviceId));
-}
 
 /**
  * The plan-dependent half of the observed-state fan-out, registered by its own
  * startup step AFTER `initPlanService`.
  *
  * It lives in a separate step because every listener here reaches the plan
- * service: the reconcile route rebuilds through it, the EV-SoC intent executes
- * through it (`PlanRebuildIntentPolicy.executeIntent` →
- * `getPlanService().rebuildPlanFromCache`, a NON-optional read), and
- * `syncLivePlanState` calls it directly. Registering these with the transport
- * meant they were live from `initDeviceManager` — three awaited startup steps
- * before the service existed — so a device event landing in that gap either had
- * its work silently dropped or queued a rebuild intent that would dereference
- * `undefined`. Ordering removes the window instead of guarding it: keep this
- * step after `initPlanService`.
+ * service: `syncLivePlanState` calls it directly, and the external-off hold
+ * reads the owning home's pending-command store through it. Registering these
+ * with the transport meant they were live from `initDeviceManager` — three
+ * awaited startup steps before the service existed — so a device event landing
+ * in that gap had its work silently dropped. Ordering removes the window
+ * instead of guarding it: keep this step after `initPlanService`.
+ *
+ * **No listener here requests a plan rebuild.** An observed device change is
+ * planner input, not a capacity trigger — the decision is about the whole-home
+ * reading, and a rebuild driven by a device event runs against a reading taken
+ * before the change (root `AGENTS.md` § Control Flow). What an observation may
+ * do is stop the reading already on its way from being throttled away, which is
+ * `invalidateRebuildSuppressionForObservation`.
  */
 export function subscribePlanObservedState(deps: PlanObservedStateSubscriptionDeps): void {
   const { ctx } = deps;
   const emitter = deps.getObservedStateEmitter();
-  emitter.onPlanReconcile((event: PlanReconcileObservedEvent) => {
-    deps.scheduleRealtimeDeviceReconcile(event);
+  emitter.onObservedControlStateChanged((event: ObservedControlStateChangedEvent) => {
+    deps.syncExternalOffHold(event);
+    if (!ctx.isCapacityControlEnabled(event.deviceId)) return;
+    incPerfCounter('plan_rebuild_suppression_invalidate_requested.control_state_total');
+    deps.invalidateRebuildSuppression(event.deviceId);
   });
   emitter.onObservedStateChanged((event: ObservedStateChangedEvent) => {
-    if (shouldRebuildPlanForRealtimeEvSocObservation(deps, event)) {
-      incPerfCounters([
-        'plan_rebuild_requested_total',
-        'plan_rebuild_requested.flow_total',
-        'plan_rebuild_requested.flow.realtime_ev_soc_total',
-      ]);
-      deps.planRebuildScheduler.request({
-        kind: 'flow',
-        reason: 'realtime_ev_soc',
-      });
-    }
     if (
       event.measurePowerBecameSignificantlyPositive === true
       && ctx.isCapacityControlEnabled(event.deviceId)
     ) {
-      // eslint-disable-next-line functional/immutable-data -- shared AppContext write
-      ctx.powerSampleRebuildState = {
-        ...ctx.powerSampleRebuildState,
-        shortfallSuppressionInvalidated: true,
-      };
+      incPerfCounter('plan_rebuild_suppression_invalidate_requested.measure_power_total');
+      deps.invalidateRebuildSuppression(event.deviceId);
     }
     void requirePlanService(ctx).syncLivePlanState(event.source);
   });
 }
-

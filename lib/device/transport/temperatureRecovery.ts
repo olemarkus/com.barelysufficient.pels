@@ -45,7 +45,7 @@ export function getPendingTemperatureRecoveryDeviceIds(ctx: TransportContext): s
 
 function dispatchRecoveredTemperature(ctx: TransportContext, deviceId: string, deviceName: string): void {
   const cursor = ctx.nextObservationCursor(deviceId);
-  ctx.dispatchPlanReconcile({
+  ctx.dispatchObservedControlStateChanged({
     deviceId,
     ...cursor,
     name: deviceName,

@@ -50,7 +50,6 @@ import {
   seedMissingModeTargets as seedMissingModeTargetsHelper,
 } from './setup/appDeviceSupport';
 import * as homeMode from './setup/homeRuntime/homeOperatingMode';
-import * as realtimeReconcile from './setup/appRealtimeDeviceReconcile';
 import type { Logger as PinoLogger } from './lib/logging/logger';
 import { normalizeError } from './lib/utils/errorUtils';
 import { emitSettingsUiDevicesUpdatedForApp } from './setup/settingsUiAppRuntime';
@@ -154,7 +153,7 @@ class PelsApp extends PelsAppBase implements AppContext {
   public deviceManager!: DeviceTransport;
   /**
    * Observer-owned emitter for post-translation realtime events
-   * (`observed-state-changed`, `plan-reconcile-observed`). Wiring builds
+   * (`observed-state-changed`, `observed-control-state-changed`). Wiring builds
    * it during `initDeviceManager`, binds transport's dispatcher to it,
    * and subscribes wiring's own reapply/SoC/perf listeners to it. Per
    * PR #5 of the observer/transport split, transport never statically
@@ -239,7 +238,6 @@ class PelsApp extends PelsAppBase implements AppContext {
     // freshness. Main home only — a sub-home must not adopt this production.
     observedHomePower: this.observedHomePower,
   });
-  private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
   private stopSettingsHandler?: () => void;
   protected weatherCollector?: WeatherCollector;
   private pvForecast?: PvForecastController;
@@ -377,7 +375,6 @@ class PelsApp extends PelsAppBase implements AppContext {
     getObservedHomePower: () => this.observedHomePower,
     getObservedDeviceStateProjection: () => this.observedDeviceStateProjection,
     setObservedDeviceStateProjection: (projection) => { this.observedDeviceStateProjection = projection; },
-    getRealtimeDeviceReconcileState: () => this.realtimeDeviceReconcileState,
     setStopSettingsHandler: (stop) => { this.stopSettingsHandler = stop; },
     getStopSettingsHandler: () => this.stopSettingsHandler,
     setWeatherCollector: (collector) => { this.weatherCollector = collector; },
@@ -390,11 +387,9 @@ class PelsApp extends PelsAppBase implements AppContext {
     getDeviceDriverIdOverride: (deviceId) => this.getDeviceDriverIdOverride(deviceId),
     getFlowConflict: (deviceId) => this.flowConflictsByDevice[deviceId],
     computeShortfallThreshold: () => this.computeShortfallThreshold(),
-    getSnapshotDevice: (deviceId) => this.getSnapshotDevice(deviceId),
     retryDeferredOvershootSeed: (membership, allowPending) => this.snapshotHelpers.retryDeferredOvershootSeed(
       (deviceId) => homeMode.resolveOperatingModeForDevice(this.ctx, deviceId, membership, allowPending),
     ),
-    hasEnabledEvBoostForSnapshot: (device) => this.hasEnabledEvBoostForSnapshot(device),
     loadPersistedState: () => this.flowBacked.loadPersistedState(),
     persistLearnedPowerPeaks: () => this.flowBacked.persistLearnedPeaks(),
     flushLearnedPowerPeaks: () => this.flowBacked.flushLearnedPeaks(),

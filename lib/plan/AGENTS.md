@@ -105,10 +105,23 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   converge a device — `rebuildPlanFromCache`. Do not add an apply-without-decide path back; if a
   rebuild is too slow for some caller, make the rebuild cheaper.
 
-  One asymmetry to know about: `rebuildPlanFromCache` consults `planBuildGate`, while the public
-  `buildDevicePlanSnapshot` on the same class does not. It has no production caller, so nothing is
-  wrong today — but the difference is invisible at the call site. If you reach for it, route it
-  through the gate or make it non-public rather than adding a second ungated build door.
+  That observation reaches the planner as STATE, not as a trigger. A whole-home meter reading is
+  what triggers a rebuild (`PLAN_REBUILD_TRIGGERS` in `planRebuildTrigger.ts`, root `AGENTS.md`
+  § Control Flow), and the reading that arrives next carries the drifted device with it — so the
+  rebuild it drives is a full re-decide and both answers above are still on the table. What is gone
+  is the device-event trigger that used to run a capacity decision against a reading taken before
+  the change. The executor needs no lane of its own for this: in production `applyPlanActions` is
+  reached only from `maybeApplyPlanChanges`, so every executor tick already IS a rebuild.
+
+  Two asymmetries to know about, and they are the same shape. `rebuildPlanFromCache` consults
+  `planBuildGate` while the public `buildDevicePlanSnapshot` on the same class does not; and
+  `maybeApplyPlanChanges` decides before actuating while the public `PlanService.applyPlanActions`
+  (re-exposed as `protected` on `AppRuntimeApi`) actuates a plan handed to it. Neither has a
+  production caller — `applyPlanActions` survives because `test/integration/plan.test.ts` drives the
+  executor through it with hand-built plans — so nothing is wrong today. But the second one is
+  literally an apply-without-decide door, and the difference is invisible at the call site. If you
+  reach for either, route it through the gate or make it non-public rather than adding a second
+  door; do not let a production caller grow onto `applyPlanActions`.
 
   `planLiveStateMerge.ts` is the trap adjacent to this rule: it merges observations onto a plan
   while carrying the decision fields through untouched, so its output is by construction the OLD

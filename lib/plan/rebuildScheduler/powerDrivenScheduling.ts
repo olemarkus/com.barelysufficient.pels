@@ -124,6 +124,48 @@ function resetTightNoopBackoff(snapshot: PowerSampleRebuildState): PowerSampleRe
   };
 }
 
+/**
+ * Did a device observation land while this rebuild was in flight?
+ *
+ * If so, the rebuild decided from devices it read BEFORE that observation, so its
+ * verdict is about a house that no longer exists — and both suppressions it would
+ * otherwise install (`updateTightRebuildSuppression`'s backoff) or clear
+ * (`clearShortfallSuppressionInvalidation`'s latch) would be applied on the
+ * strength of it. At a ~1.4 s build against a 10 s poll this is a routine race,
+ * not an edge case, and before the counter it silently ate the observation's only
+ * remaining effect on the planner.
+ */
+const observedDuringFlight = (
+  state: PowerSampleRebuildState,
+  seqAtDispatch: number,
+): boolean => (state.observationSeq ?? 0) !== seqAtDispatch;
+
+/**
+ * The settle-down for a rebuild an observation overtook.
+ *
+ * It must keep the observation's cleared suppressions AND still install the
+ * post-mitigation holdoff when the rebuild actually acted, because
+ * `updateTightRebuildSuppression` is the only place that holdoff is armed.
+ * Skipping the whole function would mean a tight rebuild that DID act — whose own
+ * command echo is exactly the kind of observation that lands mid-flight — never
+ * gets its 15 s settling window, and the next 10 s poll re-decides on top of a
+ * command still taking effect.
+ *
+ * What it must never do is install the tight-NOOP backoff or spend the
+ * invalidation latch: both of those rest on a "nothing is actionable" verdict the
+ * observation just falsified.
+ */
+const settleAfterOvertakenRebuild = (
+  state: PowerSampleRebuildState,
+  reason: PlanRebuildTrigger,
+  outcome: RebuildOutcome | void,
+  nowMs: number,
+): PowerSampleRebuildState => (
+  shouldApplyTightMitigationHoldoff(reason, outcome)
+    ? { ...state, mitigationHoldoffUntilMs: nowMs + TIGHT_MITIGATION_HOLDOFF_MS }
+    : state
+);
+
 const incReasonCounter = (base: string, reason: string): void => {
   incPerfCounter(`${base}.${reason}_total`);
 };
@@ -287,6 +329,9 @@ export function executePendingPowerRebuild(params: {
   const nextPowerW = resolvePendingPowerW(snapshot);
   const nextSoftLimitKw = resolvePendingSoftLimitKw(snapshot);
   const inFlight = snapshot.pending;
+  // Captured BEFORE the await. Anything that moves this while the rebuild runs is
+  // a device the rebuild's plan input never saw.
+  const observationSeqAtDispatch = snapshot.observationSeq ?? 0;
 
   setState({
     ...clearPendingState(snapshot),
@@ -306,11 +351,18 @@ export function executePendingPowerRebuild(params: {
       ) {
         await onTightNoopHardCapBreach?.(hardCapBreach.deficitKw);
       }
-      setState(clearInFlightState(clearShortfallSuppressionInvalidation(updateTightRebuildSuppression({
+      const completed = {
         ...getState(),
         lastHardCapBreached: hardCapBreach?.breached === true,
         lastHardCapDeficitKw: hardCapBreach?.breached === true ? hardCapBreach.deficitKw : undefined,
-      }, reason, outcome, getNowMs()))));
+      };
+      setState(clearInFlightState(
+        observedDuringFlight(completed, observationSeqAtDispatch)
+          ? settleAfterOvertakenRebuild(completed, reason, outcome, getNowMs())
+          : clearShortfallSuppressionInvalidation(
+            updateTightRebuildSuppression(completed, reason, outcome, getNowMs()),
+          ),
+      ));
       pendingResolve?.();
     })
     .catch((error: unknown) => {
@@ -318,9 +370,16 @@ export function executePendingPowerRebuild(params: {
       // Clear the invalidation latch here too (the success path already does),
       // so a failed re-check rebuild can't leave it set and permanently disarm the
       // unactionable throttle for the rest of the incident — keep it a true one-shot.
-      setState(clearInFlightState(clearShortfallSuppressionInvalidation(
-        updateTightRebuildSuppressionAfterError(getState(), reason, getNowMs()),
-      )));
+      const failed = getState();
+      // No mitigation holdoff on the error path: a failed rebuild acted on nothing,
+      // so there is no command to let settle.
+      setState(clearInFlightState(
+        observedDuringFlight(failed, observationSeqAtDispatch)
+          ? failed
+          : clearShortfallSuppressionInvalidation(
+            updateTightRebuildSuppressionAfterError(failed, reason, getNowMs()),
+          ),
+      ));
       pendingReject?.(normalizedError);
       throw normalizedError;
     });

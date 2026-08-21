@@ -4,6 +4,7 @@ import {
   PLAN_REBUILD_TRIGGERS,
   POWER_SAMPLE_REBUILD_TRIGGERS,
 } from '../../lib/plan/planRebuildTrigger';
+import { getPlanRebuildLogLevel } from '../../lib/plan/planRebuildMetrics';
 
 describe('describePlanRebuildTrigger', () => {
   it('leaves a trigger that carries no detail exactly as it is named', () => {
@@ -28,11 +29,42 @@ describe('describePlanRebuildTrigger', () => {
   });
 });
 
+// `getPlanRebuildLogLevel` matched `reason.startsWith('settings:')` before the set
+// was closed and now matches `trigger === 'settings'`. It had no test at any tier,
+// and it decides whether an operator sees the line at all.
+describe('getPlanRebuildLogLevel', () => {
+  const quietOutcome = {
+    failed: false, appliedActions: false, actionChanged: false,
+  } as Parameters<typeof getPlanRebuildLogLevel>[2];
+
+  it('logs a settings rebuild at info however its detail is spelled', () => {
+    expect(getPlanRebuildLogLevel('settings', 10, quietOutcome)).toBe('info');
+  });
+
+  it('keeps startup and the first build at info', () => {
+    expect(getPlanRebuildLogLevel('initial', 10, quietOutcome)).toBe('info');
+    expect(getPlanRebuildLogLevel('startup_snapshot_bootstrap', 10, quietOutcome)).toBe('info');
+  });
+
+  it('stays silent for an ordinary quiet power-sample rebuild', () => {
+    expect(getPlanRebuildLogLevel('power_delta', 10, quietOutcome)).toBeNull();
+  });
+});
+
 describe('the rebuild trigger set', () => {
   it('lists every power-sample trigger as a plan rebuild trigger', () => {
     for (const trigger of POWER_SAMPLE_REBUILD_TRIGGERS) {
       expect(PLAN_REBUILD_TRIGGERS).toContain(trigger);
     }
+  });
+
+  // The rule the module exists for, stated in its own docblock and previously
+  // asserted nowhere: a device observation is not on the list. Anything matching
+  // is either the trigger coming back or a name that reads as if it had.
+  it('has no name for a device observation', () => {
+    const observationish = (PLAN_REBUILD_TRIGGERS as readonly string[])
+      .filter((trigger) => /observ|device_|realtime|external_off/.test(trigger));
+    expect(observationish).toEqual([]);
   });
 
   it('names each trigger exactly once', () => {

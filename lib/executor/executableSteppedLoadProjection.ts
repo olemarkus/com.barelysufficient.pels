@@ -381,12 +381,12 @@ const resolveDesiredOn = (params: {
   }
   // `null` = this cycle's decision does not move the binary axis. It must NOT
   // fall back to `current.on`: a desired-state field carries a decision, never
-  // an observation. A device that moved on its own is an
-  // ordinary input — `scheduleAppRealtimeDeviceReconcile` queues a rebuild, and
-  // the planner answers with an explicit `restore_from_off_at_low` (binaryTarget
-  // true) or decides to leave it and shed something else. Inferring it here can
-  // only ever produce the first answer, which is the apply-without-decide path
-  // `inc_26449fb9` came from (`lib/plan/AGENTS.md`).
+  // an observation. A device that moved on its own is an ordinary input — the
+  // next whole-home reading rebuilds with it, and the planner answers with an
+  // explicit `restore_from_off_at_low` (binaryTarget true) or decides to leave it
+  // and shed something else. Inferring it here can only ever produce the first
+  // answer, which is the apply-without-decide path `inc_26449fb9` came from
+  // (`lib/plan/AGENTS.md`).
   return null;
 };
 
