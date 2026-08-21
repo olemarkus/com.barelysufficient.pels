@@ -216,6 +216,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
     deviceManager: deviceManager as never,
+    getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // Route step writes through the actuator over the SAME device-manager stepped
     // method, preserving the prod restore behavior this e2e asserts.

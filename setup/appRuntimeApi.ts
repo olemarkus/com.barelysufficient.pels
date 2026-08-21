@@ -98,6 +98,10 @@ abstract class AppRuntimeApi extends Base {
   public requestFlowPlanRebuild(source: string): void {
     this.planRebuildScheduler.request({ kind: 'flow', reason: `flow_card:${source}` });
   }
+  public getObservationRevision(): number {
+    return this.observedDeviceStateProjection.getRevision();
+  }
+
   public getObservedState(deviceId: string): ProjectedObservedDeviceState | undefined {
     return this.observedDeviceStateProjection.getObservedState(deviceId);
   }

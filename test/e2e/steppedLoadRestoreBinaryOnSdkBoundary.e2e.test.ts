@@ -192,6 +192,7 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
     deviceManager: deviceManager as never,
+    getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // Route step writes through the actuator over the SAME device-manager stepped
     // method, preserving the SDK-boundary behavior this e2e asserts.

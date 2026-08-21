@@ -46,6 +46,7 @@ export type PlanEngineComposition = {
     | 'hasStablePlanActuation'
     | 'handleConfirmedBinaryCommand'
     | 'driftObservationDeps'
+    | 'getObservationRevision'
     | 'applySheddingToDevice'>;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   debugStructured?: StructuredDebugEmitter;
@@ -105,7 +106,21 @@ export class ComposedPlanEngine implements PlanEngine {
     return canRefreshPlanSnapshotFromLiveState(basePlan, livePlan);
   }
 
-  public hasExecutionWorkOutstanding(plannedSnapshot: DevicePlan): boolean {
+  public getObservationRevision(): number {
+    return this.executor.getObservationRevision();
+  }
+
+  public hasExecutionWorkOutstanding(
+    plannedSnapshot: DevicePlan,
+    observationRevisionAtBuild: number,
+  ): boolean {
+    // The plan was decided against the observations as of
+    // `observationRevisionAtBuild`. If the observer has accepted a write since,
+    // this plan has not been decided against the world it would now be applied
+    // to — and acting anyway is an apply-without-decide, the shape that breached
+    // the hard cap (`inc_26449fb9`). Decline; the observation that moved is
+    // itself a rebuild trigger, and the re-decide is the honest answer.
+    if (this.executor.getObservationRevision() !== observationRevisionAtBuild) return false;
     return hasPlanExecutionDriftAgainstIntent(plannedSnapshot, this.executor.driftObservationDeps());
   }
 

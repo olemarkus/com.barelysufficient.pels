@@ -20,6 +20,7 @@ export type PlanEngineWiring = {
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
   deviceManager: PlanExecutorDeps['deviceManager'];
   getObservedState: PlanExecutorDeps['getObservedState'];
+  getObservationRevision: PlanExecutorDeps['getObservationRevision'];
   actuator: Actuator;
   binaryCommandLifecycle?: BinaryCommandLifecycleListener;
   capacityGuard: CapacityGuard;

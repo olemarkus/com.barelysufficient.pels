@@ -211,6 +211,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
     deviceManager: deviceManager as never,
+    getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     actuator: createDeviceActuator({
       resolveTemperatureTarget: (_deviceId, desired) => desired,

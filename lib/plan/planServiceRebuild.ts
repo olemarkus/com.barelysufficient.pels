@@ -119,7 +119,7 @@ async function executePlanRebuild(
   isDryRun: boolean,
   outcome: PlanRebuildOutcome,
 ): Promise<void> {
-  const { plan, buildMs } = await buildPlanForRebuild(host, reason);
+  const { plan, buildMs, observationRevision } = await buildPlanForRebuild(host, reason);
   const nowMs = Date.now();
   const stampedPlan = host.stampPlanGeneratedAt(plan, nowMs);
   host.setLatestPlanSnapshot(stampedPlan);
@@ -143,6 +143,7 @@ async function executePlanRebuild(
     stampedPlan,
     changes,
     isDryRun,
+    observationRevision,
   );
   Object.assign(outcome, {
     buildMs,
@@ -165,9 +166,13 @@ async function executePlanRebuild(
 async function buildPlanForRebuild(
   host: PlanRebuildHost,
   reason: string,
-): Promise<{ plan: DevicePlan; buildMs: number }> {
+): Promise<{ plan: DevicePlan; buildMs: number; observationRevision: number }> {
   const { planEngine } = host.deps;
   planEngine.syncPendingBinaryCommands(host.settleDevices(), 'rebuild');
+  // Read BEFORE the inputs are captured. The build below awaits, so a realtime
+  // observation can land mid-build; this is what lets the apply step tell that
+  // the plan was decided against a world that has since moved.
+  const observationRevision = planEngine.getObservationRevision();
   const liveDevices = host.deps.getPlanDevices();
   planEngine.syncPendingTargetCommands(liveDevices, 'rebuild');
   const buildStart = Date.now();
@@ -189,6 +194,7 @@ async function buildPlanForRebuild(
   return {
     plan,
     buildMs: Date.now() - buildStart,
+    observationRevision,
   };
 }
 
@@ -240,6 +246,12 @@ function measureStatusUpdate(host: PlanRebuildHost, plan: DevicePlan, changes: P
  * device by 281 ms and re-asserted a step-up its own admission gate would have
  * rejected.
  *
+ * The verdict is qualified by the observation revision the plan was BUILT from.
+ * The build awaits, so a realtime observation can land mid-build; acting on a
+ * device change this plan never incorporated would apply a decision nobody made
+ * against it — the `inc_26449fb9` shape under a new name. When the observer has
+ * moved, this cycle declines and the observation's own rebuild re-decides.
+ *
  * The planner hands over NO live side any more. It used to pass the same
  * `PlanInputDevice[]` the plan was built from, on the reasoning that a re-read
  * would compare intent against observations the planner never saw. That
@@ -264,11 +276,12 @@ function shouldApplyPlan(
   plan: DevicePlan,
   changes: PlanChangeSet,
   isDryRun: boolean,
+  observationRevision: number,
 ): boolean {
   if (isDryRun) return false;
   if (changes.actionChanged) return true;
   if (host.deps.planEngine.shouldApplyStablePlanActions(plan)) return true;
-  return host.deps.planEngine.hasExecutionWorkOutstanding(plan);
+  return host.deps.planEngine.hasExecutionWorkOutstanding(plan, observationRevision);
 }
 
 async function maybeApplyPlanChanges(
@@ -276,6 +289,7 @@ async function maybeApplyPlanChanges(
   plan: DevicePlan,
   changes: PlanChangeSet,
   isDryRun: boolean,
+  observationRevision: number,
 ): Promise<{
   applyMs: number;
   appliedActions: boolean;
@@ -283,7 +297,7 @@ async function maybeApplyPlanChanges(
   commandRequestCount: number;
   writtenDeviceIds: string[];
 }> {
-  if (!shouldApplyPlan(host, plan, changes, isDryRun)) {
+  if (!shouldApplyPlan(host, plan, changes, isDryRun, observationRevision)) {
     return {
       applyMs: 0, appliedActions: false, deviceWriteCount: 0, commandRequestCount: 0, writtenDeviceIds: [],
     };
