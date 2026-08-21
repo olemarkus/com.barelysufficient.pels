@@ -1,8 +1,5 @@
-import {
-  isBinaryControlled,
-  isBinaryOnOrUnknown,
-  resolveBinaryCommandCurrentOn,
-} from '../../packages/shared-domain/src/binaryControlState';
+import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
+import { resolveCurrentOn } from '../observer/observedState';
 import {
   hasSteppedCommand,
 } from './executablePlan';
@@ -279,32 +276,12 @@ export function buildExecutableObservedDeviceState(
     available: snapshot.available,
     commandableNow: snapshot.commandableNow ?? resolveCommandableNow(snapshot),
     binaryControl: snapshot.binaryControl,
-    observedBinaryState: resolveObservedBinaryStateFromSnapshot(snapshot),
+    observedBinaryAxis: isBinaryOnOrUnknown(snapshot) ? 'on' : 'off',
+    observedEffectiveOn: resolveCurrentOn(snapshot),
     target: buildObservedTargetState(snapshot),
     steppedLoad: buildObservedSteppedLoadState(snapshot),
   };
 }
-
-/**
- * The executor acts on the producer-resolved `currentOn` directly. Observation
- * freshness/staleness is deliberately NOT consulted here: staleness only matters
- * to the planner (to avoid over-committing capacity against stale data — an
- * overshoot it can pre-empt); the executor just actuates against the observed
- * value. So this never returns `'unknown'` — that state existed only to carry the
- * old `binaryControlObservation` "no trusted evidence" signal.
- */
-export const resolveObservedBinaryStateFromSnapshot = (
-  // Prefer the producer-resolved `currentOn` — the drift path feeds a live plan
-  // device that carries it (not the raw `binaryControl`); the raw-snapshot executor
-  // path has no `currentOn`, so it falls back to the observed binary axis.
-  snapshot: Pick<ObservedDeviceState, 'binaryControl'> & { currentOn?: boolean },
-): 'on' | 'off' => {
-  if (typeof snapshot.currentOn === 'boolean') return snapshot.currentOn ? 'on' : 'off';
-  if (isBinaryControlled(snapshot)) {
-    return resolveBinaryCommandCurrentOn(snapshot) ? 'on' : 'off';
-  }
-  return isBinaryOnOrUnknown(snapshot) ? 'on' : 'off';
-};
 
 // Stage 5: narrowed to the observed surface — reads only `targets`.
 const buildObservedTargetState = (
@@ -330,7 +307,11 @@ const buildObservedSteppedLoadState = (
 ): ExecutableObservedSteppedLoadState | null => {
   if (!isSteppedLoadSnapshot(snapshot)) return null;
   return {
-    on: typeof snapshot.currentOn === 'boolean' ? snapshot.currentOn : isBinaryOnOrUnknown(snapshot),
+    // The RAW axis, like `observedBinaryAxis` beside it: every reader of this
+    // flag is on the actuation path (`buildCurrentState`, `shedReleaseActuation`)
+    // and each already falls back to `isBinaryOnOrUnknown`. Convergence asks the
+    // folded question through `observedEffectiveOn` instead.
+    on: isBinaryOnOrUnknown(snapshot),
     stepId: snapshot.selectedStepId,
     reportedStepId: snapshot.reportedStepId,
     currentDrawKw: snapshot.currentDrawKw,

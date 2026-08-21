@@ -80,60 +80,12 @@ The 2026-07-25 release-review cleanup closed the prior set: it partitioned realt
 work by home, finite-gated saved meter-area limits, and corrected the Main-meter setup guide.
 Remaining multi-meter work is tracked as P1/P2/P3 follow-up below.
 
-- [ ] **Drift detection reads device state from the plan layer, not from the observation.**
-      `hasPlanExecutionDriftAgainstIntent` is documented as comparing "live observations against
-      planner INTENT", but the live side is a `PlanInputDevice`. `ExecutableObservedDeviceState`
-      says so in its own docblock: `observedBinaryState` is *"path-dependent by design"* — the
-      producer-resolved `currentOn` on the drift/reconcile path, the raw binary axis
-      (`isBinaryOnOrUnknown`) on the executor/dispatch path. One field, two meanings, selected by
-      which path constructed it. `hasLiveStateDivergedFromSnapshot` (was `hasPlanExecutionDrift`)
-      is worse in shape: it compares two `DevicePlan`s positionally by array index, and its live
-      side comes from `buildLiveStatePlan` — which `lib/plan/AGENTS.md` calls out as *"by
-      construction the OLD decision seen freshly … for publishing snapshots, never for deciding to
-      actuate"*.
-
-      **Settled 2026-08-20:** the positional form is genuinely settle-only, as its comment claimed.
-      Its sole caller is `canRefreshPlanSnapshotFromLiveState`, whose two production callers
-      (`PlanService.syncLivePlanStateInlineInContext`, `refreshLatestPlanSnapshotFromSettledLiveState`)
-      only adopt the refreshed snapshot and emit `planUpdated`. It has been renamed to say what it
-      is, and `scripts/check-executor-settle-seam.mjs` now keeps it out of every other runtime
-      call site — so the third "Done when" clause below is closed and cannot regress. The two
-      remaining clauses are the observation-input swap and the `observedBinaryState` split.
-
-      **Where:** `lib/executor/executorConvergence.ts`, `lib/executor/planExecutionDrift.ts`,
-      `ExecutableObservedDeviceState` in `lib/executor/executablePlan.ts`,
-      `buildExecutableConvergenceDevice` in `lib/executor/executablePlanProjection.ts`.
-
-      **What changes:** drift compares planner INTENT against the OBSERVATION, sourced from the
-      observer rather than from a plan that had observations merged into it. One meaning for
-      `observedBinaryState`, not one per construction path — noting that the two meanings are both
-      wanted (drift needs the stepped-off fold, `shedReleaseActuation` needs the raw binary axis),
-      so one meaning each means splitting the field, not picking a winner.
-
-      **Done when:** the drift path takes an observed-state input that no plan decision has passed
-      through, `observedBinaryState` has a single documented meaning, and no actuation decision is
-      made by comparing two `DevicePlan`s.
-
-      **Closed 2026-08-21, clause 1:** `hasPlanExecutionDriftAgainstIntent` takes READERS, not a
-      device list. The observation comes per device from the observer projection, the in-flight
-      command state from the executor's own stores, and the ladder from the intent;
-      `PlanEngine.hasExecutionWorkOutstanding` dropped its `PlanInputDevice[]` parameter and
-      `lib/executor/planExecutionDrift.ts` no longer imports the type at all. The commanded axis and
-      the device's flow-reported rung moved to their owning layers first (`lib/executor/steppedCommandState.ts`,
-      `lib/observer/steppedReportedStep.ts`).
-
-      Only the `observedBinaryState` split is left. Note what the migration turned up: the drift
-      suite's "does not let a stale off-step identity mask fresh binary on drift" case had been green
-      on a shape production cannot build — `inputDevice` stamps `currentOn` only when
-      `binaryCapabilityId` is set, so that fixture fell through to the RAW binary axis, while
-      `toPlanDevice` always stamps `currentOn` and strips `binaryControl`. It pinned an invariant the
-      app never held. Rewritten to assert the fold, with the genuine still-drawing case (the device
-      attesting a rung above the shed target) covered alongside it.
-
-      *Found while removing the executor's nullable desired state (#2155, #2158). It is why
-      `resolveDesiredOn` could read `resolveEffectiveCurrentOn(dev)` off a plan device and have
-      that look reasonable: on that path the executor never sees an observation, only a plan with
-      observations folded in.*
+*"Drift detection reads device state from the plan layer" closed 2026-08-21 across four PRs: the
+plan-to-plan predicate was proved settle-only and sealed behind an AST guard; the commanded axis
+and the device's rung attestation moved to `lib/executor` / `lib/observer`; drift now reads the
+observation from the observer and the command state from the executor's own stores, qualified by
+the observation revision the plan was built from; and `observedBinaryState` split into
+`observedBinaryAxis` and `observedEffectiveOn`, one meaning each on every construction path.*
 
 - [ ] **Too many events trigger a plan rebuild, and a rebuild on a stale power reading decides
       nothing meaningful.** A device control-state change queues a full plan rebuild:

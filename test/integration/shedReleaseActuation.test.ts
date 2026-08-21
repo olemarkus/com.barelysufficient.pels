@@ -41,7 +41,8 @@ const buildObserved = (
   snapshot: { id: 'dev-1' } as never,
   available: true,
   binaryControl: { on: true },
-  observedBinaryState: 'on',
+  observedBinaryAxis: 'on',
+  observedEffectiveOn: true,
   target: null,
   steppedLoad: null,
   ...overrides,
@@ -140,12 +141,12 @@ describe('applyShedReleaseIntent', () => {
     // derives skipPrecheck/trackPendingShed from it (covered in binaryExecutorLifecycleRelease.test.ts).
   });
 
-  it('skips the binary write when observedBinaryState is already "off" (trusted-evidence idempotent)', async () => {
+  it('skips the binary write when the binary axis already reads "off" (idempotent)', async () => {
     const deps = buildDeps({ action: 'turn_off' });
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
       steppedLoadIntent: undefined,
-      observed: buildObserved({ binaryControl: { on: false }, observedBinaryState: 'off' }),
+      observed: buildObserved({ binaryControl: { on: false }, observedBinaryAxis: 'off', observedEffectiveOn: false }),
       snapshot: { id: 'dev-1', binaryControl: { on: false }, binaryCapabilityId: 'onoff' } as never,
       deps,
     });
@@ -153,15 +154,20 @@ describe('applyShedReleaseIntent', () => {
     expect(mockedApplyBinarySheddingToDevice).not.toHaveBeenCalled();
   });
 
-  it('skips the binary write when observedBinaryState is "unknown" (no trusted observation yet)', async () => {
-    // Mirrors the abandon-grace pattern in planExecutionDrift.ts: a defaulted/missing
-    // observation must never trigger a write against a never-observed device.
+  it('writes only on a positive "on" reading, never on anything else', async () => {
+    // The gate is `!== 'on'`, not `=== 'off'`, and this pins that shape.
+    //
+    // The injected value is UNREACHABLE through the producer — `observedBinaryAxis`
+    // is a two-valued union and `isBinaryOnOrUnknown` resolves an unobserved
+    // device to 'on', not to a sentinel. (The old 'unknown' state died with
+    // `binaryControlObservation`.) So this asserts robustness of the comparison
+    // rather than a state the app can be in; it is deliberately cast past the
+    // type, and it is not evidence that a third state exists.
     const deps = buildDeps({ action: 'turn_off' });
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
       steppedLoadIntent: undefined,
-      // 'unknown' is an off-union sentinel for "no trusted observation yet".
-      observed: buildObserved({ observedBinaryState: 'unknown' as ExecutableObservedDeviceState['observedBinaryState'] }),
+      observed: buildObserved({ observedBinaryAxis: 'unknown' as ExecutableObservedDeviceState['observedBinaryAxis'] }),
       snapshot: { id: 'dev-1', binaryControl: { on: true }, binaryCapabilityId: 'onoff' } as never,
       deps,
     });
@@ -267,7 +273,8 @@ describe('applyShedReleaseIntent', () => {
       // higher step (Easee reverting to 32 A) which is now observed truth.
       observed: buildObserved({
         binaryControl: { on: false },
-        observedBinaryState: 'off',
+        observedBinaryAxis: 'off',
+        observedEffectiveOn: false,
         steppedLoad: { on: false, stepId: 'high', currentDrawKw: 0 },
       }),
       snapshot: {

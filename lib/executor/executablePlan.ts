@@ -164,27 +164,39 @@ export type ExecutableObservedDeviceState = {
   snapshot: ExecutorDeviceSnapshot;
   available: boolean;
   commandableNow: boolean;
-  // The raw observed binary axis, carried for the actuation-path readers
-  // (`executableSteppedLoadProjection` / `shedReleaseActuation` read it via
-  // `isBinaryOnOrUnknown`). Present on the executor/dispatch path (raw snapshot);
-  // absent (undefined) on the drift/reconcile path, which feeds a plan device that
-  // carries `currentOn` instead — those readers are never reached on that path.
+  // The raw observed binary bag, still carried for readers that take it whole.
+  // The two questions anyone actually asks of it are answered by the two fields
+  // below, each with ONE meaning on every construction path.
   binaryControl?: { on: boolean };
   /**
-   * Binary observed state for drift comparison, an honest boolean (an unobserved
-   * binary control resolves to a non-optimistic `false`). The executor actuates
-   * against the observed value; freshness/abandon-grace is the producer's concern.
+   * Is the device's on/off HANDLE observed on? The raw binary axis and nothing
+   * else — an absent `binaryControl` reads `'on'` ("may draw, stays sheddable",
+   * `isBinaryOnOrUnknown`), a stepped device parked at its off step with its
+   * switch still armed reads `'on'`.
    *
-   * Path-dependent by design: built from a live `PlanInputDevice` (drift/reconcile
-   * path) it is the producer-resolved `currentOn` (binary axis AND stepped-off
-   * fold); built from a raw transport snapshot (executor/dispatch path, no
-   * `currentOn`) it is the raw binary axis (`isBinaryOnOrUnknown`). The two agree
-   * for pure-binary devices and diverge only for a binary+stepped device parked at
-   * its off step — where the drift path WANTS the folded "effectively off" value
-   * (the stepped step-drift catches the step) and the dispatch path WANTS the raw
-   * axis (`shedReleaseActuation` decides whether to also issue a binary-on).
+   * This is the actuation question: `shedReleaseActuation` asks it to decide
+   * whether a binary-on still needs issuing, and `lifecycleFallbackDispatcher`
+   * to decide whether a binary-off has landed. Writing a switch that is already
+   * in the wanted position is the no-op they exist to avoid.
    */
-  observedBinaryState: 'on' | 'off';
+  observedBinaryAxis: 'on' | 'off';
+  /**
+   * Is the device observed to be DRAWING-capable right now? The producer fold —
+   * off when the binary axis reads off OR the stepped axis is parked at its off
+   * step (`resolveCurrentOn`, `lib/observer/observedState.ts`).
+   *
+   * This is the convergence question: drift asks it, because a stepped device at
+   * its off rung IS off however its switch reads, and reporting drift there
+   * would chase a disagreement that does not exist.
+   *
+   * The two fields agree for pure-binary devices and diverge only for a
+   * binary+stepped device parked at its off step. They were ONE field until the
+   * drift P0: its meaning was selected by which path constructed it, so the same
+   * read answered differently depending on its caller. Do not merge them again —
+   * if a new reader cannot say which of the two questions it is asking, that is
+   * the thing to resolve, not the field count.
+   */
+  observedEffectiveOn: boolean;
   target: ExecutableObservedTargetState | null;
   steppedLoad: ExecutableObservedSteppedLoadState | null;
 };

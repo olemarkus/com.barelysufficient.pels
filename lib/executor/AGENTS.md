@@ -68,5 +68,13 @@
 
   The test is what justifies the exemption: a fact about the device (activation resets its step)
   is fine; a fact about the caller (this write came from the reconcile lane) is not.
+- **One field, one meaning — on every construction path.** `ExecutableObservedDeviceState` carries
+  `observedBinaryAxis` (the raw on/off handle) and `observedEffectiveOn` (the producer fold: off when
+  the binary axis reads off OR the stepped axis is parked at its off step). They were a single
+  `observedBinaryState` whose meaning was selected by which path built it, so the same read answered
+  differently depending on its caller — the defect at the heart of the drift P0. Actuation asks the
+  axis (is the handle already where I would write it?); convergence asks the fold (is this device
+  effectively off?). A reader that cannot say which question it is asking is the thing to fix; do not
+  merge the fields again.
 - Compatibility reads from legacy plan/snapshot fields are allowed only in small adapter helpers that return executor-facing concepts.
 - Keep UI wording, snapshot serialization, and settings contracts out of this layer.
