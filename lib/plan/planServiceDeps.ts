@@ -27,6 +27,7 @@ type PlanServicePlanEngine = Pick<
   | 'shouldApplyStablePlanActions'
   | 'hasSettledActuation'
   | 'hasExecutionWorkOutstanding'
+  | 'getObservationRevision'
   | 'syncPendingTargetCommands'
   | 'syncPendingBinaryCommands'
   | 'prunePendingTargetCommands'

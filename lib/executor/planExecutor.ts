@@ -69,6 +69,12 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & {
    */
   getObservedState: (deviceId: string) => ObservedDeviceState | undefined;
   /**
+   * Observer-owned accepted-write counter, used to tell whether the observed
+   * world moved while a plan build yielded. Not a clock and not a freshness
+   * label — only "same world or not".
+   */
+  getObservationRevision: () => number;
+  /**
    * The single device write seam. Step writes route through here
    * (`apply({ kind: 'step', ... })`); binary/target write sites migrate onto
    * the actuator in PR1b-2/PR1b-3. See
@@ -469,6 +475,11 @@ export class PlanExecutor {
    * posture. Exposed as a bundle so the caller composes nothing itself — and so
    * no `PlanInputDevice` has to travel here to carry an observation.
    */
+  /** The observer's accepted-write counter. See `PlanEngine.getObservationRevision`. */
+  public getObservationRevision(): number {
+    return this.deps.getObservationRevision();
+  }
+
   public driftObservationDeps(): DriftObservationDeps {
     return {
       getObservedState: (deviceId) => this.deps.getObservedState(deviceId) as ObserverDeviceRead | undefined,

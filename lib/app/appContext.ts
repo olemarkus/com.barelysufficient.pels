@@ -160,6 +160,8 @@ export type AppContext = {
   // first observation lands OR the boot/hot-plug seed fills it (see
   // `seedObservedStateFromSnapshot`).
   getObservedState: (deviceId: string) => ProjectedObservedDeviceState | undefined;
+  /** Observer-owned accepted-write counter; see `ObservedDeviceStateProjection.getRevision`. */
+  getObservationRevision: () => number;
   // Boot/hot-plug seed: fill the observed-state projection's EMPTY slots from the
   // RAW cached device snapshot so a reader (the settings-UI EV chip,
   // `toPlanDevice` freshness) sees the device's real state for cycle 1, before

@@ -32,11 +32,23 @@ export type PlanEngine = {
   shouldApplyStablePlanActions: (plan: DevicePlan) => boolean;
   hasSettledActuation: (basePlan: DevicePlan, livePlan: DevicePlan) => boolean;
   /**
-   * Does the executor still have work to do against this plan? Takes no device
-   * list: the executor reads the observation from the observer and the in-flight
-   * command state from its own stores. The planner has no live side to hand it.
+   * Does the executor still have work to do against this plan?
+   *
+   * Takes no device list: the executor reads the observation from the observer
+   * and the in-flight command state from its own stores. What it DOES take is
+   * the observation revision the plan was built from, because the answer is only
+   * meaningful as of that instant — see `getObservationRevision`.
    */
-  hasExecutionWorkOutstanding: (plannedSnapshot: DevicePlan) => boolean;
+  hasExecutionWorkOutstanding: (
+    plannedSnapshot: DevicePlan,
+    observationRevisionAtBuild: number,
+  ) => boolean;
+  /**
+   * The observer's accepted-write counter, read before the plan's inputs are
+   * captured so the caller can tell whether the observed world moved underneath
+   * a build that yielded.
+   */
+  getObservationRevision: () => number;
   syncPendingTargetCommands: (
     devices: PlanInputDevice[],
     source: PendingTargetObservationSource,

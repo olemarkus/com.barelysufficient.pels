@@ -68,6 +68,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
     deviceManager: deviceManager as never,
+    getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // This proof never drives a step write; supply an actuator over the device
     // manager's writes so the executor's stepped binding has a seam to call.

@@ -31,6 +31,13 @@
   rides the intent. `driftObservedDevice.ts` is the seam that joins them, and `PlanExecutor.driftObservationDeps()`
   is where they are bound. A device the observer has not seen yet is SKIPPED, not assumed to agree.
 
+  **A drift verdict is only valid as of the observation revision the plan was built from.** The
+  build awaits, so the observer can accept a write mid-build; `hasExecutionWorkOutstanding` compares
+  `getObservationRevision()` against the revision captured before the build's inputs and declines
+  when they differ. Acting anyway would apply a plan decided against a world that has since moved —
+  an apply-without-decide, which is what `inc_26449fb9` was. The gate is deliberately
+  whole-projection and fail-closed: it can only decline, never act on something stale.
+
   **Exactly one predicate may inform an actuation decision: `hasPlanExecutionDriftAgainstIntent`.**
   It compares planner intent against an OBSERVATION. Its neighbour
   `hasLiveStateDivergedFromSnapshot` compares two `DevicePlan`s positionally, and the live side is

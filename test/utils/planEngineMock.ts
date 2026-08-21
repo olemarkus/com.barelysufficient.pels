@@ -15,6 +15,12 @@ import { driftDepsFromPlanInputs } from './driftObservationTestUtils';
  */
 export type MockPlanEngineOptions = {
   getDriftDevices?: () => PlanInputDevice[];
+  /**
+   * Observer accepted-write counter. A spec that wants to model an observation
+   * landing mid-build advances what this returns between the build and the
+   * apply; the default is a constant, i.e. "the world held still".
+   */
+  getObservationRevision?: () => number;
 };
 
 /**
@@ -61,11 +67,17 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
   // feeds it: readers, not a device list. A spec that wants drift supplies the
   // fixtures via `getDriftDevices`; one that does not gets no observations,
   // which the predicate skips rather than treating as agreement.
+  getObservationRevision: vi.fn(() => options?.getObservationRevision?.() ?? 0),
   hasExecutionWorkOutstanding: vi.fn(
-    (plannedSnapshot: DevicePlan) => hasPlanExecutionDriftAgainstIntent(
-      plannedSnapshot,
-      driftDepsFromPlanInputs(options?.getDriftDevices ?? (() => [])),
-    ),
+    (plannedSnapshot: DevicePlan, observationRevisionAtBuild: number) => {
+      // Mirrors the production gate: a plan decided against an older world is
+      // not evidence about this one.
+      if ((options?.getObservationRevision?.() ?? 0) !== observationRevisionAtBuild) return false;
+      return hasPlanExecutionDriftAgainstIntent(
+        plannedSnapshot,
+        driftDepsFromPlanInputs(options?.getDriftDevices ?? (() => [])),
+      );
+    },
   ),
   decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
   evaluateHeadroomForDevice: vi.fn(() => null),

@@ -2560,6 +2560,112 @@ describe('PlanService', () => {
   // device has drifted away from what that plan wants. Before the apply gate
   // widened, this case fell through to the reconcile lane, which re-asserted a
   // plan built against the older observation — the shape behind inc_26449fb9.
+  it('does not actuate on drift the plan never saw, when the observer moved mid-build', async () => {
+    // The window is real: `buildPlanForRebuild` awaits `buildDevicePlanSnapshot`,
+    // so a realtime capability event can land after the build inputs are
+    // captured and before the apply step asks whether work is outstanding.
+    //
+    // Acting on that newer observation would apply a plan that was never decided
+    // against it — the same shape as re-asserting a committed plan, which
+    // breached the hard cap in production (inc_26449fb9). The observation that
+    // moved is itself a rebuild trigger; the re-decide is the honest answer, so
+    // this cycle must decline.
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
+    const liveDeviceBase = {
+      controllable: true, available: true,
+      id: 'dev-1',
+      expectedPowerKw: 1,
+      expectedPowerSource: 'default' as const,
+      name: 'Heater',
+      commandableNow: true,
+      boostSupported: false,
+      boostRequested: false,
+      hasStandingDemand: true,
+      confirmedNotDrawing: false,
+      currentTarget: 20,
+      targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+      deviceType: 'temperature' as const,
+      binaryCapabilityId: 'onoff' as const,
+      currentTemperature: 21,
+    };
+    // Observed OFF against a plan that keeps it on — genuine drift, and the only
+    // reason this cycle would actuate at all.
+    const liveDevices: PlanInputDevice[] = [withTemperatureDiscriminant(withBinaryDiscriminant({
+      currentDrawKw: 0,
+      residualKw: { shed: 0 },
+      ...liveDeviceBase,
+      binaryControl: { on: false },
+      currentOn: false,
+      binaryControlObservation: buildBinaryObservation('onoff', false),
+    })) as PlanInputDevice];
+
+    // Advances exactly once, standing in for an observation accepted while the
+    // build was awaiting.
+    let revision = 0;
+    const planEngine = {
+      ...createMockPlanEngine({
+        getDriftDevices: () => liveDevices,
+        getObservationRevision: () => revision,
+      }),
+      buildDevicePlanSnapshot: vi.fn()
+        // Seed cycle: the plan is new, so it actuates on changed actions and
+        // never consults drift. The world holds still through it.
+        .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
+          currentState: 'on',
+          plannedState: 'keep',
+          boostActive: false,
+          plannedTarget: 20,
+        }))
+        // Second cycle: decisions are unchanged, so drift is the only thing that
+        // could trigger an apply — and an observation lands while this build is
+        // awaiting.
+        .mockImplementationOnce(async () => {
+          revision += 1;
+          return buildPlan(20, 'keep', {}, {
+            currentState: 'off',
+            plannedState: 'keep',
+            boostActive: false,
+            plannedTarget: 20,
+          });
+        }),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions,
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new PlanService({
+      getObservedTemperature: () => ({ kind: 'absent' }),
+      planBuildGate: openPlanBuildGate(),
+      homeId: 'main',
+      writePelsStatus: vi.fn(),
+      homey: {
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => liveDevices,
+      getSettleDevices: () => unavailableBinaryConfirmations(liveDevices),
+      getCapacityDryRun: () => false,
+      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+    });
+
+    await service.rebuildPlanFromCache('seed_expected_on_state');
+    applyPlanActions.mockClear();
+
+    await service.rebuildPlanFromCache('observer_moved_mid_build');
+
+    // Drift WOULD have reported work — the device reads off against a keep plan.
+    // The epoch gate is what declines it.
+    expect(planEngine.hasExecutionWorkOutstanding).toHaveReturnedWith(false);
+    expect(applyPlanActions).not.toHaveBeenCalled();
+  });
+
   it('actuates on a detail-only rebuild when the device drifted from plan intent', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const liveDeviceBase = {

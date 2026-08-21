@@ -93,6 +93,7 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     persistLastControlledMs: deps.persistLastControlledMs,
     deviceManager: deps.deviceManager,
     getObservedState: deps.getObservedState,
+    getObservationRevision: deps.getObservationRevision,
     actuator: deps.actuator,
     capacityGuard: deps.capacityGuard,
     getCapacitySettings: deps.getCapacitySettings,
@@ -159,6 +160,7 @@ export function createPlanEngineComposition(
     persistLastControlledMs: scope.persistLastControlledMs,
     deviceManager,
     getObservedState: (deviceId) => ctx.getObservedState(deviceId),
+    getObservationRevision: () => ctx.getObservationRevision(),
     // Observer-resolved per-device staleness for the diagnostics freshness gate
     // (starvation must not count stale-but-unobserved time). Same observer-projection
     // seam as createPlanService.getObservationStale; resolved to a flat boolean here.

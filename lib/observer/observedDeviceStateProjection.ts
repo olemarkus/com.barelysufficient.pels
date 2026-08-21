@@ -147,6 +147,27 @@ function freezeObserved(value: ProjectedObservedDeviceState): ProjectedObservedD
 export class ObservedDeviceStateProjection {
     private byId: Map<string, ProjectionEntry> = new Map();
 
+    private revision = 0;
+
+    /**
+     * Monotonic counter of ACCEPTED writes to this projection.
+     *
+     * It answers one question — "is the observed world still the one you read
+     * earlier?" — for a caller that captured a value and then yielded. A dropped
+     * duplicate or out-of-order delta does not advance it, because nothing the
+     * caller could observe changed.
+     *
+     * Deliberately whole-projection rather than per device. The consumer is a
+     * fail-closed guard (`hasExecutionWorkOutstanding`): a coarser counter can
+     * only make it decline to act, never make it act on something stale, and
+     * declining costs one cycle. A per-device counter would be more precise and
+     * would have to be right about which devices matter — precision bought at
+     * the cost of the safe failure direction.
+     */
+    getRevision(): number {
+        return this.revision;
+    }
+
     /**
      * Record a per-capability delta. Defensive: a delta with no decided value
      * attached is ignored (nothing to record).
@@ -222,6 +243,10 @@ export class ObservedDeviceStateProjection {
             // `shouldDrop` fall-through), and the present-key guard above means we
             // only ever reach a genuinely empty slot here.
             this.byId.set(state.id, { value: freezeObserved(state) });
+            // A seed fills an empty slot, so a reader who looked before it and
+            // after it saw two different worlds. Advancing here keeps the guard
+            // fail-closed across boot rather than reporting "nothing moved".
+            this.revision += 1;
         }
     }
 
@@ -245,6 +270,7 @@ export class ObservedDeviceStateProjection {
         const prev = this.byId.get(value.id);
         if (prev && this.shouldDrop(prev, seq, observedAtMs)) return;
         this.byId.set(value.id, { value: freezeObserved(value), seq, observedAtMs });
+        this.revision += 1;
     }
 
     private shouldDrop(prev: ProjectionEntry, seq: number | undefined, observedAtMs: number | undefined): boolean {
