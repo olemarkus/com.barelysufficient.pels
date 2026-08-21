@@ -33,7 +33,7 @@ import {
   type MarkSteppedLoadDesiredStepIssuedParams,
   type ReportSteppedLoadActualStepResult,
   createDeviceControlRuntimeState,
-} from './appDeviceControlSteppedCommandState';
+} from '../lib/executor/steppedCommandState';
 import {
   emitSteppedFeedbackLog,
   isValidSteppedLoadFeedbackProfile,
@@ -50,7 +50,7 @@ import {
 } from './appTargetPowerReachability';
 
 // The stepped-load command runtime-state cluster lives in
-// `appDeviceControlSteppedCommandState.ts`; re-exported here because this
+// `lib/executor/steppedCommandState.ts`; re-exported here because this
 // module is the wiring surface app code and tests import from.
 export {
   STEPPED_LOAD_COMMAND_STALE_MS,
@@ -62,8 +62,10 @@ export {
   type MarkSteppedLoadDesiredStepIssuedParams,
   type ReportSteppedLoadActualStepResult,
   type SteppedLoadDesiredRuntimeState,
-  type SteppedLoadReportedRuntimeState,
-} from './appDeviceControlSteppedCommandState';
+} from '../lib/executor/steppedCommandState';
+// The device's OWN attestation of its rung is an observation, so it is owned by
+// the observer rather than by the command axis it gets reconciled against.
+export { type SteppedLoadReportedRuntimeState } from '../lib/observer/steppedReportedStep';
 export const normalizeStoredDeviceControlProfiles = normalizeDeviceControlProfiles;
 const hasNativeSteppedLoadFeedbackAuthority = (
   snapshot: TargetDeviceSnapshot | undefined,
