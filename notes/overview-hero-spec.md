@@ -275,8 +275,9 @@ Additions (v2.7.3 loveable batch):
   next. It is suppressed when no
   upcoming price data exists or when the payload is stale (latest entry
   more than 6h in the past). The helper
-  (`formatCheapestUpcomingHour`) lives in shared-domain so the runtime
-  logger can emit the same line.
+  (`formatCheapestUpcomingHour`) lives in shared-domain so that a runtime log
+  breadcrumb, if one is ever added, emits the identical line rather than a
+  second copy of the wording. No runtime module imports it today.
 
 Projection formula: `projectedKWh = usedKWh + (currentKw × minutesRemaining / 60)`
 
@@ -324,9 +325,12 @@ this section.
 Voice (v2.7.3): named-subject declarative copy. The *house* is the subject;
 PELS is never first-person. No em-dash diagnostic shape ("Doing X — because
 Y"). No exclamation marks (Nordic register). Action first, then the
-constraint that motivates it. The runtime logger imports this helper so log
-lines mirror the on-screen wording verbatim (see
-`feedback_ui_text_shared_with_logs.md`).
+constraint that motivates it. Nothing in the runtime imports `planHeroSummary.ts`
+— the settings-UI hero is its only consumer — so the shared-domain home is what
+makes a future log breadcrumb quote the on-screen wording instead of restating
+it (see `feedback_ui_text_shared_with_logs.md`). The runtime-facing projection
+math lives in its own module (`hourEnergyProjection.ts`) for exactly that
+reason.
 
 Priority order (first matching condition wins):
 

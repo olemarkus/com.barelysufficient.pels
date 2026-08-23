@@ -4,7 +4,6 @@ import {
   isBinaryControlled,
   getBinaryOn,
   resolveBinaryCommandCurrentOn,
-  isTrustedObservedBinaryOff,
 } from '../../packages/shared-domain/src/binaryControlState';
 
 describe('binary observed-state predicates', () => {
@@ -80,18 +79,6 @@ describe('binary observed-state predicates', () => {
 // `resolveBinaryCommandCurrentOn` reads only the producer-resolved command
 // control; physical EV charging activity is a separate fact.
 describe('observed binary control-value readers', () => {
-  const observation = (overrides: Partial<{
-    capabilityId: string;
-    observedValue: boolean;
-    observedCapabilityIds: string[];
-  }> = {}) => ({
-    valid: true as const,
-    capabilityId: 'evcharger_charging',
-    observedValue: false,
-    observedCapabilityIds: ['evcharger_charging'],
-    ...overrides,
-  });
-
   describe('resolveBinaryCommandCurrentOn', () => {
     it('does not treat physical charging activity as command acceptance', () => {
       expect(resolveBinaryCommandCurrentOn(
@@ -117,37 +104,6 @@ describe('observed binary control-value readers', () => {
     it('reads the strict latched on-state for a narrowed plain binary control', () => {
       expect(resolveBinaryCommandCurrentOn({ binaryControl: { on: true } })).toBe(true);
       expect(resolveBinaryCommandCurrentOn({ binaryControl: { on: false } })).toBe(false);
-    });
-  });
-
-  describe('isTrustedObservedBinaryOff', () => {
-    it('is true only for a matching off-evidence record', () => {
-      expect(isTrustedObservedBinaryOff({
-        binaryControlObservation: observation(),
-      })).toBe(true);
-    });
-
-    it('is false without an evidence record (latched fallback is not evidence)', () => {
-      expect(isTrustedObservedBinaryOff({
-        binaryControl: { on: false },
-      })).toBe(false);
-    });
-
-    it('trusts normalized evidence without re-reading a transport address', () => {
-      expect(isTrustedObservedBinaryOff({
-        binaryControlObservation: observation({ capabilityId: 'onoff' }),
-      })).toBe(true);
-    });
-
-    it('is false when the evidence says on', () => {
-      expect(isTrustedObservedBinaryOff({
-        binaryControlObservation: observation({ capabilityId: 'onoff', observedValue: true }),
-      })).toBe(false);
-    });
-
-    it('uses semantic evidence even without a transport capability field', () => {
-      expect(isTrustedObservedBinaryOff({ binaryControlObservation: observation() })).toBe(true);
-      expect(isTrustedObservedBinaryOff(undefined)).toBe(false);
     });
   });
 });

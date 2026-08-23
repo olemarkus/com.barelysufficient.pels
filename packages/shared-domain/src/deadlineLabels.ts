@@ -1492,8 +1492,9 @@ const REVISION_REASON_TOOLTIP_LINE: Partial<Record<DeferredObjectiveActivePlanRe
 // afford a sentence) because the history-detail surface stacks these in a
 // vertical list.
 //
-// Per `feedback_ui_text_shared_with_logs.md`, copy lives in shared-domain so
-// runtime log breadcrumbs and the history-detail view render identical labels.
+// Per `feedback_ui_text_shared_with_logs.md`, copy lives in shared-domain so the
+// history-detail view and any log breadcrumb added later render identical
+// labels. No runtime module reads this map today.
 //
 // Reasons absent from this map fall through to `REVISION_REASON_FALLBACK` so
 // the view never invents copy for a recorder code it hasn't yet learned about
@@ -1530,8 +1531,8 @@ const REVISION_REASON_FALLBACK = 'Plan refreshed';
 
 // View-facing fallback variant used when a row template wants to make the
 // absent diff chip self-explanatory. `REVISION_REASON_FALLBACK` is the
-// producer label (used for the live-panel summary line + runtime log
-// breadcrumbs so those surfaces stay terse); the row templates on both the
+// producer label (used for the live-panel summary line, and the terser variant
+// any later log breadcrumb should read); the row templates on both the
 // live-task panel and the post-finalization history-detail card render this
 // longer variant when `isFallback === true` so the user understands why the
 // row carries no `+/−Nh` chip. Per `feedback_ui_text_shared_with_logs.md`,
@@ -1542,15 +1543,15 @@ export const REVISION_REASON_FALLBACK_WITH_DETAIL = 'Plan refreshed (details una
 // page. The "plan" noun is intentional here — this is the planning-layer
 // revision panel, which `notes/ui-terminology.md` § "Plan vs deadline" sanctions
 // (the reservation governs the user-facing schedule entity, not the planner's
-// own surfaces). Sourced from shared-domain so the heading and runtime log
-// breadcrumbs render the identical string (per
-// `feedback_ui_text_shared_with_logs.md`).
+// own surfaces). Sourced from shared-domain so a log breadcrumb added later
+// renders the identical string rather than restating it; no runtime module
+// reads it today (per `feedback_ui_text_shared_with_logs.md`).
 export const REVISION_PANEL_TITLE = 'Recent plan changes';
 
 // Optional disambiguation signals for `schedule_revised`. When the live-task
-// surface passes these in, `revisionReason` returns a more specific label
-// instead of the bare `Schedule revised`. History detail and runtime log
-// breadcrumbs don't carry these signals on their entry shape (see
+// surface passes these in, `resolveRevisionReason` returns a more specific label
+// instead of the bare `Schedule revised`. History-detail rows don't carry these
+// signals on their entry shape (see
 // `DeferredObjectivePlanHistoryRevisionLogEntry`) so they continue to render
 // the bare label — and that's fine; the active panel is the surface where
 // "why now?" matters most.
@@ -1624,9 +1625,9 @@ export type ResolvedRevisionReason = {
 // caller.
 //
 // `disambiguation` is honored only when `reasonId === 'schedule_revised'`;
-// other reason codes already carry enough signal in the code itself. Callers
-// that don't have the disambiguation signals (history detail entries,
-// runtime log breadcrumbs) omit the third arg and get the bare
+// other reason codes already carry enough signal in the code itself. A caller
+// without the disambiguation signals (history-detail entries, and any log
+// breadcrumb added later) omits the third arg and gets the bare
 // `Schedule revised` — the same string they got before this resolver
 // learned to disambiguate.
 export const resolveRevisionReason = (
@@ -1646,15 +1647,6 @@ export const resolveRevisionReason = (
   }
   return { label: REVISION_REASON_FALLBACK, isFallback: true };
 };
-
-// Thin wrapper preserving the original `revisionReason` signature for callers
-// that don't need the `isFallback` flag (history detail rows, runtime log
-// breadcrumbs). Live-task surfaces should prefer `resolveRevisionReason`.
-export const revisionReason = (
-  reasonId: string | null | undefined,
-  kind: DeferredObjectiveSettingsKind,
-  disambiguation?: RevisionReasonDisambiguation,
-): string => resolveRevisionReason(reasonId, kind, disambiguation).label;
 
 const withLastFetched = (base: string, lastFetchedShort: string | null): string => (
   lastFetchedShort ? `${base} Last price update: ${lastFetchedShort}.` : base

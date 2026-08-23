@@ -158,9 +158,11 @@ const isWouldLimitDevice = (device: PlanDeviceSnapshot): boolean => (
 );
 
 // Decision sentence priority order. Voice + wording live in shared-domain
-// (`planHeroSummary.buildDecisionSentence`) so the runtime logger emits the
-// same phrasing as the UI (see `feedback_ui_text_shared_with_logs.md`). The
-// ladder is documented in `notes/overview-hero-spec.md` § "Decision sentence".
+// (`planHeroSummary.buildDecisionSentence`) so that a runtime log breadcrumb,
+// if one is ever added, quotes the UI's phrasing instead of restating it (see
+// `feedback_ui_text_shared_with_logs.md`); nothing in the runtime imports that
+// module today. The ladder is documented in `notes/overview-hero-spec.md`
+// § "Decision sentence".
 //
 // This adapter narrows the local view-model (devices array, projection tone)
 // to the counts and booleans the shared helper takes — keeping the helper
@@ -690,10 +692,9 @@ const EnergySection = ({
   if (!scale) return null;
   // Numeric-first hero stack: the used value leads as the dominant number, the
   // budget context trails as a quiet qualifier. The split is presentation-only
-  // (`formatEnergyUsedOfBudgetParts`); `lead + " " + qualifier` reproduces the
-  // canonical `formatEnergyUsedOfBudget` string verbatim (pinned by a test), so
-  // the rendered text stays byte-identical to that shared-domain helper and can
-  // never drift from any log breadcrumb that uses it.
+  // (`formatEnergyUsedOfBudgetParts`); `lead + " " + qualifier` is the canonical
+  // wording, pinned verbatim by a test, so a log breadcrumb composed from the
+  // same parts could not drift from what is rendered here.
   const usedParts = formatEnergyUsedOfBudgetParts(scale.usedKWh, scale.budgetKWh);
   const projectionTone = resolveProjectionTone(scale);
   // Subtraction (v2.7.3): the warning emoji was redundant — the projection

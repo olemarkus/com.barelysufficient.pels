@@ -1,7 +1,7 @@
 import {
   ALL_DEBUG_LOGGING_TOPICS,
   DEBUG_LOGGING_SCENARIOS,
-  normalizeDebugLoggingScenarioIds,
+  isDebugLoggingScenarioId,
   normalizeDebugLoggingTopics,
   scenarioIdsToTopics,
   topicsToScenarioIds,
@@ -93,15 +93,22 @@ describe('topicsToScenarioIds', () => {
   });
 });
 
-describe('normalizeDebugLoggingScenarioIds', () => {
-  it('keeps known scenario ids and drops the rest', () => {
-    expect(
-      normalizeDebugLoggingScenarioIds(['deadline_objectives', 'nope', 42, 'performance']),
-    ).toEqual(['deadline_objectives', 'performance']);
+// The settings UI reads scenario ids one at a time off `data-debug-scenario`
+// (`boot.ts`, `capacity.ts`), so this guard — not a bulk normalizer — is what
+// keeps an unknown/absent dataset value out of the persisted topic set.
+describe('isDebugLoggingScenarioId', () => {
+  it('accepts every declared scenario id', () => {
+    expect(isDebugLoggingScenarioId('deadline_objectives')).toBe(true);
+    expect(isDebugLoggingScenarioId('performance')).toBe(true);
+    for (const scenario of DEBUG_LOGGING_SCENARIOS) {
+      expect(isDebugLoggingScenarioId(scenario.id)).toBe(true);
+    }
   });
 
-  it('returns empty list for non-arrays', () => {
-    expect(normalizeDebugLoggingScenarioIds('deadline_objectives')).toEqual([]);
-    expect(normalizeDebugLoggingScenarioIds(null)).toEqual([]);
+  it('rejects unknown strings, non-strings, and absence', () => {
+    expect(isDebugLoggingScenarioId('nope')).toBe(false);
+    expect(isDebugLoggingScenarioId(42)).toBe(false);
+    expect(isDebugLoggingScenarioId(undefined)).toBe(false);
+    expect(isDebugLoggingScenarioId(null)).toBe(false);
   });
 });

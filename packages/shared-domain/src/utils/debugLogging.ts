@@ -132,8 +132,3 @@ export const normalizeDebugLoggingTopics = (raw: unknown): DebugLoggingTopic[] =
   }
   return [];
 };
-
-export const normalizeDebugLoggingScenarioIds = (raw: unknown): DebugLoggingScenarioId[] => {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(isDebugLoggingScenarioId);
-};

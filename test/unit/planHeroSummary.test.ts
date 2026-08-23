@@ -4,7 +4,6 @@ import {
   formatAboveSafePaceSubline,
   formatCheapestUpcomingHour,
   formatEnergyMeterMarkerLabels,
-  formatEnergyUsedOfBudget,
   formatEnergyUsedOfBudgetParts,
   formatFreshnessChip,
   formatHeroHeadline,
@@ -66,14 +65,6 @@ describe('formatHeroHeadline', () => {
 
 });
 
-describe('formatEnergyUsedOfBudget', () => {
-  it('formats both sides with one-decimal precision', () => {
-    expect(formatEnergyUsedOfBudget(4.2, 11)).toBe('4.2 of 11.0 kWh used');
-    expect(formatEnergyUsedOfBudget(0, 4.5)).toBe('0.0 of 4.5 kWh used');
-    expect(formatEnergyUsedOfBudget(1.25, 0.9)).toBe('1.3 of 0.9 kWh used');
-  });
-});
-
 describe('formatEnergyUsedOfBudgetParts', () => {
   it('splits into a leading value and a trailing budget qualifier', () => {
     expect(formatEnergyUsedOfBudgetParts(0, 4.5)).toEqual({
@@ -82,13 +73,18 @@ describe('formatEnergyUsedOfBudgetParts', () => {
     });
   });
 
-  it('reproduces the log-shared string verbatim when joined with one space', () => {
-    // Invariant: the presentation split must never drift from the log-shared
-    // `formatEnergyUsedOfBudget` wording (feedback_ui_text_shared_with_logs).
-    for (const [used, budget] of [[4.2, 11], [0, 4.5], [1.25, 0.9]] as const) {
+  it('joins to the canonical one-decimal wording with a single space', () => {
+    // Invariant: the hero's rendered text and any log breadcrumb composed from
+    // these parts are the SAME sentence (feedback_ui_text_shared_with_logs), so
+    // the joined form is pinned against literal copy rather than against a
+    // second implementation of it.
+    const joined = (used: number, budget: number): string => {
       const { lead, qualifier } = formatEnergyUsedOfBudgetParts(used, budget);
-      expect(`${lead} ${qualifier}`).toBe(formatEnergyUsedOfBudget(used, budget));
-    }
+      return `${lead} ${qualifier}`;
+    };
+    expect(joined(4.2, 11)).toBe('4.2 of 11.0 kWh used');
+    expect(joined(0, 4.5)).toBe('0.0 of 4.5 kWh used');
+    expect(joined(1.25, 0.9)).toBe('1.3 of 0.9 kWh used');
   });
 });
 
