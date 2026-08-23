@@ -19,7 +19,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { applyRestorePlan } from '../../lib/plan/restore';
 import type { PlanContext } from '../../lib/plan/planContext';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, steppedPlanDevice, withFixtureResidualKw } from '../utils/planTestUtils';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
@@ -303,7 +303,7 @@ const buildDailyBudgetSnapshot = (): DailyBudgetUiPayload => ({
   days: { '2026-05-10': buildDay() },
 });
 
-const buildHeaterInput = (params: { on: boolean; exempt: boolean }): PlanInputDevice => withBinaryDiscriminant({
+const buildHeaterInput = (params: { on: boolean; exempt: boolean }): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
   available: true,
   id: HEATER_ID,
   name: 'Water Heater',
@@ -319,13 +319,12 @@ const buildHeaterInput = (params: { on: boolean; exempt: boolean }): PlanInputDe
   binaryControl: { on: params.on },
   currentOn: params.on,
   currentDrawKw: params.on ? 1.25 : 0,
-  residualKw: { shed: params.on ? 1.25 : 0 },
   expectedPowerKw: 1.25, expectedPowerSource: 'default',
   budgetExempt: params.exempt,
   lastFreshDataMs: Date.now(),
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
-const buildThermostatInput = (on: boolean): PlanInputDevice => withBinaryDiscriminant({
+const buildThermostatInput = (on: boolean): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
   available: true,
   id: THERMOSTAT_ID,
   name: 'Thermostat',
@@ -341,10 +340,9 @@ const buildThermostatInput = (on: boolean): PlanInputDevice => withBinaryDiscrim
   binaryControl: { on },
   currentOn: on,
   currentDrawKw: on ? 1.0 : 0,
-  residualKw: { shed: on ? 1.0 : 0 },
   expectedPowerKw: 1.0, expectedPowerSource: 'default',
   lastFreshDataMs: Date.now(),
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
 const buildBuilder = (params: {
   capacityGuard: CapacityGuard;

@@ -51,6 +51,7 @@ import {
   type PlanInputDevice,
 } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 const DEADLINE_MS = NOW_MS + 6 * 60 * 60 * 1000;
@@ -200,7 +201,7 @@ describe('device-scoped write op: sub-home gate', () => {
 
 // ─── Diagnostics honesty for an existing task on a relocated device ──────────
 
-const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
+const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ controllable: true, available: true, currentDrawKw: 0,
   id: 'heater-sub',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Cabin heater',
@@ -216,7 +217,7 @@ const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(wit
   controlCapabilityId: 'onoff' as const,
   currentTemperature: 40,
   lastFreshDataMs: NOW_MS,
-})) as PlanInputDevice;
+}))) as PlanInputDevice;
 
 const buildDiagnosticsParams = (overrides: {
   devices: PlanInputDevice[];
@@ -552,7 +553,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
       // actuate a binary-off terminal release without the sub-home gate (the
       // control test below proves it).
       planService: {
-        getPlanDevices: () => [withBinaryDiscriminant({ currentDrawKw: 0, residualKw: { shed: 0 },
+        getPlanDevices: () => [withBinaryDiscriminant(withFixtureResidualKw({ currentDrawKw: 0,
           id: 'd1',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Cabin heater',
@@ -567,7 +568,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
           controlCapabilityId: 'onoff',
           binaryControl: { on: deviceOn },
           targets: [],
-        }) as PlanInputDevice],
+        })) as PlanInputDevice],
       } as unknown as AppContext['planService'],
       deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
       deferredObjectiveActivePlanRecorder: {

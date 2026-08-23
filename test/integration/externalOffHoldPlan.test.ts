@@ -35,8 +35,7 @@ import {
 } from '../../lib/planContract/planDecisionSemantics';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withBinaryDiscriminant, type DevicePlanDevice } from '../../lib/plan/planTypes';
-import { buildPlanDevice } from '../utils/planTestUtils';
-import { buildPlanInputDevice } from '../helpers/buildPlanInputDevice';
+import { buildPlanDevice, buildPlanInputDevice } from '../utils/planTestUtils';
 import { buildInitialPlanDevices, type PlanDevicesDeps } from '../../lib/plan/planDevices';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';

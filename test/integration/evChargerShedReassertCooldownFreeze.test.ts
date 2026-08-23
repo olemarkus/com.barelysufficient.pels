@@ -59,7 +59,7 @@ import {
 import { DeviceMeasuredPowerResolver } from '../../lib/device/measuredPowerResolver';
 import { buildRestoreTiming, shouldPlanRestores } from '../../lib/plan/restore/timing';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
-import { buildPlanMeta } from '../utils/planTestUtils';
+import { buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import {
@@ -159,9 +159,8 @@ const parseChargerSnapshot = (
 // was cooldown-blocked), shed behaviour turn_off.
 const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
   meta: buildPlanMeta({ totalKw: 0.2, softLimitKw: 6.75, headroomKw: 6.55}),
-  devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default',
+  devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default',
     currentDrawKw: 0,
-    residualKw: { shed: 0 },
     id: DEVICE_ID,
     name: 'Elbillader',
     commandableNow: true,
@@ -185,7 +184,7 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
     selectedStepId: snapshot.reportedStepId ?? '15a',
     desiredStepId: 'off',
     reason: SHED_REASON,
-  }))) as DevicePlan['devices'][number]],
+  })))) as DevicePlan['devices'][number]],
 });
 
 // ── The executor harness (mirrors steppedLoadRestoreBinaryOnSdkBoundary) ─────

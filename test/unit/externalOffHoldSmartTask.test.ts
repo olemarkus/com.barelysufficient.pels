@@ -10,6 +10,7 @@ import {
 import { withBinaryDiscriminant, type PlanInputDevice } from '../../lib/plan/planTypes';
 import type { DeferredAdmissionDecision } from '../../lib/objectives/deferredObjectives/admission';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 // An explicit off action beats a smart task, but the deadline consequence has to
 // stay visible: the task reports risk with a reason naming the device, rather
@@ -150,7 +151,7 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
 // device that cannot use it — and every one of those claims costs OTHER devices.
 describe('external-off hold — no rescue claims for a device that will not start', () => {
   const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => (
-    withBinaryDiscriminant({
+    withBinaryDiscriminant(withFixtureResidualKw({
       id: 'heater-1',
       name: 'Water heater',
       targets: [],
@@ -159,7 +160,7 @@ describe('external-off hold — no rescue claims for a device that will not star
       controllable: false,
       managed: true,
       ...overrides,
-    }) as PlanInputDevice
+    })) as PlanInputDevice
   );
 
   const plannedRescue: DeferredAdmissionDecision = {

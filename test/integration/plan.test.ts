@@ -11,6 +11,7 @@ import {
 } from '../mocks/homey';
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
@@ -1577,7 +1578,7 @@ describe('Device plan snapshot', () => {
 
     // Simulate device now off, but headroom still below need (2.5 + margin).
     plan = await (app as any).planService.buildDevicePlanSnapshot([
-      {
+      withFixtureResidualKw({
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
@@ -1587,7 +1588,7 @@ describe('Device plan snapshot', () => {
         canSetControl: true,
         controllable: true,
         binaryCapabilityId: 'onoff',
-      },
+      }),
     ]);
     const nextState = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(nextState?.plannedState).toBe('shed');
@@ -1608,7 +1609,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     const plan = await (app as any).planService.buildDevicePlanSnapshot([
-      {
+      withFixtureResidualKw({
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
@@ -1618,7 +1619,7 @@ describe('Device plan snapshot', () => {
         canSetControl: true,
         controllable: true,
         binaryCapabilityId: 'onoff',
-      },
+      }),
     ]);
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');

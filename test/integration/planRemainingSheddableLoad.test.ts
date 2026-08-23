@@ -18,6 +18,7 @@ import {
   buildPlanDevice as baseBuildPlanDevice,
   buildPlanInputDevice as baseBuildPlanInputDevice,
   steppedProfile,
+  withFixtureResidualKw,
 } from '../utils/planTestUtils';
 import {
   type BinaryControlDiscriminantProbe,
@@ -137,11 +138,11 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
     // Populate residualKw with what the producer emits for a turn_off shed.
     // The shape mirrors `toPlanDevice` in `setup/appInit.ts`.
     const producerDevices = [
-      { ...simpleOn, residualKw: { shed: 1.4 } },
-      { ...steppedMax, residualKw: { shed: 2.9 } },
+      withFixtureResidualKw({ ...simpleOn, residualKw: { shed: 1.4 } }),
+      withFixtureResidualKw({ ...steppedMax, residualKw: { shed: 2.9 } }),
       // Already at lowest active + has binary control → producer says it can
       // still shed via the binary capability.
-      { ...steppedAtLowestActive, residualKw: { shed: 1.2 } },
+      withFixtureResidualKw({ ...steppedAtLowestActive, residualKw: { shed: 1.2 } }),
     ].map(toInputRemainingSheddableDevice);
     const producerTotal = sumRemainingSheddableLoadKw({
       devices: producerDevices,
@@ -153,10 +154,9 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
     expect(producerTotal).toBeCloseTo(1.4 + 2.9 + 1.2, 6);
   });
 
-  // Edge-case cascade-parity coverage added 2026-05-27. Closes TODO §"Before
-  // chunk 6 — expand cascade-parity test in test/planRemainingSheddableLoad.test.ts."
+  // Edge-case cascade-parity coverage added 2026-05-27.
   //
-  // Edge cases the producer-resolved path and the legacy fallback handle.
+  // Edge cases the producer-resolved path handles.
   // The former cases (b) and (c) — a stepped device with `selectedStepId`
   // absent — are unrepresentable now that the producer refuses a stepped
   // cluster without its effective step, so only the representable cases stay:
@@ -267,7 +267,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
         },
         shedBehavior,
       });
-      return { ...device, residualKw: { shed } };
+      return { ...device, residualKw: { ...device.residualKw, shed } };
     }).map(toInputRemainingSheddableDevice);
     const producerTotal = sumRemainingSheddableLoadKw({
       devices: producerDevices,
@@ -293,7 +293,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
     //     only consulted when targetStep.id === selectedStepId, which is not
     //     the case here.
     expect(resolveRemainingSheddableLoadKw({
-      device: toInputRemainingSheddableDevice({
+      device: toInputRemainingSheddableDevice(withFixtureResidualKw({
         ...buildPlanInputDevice({
           id: 'a',
           controllable: true,
@@ -305,7 +305,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
           measuredPowerKw: 1.2,
         }),
         residualKw: { shed: 1.2 },
-      }),
+      })),
       alreadyShed: false,
       limitSource: 'capacity',
       capacityBreached: true,
@@ -318,7 +318,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
 
     // (d) Temperature at shed setpoint → residual 0.
     expect(resolveRemainingSheddableLoadKw({
-      device: toInputRemainingSheddableDevice({
+      device: toInputRemainingSheddableDevice(withFixtureResidualKw({
         ...buildPlanInputDevice({
           id: 'd',
           controllable: true,
@@ -334,7 +334,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
           }],
         }),
         residualKw: { shed: 0 },
-      }),
+      })),
       alreadyShed: false,
       limitSource: 'capacity',
       capacityBreached: true,

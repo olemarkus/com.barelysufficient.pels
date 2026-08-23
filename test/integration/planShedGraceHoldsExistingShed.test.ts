@@ -4,8 +4,7 @@ import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import type { DevicePlan, PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { fixtureCurrentDrawKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
-import { fixtureResidualKw } from '../helpers/buildPlanInputDevice';
+import { fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
@@ -25,8 +24,7 @@ const buildDevice = (
   return withBinaryDiscriminant({
     ...merged,
     currentDrawKw: fixtureCurrentDrawKw(merged),
-    residualKw: merged.residualKw
-      ?? fixtureResidualKw({ ...merged, currentDrawKw: fixtureCurrentDrawKw(merged) }),
+    residualKw: merged.residualKw ?? fixtureResidualKw(merged),
     currentOn: resolveFixtureCurrentOn(merged),
   }) as PlanInputDevice;
 };

@@ -1,8 +1,9 @@
 import { DeferredObjectiveDecorationController } from '../../lib/objectives/deferredObjectives';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
-const buildDevice = (): PlanInputDevice => withBinaryDiscriminant({ available: true, currentDrawKw: 0, residualKw: { shed: 0 },
+const buildDevice = (): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({ available: true, currentDrawKw: 0,
   id: 'dev',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Device',
@@ -16,7 +17,7 @@ const buildDevice = (): PlanInputDevice => withBinaryDiscriminant({ available: t
   binaryCapabilityId: 'onoff',
   binaryControl: { on: false },
   controllable: true,
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
 const buildPowerTracker = () => ({ lastTimestamp: Date.now() });
 

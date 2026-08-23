@@ -33,6 +33,7 @@ import {
 } from '../../lib/plan/planTypes';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_START_UTC = Date.UTC(2026, 4, 10, 0, 0, 0);
@@ -175,7 +176,7 @@ const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
 });
 
 const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscriminant(
-  withTemperatureDiscriminant(withBinaryDiscriminant({
+  withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
     available: true,
     id: STEP_DEVICE_ID,
     name: 'Priority Tank',
@@ -200,14 +201,13 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
     currentTarget: TARGET_C,
     lastFreshDataMs: nowMs,
     currentDrawKw: STEP_LOW_KW,
-    residualKw: { shed: STEP_LOW_KW },
     expectedPowerKw: STEP_LOW_KW, expectedPowerSource: 'default',
     planningPowerKw: STEP_LOW_KW,
     targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],
-  })),
+  }))),
 ) as PlanInputDevice;
 
-const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryDiscriminant({ available: true, currentDrawKw: 0, residualKw: { shed: 0 },
+const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({ available: true, currentDrawKw: 0,
   id: LOWER_PRIORITY_ID,
   name: 'Lower Priority Heater',
   commandableNow: true,
@@ -225,7 +225,7 @@ const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryD
   planningPowerKw: LOWER_PRIORITY_RESTORE_KW,
   lastFreshDataMs: nowMs,
   targets: [],
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
 const buildSettings = (): DeferredObjectiveSettingsV1 => ({
   version: 1,

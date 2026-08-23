@@ -1,7 +1,6 @@
 import type { DevicePlanDevice } from '../planTypes';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
-import { getSteppedLoadRestoreStep } from '../../utils/deviceControlProfiles';
 import {
   PENDING_RESTORE_CONFIRMED_FRACTION,
   PENDING_RESTORE_WINDOW_MS,
@@ -10,7 +9,6 @@ import {
   RECENT_SHED_RESTORE_MULTIPLIER,
 } from '../planConstants';
 import { buildRestoreHeadroomReason } from '../planReasonStrings';
-import { getHighestKnownPowerKw } from '../../observer/observedPower';
 import {
   resolveActiveSteppedRestoreReservation,
   resolveSteppedRestoreObservedGapKw,
@@ -55,36 +53,15 @@ export function estimateRestorePower(dev: DevicePlanDevice): number {
 function resolveRestorePower(
   dev: DevicePlanDevice,
 ): { kw: number; source: RestorePowerSource } {
-  // Producer-resolved path (chunk 4 of the planner-detype refactor). When the
-  // device snapshot carries `residualKw.restore`, the
-  // `isSteppedLoadDevice + getSteppedLoadRestoreStep` chain has already been
-  // collapsed at the producer seam (`lib/device/deviceResidualKw.ts`), so the
-  // consumer just reads the resolved `{ kw, source }`. The legacy fallback
-  // below covers fixtures built without the producer-resolved field; chunk 6
-  // removes it.
-  if (dev.residualKw?.restore) return dev.residualKw.restore;
-  const stepped = resolveSteppedRestorePower(dev);
-  if (stepped !== null) return stepped;
-  return getHighestKnownPowerKw(dev);
-}
-
-function resolveSteppedRestorePower(
-  dev: DevicePlanDevice,
-): { kw: number; source: RestorePowerSource } | null {
-  if (!isSteppedLoadDevice(dev)) return null;
-
-  // `planningPowerKw` is finite by producer contract (`resolveSteppedClusterFields`
-  // finiteness-gates every rung), so only the domain question remains.
-  if (dev.currentState !== 'off' && dev.planningPowerKw > 0) {
-    return { kw: dev.planningPowerKw, source: 'planning' };
-  }
-
-  const restoreStep = getSteppedLoadRestoreStep(dev.steppedLoadProfile);
-  if (restoreStep && restoreStep.planningPowerW > 0) {
-    return { kw: restoreStep.planningPowerW / 1000, source: 'stepped' };
-  }
-
-  return null;
+  // The producer resolved the whole question once
+  // (`buildResidualKwForPlanDevice` → `resolveResidualKwRestore`), so the
+  // consumer reads the answer. There is no fallback: the
+  // `isSteppedLoadDevice + getSteppedLoadRestoreStep` chain that used to live
+  // here was reachable only from fixtures that stamped `shed` without
+  // `restore` — a shape `toPlanDevice` cannot emit — and it went when the
+  // shared fixture builders started resolving both halves through the producer
+  // itself.
+  return dev.residualKw.restore;
 }
 
 /**

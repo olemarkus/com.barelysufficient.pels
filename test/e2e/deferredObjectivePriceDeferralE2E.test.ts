@@ -34,6 +34,7 @@ import type {
 } from '../../lib/objectives/deferredObjectives';
 import type { DeferredObjectiveActivePlanHourV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 const HOUR_MS = 60 * 60 * 1000;
 // Midnight UTC so absolute-ms hour edges line up with `hourIndex * HOUR_MS`.
@@ -127,7 +128,7 @@ const diagnosticFor = (
 
 // A cap-off water heater (controllable=false): the only reason PELS drives it is
 // the smart task, so a released hour idles it (`kind: 'idle'`).
-const device: PlanInputDevice = { id: DEVICE_ID, controllable: false } as PlanInputDevice;
+const device: PlanInputDevice = withFixtureResidualKw({ id: DEVICE_ID, controllable: false }) as PlanInputDevice;
 
 type CycleResult = {
   ahead: boolean;

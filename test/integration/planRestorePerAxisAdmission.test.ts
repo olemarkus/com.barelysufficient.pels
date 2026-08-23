@@ -9,6 +9,7 @@ import {
 } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -84,7 +85,7 @@ const buildDailyBudgetSnapshot = (): DailyBudgetUiPayload => ({
   days: { '2026-05-10': buildDay() },
 });
 
-const buildHeater = (params: { on: boolean; exempt: boolean }): PlanInputDevice => withBinaryDiscriminant({
+const buildHeater = (params: { on: boolean; exempt: boolean }): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
   available: true,
   id: HEATER_ID,
   name: 'Water Heater',
@@ -100,13 +101,12 @@ const buildHeater = (params: { on: boolean; exempt: boolean }): PlanInputDevice 
   binaryControl: { on: params.on },
   currentOn: params.on,
   currentDrawKw: params.on ? 1.25 : 0,
-  residualKw: { shed: params.on ? 1.25 : 0 },
   expectedPowerKw: 1.25, expectedPowerSource: 'default',
   budgetExempt: params.exempt,
   lastFreshDataMs: Date.now(),
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
-const buildThermostat = (on: boolean): PlanInputDevice => withBinaryDiscriminant({
+const buildThermostat = (on: boolean): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
   available: true,
   id: THERMOSTAT_ID,
   name: 'Thermostat',
@@ -122,10 +122,9 @@ const buildThermostat = (on: boolean): PlanInputDevice => withBinaryDiscriminant
   binaryControl: { on },
   currentOn: on,
   currentDrawKw: on ? 1.0 : 0,
-  residualKw: { shed: on ? 1.0 : 0 },
   expectedPowerKw: 1.0, expectedPowerSource: 'default',
   lastFreshDataMs: Date.now(),
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
 const buildBuilder = (params: {
   capacityGuard: CapacityGuard;

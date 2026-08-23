@@ -11,8 +11,7 @@ import {
 } from '../../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
-import { fixtureResidualKw } from '../helpers/buildPlanInputDevice';
+import { fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 
 // Drives the REAL PlanBuilder to prove the startup reservation: a device flagged
 // `reservesStartupPower` holds its lowest-active-step power back from LOWER-PRIORITY devices'

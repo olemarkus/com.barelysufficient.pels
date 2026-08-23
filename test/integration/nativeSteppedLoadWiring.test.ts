@@ -49,6 +49,7 @@ import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 const steppedProfile: SteppedLoadProfile = {
   steps: [
@@ -68,7 +69,7 @@ type SteppedActionInput = Partial<DevicePlanDevice>
 const buildSteppedAction = (loose: SteppedActionInput) => {
   const { controlModel: _controlModel, ...rest } = loose;
   const device = withTemperatureDiscriminant(
-    withSteppedDiscriminant(withBinaryDiscriminant({
+    withSteppedDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
       ...rest,
       // Mirrors production's ONE stamp site (`finalizePlanDevices`): the plan's
       // shed END STATE, which is what the executor projection reads. Read off
@@ -80,7 +81,7 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
           steppedLoadProfile: loose.steppedLoadProfile,
           plannedShedStepId: loose.plannedShedStepId,
         }),
-    })),
+    }))),
   ) as DevicePlanDevice;
   return buildExecutableSteppedLoadDevice(
     buildExecutableSteppedLoadIntent(device),

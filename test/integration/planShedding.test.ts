@@ -15,8 +15,12 @@ import { buildSheddingPlan } from '../../lib/plan/shedding';
 import type { SheddingDeps } from '../../lib/plan/shedding/types';
 import { resolveSoftOvershootDecision } from '../../lib/plan/planOvershoot';
 import { reasonText } from '../utils/deviceReasonTestUtils';
-import { fixtureCurrentDrawKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
-import { fixtureResidualKw } from '../helpers/buildPlanInputDevice';
+import {
+  fixtureCurrentDrawKw,
+  fixtureResidualKw,
+  type FixtureShedBehavior,
+  resolveFixtureCurrentOn,
+} from '../utils/planTestUtils';
 
 // Shared empty pending-binary-command store for deps blocks that build their
 // engine state inline (or declare it after the deps object) and never seed
@@ -26,7 +30,7 @@ const emptyPendingStore = createPendingBinaryCommandStore({});
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe
     & TemperatureDiscriminantProbe
-    & { binaryCapabilityId?: string } = {},
+    & { binaryCapabilityId?: string; shedBehavior?: FixtureShedBehavior } = {},
 ): PlanInputDevice => {
   const merged = {
     id: 'dev',
@@ -39,14 +43,17 @@ const buildDevice = (
     binaryControl: { on: true },
     ...overrides,
   };
+  // Consumed by the residual resolution below and stripped here, exactly as the
+  // shared builders strip it: a plan device carries the residual, never the
+  // behaviour behind it.
+  const { shedBehavior: _shedBehavior, ...device } = merged;
   return withBinaryDiscriminant({
-    ...merged,
+    ...device,
     currentDrawKw: fixtureCurrentDrawKw(merged),
-    // Resolved for a turn_off shed, the producer's default. A fixture whose
-    // shed is a setpoint move it is ALREADY at frees nothing, and must say so
-    // by overriding `residualKw` — the consumer no longer re-derives it.
-    residualKw: merged.residualKw
-      ?? fixtureResidualKw({ ...merged, currentDrawKw: fixtureCurrentDrawKw(merged) }),
+    // Resolved by the producer itself, from the bag that still carries the
+    // configured behaviour. A fixture whose shed is a setpoint move it is
+    // ALREADY at frees nothing, and the producer is the one that says so.
+    residualKw: merged.residualKw ?? fixtureResidualKw(merged),
     currentOn: resolveFixtureCurrentOn(merged),
   }) as PlanInputDevice;
 };
@@ -2667,6 +2674,9 @@ describe('buildSheddingPlan', () => {
     expect(result.overshootStats?.controlRecoverable).toBe(true);
   });
 
+  // One fact, read by both the fixture's residual and the planner's own deps.
+  const AT_SETPOINT_SHED_BEHAVIOR = { action: 'set_temperature', temperature: 15 } as const;
+
   it('marks overshoot as exhausted when no sheddable controlled load remains', async () => {
     const state = createPlanEngineState();
 
@@ -2688,9 +2698,11 @@ describe('buildSheddingPlan', () => {
             currentTarget: 15,
             currentDrawKw: 0.8, expectedPowerKw: 0.8,
             targets: [{ id: 'target_temperature', value: 15, unit: 'C' }],
-            // Already AT the shed setpoint: the producer resolves zero relief,
-            // which is what makes the overshoot exhausted.
-            residualKw: { shed: 0 },
+            // Already AT the shed setpoint the plan deps configure below, so the
+            // producer resolves zero relief — which is what makes the overshoot
+            // exhausted. The SAME value reaches both sides, so the fixture's
+            // residual cannot disagree with the planner's own deps.
+            shedBehavior: AT_SETPOINT_SHED_BEHAVIOR,
           }),
         ],
         total: 4.8,
@@ -2706,7 +2718,7 @@ describe('buildSheddingPlan', () => {
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
+        getShedBehavior: () => AT_SETPOINT_SHED_BEHAVIOR,
         getPriorityForDevice: () => 100,
         log: vi.fn(),
         debugStructured: vi.fn(),

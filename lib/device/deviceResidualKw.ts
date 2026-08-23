@@ -20,10 +20,9 @@
  * a positive `planningPowerKw` use the live planning kW (source `'planning'`);
  * stepped devices that are off or have no planning kW fall back to the
  * lowest-active step from the profile (source `'stepped'`); everything else
- * (including non-stepped) uses the highest-known observed power, defaulting to
- * EV / generic fallback (source `'fallback'`). The producer module does NOT
- * implement the observed-power highest-of math itself (that lives in
- * `lib/observer/observedPower.getRestoreDrawKw`); the wiring layer in
+ * (including non-stepped) uses the highest-known observed power. The producer
+ * module does NOT implement the observed-power highest-of math itself (that
+ * lives in `lib/observer/observedPower.getHighestKnownPowerKw`); the wiring layer in
  * `setup/appInit/residualKwForPlanDevice.ts` calls the observer helper and
  * funnels the pre-resolved `{ kw, source }` in via `restoreFallback`.
  *
@@ -252,9 +251,8 @@ export type ResidualKwRestoreSteppedDevice = {
   profile: SteppedLoadProfile;
   /**
    * True when the device is observed as actively on (not at the off step,
-   * not stale-off). Mirrors `dev.currentState !== 'off'` in the legacy
-   * `resolveSteppedRestorePower` chain. Pre-resolved by the wiring layer
-   * so the producer can stay free of `lib/observer/**`.
+   * not stale-off). Answers `currentState !== 'off'`, pre-resolved by the wiring
+   * layer so the producer can stay free of `lib/observer/**`.
    */
   currentStateIsOff: boolean;
   /**
@@ -282,26 +280,23 @@ export type ResidualKwRestoreDeviceInput = {
 /**
  * Resolve the residual kW the consumer would add by restoring this device.
  *
- * The legacy `resolveRestorePower` chain in
- * `lib/plan/restore/accounting.ts` had three resolution paths:
+ * Three resolution paths, all owned here — `lib/plan/restore/accounting.ts`
+ * reads the resolved pair and branches on nothing:
  *   1. Stepped device, observed-on with positive `planningPowerKw` →
  *      `{ kw: planningPowerKw, source: 'planning' }`.
  *   2. Stepped device, off (or no positive planning kW), with a non-zero
  *      lowest-active / restore step in the profile →
  *      `{ kw: restoreStep.planningPowerW / 1000, source: 'stepped' }`.
  *   3. Anything else (non-stepped, OR stepped without a usable step) →
- *      `getRestoreDrawKw(dev)` (highest of measured/expected/planning/
- *      configured, defaulting to EV / generic fallback).
+ *      `getHighestKnownPowerKw(dev)` (highest of measured/expected/planning).
  *
- * This producer preserves all three paths byte-for-byte. Paths 1+2 are owned
- * here; path 3 is delegated to the observer via the pre-resolved
- * `restoreFallback` funnelled in by the wiring adapter. The asymmetry that
+ * Paths 1+2 are owned here; path 3 is delegated to the observer via the
+ * pre-resolved `restoreFallback` funnelled in by the wiring adapter. The asymmetry that
  * stepped path 1 uses live `planningPowerKw` and path 2 uses the lowest-
  * active-step profile value is preserved because callers see a single
  * resolved `{ kw, source }` per device; debug-log call sites that read the
- * source label (`restore_admitted` / `restore_rejected` / etc.) keep their
- * existing six-value source vocabulary (`'measured' | 'expected' |
- * 'planning' | 'configured' | 'stepped' | 'fallback'`).
+ * source label (`restore_admitted` / `restore_rejected` / etc.) read the
+ * `RestorePowerSource` vocabulary.
  */
 export function resolveResidualKwRestore(
   input: ResidualKwRestoreDeviceInput,

@@ -31,6 +31,7 @@ import type {
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_START_MS = Date.UTC(2026, 0, 1, 0);
@@ -150,7 +151,7 @@ const diagnosticFor = (plan: DeferredObjectiveHorizonPlan, energyNeededKWh: numb
   horizonPlan: plan,
 });
 
-const device: PlanInputDevice = { id: DEVICE_ID, controllable: false } as PlanInputDevice;
+const device: PlanInputDevice = withFixtureResidualKw({ id: DEVICE_ID, controllable: false }) as PlanInputDevice;
 
 type BuildTimeResult = {
   // Booked energy summed by the price the hour carries.

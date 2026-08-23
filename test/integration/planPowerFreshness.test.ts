@@ -12,6 +12,7 @@ import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -39,7 +40,7 @@ const readingFor = (
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
-): PlanInputDevice => withBinaryDiscriminant({
+): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
   id: 'dev',
   name: 'Device',
   targets: [],
@@ -51,7 +52,7 @@ const buildDevice = (
   controllable: true,
   expectedPowerKw: 1.2,
   ...overrides,
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
 describe('power sample freshness policy', () => {
   beforeEach(() => {

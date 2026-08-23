@@ -26,6 +26,7 @@ import type {
   DeferredObjectiveStep,
 } from '../../lib/objectives/deferredObjectives';
 import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY = Date.UTC(2026, 0, 1, 0);
@@ -112,7 +113,7 @@ const diagnosticFor = (
   horizonPlan: plan,
 });
 
-const device: PlanInputDevice = { id: DEVICE_ID, controllable: false } as PlanInputDevice;
+const device: PlanInputDevice = withFixtureResidualKw({ id: DEVICE_ID, controllable: false }) as PlanInputDevice;
 
 type HourOutcome = {
   hourOfDay: number;

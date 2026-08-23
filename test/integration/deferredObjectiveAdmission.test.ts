@@ -13,6 +13,7 @@ import {
 } from '../../lib/objectives/deferredObjectives';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -133,7 +134,7 @@ const buildDevice = (params: {
   currentOn: boolean;
   selectedStepId: string;
   priority?: number;
-}): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
+}): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
   available: true,
   id: DEVICE_ID,
   name: 'Water Heater',
@@ -160,14 +161,13 @@ const buildDevice = (params: {
   currentTarget: TARGET_C,
   lastFreshDataMs: params.nowMs,
   currentDrawKw: params.currentOn ? 1.5 : 0,
-  residualKw: { shed: params.currentOn ? 1.5 : 0 },
   expectedPowerKw: params.currentOn ? 1.5 : 0, expectedPowerSource: 'default',
   planningPowerKw: params.currentOn ? 1.5 : 0,
   // This fixture models the semantic `HomeScope` producer output. A sole
   // active device is always relative rank 1, regardless of its stored rank.
   priority: params.priority ?? 1,
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],
-})) as PlanInputDevice;
+}))) as PlanInputDevice;
 
 const DEADLINE_AT_MS = Date.UTC(2026, 4, 10, 6, 0, 0);
 
@@ -241,7 +241,7 @@ const buildContender = (params: {
   nowMs: number;
   controllable?: boolean;
   priority?: number;
-}): PlanInputDevice => withBinaryDiscriminant({ available: true, currentDrawKw: 0, residualKw: { shed: 0 },
+}): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({ available: true, currentDrawKw: 0,
   id: CONTENDER_ID,
   name: 'Contender',
   commandableNow: true,
@@ -260,7 +260,7 @@ const buildContender = (params: {
   priority: params.priority ?? 2,
   lastFreshDataMs: params.nowMs,
   targets: [],
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
 describe('PlanBuilder deferred-objective admission walkthrough', () => {
   beforeEach(() => {

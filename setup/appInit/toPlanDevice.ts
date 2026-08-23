@@ -13,6 +13,7 @@ import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/state
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import {
   buildResidualKwForPlanDevice,
+  resolveResidualShedBehavior,
   type ResidualKwForPlanDeviceShedBehavior,
 } from './residualKwForPlanDevice';
 import type {
@@ -371,38 +372,10 @@ function resolveEffectiveShedBehavior(
   ctx: AppContext,
   device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
 ): ResidualKwForPlanDeviceShedBehavior {
-  const configured = ctx.getShedBehavior(device.id);
-  if (configured.action === 'set_temperature') {
-    // The setpoint arm — and only it — is denied when the owner switched
-    // temperature control off. Relaxing this to "the fence will catch it" would
-    // let a stale persisted setpoint shed reach the planner: a stepped device
-    // routes its release through `shed_release`, which would issue a `target`
-    // command the fence refuses, leaving the device shed with no way back.
-    if (device.temperatureControlDisabled === true || device.temperature === undefined) {
-      return resolveShedBehaviorWithoutTemperature(device);
-    }
-    return { action: 'set_temperature', temperature: configured.temperature };
-  }
-  if (configured.action === 'set_step') {
-    // The rung is the device's own — a configured step id used to take
-    // precedence here, but nothing ever wrote one.
-    const stepId = isSteppedLoadSnapshot(device)
-      ? getSteppedLoadLowestActiveStep(device.steppedLoadProfile)?.id
-      : undefined;
-    return stepId ? { action: 'set_step', stepId } : { action: 'turn_off' };
-  }
-  return { action: 'turn_off' };
-}
-
-function resolveShedBehaviorWithoutTemperature(
-  device: DecoratedDeviceSnapshot,
-): ResidualKwForPlanDeviceShedBehavior {
-  if (device.binaryControl !== undefined) return { action: 'turn_off' };
-  if (!isSteppedLoadSnapshot(device)) return { action: 'turn_off' };
-  const lowestActiveStep = getSteppedLoadLowestActiveStep(device.steppedLoadProfile);
-  return lowestActiveStep
-    ? { action: 'set_step', stepId: lowestActiveStep.id }
-    : { action: 'turn_off' };
+  // The ctx lookup is the only half that belongs here; the projection onto the
+  // device is pure and lives beside the residual builder, so the fixture
+  // builders resolve it through the same function.
+  return resolveResidualShedBehavior(ctx.getShedBehavior(device.id), device);
 }
 
 function resolveEffectiveTemperatureBoost(

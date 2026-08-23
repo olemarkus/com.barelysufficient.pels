@@ -18,6 +18,7 @@ import {
   type DeferredObjectiveRescuePermissions,
 } from '../../lib/objectives/deferredObjectives';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 // The tracker is the single power latch; tests drive the whole-home total here.
 const LATCHED_TOTAL_W = 1.5 * 1000;
@@ -143,7 +144,7 @@ const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
 // Cap-ON managed temperature device, currently running (so it is a shed candidate).
 // `binaryControl`/`currentTemperature` are regrouped onto their discriminant
 // clusters; the rest is the base shape.
-const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
+const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
   available: true,
   id: DEVICE_ID,
   name: 'Water Heater',
@@ -169,11 +170,10 @@ const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscrimin
   currentTarget: TARGET_C,
   lastFreshDataMs: nowMs,
   currentDrawKw: 1.5,
-  residualKw: { shed: 1.5 },
   expectedPowerKw: 1.5, expectedPowerSource: 'default',
   planningPowerKw: 1.5,
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],
-})) as PlanInputDevice;
+}))) as PlanInputDevice;
 
 const buildSettings = (rescue?: DeferredObjectiveRescuePermissions): DeferredObjectiveSettingsV1 => ({
   version: 1,

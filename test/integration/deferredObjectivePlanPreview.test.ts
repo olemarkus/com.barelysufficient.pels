@@ -23,7 +23,7 @@ import type {
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
-import { type FixtureBoostFields, withMaterializedEvPlugState } from '../utils/planTestUtils';
+import { type FixtureBoostFields, withFixtureResidualKw, withMaterializedEvPlugState } from '../utils/planTestUtils';
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -44,7 +44,7 @@ const buildEvDevice = (
 // `evChargingState`, preserving the runtime resumability signal. Setting
 // `evChargingState` on a fixture without it would leave the flat bits unset and
 // silently erase the plug-state these tests depend on.
-): PlanInputDevice => withMaterializedEvPlugState({
+): PlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({
   id: 'ev-1',
   name: 'Driveway EV',
   targets: [],
@@ -61,7 +61,7 @@ const buildEvDevice = (
     ],
   },
   ...overrides,
-}) as unknown as PlanInputDevice;
+})) as unknown as PlanInputDevice;
 
 const buildTemperatureDevice = (
   overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe = {},
@@ -70,7 +70,7 @@ const buildTemperatureDevice = (
 // `binaryControl` when the capability id is absent). Keep the additive
 // `withTemperatureDiscriminant` regrouper and cast at the fixture boundary so the
 // `binaryControl` + `controlModel` survive verbatim, matching the original literal.
-): PlanInputDevice => withTemperatureDiscriminant({
+): PlanInputDevice => withTemperatureDiscriminant(withFixtureResidualKw({
   id: 'heater-1',
   name: 'Connected 300',
   targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
@@ -86,7 +86,7 @@ const buildTemperatureDevice = (
     ],
   },
   ...overrides,
-}) as unknown as PlanInputDevice;
+})) as unknown as PlanInputDevice;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
   const resolution = resolveDeferredObjectiveDeadline({ nowMs, timeZone: 'UTC', deadlineLocalTime });

@@ -7,12 +7,17 @@ import type {
   TemperatureKind,
   SteppedPlanDevice,
 } from '../../lib/plan/planTypes';
-import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
+import { type ShedBehavior, withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import type {
+  DecoratedDeviceSnapshot,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
   EvChargingState,
+  MeasuredPowerObservedProbe,
+  RestorePowerSource,
+  TemperatureObservation,
+  TemperatureObservedProbe,
   SteppedLoadProfile,
   TargetCapabilitySnapshot,
   TemperatureBoostConfig,
@@ -29,8 +34,13 @@ import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observe
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import { getSteppedLoadLowestActiveStep } from '../../lib/utils/deviceControlProfiles';
+import { getPrimaryTargetCapability } from '../../lib/utils/targetCapabilities';
+import {
+  buildResidualKwForPlanDevice,
+  resolveResidualShedBehavior,
+} from '../../setup/appInit/residualKwForPlanDevice';
 import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
-import { fixtureResidualKw } from '../helpers/buildPlanInputDevice';
 
 /**
  * Mirror the production producer: a binary fixture's `currentOn` is the resolved
@@ -320,7 +330,14 @@ const withFixtureSteppedTriple = <T extends object>(fields: T): T => {
   // resolves a planning fallback, so a degenerate all-zero ladder — which
   // `asSteppedLoadProfile` refuses upstream — gets nothing synthesized here
   // either, and fixtures exercising that degenerate shape keep their meaning.
-  const lowestActiveStepId = probe.steppedLoadProfile.steps.find((step) => step.planningPowerW > 0)?.id;
+  //
+  // DELEGATED to the production helper rather than restated: the hand-rolled
+  // `steps.find(planningPowerW > 0)` this replaced read DECLARATION order,
+  // while `getSteppedLoadLowestActiveStep` sorts by power first. Every shared
+  // fixture ladder happens to be declared in ascending order, so the two agreed
+  // — a restated mirror that is right by coincidence is exactly the thing this
+  // file exists to stop.
+  const lowestActiveStepId = getSteppedLoadLowestActiveStep(probe.steppedLoadProfile)?.id;
   if (lowestActiveStepId === undefined) return fields;
   const selectedStepId = probe.selectedStepId ?? lowestActiveStepId;
   const step = probe.steppedLoadProfile.steps.find((candidate) => candidate.id === selectedStepId);
@@ -329,6 +346,231 @@ const withFixtureSteppedTriple = <T extends object>(fields: T): T => {
     selectedStepId,
     planningPowerKw: probe.planningPowerKw ?? (step ? step.planningPowerW / 1000 : 0),
   } as T;
+};
+
+/**
+ * A fixture's binary axis, resolved the way the shared builders stamp it.
+ *
+ * The producer asks one question of the snapshot — `binaryControl !== undefined`
+ * — and both builders answer it the same way: every fixture gets a binary axis
+ * unless it says otherwise, either by `binaryControllable: false` or by spelling
+ * `binaryCapabilityId: undefined` with no other binary signal. Shared so the
+ * residual resolution below asks it of the axis the builder will actually stamp,
+ * rather than of the raw override bag (where the default is still implicit).
+ */
+const fixtureBinaryAxisDisabled = (overrides: object): boolean => {
+  const o = overrides as {
+    binaryControl?: { on: boolean };
+    binaryControllable?: boolean;
+    binaryCapabilityId?: string;
+    currentOn?: boolean;
+  };
+  return o.binaryControllable === false
+    || (Object.prototype.hasOwnProperty.call(overrides, 'binaryCapabilityId')
+      && o.binaryCapabilityId === undefined
+      && o.binaryControl === undefined
+      && o.currentOn === undefined);
+};
+
+/**
+ * The owner-CONFIGURED shed behaviour a fixture may spell, so its residual is the
+ * one the producer would have stamped. It is the settings-store value, not the
+ * projection onto the device — `resolveResidualShedBehavior` performs that, and
+ * the fixture calls it rather than restating either arm. Named for fixtures
+ * because specs with their own local device builder accept it on their override
+ * bag too.
+ *
+ * `getShedBehavior` answers `turn_off` for a device the owner never configured,
+ * which is every fixture that does not spell one, so absence resolves to the
+ * same thing the producer would have read. A spec whose plan deps configure a
+ * different behaviour spells the SAME value here; the field is consumed by the
+ * residual resolution and never lands on the device.
+ */
+export type FixtureShedBehavior = ShedBehavior;
+
+/**
+ * The observed temperature FACET a fixture's own signals imply.
+ *
+ * The producer's shed-behaviour projection denies a `set_temperature` shed when
+ * the device carries no observed temperature, and that facet is what it reads —
+ * fixtures spell the same fact as flat `currentTarget`/`currentTemperature`/
+ * `plannedTarget`, so build the facet from them before handing the snapshot
+ * over.
+ *
+ * Admission is EXACTLY `withFixtureTemperatureKind`'s signal set — deliberately
+ * NOT widened to "carries a `target_temperature` capability". Production's
+ * `resolveTemperatureObservation` returns `undefined` without a current-
+ * temperature reading, so a device whose only evidence is the capability has NO
+ * facet, and `resolveResidualShedBehavior` falls back to `turn_off`. A fixture
+ * admitting on the capability alone would instead resolve `set_temperature`, and
+ * for a setpoint already at the shed temperature it would stamp a ZERO shed
+ * residual where production frees the whole draw — a shape the producer cannot
+ * emit, masking regressions in the missing-sensor planning path.
+ */
+const fixtureTemperatureObservation = (device: {
+  deviceType?: 'temperature' | 'onoff';
+  currentTarget?: number;
+  currentTemperature?: number;
+  plannedTarget?: number;
+  targets?: TargetCapabilitySnapshot[];
+}): TemperatureObservation | undefined => {
+  const target = getPrimaryTargetCapability(device.targets);
+  const temperatureTarget = target?.id === 'target_temperature' ? target : null;
+  const hasTemperatureSignal = device.deviceType === 'temperature'
+    || device.currentTarget !== undefined
+    || device.currentTemperature !== undefined
+    || device.plannedTarget !== undefined;
+  if (!hasTemperatureSignal) return undefined;
+  // The setpoint the SHED math reads is `targets[0].value`, so prefer it: a
+  // fixture spelling both must not leave the denial gate and the shed math
+  // reading different numbers. Production cannot disagree with itself here —
+  // `toPlanDevice` sets `currentTarget` FROM the facet's target value.
+  const currentTarget = (typeof temperatureTarget?.value === 'number' ? temperatureTarget.value : undefined)
+    ?? device.currentTarget
+    ?? FIXTURE_DEFAULT_TEMPERATURE_C;
+  return {
+    currentTemperature: device.currentTemperature ?? currentTarget,
+    target: {
+      unit: '°C',
+      ...(temperatureTarget ?? {}),
+      id: 'target_temperature',
+      value: currentTarget,
+    },
+  };
+};
+
+export type FixtureResidualKw = {
+  shed: number;
+  restore: { kw: number; source: RestorePowerSource };
+};
+
+/**
+ * Resolve a fixture's `residualKw` through the PRODUCER ITSELF —
+ * `buildResidualKwForPlanDevice`, the function `toPlanDevice` calls — so a
+ * fixture cannot carry a residual production would never stamp.
+ *
+ * This used to be a hand-rolled mirror of the producer's two adapters
+ * (`toResidualSteppedLoad` / `toResidualTemperatureTarget`), and it had drifted
+ * three ways: it read `hasKnownEffectiveStep` as `selectedStepId !== undefined`
+ * (ignoring reported/target/desired/restore-prepared step evidence), it keyed
+ * the temperature target on `id === 'target_temperature'` instead of the primary
+ * target capability and dropped its `min`/`max`/`step`, and it resolved only the
+ * `shed` half — leaving `restore` absent, which is a shape the producer cannot
+ * emit and which kept a dead fallback alive in `lib/plan/restore/accounting.ts`.
+ * Delegating removes all three at once, and removes the class.
+ *
+ * Exported because several specs keep their own local device builder; they must
+ * not re-derive this by hand.
+ */
+export const fixtureResidualKw = (
+  device: Record<string, unknown> & {
+    currentDrawKw?: number;
+    expectedPowerKw?: number;
+    deviceClass?: string;
+    deviceRole?: 'ev_charger';
+    binaryCapabilityId?: string;
+    binaryControl?: { on: boolean };
+    binaryControllable?: boolean;
+    currentOn?: boolean;
+    currentState?: string;
+    steppedLoadProfile?: SteppedLoadProfile;
+    selectedStepId?: string;
+    shedBehavior?: FixtureShedBehavior;
+    deviceType?: 'temperature' | 'onoff';
+    currentTarget?: number;
+    currentTemperature?: number;
+    plannedTarget?: number;
+    targets?: TargetCapabilitySnapshot[];
+  },
+): FixtureResidualKw => {
+  const currentDrawKw = fixtureCurrentDrawKw(device);
+  // Every field this function resolves ON the fixture's behalf, name- and
+  // type-checked against the snapshot the producer expects. The outer cast below
+  // is the fixture-constructor boundary and would hide a typo here; `satisfies`
+  // is what keeps it honest, because a misspelled field would otherwise reach
+  // the producer as `undefined` and yield a wrong-but-plausible residual.
+  const producerFields = {
+    // The RAW binary axis the producer reads, resolved from whichever signal the
+    // fixture spells — the same resolution `resolveFixtureCurrentState` performs.
+    // The producer's restore adapter re-derives `currentState` from this axis
+    // (`resolveObservedCurrentState`), so a fixture that expresses "off at a
+    // higher step" only as the four-valued LABEL must hand the adapter the axis
+    // that label came from, or the adapter reads the device as on.
+    binaryControl: fixtureBinaryAxisDisabled(device)
+      ? undefined
+      : { on: resolveFixtureCurrentOn(device) },
+    // The producer reads the RAW meter field and resolves `currentDrawKw` from
+    // it once; a fixture states the resolved figure, so hand it back at the seam
+    // the producer reads it from. `normalizeMeasuredPowerKw` round-trips every
+    // finite non-negative kW, so this is the identity for any draw a producer
+    // could have resolved.
+    measuredPowerKw: currentDrawKw,
+    // Required by the restore ladder (`getHighestKnownPowerKw`), and resolved by
+    // the same fixture rung the builders stamp so a fixture that describes no
+    // power still gets the producer's own evidence-free answer.
+    expectedPowerKw: fixtureExpectedPowerKw(device),
+    // The atomic observed facet the shed-behaviour projection reads; fixtures
+    // spell the same fact flat.
+    temperature: fixtureTemperatureObservation(device),
+  } satisfies Partial<
+  DecoratedDeviceSnapshot & MeasuredPowerObservedProbe & TemperatureObservedProbe
+  >;
+  const snapshot = withFixtureSteppedTriple({
+    ...device,
+    ...producerFields,
+  }) as unknown as DecoratedDeviceSnapshot & MeasuredPowerObservedProbe
+    & TemperatureObservedProbe;
+  return buildResidualKwForPlanDevice({
+    device: snapshot,
+    // The exact question the producer asks of the snapshot it was handed.
+    hasBinaryControl: snapshot.binaryControl !== undefined,
+    // Projected by the production function, not restated here: an earlier
+    // hand-rolled mirror of it kept the `set_step` arm and silently dropped the
+    // `set_temperature` denial, which is the shape this whole change removes.
+    shedBehavior: resolveResidualShedBehavior(
+      device.shedBehavior ?? { action: 'turn_off' },
+      snapshot,
+    ),
+  });
+};
+
+/**
+ * Stamp the producer-resolved `residualKw` onto a fixture's own field bag.
+ *
+ * The wrapper form is for the many specs that build a plan device as a bare
+ * object literal rather than through `buildPlanInputDevice`: it reads the same
+ * fields the producer reads, so those fixtures get BOTH halves without restating
+ * either. A declared half still wins — that is how a spec whose subject IS one of
+ * the two figures pins it — while the other half is still producer-resolved.
+ *
+ * Wrapping a bag that has ALREADY been through a builder is the one shape to be
+ * careful with: the builder destructures the raw binary signals away, so "no
+ * binary axis" survives only as the absence of `currentOn`, which reads here as
+ * "unstated" rather than "absent". Such a bag must spell `binaryControllable:
+ * false` for itself. Do not try to infer it — a bag spelling `currentState` and
+ * no binary signal is indistinguishable from a raw override that means the
+ * builder's default.
+ */
+export const withFixtureResidualKw = <T extends object>(
+  fields: T,
+): T & { residualKw: FixtureResidualKw } => {
+  const declared = (fields as { residualKw?: Partial<FixtureResidualKw> }).residualKw;
+  // A fully declared residual is taken verbatim and nothing is resolved. That is
+  // the only way to express the one shape the producer cannot be handed at all:
+  // a deliberately malformed ladder, built to prove the executor survives a
+  // projection failure. Asking the producer to read it would throw, and
+  // production resolves the residual long before such a ladder reaches a plan.
+  if (declared?.shed !== undefined && declared.restore !== undefined) {
+    return { ...fields, residualKw: { shed: declared.shed, restore: declared.restore } };
+  }
+  const resolved = fixtureResidualKw(fields as Parameters<typeof fixtureResidualKw>[0]);
+  return {
+    ...fields,
+    residualKw: {
+      shed: declared?.shed ?? resolved.shed,
+      restore: declared?.restore ?? resolved.restore,
+    },
+  };
 };
 
 export const buildPlanDevice = (
@@ -351,6 +593,13 @@ export const buildPlanDevice = (
     stateOfCharge?: DeviceStateOfChargeSnapshot;
     /** Legacy fixture alias for `currentDrawKw` (see `fixtureCurrentDrawKw`). */
     measuredPowerKw?: number;
+    /**
+     * The shed behaviour the owner configured for this device. CONSUMED by the
+     * residual resolution and never stamped — a plan device carries the residual,
+     * not the behaviour behind it. Spell it when the spec's plan deps configure
+     * something other than `turn_off`; see `FixtureShedBehavior`.
+     */
+    shedBehavior?: FixtureShedBehavior;
   } = {},
 ):
 DevicePlanDevice => {
@@ -358,6 +607,7 @@ DevicePlanDevice => {
     reason, currentTarget, currentTemperature,
     binaryControllable: _binaryControllable,
     binaryCapabilityId: _binaryCapabilityId,
+    shedBehavior: _shedBehavior,
     measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, ...rest
   } = overrides;
   const o = overrides as {
@@ -366,11 +616,7 @@ DevicePlanDevice => {
     binaryCapabilityId?: string;
     steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string;
   };
-  const binaryExplicitlyDisabled = o.binaryControllable === false
-    || (Object.prototype.hasOwnProperty.call(overrides, 'binaryCapabilityId')
-      && o.binaryCapabilityId === undefined
-      && o.binaryControl === undefined
-      && o.currentOn === undefined);
+  const binaryExplicitlyDisabled = fixtureBinaryAxisDisabled(overrides);
   const currentOn = resolveFixtureCurrentOn(o);
   return {
     id: 'dev',
@@ -395,8 +641,10 @@ DevicePlanDevice => {
     // `resolveRemainingSheddableLoadKw` would dereference `undefined`. Resolved
     // through the SAME function the producer uses, never defaulted to the draw
     // — a stepped fixture already at its off step must still resolve to 0.
-    residualKw: overrides.residualKw
-      ?? fixtureResidualKw({ ...overrides, currentDrawKw: fixtureCurrentDrawKw(overrides) }),
+    // One rule for a declared residual, shared with every bare-literal fixture:
+    // `withFixtureResidualKw` decides what a declaration overrides and what the
+    // producer still resolves.
+    residualKw: withFixtureResidualKw(overrides).residualKw,
     // Stamped AFTER the caller spread, like `currentDrawKw`: an explicit
     // `expectedPowerKw: undefined` in a fixture must not ship a required field
     // as missing, which would propagate as NaN through every restore
@@ -510,12 +758,20 @@ export const buildPlanInputDevice = (
     deviceRole?: 'ev_charger';
     /** Legacy fixture alias for `currentDrawKw` (see `fixtureCurrentDrawKw`). */
     measuredPowerKw?: number;
+    /**
+     * The shed behaviour the owner configured for this device. CONSUMED by the
+     * residual resolution and never stamped — a plan device carries the residual,
+     * not the behaviour behind it. Spell it when the spec's plan deps configure
+     * something other than `turn_off`; see `FixtureShedBehavior`.
+     */
+    shedBehavior?: FixtureShedBehavior;
   } = {},
 ): PlanInputDevice => {
   const {
     available, controllable, currentTarget, currentTemperature,
     binaryControllable: _binaryControllable,
     binaryCapabilityId: _binaryCapabilityId,
+    shedBehavior: _shedBehavior,
     // Consumed by the boost resolution below and stripped here, the way the
     // producer strips them: a plan device carries the boost DECISION, never the
     // configuration or the reading behind it.
@@ -528,11 +784,7 @@ export const buildPlanInputDevice = (
     binaryCapabilityId?: string;
     steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string;
   };
-  const binaryExplicitlyDisabled = o.binaryControllable === false
-    || (Object.prototype.hasOwnProperty.call(overrides, 'binaryCapabilityId')
-      && o.binaryCapabilityId === undefined
-      && o.binaryControl === undefined
-      && o.currentOn === undefined);
+  const binaryExplicitlyDisabled = fixtureBinaryAxisDisabled(overrides);
   const currentOn = resolveFixtureCurrentOn({ ...o, binaryControl: o.binaryControl ?? { on: true } });
   // Producer-resolved label (an explicit override in `...rest` still wins below).
   const currentState = resolveFixtureCurrentState({
@@ -560,8 +812,10 @@ export const buildPlanInputDevice = (
     // `resolveRemainingSheddableLoadKw` would dereference `undefined`. Resolved
     // through the SAME function the producer uses, never defaulted to the draw
     // — a stepped fixture already at its off step must still resolve to 0.
-    residualKw: overrides.residualKw
-      ?? fixtureResidualKw({ ...overrides, currentDrawKw: fixtureCurrentDrawKw(overrides) }),
+    // One rule for a declared residual, shared with every bare-literal fixture:
+    // `withFixtureResidualKw` decides what a declaration overrides and what the
+    // producer still resolves.
+    residualKw: withFixtureResidualKw(overrides).residualKw,
     // Stamped AFTER the caller spread, like `currentDrawKw`: an explicit
     // `expectedPowerKw: undefined` in a fixture must not ship a required field
     // as missing, which would propagate as NaN through every restore

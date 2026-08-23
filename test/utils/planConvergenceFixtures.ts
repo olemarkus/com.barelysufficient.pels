@@ -10,7 +10,12 @@ import {
   withTemperatureDiscriminant,
 } from '../../lib/plan/planTypes';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
-import { buildPlanMeta, resolveFixtureCurrentOn, withMaterializedEvPlugState } from './planTestUtils';
+import {
+  buildPlanMeta,
+  fixtureResidualKw,
+  resolveFixtureCurrentOn,
+  withMaterializedEvPlugState,
+} from './planTestUtils';
 import type { BinaryControlObservation } from '../../packages/contracts/src/types';
 
 export type LooseOutputDevice = Partial<DevicePlan['devices'][number]>
@@ -37,6 +42,11 @@ export const asOutputDevice = (
   } = materialized;
   return withBinaryDiscriminant(withTemperatureDiscriminant({
     ...semantic,
+    // Resolved from the UN-stripped bag: `binaryCapabilityId` and
+    // `binaryControl` are destructured out above, and the producer's residual
+    // question is exactly whether the device has a binary axis — asking it of
+    // `semantic` would answer "yes" for every device in this family.
+    residualKw: fixtureResidualKw(materialized),
     // Required on `DevicePlanDevice` precisely so absence is never a state.
     // Every fixture here shipped it undefined, so the two restore-admission
     // readers answered from absence and a dropped `boostActive` in production
@@ -87,6 +97,7 @@ export const inputDevice = (
   const materialized = withMaterializedEvPlugState(loose);
   return {
     ...materialized,
+    residualKw: fixtureResidualKw(materialized),
     controllable: materialized.controllable ?? true,
     available: materialized.available ?? true,
     ...(materialized.binaryCapabilityId !== undefined

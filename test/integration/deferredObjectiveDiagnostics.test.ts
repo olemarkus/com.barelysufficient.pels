@@ -34,7 +34,7 @@ import {
   withBinaryDiscriminant,
   withTemperatureDiscriminant,
 } from '../../lib/plan/planTypes';
-import { type FixtureBoostFields, withMaterializedEvPlugState } from '../utils/planTestUtils';
+import { type FixtureBoostFields, withFixtureResidualKw, withMaterializedEvPlugState } from '../utils/planTestUtils';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanHistoryV5 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives/activePlanSignature';
@@ -66,7 +66,7 @@ const expectClaimMatchesReportedCause = (diag: DeferredObjectiveDiagnostic | und
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & FixtureBoostFields & { evChargingState?: string } = {},
-): PlanInputDevice => withMaterializedEvPlugState({
+): PlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({
   id: 'ev-1',
   expectedPowerKw: 1,
   name: 'Driveway EV',
@@ -86,11 +86,11 @@ const buildDevice = (
   ...overrides,
   controllable: overrides.controllable ?? true,
   available: overrides.available ?? true,
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
 const buildTemperatureDevice = (
   overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe = {},
-): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
+): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
   id: 'heater-1',
   expectedPowerKw: 1,
   name: 'Connected 300',
@@ -110,7 +110,7 @@ const buildTemperatureDevice = (
   ...overrides,
   controllable: overrides.controllable ?? true,
   available: overrides.available ?? true,
-})) as PlanInputDevice;
+}))) as PlanInputDevice;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
   const resolution = resolveDeferredObjectiveDeadline({
@@ -2884,7 +2884,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // to user-visible `pendingReason: 'missing_capacity'` forever. With the
     // thermal fallback (measured → expected → power), the planner builds a
     // horizon plan from the live draw and the smart task can progress.
-    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
       controllable: true, available: true,
       id: 'heater-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -2902,10 +2902,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       deviceType: 'temperature' as const,
       currentTemperature: 19,
       lastFreshDataMs: NOW_MS,
-      currentDrawKw: 1.5, residualKw: { shed: 1.5 },
+      currentDrawKw: 1.5,
       // No `steppedLoadProfile`, no `planningPowerKw` — this is what the bug
       // depends on.
-    })) as PlanInputDevice;
+    }))) as PlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
@@ -2978,7 +2978,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 0 kW step. The producer must walk down the candidate list to
     // `expectedPowerKw` (load-setting / Homey Energy approximation) so the
     // horizon plan still builds.
-    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ controllable: true, available: true, currentDrawKw: 0,
       id: 'heater-1',
       name: 'Idle Panel Heater',
       commandableNow: true,
@@ -2997,7 +2997,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       // Heater is currently idle — measured draw is zero.
       measuredPowerKw: 0,
       expectedPowerKw: 2.0, expectedPowerSource: 'default',
-    })) as PlanInputDevice;
+    }))) as PlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
@@ -3052,7 +3052,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   // halves are asserted below; the SDK-boundary regression for the 2026-08-01
   // incident lives in `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts`.
   it('plans a thermostat with no declared power instead of reporting missing_charge_rate', () => {
-    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ controllable: true, available: true, currentDrawKw: 0,
       id: 'heater-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Powerless Thermostat',
@@ -3070,7 +3070,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       currentTemperature: 19,
       lastFreshDataMs: NOW_MS,
       // No power fields populated at all.
-    })) as PlanInputDevice;
+    }))) as PlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
@@ -3118,7 +3118,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // positive number; the tag was a producer-side fact this layer reconstructed.
     // `controlModel` is deliberately ABSENT from this fixture so the case fails if
     // the consumer ever goes back to inferring the gap from it.
-    const tank = withTemperatureDiscriminant(withBinaryDiscriminant({ controllable: true, available: true, currentDrawKw: 0, residualKw: { shed: 0 },
+    const tank = withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ controllable: true, available: true, currentDrawKw: 0,
       id: 'heater-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Water heater with no live ladder',
@@ -3138,7 +3138,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       lastFreshDataMs: NOW_MS,
       // No `steppedLoadProfile`: configured stepped, but the ladder is missing —
       // which is what the producer stamped `steppedLadderMissing` for.
-    })) as PlanInputDevice;
+    }))) as PlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
@@ -3332,7 +3332,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 12 kWh) fits → at_risk: feasible_above_floor.
     const HARDCAP_KW = 3;
     const NEED_KWH_TO_REACH = 6;
-    const buildPromotableDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0, residualKw: { shed: 0 },
+    const buildPromotableDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
       id,
       name: id,
       targets: [],
@@ -3352,7 +3352,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
       controllable: true,
       available: true,
-    }) as PlanInputDevice;
+    })) as PlanInputDevice;
 
     // Target = current + 30%, profile rate = 0.2 kWh/% → 30 × 0.2 = 6 kWh.
     const buildPromotableSettings = (

@@ -15,7 +15,7 @@ import type {
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
-import { buildPlanMeta } from '../utils/planTestUtils';
+import { buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -23,7 +23,7 @@ const FIXTURE_TOTAL_KW = 3;
 
 const buildLiveDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
-): PlanInputDevice => withBinaryDiscriminant({
+): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
   id: 'dev-1',
   name: 'Heater',
   targets: [],
@@ -33,7 +33,7 @@ const buildLiveDevice = (
   controllable: true,
   expectedPowerKw: 1.8,
   ...overrides,
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
 const buildPlan = (
   overrides: Partial<DevicePlanDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe = {},
@@ -42,7 +42,7 @@ const buildPlan = (
     totalKw: 5,
     softLimitKw: 4,
     headroomKw: -1}),
-  devices: [withBinaryDiscriminant(withTemperatureDiscriminant({
+  devices: [withBinaryDiscriminant(withTemperatureDiscriminant(withFixtureResidualKw({
     id: 'dev-1',
     name: 'Heater',
     binaryControl: { on: false },
@@ -51,7 +51,7 @@ const buildPlan = (
     plannedState: 'keep',
     binaryCapabilityId: 'onoff',
     ...overrides,
-  })) as DevicePlanDevice],
+  }))) as DevicePlanDevice],
 });
 
 const buildContext = (device: PlanInputDevice): PlanContext => ({

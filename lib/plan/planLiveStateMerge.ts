@@ -146,6 +146,11 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       // Re-source it as a unit from the live device (`resolveMergedTemperatureCluster`)
       // and re-source `deviceType` from live alongside it, so the discriminant
       // and the cluster cannot drift apart in the merged snapshot.
+      // `residualKw` rides in on the spread, from the plan it was resolved
+      // against — deliberately, and unlike the inputs re-sourced below. It is
+      // read only during plan build, on freshly built devices, never off a
+      // merged snapshot, so restore admission cannot see the stale value. Do
+      // not read it from here without re-resolving it first.
       return withSteppedDiscriminant(withTemperatureDiscriminant({
         ...device,
         commandableNow: live.commandableNow,

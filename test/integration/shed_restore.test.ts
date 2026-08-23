@@ -1,6 +1,7 @@
 
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 // Mock types for internal App state
 type InternalApp = {
@@ -65,8 +66,8 @@ describe('Shed vs Restore Logic', () => {
 
         // Overwrite snapshot manually for the test logic within App
         (app as any).targetDevices = [
-            { id: 'dev-A', name: 'Heater A', controllable: true, binaryCapabilityId: 'onoff', binaryControl: { on: true }, currentOn: true, priority: 50, expectedPowerKw: 3.0, currentDrawKw: 0.5, residualKw: { shed: 0.5 }},
-            { id: 'dev-B', name: 'Heater B', controllable: true, binaryCapabilityId: 'onoff', binaryControl: { on: true }, currentOn: true, priority: 50, expectedPowerKw: 3.0, currentDrawKw: 2.5, residualKw: { shed: 2.5 }},
+            withFixtureResidualKw({ id: 'dev-A', name: 'Heater A', controllable: true, binaryCapabilityId: 'onoff', binaryControl: { on: true }, currentOn: true, priority: 50, expectedPowerKw: 3.0, currentDrawKw: 0.5 }),
+            withFixtureResidualKw({ id: 'dev-B', name: 'Heater B', controllable: true, binaryCapabilityId: 'onoff', binaryControl: { on: true }, currentOn: true, priority: 50, expectedPowerKw: 3.0, currentDrawKw: 2.5 }),
         ];
 
         // Force negative headroom to trigger shedding
@@ -109,8 +110,8 @@ describe('Shed vs Restore Logic', () => {
 
         // Device C: Expected 5kW, Measured 0kW (Maybe checking in but idle?)
         (app as any).targetDevices = [
-            { id: 'dev-C', name: 'Heater C', controllable: true, binaryCapabilityId: 'onoff', binaryControl: { on: true }, currentOn: true, priority: 50, expectedPowerKw: 5.0, currentDrawKw: 0.0, residualKw: { shed: 0.0 }},
-            { id: 'dev-D', name: 'Heater D', controllable: true, binaryCapabilityId: 'onoff', binaryControl: { on: true }, currentOn: true, priority: 50, expectedPowerKw: 1.0, currentDrawKw: 0.5, residualKw: { shed: 0.5 }},
+            withFixtureResidualKw({ id: 'dev-C', name: 'Heater C', controllable: true, binaryCapabilityId: 'onoff', binaryControl: { on: true }, currentOn: true, priority: 50, expectedPowerKw: 5.0, currentDrawKw: 0.0 }),
+            withFixtureResidualKw({ id: 'dev-D', name: 'Heater D', controllable: true, binaryCapabilityId: 'onoff', binaryControl: { on: true }, currentOn: true, priority: 50, expectedPowerKw: 1.0, currentDrawKw: 0.5 }),
         ];
 
         const mockGuard = {
@@ -143,7 +144,7 @@ describe('Shed vs Restore Logic', () => {
 
         // Device E: Expected 3.0kW, Measured 0.0kW (Currently OFF)
         (app as any).targetDevices = [
-            { id: 'dev-E', name: 'Heater E', controllable: true, binaryCapabilityId: 'onoff', binaryControl: { on: false }, currentOn: false, priority: 50, expectedPowerKw: 3.0, currentDrawKw: 0.0, residualKw: { shed: 0.0 }},
+            withFixtureResidualKw({ id: 'dev-E', name: 'Heater E', controllable: true, binaryCapabilityId: 'onoff', binaryControl: { on: false }, currentOn: false, priority: 50, expectedPowerKw: 3.0, currentDrawKw: 0.0 }),
         ];
         // Headroom 2.0kW. Restore Margin 0.2, Hysteresis = Max(0.2, 0.2*2) = 0.4.
         // Need: expected(3.0) + hysteresis(0.4) = 3.4kW.
