@@ -45,6 +45,7 @@ export type DeferredObjectivePlanPreviewUnavailableReason =
   | 'invalid_session'
   | 'missing_capacity'
   | 'missing_device'
+  | 'device_unmanaged'
   | 'needs_observation'
   | 'missing_prices'
   | 'missing_reading'

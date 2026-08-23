@@ -1,4 +1,5 @@
 import type { PowerTrackerState } from '../../power/tracker';
+import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { BuildPriceHorizon } from './diagnosticsBridge';
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -117,15 +118,15 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
     nowMs: number,
   ) => void;
   getStallClassification?: (deviceId: string) => StallClassification;
-  // Multi-home v1 scope predicate (wiring-injected): `true` marks a task's
-  // device as belonging to a separate-meter sub-home, so THIS lane's
-  // diagnostics — the sole writers of plan-history/active-plan records and the
-  // drivers of the status buses — resolve to the dedicated
-  // `objective_device_in_sub_home` unknown code, and the priority-allocation
-  // roster excludes the task (a relocated reserved task must not shrink
-  // main tasks' shares). Optional: absent (tests) or with no sub-homes
-  // configured, behavior is identical.
-  isDeviceInSubHome?: (deviceId: string) => boolean;
+  // Durable device-exclusion resolver (wiring-injected): names why a task's
+  // device is out of the main planning lane (separate-meter sub-home, or not
+  // managed by PELS), so THIS lane's diagnostics — the sole writers of
+  // plan-history/active-plan records and the drivers of the status buses —
+  // resolve to that exclusion's dedicated unknown code, and the
+  // priority-allocation roster excludes the task (an excluded reserved task
+  // must not shrink the runnable tasks' shares). Optional: absent (tests), or
+  // answering `null`, behavior is identical.
+  resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
 };
 
 export class DeferredObjectiveLifecycleEmitter {
@@ -165,7 +166,7 @@ export class DeferredObjectiveLifecycleEmitter {
       hardCapKw: this.deps.getHardCapKw(),
       priorityAllocationTracker: this.priorityAllocationTracker,
       getBasePriorityForDevice: this.deps.getBasePriorityForDevice,
-      isDeviceInSubHome: this.deps.isDeviceInSubHome,
+      resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
       // Resolve the user-facing status to `satisfied` for parked/stalled devices
       // so the status chip, notifications, Flows (active-plan recorder) and the
       // postmortem all agree. The decoration/actuation path builds its own

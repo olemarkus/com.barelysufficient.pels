@@ -1,4 +1,5 @@
 import { resolvedTrajectoryStatus } from './diagnosticTypes';
+import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { BuildPriceHorizon } from './diagnosticsBridge';
@@ -34,12 +35,12 @@ export type DeferredObjectiveDecorationControllerDeps = {
   // daily-budget snapshot (threaded via `decorate(input)`) is now only the
   // budget overlay.
   buildPriceHorizon: BuildPriceHorizon;
-  // Multi-home v1 scope predicate (wiring-injected from the membership
-  // service): `true` = the task's device is in a separate-meter sub-home, so
-  // its diagnostic resolves to the dedicated `objective_device_in_sub_home`
-  // unknown code and the task never governs the device. Optional — absent
-  // (tests) or with no sub-homes configured, behavior is identical.
-  isDeviceInSubHome?: (deviceId: string) => boolean;
+  // Durable device-exclusion resolver (wiring-injected): names why the task's
+  // device is out of the main planning lane — a separate-meter sub-home, or the
+  // owner turning "Managed by PELS" off. The diagnostic resolves to that
+  // exclusion's dedicated unknown code and the task never governs the device.
+  // Optional — absent (tests), or answering `null`, behavior is identical.
+  resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
 };
 
 /**
@@ -107,7 +108,7 @@ export class DeferredObjectiveDecorationController {
         hardCapKw: this.deps.getHardCapKw(),
         priorityAllocationTracker: this.priorityAllocationTracker,
         getBasePriorityForDevice: this.deps.getBasePriorityForDevice,
-        isDeviceInSubHome: this.deps.isDeviceInSubHome,
+        resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
       });
     } finally {
       addPerfDuration('evaluate_deferred_objectives_ms', Date.now() - start);

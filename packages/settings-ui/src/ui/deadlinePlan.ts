@@ -9,6 +9,7 @@ import {
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,
+  isDeviceExclusionPaused,
   resolveEffectivePlanStatus,
   SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
   type DeadlinePendingContext,
@@ -521,15 +522,16 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
   if (ctxResult.kind === 'completed') return { status: 'completed', kind: ctxResult.objectiveKind };
   const ctx = ctxResult.context;
   const priceContext = resolvePendingPriceContext(params.prices);
-  // No persisted record yet, an explicitly pending record, OR a live
-  // separate-meter blocker → pending/unavailable hero. The diagnostic branch
-  // deliberately outranks a committed cached `latest` revision because that
-  // schedule stopped governing when the device left the main home.
+  // No persisted record yet, an explicitly pending record, OR a live exclusion
+  // blocker (separate meter, device no longer managed) → pending/unavailable
+  // hero. The exclusion branch deliberately outranks a committed cached
+  // `latest` revision because that schedule stopped governing the moment the
+  // device left the planned set.
   if (
     !ctx.activePlan
       || ctx.activePlan.pending
       || !ctx.activePlan.latest
-      || ctx.activePlan.diagnosticReasonCode === 'objective_device_in_sub_home'
+      || isDeviceExclusionPaused(ctx.activePlan)
   ) {
     return { status: 'pending', pending: buildPendingPayload(ctx, priceContext) };
   }

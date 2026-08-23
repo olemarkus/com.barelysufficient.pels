@@ -884,7 +884,7 @@ describe('PriorityAllocationTracker', () => {
     tracker.observe({
       devices: [stays],
       nowMs: NOW_MS + 30_000,
-      isDeviceInSubHome: (deviceId) => deviceId === 'relocated',
+      isDeviceExcluded: (deviceId) => deviceId === 'relocated',
     });
 
     expect(tracker.shouldReserveMissingDevice({

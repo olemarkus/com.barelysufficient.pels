@@ -68,6 +68,7 @@ const STATUS_TIER: Record<SmartTaskListStatusId, number> = {
   at_risk: 1,
   unavailable: 2,
   paused_unplugged: 2,
+  paused_unmanaged: 2,
   building_plan: 2,
   queued: 3,
   on_track: 3,
@@ -79,11 +80,22 @@ const STATUS_TONE: Record<SmartTaskListStatusId, SmartTasksWidgetTone> = {
   at_risk: 'warn',
   unavailable: 'warn',
   paused_unplugged: 'muted',
+  paused_unmanaged: 'muted',
   building_plan: 'muted',
   queued: 'ok',
   on_track: 'ok',
   satisfied: 'ok',
 };
+
+// A cached revision outlives the device leaving the planned set, whether by
+// meter reassignment (`unavailable`) or by the owner turning "Managed by PELS"
+// off. Those hours govern nothing, so no surface may expand into a schedule, an
+// estimate or a trajectory chart underneath a chip that says otherwise.
+// `paused_unplugged` is deliberately absent: that plan resumes on its own when
+// the car is plugged back in.
+const scheduleNoLongerGoverns = (statusId: SmartTaskListStatusId): boolean => (
+  statusId === 'unavailable' || statusId === 'paused_unmanaged'
+);
 
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
@@ -345,12 +357,12 @@ const resolveRowCopy = (
   // diagnosis ("why" + recourse) is what the distressed visitor came for, and
   // dropping the meta keeps the 220 px detail panel from pushing the recourse
   // below the fold (asymmetric-treatment thesis, notes/smart-task-ui).
-  const suppressPlanMeta = statusId === 'cannot_meet' || statusId === 'unavailable' || !plan.latest;
+  const suppressPlanMeta = statusId === 'cannot_meet' || scheduleNoLongerGoverns(statusId) || !plan.latest;
   // "Estimating" alongside a pending "why" line reads as two conflicting
   // blocked states; those reasons own the row. Routed through the shared
   // resolver so a record with no `pendingReason` is judged by the same rule the
   // copy above used — comparing the raw field here let the two disagree.
-  const suppressConfidence = statusId === 'unavailable'
+  const suppressConfidence = scheduleNoLongerGoverns(statusId)
     || (statusId === 'building_plan' && suppressesSmartTaskConfidenceChip(plan.pendingReason));
   return {
     planMetaLabel: suppressPlanMeta || plan.latest === null ? null : formatPlanMetaLabel(plan.latest),
@@ -390,7 +402,7 @@ const buildRow = (params: {
     finishLabel: finiteFinish !== null ? formatLocalHHMM(finiteFinish, timeZone) : null,
     statusLabel: SMART_TASK_WIDGET_STATUS_LABELS[statusId],
     tone: STATUS_TONE[statusId],
-    etaVerb: resolveSmartTaskWidgetEtaVerb(statusId === 'cannot_meet' || statusId === 'unavailable'),
+    etaVerb: resolveSmartTaskWidgetEtaVerb(statusId === 'cannot_meet' || scheduleNoLongerGoverns(statusId)),
     targetActionVerb: resolveSmartTaskWidgetTargetActionVerb(plan.objectiveKind),
     targetNoun: SMART_TASK_WIDGET_TARGET_NOUN,
     deadlineLongLabel: finiteFinish !== null ? formatDeadlineLong(finiteFinish, nowMs, timeZone) : null,
@@ -398,9 +410,9 @@ const buildRow = (params: {
     confidenceLabel: copy.confidenceLabel,
     whyLabel: copy.whyLabel,
     recourseHint: copy.recourseHint,
-    // A committed plan may still carry a cached trajectory after the device
-    // moved to another meter. Suppress it: those hours no longer govern.
-    chart: statusId === 'unavailable'
+    // A committed plan may still carry a cached trajectory after the device left
+    // the planned set. Suppress it: those hours no longer govern.
+    chart: scheduleNoLongerGoverns(statusId)
       ? null
       : toWidgetChart(resolveActivePlanChartData(plan, { nowMs, currentValue })),
   };

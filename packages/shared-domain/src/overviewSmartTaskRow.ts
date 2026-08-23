@@ -116,7 +116,10 @@ export const resolveOverviewSmartTaskRow = (params: {
     };
   }
 
-  const paused = pickSoonest(statuses, ['paused_unplugged']);
+  // Every paused member, not just the EV one: a task the owner has to act on is
+  // the whole point of this rung, and omitting one makes the row either vanish
+  // (single task) or claim "on track" over a task that is not (mixed cohort).
+  const paused = pickSoonest(statuses, ['paused_unplugged', 'paused_unmanaged']);
   if (paused !== null) {
     return {
       tone: 'warn',

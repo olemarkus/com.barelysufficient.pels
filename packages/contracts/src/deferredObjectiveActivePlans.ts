@@ -284,7 +284,11 @@ export type DeferredObjectiveActivePlanPendingReason =
   // The task's device now belongs to a separately-metered home. Smart tasks
   // are main-home-only in the current scope, so no revision can be produced
   // until the device returns to the main home.
-  | 'device_in_sub_home';
+  | 'device_in_sub_home'
+  // The owner turned "Managed by PELS" off for the task's device. PELS plans
+  // only managed devices, so the task pauses (it is never deleted) and resumes
+  // the moment the device is managed again.
+  | 'device_unmanaged';
 
 // Snapshot of the learned kWh-per-unit profile that produced the latest
 // revision. Lets the UI render provenance (learned value, accepted samples,
@@ -328,7 +332,12 @@ export type DeferredObjectiveActivePlanDiagnosticReason =
   // "Leave off until turned on again" is active on the task's device. Same
   // reason as the two above: the committed schedule keeps saying "On track"
   // until the next settle, so the live cause has to travel on the plan itself.
-  | 'objective_device_left_off';
+  | 'objective_device_left_off'
+  // The task's device is not managed by PELS. Same live-truth reason as
+  // `objective_device_in_sub_home`: a committed plan keeps advertising its
+  // cached schedule until the next settle, so the pause has to travel on the
+  // plan itself.
+  | 'objective_device_unmanaged';
 
 export type DeferredObjectiveActivePlanV1 = {
   deviceId: string;

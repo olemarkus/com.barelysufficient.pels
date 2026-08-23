@@ -35,7 +35,7 @@ import {
 import { createObjectivePriceHorizonBuilder } from './appInit/objectivePriceHorizon';
 import { requirePlanService } from './appInit/contextGuards';
 import {
-  isSmartTaskDeviceInMainHome,
+  resolveSmartTaskDeviceExclusion,
   mapObjectiveWriteRefusalReason,
   resolveSmartTaskHomeScope,
 } from './appInit/smartTaskHomeScope';
@@ -393,7 +393,7 @@ export class AppSmartTaskApi {
         this.ctx.operatingMode,
         id,
       ),
-      isDeviceInSubHome: (id) => !isSmartTaskDeviceInMainHome(this.ctx, id),
+      resolveDeviceExclusion: (id) => resolveSmartTaskDeviceExclusion(this.ctx, id),
       powerTracker: this.ctx.powerTracker,
       dailyBudgetSnapshot,
       buildPriceHorizon: createObjectivePriceHorizonBuilder(this.ctx),

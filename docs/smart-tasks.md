@@ -155,6 +155,7 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 | --- | --- |
 | **Building plan…** | A task is stored but PELS has not allocated hours yet — usually because prices through the ready-by time are not available. |
 | **Paused — unplugged** | EV only: the charging task is paused because the car is unplugged or the session ended. The plan resumes when the car is plugged back in. |
+| **Paused — not managed** | **Managed by PELS** is off for the device, so PELS is not planning anything for it. The task is kept, not deleted: turn **Managed by PELS** back on and the plan resumes on the next cycle. |
 | **On track** | PELS currently expects the task to reach the target — including when the plan is ready but the first scheduled hour is still in the future. |
 | **At risk** | PELS has a plan, but there is limited time or room left. |
 | **Cannot finish** | PELS does not currently see enough usable time or energy delivery before the ready-by time. |
@@ -176,9 +177,10 @@ The **Smart task ended** trigger fires once when a task run concludes, with an *
 
 Filter on the tag when only some outcomes should notify, for example `Outcome = missed` for a "did not reach target" alert. An **abandoned** outcome is usually not a planning failure — it means the situation changed before the task could complete.
 
-Two things that look like an abandonment but aren't:
+Three things that look like an abandonment but aren't:
 
 - A *briefly* unplugged EV shows the **Paused — unplugged** status and resumes when plugged back in. Only an unplug that lasts past the abandon grace window finalizes the task as **abandoned**.
+- Turning **Managed by PELS** off for a device does not delete its smart task. The task shows **Paused — not managed** and waits. Turn the switch back on and it resumes. If the ready-by time passes while it is still paused, the run ends as **missed** — or as **abandoned** when PELS never recorded a reading for the device during that run, which is the same rule every other unfinished run follows.
 - A new smart task that replaces an in-progress one produces an internal `replaced` outcome. The **Smart task ended** trigger is intentionally suppressed in that case so the new task isn't shadowed by an ended-trigger for the old one.
 
 ## If a Task Missed

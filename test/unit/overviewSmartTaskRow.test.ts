@@ -81,6 +81,24 @@ describe('resolveOverviewSmartTaskRow — priority ladder', () => {
     })?.variant).toBe('at_risk');
   });
 
+  it('an un-managed pause reaches the same rung — the row must not vanish or claim on track', () => {
+    expect(resolveOverviewSmartTaskRow({
+      statuses: [status({ statusId: 'paused_unmanaged', deviceName: 'Bathroom heater' })],
+      missStreaks: [],
+      formatTime,
+    })).toMatchObject({ variant: 'paused', tone: 'warn', statusText: 'Not managed' });
+    // Mixed cohort: the steady rung counts only genuinely on-track tasks, so a
+    // paused sibling must surface instead of being averaged away.
+    expect(resolveOverviewSmartTaskRow({
+      statuses: [
+        status({ statusId: 'on_track', deviceName: 'Boiler' }),
+        status({ statusId: 'paused_unmanaged', deviceName: 'Bathroom heater' }),
+      ],
+      missStreaks: [],
+      formatTime,
+    })).toMatchObject({ variant: 'paused', deviceName: 'Bathroom heater' });
+  });
+
   it('the miss rollup outranks at risk but NOT a live cannot-finish (still preventable)', () => {
     const miss = { deviceName: 'Water Heater', line: '3 of last 4 runs missed' };
     expect(resolveOverviewSmartTaskRow({

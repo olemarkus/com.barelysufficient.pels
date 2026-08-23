@@ -15,6 +15,16 @@ import type { DeferredObjectiveHorizonPlan } from './types';
 // (`buildPriceHorizonFromCombined` in lib/price) lives in the price layer.
 export type BuildPriceHorizon = (nowMs: number, deadlineAtMs: number) => PriceHorizonEntry[];
 
+/**
+ * Why a diagnostic carries no trajectory verdict.
+ *
+ * OWNED BY: this module, and it is the planner-facing contract — the codes are
+ * consumed as data (label tables, untrustworthy-progress sets, preview reasons),
+ * never parsed as prose. Callers may rely on each code naming ONE cause: a code
+ * that says "missing device" must not be reused for a device that is present
+ * but out of scope, which is why the exclusions carry their own arms. Governing
+ * note: `notes/deferred-load-objectives/README.md` § reason codes.
+ */
 export type DeferredObjectiveDiagnosticReasonCode =
   | DeferredObjectivePolicyHorizonUnavailableReason
   // The task's device belongs to a separate-meter sub-home (multi-home v1
@@ -25,6 +35,12 @@ export type DeferredObjectiveDiagnosticReasonCode =
   // and never plans: admission treats it as inactive, releasing the device to
   // normal control.
   | 'objective_device_in_sub_home'
+  // The owner turned "Managed by PELS" off for the task's device. Same shape as
+  // the sub-home code and for the same reason: the device is present, it is out
+  // of the planned set, and `objective_missing_device` would be a lie. The task
+  // pauses rather than ending — nothing is deleted, and the first cycle after
+  // the device is managed again plans it normally.
+  | 'objective_device_unmanaged'
   | 'objective_invalid_deadline'
   | 'objective_invalid_session'
   | 'objective_missing_capacity'

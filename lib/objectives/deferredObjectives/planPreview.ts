@@ -1,6 +1,7 @@
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { PowerTrackerState } from '../../power/tracker';
+import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
 import type {
   DeferredObjectivePlanPreviewCandidate,
   DeferredObjectivePlanPreviewEstimate,
@@ -48,7 +49,7 @@ export type PreviewDeferredObjectivePlanParams = {
   settings?: DeferredObjectiveSettingsV1;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   getBasePriorityForDevice?: (deviceId: string) => unknown;
-  isDeviceInSubHome?: (deviceId: string) => boolean;
+  resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
   // The price-RATE label from the price store (e.g. "øre/kWh", "NOK",
   // "price units"). It is converted to a total-amount money unit before being
   // attached to the (total) `costEstimate`, so a UI never renders a total as a
@@ -91,6 +92,11 @@ export const previewDeferredObjectivePlan = (
     // allocation — this is deliberately the fresh-optimizer view.
     activePlans: null,
     hardCapKw: params.hardCapKw,
+    // The exclusion travels down BOTH paths. Without it here, a preview taken
+    // without the coordinated inputs (no `settings`/`devices`) would project a
+    // rosy schedule for a device the create lane then refuses, and the two
+    // answers for one device would disagree on whether it can run at all.
+    exclusion: params.resolveDeviceExclusion?.(params.deviceId) ?? undefined,
   });
   const settings = params.settings;
   const coordinated = settings && params.devices
@@ -112,7 +118,7 @@ export const previewDeferredObjectivePlan = (
       activePlans: params.activePlans ?? null,
       hardCapKw: params.hardCapKw,
       getBasePriorityForDevice: params.getBasePriorityForDevice,
-      isDeviceInSubHome: params.isDeviceInSubHome,
+      resolveDeviceExclusion: params.resolveDeviceExclusion,
       forceFreshDeviceId: params.deviceId,
     }).find((diagnostic) => diagnostic.deviceId === params.deviceId)
     : undefined;
@@ -329,6 +335,7 @@ const resolvePreviewUnavailableReason = (
   if (reasonCode === 'objective_missing_capacity' || reasonCode === 'objective_missing_charge_rate') {
     return 'missing_capacity';
   }
+  if (reasonCode === 'objective_device_unmanaged') return 'device_unmanaged';
   if (reasonCode === 'objective_missing_device') return 'missing_device';
   if (reasonCode === 'objective_missing_price_horizon') return 'missing_prices';
   if (reasonCode === 'objective_price_feature_disabled') return 'price_feature_disabled';

@@ -11,6 +11,7 @@
     queued: "On track",
     unavailable: "Unavailable",
     paused_unplugged: "Paused \u2014 unplugged",
+    paused_unmanaged: "Paused \u2014 not managed",
     on_track: "On track",
     at_risk: "At risk",
     cannot_meet: "Cannot finish",
@@ -18,8 +19,11 @@
   };
   var SMART_TASK_WIDGET_STATUS_LABELS = {
     ...SMART_TASK_LIST_STATUS_LABELS,
-    paused_unplugged: "Unplugged"
+    paused_unplugged: "Unplugged",
+    paused_unmanaged: "Not managed"
   };
+  var SMART_TASK_DEVICE_UNMANAGED_WHY = "PELS isn\u2019t managing this device.";
+  var SMART_TASK_DEVICE_UNMANAGED_RECOURSE = "Turn on Managed by PELS in Setup to resume this task.";
   var SMART_TASK_WIDGET_EMPTY_SUBTITLE = "No active smart tasks";
   var SMART_TASK_WIDGET_LOADING = "Loading\u2026";
   var SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE = "Could not load. Reopen the dashboard.";
@@ -136,6 +140,7 @@
     invalid_session: "Can\u2019t preview this yet \u2014 plug the EV in to start.",
     missing_capacity: "Can\u2019t preview this yet \u2014 PELS needs power readings from this device.",
     missing_device: "Can\u2019t preview this yet \u2014 PELS can\u2019t find this device.",
+    device_unmanaged: "Can\u2019t preview this yet \u2014 turn \u201CManaged by PELS\u201D on for this device.",
     needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
     missing_prices: "Can\u2019t preview this yet \u2014 prices through this window are not available yet.",
     missing_reading: "Can\u2019t preview this yet \u2014 PELS needs a current device reading.",
@@ -146,6 +151,7 @@
   };
   var resolveBuildingPlanChipTone = () => "info";
   var resolvePausedUnpluggedChipTone = () => "warn";
+  var resolvePausedUnmanagedChipTone = () => "warn";
   var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
     building_plan: resolveBuildingPlanChipTone(),
     // Same label AND tone as `on_track` — a queued plan that is allocated and
@@ -153,6 +159,7 @@
     queued: "ok",
     unavailable: "warn",
     paused_unplugged: resolvePausedUnpluggedChipTone(),
+    paused_unmanaged: resolvePausedUnmanagedChipTone(),
     on_track: "ok",
     at_risk: "warn",
     cannot_meet: "alert",
@@ -170,8 +177,9 @@
     // full label; this is the same sanctioned shared-domain string, not a new
     // variant.
     paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
-    // Compressed widget label ('Not charging yet') for the same double-em-dash
-    // reason as paused_unplugged — the full chip label carries its own em-dash.
+    // Compressed widget label ('Not managed') for the same double-em-dash reason
+    // as paused_unplugged — the full chip label carries its own em-dash.
+    paused_unmanaged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unmanaged,
     on_track: null,
     at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
     cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
@@ -223,6 +231,16 @@
     body: SMART_TASK_SUB_HOME_UNAVAILABLE,
     headlineReason: null,
     recourse: null
+  });
+  var deviceUnmanagedResolver = (ctx) => ({
+    // The chip directly above already says "Paused — not managed", so the four
+    // hero slots carry four distinct facts: state (chip), what is paused
+    // (headline), why (headlineReason), and what to do (body). Repeating the
+    // chip here — or the why-sentence in the body — spends a slot on nothing.
+    headline: "Smart task paused",
+    body: SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
+    headlineReason: SMART_TASK_DEVICE_UNMANAGED_WHY,
+    recourse: overviewDeviceRecourse(ctx.deviceId)
   });
   var notYetPlannedCopy = (kindNoun) => (() => ({
     headline: "Choosing the cheapest hours",
@@ -277,6 +295,8 @@
         // and falls back to the generic on-track copy if the resolver ever
         // hands a stale value through.
         paused_unplugged: "On track",
+        // Reachable on any kind: the owner can stop managing a heater too.
+        paused_unmanaged: SMART_TASK_LIST_STATUS_LABELS.paused_unmanaged,
         // Thermal devices aren't chargers; unreachable, same fallback as above.
         ok: "On track"
       },
@@ -308,6 +328,7 @@
         // Thermal devices aren't chargers; unreachable here, kept as a safety net
         // so a future diagnostic can't leak EV-specific copy onto a heater.
         device_in_sub_home: separateMeterUnavailableResolver,
+        device_unmanaged: deviceUnmanagedResolver,
         // Cold-start `missing_capacity` collapses to a single user-facing line —
         // headline + metaLine combined parse as `PENDING_REASON_MISSING_CAPACITY_COPY`
         // ("Learning energy use — needs power readings from this device."). Earlier
@@ -371,6 +392,7 @@
         queued: "On track",
         unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
         paused_unplugged: "Paused \u2014 unplugged",
+        paused_unmanaged: SMART_TASK_LIST_STATUS_LABELS.paused_unmanaged,
         ok: "On track"
       },
       atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
@@ -409,7 +431,8 @@
         // resume" or send the owner to check hardware PELS is mid-way through
         // starting. What is true is narrower: no power is flowing yet, so the SoC
         missing_capacity: EV_DEVICE_DATA_MISSING,
-        device_in_sub_home: separateMeterUnavailableResolver
+        device_in_sub_home: separateMeterUnavailableResolver,
+        device_unmanaged: deviceUnmanagedResolver
       },
       unavailableByReason: {
         no_current_reading: {

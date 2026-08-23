@@ -40,7 +40,7 @@ import { createBinaryCommandReachability } from '../../lib/plan/admission/binary
 // barrel would create a module cycle.
 import { buildHomePlanDevices } from './planDevicePrePass';
 import { createObjectivePriceHorizonBuilder } from '../appInit/objectivePriceHorizon';
-import { isSmartTaskDeviceInMainHome } from '../appInit/smartTaskHomeScope';
+import { resolveSmartTaskDeviceExclusion } from '../appInit/smartTaskHomeScope';
 import {
   createTrustedDeferredObjectiveSettingsReader,
   DeferredObjectiveDecorationController,
@@ -210,12 +210,14 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     // Allocation-horizon price source, resolved from the price layer; shared
     // single source of truth so the objectives subsystem stays free of `lib/price`.
     buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),
-    // Multi-home v1: a sub-home device's task resolves to the dedicated
-    // `objective_device_in_sub_home` unknown diagnostic (never planned) instead
-    // of masquerading as a missing device. Membership absent (boot window /
-    // bare test contexts) or no sub-homes configured → false for every device,
-    // preserving exact single-home behavior.
-    isDeviceInSubHome: (deviceId) => !isSmartTaskDeviceInMainHome(ctx, deviceId),
+    // A device out of the main planning lane resolves to its own dedicated
+    // unknown diagnostic (never planned) instead of masquerading as a missing
+    // device: `objective_device_in_sub_home` for multi-home v1 scope,
+    // `objective_device_unmanaged` when the owner turned "Managed by PELS" off.
+    // Membership absent (boot window / bare test contexts) with no sub-homes and
+    // no explicit opt-out → `null` for every device, preserving exact
+    // single-home behavior.
+    resolveDeviceExclusion: (deviceId) => resolveSmartTaskDeviceExclusion(ctx, deviceId),
   });
   const binaryCommandReachability = createBinaryCommandReachability({
     requestRebuild: () => {

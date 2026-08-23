@@ -13,7 +13,7 @@
 //   on-track  : `on_track`, `queued` (allocated plan, first hour ahead — its
 //               chip reads `On track`, so the hero must agree)
 //   pending   : `building_plan`
-//   paused    : `paused_unplugged`
+//   paused    : `paused_unplugged`, `paused_unmanaged`
 //   at-risk   : `at_risk`, `cannot_meet`
 //   satisfied : `satisfied`
 //
@@ -46,10 +46,10 @@
 //   - at-risk branch: soonest `cannot_meet` (under alert tone) or soonest
 //     `at_risk`, with the status reason after the em-dash;
 //   - paused branch: soonest paused card (`paused_unplugged` /
-//     `paused_not_resumable`), using the "due HH:MM — <reason>." framing
-//     (car unplugged / charging won't resume) so the subline never claims
-//     "ready by HH:MM" for a smart task the device can't deliver until the
-//     user acts on the charger;
+//     `paused_unmanaged`), using the "due HH:MM — <reason>." framing
+//     (car unplugged / not managed by PELS) so the subline never claims
+//     "ready by HH:MM" for a smart task PELS cannot deliver until the user
+//     acts;
 //   - every other non-at-risk / non-paused branch: soonest card overall,
 //     using the "ready by HH:MM[, verb from HH:MM]" framing.
 //
@@ -162,9 +162,10 @@ export const DEADLINES_LIST_BETWEEN_RUNS_BODY
 // is a type error here until the classification is updated — no silent
 // "everything not in the at-risk set is on-track" lump can grow back.
 //
-// `paused_unplugged` lives in its own `paused` bucket (not `pending`,
+// Both paused members live in their own `paused` bucket (not `pending`,
 // not `at_risk`) because the smart task is waiting for a physical action
-// (plug back in) — not failing to deliver a plan, but also not merely
+// (plug the car back in, or manage the device again) — not failing to deliver
+// a plan, but also not merely
 // "planning". Treating it as `pending` would render a healthy `tone: 'good'`
 // hero ("Planning 1 deadline.") for a card that needs user attention; the
 // at-risk bucket is reserved for "the plan exists and will miss". The
@@ -174,7 +175,7 @@ export const DEADLINES_LIST_BETWEEN_RUNS_BODY
 // (`resolveSmartTaskListReadyByTone` returns `warn` for the same state).
 type StatusBucket = 'on_track' | 'pending' | 'unavailable' | 'paused' | 'at_risk' | 'satisfied';
 
-const STATUS_BUCKET: Record<SmartTaskListStatusId, StatusBucket> = {
+const STATUS_BUCKET = {
   on_track: 'on_track',
   building_plan: 'pending',
   // `queued` (allocated plan, first hour ahead) is the on-track bucket: its
@@ -184,10 +185,11 @@ const STATUS_BUCKET: Record<SmartTaskListStatusId, StatusBucket> = {
   queued: 'on_track',
   unavailable: 'unavailable',
   paused_unplugged: 'paused',
+  paused_unmanaged: 'paused',
   at_risk: 'at_risk',
   cannot_meet: 'at_risk',
   satisfied: 'satisfied',
-};
+} as const satisfies Record<SmartTaskListStatusId, StatusBucket>;
 
 const isBucket = (bucket: StatusBucket) => (card: DeadlinesListHeroCard): boolean => (
   STATUS_BUCKET[card.statusId] === bucket
@@ -269,13 +271,29 @@ const buildSoonestSubline = (card: DeadlinesListHeroCard, formatTime: (ms: numbe
 // recognisable cadence. The reason clause names the ACTUAL recovery.
 // Producer-side resolution (this is the hero copy producer); the view never
 // branches on status.
-const PAUSED_SUBLINE_REASON: Partial<Record<SmartTaskListStatusId, string>> = {
+// DERIVED from the bucket table above, not hand-listed: assigning a new status
+// id to the `paused` bucket is then a type error here until it brings its own
+// recovery clause, instead of quietly inheriting another state's cause.
+type PausedStatusId = {
+  [K in keyof typeof STATUS_BUCKET]: (typeof STATUS_BUCKET)[K] extends 'paused' ? K : never
+}[keyof typeof STATUS_BUCKET];
+
+const PAUSED_SUBLINE_REASON: Record<PausedStatusId, string> = {
   paused_unplugged: 'car unplugged',
+  paused_unmanaged: 'not managed by PELS',
 };
+
+const isPausedStatusId = (statusId: SmartTaskListStatusId): statusId is PausedStatusId => (
+  STATUS_BUCKET[statusId] === 'paused'
+);
 
 const buildPausedSubline = (card: DeadlinesListHeroCard, formatTime: (ms: number) => string): string => {
   const deviceName = card.deviceName.trim() || KIND_NAME_FALLBACK[card.kind];
-  const reason = PAUSED_SUBLINE_REASON[card.statusId] ?? 'car unplugged';
+  // Only the paused bucket reaches this helper (`isBucket('paused')` gates the
+  // branch), and every member of that bucket has a clause by construction.
+  const reason = isPausedStatusId(card.statusId)
+    ? PAUSED_SUBLINE_REASON[card.statusId]
+    : PAUSED_SUBLINE_REASON.paused_unplugged;
   return `${deviceName} due ${formatTime(card.deadlineAtMs)} — ${reason}.`;
 };
 
@@ -375,13 +393,13 @@ export const resolveDeadlinesListHero = (params: {
   }
 
   // No at-risk cards but at least one paused card — paused outranks the
-  // healthy-tone branches because an unplugged EV needs the user to act
+  // healthy-tone branches because a paused task needs the user to act
   // before the plan can deliver. Mixed cohorts use the `N of M` framing
   // (mirrors the at-risk branch's mixed framing) so a single paused card
   // alongside healthy siblings reads "1 of 3 deadlines paused." rather than
   // a misleading "Planning 3 deadlines." The subline names the soonest
-  // paused card with the "due HH:MM — car unplugged." framing so it never
-  // claims a delivery the device can't make.
+  // paused card with the "due HH:MM — <cause>." framing so it never claims a
+  // delivery the device can't make.
   if (pausedCards.length > 0) {
     const subjectCard = pausedCards[0];
     const headline = pausedCards.length < cards.length

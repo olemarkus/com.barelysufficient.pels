@@ -3,7 +3,7 @@ import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 import {
-  isSmartTaskDeviceInMainHome,
+  resolveSmartTaskDeviceExclusion,
   resolveSmartTaskHomeScope,
 } from './smartTaskHomeScope';
 import {
@@ -125,6 +125,18 @@ const handleDeferredTerminalFallback = (
     abandonLifecycleFallback(ctx, deviceId);
     return;
   }
+  // "Managed by PELS" is off. The task has been PAUSED all along (its diagnostic
+  // reads `objective_device_unmanaged`), and a pause that still writes a
+  // terminal command at the deadline is not a pause — it is PELS driving a
+  // device the owner took away from it. End it exactly as a relocated device
+  // ends: abandon the fallback, disarm, write nothing. This must come before the
+  // capacity-control check below, which is ALSO false for an un-managed device
+  // and would fall through to `convergeLifecycleFallback` and actuate.
+  if (resolveSmartTaskDeviceExclusion(ctx, deviceId) === 'unmanaged') {
+    abandonLifecycleFallback(ctx, deviceId);
+    disarm();
+    return;
+  }
   // Cap-on → the planner owns the device on its normal lane. Only the deadline
   // ends the task; early satisfaction must never disable it.
   if (ctx.isCapacityControlEnabled(deviceId)) {
@@ -224,10 +236,11 @@ export function createDeferredObjectiveLifecycleEmitter(
     getBasePriorityForDevice: (deviceId) => (
       resolveConfiguredDevicePriority(ctx.capacityPriorities, ctx.operatingMode, deviceId)
     ),
-    // Multi-home v1: a relocated task's lifecycle diagnostics carry the
-    // dedicated `objective_device_in_sub_home` code, and the eligible-count
-    // denominator excludes it (see the dep's doc on the emitter).
-    isDeviceInSubHome: (deviceId) => !isSmartTaskDeviceInMainHome(ctx, deviceId),
+    // An excluded task's lifecycle diagnostics carry the dedicated code for
+    // their exclusion (relocated → `objective_device_in_sub_home`, unmanaged →
+    // `objective_device_unmanaged`), and the eligible-count denominator
+    // excludes it (see the dep's doc on the emitter).
+    resolveDeviceExclusion: (deviceId) => resolveSmartTaskDeviceExclusion(ctx, deviceId),
     getDeferredObjectiveDebugStructured: () => (
       ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives')
     ),
