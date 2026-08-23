@@ -21,6 +21,10 @@ import type {
   DeferredObjectivePlannedBucket,
 } from '../../lib/objectives/deferredObjectives';
 import { buildDeferredObjectiveDebugPayload } from '../../lib/objectives/deferredObjectives/diagnosticDebugPayload';
+import {
+  emitDeferredObjectiveDiagnostics,
+  type DeferredObjectiveUnknownAnnounce,
+} from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives/planHistory';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -2459,7 +2463,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({ objectiveKind: 'ev_soc' });
-    expect(diagnostic?.reasonCode).not.toBe('objective_charger_not_resumable');
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBeDefined();
   });
 
@@ -2887,6 +2890,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Mill v2 Panel Heater',
       commandableNow: true,
+      objectiveSessionInactive: false,
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
@@ -2978,6 +2982,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       id: 'heater-1',
       name: 'Idle Panel Heater',
       commandableNow: true,
+      objectiveSessionInactive: false,
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
@@ -3052,6 +3057,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Powerless Thermostat',
       commandableNow: true,
+      objectiveSessionInactive: false,
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
@@ -3117,6 +3123,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Water heater with no live ladder',
       commandableNow: true,
+      objectiveSessionInactive: false,
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
@@ -3759,6 +3766,31 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     expect(diagnostic?.externalOffHoldActive).toBe(true);
   });
 
+  // Flagged independently by the runtime-reality lens and by Codex on #2182.
+  // An earlier revision suppressed this on `!isCommandableNow`, which is false
+  // for a merely unavailable device — so a thermostat the owner had turned off
+  // outside PELS would drop `externalOffHoldActive` on one flaky SDK read,
+  // `resolveDiagnosticReasonCode` would clear the persisted
+  // `objective_device_left_off`, and every surface would revert to a cached
+  // "On track" while the device was still held off. The suppression is scoped to
+  // the SESSION question, which is `false` for every non-EV device.
+  it('keeps the external-off hold on a non-EV device that is merely unavailable', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      // `commandableNow: false` mirrors what the producer emits for an
+      // unavailable device — the exact state the earlier gate tripped on.
+      devices: [buildTemperatureDevice({
+        externalOffHoldActive: true, available: false, commandableNow: false,
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
+      powerTracker: buildTemperaturePowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
+      priceOptimizationEnabled: true,
+    });
+    expect(diagnostic?.externalOffHoldActive).toBe(true);
+  });
+
   it('keeps the unplugged reason for a held charger that is also unplugged', () => {
     // "Paused — unplugged" is the more immediate thing for the user to act on;
     // the hold is still stored and reappears once the car is reconnected.
@@ -3767,6 +3799,37 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
       devices: [buildDevice({ externalOffHoldActive: true, evChargingState: 'plugged_out' })],
     });
     expect(diagnostic?.externalOffHoldActive).toBeUndefined();
+  });
+
+  // Regression, prod 2026-08-19/20: an EV smart task on a charger with no car
+  // plugged in reported `objective_progress_stale` — a READING problem — for two
+  // full 10-hour task windows, 2354 log lines, and finalized `abandoned`. The
+  // precondition test that should have caught it read `device.evChargingState`,
+  // which `toPlanDevice` strips, so it was dead code: `objective_invalid_session`
+  // had never once been emitted in production. The fixture keeps a KNOWN
+  // state-of-charge on purpose — the reading was fine, the session was not, and
+  // reading availability must not be what answers this question.
+  it('reports an unplugged charger as no session, not a stale reading', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      ...onTrackParams(),
+      devices: [buildDevice({ evChargingState: 'plugged_out' })],
+    });
+    expect(diagnostic?.reasonCode).toBe('objective_invalid_session');
+    expect(diagnostic?.currentPercent).toBeNull();
+    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBeUndefined();
+  });
+
+  // The session question is asked of the plug-state alone, NOT of
+  // `commandableNow` — which also goes false for `available === false` and for
+  // PELS's own binary-command retry back-off. Folding those in would render
+  // "EV is unplugged — plug in to resume." at an owner whose car is plugged in
+  // and charging, and would drop the committed plan on one flaky SDK read.
+  it('does not call an unavailable charger unplugged', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      ...onTrackParams(),
+      devices: [buildDevice({ available: false })],
+    });
+    expect(diagnostic?.reasonCode).not.toBe('objective_invalid_session');
   });
 
   it('leaves the trajectory status untouched when no stall reader is supplied', () => {
@@ -3821,5 +3884,117 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
       getStallClassification: () => 'near_target_idle',
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
+  });
+});
+
+// One prod night emitted 1199 identical `deferred_objective_unknown` lines for a
+// single charger whose car was not plugged in. A cause with no trajectory is
+// worth stating once; a resolved trajectory carries a live horizon and is new
+// information every tick.
+describe('emitDeferredObjectiveDiagnostics — a stuck cause announces once', () => {
+  // 30 s apart, mirroring the lifecycle clock.
+  const TICK_MS = 30_000;
+  const emitAll = (
+    diagnostics: DeferredObjectiveDiagnostic[],
+    ticks: number,
+  ): Record<string, unknown>[] => {
+    const emitted: Record<string, unknown>[] = [];
+    let announced: ReadonlyMap<string, DeferredObjectiveUnknownAnnounce> = new Map();
+    for (let tick = 0; tick < ticks; tick += 1) {
+      announced = emitDeferredObjectiveDiagnostics({
+        diagnostics,
+        debugStructured: (payload) => { emitted.push(payload); },
+        nowMs: NOW_MS + tick * TICK_MS,
+        announcedUnknownCauses: announced,
+      });
+    }
+    return emitted;
+  };
+
+  const unpluggedDiagnostics = (): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveDiagnostics({
+    nowMs: NOW_MS,
+    timeZone: 'UTC',
+    devices: [buildDevice({ evChargingState: 'plugged_out' })],
+    settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
+    powerTracker: buildPowerTracker(),
+    dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+    priceOptimizationEnabled: true,
+  });
+
+  it('emits one unknown payload across many ticks of the same cause', () => {
+    const diagnostics = unpluggedDiagnostics();
+    expect(diagnostics[0]?.reasonCode).toBe('objective_invalid_session');
+
+    const emitted = emitAll(diagnostics, 20);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]?.event).toBe('deferred_objective_unknown');
+    expect(emitted[0]?.reasonCode).toBe('objective_invalid_session');
+  });
+
+  it('re-announces when the cause changes', () => {
+    let announced: ReadonlyMap<string, DeferredObjectiveUnknownAnnounce> = new Map();
+    const emitted: Record<string, unknown>[] = [];
+    const collect = (payload: Record<string, unknown>): void => { emitted.push(payload); };
+
+    const unplugged = unpluggedDiagnostics();
+    announced = emitDeferredObjectiveDiagnostics({
+      diagnostics: unplugged, debugStructured: collect, nowMs: NOW_MS, announcedUnknownCauses: announced,
+    });
+    const stale = unplugged.map((diagnostic) => ({
+      ...diagnostic,
+      trajectory: { kind: 'unavailable' as const, reasonCode: 'objective_progress_stale' as const },
+    }));
+    emitDeferredObjectiveDiagnostics({
+      diagnostics: stale, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announcedUnknownCauses: announced,
+    });
+
+    expect(emitted).toHaveLength(2);
+  });
+
+  // The unavailable payload is not constant: the external-off hold moves
+  // independently of the cause, so suppressing on the cause alone would hide the
+  // owner turning the device off outside PELS behind an unchanged reason code.
+  it('re-announces when a payload bit moves under an unchanged cause', () => {
+    let announced: ReadonlyMap<string, DeferredObjectiveUnknownAnnounce> = new Map();
+    const emitted: Record<string, unknown>[] = [];
+    const collect = (payload: Record<string, unknown>): void => { emitted.push(payload); };
+
+    const base = unpluggedDiagnostics();
+    announced = emitDeferredObjectiveDiagnostics({
+      diagnostics: base, debugStructured: collect, nowMs: NOW_MS, announcedUnknownCauses: announced,
+    });
+    const held = base.map((diagnostic) => ({ ...diagnostic, externalOffHoldActive: true as const }));
+    emitDeferredObjectiveDiagnostics({
+      diagnostics: held, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announcedUnknownCauses: announced,
+    });
+
+    expect(emitted).toHaveLength(2);
+    expect(emitted[1]?.externalOffHoldActive).toBe(true);
+  });
+
+  // Without this an all-night stall is one line at 22:00, and an operator cannot
+  // tell "still stuck at 06:00" from "silently resolved".
+  it('re-announces hourly with the suppressed-tick count', () => {
+    const diagnostics = unpluggedDiagnostics();
+    // 30 s ticks across just over two hours.
+    const emitted = emitAll(diagnostics, 245);
+    expect(emitted).toHaveLength(3);
+    expect(emitted[0]?.suppressedTicks).toBeUndefined();
+    expect(emitted[1]?.suppressedTicks).toBe(119);
+    expect(emitted[2]?.suppressedTicks).toBe(119);
+  });
+
+  it('never suppresses a resolved trajectory — its horizon is new each tick', () => {
+    const diagnostics = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+    expect(resolvedTrajectoryStatus(diagnostics[0]!)).toBe('on_track');
+    expect(emitAll(diagnostics, 5)).toHaveLength(5);
   });
 });

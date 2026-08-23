@@ -15,7 +15,6 @@ import { describe, expect, it } from 'vitest';
 import {
   isCanSetControl,
   isCommandableNow,
-  isEvPhysicallyUnplugged,
   resolveCanSetControl,
 } from '../../lib/device/deviceActionProjection';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
@@ -206,22 +205,5 @@ describe('isEvSessionInactive — shared plug-state predicate', () => {
     expect(isEvSessionInactive('plugged_in_paused')).toBe(false);
     expect(isEvSessionInactive('plugged_in')).toBe(false);
 
-  });
-
-  it('composes the isEvDevice guard with the producer-resolved session bit', () => {
-    // The bare plug-state predicate does NOT gate on EV-ness; isEvPhysicallyUnplugged
-    // narrows through `isEvObserved` first, so a device carrying a stray plug-state
-    // without an EV identity is never an "EV physical block".
-    expect(isEvSessionInactive('plugged_out')).toBe(true);
-    // Materialized session-inactive but NOT an EV device → not a physical block.
-    expect(isEvPhysicallyUnplugged({ evChargingState: 'plugged_out' })).toBe(false);
-    expect(isEvPhysicallyUnplugged({
-      deviceClass: 'evcharger',
-      evChargingState: 'plugged_out',
-    })).toBe(true);
-    expect(isEvPhysicallyUnplugged({
-      deviceClass: 'evcharger',
-      evChargingState: 'plugged_in_charging',
-    })).toBe(false);
   });
 });

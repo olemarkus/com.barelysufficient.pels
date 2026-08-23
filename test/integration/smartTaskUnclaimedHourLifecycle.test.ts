@@ -95,6 +95,7 @@ const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinar
   id: DEVICE_ID,
   name: 'Connected 300',
   commandableNow: true,
+  objectiveSessionInactive: false,
   boostSupported: false,
   boostRequested: false,
   hasStandingDemand: true,

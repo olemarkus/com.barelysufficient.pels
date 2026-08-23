@@ -184,9 +184,6 @@ const STATUS_BUCKET: Record<SmartTaskListStatusId, StatusBucket> = {
   queued: 'on_track',
   unavailable: 'unavailable',
   paused_unplugged: 'paused',
-  // Same `paused` bucket as unplugged: connected but charging can't resume is a
-  // "needs user attention" state, not a healthy/planning one.
-  paused_not_resumable: 'paused',
   at_risk: 'at_risk',
   cannot_meet: 'at_risk',
   satisfied: 'satisfied',
@@ -267,16 +264,13 @@ const buildSoonestSubline = (card: DeadlinesListHeroCard, formatTime: (ms: numbe
     : `${readyByPart}.`;
 };
 
-// Paused-branch subline: "Tesla due 06:30 — car unplugged." / "… — charging
-// won't resume.". Mirrors the at-risk subline shape ("due HH:MM — reason.") so
-// the warn-tone branches share a recognisable cadence. Both paused statuses
-// reach this helper (`paused_unplugged` + `paused_not_resumable`); the reason
-// clause names the ACTUAL recovery so the hero never tells a connected-charger
-// owner to replug. Producer-side resolution (this is the hero copy producer);
-// the view never branches on status.
+// Paused-branch subline: "Tesla due 06:30 — car unplugged." Mirrors the at-risk
+// subline shape ("due HH:MM — reason.") so the warn-tone branches share a
+// recognisable cadence. The reason clause names the ACTUAL recovery.
+// Producer-side resolution (this is the hero copy producer); the view never
+// branches on status.
 const PAUSED_SUBLINE_REASON: Partial<Record<SmartTaskListStatusId, string>> = {
   paused_unplugged: 'car unplugged',
-  paused_not_resumable: 'not charging yet',
 };
 
 const buildPausedSubline = (card: DeadlinesListHeroCard, formatTime: (ms: number) => string): string => {

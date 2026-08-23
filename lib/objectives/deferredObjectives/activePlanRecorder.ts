@@ -345,12 +345,12 @@ export class DeferredObjectiveActivePlanRecorder {
   // Keep a committed plan's `diagnosticReasonCode` in lock-step with the live
   // diagnostic on EVERY cycle — not only when a replan is due. The list chip and
   // device-card line read this field to surface "Paused — unplugged" /
-  // "Can't resume" even on a plan with a cached `latest` revision. Without a
+  // even on a plan with a cached `latest` revision. Without a
   // per-cycle refresh, a charger that RECOVERS (re-plugged, or resume succeeds)
   // while no replan is due — the `isReplanDueThisCycle` gate early-returns most
-  // cycles — would keep advertising the stale `objective_invalid_session` /
-  // `objective_charger_not_resumable` code until the next `:58` replan, so the
-  // chip lies "Can't resume" on a healthy charger. `ensurePendingRecord` already
+  // cycles — would keep advertising the stale `objective_invalid_session`
+  // code until the next `:58` replan, so the chip lies "Paused — unplugged" on
+  // a healthy charger. `ensurePendingRecord` already
   // refreshes this on the no-`horizonPlan` path; this mirrors it on the
   // committed-plan path. Returns the (possibly updated) record so the caller
   // feeds the corrected code into `maybeWriteReplanRevision`'s `...current`

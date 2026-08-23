@@ -18,7 +18,6 @@
 import type {
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
-  EvObservedProbe,
   SteppedLoadProfile,
   TargetCapabilitySnapshot,
   TemperatureBoostConfig,
@@ -29,8 +28,6 @@ import {
 } from '../utils/observationTrust';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
-import { isEvSessionInactive } from '../../packages/shared-domain/src/evPlugState';
-import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 // Commandability resolution lives in shared-domain so the executor can import it
@@ -314,22 +311,6 @@ type CanSetControlConsumerInput = CanSetControlResolveInput & {
 export function isCanSetControl(dev: CanSetControlConsumerInput): boolean {
   if (dev.canSetControlResolved !== undefined) return dev.canSetControlResolved;
   return resolveCanSetControl(dev);
-}
-
-/**
- * Detects the specific "EV physical block" sub-case that the consumer at
- * `planOffStateReason.resolveEvPhysicalBlockInactiveReason` cares about:
- * the device is an EV charger and the plug is out or discharging. Other
- * not-commandable reasons (e.g. `available === false`) are not physical
- * EV blocks and stay outside this gate.
- */
-export function isEvPhysicallyUnplugged(
-  dev: { deviceClass?: string } & EvObservedProbe,
-): boolean {
-  // `isEvObserved` scopes the question to EV devices, so a non-EV device can
-  // never read as an EV block, and the plug-state it narrows to is the same one
-  // every other EV question is answered from.
-  return isEvObserved(dev) && isEvSessionInactive(dev.evChargingState);
 }
 
 // ---------------------------------------------------------------------------

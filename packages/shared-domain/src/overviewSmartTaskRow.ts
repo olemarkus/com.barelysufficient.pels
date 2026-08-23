@@ -116,7 +116,7 @@ export const resolveOverviewSmartTaskRow = (params: {
     };
   }
 
-  const paused = pickSoonest(statuses, ['paused_unplugged', 'paused_not_resumable']);
+  const paused = pickSoonest(statuses, ['paused_unplugged']);
   if (paused !== null) {
     return {
       tone: 'warn',

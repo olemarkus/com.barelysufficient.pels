@@ -25,7 +25,7 @@ export const asOutputDevice = (
 ): DevicePlan['devices'][number] => {
   const materialized = withMaterializedEvPlugState(loose);
   const {
-    binaryCapabilityId, evChargingState: _evChargingState, binaryControl, currentOn,
+    binaryCapabilityId, binaryControl, currentOn,
     // Plan-INPUT bits. `withMaterializedEvPlugState` stamps them for the input
     // builder; an output device carries none of them, and `confirmedNotDrawing`
     // in particular is the evidence `planTypes.ts` says must not travel onto the

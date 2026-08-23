@@ -49,8 +49,14 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
     const ctx = ctxAtFixedNow();
     const result = toPlanDevice(ctx, buildEvSnapshot({ evChargingState: 'plugged_out' }));
     expect(result.commandableNow).toBe(false);
-    expect(result.objectiveSessionInactive).toBe(true);
+    expect(result.commandabilityReason).toBe('charger_unplugged');
     expect(result).not.toHaveProperty('evChargingState');
+    // The raw plug-state is resolved into TWO distinct answers and then stripped:
+    // may-we-command it, and is-there-a-creditable-session. They are not
+    // interchangeable — `commandableNow` also goes false for an unavailable
+    // device and for PELS's own command back-off, neither of which says anything
+    // about the car.
+    expect(result.objectiveSessionInactive).toBe(true);
   });
 
   it('carries the semantic retry reason with a reachability veto', () => {

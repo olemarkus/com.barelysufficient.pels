@@ -17,7 +17,6 @@ export type BuildPriceHorizon = (nowMs: number, deadlineAtMs: number) => PriceHo
 
 export type DeferredObjectiveDiagnosticReasonCode =
   | DeferredObjectivePolicyHorizonUnavailableReason
-  | 'objective_charger_not_resumable'
   // The task's device belongs to a separate-meter sub-home (multi-home v1
   // scopes smart tasks to the main home). Dedicated code so an EXISTING task
   // whose device is later moved to a sub-home reads honestly, instead of the

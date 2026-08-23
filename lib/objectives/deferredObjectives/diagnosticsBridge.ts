@@ -2,15 +2,10 @@ import type { PowerTrackerState } from '../../power/tracker';
 import type {
   DeferredObjectiveEnergyResolution,
 } from './profileEnergyResolution';
-import { buildDeferredObjectiveDebugPayload } from './diagnosticDebugPayload';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
-import { getLogger } from '../../logging/logger';
-import type { StructuredDebugEmitter } from '../../logging/logger';
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import { isEvSessionInactive } from '../../../packages/shared-domain/src/evPlugState';
-import { isEvObserved } from '../../../packages/shared-domain/src/evObservedState';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { resolveObjectiveSteps } from './objectiveSteps';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
@@ -73,8 +68,12 @@ export type {
   DeferredObjectiveDiagnostic,
 } from './diagnosticTypes';
 export { progressCurrentValue } from './diagnosticFields';
-
-const logger = getLogger('plan/deferred-diag-bridge');
+// Emission lives in its own module (the announce rule pushed this file past the
+// 500-line cap); re-exported so callers keep a single bridge import surface.
+export {
+  emitDeferredObjectiveDiagnostics,
+  type DeferredObjectiveUnknownAnnounce,
+} from './diagnosticAnnounce';
 
 export const buildDeferredObjectiveDiagnostics = (params: {
   nowMs: number;
@@ -334,25 +333,18 @@ const resolveExternalOffReportedStatus = (
   device: ObjectiveDeviceInput | undefined,
 ): DeferredObjectiveDiagnostic => {
   if (device?.externalOffHoldActive !== true) return diagnostic;
-  // An EV that is also unplugged keeps its own, more immediate reason; the hold
-  // is still stored and reappears once the car is reconnected.
-  if (isEvObserved(device) && isEvSessionInactive(device.evChargingState)) return diagnostic;
+  // A charger with no creditable session keeps its own, more immediate reason;
+  // the hold is still stored and reappears once the car is reconnected. Asked of
+  // the producer-resolved boolean, not the plug-state — which this layer no
+  // longer receives (`toPlanDevice` strips it), so the EV-shaped test this
+  // replaced could never be true.
+  //
+  // Scoped to the session question on purpose. Widening it to `commandableNow`
+  // would drop the hold for ANY device that is momentarily unavailable or inside
+  // PELS's own command back-off — a data gap, and the docblock above is about
+  // exactly why a data gap must not clear this flag.
+  if (device.objectiveSessionInactive) return diagnostic;
   return { ...diagnostic, externalOffHoldActive: true };
-};
-
-export const emitDeferredObjectiveDiagnostics = (params: {
-  diagnostics: DeferredObjectiveDiagnostic[];
-  debugStructured?: StructuredDebugEmitter;
-}): void => {
-  const { diagnostics, debugStructured } = params;
-  for (const diagnostic of diagnostics) {
-    const payload = buildDeferredObjectiveDebugPayload(diagnostic);
-    if (debugStructured) {
-      debugStructured(payload);
-    } else {
-      logger.debug(payload);
-    }
-  }
 };
 
 // Exported for focused single-objective callers. The plan-preview composition

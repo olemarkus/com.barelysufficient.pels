@@ -243,7 +243,6 @@ describe('plan restore device helpers', () => {
       binaryCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
       objectiveKind: 'ev_soc',
-      objectiveSessionInactive: true,
       commandableNow: false,
       commandabilityReason: 'charger_unplugged',
     })) ?? undefined)).toBe('inactive (charger is unplugged)');
@@ -264,8 +263,7 @@ describe('plan restore device helpers', () => {
         binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_out',
         objectiveKind: 'ev_soc',
-        objectiveSessionInactive: true,
-        commandableNow: false,
+          commandableNow: false,
         commandabilityReason: 'charger_unplugged',
         expectedPowerSource: 'load-setting',
       })],

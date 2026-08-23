@@ -277,7 +277,6 @@ export type DeferredObjectiveActivePlanPendingReason =
   // EV connected (plugged_in) but PELS can't resume charging — surfaced as a
   // "Can't resume" paused state. Distinct from `invalid_session` so the hero
   // names the charger as the thing to check, not "plug the car in".
-  | 'charger_not_resumable'
   // Thermal device with no learned `kWhPerUnit` profile yet — the planner has
   // no shipped bootstrap rate for thermal kinds, so it sits pending until
   // accepted samples produce a profile.
@@ -322,7 +321,6 @@ export type DeferredObjectiveKwhPerUnitProvenanceV1 = {
 // without knowing runtime-internal reason code strings. Optional so older
 // persisted plans (without the field) continue to load.
 export type DeferredObjectiveActivePlanDiagnosticReason =
-  | 'objective_charger_not_resumable'
   | 'objective_invalid_session'
   // Live home-scope truth. Kept on committed plans with a cached revision so
   // consumers can override that stale schedule while the task is out of scope.

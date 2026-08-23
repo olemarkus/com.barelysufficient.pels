@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  isEvChargerNotResumable,
   isEvPlugStateBlocked,
   isEvPlugStateCommandable,
   isEvSessionInactive,
@@ -40,15 +39,5 @@ describe('session predicates', () => {
     expect(isEvSessionInactive('plugged_in')).toBe(false);
     expect(isEvSessionInactive('plugged_in_paused')).toBe(false);
     expect(isEvSessionInactive('plugged_in_charging')).toBe(false);
-  });
-
-  it('separates "may we command it" from "is charge flowing" on the bare connected state', () => {
-    // PELS commands a `plugged_in` charger, but must not credit the SoC behind it
-    // as objective progress until the state moves to `plugged_in_charging`.
-    expect(isEvPlugStateCommandable('plugged_in')).toBe(true);
-    expect(isEvChargerNotResumable('plugged_in')).toBe(true);
-    for (const state of ALL_STATES.filter((s) => s !== 'plugged_in')) {
-      expect(isEvChargerNotResumable(state)).toBe(false);
-    }
   });
 });
