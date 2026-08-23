@@ -37,6 +37,12 @@ import {
   type IdleClassification,
 } from '../../../packages/shared-domain/src/idleClassificationCopy';
 import {
+  buildObjectiveDeviceExclusionPredicate,
+  OBJECTIVE_EXCLUSION_REASON_CODES,
+  type ObjectiveDeviceExclusion,
+  type ResolveObjectiveDeviceExclusion,
+} from './deviceExclusion';
+import {
   resolvedTrajectoryStatus,
   type BuildPriceHorizon,
   type DeferredObjectiveDiagnostic,
@@ -103,24 +109,25 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   // actuation path deliberately OMITS this so admission keeps reading the raw
   // trajectory status — only `horizonPlan.status` (untouched) drives commitment.
   getStallClassification?: (deviceId: string) => IdleClassification | undefined;
-  // Multi-home v1 scope predicate, injected by the wiring layer (this leafward
-  // subsystem never reads membership itself). `true` marks the task's device as
-  // belonging to a separate-meter sub-home → the diagnostic short-circuits to
-  // `unknown` with the dedicated `objective_device_in_sub_home` code (see
-  // `diagnosticTypes.ts`). Optional: absent (tests, preview callers) or with no
-  // sub-homes configured, nothing changes.
-  isDeviceInSubHome?: (deviceId: string) => boolean;
+  // Durable device-exclusion resolver, injected by the wiring layer (this
+  // leafward subsystem reads neither home membership nor the managed-device map
+  // itself). A non-null answer short-circuits the diagnostic to `unknown` with
+  // that exclusion's dedicated code (see `deviceExclusion.ts`). Optional:
+  // absent (tests, preview callers), or answering `null` everywhere, nothing
+  // changes.
+  resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
 }): DeferredObjectiveDiagnostic[] => {
   const deviceById = new Map(params.devices.map((device) => [device.id, device]));
+  const isDeviceExcluded = buildObjectiveDeviceExclusionPredicate(params.resolveDeviceExclusion);
   params.priorityAllocationTracker?.observe({
     devices: params.devices,
     nowMs: params.nowMs,
-    isDeviceInSubHome: params.isDeviceInSubHome,
+    isDeviceExcluded,
   });
   const ordered = orderDeferredObjectives({
     settings: params.settings,
     deviceById,
-    isDeviceInSubHome: params.isDeviceInSubHome,
+    isDeviceExcluded,
     tracker: params.priorityAllocationTracker,
     activePlans: params.activePlans,
     nowMs: params.nowMs,
@@ -214,19 +221,19 @@ export const buildDeferredObjectiveDiagnostics = (params: {
       hasEstablishedActivePlan(params.activePlans, deviceId, coordinated.deadlineAtMs),
     ), device);
   });
-  // Sub-home objectives remain visible as explicit unknown diagnostics but do
-  // not participate in the main home's allocation context or reservation ledger.
-  diagnostics.push(...Object.entries(params.settings.objectivesByDeviceId).flatMap(([deviceId, objective]) => (
-    objective.enabled && params.isDeviceInSubHome?.(deviceId) === true
-      ? [buildDeferredObjectiveDiagnostic({
-        ...params,
-        deviceId,
-        objective,
-        device: deviceById.get(deviceId),
-        deviceInSubHome: true,
-      })]
-      : []
-  )));
+  // Excluded objectives (sub-home device, or a device the owner no longer
+  // manages) remain visible as explicit unknown diagnostics but do not
+  // participate in the main home's allocation context or reservation ledger.
+  diagnostics.push(...Object.entries(params.settings.objectivesByDeviceId).flatMap(([deviceId, objective]) => {
+    const exclusion = objective.enabled ? params.resolveDeviceExclusion?.(deviceId) ?? null : null;
+    return exclusion === null ? [] : [buildDeferredObjectiveDiagnostic({
+      ...params,
+      deviceId,
+      objective,
+      device: deviceById.get(deviceId),
+      exclusion,
+    })];
+  }));
   return diagnostics;
 };
 
@@ -364,13 +371,14 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   hardCapKw?: number | null;
   higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
   forceFreshAllocation?: boolean;
-  // Producer-resolved multi-home flag (see `buildDeferredObjectiveDiagnostics`):
-  // `true` short-circuits to the dedicated `objective_device_in_sub_home`
-  // unknown diagnostic BEFORE the missing-device check — with the planner
-  // scoped main-only a sub-home device may be absent from `devices`, and
-  // falling through would mislabel the relocation as a missing device. Preview
-  // callers omit it (candidates are main-home-gated at the write lanes).
-  deviceInSubHome?: boolean;
+  // Producer-resolved exclusion (see `buildDeferredObjectiveDiagnostics`): a
+  // non-null value short-circuits to that exclusion's dedicated unknown
+  // diagnostic BEFORE the missing-device check. Both arms describe a device
+  // that is absent from `devices` while still existing — a sub-home device
+  // under main-only planner scoping, or one the owner stopped managing — so
+  // falling through would mislabel it as missing. Preview callers omit it
+  // (candidates are main-home-gated and managed-gated at the write lanes).
+  exclusion?: ObjectiveDeviceExclusion;
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs,
@@ -398,10 +406,13 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     displayConfidence: null,
     kwhPerUnitSource: null,
   });
-  // Sub-home scope check FIRST: the device may well be present (or main-only
-  // planner scoping may have dropped it) — either way the honest story is "out
-  // of the main home's meter scope", never "missing device".
-  if (params.deviceInSubHome) return withUnavailableTrajectory(base, 'objective_device_in_sub_home');
+  // Exclusion check FIRST: the device may well be present (or planner scoping
+  // may have dropped it) — either way the honest story is the exclusion itself
+  // ("out of the main home's meter scope", "not managed"), never "missing
+  // device".
+  if (params.exclusion) {
+    return withUnavailableTrajectory(base, OBJECTIVE_EXCLUSION_REASON_CODES[params.exclusion]);
+  }
   if (!device) return withUnavailableTrajectory(base, 'objective_missing_device');
 
   if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= 0) {

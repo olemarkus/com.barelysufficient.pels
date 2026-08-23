@@ -14,7 +14,10 @@ import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import {
   resolveObjectiveWriteRefusalMessage,
 } from '../packages/shared-domain/src/objectiveWriteStrings';
-import { resolveEffectivePlanStatus } from '../packages/shared-domain/src/deadlineLabels';
+import {
+  isDeviceExclusionPaused,
+  resolveEffectivePlanStatus,
+} from '../packages/shared-domain/src/deadlineLabels';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import { isEvCharger, supportsTemperatureObjective } from './smartTaskDeviceCapability';
@@ -633,10 +636,11 @@ const resolveEffectiveStatus = (
   if (!hasEntry) return null;
   if (objectiveDeadlineAtMs !== null && objectiveDeadlineAtMs <= nowMs) return null;
   if (plan !== null && plan.deadlineAtMs <= nowMs) return null;
-  if (
-    plan?.diagnosticReasonCode === 'objective_device_in_sub_home'
-      || plan?.pendingReason === 'device_in_sub_home'
-  ) return null;
+  // A task paused by a durable device exclusion (separate meter, or the device
+  // is no longer managed) governs nothing, so the condition must not keep
+  // answering with the schedule it committed before the exclusion. Shared
+  // predicate: the detail hero and the list chip read the same one.
+  if (plan !== null && isDeviceExclusionPaused(plan)) return null;
   if (plan === null || plan.pending || plan.latest === null) return PENDING_FLOW_STATUS;
   return mapPlanStatusToFlowStatus(
     resolveEffectivePlanStatus(plan.latest.planStatus, plan.diagnosticReasonCode),

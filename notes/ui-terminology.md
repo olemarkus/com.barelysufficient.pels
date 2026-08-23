@@ -582,6 +582,7 @@ Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every labe
 | Live state chip — building plan (pending hero / list) | `Building plan…` | `Building plan…` |
 | Live state chip — plan ready, first hour later (list only) | `On track` | `On track` |
 | Live state chip — session ended (pending hero / list) | (n/a) | `Paused — unplugged` |
+| Live state chip — device no longer managed (pending hero / list) | `Paused — not managed` | `Paused — not managed` |
 | Live state chip — on track, no active hour | `On track` | `On track` |
 | At-risk chip | `At risk` | `At risk` |
 | Cannot-finish chip | `Cannot finish` | `Cannot finish` |
@@ -633,6 +634,7 @@ The smart-task list uses one chip per task. Source: `SMART_TASK_LIST_STATUS_LABE
 |---|---|
 | `Building plan…` | Pending; no plan allocation yet (often waiting for prices through the deadline). |
 | `Paused — unplugged` | EV: charging task is paused because the car is unplugged or the session ended. |
+| `Paused — not managed` | "Managed by PELS" is off for the device, so PELS plans nothing for it. The task is **paused, not ended** — it resumes on the next cycle after the device is managed again, and nothing about it is deleted. Both kinds can reach this state. |
 | `On track` | PELS currently expects the task to reach the target — including when the plan is allocated and healthy but its first hour is still in the future. |
 | `At risk` | Plan exists but there is limited time or room left. |
 | `Cannot finish` | Not enough usable time or energy delivery before the deadline. |
@@ -654,8 +656,8 @@ contracts remain stable — only the user-visible chip label changed. `queued`
 and `on_track` now share one label and tone; the distinction stays internal.
 
 The dashboard widget's compressed row variants are registered:
-`Unplugged` (for `Paused — unplugged`) and `Not charging yet` (for
-`Paused — not charging yet`) — the widget row at 320–480 px has roughly half the
+`Unplugged` (for `Paused — unplugged`) and `Not managed` (for
+`Paused — not managed`) — the widget row at 320–480 px has roughly half the
 list card's width and the full em-dash forms truncate. Source:
 `SMART_TASK_WIDGET_STATUS_LABELS` in `deadlineLabels.ts`. The same compressed
 forms are the sanctioned inline status words on the list card's Ready-by line

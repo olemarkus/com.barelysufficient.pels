@@ -774,6 +774,33 @@ describe('deadline objective flow cards', () => {
     }
   });
 
+  it('deadline_status_is matches no public status for a committed task whose device is no longer managed', async () => {
+    // The plan keeps its cached `on_track` revision until the deadline, so
+    // without the exclusion guard a Flow keyed on "is On track" would keep
+    // firing for a task PELS is neither planning nor actuating.
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      activePlans: buildActivePlans([buildActivePlan({
+        planStatus: 'on_track',
+        diagnosticReasonCode: 'objective_device_unmanaged',
+      })]),
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    for (const status of ['waiting', 'on_track', 'at_risk', 'unachievable', 'satisfied']) {
+      expect(await condition.run!({ device: 'heater-1', status })).toBe(false);
+    }
+  });
+
   it('deadline_status_is rejects a stale on-track plan immediately when live membership is outside main', async () => {
     const isDeviceInMainHome = vi.fn(() => false);
     const { deps, mock } = buildDeps({

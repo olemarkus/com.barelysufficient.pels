@@ -60,11 +60,17 @@ export class PriorityAllocationTracker {
   public observe(params: {
     devices: readonly ObjectiveDeviceInput[];
     nowMs: number;
-    isDeviceInSubHome?: (deviceId: string) => boolean;
+    /**
+     * Durably out of the main planning lane (separately-metered home, or not
+     * managed by PELS). Such a device is purged from the roster outright rather
+     * than aged through the missing-device grace: the grace exists for a device
+     * that should be here and briefly is not, and neither exclusion is that.
+     */
+    isDeviceExcluded?: (deviceId: string) => boolean;
   }): void {
     const observedDeviceIds = new Set<string>();
     for (const device of params.devices) {
-      if (params.isDeviceInSubHome?.(device.id) === true) {
+      if (params.isDeviceExcluded?.(device.id) === true) {
         this.lastSeenAtMsByDeviceId.delete(device.id);
         this.missingReservationSinceByDeviceId.delete(device.id);
         continue;
@@ -74,7 +80,7 @@ export class PriorityAllocationTracker {
       this.missingReservationSinceByDeviceId.delete(device.id);
     }
     for (const [deviceId, lastSeenAtMs] of this.lastSeenAtMsByDeviceId) {
-      if (params.isDeviceInSubHome?.(deviceId) === true) {
+      if (params.isDeviceExcluded?.(deviceId) === true) {
         this.lastSeenAtMsByDeviceId.delete(deviceId);
         this.missingReservationSinceByDeviceId.delete(deviceId);
         continue;
@@ -142,7 +148,8 @@ const compareDeviceIdAsc = (left: string, right: string): number => {
 export const orderDeferredObjectives = (params: {
   settings: DeferredObjectiveSettingsV1;
   deviceById: ReadonlyMap<string, ObjectiveDeviceInput>;
-  isDeviceInSubHome?: (deviceId: string) => boolean;
+  /** See `PriorityAllocationTracker.observe`: durably out of the main lane. */
+  isDeviceExcluded?: (deviceId: string) => boolean;
   tracker?: PriorityAllocationTracker;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   nowMs: number;
@@ -153,7 +160,7 @@ export const orderDeferredObjectives = (params: {
 }): OrderedDeferredObjective[] => {
   params.tracker?.retainObjectiveDeviceIds(new Set(Object.keys(params.settings.objectivesByDeviceId)));
   const entries = Object.entries(params.settings.objectivesByDeviceId).flatMap(([deviceId, objective]) => {
-    if (!objective.enabled || params.isDeviceInSubHome?.(deviceId) === true) return [];
+    if (!objective.enabled || params.isDeviceExcluded?.(deviceId) === true) return [];
     const device = params.deviceById.get(deviceId);
     const activePlan = resolveActiveCommittedPlan({
       activePlans: params.activePlans,
@@ -173,7 +180,7 @@ export const orderDeferredObjectives = (params: {
   });
   const activeDeviceIds = [
     ...[...params.deviceById.values()].flatMap((device) => (
-      params.isDeviceInSubHome?.(device.id) === true ? [] : [device.id]
+      params.isDeviceExcluded?.(device.id) === true ? [] : [device.id]
     )),
     ...entries.flatMap((entry) => entry.reservationEligible ? [entry.deviceId] : []),
   ];

@@ -231,6 +231,10 @@ export const resolvePendingReason = (
   // not waiting for prices. Keep this distinct so every user surface can name
   // the membership block instead of falling through to the horizon fallback.
   if (diag.reasonCode === 'objective_device_in_sub_home') return 'device_in_sub_home';
+  // Same shape one step out: an unmanaged device is not waiting for prices or
+  // for a reading, it is waiting for the owner to manage it again. The task
+  // holds its place until then rather than ending.
+  if (diag.reasonCode === 'objective_device_unmanaged') return 'device_unmanaged';
   // Thermal devices have no shipped bootstrap kWh/°C; tell the user that
   // power readings are what unblock the plan instead of leaving them with an
   // indefinite "Waiting" state. For thermal objectives this also covers

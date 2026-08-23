@@ -5,6 +5,7 @@ import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contracts/src/widgetHostApi';
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
+import type { ObjectiveDeviceExclusion } from '../../lib/objectives/deferredObjectives/deviceExclusion';
 
 /**
  * Multi-home v1 scope predicate shared by EVERY smart-task surface: the app's
@@ -30,6 +31,50 @@ export const isSmartTaskDeviceInMainHome = (ctx: AppContext, deviceId: string): 
     || membership.hasPendingOwnershipGeneration?.() !== false
   ) return true;
   return membership.getHomeIdForDevice(deviceId) === MAIN_HOME_ID;
+};
+
+/**
+ * Why a task's device sits outside the main planning lane, for the diagnostics
+ * seam that must not call every such device "missing". Both arms are durable,
+ * owner-visible facts about a device that still EXISTS; a device PELS genuinely
+ * cannot find keeps `objective_missing_device`.
+ *
+ * Sub-home membership is checked first: it is the more fundamental scope
+ * statement (smart tasks are main-home-only), and a relocated device that is
+ * also unmanaged should still read as out of scope.
+ *
+ * The managed arm asks the app's OWN definition (`resolveManagedState`, the
+ * same one `appSnapshotHelpers` stamps onto the snapshot the planner filters
+ * with `isRuntimePlannedDevice`) rather than re-deriving one here. An explicit
+ * `false` and a never-toggled device are both dropped from the planned set, so
+ * both must read as un-managed — testing only for `=== false` would leave the
+ * never-toggled case reporting the missing-device lie this seam exists to kill.
+ *
+ * The only fence is EMPTINESS, and the distinction matters. `ctx.managedDevices`
+ * is `{}` until `loadCapacitySettings` runs, and an empty map is the one state
+ * that carries no owner answer about any device. A fence on "some device is
+ * opted in" (`isManagedFilterActive`) would instead silence the whole pause in
+ * the commonest case there is — the owner un-managing their ONLY managed
+ * device, leaving a map of all-`false` — and hand that task straight back to
+ * the missing-device lie. Ordering already makes the empty case unreachable
+ * here (the `loadCapacitySettings` startup step precedes `initDeviceManager`,
+ * and the snapshot warmup gate holds the first rebuild until a snapshot lands),
+ * so this is a cheap guard against a future reordering, not a live condition.
+ *
+ * The limit of the honesty: a device that has LEFT Homey keeps whatever flag it
+ * had, so the ordinary removal (flag still `true`) still reports as missing.
+ * One that was un-managed or data-purged first and then removed reads as
+ * un-managed, because from the settings alone the two are indistinguishable —
+ * PELS has no cheap presence oracle for a device its own managed filter has
+ * already dropped from the runtime snapshot.
+ */
+export const resolveSmartTaskDeviceExclusion = (
+  ctx: AppContext,
+  deviceId: string,
+): ObjectiveDeviceExclusion | null => {
+  if (!isSmartTaskDeviceInMainHome(ctx, deviceId)) return 'sub_home';
+  if (ctx.resolveManagedState(deviceId)) return null;
+  return Object.keys(ctx.managedDevices).length === 0 ? null : 'unmanaged';
 };
 
 /**

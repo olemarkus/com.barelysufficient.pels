@@ -44,7 +44,10 @@ export type DeadlinePlanPendingReason =
   // pending until the energy profile is learned from power readings.
   | 'missing_capacity'
   // The device belongs to a separately-metered home, outside smart-task scope.
-  | 'device_in_sub_home';
+  | 'device_in_sub_home'
+  // "Managed by PELS" is off for the device, so PELS plans nothing for it. The
+  // task is paused, not ended: it resumes when the device is managed again.
+  | 'device_unmanaged';
 
 // One-line user-facing copy for the cold-start `missing_capacity` pending
 // reason. Thermal smart tasks have no shipped bootstrap kWh/°C, so a new
@@ -67,6 +70,7 @@ export type DeadlineLiveState =
   | 'queued'
   | 'unavailable'
   | 'paused_unplugged'
+  | 'paused_unmanaged'
   | 'ok';
 
 // Display label for a smart task list card's status chip.
@@ -75,6 +79,7 @@ export type SmartTaskListStatusId =
   | 'queued'          // plan ready, first hour in the future
   | 'unavailable'     // device moved to a separately-metered home
   | 'paused_unplugged' // EV: car unplugged / session ended
+  | 'paused_unmanaged' // "Managed by PELS" turned off for the device
   | 'on_track'
   | 'at_risk'
   | 'cannot_meet'
@@ -93,6 +98,7 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
   queued: 'On track',
   unavailable: 'Unavailable',
   paused_unplugged: 'Paused — unplugged',
+  paused_unmanaged: 'Paused — not managed',
   on_track: 'On track',
   at_risk: 'At risk',
   cannot_meet: 'Cannot finish',
@@ -110,6 +116,7 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
 export const SMART_TASK_WIDGET_STATUS_LABELS: Record<SmartTaskListStatusId, string> = {
   ...SMART_TASK_LIST_STATUS_LABELS,
   paused_unplugged: 'Unplugged',
+  paused_unmanaged: 'Not managed',
 };
 
 // Widget detail-panel "why" + recourse copy. Composed from producer-resolved
@@ -122,11 +129,21 @@ export const SMART_TASK_WIDGET_STATUS_LABELS: Record<SmartTaskListStatusId, stri
 // `feedback_ui_text_shared_with_logs.md` so runtime structured logs can
 // surface the same one-line reasons when the detail surface fires.
 
+// The device is present and the task is intact; PELS simply is not managing the
+// device, so it plans nothing for it. Named after the real switch on the device
+// page ("Managed by PELS") so the remedy is findable — see
+// `feedback_remedy_copy_names_real_toggle`. Shared by the widget why-line, the
+// list/detail surfaces and the runtime log breadcrumb, per
+// `feedback_ui_text_shared_with_logs`.
+export const SMART_TASK_DEVICE_UNMANAGED_WHY = 'PELS isn’t managing this device.';
+export const SMART_TASK_DEVICE_UNMANAGED_RECOURSE = 'Turn on Managed by PELS in Setup to resume this task.';
+
 const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | null> = {
   building_plan: null, // resolved by pendingReason
   queued: null, // composed from firstPlannedTimeLabel when present
   unavailable: SMART_TASK_SUB_HOME_UNAVAILABLE,
   paused_unplugged: 'EV is unplugged — plug in to resume.',
+  paused_unmanaged: SMART_TASK_DEVICE_UNMANAGED_WHY,
   on_track: null, // affirmative line resolved from firstPlannedTimeLabel
   at_risk: null, // disambiguated by budget vs time below
   cannot_meet: null, // resolved by floor cause / budget bucket count
@@ -147,6 +164,18 @@ Partial<Record<DeferredObjectiveActivePlanPendingReason, string>> = {
   missing_capacity: 'Learning energy use from this device.',
   price_feature_disabled: 'Price-aware planning is off.',
   device_in_sub_home: SMART_TASK_SUB_HOME_UNAVAILABLE,
+  device_unmanaged: SMART_TASK_DEVICE_UNMANAGED_WHY,
+};
+
+// Statuses whose recovery is an action the owner can take, reached through the
+// STATUS path rather than the pending one. `paused_unmanaged` needs its own
+// entry because a live diagnostic resolves it straight to the status id — the
+// pending branch (which carries `resolvePendingRecourseHint`) never sees it —
+// and a pause with no way out named is the one thing this state must not be.
+// `paused_unplugged` has no entry: its why-line already ends in "plug in to
+// resume", and a second line would repeat it.
+const SMART_TASK_WIDGET_RECOURSE_BY_STATUS: Partial<Record<SmartTaskListStatusId, string>> = {
+  paused_unmanaged: SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
 };
 
 const WHY_CANNOT_MEET_BUDGET = 'Today’s daily budget runs out before the deadline.';
@@ -171,6 +200,17 @@ export const RECOURSE_CANNOT_MEET_BUDGET = 'Budget settings show whether future 
 export const RECOURSE_CANNOT_MEET_DEVICE = 'Device settings show what’s holding it back.';
 const RECOURSE_INVALID_SESSION = 'Plug the EV in to resume.';
 
+// The two pending reasons the owner can act on directly. Everything else is
+// PELS waiting on itself (prices, readings, a learned profile), where a
+// recourse line would invent an action the user does not have.
+const resolvePendingRecourseHint = (
+  reason: DeferredObjectiveActivePlanPendingReason,
+): string | null => {
+  if (reason === 'invalid_session') return RECOURSE_INVALID_SESSION;
+  if (reason === 'device_unmanaged') return SMART_TASK_DEVICE_UNMANAGED_RECOURSE;
+  return null;
+};
+
 /**
  * The one place absence of a `pendingReason` is turned into a reason. A pending
  * record can legitimately carry none — the recorder seeds it from a flow-card /
@@ -188,6 +228,47 @@ const RECOURSE_INVALID_SESSION = 'Plug the EV in to resume.';
 export const resolveSmartTaskPendingReason = (
   reason: DeferredObjectiveActivePlanPendingReason | undefined,
 ): DeferredObjectiveActivePlanPendingReason => reason ?? 'not_yet_planned';
+
+/**
+ * The live diagnostic code outranks the persisted `pendingReason` for the two
+ * durable exclusions. The recorder refreshes the code every cycle, so a device
+ * that has just been relocated or un-managed says so immediately instead of
+ * showing whatever blocker was current when the plan was last written.
+ *
+ * Producer-side and shared: the pending hero and the list chip
+ * ({@link resolveSmartTaskListStatus}) must answer "which reason is this task
+ * showing" the same way, and a consumer-side copy of this precedence is how the
+ * two surfaces drift apart.
+ */
+export const resolveExclusionPendingReason = (
+  diagnosticReasonCode: DeferredObjectiveActivePlanDiagnosticReason | undefined,
+): DeadlinePlanPendingReason | null => {
+  if (diagnosticReasonCode === 'objective_device_in_sub_home') return 'device_in_sub_home';
+  if (diagnosticReasonCode === 'objective_device_unmanaged') return 'device_unmanaged';
+  return null;
+};
+
+/**
+ * "Is this task paused by a durable device exclusion?" — the one predicate every
+ * surface that must NOT keep serving a cached schedule asks: the detail hero
+ * (`resolveRenderInput`), the `deadline_status_is` Flow condition, and the list
+ * chip via {@link resolveSmartTaskListStatus}.
+ *
+ * Reads the live diagnostic code first (refreshed every cycle, so it is right
+ * even on a committed plan with a cached `latest`) and the persisted pending
+ * reason second, for a task that never got a revision. Shared so that adding a
+ * third exclusion cannot be remembered on one surface and forgotten on another —
+ * which is exactly how the un-managed pause first shipped a "Paused" chip that
+ * opened onto a green "On track" hero.
+ */
+export const isDeviceExclusionPaused = (plan: {
+  diagnosticReasonCode?: DeferredObjectiveActivePlanDiagnosticReason;
+  pendingReason?: DeferredObjectiveActivePlanPendingReason;
+}): boolean => (
+  resolveExclusionPendingReason(plan.diagnosticReasonCode) !== null
+  || plan.pendingReason === 'device_in_sub_home'
+  || plan.pendingReason === 'device_unmanaged'
+);
 
 /**
  * Pending reasons whose "why" line owns the detail row: showing the
@@ -268,7 +349,7 @@ export const resolveSmartTaskWidgetDetailCopy = (
       ?? null;
     return {
       whyLabel: why,
-      recourseHint: reason === 'invalid_session' ? RECOURSE_INVALID_SESSION : null,
+      recourseHint: resolvePendingRecourseHint(reason),
     };
   }
   if (input.statusId === 'queued' && input.firstPlannedTimeLabel) {
@@ -279,7 +360,7 @@ export const resolveSmartTaskWidgetDetailCopy = (
   }
   return {
     whyLabel: SMART_TASK_WIDGET_WHY_BY_STATUS[input.statusId],
-    recourseHint: null,
+    recourseHint: SMART_TASK_WIDGET_RECOURSE_BY_STATUS[input.statusId] ?? null,
   };
 };
 
@@ -469,6 +550,7 @@ const PREVIEW_UNAVAILABLE_COPY_BY_REASON: Record<DeferredObjectivePlanPreviewUna
   invalid_session: 'Can’t preview this yet — plug the EV in to start.',
   missing_capacity: 'Can’t preview this yet — PELS needs power readings from this device.',
   missing_device: 'Can’t preview this yet — PELS can’t find this device.',
+  device_unmanaged: 'Can’t preview this yet — turn “Managed by PELS” on for this device.',
   needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
   missing_prices: 'Can’t preview this yet — prices through this window are not available yet.',
   missing_reading: 'Can’t preview this yet — PELS needs a current device reading.',
@@ -671,6 +753,11 @@ export const resolveBuildingPlanChipTone = (): SmartTaskChipTone => 'info';
 // share one tone vocabulary across the list and the pending hero.
 export const resolvePausedUnpluggedChipTone = (): SmartTaskChipTone => 'warn';
 
+// Same tone, same reasoning, for "Paused — not managed": the owner has an
+// action to take (manage the device again) and the task is unharmed until they
+// do, so this is `warn`, never `alert`.
+export const resolvePausedUnmanagedChipTone = (): SmartTaskChipTone => 'warn';
+
 // CSS modifier class suffix for each list status id (appended to `plan-chip--`).
 // `building_plan` / `paused_unplugged` delegate to the shared pending-tone
 // resolvers above so the list card and the plan-detail pending hero can never
@@ -683,6 +770,7 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
   queued: 'ok',
   unavailable: 'warn',
   paused_unplugged: resolvePausedUnpluggedChipTone(),
+  paused_unmanaged: resolvePausedUnmanagedChipTone(),
   on_track: 'ok',
   at_risk: 'warn',
   cannot_meet: 'alert',
@@ -721,6 +809,7 @@ const SMART_TASK_LIST_READY_BY_TONE: Record<SmartTaskListStatusId, SmartTaskList
   queued: 'neutral',
   unavailable: 'warn',
   paused_unplugged: 'warn',
+  paused_unmanaged: 'warn',
   on_track: 'neutral',
   at_risk: 'warn',
   cannot_meet: 'warn',
@@ -758,8 +847,9 @@ const SMART_TASK_LIST_READY_BY_STATUS_WORD: Record<SmartTaskListStatusId, string
   // full label; this is the same sanctioned shared-domain string, not a new
   // variant.
   paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
-  // Compressed widget label ('Not charging yet') for the same double-em-dash
-  // reason as paused_unplugged — the full chip label carries its own em-dash.
+  // Compressed widget label ('Not managed') for the same double-em-dash reason
+  // as paused_unplugged — the full chip label carries its own em-dash.
+  paused_unmanaged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unmanaged,
   on_track: null,
   at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
   cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
@@ -1239,6 +1329,10 @@ export const resolveSmartTaskListStatus = (params: {
   // still cached. Without this, the list chip would say "On track" while the
   // device-card line said "Charging paused — car unplugged".
   if (diagnosticReasonCode === 'objective_invalid_session') return 'paused_unplugged';
+  // Un-managed mid-plan: same precedence and the same reason as the two above.
+  // PELS plans nothing for a device it does not manage, so a cached revision is
+  // no longer being executed and the chip must say so instead of "On track".
+  if (diagnosticReasonCode === 'objective_device_unmanaged') return 'paused_unmanaged';
   // Connected-but-not-resumable-mid-plan: same precedence as unplugged — fires
   // even on a non-pending plan with a cached `latest`, so the chip says "can’t
   // resume" instead of "On track" for a charger PELS can’t drive.
@@ -1246,6 +1340,7 @@ export const resolveSmartTaskListStatus = (params: {
   if (pending || planStatus === undefined) {
     if (pendingReason === 'device_in_sub_home') return 'unavailable';
     if (pendingReason === 'invalid_session') return 'paused_unplugged';
+    if (pendingReason === 'device_unmanaged') return 'paused_unmanaged';
     return 'building_plan';
   }
   // Device left off outside PELS: overlay the committed verdict, which is still
@@ -1718,6 +1813,22 @@ const separateMeterUnavailableResolver: DeadlinePendingCopyResolver = () => ({
   recourse: null,
 });
 
+// Kind-agnostic: nothing about this pause is thermal or EV, and the remedy is
+// the same switch on the same panel either way. Unlike the sub-home resolver
+// this one DOES carry a recourse — the Overview device card deep-links to the
+// device settings overlay that holds "Managed by PELS", so the user is one tap
+// from resuming the task.
+const deviceUnmanagedResolver: DeadlinePendingCopyResolver = (ctx) => ({
+  // The chip directly above already says "Paused — not managed", so the four
+  // hero slots carry four distinct facts: state (chip), what is paused
+  // (headline), why (headlineReason), and what to do (body). Repeating the
+  // chip here — or the why-sentence in the body — spends a slot on nothing.
+  headline: 'Smart task paused',
+  body: SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
+  headlineReason: SMART_TASK_DEVICE_UNMANAGED_WHY,
+  recourse: overviewDeviceRecourse(ctx.deviceId),
+});
+
 // `awaiting_horizon_plan` is the most common pending reason — the planner
 // runs every ~5 min and needs prices through the deadline. `headlineReason`
 // repeats the salient horizon time at headline height so the user knows what
@@ -1825,6 +1936,8 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       // and falls back to the generic on-track copy if the resolver ever
       // hands a stale value through.
       paused_unplugged: 'On track',
+      // Reachable on any kind: the owner can stop managing a heater too.
+      paused_unmanaged: SMART_TASK_LIST_STATUS_LABELS.paused_unmanaged,
       // Thermal devices aren't chargers; unreachable, same fallback as above.
       ok: 'On track',
     },
@@ -1856,6 +1969,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       // Thermal devices aren't chargers; unreachable here, kept as a safety net
       // so a future diagnostic can't leak EV-specific copy onto a heater.
       device_in_sub_home: separateMeterUnavailableResolver,
+      device_unmanaged: deviceUnmanagedResolver,
       // Cold-start `missing_capacity` collapses to a single user-facing line —
       // headline + metaLine combined parse as `PENDING_REASON_MISSING_CAPACITY_COPY`
       // ("Learning energy use — needs power readings from this device."). Earlier
@@ -1923,6 +2037,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       queued: 'On track',
       unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
       paused_unplugged: 'Paused — unplugged',
+      paused_unmanaged: SMART_TASK_LIST_STATUS_LABELS.paused_unmanaged,
       ok: 'On track',
     },
     atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
@@ -1963,6 +2078,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       // starting. What is true is narrower: no power is flowing yet, so the SoC
       missing_capacity: EV_DEVICE_DATA_MISSING,
       device_in_sub_home: separateMeterUnavailableResolver,
+      device_unmanaged: deviceUnmanagedResolver,
     },
     unavailableByReason: {
       no_current_reading: {

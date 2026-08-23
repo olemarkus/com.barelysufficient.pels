@@ -15,6 +15,10 @@ import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packa
 import { SMART_TASK_WIDGET_EMPTY_HINT } from '../../packages/shared-domain/src/deadlineLabels';
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../packages/shared-domain/src/objectiveWriteStrings';
 import {
+  SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
+  SMART_TASK_DEVICE_UNMANAGED_WHY,
+} from '../../packages/shared-domain/src/deadlineLabels';
+import {
   buildSmartTasksWidgetPayload,
   EMPTY_SUBTITLE_DEFAULT,
   ENDED_ROW_CAP,
@@ -285,6 +289,45 @@ describe('buildSmartTasksWidgetPayload', () => {
       etaVerb: 'Due',
       whyLabel: SMART_TASK_SUB_HOME_UNAVAILABLE,
       recourseHint: null,
+      planMetaLabel: null,
+      confidenceLabel: null,
+      chart: null,
+    });
+  });
+
+  test('does the same for an un-managed device: paused copy, no stale plan evidence', () => {
+    const unmanaged = buildPlan({
+      deviceId: 'unmanaged',
+      deviceName: 'Garage heater',
+      diagnosticReasonCode: 'objective_device_unmanaged',
+      startProgressC: 50,
+      progressSamples: [
+        { atMs: NOW - HOUR, valueC: 50, valuePercent: null },
+        { atMs: NOW, valueC: 52, valuePercent: null },
+      ],
+      kwhPerUnitProvenance: {
+        source: 'bootstrap',
+        kWhPerUnit: 0.5,
+        acceptedSamples: 0,
+        confidence: 'low',
+        lastAcceptedAtMs: null,
+      },
+      latest: {
+        ...buildPlan({}).latest!,
+        planningSpeedKw: 2,
+        estimatedDurationText: '2h 0m',
+        rateMean: 0.5,
+      },
+    });
+    const payload = buildSmartTasksWidgetPayload(buildInput({ unmanaged }));
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    expect(payload.rows[0]).toMatchObject({
+      statusLabel: 'Not managed',
+      tone: 'muted',
+      etaVerb: 'Due',
+      whyLabel: SMART_TASK_DEVICE_UNMANAGED_WHY,
+      recourseHint: SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
       planMetaLabel: null,
       confidenceLabel: null,
       chart: null,

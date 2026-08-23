@@ -95,16 +95,20 @@ const buildCard = (params: {
   });
   const learning = resolveSmartTaskLearning(plan.kwhPerUnitProvenance);
   const currentValue = resolveCurrentValue(device, plan.objectiveKind);
-  const unavailable = statusId === 'unavailable';
+  // A cached schedule stops governing the moment the device leaves the planned
+  // set, whether by meter reassignment (`unavailable`) or by the owner turning
+  // "Managed by PELS" off. `paused_unplugged` is deliberately NOT here: that
+  // plan resumes on its own when the car is plugged back in.
+  const scheduleNoLongerGoverns = statusId === 'unavailable' || statusId === 'paused_unmanaged';
   return {
     deviceId,
     deviceName: device?.name ?? plan.deviceName ?? deviceId,
     kind: plan.objectiveKind,
     targetValue: plan.targetValue,
-    // A committed revision can outlive a meter reassignment. Its cached first
-    // hour no longer governs the device, so unavailable cards expose only the
-    // user-set deadline and never advertise the stale schedule.
-    firstActionAtMs: unavailable ? null : firstHour,
+    // A committed revision can outlive a meter reassignment or an un-manage.
+    // Its cached first hour no longer governs the device, so those cards expose
+    // only the user-set deadline and never advertise the stale schedule.
+    firstActionAtMs: scheduleNoLongerGoverns ? null : firstHour,
     deadlineAtMs: plan.deadlineAtMs,
     href: buildDeadlineHref(deviceId),
     statusId,

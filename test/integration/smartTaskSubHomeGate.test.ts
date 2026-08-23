@@ -234,7 +234,13 @@ const buildDiagnosticsParams = (overrides: {
   dailyBudgetSnapshot: null,
   buildPriceHorizon: () => [],
   priceOptimizationEnabled: true,
-  ...(overrides.isDeviceInSubHome ? { isDeviceInSubHome: overrides.isDeviceInSubHome } : {}),
+  ...(overrides.isDeviceInSubHome
+    ? {
+      resolveDeviceExclusion: (deviceId: string) => (
+        overrides.isDeviceInSubHome?.(deviceId) === true ? 'sub_home' as const : null
+      ),
+    }
+    : {}),
 });
 
 describe('diagnostics: existing task whose device is in a sub-home', () => {
@@ -769,9 +775,11 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
   });
 });
 
-describe('decoration controller: isDeviceInSubHome dep threading', () => {
-  it('consults the predicate per task during decorate and leaves the task un-admitted', () => {
-    const isDeviceInSubHome = vi.fn((deviceId: string) => deviceId === 'heater-sub');
+describe('decoration controller: resolveDeviceExclusion dep threading', () => {
+  it('consults the resolver per task during decorate and leaves the task un-admitted', () => {
+    const resolveDeviceExclusion = vi.fn(
+      (deviceId: string) => (deviceId === 'heater-sub' ? 'sub_home' as const : null),
+    );
     const controller = new DeferredObjectiveDecorationController({
       getDeferredObjectiveSettings: () => normalizeDeferredObjectiveSettings({
         version: 1,
@@ -782,14 +790,14 @@ describe('decoration controller: isDeviceInSubHome dep threading', () => {
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
       getHardCapKw: () => 10,
-      isDeviceInSubHome,
+      resolveDeviceExclusion,
     });
     const bundle = controller.decorate({
       devices: [buildHeaterDevice()],
       dailyBudgetSnapshot: null,
       nowTs: NOW_MS,
     });
-    expect(isDeviceInSubHome).toHaveBeenCalledWith('heater-sub');
+    expect(resolveDeviceExclusion).toHaveBeenCalledWith('heater-sub');
     expect(bundle.admittedDeviceIds.has('heater-sub')).toBe(false);
     expect(bundle.forceShedSet.size).toBe(0);
   });

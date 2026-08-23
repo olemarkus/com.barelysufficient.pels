@@ -2342,11 +2342,40 @@ program) remain deferred.*
 
 - [ ] **Smart-task diagnostics: distinguish an active meter source from a missing device before its deadline.**
       *Persona:* owner who selects a device with an existing smart task as an electricity meter.
-      *Hypothesis:* the source-filtered lifecycle device set omits the meter, but the diagnostic emitter only
-      receives the durable sub-home predicate, so the still-enabled task reports `objective_missing_device`
-      until deadline handling safely disarms it without a command. Add a reason-bearing durable-exclusion
-      seam and dedicated source diagnostic so status/history explain the task's real scope before it ends.
-      P2. Source: runtime-reality review of PR #1873, 2026-07-23.
+      *Hypothesis:* the source-filtered lifecycle device set omits the meter, so the still-enabled task
+      reports `objective_missing_device` until deadline handling safely disarms it without a command.
+      The reason-bearing durable-exclusion seam this asked for now exists —
+      `ResolveObjectiveDeviceExclusion` (`lib/objectives/deferredObjectives/deviceExclusion.ts`), resolved
+      by `resolveSmartTaskDeviceExclusion` (`setup/appInit/smartTaskHomeScope.ts`) and already carrying
+      `sub_home` and `unmanaged`. What remains: add a `meter_source` arm with its own diagnostic code and
+      copy, and answer it from that resolver, so status/history explain the task's real scope before it
+      ends. P2. Source: runtime-reality review of PR #1873, 2026-07-23.
+
+- [ ] **"Clear device settings" leaves the device's smart task behind, now visible as a paused card.**
+      *Persona:* owner who removes a device from Homey and then purges its PELS settings. *Hypothesis:*
+      `advancedDeviceDataPurge.ts` deletes the device's `managed_devices` entry but not its
+      `deferred_objective.<id>` key, so the task survives with no owner and no device. Before the
+      un-managed pause this read as `objective_missing_device`; now it reads "Paused — not managed"
+      with a recourse pointing at a switch for a device that may no longer exist — the resolver cannot
+      tell a purged device from an un-managed one, because PELS has no cheap presence oracle for a
+      device its managed filter already dropped from the runtime snapshot. Fix at the source: have the
+      purge clear the objective through the same device-scoped clear op the settings-UI cancel uses
+      (`cancelDeferredObjectiveForContext`). Done when purging a device with a smart task leaves no
+      `deferred_objective.<id>` key and no card on the Smart tasks list. P3. Source: correctness lens
+      on the un-managed pause PR, 2026-08-23.
+
+- [ ] **A task paused by PELS's OWN managed-device demotion points the owner at a disabled switch.**
+      *Persona:* owner whose smart-task device stops reporting a power capability. *Hypothesis:*
+      `applyFalseOverrides` (`setup/appDeviceSupport.ts:365`) writes `managed: false` for
+      `fullyUnsupportedIds` with no user in the loop, and `resolveSmartTaskDeviceExclusion`
+      (`setup/appInit/smartTaskHomeScope.ts`) cannot tell that from an owner's toggle — so the task
+      renders `SMART_TASK_DEVICE_UNMANAGED_RECOURSE` ("Turn on Managed by PELS in Setup…") while the
+      device list disables that very switch (`packages/settings-ui/src/ui/devices.ts`, gated on
+      `manageability.canManage`). Narrow today: it needs a smart-task-capable device reporting
+      `powerCapable === false`. Add a third `ObjectiveDeviceExclusion` arm for the auto-demoted case
+      with copy that names the capability, or drop the recourse line when the toggle is inoperable.
+      Done when a task on an auto-demoted device shows a cause that does not point at a control the
+      owner cannot use. P3. Source: layering + copy lenses on the un-managed pause PR, 2026-08-23.
 
 - [ ] **Smart-task preview keeps a missing committed task reserved after the live grace expires.**
       *Persona:* owner previewing a lower-priority task after a higher task's device has stayed

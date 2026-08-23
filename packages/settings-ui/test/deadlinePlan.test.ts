@@ -5752,6 +5752,78 @@ describe('pending hero producer wiring', () => {
     expect(renderInput.pending.hero.metaLine).toBe(SMART_TASK_SUB_HOME_UNAVAILABLE);
   });
 
+  it('lets an un-managed diagnostic override a committed cached revision', () => {
+    // Mid-plan un-manage is the primary scenario: the recorder keeps
+    // `pending: false` and the cached `latest`, refreshing only the reason
+    // code. Without the exclusion short-circuit the list chip says
+    // "Paused — not managed" and tapping it opens a green on-track hero.
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+      id: 'heater',
+      name: 'Connected 300',
+      binaryControl: { on: false },
+      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const unmanagedPlan: DeferredObjectiveActivePlanV1 = {
+      ...buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [1, 2],
+        plannedKWhPerHour: 2,
+      }),
+      diagnosticReasonCode: 'objective_device_unmanaged',
+    };
+    const renderInput = testExports.resolveRenderInput({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, unmanagedPlan),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    });
+
+    expect(renderInput.status).toBe('pending');
+    if (renderInput.status !== 'pending') return;
+    // Still editable and clearable: unlike a relocated device, nothing about
+    // the write lane refuses an un-managed one.
+    expect(renderInput.pending.actionMode).toBe('edit_and_clear');
+    expect(renderInput.pending.hero.chips.map((chip) => chip.text))
+      .toEqual(['Temperature', 'Paused — not managed']);
+    expect(renderInput.pending.hero.headline).toBe('Smart task paused');
+  });
+
   it('threads deviceName + deadlineTime into the pending hero so headlineReason resolves', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);

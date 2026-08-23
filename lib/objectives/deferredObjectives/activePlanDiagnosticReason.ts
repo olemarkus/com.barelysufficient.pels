@@ -21,6 +21,7 @@ export const resolveDiagnosticReasonCode = (
   if (diag.reasonCode === 'objective_missing_device') return current;
   if (diag.reasonCode === 'objective_invalid_session') return 'objective_invalid_session';
   if (diag.reasonCode === 'objective_device_in_sub_home') return 'objective_device_in_sub_home';
+  if (diag.reasonCode === 'objective_device_unmanaged') return 'objective_device_unmanaged';
   // "Leave off until turned on again". The status downgrade in `diagnosticsBridge`
   // only reaches the LIVE diagnostic; `planStatus` / `floorShortfallCause` are not
   // rewritten until the next `:58` settle. Routing the cause through here puts it

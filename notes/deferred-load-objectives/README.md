@@ -1192,12 +1192,24 @@ the union in `lib/objectives/deferredObjectives/types.ts` plus the per-module na
 Diagnostics bridge (`diagnosticsBridge.ts`):
 
 - `objective_missing_device`
+- `objective_device_in_sub_home`
+- `objective_device_unmanaged`
 - `objective_invalid_deadline`
 - `objective_invalid_session`
 - `objective_progress_stale`
 - `objective_missing_temperature`
 - `objective_missing_charge_rate`
 - `objective_missing_capacity`
+
+The last two are DURABLE EXCLUSIONS, resolved by the wiring layer through one
+seam (`deviceExclusion.ts`, wired from `resolveSmartTaskDeviceExclusion`): the
+device exists but is out of the main planning lane, either because it belongs to
+a separately-metered home or because the owner turned "Managed by PELS" off.
+Both PAUSE the task rather than ending it — the objective is untouched, it takes
+no allocation share, and the first cycle after the exclusion lifts plans it
+normally. Neither may be reported as `objective_missing_device`: that code means
+PELS cannot find the device at all, and using it for a device the owner can see
+in the UI sends them hunting for a fault that does not exist.
 
 Policy horizon (`policyHorizon.ts`):
 

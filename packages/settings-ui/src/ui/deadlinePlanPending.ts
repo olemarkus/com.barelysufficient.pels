@@ -1,5 +1,7 @@
 import {
   resolveBuildingPlanChipTone,
+  resolveExclusionPendingReason,
+  resolvePausedUnmanagedChipTone,
   resolvePausedUnpluggedChipTone,
   resolveSmartTaskPendingReason,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
@@ -24,6 +26,7 @@ import { formatDeadlineFull, formatTarget } from './deadlinePlanFormatters.ts';
 export const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): DeadlineLiveState => {
   if (reason === 'device_in_sub_home') return 'unavailable';
   if (reason === 'invalid_session') return 'paused_unplugged';
+  if (reason === 'device_unmanaged') return 'paused_unmanaged';
   return 'building_plan';
 };
 
@@ -31,7 +34,7 @@ export const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): Dead
 // resolvers the list card also reads (via `SMART_TASK_LIST_STATUS_CHIP_VARIANT`)
 // so the "Building plan…" / "Paused — unplugged" pill never shows a different
 // colour on the list and the detail surface. The pending hero only ever
-// resolves to `building_plan` / `paused_unplugged` via
+// resolves to `building_plan` / `paused_unplugged` / `paused_unmanaged` via
 // `resolvePendingLiveState`; the broader `DeadlineLiveState` union (`active` /
 // `queued` / `ok`) doesn't reach this resolver in practice, so the fallback
 // simply mirrors the `building_plan` tone. Per
@@ -40,15 +43,15 @@ export const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): Dead
 export const pendingChipTone = (liveState: DeadlineLiveState): SmartTaskChipTone => {
   if (liveState === 'unavailable') return SMART_TASK_LIST_STATUS_CHIP_VARIANT.unavailable;
   if (liveState === 'paused_unplugged') return resolvePausedUnpluggedChipTone();
+  if (liveState === 'paused_unmanaged') return resolvePausedUnmanagedChipTone();
   return resolveBuildingPlanChipTone();
 };
 
 export const resolvePendingReason = (
   activePlan: ResolvedDeferredObjectiveActivePlanV1 | null,
 ): DeadlinePlanPendingReason => (
-  activePlan?.diagnosticReasonCode === 'objective_device_in_sub_home'
-    ? 'device_in_sub_home'
-    : resolveSmartTaskPendingReason(activePlan?.pendingReason)
+  resolveExclusionPendingReason(activePlan?.diagnosticReasonCode)
+    ?? resolveSmartTaskPendingReason(activePlan?.pendingReason)
 );
 
 const resolvePriceSource = (scheme: unknown): DeadlinePendingPriceSource => {
