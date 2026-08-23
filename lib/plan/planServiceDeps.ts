@@ -30,6 +30,7 @@ type PlanServicePlanEngine = Pick<
   | 'getObservationRevision'
   | 'syncPendingTargetCommands'
   | 'syncPendingBinaryCommands'
+  | 'hasActiveBinaryTurnOnCommand'
   | 'prunePendingTargetCommands'
   | 'decoratePlanWithPendingTargetCommands'
   | 'hasPendingTargetCommands'

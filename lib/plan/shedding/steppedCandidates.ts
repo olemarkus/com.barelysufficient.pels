@@ -50,7 +50,6 @@ import {
 } from '../../utils/deviceControlProfiles';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isNonSteppedDeviceRecovering } from '../planShedRecovery';
-import { isPendingBinaryCommandActive } from '../planObservationPolicy';
 import { buildTemperatureCandidate } from './candidateBuilders';
 import type { ShedCandidateSkipRecorder } from './candidateSkipLog';
 import { type PricedShedRung, type ShedCandidate, type SheddingDeps } from './types';
@@ -443,18 +442,13 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
   if (!selectedStep || isSteppedLoadOffStep(steppedProfile, selectedStep.id)) return null;
   const effectivePower = device.currentDrawKw;
   if (effectivePower <= 0) return null;
-  // Raw read: activeness is computed here with the device's communication
-  // model, so `peek` (not `get`) preserves the prior field-read behaviour.
-  const pendingEntry = pendingBinaryCommandStore.peek(device.id);
-  const pendingBinary = isPendingBinaryCommandActive({
-    pending: pendingEntry,
-  }) ? pendingEntry : undefined;
   return {
     ...device,
     kind: 'stepped',
     priority,
     recentlyRestored,
-    unconfirmedRelief: pendingBinary?.desired === false,
+    // See `candidateBuilders`: an unconfirmed turn-OFF, answered by the store.
+    unconfirmedRelief: pendingBinaryCommandStore.hasActiveTurnOff(device.id),
     effectivePower,
     fromStepId: selectedStep.id,
     // No ladder: this device is already parked at its shed target, and the whole

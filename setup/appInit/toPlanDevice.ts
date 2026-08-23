@@ -63,18 +63,21 @@ const isPlainBinaryControlDevice = (
   && (controlModel === undefined || controlModel === 'binary_power');
 
 /**
- * Per-home overrides for the two `toPlanDevice` reads that are otherwise
- * hardwired to the MAIN home's runtime (R7b Cluster A). Absent (the default) =
+ * Per-home overrides for the `toPlanDevice` reads that are otherwise hardwired
+ * to the MAIN home's runtime (R7b Cluster A). Absent (the default) =
  * byte-identical to the pre-lift behavior; a sub-home capacity bundle passes
- * neutral overrides so it neither adopts a surplus posture (capacity-only, no
- * price/surplus signal) nor leaks MAIN's in-flight binary command into its own
- * drift gate.
+ * neutral overrides so it does not adopt a surplus posture (capacity-only, no
+ * price/surplus signal) and cleans up PELS-OFF provenance on its OWN engine.
+ *
+ * There is no pending-binary-command override any more, because there is no
+ * pending-binary-command read: in-flight command state never crosses this seam.
+ * A sub-home's own store still answers that question — for the merge, and for
+ * the executor — it just is not asked here. See `PlanInputDevice`, where the
+ * removed pair used to sit, for why.
  */
 export type ToPlanDeviceOptions = {
   /** When false, skip the surplus-absorb posture entirely — never stamp `surplusOnly`. Default true. */
   surplusPostureEnabled?: boolean;
-  /** In-flight binary command resolver. Default reads MAIN's engine via `ctx.planEngine`. */
-  getPendingBinaryCommand?: (deviceId: string) => { desired: boolean } | null;
   /** Owning-home PELS-OFF provenance cleanup for pull-observed ON. */
   clearRecentBinaryOffCommand?: (
     deviceId: string,
@@ -88,21 +91,6 @@ export type ToPlanDeviceOptions = {
   }) => BinaryCommandabilityProjection;
   pruneCommandability?: (presentDeviceIds: ReadonlySet<string>) => void;
 };
-
-// Resolve the device's in-flight binary command. Default (no override) reads
-// MAIN's engine via `ctx.planEngine` — byte-identical to the pre-R7b read
-// (undefined when the engine/method is absent); a sub-home bundle overrides it
-// to read its OWN engine (see `buildSubHomeScope.getPlanDevices`).
-function resolvePendingBinaryCommand(
-  ctx: AppContext,
-  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
-  opts: ToPlanDeviceOptions | undefined,
-): { desired: boolean } | null | undefined {
-  if (opts?.getPendingBinaryCommand) {
-    return opts.getPendingBinaryCommand(device.id);
-  }
-  return ctx.planEngine?.getPendingBinaryCommandForDevice?.(device.id);
-}
 
 function resolvePlanCommandability(
   device: DecoratedDeviceSnapshot & EvObservedProbe,
@@ -501,7 +489,6 @@ export function toPlanDevice(
   const steppedCluster = resolveSteppedClusterFields(plannerSteppedLoadProfile, device);
   // The step-ladder gap — see `resolveSteppedLadderMissing`.
   const steppedLadderMissing = resolveSteppedLadderMissing(device, steppedCluster);
-  const pendingBinaryCommand = resolvePendingBinaryCommand(ctx, device, opts);
   const calibration = buildStepPowerCalibrationView(ctx, device);
   // Resolved once, here, and used twice: the observed-state label the plan
   // device carries, and the "is PELS holding this off" input the idleness
@@ -673,8 +660,6 @@ export function toPlanDevice(
     ...resolvePlanBoostFields({
       device, steppedCluster, commandableNow: physicallyCommandable, evBoost, temperatureBoost,
     }),
-    binaryCommandPending: pendingBinaryCommand !== null && pendingBinaryCommand !== undefined,
-    binaryCommandPendingDesired: pendingBinaryCommand?.desired,
     commandableNow,
     // Resolved once above; downstream lanes read the bit and never ask what kind
     // of device it is.

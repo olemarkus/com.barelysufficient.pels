@@ -2,6 +2,7 @@ import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import { hasLiveStateDivergedFromSnapshot } from '../../lib/executor/executorConvergence';
 import { hasPlanDeviceExecutionDrift } from '../../lib/executor/planExecutionDrift';
 import { splitPlanInputDevice } from '../utils/driftObservationTestUtils';
+import type { DriftCommandRead } from '../../lib/executor/driftObservedDevice';
 import { buildBinaryObservation } from '../utils/binaryObservationTestUtils';
 import { buildPlanMeta, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import {
@@ -16,15 +17,20 @@ import {
   type LooseOutputDevice,
 } from '../utils/planConvergenceFixtures';
 
+// The executor's in-flight binary command is passed alongside the observed
+// device, not folded into it: it belongs to a different layer and does not ride
+// on the plan-input seam. Defaults to "nothing in flight", which is what a spec
+// that issues no command means.
 const hasPlanExecutionDriftForDevice = (
   plan: DevicePlan,
   liveDevices: PlanInputDevice[],
   deviceId: string,
+  binaryCommand: DriftCommandRead['binary'] = { kind: 'none' },
 ): boolean => {
   const planDevice = plan.devices.find((device) => device.id === deviceId);
   const live = liveDevices.find((device) => device.id === deviceId);
   if (!planDevice || !live) return false;
-  return hasPlanDeviceExecutionDrift({ planDevice, ...splitPlanInputDevice(live) });
+  return hasPlanDeviceExecutionDrift({ planDevice, ...splitPlanInputDevice(live, binaryCommand) });
 };
 
 describe('executorConvergence stepped device drift', () => {
@@ -185,12 +191,12 @@ describe('executorConvergence stepped device drift', () => {
         name: 'Heater',
         binaryControl: { on: false },
         binaryCapabilityId: 'onoff',
-        binaryCommandPending: true,
-        binaryCommandPendingDesired: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       })];
 
-      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
+      expect(hasPlanExecutionDriftForDevice(
+        plan, liveDevices, 'dev-2', { kind: 'pending', desired: true },
+      )).toBe(false);
     });
 
     it('treats a mismatched pending binary command as drift', () => {
@@ -204,12 +210,12 @@ describe('executorConvergence stepped device drift', () => {
         binaryControl: { on: false },
         binaryCapabilityId: 'onoff',
         binaryControlObservation: buildBinaryObservation('onoff', false),
-        binaryCommandPending: true,
-        binaryCommandPendingDesired: false,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       })];
 
-      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
+      expect(hasPlanExecutionDriftForDevice(
+        plan, liveDevices, 'dev-2', { kind: 'pending', desired: false },
+      )).toBe(true);
     });
 
     it('treats fresh off binary state as keep-plan drift', () => {
@@ -251,12 +257,12 @@ describe('executorConvergence stepped device drift', () => {
         binaryControl: { on: true },
         binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
-        binaryCommandPending: true,
-        binaryCommandPendingDesired: true,
         targets: [],
       })];
 
-      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'ev-1')).toBe(false);
+      expect(hasPlanExecutionDriftForDevice(
+        plan, liveDevices, 'ev-1', { kind: 'pending', desired: true },
+      )).toBe(false);
     });
 
     it('treats charging EV state as drift when a deadline pause is expected', () => {
@@ -287,12 +293,12 @@ describe('executorConvergence stepped device drift', () => {
         binaryControl: { on: true },
         binaryCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_charging',
-        binaryCommandPending: true,
-        binaryCommandPendingDesired: false,
         targets: [],
       })];
 
-      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'ev-1')).toBe(false);
+      expect(hasPlanExecutionDriftForDevice(
+        plan, liveDevices, 'ev-1', { kind: 'pending', desired: false },
+      )).toBe(false);
     });
 
     it('does not treat capacity-control-off keep state as drift without executor restore context', () => {
@@ -401,11 +407,11 @@ describe('executorConvergence stepped device drift', () => {
         steppedLoadProfile: steppedProfile,
         binaryControlObservation: buildBinaryObservation('onoff', false),
         stepCommandPending: true,
-        binaryCommandPending: true,
-        binaryCommandPendingDesired: true,
       })];
 
-      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
+      expect(hasPlanExecutionDriftForDevice(
+        plan, liveDevices, 'dev-1', { kind: 'pending', desired: true },
+      )).toBe(false);
     });
 
     it('does not treat full-shed step preparation as binary drift before low is confirmed', () => {
@@ -509,10 +515,11 @@ describe('executorConvergence stepped device drift', () => {
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
         stepCommandPending: true,
-        binaryCommandPending: true,
       })];
 
-      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(true);
+      expect(hasPlanExecutionDriftForDevice(
+        plan, liveDevices, 'dev-1', { kind: 'pending', desired: 'unknown' },
+      )).toBe(true);
     });
 
     it('does not force stepped set_step shedding to look binary-off when the device is correctly on at the shed step', () => {

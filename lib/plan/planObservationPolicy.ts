@@ -1,13 +1,13 @@
 /**
- * Binary-command policy (window length + freshness predicate) moved to
+ * Stepped-load command-pending policy. The BINARY half moved to
  * `lib/observer/pendingBinaryCommandTypes.ts` as part of PR #4 of the
  * observer/transport split (see
- * `notes/state-management/observer-transport-split.md`). Only the
- * predicate consumed by surviving plan-side readers is re-exported
- * here; new code should import from observer directly.
+ * `notes/state-management/observer-transport-split.md`), and its freshness
+ * predicate was re-exported here for the plan-side readers that still
+ * hand-rolled "is a command in flight". They no longer do — `PendingBinaryCommandStore`
+ * answers that itself (`hasActiveCommand` / `hasActiveTurnOn` /
+ * `hasActiveTurnOff`) — so the re-export is gone. Import from observer directly.
  */
-export { isPendingBinaryCommandActive } from '../observer/pendingBinaryCommandTypes';
-
 import {
   LOCAL_CONTROL_COMMAND_CONFIRMATION_MS,
   resolveControlCommandConfirmationMs,

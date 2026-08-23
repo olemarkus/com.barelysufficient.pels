@@ -12,7 +12,6 @@ import { isCoolingCapableTemperatureDeviceClass } from '../../packages/shared-do
 import { applySurplusAbsorbDelta, type PriceOptDeviceConfig } from './planSurplusAbsorb';
 import { isEligibleAndRunnable } from './shedding/surplusHold';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
-import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import {
   getPrimaryTargetCapability,
@@ -145,9 +144,7 @@ export function buildInitialPlanDevices(params: {
       dev,
       priority,
       recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
-      binaryCommandPending: isPendingBinaryCommandActive({
-        pending: deps.pendingBinaryCommandStore.peek(dev.id),
-      }) && deps.pendingBinaryCommandStore.peek(dev.id)?.desired === true,
+      binaryCommandPending: deps.pendingBinaryCommandStore.hasActiveTurnOn(dev.id),
       currentState,
       plannedTarget,
       controllable,

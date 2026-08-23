@@ -53,6 +53,11 @@ export async function buildSheddingPlan(
     capacityGuard: deps.capacityGuard,
     shortfallThresholdKw: deps.shortfallThresholdKw,
     sheddingActive: wasSheddingActive,
+    // Any direction: the shortfall log counts devices mid-actuation, and a
+    // turn-OFF in flight is as much in flight as a turn-ON. Kept a callback
+    // rather than a prebuilt id set so the `deficitKw <= 0` early return still
+    // spares every ordinary rebuild the device walk.
+    isBinaryCommandPending: (deviceId) => deps.pendingBinaryCommandStore.hasActiveCommand(deviceId),
   });
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
   state.sheddingActive = guardResult.sheddingActive;

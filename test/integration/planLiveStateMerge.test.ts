@@ -1,6 +1,9 @@
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
-import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
+import {
+  buildLiveStatePlan as mergeLiveState,
+  type PendingBinaryCommandRead,
+} from '../../lib/plan/planLiveStateMerge';
 import {
   canRefreshPlanSnapshotFromLiveState,
   hasLiveStateDivergedFromSnapshot,
@@ -14,6 +17,17 @@ import {
   steppedProfile,
 } from '../utils/planConvergenceFixtures';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
+
+// The in-flight binary command comes from the pending-command store, not from
+// the live device, so every merge takes a reader. Specs that are not about
+// pending commands say so once, here, rather than repeating "nothing in flight".
+const noPendingBinary: PendingBinaryCommandRead = () => false;
+
+const buildLiveStatePlan = (
+  plan: Parameters<typeof mergeLiveState>[0],
+  liveDevices: Parameters<typeof mergeLiveState>[1],
+  getPendingBinaryCommand: PendingBinaryCommandRead = noPendingBinary,
+): ReturnType<typeof mergeLiveState> => mergeLiveState(plan, liveDevices, getPendingBinaryCommand);
 
 describe('planLiveStateMerge', () => {
   // The temperature cluster moves as ONE unit, from the LIVE device: the
@@ -309,7 +323,7 @@ describe('planLiveStateMerge', () => {
       expect(result.devices[0].currentState).toBe('off');
     });
 
-    it('refreshes binaryCommandPending from live state so cleared pending does not stick', () => {
+    it('refreshes binaryCommandPending from the command store so cleared pending does not stick', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'off',
         binaryCommandPending: true,
@@ -319,13 +333,37 @@ describe('planLiveStateMerge', () => {
         name: 'Heater',
         binaryControl: { on: false },
         binaryCapabilityId: 'onoff',
-        binaryCommandPending: false,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       })];
 
-      const result = buildLiveStatePlan(plan, liveDevices);
+      const result = buildLiveStatePlan(plan, liveDevices, () => false);
 
-      expect(result.devices[0].binaryCommandPending).toBe(false);
+      expect(result.devices[0].binaryCommandPending).toBeUndefined();
+    });
+
+    it('publishes exactly what the command store answers, per device', () => {
+      // `binaryCommandPending` means "PELS is turning this device on and it has
+      // not confirmed yet" — what the owner-facing "Resuming" state is read off.
+      // The turn-ON/turn-OFF distinction itself belongs to the store
+      // (`hasActiveTurnOn`, pinned in `pendingBinaryCommandPredicates.test.ts`);
+      // what this module owes is to publish that answer verbatim rather than
+      // re-derive one, which is how the producer's any-direction copy used to
+      // surface a device on its way OFF as resuming.
+      const plan = buildPlan([buildBinaryDevice({ currentState: 'off' })]);
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-2',
+        name: 'Heater',
+        binaryControl: { on: false },
+        binaryCapabilityId: 'onoff',
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      })];
+
+      expect(
+        buildLiveStatePlan(plan, liveDevices, () => true).devices[0].binaryCommandPending,
+      ).toBe(true);
+      expect(
+        buildLiveStatePlan(plan, liveDevices, () => false).devices[0].binaryCommandPending,
+      ).toBeUndefined();
     });
 
     it('clamps desiredStepId to the live selectedStepId when a shed device has jumped past its planned target', () => {

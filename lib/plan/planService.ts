@@ -268,7 +268,11 @@ export class PlanService {
     }
 
     const livePlan = this.decoratePlanWithPendingTargetCommands(
-      buildLiveStatePlan(this.latestPlanSnapshot, liveDevices),
+      buildLiveStatePlan(
+        this.latestPlanSnapshot,
+        liveDevices,
+        (deviceId) => this.deps.planEngine.hasActiveBinaryTurnOnCommand(deviceId),
+      ),
     );
     if (this.deps.planEngine.hasSettledActuation(this.latestPlanSnapshot, livePlan)) {
       const refreshedPlan = this.preservePlanGeneratedAt(livePlan, this.latestPlanSnapshot);

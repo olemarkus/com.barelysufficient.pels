@@ -108,7 +108,28 @@ function resolveMergedTemperatureCluster(
   };
 }
 
-export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevice[]): DevicePlan {
+/**
+ * "Is PELS turning this device on right now, unconfirmed?" — answered by
+ * `PendingBinaryCommandStore.hasActiveTurnOn`, reached through the engine.
+ *
+ * A resolved boolean, not the pending record: this module must not re-derive
+ * the rule, or the republished device can disagree with the one the builder
+ * just decided. That is not hypothetical — the producer used to stamp this bit
+ * onto `PlanInputDevice` under a rule of its own (any direction, not a turn-ON),
+ * and the merge copied it, so a device's `binaryCommandPending` changed meaning
+ * on republish.
+ *
+ * Required, not optional: an omitted reader would default to "nothing in
+ * flight", the more favourable answer, and that is the fabrication the boundary
+ * rules forbid.
+ */
+export type PendingBinaryCommandRead = (deviceId: string) => boolean;
+
+export function buildLiveStatePlan(
+  plan: DevicePlan,
+  liveDevices: PlanInputDevice[],
+  hasPendingBinaryTurnOn: PendingBinaryCommandRead,
+): DevicePlan {
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
   return {
     ...plan,
@@ -171,7 +192,11 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         expectedPowerKw: live.expectedPowerKw,
         expectedPowerSource: live.expectedPowerSource,
         currentDrawKw: live.currentDrawKw,
-        binaryCommandPending: live.binaryCommandPending,
+        // Re-read from the command store through the SAME predicate the builder
+        // uses (`planDevices.ts` → `hasActiveTurnOn`). Refreshing it here is the
+        // point of this path — a confirmed command must stop reading as pending
+        // — but it has to refresh to the answer a rebuild would give.
+        binaryCommandPending: hasPendingBinaryTurnOn(device.id) || undefined,
         available: live.available,
         zone: live.zone ?? device.zone,
         controllable: live.controllable,

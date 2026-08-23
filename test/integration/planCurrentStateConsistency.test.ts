@@ -77,6 +77,10 @@ const buildContext = (device: PlanInputDevice): PlanContext => ({
   currentHourPriceLevel: { cheap: false, expensive: false },
 });
 
+// The merge asks the pending-command store whether a turn-ON is in flight;
+// these specs issue no commands.
+const noPendingBinary = (): boolean => false;
+
 describe('planner current-state consistency', () => {
   async function resolvePhaseAnswers(params: {
     liveDevice: PlanInputDevice;
@@ -98,7 +102,7 @@ describe('planner current-state consistency', () => {
       };
     }
 
-    const mergedPlan = buildLiveStatePlan(plan, [liveDevice]);
+    const mergedPlan = buildLiveStatePlan(plan, [liveDevice], noPendingBinary);
     const sheddingPlan = await buildSheddingPlan(
       buildContext(liveDevice),
       state,

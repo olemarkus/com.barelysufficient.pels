@@ -7,6 +7,7 @@ import {
 } from '../../lib/executor/executorConvergence';
 import { buildPlanMeta } from './planTestUtils';
 import { driftDepsFromPlanInputs } from './driftObservationTestUtils';
+import type { DriftCommandRead } from '../../lib/executor/driftObservedDevice';
 
 /**
  * Specs that exercise drift supply the fixtures the observer would have served.
@@ -15,6 +16,14 @@ import { driftDepsFromPlanInputs } from './driftObservationTestUtils';
  */
 export type MockPlanEngineOptions = {
   getDriftDevices?: () => PlanInputDevice[];
+  /**
+   * The executor's in-flight BINARY command per device. Separate from
+   * `getDriftDevices` because in-flight command state is not a property of the
+   * observed device and no longer rides on the plan-input seam; the default is
+   * "nothing in flight", which is what a spec that never issues a command
+   * means.
+   */
+  getDriftBinaryCommand?: (deviceId: string) => DriftCommandRead['binary'];
   /**
    * Observer accepted-write counter. A spec that wants to model an observation
    * landing mid-build advances what this returns between the build and the
@@ -49,7 +58,7 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
   hasPendingTargetCommands: vi.fn(() => false),
   hasPendingTargetCommandsOlderThan: vi.fn(() => false),
   hasPendingBinaryCommands: vi.fn(() => false),
-  getPendingBinaryCommandForDevice: vi.fn(() => null),
+  hasActiveBinaryTurnOnCommand: vi.fn(() => false),
   syncPendingTargetCommands: vi.fn(() => false),
   syncPendingBinaryCommands: vi.fn(() => false),
   prunePendingTargetCommands: vi.fn(() => false),
@@ -75,7 +84,10 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
       if ((options?.getObservationRevision?.() ?? 0) !== observationRevisionAtBuild) return false;
       return hasPlanExecutionDriftAgainstIntent(
         plannedSnapshot,
-        driftDepsFromPlanInputs(options?.getDriftDevices ?? (() => [])),
+        driftDepsFromPlanInputs(
+          options?.getDriftDevices ?? (() => []),
+          options?.getDriftBinaryCommand ?? (() => ({ kind: 'none' })),
+        ),
       );
     },
   ),

@@ -1,9 +1,10 @@
 /**
  * Coverage for `toPlanDevice`'s R7b per-home options (`ToPlanDeviceOptions`):
  * a sub-home capacity bundle overrides the surplus posture (capacity-only, no
- * price/surplus signal) and the pending-binary read (its OWN engine, not MAIN's
- * via `ctx.planEngine`). The DEFAULT (no opts / `{}`) must reproduce the pre-R7b
- * behavior byte-for-byte — that byte-identity is the single-home safety proof.
+ * price/surplus signal), the PELS-OFF provenance cleanup, and binary-command
+ * reachability. There is no pending-binary override — that read left the seam
+ * entirely. The DEFAULT (no opts / `{}`) must reproduce the pre-R7b behavior
+ * byte-for-byte — that byte-identity is the single-home safety proof.
  *
  * Only the SDK seam (settings store + the mock ctx readers) is stubbed; the real
  * producer resolves the flat bits.
@@ -204,32 +205,17 @@ describe('toPlanDevice — R7b per-home options', () => {
     expect(ctx.homey.settings.set).not.toHaveBeenCalled();
   });
 
-  it('DEFAULT reads MAIN in-flight pending binary command via ctx.planEngine', () => {
-    const ctx = buildSurplusCtx();
-    ctx.planEngine = {
-      getPendingBinaryCommandForDevice: vi.fn(() => ({ desired: true })),
-    } as unknown as AppContext['planEngine'];
-    const result = toPlanDevice(ctx, buildSurplusWillingSnapshot());
-    expect(result.binaryCommandPending).toBe(true);
-    expect(result.binaryCommandPendingDesired).toBe(true);
-  });
+  it('carries no in-flight binary command state at all', () => {
+    // The pending-command pair came OFF the plan-input seam. Every consumer
+    // that decides on it asks `PendingBinaryCommandStore` directly, and the two
+    // questions it answers ("a turn-ON" vs "any direction") are different, so a
+    // single producer-stamped copy could only ever be right for one of them.
+    // With nothing stamped, a sub-home has nothing to isolate itself from here
+    // either — hence no `getPendingBinaryCommand` override.
+    const result = toPlanDevice(buildSurplusCtx(), buildSurplusWillingSnapshot());
 
-  it('getPendingBinaryCommand override isolates from MAIN pending (sub-home reads its OWN engine)', () => {
-    const ctx = buildSurplusCtx();
-    // MAIN's engine has a pending command in flight...
-    ctx.planEngine = {
-      getPendingBinaryCommandForDevice: vi.fn(() => ({ desired: true })),
-    } as unknown as AppContext['planEngine'];
-    // ...but the sub-home resolver (its OWN, quiescent engine) reports none.
-    const result = toPlanDevice(ctx, buildSurplusWillingSnapshot(), {
-      getPendingBinaryCommand: () => null,
-    });
-    expect(result.binaryCommandPending).toBe(false);
-    expect(result.binaryCommandPendingDesired).toBeUndefined();
-    // The MAIN engine was never consulted for the sub-home read.
-    expect(
-      (ctx.planEngine as unknown as { getPendingBinaryCommandForDevice: Mock }).getPendingBinaryCommandForDevice,
-    ).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty('binaryCommandPending');
+    expect(result).not.toHaveProperty('binaryCommandPendingDesired');
   });
 
   it('strips raw observed evidence at runtime — the resolved answers are the only answers', () => {

@@ -137,6 +137,7 @@ describe('P1 bug proofs', () => {
       devices: [],
       shedSet: new Set<string>(),
       softLimitSource: 'capacity' as const,
+      isBinaryCommandPending: () => false,
     };
 
     // The latch is threaded build to build now, so the proof is that a single
@@ -171,6 +172,9 @@ describe('P1 bug proofs', () => {
       overshootActionable: true,
       capacitySoftLimit: 5,
       measuredTotalKw: 6,
+      // In flight per the executor's command store, not per a field on the
+      // device: the plan-input seam does not carry binary command state.
+      isBinaryCommandPending: (deviceId) => deviceId === 'shed',
       devices: [
         withBinaryDiscriminant(withFixtureResidualKw({
           available: true,
@@ -189,7 +193,6 @@ describe('P1 bug proofs', () => {
           controllable: true,
           binaryCapabilityId: 'onoff',
           currentDrawKw: 0,
-          binaryCommandPending: true,
         })) as PlanInputDevice,
         withBinaryDiscriminant(withFixtureResidualKw({
           available: true,

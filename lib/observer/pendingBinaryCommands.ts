@@ -13,8 +13,11 @@
  *   command in flight for this device?".
  *
  * The store is the canonical owner in BOTH directions: writes go through
- * `record` / `clear`, and reads go through `get` (freshness-evicting) or
- * `peek` (raw). Plan- and executor-side consumers no longer touch
+ * `record` / `clear`, and reads go through `hasActiveCommand` /
+ * `hasActiveTurnOn` / `hasActiveTurnOff` — the three in-flight questions,
+ * resolved here so no consumer re-derives them. `get` (freshness-evicting) and
+ * `peek` (raw) remain for the few sites that need the RECORD, or the eviction
+ * itself. Plan- and executor-side consumers no longer touch
  * `state.pendingBinaryCommands[id]` directly — the store binds to that
  * backing `Record` (supplied by `PlanEngine`) but is the only path that
  * mutates or evicts it. The field survives only as the store's backing
@@ -60,10 +63,11 @@ export type BinaryCommandLifecycleListener = {
 
 /**
  * Observer-owned facade over the pending-binary-command map. The backing
- * `Record` is supplied by the engine at construction; it is the only
- * thing the store mutates, and plan-/executor-side consumers read it
- * exclusively through `get` (freshness-evicting) or `peek` (raw) so the
- * store is the single source of truth in both directions.
+ * `Record` is supplied by the engine at construction; it is the only thing the
+ * store mutates, and plan-/executor-side consumers read it only through this
+ * class — the `hasActive*` predicates for "is something in flight", `get` /
+ * `peek` when the record itself is needed — so the store is the single source
+ * of truth in both directions.
  */
 export class PendingBinaryCommandStore {
   private readonly deferredConfirmationByDevice = new Map<string, () => void>();
@@ -233,6 +237,34 @@ export class PendingBinaryCommandStore {
    */
   peek(deviceId: string): PendingBinaryCommand | undefined {
     return this.backing[deviceId];
+  }
+
+  /**
+   * The three in-flight questions, answered here so no consumer re-derives them.
+   *
+   * They exist because "is a binary command in flight" is really two different
+   * questions and the answers are not interchangeable: the owner-facing
+   * "Resuming" state and the restore serializer want a pending turn-ON, while
+   * the shortfall log wants ANY direction (a turn-OFF is as much mid-actuation
+   * as a turn-ON). Hand-rolling either from `peek` is how the same field name
+   * came to mean both, so read the question you actually mean.
+   *
+   * Non-evicting by construction: an expired entry answers `false` but stays in
+   * the backing store, because eviction fires the timeout lifecycle and belongs
+   * to `get`/`reconcilePendingEntry`, not to a predicate a projection may call.
+   */
+  hasActiveCommand(deviceId: string): boolean {
+    return isPendingBinaryCommandActive({ pending: this.backing[deviceId] });
+  }
+
+  /** A pending turn-ON, specifically. See {@link hasActiveCommand}. */
+  hasActiveTurnOn(deviceId: string): boolean {
+    return this.hasActiveCommand(deviceId) && this.backing[deviceId]?.desired === true;
+  }
+
+  /** A pending turn-OFF, specifically. See {@link hasActiveCommand}. */
+  hasActiveTurnOff(deviceId: string): boolean {
+    return this.hasActiveCommand(deviceId) && this.backing[deviceId]?.desired === false;
   }
 
   /** True if the device currently has any pending entry (active or expired). */

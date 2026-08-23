@@ -299,13 +299,13 @@ function buildSubHomeScope(params: {
   getTracker: () => PowerTrackerState;
   /** Late-bound: the bundle's own service (created after the engine). */
   getServiceForSync: () => PlanService | undefined;
-  /** Late-bound: the bundle's OWN engine, for the sub-home pending-binary read. */
-  getPlanEngineForPending: () => ReturnType<typeof createPlanEngine> | undefined;
+  /** Late-bound: the bundle's OWN engine, for the sub-home PELS-OFF provenance cleanup. */
+  getPlanEngineForCommandProvenance: () => ReturnType<typeof createPlanEngine> | undefined;
   modeCatalog: HomeModeCatalog;
 }): HomeScope {
   const {
     ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars,
-    getTracker, getServiceForSync, getPlanEngineForPending, modeCatalog,
+    getTracker, getServiceForSync, getPlanEngineForCommandProvenance, modeCatalog,
   } = params;
   const binaryCommandReachability = createBinaryCommandReachability({
     requestRebuild: () => {
@@ -351,16 +351,14 @@ function buildSubHomeScope(params: {
     getPlanDevices: () => {
       // Capacity-only overrides: NO surplus posture (a sub-home has no
       // price/surplus signal, so a surplusWilling device would be held OFF
-      // forever), and the pending-binary read routed to THIS bundle's engine
-      // (not MAIN's via `ctx.planEngine`).
+      // forever), and the PELS-OFF provenance cleanup routed to THIS bundle's
+      // engine (not MAIN's via `ctx.planEngine`).
       return buildHomePlanDevices(ctx, homeId, {
         surplusPostureEnabled: false,
         getBasePriorityForDevice: (id) => (
           getConfiguredPriorityFromHomeModeCatalog(modeCatalog.getSnapshot(), id)
         ),
-        getPendingBinaryCommand: (id) => getPlanEngineForPending()
-          ?.getPendingBinaryCommandForDevice(id) ?? null,
-        clearRecentBinaryOffCommand: (id, observedOnAtMs) => getPlanEngineForPending()
+        clearRecentBinaryOffCommand: (id, observedOnAtMs) => getPlanEngineForCommandProvenance()
           ?.clearRecentBinaryOffCommand(id, observedOnAtMs),
         projectCommandability: binaryCommandReachability.project,
         pruneCommandability: binaryCommandReachability.prune,
@@ -491,7 +489,7 @@ function createBundlePlanningRuntime(params: {
     getScalars: params.getCapacityScalars,
     getTracker: params.tracker.getState,
     getServiceForSync: () => planService,
-    getPlanEngineForPending: () => planEngine,
+    getPlanEngineForCommandProvenance: () => planEngine,
     modeCatalog: params.modeCatalog,
   });
   const isActuationFenced = (): boolean => {

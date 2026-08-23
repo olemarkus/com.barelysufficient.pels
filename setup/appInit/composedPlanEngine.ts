@@ -182,10 +182,8 @@ export class ComposedPlanEngine implements PlanEngine {
     return this.pendingBinaryCommandStore.hasAny();
   }
 
-  public getPendingBinaryCommandForDevice(deviceId: string): { desired: boolean } | null {
-    const pending = this.pendingBinaryCommandStore.get(deviceId);
-    if (!pending) return null;
-    return { desired: pending.desired };
+  public hasActiveBinaryTurnOnCommand(deviceId: string): boolean {
+    return this.pendingBinaryCommandStore.hasActiveTurnOn(deviceId);
   }
 
   public hasAttributablePendingBinaryCommand(deviceId: string): boolean {
