@@ -50,7 +50,6 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
       },
       clock: {
         getTimezone: () => 'Europe/Oslo',
-        getTimezoneOffset: () => -60,
       },
     } as unknown as AppContext['homey'];
     return createAppContextMock({

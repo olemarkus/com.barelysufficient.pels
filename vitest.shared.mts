@@ -9,14 +9,10 @@ if (!Number.isInteger(configuredWorkers) || configuredWorkers < 1 || configuredW
   throw new Error('PELS_TEST_WORKERS must be 1 or 2');
 }
 
-// Module aliases shared by every runtime test lane: the Homey SDK mock, the
-// contracts target-capabilities mock, and the echarts subpath shims.
+// Module aliases shared by every runtime test lane: the Homey SDK mock and the
+// echarts subpath shims.
 export const sharedAlias = [
   { find: 'homey', replacement: at('test/mocks/homey.ts') },
-  {
-    find: '../../packages/contracts/src/targetCapabilities',
-    replacement: at('test/mocks/contracts-targetCapabilities.ts'),
-  },
   { find: 'echarts/core.js', replacement: at('test/mocks/echarts-subpath-shim.ts') },
   { find: 'echarts/core', replacement: at('test/mocks/echarts-subpath-shim.ts') },
   { find: 'echarts/charts.js', replacement: at('test/mocks/echarts-subpath-shim.ts') },

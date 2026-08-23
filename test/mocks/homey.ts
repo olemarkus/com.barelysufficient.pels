@@ -1,3 +1,4 @@
+import { createMockImagesManager } from './homeyImages';
 import { EventEmitter } from 'events';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 
@@ -80,7 +81,6 @@ export class MockDevice {
   private capabilityUpdatedAt = new Map<string, string>();
   private actualCapabilityUpdatedAt = new Map<string, string>();
   private settings: Record<string, unknown> = {};
-  private settingsObject: unknown[] | null = null;
   private behaviorByCapability = new Map<string, MockCapabilityBehaviorConfig>();
   private capabilityMetadata = new Map<string, MockCapabilityMetadata>();
   private capabilityListeners = new Map<string, Set<(value: unknown) => void>>();
@@ -145,10 +145,6 @@ export class MockDevice {
     this.available = available;
   }
 
-  getData() {
-    return { id: this.id };
-  }
-
   async getCapabilityValue(capabilityId: string): Promise<unknown> {
     return this.capabilityValues.get(capabilityId);
   }
@@ -175,14 +171,6 @@ export class MockDevice {
 
   setSettings(settings: Record<string, unknown>): void {
     this.settings = settings;
-  }
-
-  async getSettingsObject(): Promise<unknown[] | null> {
-    return this.settingsObject;
-  }
-
-  setSettingsObject(settingsObject: unknown[] | null): void {
-    this.settingsObject = settingsObject;
   }
 
   getActualCapabilityValue(capabilityId: string): unknown {
@@ -494,7 +482,6 @@ export const mockHomeyInstance = {
   },
   clock: {
     getTimezone: () => 'Europe/Oslo',
-    getTimezoneOffset: () => -60, // CET in winter
   },
   // Raw location served by the owner-authenticated Homey Web API route.
   // Defaults to Oslo-ish coordinates; mutate via setMockGeolocation.
@@ -502,17 +489,7 @@ export const mockHomeyInstance = {
     _latitude: 59.91,
     _longitude: 10.75,
   },
-  images: {
-    createImage: async () => ({
-      setStream: (_handler: (stream: NodeJS.WritableStream) => void) => {},
-      update: async () => {},
-      unregister: async () => {},
-    }),
-    unregisterImage: async () => {},
-    getImage: () => {
-      throw new Error('not implemented');
-    },
-  },
+  images: createMockImagesManager(),
   cloud: {
     getHomeyId: async () => 'mock-homey-id',
   },
@@ -521,15 +498,6 @@ export const mockHomeyInstance = {
     // `setMockZones`; `null` makes the route throw (drives the transport's
     // failed-fetch / cached-tree-retained path).
     _zones: {} as Record<string, unknown> | null,
-  },
-  notifications: {
-    _notifications: [] as Array<{ excerpt: string }>,
-    createNotification: async ({ excerpt }: { excerpt: string }) => {
-      mockHomeyInstance.notifications._notifications.push({ excerpt });
-    },
-    clearNotifications: () => {
-      mockHomeyInstance.notifications._notifications = [];
-    },
   },
   api: {
     getOwnerApiToken: async () => 'mock-token',
