@@ -23,7 +23,7 @@ import {
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { resolveFixtureCurrentOn, withFixtureResidualKw } from '../utils/planTestUtils';
 import { SURPLUS_ABSORB_SETTLE_MS } from '../../lib/plan/admission/surplusAbsorb';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildExecutablePlan, hasExecutableShedDevices } from '../../lib/executor/executablePlanProjection';
@@ -60,10 +60,10 @@ const buildInputDevice = (
     managed: true,
     ...loose,
   };
-  return withBinaryDiscriminant({
+  return withBinaryDiscriminant(withFixtureResidualKw({
     ...merged,
     currentOn: resolveFixtureCurrentOn(merged),
-  }) as PlanInputDevice;
+  })) as PlanInputDevice;
 };
 
 const buildPump = (params: { on: boolean; measuredKw?: number; surplusOnly?: boolean } = { on: false }): PlanInputDevice => (

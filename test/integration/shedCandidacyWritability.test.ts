@@ -7,6 +7,7 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildSheddingPlan } from '../../lib/plan/shedding';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -69,7 +70,7 @@ const buildCapacityGuard = (): CapacityGuard => ({
 // `binaryControl` undefined — see `resolveBinaryControl`) while `resolvedOn`
 // keeps it managed. Its default shed behaviour is turn_off, so it still routes
 // through the binary candidate path despite being unwritable.
-const capLessTargetBearing: PlanInputDevice = {
+const capLessTargetBearing: PlanInputDevice = withFixtureResidualKw({
   id: 'unwritable',
   name: 'Heater (lost onoff)',
   targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
@@ -79,9 +80,9 @@ const capLessTargetBearing: PlanInputDevice = {
   // Both devices carry real load; the test is about which one PELS can
   // actually act on, so neither may resolve to zero relief.
   residualKw: { shed: 2 },
-} as unknown as PlanInputDevice;
+}) as unknown as PlanInputDevice;
 
-const writableBinary: PlanInputDevice = {
+const writableBinary: PlanInputDevice = withFixtureResidualKw({
   id: 'writable',
   name: 'Socket',
   targets: [],
@@ -93,7 +94,7 @@ const writableBinary: PlanInputDevice = {
   // Both devices carry real load; the test is about which one PELS can
   // actually act on, so neither may resolve to zero relief.
   residualKw: { shed: 2 },
-} as unknown as PlanInputDevice;
+}) as unknown as PlanInputDevice;
 
 describe('shed candidacy gates on writability', () => {
   beforeEach(() => {

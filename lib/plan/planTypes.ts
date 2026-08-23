@@ -610,10 +610,13 @@ type DevicePlanDeviceBase = {
    * `lib/plan/restore/accounting.ts` (chunk 4) read this after the flat
    * plan-cycle gates. See the corresponding doc-block on `PlanInputDevice`
    * for field semantics.
+   *
+   * Both halves are REQUIRED, for the reason stated there: the producer always
+   * stamps them, so absence is not a state a consumer can observe.
    */
   residualKw: {
     shed: number;
-    restore?: {
+    restore: {
       kw: number;
       source: RestorePowerSource;
     };

@@ -43,7 +43,7 @@ import {
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
-import { buildPlanMeta } from '../utils/planTestUtils';
+import { buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const DEVICE_ID = 'hoiax-1';
@@ -228,9 +228,8 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
 // off. Plain DevicePlan — the real executable projection derives the intent.
 const buildRestoreToLowPlan = (): DevicePlan => ({
   meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5, headroomKw: 5}),
-  devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default',
+  devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default',
     currentDrawKw: 0,
-    residualKw: { shed: 0 },
     id: DEVICE_ID,
     name: 'Connected 300',
     commandableNow: true,
@@ -256,7 +255,7 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     selectedStepId: 'low',
     desiredStepId: 'low',
     reason: KEEP_REASON,
-  }))) as DevicePlan['devices'][number]],
+  })))) as DevicePlan['devices'][number]],
 });
 
 let logCapture: LoggerCapture;

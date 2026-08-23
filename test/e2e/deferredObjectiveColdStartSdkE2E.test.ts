@@ -30,6 +30,7 @@ import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dail
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 const HOUR_MS = 60 * 60 * 1000;
 const MIN_MS = 60 * 1000;
@@ -58,7 +59,7 @@ const todayPrices = Array.from({ length: 24 }, (_, h) => todayPriceFor(h));
 const tomorrowPrices = Array.from({ length: 24 }, (_, h) => (h <= 5 ? CHEAP : OUT_OF_HORIZON));
 const priceForHourOfDay = (hod: number): number => (hod < 24 ? todayPrices[hod]! : tomorrowPrices[hod - 24]!);
 
-const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinaryDiscriminant({ available: true, currentDrawKw: 0, residualKw: { shed: 0 },
+const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({ available: true, currentDrawKw: 0,
   id: DEVICE_ID,
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Connected 300',
@@ -85,7 +86,7 @@ const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinar
       { id: 'max', planningPowerW: ELEMENT_KW * 1000 },
     ],
   },
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
 const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
   objectiveProfiles: {

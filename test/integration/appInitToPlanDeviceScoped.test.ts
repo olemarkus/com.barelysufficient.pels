@@ -104,7 +104,6 @@ describe('toPlanDevice — R7b per-home options', () => {
     const result = toPlanDevice(ctx, binarySurvivor);
 
     expect(ctx.getShedBehavior).toHaveBeenCalledWith(SURPLUS_DEVICE_ID);
-    if (!result.residualKw) throw new Error('Expected the binary survivor to expose residual power');
     expect(result.residualKw.shed).toBe(0.7);
     expect('currentTemperature' in result).toBe(false);
     expect('currentOn' in result && result.currentOn).toBe(true);
@@ -164,7 +163,6 @@ describe('toPlanDevice — R7b per-home options', () => {
 
     const result = toPlanDevice(ctx, steppedSurvivor);
 
-    if (!result.residualKw) throw new Error('Expected the stepped survivor to expose residual power');
     expect(result.residualKw.shed).toBeGreaterThan(0);
     expect('currentTemperature' in result).toBe(false);
     expect('currentOn' in result).toBe(false);

@@ -281,21 +281,25 @@ export type PlanInputDeviceBase = {
    * - `restore` (chunk 4): the kW the consumer would add by restoring this
    *   device. Collapses the `isSteppedLoadDevice + getSteppedLoadRestoreStep`
    *   chain in `lib/plan/restore/accounting.ts` into a single `{ kw, source }`
-   *   pair. The `source` label preserves the legacy debug-log vocabulary
-   *   (`'measured' | 'expected' | 'planning' | 'configured' | 'stepped' |
-   *   'fallback'`). The producer keeps the stepped-vs-binary asymmetry
+   *   pair. The `source` label names the rung that answered
+   *   (`RestorePowerSource`). The producer keeps the stepped-vs-binary asymmetry
    *   intact: stepped+on uses live `planningPowerKw` (source `'planning'`),
    *   stepped+off uses the lowest-active step from the profile (source
    *   `'stepped'`), everything else falls back to the observer's
-   *   `getRestoreDrawKw` (sources `'measured'` / `'expected'` / `'planning'`
-   *   / `'configured'` / `'fallback'`).
+   *   `getHighestKnownPowerKw` (sources `'measured'` / `'expected'` /
+   *   `'planning'`).
    *
-   * Both fields are optional for the duration of the dual-read transition;
-   * chunk 6 makes them required.
+   * BOTH halves are REQUIRED: `buildResidualKwForPlanDevice` always returns both,
+   * and `toPlanDevice` is its only caller, so a device without a `restore` is a
+   * shape the producer cannot emit. Optionality is reserved for genuine absence —
+   * it was kept here only for the dual-read transition, and the consumer-side
+   * fallback it licensed (`resolveSteppedRestorePower` +
+   * `getHighestKnownPowerKw` in `lib/plan/restore/accounting.ts`) was reachable
+   * from fixtures alone and is gone with it.
    */
   residualKw: {
     shed: number;
-    restore?: {
+    restore: {
       kw: number;
       source: RestorePowerSource;
     };

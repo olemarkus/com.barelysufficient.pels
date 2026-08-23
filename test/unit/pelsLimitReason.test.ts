@@ -5,7 +5,7 @@ import type { DevicePlan } from '../../lib/plan/planTypes';
 import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
-import { buildPlanMeta } from '../utils/planTestUtils';
+import { buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
 
 describe('pels status limit reason', () => {
   const baseDevice = {
@@ -41,10 +41,10 @@ describe('pels status limit reason', () => {
       headroomKw: params.headroomKw ?? 1.8,
       powerNowKw: params.powerNowKw === undefined ? 4.2 : params.powerNowKw}),
     devices: [
-      { expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0, residualKw: { shed: 0 },
+      withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
         ...baseDevice,
         reason: typeof params.reason === 'string' ? fixtureDeviceReason(params.reason)! : params.reason,
-      },
+      }),
     ],
   });
 
@@ -128,7 +128,7 @@ describe('pels status limit reason', () => {
         softLimitSource: 'capacity',
         headroomKw: 5.6}),
       devices: [
-        withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0, residualKw: { shed: 0 },
+        withTemperatureDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
           id: 'ev-1',
           name: 'EV Charger',
           commandableNow: true,
@@ -142,7 +142,7 @@ describe('pels status limit reason', () => {
           controllable: true,
           available: true,
           reason: fixtureDeviceReason('inactive (charger is unplugged)')!,
-        }),
+        })),
       ],
     };
 

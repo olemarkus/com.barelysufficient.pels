@@ -4,7 +4,7 @@ import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { buildIdentityDecorationBundle } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { buildPlanInputDevice } from '../helpers/buildPlanInputDevice';
+import { buildPlanInputDevice } from '../utils/planTestUtils';
 
 const buildDevice = (id: string, priority: number): PlanInputDevice => withBinaryDiscriminant({
   ...buildPlanInputDevice({

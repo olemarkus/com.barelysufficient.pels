@@ -9,13 +9,13 @@ import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { TARGET_WAITING_LOG_REPEAT_MS } from '../../lib/plan/planConstants';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
-import { buildPlanMeta } from '../utils/planTestUtils';
+import { buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
 
 const buildLiveDevice = (deviceId: string, name: string, target: number): PlanInputDevice =>
   // `planTargetControl` reads only `targets`; the device has no control
   // capability, so the binary regrouper drops the (inert) `binaryControl` —
   // behaviourally identical, since the field is never read on this path.
-  withBinaryDiscriminant(withTemperatureDiscriminant({
+  withBinaryDiscriminant(withTemperatureDiscriminant(withFixtureResidualKw({
     id: deviceId,
     expectedPowerKw: 1,
     expectedPowerSource: 'default' as const,
@@ -28,14 +28,14 @@ const buildLiveDevice = (deviceId: string, name: string, target: number): PlanIn
     binaryControl: { on: true },
     currentTemperature: 21,
     targets: [{ id: 'target_temperature', value: target, unit: '°C' }],
-  })) as PlanInputDevice;
+  }))) as PlanInputDevice;
 
 const buildPlanDevice = (
   deviceId: string,
   name: string,
   currentTarget: number,
   plannedTarget: number,
-): DevicePlan['devices'][number] => withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
+): DevicePlan['devices'][number] => withTemperatureDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
   id: deviceId,
   name,
   commandableNow: true,
@@ -46,7 +46,7 @@ const buildPlanDevice = (
   controllable: true,
   available: true,
   reason: fixtureDeviceReason('keep')!,
-}) as DevicePlan['devices'][number];
+})) as DevicePlan['devices'][number];
 
 describe('syncPendingTargetCommands', () => {
   it('logs a user-visible waiting message on the first unresolved observation', () => {

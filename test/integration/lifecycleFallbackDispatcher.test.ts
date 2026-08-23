@@ -10,7 +10,6 @@ import {
   prunePendingTargetCommandsForPlan,
   recordPendingTargetCommandAttempt,
 } from '../../lib/plan/planTargetControl';
-import { buildPlanInputDevice } from '../helpers/buildPlanInputDevice';
 import {
   applyDeferredBinaryCommand,
   type PlanExecutorBinaryContext,
@@ -54,7 +53,7 @@ const resolveRequest = (
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { DeviceCommand } from '../../lib/actuator/deviceCommand';
-import { buildPlanMeta } from '../utils/planTestUtils';
+import { buildPlanInputDevice, buildPlanMeta } from '../utils/planTestUtils';
 
 type ExecutorDispatcherDeps = ConstructorParameters<typeof ExecutorLifecycleFallbackDispatcher>[0];
 type LegacyLifecycleFallbackDevice = Omit<
@@ -195,8 +194,32 @@ const createTestActuator = (
   };
 };
 
+/**
+ * A device SNAPSHOT for the dispatcher, built from the shared plan-input fixture.
+ *
+ * `buildPlanInputDevice` emits what `toPlanDevice` emits — the producer-resolved
+ * `currentOn`, with the RAW `binaryControl` stripped, because that axis stays
+ * observer-internal on a plan device. Every seam in this suite
+ * (`buildExecutableObservedDeviceState`, `observation.getSnapshotByDeviceId`)
+ * reads a snapshot, and a snapshot DOES carry the raw axis — so re-attach the one
+ * the producer resolved rather than letting the fixture ship a plan device where a
+ * snapshot belongs.
+ *
+ * A fixture with NO binary axis says so with `binaryControllable: false`; it then
+ * carries neither `currentOn` nor `binaryControl`, exactly as the producer emits a
+ * stepped-only or target-only device.
+ */
+const buildLifecycleSnapshot = (
+  overrides: Parameters<typeof buildPlanInputDevice>[0],
+): ReturnType<typeof buildPlanInputDevice> & { binaryControl?: { on: boolean } } => {
+  const device = buildPlanInputDevice(overrides);
+  const { currentOn } = device as { currentOn?: boolean };
+  if (typeof currentOn !== 'boolean') return device;
+  return { ...device, binaryControl: { on: currentOn } };
+};
+
 const observedFromDevice = (
-  device: ReturnType<typeof buildPlanInputDevice>,
+  device: ReturnType<typeof buildLifecycleSnapshot>,
 ): LifecycleFallbackObservedState => ({
   id: device.id,
   name: device.name,
@@ -211,10 +234,11 @@ const observedFromDevice = (
 });
 
 const buildDryRunRequests = (): { axis: string; request: LifecycleFallbackRequest }[] => {
-  const binaryDevice = buildPlanInputDevice({
+  const binaryDevice = buildLifecycleSnapshot({
     id: 'device-1', name: 'Device', binaryControl: { on: true }, currentOn: true, targets: [],
   });
-  const targetDevice = buildPlanInputDevice({
+  const targetDevice = buildLifecycleSnapshot({
+    binaryControllable: false,
     id: 'device-1', name: 'Device', targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
   });
   const profile = {
@@ -223,7 +247,8 @@ const buildDryRunRequests = (): { axis: string; request: LifecycleFallbackReques
       { id: 'high', planningPowerW: 2_000 },
     ],
   };
-  const stepDevice = buildPlanInputDevice({
+  const stepDevice = buildLifecycleSnapshot({
+    binaryControllable: false,
     id: 'device-1', name: 'Device', controlModel: 'stepped_load', targets: [],
     reportedStepId: 'high', selectedStepId: 'high', steppedLoadProfile: profile,
   });
@@ -490,7 +515,8 @@ describe('LifecycleFallbackDispatcher', () => {
     const planState = createPlanEngineState();
     const actuator = createTestActuator();
     const recordReleaseShedActuation = vi.fn();
-    const device = buildPlanInputDevice({
+    const device = buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -546,7 +572,8 @@ describe('LifecycleFallbackDispatcher', () => {
     vi.setSystemTime(1_000_000);
     let observedValue = 21;
     const actuator = createTestActuator();
-    const buildDevice = () => buildPlanInputDevice({
+    const buildDevice = () => buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -593,7 +620,8 @@ describe('LifecycleFallbackDispatcher', () => {
   it('uses observer target drift instead of a stale settled transport snapshot', async () => {
     const state = createPlanEngineState();
     const actuator = createTestActuator();
-    const device = buildPlanInputDevice({
+    const device = buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -631,7 +659,8 @@ describe('LifecycleFallbackDispatcher', () => {
   it('uses observer target settlement instead of issuing from a stale transport snapshot', async () => {
     const state = createPlanEngineState();
     const actuator = createTestActuator();
-    const device = buildPlanInputDevice({
+    const device = buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -659,7 +688,7 @@ describe('LifecycleFallbackDispatcher', () => {
   it('falls back to binary off when configured temperature control has no target capability', async () => {
     const state = createPlanEngineState();
     const actuator = createTestActuator();
-    const device = buildPlanInputDevice({
+    const device = buildLifecycleSnapshot({
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -721,7 +750,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const state = createPlanEngineState();
     const actuator = createTestActuator();
     const device = {
-      ...buildPlanInputDevice({
+      ...buildLifecycleSnapshot({
         id: 'charger-1',
         name: 'Charger',
         controllable: false,
@@ -775,7 +804,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('settles from observer OFF without dispatching against stale transport ON', async () => {
     const actuator = createTestActuator();
-    const device = buildPlanInputDevice({
+    const device = buildLifecycleSnapshot({
       id: 'charger-1',
       name: 'Charger',
       controllable: false,
@@ -810,7 +839,8 @@ describe('LifecycleFallbackDispatcher', () => {
     const state = createPlanEngineState();
     const requestSteppedLoadStep = vi.fn().mockResolvedValue({ requested: true, transport: 'capability' });
     let reportedStepId: string | undefined = undefined;
-    const buildDevice = () => buildPlanInputDevice({
+    const buildDevice = () => buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Stepped heater',
       controllable: false,
@@ -870,7 +900,8 @@ describe('LifecycleFallbackDispatcher', () => {
       (resolve) => { resolveStep = resolve; },
     ));
     let commandPending = false;
-    const buildDevice = () => buildPlanInputDevice({
+    const buildDevice = () => buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Stepped heater',
       controllable: false,
@@ -927,7 +958,8 @@ describe('LifecycleFallbackDispatcher', () => {
       requested: true,
       transport: 'native_capability',
     });
-    const device = buildPlanInputDevice({
+    const device = buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Stepped heater',
       controllable: false,
@@ -1083,7 +1115,8 @@ describe('LifecycleFallbackDispatcher', () => {
         { id: 'high', planningPowerW: 2_000 },
       ],
     };
-    const device = buildPlanInputDevice({
+    const device = buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1', name: 'Stepped heater', controlModel: 'stepped_load',
       targets: [], reportedStepId: 'low', selectedStepId: 'low', steppedLoadProfile: profile,
     });
@@ -1159,7 +1192,7 @@ describe('LifecycleFallbackDispatcher', () => {
   // permanently disarmed the owner's task.
   it('reports a per-device result when the producer denies every write axis', () => {
     const device = {
-      ...buildPlanInputDevice({
+      ...buildLifecycleSnapshot({
         id: 'heater-1',
         name: 'Heater',
         binaryControl: { on: true },
@@ -1179,7 +1212,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('reduces temperature-disabled fallback to the allowed binary axis', () => {
     const device = {
-      ...buildPlanInputDevice({
+      ...buildLifecycleSnapshot({
         id: 'heater-1',
         name: 'Heater',
         binaryControl: { on: true },
@@ -1202,7 +1235,8 @@ describe('LifecycleFallbackDispatcher', () => {
   it('waits for a numeric target observation before dispatching fallback', async () => {
     const state = createPlanEngineState();
     const actuator = createTestActuator();
-    const device = buildPlanInputDevice({
+    const device = buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -1257,7 +1291,8 @@ describe('LifecycleFallbackDispatcher', () => {
     const dueAtMs = planState.pendingTargetCommands['heater-1']?.nextRetryAtMs ?? 0;
     vi.setSystemTime(dueAtMs);
     const actuator = createTestActuator();
-    const device = buildPlanInputDevice({
+    const device = buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -1337,7 +1372,8 @@ describe('LifecycleFallbackDispatcher', () => {
     const dueAtMs = planState.pendingTargetCommands['heater-1']?.nextRetryAtMs ?? 0;
     vi.setSystemTime(dueAtMs);
     const actuator = createTestActuator();
-    const device = buildPlanInputDevice({
+    const device = buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -1418,7 +1454,8 @@ describe('LifecycleFallbackDispatcher', () => {
     expect(planState.pendingTargetCommands['heater-1']?.retryCount).toBe(1);
     let observedValue = 21;
     const actuator = createTestActuator();
-    const buildDevice = () => buildPlanInputDevice({
+    const buildDevice = () => buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -1476,7 +1513,8 @@ describe('LifecycleFallbackDispatcher', () => {
   it('atomically claims an in-flight target write across lifecycle and ordinary clocks', async () => {
     const planState = createPlanEngineState();
     const targetCommandClaim = createTargetCommandClaim();
-    const device = buildPlanInputDevice({
+    const device = buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -1537,7 +1575,8 @@ describe('LifecycleFallbackDispatcher', () => {
   it('drops an opposing ordinary target until abandon permits a fresh decision', async () => {
     const planState = createPlanEngineState();
     const targetCommandClaim = createTargetCommandClaim();
-    const device = buildPlanInputDevice({
+    const device = buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -1652,7 +1691,8 @@ describe('LifecycleFallbackDispatcher', () => {
       recordRestoreActuation: vi.fn(),
       recordActivationAttemptStarted: vi.fn(),
     };
-    const buildObserved = () => buildExecutableObservedDeviceState(buildPlanInputDevice({
+    const buildObserved = () => buildExecutableObservedDeviceState(buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -1702,7 +1742,8 @@ describe('LifecycleFallbackDispatcher', () => {
     const targetCommandClaim = createTargetCommandClaim();
     const actuator = createTestActuator();
     let observedValue = 21;
-    const buildDevice = () => buildPlanInputDevice({
+    const buildDevice = () => buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1',
       name: 'Heater',
       controllable: false,
@@ -1771,7 +1812,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const state = createPlanEngineState();
     state.markDeviceShed('charger-1', Date.now());
     const snapshot = {
-      ...buildPlanInputDevice({
+      ...buildLifecycleSnapshot({
         id: 'charger-1',
         name: 'Charger',
         controllable: false,
@@ -1841,7 +1882,7 @@ describe('LifecycleFallbackDispatcher', () => {
   it.each([true, false])('skips a %s binary collision and never replays it', async (ordinaryDesired) => {
     const state = createPlanEngineState();
     const snapshot = {
-      ...buildPlanInputDevice({
+      ...buildLifecycleSnapshot({
         id: 'heater-1', name: 'Heater', binaryControl: { on: true }, currentOn: true, targets: [],
       }),
       binaryWritable: true,
@@ -1890,7 +1931,7 @@ describe('LifecycleFallbackDispatcher', () => {
   it('supersedes an opposing binary pending entry when lifecycle takes authority', async () => {
     const state = createPlanEngineState();
     const snapshot = {
-      ...buildPlanInputDevice({
+      ...buildLifecycleSnapshot({
         id: 'heater-1', name: 'Heater', binaryControl: { on: true }, currentOn: true, targets: [],
       }),
       binaryWritable: true,
@@ -1927,7 +1968,7 @@ describe('LifecycleFallbackDispatcher', () => {
   it('drops binary pending bookkeeping when lifecycle authority ends during the write', async () => {
     const state = createPlanEngineState();
     const snapshot = {
-      ...buildPlanInputDevice({
+      ...buildLifecycleSnapshot({
         id: 'heater-1', name: 'Heater', binaryControl: { on: true }, currentOn: true, targets: [],
       }),
       binaryWritable: true,
@@ -1972,7 +2013,7 @@ describe('LifecycleFallbackDispatcher', () => {
   it('drops binary pending bookkeeping when lifecycle authority ends and the write times out', async () => {
     const state = createPlanEngineState();
     const snapshot = {
-      ...buildPlanInputDevice({
+      ...buildLifecycleSnapshot({
         id: 'heater-1', name: 'Heater', binaryControl: { on: true }, currentOn: true, targets: [],
       }),
       binaryWritable: true,
@@ -2014,7 +2055,7 @@ describe('LifecycleFallbackDispatcher', () => {
     async (abandon) => {
       const state = createPlanEngineState();
       let observedOn = false;
-      const buildSnapshot = () => buildPlanInputDevice({
+      const buildSnapshot = () => buildLifecycleSnapshot({
         id: 'heater-1', name: 'Heater', binaryControl: { on: observedOn }, currentOn: observedOn, targets: [],
       });
       const snapshot = buildSnapshot();
@@ -2096,7 +2137,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const profile = { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }] };
     const observedOn = false;
     const buildSnapshot = () => ({
-      ...buildPlanInputDevice({
+      ...buildLifecycleSnapshot({
         id: 'heater-1', name: 'Stepped heater', controlModel: 'stepped_load',
         binaryControl: { on: observedOn }, currentOn: observedOn, targets: [],
         reportedStepId: 'low', selectedStepId: 'low', steppedLoadProfile: profile,
@@ -2169,7 +2210,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const state = createPlanEngineState();
     const profile = { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'low', planningPowerW: 1_000 }] };
     let observedOn = false;
-    const buildSnapshot = () => buildPlanInputDevice({
+    const buildSnapshot = () => buildLifecycleSnapshot({
       id: 'heater-1', name: 'Stepped heater', controlModel: 'stepped_load',
         binaryControl: { on: observedOn }, currentOn: observedOn, targets: [],
       reportedStepId: 'low', selectedStepId: 'low', steppedLoadProfile: profile,
@@ -2225,7 +2266,8 @@ describe('LifecycleFallbackDispatcher', () => {
     const targetCommandClaim = createTargetCommandClaim();
     let observedValue = 5;
     let lifecyclePendingObservedValue: unknown;
-    const buildDevice = () => buildPlanInputDevice({
+    const buildDevice = () => buildLifecycleSnapshot({
+      binaryControllable: false,
       id: 'heater-1', name: 'Heater',
       targets: [{ id: 'target_temperature', value: observedValue, unit: 'C' }],
     });
@@ -2318,9 +2360,9 @@ describe('LifecycleFallbackDispatcher', () => {
       stepNeedsAdjustment: true, stepCommandRetryCount: 0,
     };
     let observedStepId = 'low';
-    const buildObservedDevice = () => buildPlanInputDevice({
+    const buildObservedDevice = () => buildLifecycleSnapshot({
       id: 'heater-1', name: 'Heater', controlModel: 'stepped_load', targets: [],
-      binaryControl: undefined,
+      binaryControllable: false,
       reportedStepId: observedStepId, selectedStepId: observedStepId, steppedLoadProfile: profile,
     });
     const observedDevice = buildObservedDevice();

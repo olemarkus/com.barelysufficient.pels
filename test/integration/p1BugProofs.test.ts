@@ -14,7 +14,13 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { updateGuardState } from '../../lib/plan/admission';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../../lib/plan/planUsage';
-import { buildPlanDevice, buildPlanMeta, steppedInputDevice, steppedPlanDevice } from '../utils/planTestUtils';
+import {
+  buildPlanDevice,
+  buildPlanMeta,
+  steppedInputDevice,
+  steppedPlanDevice,
+  withFixtureResidualKw,
+} from '../utils/planTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
@@ -110,7 +116,7 @@ describe('P1 bug proofs', () => {
       currentState: 'off',
       plannedState: 'keep',
       boostActive: false,
-      currentDrawKw: 0, residualKw: { shed: 0 },
+      currentDrawKw: 0,
       expectedPowerKw: 2,
       planningPowerKw: 4,
     });
@@ -166,7 +172,7 @@ describe('P1 bug proofs', () => {
       capacitySoftLimit: 5,
       measuredTotalKw: 6,
       devices: [
-        withBinaryDiscriminant({
+        withBinaryDiscriminant(withFixtureResidualKw({
           available: true,
           id: 'shed',
           expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -182,12 +188,12 @@ describe('P1 bug proofs', () => {
           currentOn: true,
           controllable: true,
           binaryCapabilityId: 'onoff',
-          currentDrawKw: 0, residualKw: { shed: 0 },
+          currentDrawKw: 0,
           binaryCommandPending: true,
-        }) as PlanInputDevice,
-        withBinaryDiscriminant({
+        })) as PlanInputDevice,
+        withBinaryDiscriminant(withFixtureResidualKw({
           available: true,
-          currentDrawKw: 1, residualKw: { shed: 1 },
+          currentDrawKw: 1,
           id: 'stale',
           expectedPowerKw: 1, expectedPowerSource: 'default',
           name: 'Stale',
@@ -202,7 +208,7 @@ describe('P1 bug proofs', () => {
           currentOn: true,
           controllable: true,
           binaryCapabilityId: 'onoff',
-        }) as PlanInputDevice,
+        })) as PlanInputDevice,
       ],
       shedSet: new Set(['shed']),
       softLimitSource: 'capacity',
@@ -270,7 +276,7 @@ describe('P1 bug proofs', () => {
         currentState: 'off',
         expectedPowerKw: 1.25,
         // Parked at its off step and drawing nothing — its own meter says so.
-        currentDrawKw: 0, residualKw: { shed: 0 },
+        currentDrawKw: 0,
       }),
       binaryControl: { on: false },
       currentOn: false,

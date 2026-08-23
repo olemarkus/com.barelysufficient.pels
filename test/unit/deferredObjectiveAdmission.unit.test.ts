@@ -10,10 +10,11 @@ import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredO
 import type { DeferredObjectiveHorizonPlan } from '../../lib/objectives/deferredObjectives';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 const buildEvDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & { id: string },
-): PlanInputDevice => withBinaryDiscriminant({
+): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
   name: overrides.id,
   targets: [],
   deviceClass: 'evcharger',
@@ -22,7 +23,7 @@ const buildEvDevice = (
   ...overrides,
   controllable: overrides.controllable ?? true,
   available: overrides.available ?? true,
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
 const buildDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & { deviceId: string }): DeferredObjectiveDiagnostic => ({
   objectiveId: `${overrides.deviceId}:temperature`,
@@ -175,17 +176,17 @@ describe('applyDeferredObjectiveAdmission', () => {
     // 'stepped_load'; only their objective unit (SoC% vs °C) differs, which never reaches the
     // release routing. So their admission decisions must be byte-identical across buckets.
     const evCharger = buildEvDevice({ id: 'dev', controllable: false, controlModel: 'stepped_load' });
-    const waterHeater: PlanInputDevice = {
+    const waterHeater: PlanInputDevice = withFixtureResidualKw({
       available: true,
       id: 'dev', name: 'dev', targets: [], controllable: false, controlModel: 'stepped_load',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       commandableNow: true, objectiveSessionInactive: false,
-      currentDrawKw: 0, residualKw: { shed: 0 },
+      currentDrawKw: 0,
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
       confirmedNotDrawing: false,
-    };
+    });
     const idleHorizon = {
       currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
       currentHourClaim: 'released' as const,

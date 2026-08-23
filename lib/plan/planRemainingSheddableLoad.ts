@@ -76,11 +76,18 @@ type SteppedTemperatureRemainingSheddableDevice = RemainingSheddableBaseDevice
   & RemainingSheddableTemperatureFields;
 
 /**
- * Structural superset covering every shape the legacy dual-read fallback needs
- * to inspect (simple / temperature / stepped / stepped+temperature). The
- * post-chunk-3 producer-resolved path collapses the kind switch into
- * `residualKw.shed`; this type stays as a transitional fallback container
- * until chunk 6 removes the dual-read path entirely.
+ * Structural superset covering the four shapes the legacy kind switch used to
+ * inspect (simple / temperature / stepped / stepped+temperature).
+ *
+ * The shed dual-read is gone — `resolveRemainingSheddableLoadKw` reads
+ * `residualKw.shed` and nothing else — so this union carries no fallback. It
+ * keeps the local `{ shed: number }` view because that is the ONLY residual half
+ * this consumer reads: requiring the restore half here would make a consumer
+ * demand a number it never looks at.
+ *
+ * The variant members no longer discriminate anything for that reader, and the
+ * union is assignability-vacuous (`A | (A&B)` accepts any bare `A`), so they
+ * constrain no caller either.
  */
 export type RemainingSheddableDevice =
   | SimpleRemainingSheddableDevice

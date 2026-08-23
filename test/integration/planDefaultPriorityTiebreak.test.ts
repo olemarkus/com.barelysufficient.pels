@@ -7,6 +7,7 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanInputDevice, DevicePlanDevice } from '../../lib/plan/planTypes';
 import { getRestoreCandidates, getOffDevices } from '../../lib/plan/restore/devices';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
+import { withFixtureResidualKw } from '../utils/planTestUtils';
 
 // Two managed devices that were never assigned a stored priority, drawing the
 // SAME effective power. Without a deterministic final tiebreak their relative
@@ -14,7 +15,7 @@ import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 // vs restore could disagree). These tests pin a single, stable deviceId order
 // on BOTH sides.
 
-const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id,
   name: id,
   commandableNow: true,
@@ -31,8 +32,7 @@ const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant(
   binaryControl: { on: true },
   currentOn: true,
   currentDrawKw: 1.5,
-  residualKw: { shed: 1.5 },
-}) as PlanInputDevice;
+})) as PlanInputDevice;
 
 const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
   devices,
@@ -54,11 +54,10 @@ const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
   },
 });
 
-const buildRestoreDevice = (id: string): DevicePlanDevice => ({
+const buildRestoreDevice = (id: string): DevicePlanDevice => (withFixtureResidualKw({
   id,
   name: id,
   currentDrawKw: 1.5,
-  residualKw: { shed: 1.5 },
   currentState: 'off',
   plannedState: 'keep',
   boostActive: false,
@@ -75,7 +74,7 @@ const buildRestoreDevice = (id: string): DevicePlanDevice => ({
   controllable: true,
   available: true,
   // priority intentionally omitted → default bucket.
-} as DevicePlanDevice);
+}) as DevicePlanDevice);
 
 describe('default-priority deterministic tiebreak (shed & restore)', () => {
   it('orders default-priority, equal-power shed candidates deterministically regardless of input order', () => {

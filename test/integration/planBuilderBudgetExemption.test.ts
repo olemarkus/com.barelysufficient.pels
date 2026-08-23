@@ -8,7 +8,7 @@ import {
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { resolveFixtureCurrentOn, withFixtureResidualKw } from '../utils/planTestUtils';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -27,10 +27,10 @@ const buildInputDevice = (
     binaryControl: { on: true },
     ...loose,
   };
-  return withBinaryDiscriminant({
+  return withBinaryDiscriminant(withFixtureResidualKw({
     ...merged,
     currentOn: resolveFixtureCurrentOn(merged),
-  }) as PlanInputDevice;
+  })) as PlanInputDevice;
 };
 
 const buildDailyBudgetSnapshot = (params: {

@@ -47,7 +47,13 @@ import { hasLiveStateDivergedFromSnapshot } from '../../lib/executor/executorCon
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
-import { buildPlanMeta, resolveFixtureCurrentOn, withMaterializedEvPlugState } from '../utils/planTestUtils';
+import {
+  buildPlanMeta,
+  fixtureResidualKw,
+  resolveFixtureCurrentOn,
+  withFixtureResidualKw,
+  withMaterializedEvPlugState,
+} from '../utils/planTestUtils';
 import { createCapacityShortfallSideEffectGate } from '../../setup/capacityShortfallSideEffectGate';
 import { normalizeTargetCapabilityValue } from '../../lib/utils/targetCapabilities';
 
@@ -93,7 +99,7 @@ const pd = (
   // materializes `commandableNow` + the EV trio in its place. Without it these
   // fixtures kept a field production removes, which is exactly why the executor's
   // EV path looked covered while `hasStableBinaryReleaseActuation` was dead.
-  withSteppedDiscriminant(withBinaryDiscriminant({
+  withSteppedDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
     ...withMaterializedEvPlugState(loose),
     currentOn: resolveFixtureCurrentOn(loose),
     // Mirrors production's ONE stamp site (`finalizePlanDevices`): the plan's
@@ -106,7 +112,7 @@ const pd = (
         steppedLoadProfile: loose.steppedLoadProfile,
         plannedShedStepId: loose.plannedShedStepId,
       }),
-  })),
+  }))),
 ) as DevicePlanDevice;
 
 const buildPlan = (): DevicePlan => ({
@@ -115,7 +121,7 @@ const buildPlan = (): DevicePlan => ({
     softLimitKw: 5,
     headroomKw: 4}),
   devices: [
-    withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0, residualKw: { shed: 0 },
+    withTemperatureDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
@@ -134,7 +140,7 @@ const buildPlan = (): DevicePlan => ({
       available: true,
       currentOn: false,
       reason: KEEP_REASON,
-    }),
+    })),
   ],
 });
 
@@ -144,7 +150,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
     softLimitKw: 5,
     headroomKw: 4}),
   devices: [
-    withTemperatureDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0, residualKw: { shed: 0 },
+    withTemperatureDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
@@ -163,7 +169,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       available: true,
       currentOn: true,
       reason: KEEP_REASON,
-    }),
+    })),
   ],
 });
 
@@ -539,6 +545,12 @@ describe('PlanExecutor restore logging', () => {
           controllable: true,
           reason: KEEP_REASON,
           steppedLoadProfile: {} as never,
+          // The malformed ladder is this test's SUBJECT: the executor must keep
+          // going when stepped projection fails. The producer resolves the
+          // residual before any ladder reaches a plan and can never be handed
+          // this shape, so resolve it here for the same device WITHOUT the
+          // broken profile.
+          residualKw: fixtureResidualKw({ currentDrawKw: 0, expectedPowerKw: 1 }),
         }),
         pd({
           id: 'dev-1',
@@ -1665,7 +1677,7 @@ describe('PlanExecutor stepped loads', () => {
         softLimitKw: 5,
         headroomKw: 4}),
       devices: [
-        withTemperatureDiscriminant(withSteppedDiscriminant({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0, residualKw: { shed: 0 },
+        withTemperatureDiscriminant(withSteppedDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
           ...merged,
           currentState: (merged as { currentState?: string }).currentState ?? 'on',
           currentOn: resolveFixtureCurrentOn(merged),
@@ -1683,7 +1695,7 @@ describe('PlanExecutor stepped loads', () => {
               plannedShedStepId?: string;
             },
           ),
-        })),
+        }))),
       ],
     };
   };
@@ -3367,10 +3379,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       ...overrides,
     };
     return [
-      withBinaryDiscriminant(withSteppedDiscriminant({
+      withBinaryDiscriminant(withSteppedDiscriminant(withFixtureResidualKw({
         ...merged,
         currentOn: resolveFixtureCurrentOn(merged),
-      })) as PlanInputDevice,
+      }))) as PlanInputDevice,
     ];
   };
 
@@ -4091,25 +4103,25 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       debugStructured,
     });
 
-    const shedDevice = {
+    const shedDevice = withFixtureResidualKw({
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       controllable: true, available: true, reason: CAPACITY_REASON, boostActive: false,
       hasStandingDemand: true,
       confirmedNotDrawing: false,
       binaryCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
-      currentDrawKw: 0, residualKw: { shed: 0 }, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
-    };
-    const steppedDevice = (desiredStepId: string) => ({
+      currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
+    });
+    const steppedDevice = (desiredStepId: string) => (withFixtureResidualKw({
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
       controllable: true, available: true, reason: KEEP_REASON, commandableNow: true,
       boostActive: false, hasStandingDemand: true,
-      currentDrawKw: 0, residualKw: { shed: 0 }, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
+      currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
       controlModel: 'stepped_load' as const,
       binaryCapabilityId: 'onoff' as const, currentOn: false,
       steppedLoadProfile: multiStepProfile,
       selectedStepId: 'off',
       desiredStepId,
-    });
+    }));
 
     await executor.applyPlanActions(
       { meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}), devices: [shedDevice, steppedDevice('medium')] },

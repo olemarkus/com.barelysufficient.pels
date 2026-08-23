@@ -3,7 +3,7 @@ import type {
   PlanInputDevice,
 } from '../../lib/plan/planTypes';
 import type { ObservedDeviceState } from '../../packages/contracts/src/types';
-import { buildPlanInputDevice } from '../helpers/buildPlanInputDevice';
+import { buildPlanInputDevice } from '../utils/planTestUtils';
 
 describe('buildPlanInputDevice', () => {
   it('keeps availability and controllability required at both producer seams', () => {
@@ -14,28 +14,50 @@ describe('buildPlanInputDevice', () => {
     }>();
   });
 
-  it('applies the documented defaults when only id is provided', () => {
+  it('emits exactly the shape the producer emits for an undescribed device', () => {
     const device = buildPlanInputDevice({ id: 'dev-1' });
 
+    // Exhaustive on purpose: this is the parity pin for the ONE shared builder.
+    // A second builder used to live in `test/helpers/`, and its cast shipped a
+    // shape `toPlanDevice` cannot emit — four required booleans missing, the raw
+    // `binaryControl` kept, `currentOn` never stamped. `hasStandingDemand:
+    // undefined` is the first gate in starvation detection and surplus absorb,
+    // so no device that builder produced could ever be seen as starved.
     expect(device).toEqual({
       controllable: true,
       available: true,
       id: 'dev-1',
-      name: 'dev-1',
+      name: 'Device',
       targets: [],
-      binaryControl: { on: true },
       // Required base field — resolved the way the producer resolves it, never
       // left undefined for a consumer to read as "not commandable".
       commandableNow: true,
+      // The producer's two boost bits, resolved from the (absent) config and
+      // readings this fixture spells.
+      boostSupported: false,
+      boostRequested: false,
+      // Everything but a charger is going without when it is off — the
+      // producer's `!isEvObserved(device)`.
+      hasStandingDemand: true,
+      // Producer-required two-state bit; `false` is "no calibration opinion".
+      confirmedNotDrawing: false,
+      // Required since #2182: the producer answers "is there a creditable
+      // session" for every device, and only an EV charger can lack one. A
+      // non-EV fixture is never session-inactive.
+      objectiveSessionInactive: false,
+      // The producer's resolved on/off truth and four-valued label. The RAW
+      // `binaryControl` is stripped, exactly as `toPlanDevice` strips it.
+      currentOn: true,
+      currentState: 'on',
       // Likewise required: a plan device always carries a resolved draw. This
       // fixture declares no power at all, and the producer answers 0 for a device
       // nobody described — it no longer invents a generic 1 kW.
       currentDrawKw: 0,
-      // Required since the dual-read collapse: the producer always stamps a
-      // residual, so the fixture resolves one through the same
-      // `resolveResidualKwShed` the producer uses. A device drawing nothing
-      // frees nothing by being shed.
-      residualKw: { shed: 0 },
+      // Both halves resolved by the producer itself
+      // (`buildResidualKwForPlanDevice`). A device drawing nothing frees nothing
+      // by being shed; restoring it costs whatever it draws when running, which
+      // for an undescribed device is the estimator's last rung.
+      residualKw: { shed: 0, restore: { kw: 1, source: 'expected' } },
       // The draw-when-running twin, also required. Unlike `currentDrawKw` this
       // one DOES end on a fallback: "draws nothing when running" is not an answer,
       // so the ladder resolves the 1 kW default rather than absence.
@@ -57,7 +79,10 @@ describe('buildPlanInputDevice', () => {
 
     expect(device.id).toBe('dev-2');
     expect(device.name).toBe('Living room heater');
-    expect((device as PlanInputDevice & BinaryControlDiscriminantProbe).binaryControl?.on).toBe(false);
+    // The raw observed axis is resolved into `currentOn` and stripped, the way
+    // the producer resolves and strips it.
+    expect((device as PlanInputDevice & { currentOn: boolean }).currentOn).toBe(false);
+    expect(device).not.toHaveProperty('binaryControl');
     expect(device.targets).toEqual([]);
   });
 
@@ -87,6 +112,9 @@ describe('buildPlanInputDevice', () => {
     expect(device.priority).toBe(4);
     expect(device.expectedPowerKw).toBe(7.2);
     expect(device.objectiveKind).toBe('ev_soc');
+    // A charger's demand arrives with a car, not with the setpoint — the
+    // producer's one standing-demand rule, mirrored.
+    expect(device.hasStandingDemand).toBe(false);
   });
 
   it('replaces the default targets array when an override is supplied', () => {

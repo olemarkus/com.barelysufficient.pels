@@ -910,6 +910,24 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **`RemainingSheddableDevice` is a kind-shaped union that discriminates nothing.**
+      `lib/plan/planRemainingSheddableLoad.ts:67-96` still carries the four-member variant
+      union from the dual-read era, but every consumer — `resolveRemainingSheddableLoadKw`
+      (`:200-220`), the four call sites in `lib/plan/planLogging.ts:163,183` and
+      `lib/plan/admission/sheddingGuard.ts:63,157`, and both `isAlreadyShed` closures — reads
+      only `controllable`, the binary axis, `budgetExempt`, and `residualKw.shed`. Nothing reads
+      `temperatureTarget` or the stepped cluster, so `toRemainingSheddableDeviceFromParts`
+      (`:261`), `toRemainingTemperatureTarget` (`:296`) and `toPlanRemainingTemperatureTarget`
+      (`:313`) build fields no reader consumes, once per device per plan cycle. The union is also
+      assignability-vacuous (`A | (A & B)` accepts any bare `A`), so it constrains no caller.
+      Collapse it to one flat consumer type carrying the base fields plus
+      `residualKw: { shed: number }` and delete the two temperature projections. Done when the
+      union and both projections are gone, `resolveRemainingSheddableLoadKw` still returns the
+      same kW for the existing specs, and `knip`/`tsc` stay clean. Leaving a kind-shaped union in
+      the one module whose point was collapsing the kind switch is what invites the next consumer
+      to branch on kind again. Source: pels-layering-guardian and adversarial review of PR #2185
+      (both independently), 2026-08-23. [P2]
+
 - [ ] **Unmanaged picker devices are served from a cached parse, so their observed state is
       up to half an hour stale.** `/ui_devices` merges the managed snapshot with the
       unmanaged-but-eligible picker list, and `withLiveObservedState`
@@ -3178,6 +3196,23 @@ non-blocking follow-ups.*
       Found 2026-08-20. [P2]
 
 ## P3 Future and Exploratory Work
+
+- [ ] **The fixture temperature facet still fabricates a sensor reading production would not have.**
+      `test/utils/planTestUtils.ts:fixtureTemperatureObservation` synthesizes a
+      `TemperatureObservation` by hand where production has `resolveTemperatureObservation`
+      (`lib/device/transport/temperatureObservation.ts:10-20`). The admission sets now agree —
+      the "carries a `target_temperature` capability" arm was removed (Codex P2 on PR #2185) —
+      but the fabrication remains: a fixture spelling only `currentTarget: 21` gets
+      `currentTemperature: currentTarget` invented, while production returns NO facet without a
+      real sensor reading. *Hypothesis:* such a fixture resolves a `set_temperature` shed
+      behaviour where production falls back to `turn_off`, so a spec can pin a zero shed residual
+      on a device whose whole draw production would free — the missing-sensor planning path stays
+      untested behind a green suite. *Persona:* a maintainer touching temperature shed selection
+      or the missing-sensor fallback. Fix by having the fixture supply only what it was actually
+      told and delegating admission to `resolveTemperatureObservation`, then giving each fixture
+      that intends a facet an explicit `currentTemperature`. Cascades across the specs that spell
+      temperature intent as a bare setpoint, which is why it is not folded into #2185.
+      Source: pels-layering-guardian review of PR #2185, 2026-08-23. [P3]
 
 - [ ] **`planSteppedLoad`'s direct-`currentOn` sites are masked-safe only by profile shape.**
       The `lib/plan/planSteppedLoad.ts` direct-`currentOn` reads are safe for a step-only stepper ONLY
