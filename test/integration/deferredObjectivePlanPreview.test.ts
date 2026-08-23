@@ -694,7 +694,6 @@ describe('previewDeferredObjectivePlan', () => {
     // `plugged_in` is commandable, so the preview must not declare the task
     // unavailable — that is what made an EV deadline unmeetable by construction.
     expect(estimate.status).not.toBe('unavailable');
-    expect(estimate.unavailableReason).not.toBe('not_resumable');
   });
 
   it('returns at_risk when the deadline forces the plan into its safety reserve', () => {

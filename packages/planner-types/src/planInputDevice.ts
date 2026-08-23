@@ -196,8 +196,21 @@ export type PlanInputDeviceBase = {
     | 'binary_command_retry';
   /** Producer-resolved objective family; never inferred from transport IDs downstream. */
   objectiveKind?: 'ev_soc' | 'temperature';
-  /** Observer-resolved EV session fact used by the objective layer. */
-  objectiveSessionInactive?: boolean;
+  /**
+   * Producer-resolved "there is no creditable session to make progress in" —
+   * `isEvSessionInactive` for a charger (`plugged_out` / `plugged_in_discharging`),
+   * always `false` for everything else. The smart-task lane's only precondition
+   * question, and REQUIRED so a future producer change that stops emitting it
+   * fails to compile instead of silently reading `undefined` — which is exactly
+   * how the raw `evChargingState` read this replaced died unnoticed.
+   *
+   * Deliberately NOT `commandableNow`: that folds in `available === false` and
+   * the binary-command retry back-off, so a plugged-in, charging car whose last
+   * command timed out would be reported to its owner as "EV is unplugged — plug
+   * in to resume." Commandability and creditable-session are different questions
+   * (see the note on `isEvSessionInactive`), and this is the second.
+   */
+  objectiveSessionInactive: boolean;
   // No `evBoost` / `stateOfCharge` / `temperatureBoost`: a boost threshold is
   // configuration and a battery level is an observation. The producer reads both
   // at their own seams and hands the planner `boostSupported`/`boostRequested`

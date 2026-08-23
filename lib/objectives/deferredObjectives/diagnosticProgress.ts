@@ -33,8 +33,6 @@
 import { OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS } from '../../objectives/profiles';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import type { DeferredObjectiveSettingsEntry } from './settings';
-import { isEvSessionInactive } from '../../../packages/shared-domain/src/evPlugState';
-import { isEvObserved } from '../../../packages/shared-domain/src/evObservedState';
 
 export type DeferredObjectiveProgressResolution = {
   remainingUnits: number;
@@ -46,7 +44,6 @@ export type DeferredObjectiveProgressResolution = {
   currentPercent: number | null;
   currentTemperatureC: number | null;
   reasonCode:
-  | 'objective_charger_not_resumable'
   | 'objective_invalid_session'
   | 'objective_missing_temperature'
   | 'objective_progress_stale';
@@ -61,7 +58,18 @@ type EvProgress = {
 };
 
 const resolveEvObjectiveProgress = (device: ObjectiveDeviceInput): EvProgress => {
-  if (isEvObserved(device) && isEvSessionInactive(device.evChargingState)) {
+  // "There is no creditable session" is the whole precondition, and the producer
+  // has already answered it. Reading the resolved boolean rather than the
+  // plug-state keeps the question out of this layer — and the plug-state is not
+  // here to read anyway: `toPlanDevice` strips `evChargingState`, so the
+  // `isEvSessionInactive(device.evChargingState)` this replaced was a dead
+  // branch that never once fired in production. An unplugged charger reported
+  // `objective_progress_stale` — a reading problem — for entire task windows.
+  //
+  // NOT `commandableNow`: that also goes false for `available === false` and for
+  // PELS's own binary-command retry back-off, and this code renders as "EV is
+  // unplugged — plug in to resume."
+  if (device.objectiveSessionInactive) {
     return { currentPercent: null, reasonCode: 'objective_invalid_session' };
   }
   const level = device.stateOfCharge?.level;

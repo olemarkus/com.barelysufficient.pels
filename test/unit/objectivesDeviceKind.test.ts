@@ -19,11 +19,14 @@ const capabilityOnlyEv = (extra: Partial<ObjectiveDeviceInput> = {}): ObjectiveD
   deviceClass: 'evcharger',
   currentDrawKw: 0,
   expectedPowerKw: 7,
+  objectiveSessionInactive: false,
   ...extra,
 });
 
 // Non-EV, non-temperature device with the same power: no synthetic charge step.
-const plainOnOff: ObjectiveDeviceInput = { id: 'x', name: 'Plain', currentDrawKw: 0, expectedPowerKw: 7 };
+const plainOnOff: ObjectiveDeviceInput = {
+  id: 'x', name: 'Plain', currentDrawKw: 0, expectedPowerKw: 7, objectiveSessionInactive: false,
+};
 
 describe('lib/objectives de-kind — capability-only EV takes the EV branch', () => {
   it('resolveObjectiveSteps emits a charge step for a capability-only EV', () => {

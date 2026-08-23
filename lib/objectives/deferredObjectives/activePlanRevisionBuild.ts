@@ -227,11 +227,6 @@ export const resolvePendingReason = (
   // plug back in. Without this the hero said the generic "Waiting" with no
   // hint that the action is on the user, not PELS.
   if (diag.reasonCode === 'objective_invalid_session') return 'invalid_session';
-  // EV connected but PELS can't resume the charger — surface a dedicated
-  // "can't resume" copy variant so a not-resumable charger that has no plan yet
-  // (pending from the start) gets the same honest hero as the list chip,
-  // instead of falling through to the generic "Waiting for tomorrow's prices".
-  if (diag.reasonCode === 'objective_charger_not_resumable') return 'charger_not_resumable';
   // A task whose device moved to a separately-metered home is out of scope,
   // not waiting for prices. Keep this distinct so every user surface can name
   // the membership block instead of falling through to the horizon fallback.

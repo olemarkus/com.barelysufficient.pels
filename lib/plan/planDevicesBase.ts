@@ -122,7 +122,6 @@ function producerResolvedDecisionFields(dev: PlanInputDevice): {
   commandableNow: boolean;
   commandabilityReason?: PlanInputDevice['commandabilityReason'];
   objectiveKind?: PlanInputDevice['objectiveKind'];
-  objectiveSessionInactive?: boolean;
   hasStandingDemand: boolean;
 } {
   return {
@@ -130,9 +129,6 @@ function producerResolvedDecisionFields(dev: PlanInputDevice): {
     hasStandingDemand: dev.hasStandingDemand,
     ...(dev.commandabilityReason ? { commandabilityReason: dev.commandabilityReason } : {}),
     ...(dev.objectiveKind ? { objectiveKind: dev.objectiveKind } : {}),
-    ...(dev.objectiveSessionInactive !== undefined
-      ? { objectiveSessionInactive: dev.objectiveSessionInactive }
-      : {}),
   };
 }
 

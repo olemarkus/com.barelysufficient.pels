@@ -11,7 +11,6 @@
     queued: "On track",
     unavailable: "Unavailable",
     paused_unplugged: "Paused \u2014 unplugged",
-    paused_not_resumable: "Paused \u2014 not charging yet",
     on_track: "On track",
     at_risk: "At risk",
     cannot_meet: "Cannot finish",
@@ -19,24 +18,7 @@
   };
   var SMART_TASK_WIDGET_STATUS_LABELS = {
     ...SMART_TASK_LIST_STATUS_LABELS,
-    paused_unplugged: "Unplugged",
-    paused_not_resumable: "Not charging yet"
-  };
-  var SMART_TASK_WIDGET_WHY_BY_STATUS = {
-    building_plan: null,
-    // resolved by pendingReason
-    queued: null,
-    // composed from firstPlannedTimeLabel when present
-    unavailable: SMART_TASK_SUB_HOME_UNAVAILABLE,
-    paused_unplugged: "EV is unplugged \u2014 plug in to resume.",
-    paused_not_resumable: "Car isn\u2019t drawing power yet \u2014 progress can\u2019t be counted.",
-    on_track: null,
-    // affirmative line resolved from firstPlannedTimeLabel
-    at_risk: null,
-    // disambiguated by budget vs time below
-    cannot_meet: null,
-    // resolved by floor cause / budget bucket count
-    satisfied: null
+    paused_unplugged: "Unplugged"
   };
   var SMART_TASK_EXTRA_PERMISSIONS_TITLE = "Extra permissions";
   var SMART_TASK_LIMIT_NEEDS_BUDGET_HINT = "Turn on \u201CMay go over daily budget\u201D to use this.";
@@ -143,7 +125,6 @@
   var PREVIEW_UNAVAILABLE_COPY_BY_REASON = {
     invalid_deadline: "Can\u2019t preview this ready-by time yet.",
     invalid_session: "Can\u2019t preview this yet \u2014 plug the EV in to start.",
-    not_resumable: "Can\u2019t preview this yet \u2014 charging won\u2019t resume. Check the charger.",
     missing_capacity: "Can\u2019t preview this yet \u2014 PELS needs power readings from this device.",
     missing_device: "Can\u2019t preview this yet \u2014 PELS can\u2019t find this device.",
     needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
@@ -197,7 +178,6 @@
     queued: "ok",
     unavailable: "warn",
     paused_unplugged: resolvePausedUnpluggedChipTone(),
-    paused_not_resumable: resolvePausedUnpluggedChipTone(),
     on_track: "ok",
     at_risk: "warn",
     cannot_meet: "alert",
@@ -217,7 +197,6 @@
     paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
     // Compressed widget label ('Not charging yet') for the same double-em-dash
     // reason as paused_unplugged — the full chip label carries its own em-dash.
-    paused_not_resumable: SMART_TASK_WIDGET_STATUS_LABELS.paused_not_resumable,
     on_track: null,
     at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
     cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
@@ -348,7 +327,6 @@
         // hands a stale value through.
         paused_unplugged: "On track",
         // Thermal devices aren't chargers; unreachable, same fallback as above.
-        paused_not_resumable: "On track",
         ok: "On track"
       },
       atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
@@ -378,7 +356,6 @@
         invalid_session: HEATER_DEVICE_DATA_MISSING,
         // Thermal devices aren't chargers; unreachable here, kept as a safety net
         // so a future diagnostic can't leak EV-specific copy onto a heater.
-        charger_not_resumable: HEATER_DEVICE_DATA_MISSING,
         device_in_sub_home: separateMeterUnavailableResolver,
         // Cold-start `missing_capacity` collapses to a single user-facing line —
         // headline + metaLine combined parse as `PENDING_REASON_MISSING_CAPACITY_COPY`
@@ -443,7 +420,6 @@
         queued: "On track",
         unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
         paused_unplugged: "Paused \u2014 unplugged",
-        paused_not_resumable: SMART_TASK_LIST_STATUS_LABELS.paused_not_resumable,
         ok: "On track"
       },
       atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
@@ -481,16 +457,6 @@
         // on — `plugged_in` is commandable — so this must NOT read as "can't
         // resume" or send the owner to check hardware PELS is mid-way through
         // starting. What is true is narrower: no power is flowing yet, so the SoC
-        // behind it isn't creditable progress. Recourse is null; there is no in-app
-        // tab that makes the car start drawing. `headlineReason` reuses the
-        // canonical widget "why" line so the three EV surfaces (list chip / hero /
-        // card) agree on the cause copy.
-        charger_not_resumable: () => ({
-          headline: "Not charging yet",
-          body: "The car is connected but not drawing power yet. PELS keeps asking the charger to start, and picks the schedule back up as soon as current flows.",
-          headlineReason: SMART_TASK_WIDGET_WHY_BY_STATUS.paused_not_resumable,
-          recourse: null
-        }),
         missing_capacity: EV_DEVICE_DATA_MISSING,
         device_in_sub_home: separateMeterUnavailableResolver
       },

@@ -63,6 +63,7 @@ const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinar
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Connected 300',
   commandableNow: true,
+  objectiveSessionInactive: false,
   boostSupported: false,
   boostRequested: false,
   hasStandingDemand: true,

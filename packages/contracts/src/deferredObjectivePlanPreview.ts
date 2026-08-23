@@ -43,7 +43,6 @@ export type DeferredObjectivePlanPreviewStatus =
 export type DeferredObjectivePlanPreviewUnavailableReason =
   | 'invalid_deadline'
   | 'invalid_session'
-  | 'not_resumable'
   | 'missing_capacity'
   | 'missing_device'
   | 'needs_observation'

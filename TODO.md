@@ -345,7 +345,10 @@ patch releases, not release blockers; each item carries its own source/date.
       correct fix needs the refresh path to distinguish cached from fresh connected evidence, not a
       timestamp substitution at this seam. Now that the session is the ONLY thing that retires a
       level (the 40-minute age gate is gone), this is the single remaining way a connected charger
-      can be left without one. Raised by Codex on PR #1897, 2026-07-27; narrowed 2026-08-08 when the
+      can be left without one. **It is not the only way a task reads as having no progress, and it
+      was NOT the cause of the 2026-08-19/20 prod stalls** — the car was never plugged in, and the
+      precondition that should have said so was dead code (fixed 2026-08-22). Check for
+      `objective_invalid_session` in the logs before reaching for this entry. Raised by Codex on PR #1897, 2026-07-27; narrowed 2026-08-08 when the
       age gate was deleted. Persona: EV owner who replugs and sees the smart task refuse to plan;
       hypothesis: a task that never plans is indistinguishable from one that was never scheduled. [P1]
 
@@ -1071,20 +1074,28 @@ program) remain deferred.*
       release intent. Reverted. The contract and the runtime disagree, and today only a test run
       says which is right. Fix: declare the field on the type the objectives layer actually
       consumes and correct the base-type comment, so the dependency is stated rather than
-      accidental. Same shape of hole as `evChargingState`, which IS stripped here while
-      `ObjectiveDeviceInput` documents it as forwarded — worth resolving together. [P2]
+      accidental. Same shape of hole as `evChargingState` — and THAT half is closed (2026-08-22):
+      the documented-as-forwarded plug-state was not merely undeclared, it was stripped, so the two
+      `lib/objectives` reads guarded by it were dead code. In production an unplugged charger was
+      reported as `objective_progress_stale` (a reading problem) for whole task windows, and
+      `objective_invalid_session` had never been emitted once. The field and its false comment are
+      gone; the layer reads `commandableNow`. That raises the severity of the half still open here:
+      it is not tidiness, it is the same silent-strip failure mode with a live consumer. [P1]
 
-- [ ] **`objectiveKind` / `objectiveSessionInactive` are write-only on both plan types.**
+- [ ] **`objectiveKind` is write-only on both plan types.**
       Resolved by `resolvePlanObjective` (`setup/appInit/toPlanDevice.ts`), forwarded through
       `producerResolvedDecisionFields` (`lib/plan/planDevicesBase.ts`), declared on both
       `PlanInputDevice` and `DevicePlanDeviceBase` — and read by nobody since `hasStandingDemand`
       replaced the last two consumers (the diagnostics `isEvLikeDevice` gate and the surplus
       dump-load gate). Every smart-task site reads `objective.kind` off its own settings entry or
-      `diag.objectiveKind`, never off a plan device; `ObjectiveDeviceInput` (`lib/objectives/types.ts`)
-      has no such field. `knip` does not catch a dead type property. Leaving a literal `'ev_soc'`
-      on the plan device is a second, equally-available answer to the question `hasStandingDemand`
-      now owns. Fix: drop both from `DevicePlanDeviceBase` and the forwarding helper; keep them on
-      `PlanInputDevice` only if the objectives layer proves it needs them. Found 2026-08-16. [P2]
+      `diag.objectiveKind`, never off a plan device. `knip` does not catch a dead type property.
+      Leaving a literal `'ev_soc'` on the plan device is a second, equally-available answer to the
+      question `hasStandingDemand` now owns. Fix: drop it from `DevicePlanDeviceBase` and the
+      forwarding helper. Found 2026-08-16. `objectiveSessionInactive`, the other half of this entry,
+      is no longer write-only as of 2026-08-23: it came OFF `DevicePlanDeviceBase` and the
+      forwarding helper (the plan OUTPUT genuinely had no reader) and stayed on `PlanInputDevice`,
+      now REQUIRED, because the smart-task lane is its real consumer — it had been reading the
+      stripped `evChargingState` instead. [P2]
 
 - [ ] **`TrustedTemperatureInput.currentTemperature` kept the optionality its twin just shed.**
       The same change made `TrustedStateOfChargeInput.stateOfCharge` required, with the rationale

@@ -142,6 +142,20 @@ an EV device with an unreadable plug-state, `evChargingState` is REQUIRED on the
 narrowed shape (`isEvObserved` tests EV-ness alone), and no layer needs a policy
 for absence.
 
+**"No policy for absence" is not "the field is everywhere."** It is required on
+the OBSERVED shape and absent by design past `toPlanDevice`, which resolves it
+into `commandableNow` / `commandabilityReason` and strips the raw value. Because
+`isEvObserved` infers presence from EV-ness alone, narrowing a plan device with
+it type-checks and then reads `undefined` — which is how the objectives layer's
+unplugged-charger precondition sat dead through 2026-08, reporting a car that was
+never on the cable as a stale state-of-charge reading for entire task windows
+(fixed by reading the producer-resolved `objectiveSessionInactive`, declared
+REQUIRED so the next strip is a compile error; see `lib/objectives/types.ts`). A
+layer that needs the plug-state and is downstream of the producer must read the
+resolved bit, not re-narrow for the raw one — and must read the bit that answers
+its own question: `commandableNow` folds in availability and PELS's own command
+back-off, so it is not a synonym for "no creditable session".
+
 **Only `plugged_in` is probed.** `plugged_in_paused` is resumed outright
 (`resolveEvStartProbePosture`, `packages/shared-domain/src/evPlugState.ts`). The split is what makes the
 back-off releasable. `plugged_in` is ambiguous — the Easee awaiting authorization and the Zaptec
@@ -200,10 +214,14 @@ observations — the earlier claim in
 `test/integration/evChargerShedReassertCooldownFreeze.test.ts` that it had no
 state capability was wrong, and its fixture has been corrected.
 
-Separately: `plugged_in` still means the SoC behind it is NOT creditable
-objective progress (`isEvChargerNotResumable` → `diagnosticProgress`).
-May-we-command and is-there-a-session are different questions; only the second
-keys off that bit.
+Separately: `plugged_in` does NOT block objective progress. It once did, via a
+`isEvChargerNotResumable` → `objective_charger_not_resumable` lane; that lane was
+deleted 2026-08-22 after prod logs showed nothing had ever produced the code, and
+`resolveObjectiveProgress` documents why blocking there did real damage (it
+returned `remainingUnits: 0`, so the task planned no hours on a charger PELS was
+in the middle of authorizing). May-we-command and is-there-a-session remain
+different questions: the second is `isEvSessionInactive`, resolved at
+`toPlanDevice` and carried to the smart-task lane as `objectiveSessionInactive`.
 
 ## Where the trust gap is today
 

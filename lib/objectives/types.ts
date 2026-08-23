@@ -1,6 +1,4 @@
 import type {
-  EvChargingState,
-  DeviceControlModel,
   DeviceStateOfChargeSnapshot,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
@@ -24,6 +22,17 @@ export type {
  * assignable to this by width-subtyping, so the planner passes its device list
  * straight through with no runtime adapter.
  *
+ * **That width-subtyping is load-bearing AND a trap, so every field here must be
+ * one the producer resolves.** There is no adapter to fail: when a field this
+ * type declares as optional stops being emitted upstream, the assignment still
+ * compiles and the field reads `undefined` forever. That is exactly how the
+ * `evChargingState` read died silently once `toPlanDevice` began stripping the
+ * raw plug-state — tsc saw a satisfied contract while an unplugged charger went
+ * a whole night reported as a stale reading. Prefer a producer-resolved answer
+ * (`objectiveSessionInactive`, `steppedLadderMissing`, `externalOffHoldActive`) over a raw
+ * observed value, and never widen this type on the strength of a comment
+ * upstream: check the producer.
+ *
  * Kept deliberately separate from `PlanInputDevice` per the architecture
  * boundary (AGENTS.md: accept duplication when consolidation would cross a
  * layering boundary). `stepPowerCalibration` carries both calibrated views the
@@ -36,35 +45,36 @@ export type {
 export type ObjectiveDeviceInput = {
   id: string;
   name: string;
+  // Both are read only through the shared kind predicates — `isEvDevice` and
+  // `isTemperatureControlDevice` (`objectiveSteps` / `planningSpeed`) — never by
+  // comparing the strings here. Optional because they are optional on
+  // `PlanInputDevice`; tightening either would break the structural assignment.
   deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
   steppedLoadProfile?: SteppedLoadProfile;
   priority?: number;
-  // The observed `evcharger_charging_state` capability, produced by the transport
-  // parser (`lib/device/transport/managerParseDeviceFields.ts`) and forwarded
-  // unchanged on the `PlanInputDevice` that reaches this layer. Present for every
-  // EV charger — the parser requires the capability of every `evcharger` and a
-  // member of the Homey enum for its value, dropping the device otherwise — and
-  // absent for everything else, which is why it is optional on this contract.
-  // A partial `device.update` that omits the capability retains the previous
-  // valid observation; only a device with no valid observation at all is dropped.
-  // Read through `isEvObserved` + the shared `isEvSessionInactive` /
-  // `isEvChargerNotResumable` classifiers — never by re-inlining plug-state
-  // literals. The flat `evSessionInactive` / `evChargerNotResumable` bits this
-  // replaced were producer-materialized duplicates of exactly this value.
-  evChargingState?: EvChargingState;
+  /**
+   * Producer-resolved "there is no creditable session to make progress in",
+   * structurally assignable from `PlanInputDevice`. A plain boolean carrying no
+   * reason code and no device-kind vocabulary, so this layer never asks what a
+   * plug is — see the twin docblock on `PlanInputDevice` for why it is this
+   * question and not `commandableNow`.
+   *
+   * REQUIRED, and that is the point. It replaced a read of `evChargingState`,
+   * which this type declared as optional and documented as "forwarded unchanged
+   * on the `PlanInputDevice` that reaches this layer". That was false —
+   * `toPlanDevice` strips the raw plug-state — and because `PlanInputDevice` is
+   * assigned here structurally, the stripped optional field simply read
+   * `undefined` forever instead of failing to compile. The branch was dead and
+   * an unplugged charger reported `objective_progress_stale` for whole task
+   * windows. Every field here must be one the producer resolves, and one whose
+   * absence tsc would catch.
+   */
+  objectiveSessionInactive: boolean;
   // Producer-resolved "Leave off until turned on again" posture: the user turned
   // the device off outside PELS and asked PELS to respect that. Structurally
   // assignable from `PlanInputDevice`, which carries the same flat bit.
   externalOffHoldActive?: true;
-  /**
-   * The CONFIGURED control model, structurally assignable from `PlanInputDevice`.
-   * NOTHING in this module reads it: the step-ladder gap it used to be inferred
-   * from is now resolved by the producer and carried as `steppedLadderMissing`
-   * below. Declared only while `PlanInputDevice` still carries the field, and
-   * retired with it.
-   */
-  controlModel?: DeviceControlModel;
   /**
    * Producer-resolved step-ladder gap, structurally assignable from
    * `PlanInputDevice`: `true` when the device is configured as a stepped load but

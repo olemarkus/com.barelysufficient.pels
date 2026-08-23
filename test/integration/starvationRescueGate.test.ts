@@ -148,6 +148,7 @@ const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscrimin
   id: DEVICE_ID,
   name: 'Water Heater',
   commandableNow: true,
+  objectiveSessionInactive: false,
   boostSupported: false,
   boostRequested: false,
   hasStandingDemand: true,

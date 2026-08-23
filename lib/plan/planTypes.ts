@@ -472,7 +472,6 @@ type DevicePlanDeviceBase = {
   objectiveKind?: PlanInputDevice['objectiveKind'];
   /** Producer-resolved standing demand — see the twin docblock on `PlanInputDevice`. */
   hasStandingDemand: boolean;
-  objectiveSessionInactive?: boolean;
   // One-shot intent emitted by deferred-objective admission when a cap-off device's smart task
   // transitions out of a plannable status (or the device is in an idle bucket). Binary-controlled
   // devices map to 'binary_restore'/'binary_release' and use the dedicated binary executor path;

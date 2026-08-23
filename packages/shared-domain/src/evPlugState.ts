@@ -6,7 +6,15 @@
  * it, so nothing here may import them.
  *
  * **Every function here is total over `EvChargingState`, and none of them takes
- * or returns an absent value.** That is possible because the plug-state is a
+ * or returns an absent value.** That is a statement about the functions, not a
+ * guarantee about their call sites: a caller that reads the plug-state off a
+ * carrier the producer stripped it from passes `undefined` through a parameter
+ * typed as required, and every predicate here then answers `false` for a state
+ * it was never shown. Call these on observed state or on an `isEvObserved`
+ * narrowing of it — never on a plan device. See `evObservedState.ts` for the
+ * production failure that made the distinction.
+ *
+ * Totality is possible because the plug-state is a
  * capability contract, enforced where the contract is read: an `evcharger`
  * device must expose `evcharger_charging` AND `evcharger_charging_state`
  * (`transport/managerParse.ts`) AND that capability must carry a member of the
@@ -158,16 +166,4 @@ export const isEvSessionInactive = (evChargingState: EvChargingState): boolean =
  */
 export const isEvPlugStateConnected = (evChargingState: EvChargingState): boolean => (
   evChargingState !== 'plugged_out'
-);
-
-/**
- * The bare connected state (`plugged_in` — distinct from `plugged_in_paused` /
- * `plugged_in_charging`): the car is plugged in and the charger reports no
- * active session. PELS still commands a charger in this state (see
- * {@link isEvPlugStateCommandable}), but it is NOT evidence that charge is
- * flowing, so the SoC behind it must not be credited as on-track objective
- * progress until the state moves to `plugged_in_charging`.
- */
-export const isEvChargerNotResumable = (evChargingState: EvChargingState): boolean => (
-  evChargingState === 'plugged_in'
 );

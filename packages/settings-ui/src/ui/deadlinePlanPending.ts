@@ -24,7 +24,6 @@ import { formatDeadlineFull, formatTarget } from './deadlinePlanFormatters.ts';
 export const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): DeadlineLiveState => {
   if (reason === 'device_in_sub_home') return 'unavailable';
   if (reason === 'invalid_session') return 'paused_unplugged';
-  if (reason === 'charger_not_resumable') return 'paused_not_resumable';
   return 'building_plan';
 };
 
@@ -40,9 +39,7 @@ export const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): Dead
 // flat shared-domain helpers — it never branches on the underlying state.
 export const pendingChipTone = (liveState: DeadlineLiveState): SmartTaskChipTone => {
   if (liveState === 'unavailable') return SMART_TASK_LIST_STATUS_CHIP_VARIANT.unavailable;
-  if (liveState === 'paused_unplugged' || liveState === 'paused_not_resumable') {
-    return resolvePausedUnpluggedChipTone();
-  }
+  if (liveState === 'paused_unplugged') return resolvePausedUnpluggedChipTone();
   return resolveBuildingPlanChipTone();
 };
 

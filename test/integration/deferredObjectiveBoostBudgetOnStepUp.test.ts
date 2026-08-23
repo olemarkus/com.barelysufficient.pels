@@ -180,6 +180,7 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
     id: STEP_DEVICE_ID,
     name: 'Priority Tank',
     commandableNow: true,
+    objectiveSessionInactive: false,
     // Stepped, with a target temperature to raise: the producer would resolve
     // this device as boost-SUPPORTED, which is what lets the smart task's
     // `forceBoostActive` engage boost even though the owner configured none.
@@ -210,6 +211,7 @@ const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryD
   id: LOWER_PRIORITY_ID,
   name: 'Lower Priority Heater',
   commandableNow: true,
+  objectiveSessionInactive: false,
   boostSupported: false,
   boostRequested: false,
   hasStandingDemand: true,

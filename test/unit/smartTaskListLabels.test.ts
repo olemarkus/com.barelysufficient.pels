@@ -1,4 +1,6 @@
 import {
+  resolveSmartTaskListStatus,
+  resolveEvCardStateLine,
   deadlineLabels,
   formatCheapestHoursCaption,
   formatConfidenceChipLabel,
@@ -505,5 +507,57 @@ describe('at_risk vs cannot_meet chip labels', () => {
       .toBe(SMART_TASK_LIST_STATUS_LABELS.at_risk);
     expect(deadlineLabels('ev_soc').atRiskChipLabel)
       .toBe(SMART_TASK_LIST_STATUS_LABELS.at_risk);
+  });
+});
+
+// Moved here when the connected-but-not-resumable lane was deleted (it was
+// never produced by any runtime path). These cases are about the surrounding
+// precedence rules, not that lane.
+describe('resolveSmartTaskListStatus — blocked charger and plan-verdict precedence', () => {
+  const base = { pending: false, pendingReason: undefined, firstActionAtMs: null, nowMs: 0 } as const;
+
+  it('maps objective_invalid_session to paused_unplugged, overriding an on_track plan', () => {
+    expect(resolveSmartTaskListStatus({
+      ...base,
+      diagnosticReasonCode: 'objective_invalid_session',
+      planStatus: 'on_track',
+    })).toBe('paused_unplugged');
+  });
+
+  // The queued (future first action) branch must not mask a plan verdict:
+  // `queued` renders the same green `On track` chip as `on_track`, so letting
+  // it win would paint an at-risk / cannot-finish / already-satisfied plan as
+  // healthy just because its first hour hasn't started yet.
+  const queued = { ...base, diagnosticReasonCode: undefined, firstActionAtMs: 10_000 } as const;
+
+  it('keeps at_risk visible when the first hour is still ahead', () => {
+    expect(resolveSmartTaskListStatus({ ...queued, planStatus: 'at_risk' })).toBe('at_risk');
+  });
+
+  it('keeps cannot_meet visible when the first hour is still ahead', () => {
+    expect(resolveSmartTaskListStatus({ ...queued, planStatus: 'cannot_meet' })).toBe('cannot_meet');
+  });
+
+  it('keeps satisfied visible when the first hour is still ahead', () => {
+    expect(resolveSmartTaskListStatus({ ...queued, planStatus: 'satisfied' })).toBe('satisfied');
+  });
+
+  it('returns queued only for a healthy plan with a future first action', () => {
+    expect(resolveSmartTaskListStatus({ ...queued, planStatus: 'on_track' })).toBe('queued');
+    expect(resolveSmartTaskListStatus({ ...queued, firstActionAtMs: null, planStatus: 'on_track' }))
+      .toBe('on_track');
+  });
+});
+
+describe('resolveEvCardStateLine — fallback branches', () => {
+  const formatTime = (ms: number): string => `T${ms}`;
+
+  it('falls back to plug-out-paused, then to none', () => {
+    expect(resolveEvCardStateLine({
+      hours: [], nowMs: 0, isPlugOutPaused: true, formatTime,
+    }).kind).toBe('plug_out_paused');
+    expect(resolveEvCardStateLine({
+      hours: [], nowMs: 0, isPlugOutPaused: false, formatTime,
+    }).kind).toBe('none');
   });
 });

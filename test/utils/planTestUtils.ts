@@ -161,14 +161,14 @@ export const withMaterializedEvPlugState = <T extends {
   available?: boolean;
 }>(
   overrides: T & { evChargingState?: string },
-): T & {
+): Omit<T, 'evChargingState'> & {
   commandableNow: boolean;
   boostSupported: boolean;
   boostRequested: boolean;
   hasStandingDemand: boolean;
   confirmedNotDrawing: boolean;
   objectiveKind?: 'ev_soc';
-  objectiveSessionInactive?: boolean;
+  objectiveSessionInactive: boolean;
   commandabilityReason?: 'charger_unplugged' | 'charger_discharging';
 } => {
   const explicitCommandableNow = (overrides as { commandableNow?: boolean }).commandableNow;
@@ -188,8 +188,15 @@ export const withMaterializedEvPlugState = <T extends {
   }
   const boostInput = fixtureBoostInput(overrides as Parameters<typeof fixtureBoostInput>[0]);
   const explicitBoost = overrides as { boostSupported?: boolean; boostRequested?: boolean };
+  // Mirror the producer EXACTLY: `toPlanDevice` resolves the plug-state into the
+  // flat bits below and strips the raw field. A fixture that kept it made the
+  // dead `device.evChargingState` reads in the objectives layer look alive for
+  // months — every test passed while production never entered the branch.
+  const { evChargingState: _rawPlugState, ...withoutPlugState } = overrides as typeof overrides & {
+    evChargingState?: string;
+  };
   return {
-    ...overrides,
+    ...(withoutPlugState as Omit<T, 'evChargingState'>),
     commandableNow: explicitCommandableNow ?? resolveCommandableNow(dev),
     boostSupported: explicitBoost.boostSupported ?? resolveBoostSupported(boostInput),
     boostRequested: explicitBoost.boostRequested ?? resolveBoostRequested(boostInput),
@@ -199,10 +206,11 @@ export const withMaterializedEvPlugState = <T extends {
     // Required two-state producer bit; `false` is "no calibration opinion".
     confirmedNotDrawing: (overrides as { confirmedNotDrawing?: boolean }).confirmedNotDrawing ?? false,
     ...(isEv ? { objectiveKind: 'ev_soc' as const } : {}),
-    ...(isEv ? {
-      objectiveSessionInactive: overrides.evChargingState === 'plugged_out'
-        || overrides.evChargingState === 'plugged_in_discharging',
-    } : {}),
+    // Mirrors `resolvePlanObjective`: the session question, resolved from the
+    // plug-state before the producer strips it. Never `commandableNow`.
+    objectiveSessionInactive: isEv
+      && (overrides.evChargingState === 'plugged_out'
+        || overrides.evChargingState === 'plugged_in_discharging'),
     ...(commandabilityReason ? { commandabilityReason } : {}),
   };
 };

@@ -8,6 +8,7 @@ import {
   buildDeferredObjectiveDiagnostics,
   emitDeferredObjectiveDiagnostics,
   type DeferredObjectiveDiagnostic,
+  type DeferredObjectiveUnknownAnnounce,
 } from './diagnosticsBridge';
 import {
   emitDeferredObjectiveLifecycleTransitions,
@@ -39,7 +40,18 @@ type StallClassification = IdleClassification | undefined;
  * The planner still computes its own evaluation per plan cycle for the
  * *decoration* (admission / target overrides) it applies to `PlanInputDevice`s
  * — that stays synchronous with planning. This emitter therefore owns its own
- * own evaluation snapshot; only this side feeds the UI and persisted records.
+ * evaluation snapshot; only this side feeds the UI and persisted records.
+ *
+ * "Owns its own evaluation" means the CLOCK and the resulting diagnostics, not
+ * the device set: `getDevices` is still wired to `getPlanDevices()`, so the
+ * device list is the planner's. That is correct rather than provisional —
+ * `managed !== false` is both the plan-list filter and the smart-task
+ * eligibility gate (`isRuntimePlannedDevice`, enforced at task creation in
+ * `setup/appSmartTaskApi.ts`), so the two sets are the same set by definition.
+ * What this layer must NOT do is read raw observed fields off those devices:
+ * the producer resolves them and strips the originals, and a stripped optional
+ * field arrives as `undefined` without failing to compile. See the warning on
+ * `ObjectiveDeviceInput` in `lib/objectives/types.ts`.
  *
  * See notes/state-management/deferred-objective-lifecycle-carveout.md.
  */
@@ -120,6 +132,11 @@ export class DeferredObjectiveLifecycleEmitter {
   private readonly priorityAllocationTracker = new PriorityAllocationTracker();
   private lifecycleDeviceIds: ReadonlySet<string> = new Set();
 
+  // objectiveId -> the no-trajectory state already announced for it, so a stuck
+  // task states its cause once instead of every 30 s tick. Rebuilt each emission
+  // from the live diagnostics, so it cannot retain a dead objective.
+  private announcedUnknownCauses: ReadonlyMap<string, DeferredObjectiveUnknownAnnounce> = new Map();
+
   constructor(private readonly deps: DeferredObjectiveLifecycleEmitterDeps) {}
 
   /** Evaluate the lifecycle at `nowMs` and emit/observe its facts. Pure side-effects. */
@@ -176,9 +193,17 @@ export class DeferredObjectiveLifecycleEmitter {
 
     // Emission to the UI / Flow buses + clock-owned terminal fallback/ending.
     const debugStructured = this.deps.getDeferredObjectiveDebugStructured?.();
-    if (debugStructured) {
-      emitDeferredObjectiveDiagnostics({ diagnostics, debugStructured });
-    }
+    // Reset the announce memory whenever the topic is off, so enabling the
+    // debug topic to investigate a stuck task always yields its cause on the
+    // next tick instead of silence left over from the last time it was on.
+    this.announcedUnknownCauses = debugStructured
+      ? emitDeferredObjectiveDiagnostics({
+        diagnostics,
+        debugStructured,
+        nowMs,
+        announcedUnknownCauses: this.announcedUnknownCauses,
+      })
+      : new Map();
     this.lifecycleDeviceIds = emitDeferredObjectiveLifecycleTransitions({
       diagnostics,
       knownDeviceIds: this.lifecycleDeviceIds,
