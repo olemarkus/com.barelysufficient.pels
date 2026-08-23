@@ -113,15 +113,31 @@ export function buildPlanCapacityStateSummary(
 export function buildPlanInputCapacityStateSummary(
   devices: PlanInputDevice[],
   shedSet: ReadonlySet<string>,
+  /**
+   * "Is a binary command in flight for this device", answered by
+   * `PendingBinaryCommandStore` (`lib/observer/pendingBinaryCommands`). Passed
+   * in because in-flight command state does not ride on `PlanInputDevice`.
+   *
+   * ANY direction counts here, unlike the plan device's `binaryCommandPending`
+   * (a pending turn-ON only). The two are different questions — this one asks
+   * whether the house is mid-actuation, which a turn-OFF answers just as much
+   * as a turn-ON — and answering both with one field is what let the meaning
+   * drift between a fresh build and a republish.
+   */
+  isBinaryCommandPending: (deviceId: string) => boolean,
   metadata: CapacityStateSummaryMetadata = {},
 ): PlanCapacityStateSummary {
   const summary = buildEmptyCapacityStateSummary();
   for (const device of devices) {
     if (device.controllable === false) continue;
     summary.controlledDevices += 1;
+    // Resolved once: the reader reaches the command store, and asking it twice
+    // per device was the shape this summary had before the store owned the
+    // question.
+    const pending = hasPendingInputCommand(device, isBinaryCommandPending);
     const plannedShedCounts = buildPlannedShedCounts({
       plannedShed: shedSet.has(device.id),
-      pending: hasPendingInputCommand(device),
+      pending,
       active: isActiveInputDevice(device),
     });
     summary.plannedShedDevices += plannedShedCounts.plannedShedDevices;
@@ -129,7 +145,7 @@ export function buildPlanInputCapacityStateSummary(
     summary.activePlannedShedDevices += plannedShedCounts.activePlannedShedDevices;
     summary.activeControlledDevices += Number(isActiveInputDevice(device));
     summary.zeroDrawControlledDevices += Number(isZeroDrawInputDevice(device));
-    summary.pendingControlledDevices += Number(hasPendingInputCommand(device));
+    summary.pendingControlledDevices += Number(pending);
   }
   return {
     ...summary,
@@ -274,8 +290,11 @@ function hasPendingCommand(device: DevicePlanDevice): boolean {
     || device.pendingTargetCommand !== undefined;
 }
 
-function hasPendingInputCommand(device: PlanInputDevice): boolean {
-  return device.binaryCommandPending === true || device.stepCommandPending === true;
+function hasPendingInputCommand(
+  device: PlanInputDevice,
+  isBinaryCommandPending: (deviceId: string) => boolean,
+): boolean {
+  return isBinaryCommandPending(device.id) || device.stepCommandPending === true;
 }
 
 function isBlockedByCooldown(device: DevicePlanDevice): boolean {

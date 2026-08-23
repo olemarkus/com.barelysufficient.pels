@@ -37,9 +37,14 @@ type PlanInputDeviceFixture = PlanInputDevice
  *    settled fact; in production the device REPORTS a rung and the effective
  *    step is resolved from it. Feeding it as the report reproduces that
  *    resolution instead of smuggling the answer past it.
- *  - the pending flags become command reads, so a spec that dampens on a
- *    pending command exercises the executor's own store rather than a field
- *    that rode in on a plan.
+ *  - the BINARY command read is a separate argument, not a fixture field. It
+ *    used to ride in on `binaryCommandPending`/`binaryCommandPendingDesired`,
+ *    which the plan-input seam no longer carries precisely because in-flight
+ *    command state is the executor's. Passing it here keeps the split explicit:
+ *    a spec that dampens on a pending command says so, rather than describing
+ *    it as a property of the observed device. (The STEP flag stays on the
+ *    fixture — `stepCommandPending` is a real plan-input field with production
+ *    readers.)
  */
 const resolveFixtureBinaryAxis = (
   live: PlanInputDeviceFixture,
@@ -49,7 +54,10 @@ const resolveFixtureBinaryAxis = (
   return typeof currentOn === 'boolean' ? { binaryControl: { on: currentOn } } : {};
 };
 
-export const splitPlanInputDevice = (live: PlanInputDeviceFixture): {
+export const splitPlanInputDevice = (
+  live: PlanInputDeviceFixture,
+  binaryCommand: DriftCommandRead['binary'],
+): {
   observed: ObserverDeviceRead;
   command: DriftCommandRead;
   externalOffHeld: boolean;
@@ -72,14 +80,7 @@ export const splitPlanInputDevice = (live: PlanInputDeviceFixture): {
     ...(live.evChargingState !== undefined ? { evChargingState: live.evChargingState } : {}),
   } as ObserverDeviceRead,
   command: {
-    binary: live.binaryCommandPending === true
-      ? {
-        kind: 'pending',
-        desired: typeof live.binaryCommandPendingDesired === 'boolean'
-          ? live.binaryCommandPendingDesired
-          : 'unknown',
-      }
-      : { kind: 'none' },
+    binary: binaryCommand,
     step: live.stepCommandPending === true ? { kind: 'pending' } : { kind: 'none' },
   },
   externalOffHeld: live.externalOffHoldActive === true,
@@ -93,17 +94,20 @@ export const splitPlanInputDevice = (live: PlanInputDeviceFixture): {
  */
 export const driftDepsFromPlanInputs = (
   getDevices: () => PlanInputDeviceFixture[],
+  getBinaryCommand: (deviceId: string) => DriftCommandRead['binary'],
 ): DriftObservationDeps => ({
   getObservedState: (deviceId) => {
     const live = getDevices().find((device) => device.id === deviceId);
-    return live ? splitPlanInputDevice(live).observed : undefined;
+    return live ? splitPlanInputDevice(live, getBinaryCommand(deviceId)).observed : undefined;
   },
   getCommandState: (deviceId) => {
     const live = getDevices().find((device) => device.id === deviceId);
-    return live ? splitPlanInputDevice(live).command : { binary: { kind: 'none' }, step: { kind: 'none' } };
+    return live
+      ? splitPlanInputDevice(live, getBinaryCommand(deviceId)).command
+      : { binary: { kind: 'none' }, step: { kind: 'none' } };
   },
   isExternalOffHeld: (deviceId) => {
     const live = getDevices().find((device) => device.id === deviceId);
-    return live ? splitPlanInputDevice(live).externalOffHeld : false;
+    return live ? splitPlanInputDevice(live, getBinaryCommand(deviceId)).externalOffHeld : false;
   },
 });

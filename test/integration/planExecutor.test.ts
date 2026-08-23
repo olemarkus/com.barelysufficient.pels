@@ -318,6 +318,10 @@ let logCapture: LoggerCapture;
 beforeEach(() => { logCapture = captureLogger(); });
 afterEach(() => { logCapture.restore(); });
 
+// The merge asks the pending-command store whether a turn-ON is in flight;
+// these specs issue no commands.
+const noPendingBinary = (): boolean => false;
+
 describe('PlanExecutor shortfall side-effect retry', () => {
   it('keeps enter and clear retryable when the durable writer fails once', async () => {
     const state = createPlanEngineState();
@@ -3419,7 +3423,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       reportedStepId: 'low',
     });
 
-    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices, noPendingBinary);
     expect(hasLiveStateDivergedFromSnapshot(appliedPlan, livePlan)).toBe(true);
     expect(livePlan.devices[0].currentState).toBe('off');
 
@@ -3447,7 +3451,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       selectedStepId: 'low',
     });
 
-    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices, noPendingBinary);
     expect(livePlan.devices[0]).toEqual(expect.objectContaining({
       reportedStepId: undefined,
       selectedStepId: 'low',
@@ -3470,7 +3474,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const appliedPlan = steppedPlan({ currentState: 'on', selectedStepId: 'low', desiredStepId: 'low' });
     const liveDevices = buildLiveDevices({ binaryControl: { on: false }, selectedStepId: 'off' });
 
-    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices, noPendingBinary);
     expect(hasLiveStateDivergedFromSnapshot(appliedPlan, livePlan)).toBe(true);
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: false } }));
@@ -3890,7 +3894,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       selectedStepId: 'max',
     });
 
-    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices, noPendingBinary);
     expect(hasLiveStateDivergedFromSnapshot(appliedPlan, livePlan)).toBe(true);
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: true } }));
@@ -3930,7 +3934,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // live device is non-stepped. The merge preserves the prior plan's cluster.
     const liveDevices = buildLiveDevices({ binaryControl: { on: true }, steppedLoadProfile: undefined });
 
-    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices, noPendingBinary);
     expect(livePlan.devices[0]).toEqual(expect.objectContaining({
       selectedStepId: 'max',
       reportedStepId: undefined,

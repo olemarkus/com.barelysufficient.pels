@@ -16,7 +16,6 @@ import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryComm
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { isCanSetControl } from '../../device/deviceActionProjection';
-import { isPendingBinaryCommandActive } from '../planObservationPolicy';
 import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
 import type { ShedCandidateSkipRecorder } from './candidateSkipLog';
 import {
@@ -49,20 +48,15 @@ export function buildBinaryCandidate(
     recorder?.record({ device, reasonCode: 'zero_current_draw' });
     return null;
   }
-  // Raw read: activeness is evaluated here with the device's
-  // communication model, so `peek` (not `get`) keeps the prior
-  // field-read behaviour without store eviction at this site.
-  const pendingEntry = pendingBinaryCommandStore.peek(device.id);
-  const pendingBinary = isPendingBinaryCommandActive({
-    pending: pendingEntry,
-  }) ? pendingEntry : undefined;
   return {
     ...device,
     kind: 'binary',
     priority,
     recentlyRestored,
     effectivePower: power,
-    unconfirmedRelief: pendingBinary?.desired === false,
+    // "Relief already on its way": an unconfirmed turn-OFF. The store answers
+    // it — non-evicting, which is why this site used to `peek` by hand.
+    unconfirmedRelief: pendingBinaryCommandStore.hasActiveTurnOff(device.id),
   };
 }
 

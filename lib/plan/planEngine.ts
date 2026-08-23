@@ -62,7 +62,8 @@ export type PlanEngine = {
   hasPendingTargetCommands: () => boolean;
   hasPendingTargetCommandsOlderThan: (thresholdMs: number) => boolean;
   hasPendingBinaryCommands: () => boolean;
-  getPendingBinaryCommandForDevice: (deviceId: string) => { desired: boolean } | null;
+  /** "Is an unconfirmed turn-ON in flight" — the store's own predicate, not the record. */
+  hasActiveBinaryTurnOnCommand: (deviceId: string) => boolean;
   hasAttributablePendingBinaryCommand: (deviceId: string) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string, observedOnAtMs?: number) => void;
   evaluateHeadroomForDevice: (params: {

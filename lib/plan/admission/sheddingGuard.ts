@@ -74,9 +74,12 @@ function buildShortfallCapacityStateSummary(params: {
   total: number | null;
   limitSource: PlanContext['softLimitSource'];
   capacitySoftLimit: number;
+  isBinaryCommandPending: (deviceId: string) => boolean;
 }): PlanCapacityStateSummary {
-  const { devices, shedSet, total, limitSource, capacitySoftLimit } = params;
-  const summary = buildPlanInputCapacityStateSummary(devices, shedSet, {
+  const {
+    devices, shedSet, total, limitSource, capacitySoftLimit, isBinaryCommandPending,
+  } = params;
+  const summary = buildPlanInputCapacityStateSummary(devices, shedSet, isBinaryCommandPending, {
     summarySource: 'plan_input',
     summarySourceAtMs: Date.now(),
   });
@@ -112,8 +115,11 @@ function resolveShortfallCapacityStateSummary(params: {
   total: number | null;
   limitSource: PlanContext['softLimitSource'];
   capacitySoftLimit: number;
+  isBinaryCommandPending: (deviceId: string) => boolean;
 }): PlanCapacityStateSummary {
-  const { deficitKw, devices, shedSet, total, limitSource, capacitySoftLimit } = params;
+  const {
+    deficitKw, devices, shedSet, total, limitSource, capacitySoftLimit, isBinaryCommandPending,
+  } = params;
   // Only an entering incident reads it, and that needs a positive deficit, so
   // the null summary spares every ordinary rebuild the device walk.
   if (deficitKw <= 0) return buildNullCapacityStateSummary();
@@ -123,6 +129,7 @@ function resolveShortfallCapacityStateSummary(params: {
     total,
     limitSource,
     capacitySoftLimit,
+    isBinaryCommandPending,
   });
 }
 
@@ -181,6 +188,11 @@ export async function updateGuardState(params: {
   shortfallThresholdKw: number;
   /** The shedding latch this build inherits, from `PlanEngineState`. */
   sheddingActive: boolean;
+  /**
+   * "Is a binary command in flight", answered by `PendingBinaryCommandStore`.
+   * Only the shortfall summary needs it, and only for its log counters.
+   */
+  isBinaryCommandPending: (deviceId: string) => boolean;
 }): Promise<{ sheddingActive: boolean }> {
   const {
     headroom,
@@ -193,6 +205,7 @@ export async function updateGuardState(params: {
     capacityGuard,
     shortfallThresholdKw,
     sheddingActive,
+    isBinaryCommandPending,
   } = params;
   const remainingCandidates = countRemainingCandidates({
     devices,
@@ -212,6 +225,7 @@ export async function updateGuardState(params: {
       totalKw: measuredTotalKw,
       shortfallThresholdKw,
       capacityStateSummary: resolveShortfallCapacityStateSummary({
+        isBinaryCommandPending,
         deficitKw,
         devices,
         shedSet,
@@ -235,6 +249,7 @@ export async function updateGuardState(params: {
     totalKw: measuredTotalKw,
     shortfallThresholdKw,
     capacityStateSummary: resolveShortfallCapacityStateSummary({
+      isBinaryCommandPending,
       deficitKw,
       devices,
       shedSet,

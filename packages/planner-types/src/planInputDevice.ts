@@ -422,8 +422,21 @@ export type PlanInputDeviceBase = {
   lastLocalWriteMs?: number;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
-  binaryCommandPending?: boolean;
-  binaryCommandPendingDesired?: boolean;
+  // No binary pending-command pair. Every consumer that decides on in-flight
+  // binary command state asks `PendingBinaryCommandStore`
+  // (`lib/observer/pendingBinaryCommands`) directly — the builder via
+  // `deps.pendingBinaryCommandStore` (`lib/plan/planDevices.ts`), the executor
+  // via its own `getCommandState` seam.
+  //
+  // A producer-stamped copy here could not be right for both of them, because
+  // "in flight" is two questions: `hasActiveTurnOn` (what the owner-facing
+  // "Resuming" state and the restore serializer mean) and `hasActiveCommand`
+  // (any direction — what the shortfall log means). The producer answered the
+  // second and the builder the first, under one field name, so a device
+  // republished through `planLiveStateMerge` changed what
+  // `DevicePlanDeviceBase.binaryCommandPending` meant. The plan OUTPUT still
+  // carries that bit, resolved through the store's predicate; the plan INPUT
+  // does not carry it at all.
   /**
    * Per-step calibrated power view, populated at plan-build time from the
    * persisted power-calibration store. When a `(deviceId, stepId)` pair has

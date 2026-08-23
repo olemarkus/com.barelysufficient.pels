@@ -34,7 +34,6 @@ import {
   SOFT_OVERSHOOT_DEADBAND_KW,
 } from './planConstants';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
-import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { SoftOvershootDecision } from './planOvershoot';
 import { buildPlanContextHeadroomLogFields } from './planBuilderMeta';
 
@@ -502,13 +501,9 @@ function trackPlanDeviceForOvershoot(
   state: PlanEngineState,
   pendingBinaryCommandStore: PendingBinaryCommandStore,
 ): OvershootTrackedPlanDevice {
-  // Raw read: activeness is computed below with the device's
-  // communication model, so `peek` (not `get`) preserves the prior
-  // field-read semantics without triggering store eviction here.
-  const pendingBinaryCommand = pendingBinaryCommandStore.peek(device.id);
-  const pendingBinaryCommandActive = isPendingBinaryCommandActive({
-    pending: pendingBinaryCommand,
-  });
+  // The store answers all three in-flight questions itself, non-evicting — the
+  // reason this site used `peek` rather than `get`.
+  const pendingBinaryOnCommand = pendingBinaryCommandStore.hasActiveTurnOn(device.id);
   return {
     id: device.id,
     name: device.name,
@@ -524,9 +519,9 @@ function trackPlanDeviceForOvershoot(
     currentDrawKw: device.currentDrawKw,
     expectedPowerKw: device.expectedPowerKw,
     ...(isSteppedLoadDevice(device) ? { planningPowerKw: device.planningPowerKw } : {}),
-    binaryCommandPending: pendingBinaryCommandActive && pendingBinaryCommand?.desired === true,
-    pendingBinaryOnCommand: pendingBinaryCommandActive && pendingBinaryCommand?.desired === true,
-    pendingBinaryOffCommand: pendingBinaryCommandActive && pendingBinaryCommand?.desired === false,
+    binaryCommandPending: pendingBinaryOnCommand,
+    pendingBinaryOnCommand,
+    pendingBinaryOffCommand: pendingBinaryCommandStore.hasActiveTurnOff(device.id),
     stepCommandPending: device.stepCommandPending,
     reason: device.reason,
     pendingTargetCommand: shouldExposePendingTargetCommand(device, state),

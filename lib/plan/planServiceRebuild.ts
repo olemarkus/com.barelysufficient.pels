@@ -351,7 +351,11 @@ async function maybeApplyPlanChanges(
 
 function refreshLatestPlanSnapshotFromSettledLiveState(host: PlanRebuildHost, basePlan: DevicePlan): boolean {
   const livePlan = host.deps.planEngine.decoratePlanWithPendingTargetCommands(
-    buildLiveStatePlan(basePlan, host.deps.getPlanDevices()),
+    buildLiveStatePlan(
+      basePlan,
+      host.deps.getPlanDevices(),
+      (deviceId) => host.deps.planEngine.hasActiveBinaryTurnOnCommand(deviceId),
+    ),
   );
   if (!host.deps.planEngine.hasSettledActuation(basePlan, livePlan)) return false;
   const refreshedPlan = host.preservePlanGeneratedAt(livePlan, basePlan);
