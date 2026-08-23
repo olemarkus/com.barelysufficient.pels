@@ -129,6 +129,7 @@ describe('planExecutablePlan', () => {
       id: 'thermostat-1',
       name: 'Thermostat',
       currentTarget: 16,
+      currentTemperature: 16,
       plannedTarget: 21,
     });
     const intent = buildExecutableTargetIntent(thermostat);
@@ -163,6 +164,7 @@ describe('planExecutablePlan', () => {
       plannedState: 'keep',
       binaryCapabilityId: undefined,
       currentTarget: 19,
+      currentTemperature: 19,
       plannedTarget: 21,
     });
 
@@ -279,6 +281,7 @@ describe('planExecutablePlan', () => {
           plannedState: 'shed',
           shedAction: 'set_temperature',
           currentTarget: 21,
+          currentTemperature: 21,
           plannedTarget: 16,
           reason: shedReason,
         }),
@@ -352,6 +355,7 @@ describe('planExecutablePlan', () => {
       id: 'thermostat-1',
       name: 'Thermostat',
       currentTarget: 18,
+      currentTemperature: 18,
       plannedTarget: 20,
     });
     const intent = buildExecutableTargetIntent(thermostat);

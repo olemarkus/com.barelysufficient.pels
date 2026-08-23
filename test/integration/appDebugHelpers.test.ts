@@ -428,6 +428,7 @@ describe('appDebugHelpers', () => {
               currentState: 'off',
               plannedState: 'keep',
               currentTarget: 18,
+              currentTemperature: 18,
               plannedTarget: 21,
               controllable: true,
               stepPowerCalibration: {
@@ -604,6 +605,7 @@ describe('appDebugHelpers', () => {
             currentState: 'off',
             plannedState: 'keep',
             currentTarget: 20.5,
+            currentTemperature: 20.5,
             plannedTarget: 23,
             controllable: true,
             reason: { code: 'keep', detail: null },

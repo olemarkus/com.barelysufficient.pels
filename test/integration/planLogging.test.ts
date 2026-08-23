@@ -313,6 +313,7 @@ describe('plan logging helpers', () => {
           binaryControl: { on: true },
           currentState: 'on',
           currentTarget: 15,
+          currentTemperature: 15,
           plannedTarget: 15,
           controllable: true,
           expectedPowerKw: 0.8,

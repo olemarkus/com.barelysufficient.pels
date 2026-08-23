@@ -105,7 +105,7 @@ describe('buildOverviewSteppedLoad', () => {
   });
 
   it('leaves a non-stepped device with no cluster at all', () => {
-    expect(buildOverviewSteppedLoad(buildPlanDevice({ id: 'thermo', deviceType: 'temperature' })))
+    expect(buildOverviewSteppedLoad(buildPlanDevice({ id: 'thermo', deviceType: 'temperature', currentTarget: 21, currentTemperature: 20 })))
       .toBeUndefined();
     expect(buildOverviewSteppedLoad(buildPlanDevice({ id: 'x' }))).toBeUndefined();
   });

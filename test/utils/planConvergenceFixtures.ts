@@ -141,6 +141,7 @@ export const buildBinaryDevice = (
     currentState: 'on',
     plannedState: 'keep' as const,
     currentTarget: 21,
+    currentTemperature: 21,
     plannedTarget: 21,
     controllable: true,
     binaryCapabilityId: 'onoff' as const,

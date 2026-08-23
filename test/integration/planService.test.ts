@@ -942,6 +942,7 @@ describe('PlanService', () => {
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
           currentTarget: 20,
+          currentTemperature: 20,
           plannedState: 'keep',
           boostActive: false,
           plannedTarget: 20,
@@ -1170,6 +1171,7 @@ describe('PlanService', () => {
     (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
+      currentTemperature: 20,
       plannedState: 'keep',
       boostActive: false,
       plannedTarget: 20,
@@ -1258,6 +1260,7 @@ describe('PlanService', () => {
     (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
+      currentTemperature: 20,
       plannedState: 'keep',
       boostActive: false,
       plannedTarget: 20,
@@ -1607,6 +1610,7 @@ describe('PlanService', () => {
       plannedState: 'shed',
       boostActive: false,
       currentTarget: 20,
+      currentTemperature: 20,
       plannedTarget: 20,
     });
 
@@ -1703,6 +1707,7 @@ describe('PlanService', () => {
               plannedState: 'keep',
               boostActive: false,
               currentTarget: 20,
+              currentTemperature: 20,
               plannedTarget: 20,
               reason: 'keep',
               controllable: true,
@@ -1716,6 +1721,7 @@ describe('PlanService', () => {
               plannedState: 'keep',
               boostActive: false,
               currentTarget: 20,
+              currentTemperature: 20,
               plannedTarget: 20,
               reason: 'keep',
               controllable: true,
@@ -1814,6 +1820,7 @@ describe('PlanService', () => {
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
           currentTarget: 20,
+          currentTemperature: 20,
           plannedState: 'keep',
           boostActive: false,
           plannedTarget: 20,
@@ -1935,6 +1942,7 @@ describe('PlanService', () => {
               plannedState: 'keep',
               boostActive: false,
               currentTarget: 20,
+              currentTemperature: 20,
               plannedTarget: 20,
               reason: 'keep',
               controllable: true,
@@ -1947,6 +1955,7 @@ describe('PlanService', () => {
               plannedState: 'keep',
               boostActive: false,
               currentTarget: 20,
+              currentTemperature: 20,
               plannedTarget: 20,
               reason: 'keep',
               controllable: false,
@@ -2078,6 +2087,7 @@ describe('PlanService', () => {
               plannedState: 'keep',
               boostActive: false,
               currentTarget: 20,
+              currentTemperature: 20,
               plannedTarget: 20,
               reason: 'keep',
               controllable: true,
@@ -2091,6 +2101,7 @@ describe('PlanService', () => {
               plannedState: 'keep',
               boostActive: false,
               currentTarget: 20,
+              currentTemperature: 20,
               plannedTarget: 20,
               reason: 'keep',
               controllable: true,
@@ -2185,6 +2196,7 @@ describe('PlanService', () => {
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(21, 'keep', {}, {
           currentState: 'on',
           currentTarget: 21,
+          currentTemperature: 21,
           plannedState: 'shed',
           boostActive: false,
           plannedTarget: 18,
@@ -2638,6 +2650,7 @@ describe('PlanService', () => {
           plannedState: 'keep',
           boostActive: false,
           plannedTarget: 20,
+          currentTemperature: 20,
         }))
         // Second cycle: decisions are unchanged, so drift is the only thing that
         // could trigger an apply — and an observation lands while this build is
@@ -2649,6 +2662,7 @@ describe('PlanService', () => {
             plannedState: 'keep',
             boostActive: false,
             plannedTarget: 20,
+            currentTemperature: 20,
           });
         }),
       computeDynamicSoftLimit: vi.fn(() => 0),
@@ -2727,12 +2741,14 @@ describe('PlanService', () => {
           plannedState: 'keep',
           boostActive: false,
           plannedTarget: 20,
+          currentTemperature: 20,
         }))
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
           currentState: 'off',
           plannedState: 'keep',
           boostActive: false,
           plannedTarget: 20,
+          currentTemperature: 20,
         })),
       computeDynamicSoftLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
@@ -3507,6 +3523,7 @@ describe('PlanService', () => {
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'on',
           currentTarget: 20,
+          currentTemperature: 20,
           plannedState: 'keep',
           boostActive: false,
           plannedTarget: 20,

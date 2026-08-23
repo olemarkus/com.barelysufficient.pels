@@ -224,6 +224,7 @@ describe('restore accounting parity — as built vs recomputed from the plan dev
     shedAction: 'set_temperature',
     shedTemperature: 18,
     currentTarget: 18,
+    currentTemperature: 18,
   });
 
   const fixtures = [deviceA, deviceB, deviceC, deviceD, deviceE, deviceF, deviceH] as const;

@@ -28,6 +28,7 @@ import {
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
+import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 
 // Local wrappers that route a `binaryControl` override through the binary
 // discriminant regrouper — the field moved off the base device types onto the
@@ -339,5 +340,51 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
       limitSource: 'capacity',
       capacityBreached: true,
     })).toBe(0);
+  });
+});
+
+// The missing-sensor planning path, which had no coverage while the fixture
+// builder invented a reading for every device that spelled a setpoint. Production
+// admits a temperature facet only with a real `measure_temperature` value
+// (`resolveTemperatureObservation`), and without one `resolveResidualShedBehavior`
+// falls back to `turn_off` — so the setpoint shed the owner configured frees the
+// device's WHOLE draw, not the nothing a setpoint-already-there comparison would
+// report.
+describe('resolveResidualShedBehavior — a configured set_temperature shed without a sensor', () => {
+  const heater = (
+    overrides: Parameters<typeof buildPlanInputDevice>[0],
+  ): PlanInputDevice => buildPlanInputDevice({
+    id: 'heater',
+    controllable: true,
+    binaryControl: { on: true },
+    measuredPowerKw: 1.4,
+    shedBehavior: { action: 'set_temperature', temperature: 18 },
+    ...overrides,
+  });
+
+  const remainingKw = (device: PlanInputDevice): number => resolveRemainingSheddableLoadKw({
+    device: toInputRemainingSheddableDevice(device),
+    alreadyShed: false,
+    limitSource: 'capacity',
+    capacityBreached: true,
+  });
+
+  it('frees the whole draw when the device reports no temperature at all', () => {
+    const device = heater({ currentTarget: 18 });
+    // No facet, so no cluster either — the discriminant and the residual agree.
+    expect(isTemperaturePlanDevice(device)).toBe(false);
+    expect(remainingKw(device)).toBeCloseTo(1.4, 6);
+  });
+
+  it('frees the whole draw when a reported device is still above the shed setpoint', () => {
+    const device = heater({ currentTarget: 21, currentTemperature: 20.5 });
+    expect(isTemperaturePlanDevice(device)).toBe(true);
+    expect(remainingKw(device)).toBeCloseTo(1.4, 6);
+  });
+
+  it('frees nothing when a reported device already sits at the shed setpoint', () => {
+    const device = heater({ currentTarget: 18, currentTemperature: 17.5 });
+    expect(isTemperaturePlanDevice(device)).toBe(true);
+    expect(remainingKw(device)).toBe(0);
   });
 });

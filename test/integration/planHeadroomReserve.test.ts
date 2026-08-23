@@ -258,6 +258,7 @@ describe('PlanBuilder startup power reservation', () => {
       deviceType: 'temperature',
       binaryControl: { on: true },
       currentTarget: 21,
+      currentTemperature: 21,
       targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
       currentDrawKw: 0.6,
       expectedPowerKw: 0.6,
@@ -284,6 +285,7 @@ describe('PlanBuilder startup power reservation', () => {
         params.heater,
         setpointThermostat({
           currentTarget: settledTargetC,
+          currentTemperature: settledTargetC,
           targets: [{ id: 'target_temperature', value: settledTargetC, unit: 'C' }],
           currentDrawKw: settledTargetC === SHED_FLOOR_C ? 0 : 0.6,
         }),
