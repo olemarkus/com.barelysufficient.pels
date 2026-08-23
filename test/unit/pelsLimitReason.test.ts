@@ -20,6 +20,7 @@ describe('pels status limit reason', () => {
     plannedState: 'shed',
     boostActive: false,
     currentTarget: 21,
+    currentTemperature: 21,
     plannedTarget: 15,
     controllable: true,
     available: true,

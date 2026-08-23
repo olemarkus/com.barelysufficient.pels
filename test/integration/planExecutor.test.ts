@@ -26,6 +26,7 @@ import type {
   PlanInputDevice,
   ShedAction,
   SteppedDiscriminantProbe,
+  TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import {
   withBinaryDiscriminant,
@@ -449,6 +450,7 @@ describe('PlanExecutor declined actuator requests', () => {
         plannedState: 'shed',
         boostActive: false,
         currentTarget: 21,
+        currentTemperature: 21,
         plannedTarget: 21,
         controllable: true,
         binaryCapabilityId: 'onoff',
@@ -563,6 +565,7 @@ describe('PlanExecutor restore logging', () => {
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 21,
+          currentTemperature: 21,
           plannedTarget: 21,
           controllable: true,
           binaryCapabilityId: 'onoff',
@@ -613,6 +616,7 @@ describe('PlanExecutor restore logging', () => {
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 21,
+          currentTemperature: 21,
           plannedTarget: 21,
           controllable: true,
           reason,
@@ -649,6 +653,7 @@ describe('PlanExecutor restore logging', () => {
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 21,
+          currentTemperature: 21,
           plannedTarget: 21,
           controllable: true,
           reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
@@ -687,6 +692,7 @@ describe('PlanExecutor restore logging', () => {
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 21,
+          currentTemperature: 21,
           plannedTarget: 16,
           controllable: true,
           shedAction: 'set_temperature',
@@ -714,6 +720,7 @@ describe('PlanExecutor restore logging', () => {
           plannedState: 'keep',
           boostActive: false,
           currentTarget: 21,
+          currentTemperature: 21,
           plannedTarget: 21,
           controllable: true,
           reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
@@ -749,6 +756,7 @@ describe('PlanExecutor restore logging', () => {
           plannedState: 'keep',
           boostActive: false,
           currentTarget: 21,
+          currentTemperature: 21,
           plannedTarget: 21,
           controllable: true,
           reason: KEEP_REASON,
@@ -787,6 +795,7 @@ describe('PlanExecutor restore logging', () => {
           plannedState: 'keep',
           boostActive: false,
           currentTarget: 21,
+          currentTemperature: 21,
           plannedTarget: 21,
           controllable: false,
           reason: KEEP_REASON,
@@ -828,6 +837,7 @@ describe('PlanExecutor restore logging', () => {
           plannedState: 'keep',
           boostActive: false,
           currentTarget: 21,
+          currentTemperature: 21,
           plannedTarget: 21,
           controllable: true,
           reason: fixtureDeviceReason('meter settling (30s remaining)'),
@@ -865,6 +875,7 @@ describe('PlanExecutor restore logging', () => {
         plannedState: 'shed',
         boostActive: false,
         currentTarget: 21,
+        currentTemperature: 21,
         plannedTarget: 21,
         controllable: true,
         binaryCapabilityId: 'onoff',
@@ -1002,6 +1013,7 @@ describe('PlanExecutor restore logging', () => {
         plannedState: 'shed',
         boostActive: false,
         currentTarget: 21,
+        currentTemperature: 21,
         plannedTarget: 21,
         controllable: true,
         binaryCapabilityId: 'onoff',
@@ -1113,6 +1125,7 @@ describe('PlanExecutor restore logging', () => {
         plannedState: 'shed',
         boostActive: false,
         currentTarget: 21,
+        currentTemperature: 21,
         plannedTarget: 21,
         controllable: true,
         binaryCapabilityId: 'onoff',
@@ -1465,6 +1478,7 @@ describe('PlanExecutor pending target commands', () => {
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 22,
+          currentTemperature: 22,
           plannedTarget: 15,
           controllable: true,
           shedAction: 'set_temperature',
@@ -1659,6 +1673,7 @@ describe('PlanExecutor stepped loads', () => {
       plannedState: 'keep' as const,
       boostActive: false,
       currentTarget: 68,
+      currentTemperature: 68,
       plannedTarget: 68,
       controllable: true,
       available: true,
@@ -2018,6 +2033,7 @@ describe('PlanExecutor stepped loads', () => {
 
     await expect(executor.applyPlanActions(steppedPlan({
       currentTarget: 18,
+      currentTemperature: 18,
       plannedTarget: 23,
     }))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 1,
@@ -3226,6 +3242,7 @@ describe('PlanExecutor stepped loads', () => {
           plannedState: 'keep',
           boostActive: false,
           currentTarget: 21,
+          currentTemperature: 21,
           plannedTarget: 21,
           controllable: true,
         }),
@@ -3236,6 +3253,7 @@ describe('PlanExecutor stepped loads', () => {
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 21,
+          currentTemperature: 21,
           plannedTarget: 21,
           controllable: true,
         }),
@@ -3345,9 +3363,8 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   const steppedPlan = (
     overrides: Partial<DevicePlanDevice>
       & SteppedDiscriminantProbe
+      & TemperatureDiscriminantProbe
       & {
-        currentTarget?: number;
-        plannedTarget?: number;
         binaryCapabilityId?: string;
       } = {},
   ): DevicePlan => ({
@@ -3870,6 +3887,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       selectedStepId: 'low',
       desiredStepId: 'max',
       currentTarget: 18,
+      currentTemperature: 18,
       plannedTarget: 23,
       reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
     }));
@@ -4489,6 +4507,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
             plannedState: 'shed',
             boostActive: false,
             currentTarget: 21,
+            currentTemperature: 21,
             plannedTarget: 21,
             controllable: true,
             binaryCapabilityId: 'onoff',

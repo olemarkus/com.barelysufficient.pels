@@ -195,6 +195,7 @@ describe('resolveHeadroomReserves — release, and the step-1 boundary', () => {
       binaryCapabilityId: undefined,
       currentState: 'unknown',
       currentTarget: 21,
+      currentTemperature: 21,
       expectedPowerKw: 1.0,
       measuredPowerKw,
     });

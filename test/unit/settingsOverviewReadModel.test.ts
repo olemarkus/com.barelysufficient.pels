@@ -416,7 +416,7 @@ describe('settingsOverviewReadModel', () => {
 
     it('carries the same bit for a temperature device, with no second answer beside it', () => {
       const device = buildSettingsOverviewDeviceReadModel(
-        boosting({ deviceType: 'temperature' }),
+        boosting({ deviceType: 'temperature', currentTarget: 21, currentTemperature: 20 }),
         absentTemperature,
       );
       expect(device.boostActive).toBe(true);

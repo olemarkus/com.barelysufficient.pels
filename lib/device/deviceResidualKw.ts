@@ -3,11 +3,12 @@
  * planner-detype refactor) and `residualKw.restore` resolution (chunk 4).
  *
  * "Residual kW for shed" = the observable kW that the configured shed behavior
- * would remove if applied right now. This collapses the
- * `RemainingSheddableDevice` discriminated-union kind switch
+ * would remove if applied right now. This collapses the legacy
+ * `RemainingSheddableDevice` kind switch
  * (`'simple' | 'temperature' | 'stepped' | 'stepped_temperature'`) into a
  * single number on `PlanInputDevice.residualKw.shed`, computed at the producer
- * seam. Consumers in `lib/plan/planRemainingSheddableLoad.ts` keep their flat
+ * seam. That consumer type is flat now — the union shape it once had is gone.
+ * Consumers in `lib/plan/planRemainingSheddableLoad.ts` keep their flat
  * plan-cycle gates (`controllable`, the binary off-gate
  * `isBinaryPlanDevice(d) && !d.currentOn`, `alreadyShed`,
  * daily-budget-without-cap-breach) and otherwise read this number directly.

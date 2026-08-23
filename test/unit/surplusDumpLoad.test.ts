@@ -207,6 +207,7 @@ const tempDevice = (id: string, priority: number) => buildPlanInputDevice({
   id,
   name: `Temp ${id}`,
   deviceType: 'temperature',
+  currentTemperature: 19,
   expectedPowerKw: 1,
   targets: [{ id: 'target_temperature', value: 20, unit: 'C', min: 0, max: 30, step: 0.5 }],
   priority,

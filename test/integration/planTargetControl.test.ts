@@ -42,6 +42,7 @@ const buildPlanDevice = (
   currentState: 'on',
   plannedState: 'keep' as const,
   currentTarget,
+  currentTemperature: currentTarget,
   plannedTarget,
   controllable: true,
   available: true,

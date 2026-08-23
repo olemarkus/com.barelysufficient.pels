@@ -326,6 +326,7 @@ describe('buildInitialPlanDevices', () => {
       id: 'dev-1',
       name: 'Water Heater',
       deviceType: 'temperature',
+      currentTemperature: 65,
       selectedStepId: 'max',
       desiredStepId: 'max',
       targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],

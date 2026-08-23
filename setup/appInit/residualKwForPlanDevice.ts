@@ -185,6 +185,15 @@ function toResidualSteppedLoad(
 function toResidualTemperatureTarget(
   device: DecoratedDeviceSnapshot,
 ): ResidualKwShedTemperatureTarget | undefined {
+  // Taking `targets[0]` is safe because the parse seam already made the list
+  // atomic with the facet: `managerParseDeviceFields.ts` writes
+  // `targets = temperature ? [temperature.target] : []`, so a snapshot's list
+  // holds the `target_temperature` entry alone or nothing, and `toPlanDevice`
+  // only passes it through. Reviewers have twice read this as "picks by index
+  // where admission finds by id" and filed a defect; the divergence is not
+  // reachable. If the seam ever emits a second target capability, this must
+  // become a find-by-id — the shed math would otherwise be normalized against
+  // another capability's min/max/step.
   const target = getPrimaryTargetCapability(device.targets);
   if (!target) return undefined;
   return {

@@ -35,7 +35,10 @@ import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { getSteppedLoadLowestActiveStep } from '../../lib/utils/deviceControlProfiles';
-import { getPrimaryTargetCapability } from '../../lib/utils/targetCapabilities';
+import {
+  TARGET_TEMPERATURE_CAPABILITY_ID,
+  resolveTemperatureObservation,
+} from '../../lib/device/transport/temperatureObservation';
 import {
   buildResidualKwForPlanDevice,
   resolveResidualShedBehavior,
@@ -102,61 +105,158 @@ export const resolveFixtureCurrentState = (device: {
 };
 
 /**
- * Treat a fixture's `currentTarget` / `currentTemperature` override as the
- * temperature-variant signal: a device carrying either is a temperature device,
- * so default `deviceType: 'temperature'` (unless the fixture set it explicitly)
- * and regroup the cluster onto `TemperatureKind`. Mirrors the production
- * producer, which always stamps `deviceType` from the snapshot. Without this,
- * the `isTemperaturePlanDevice` guard (which keys on `deviceType`) would read
- * `null` for fixtures that express temperature intent only through
- * `currentTarget`.
+ * The targets list production would have had for this fixture's temperature
+ * intent.
+ *
+ * A fixture spells the setpoint flat (`currentTarget`), where production reads a
+ * `target_temperature` capability entry — so synthesize that entry from what the
+ * fixture actually said. It is a translation, not an invention: a device with a
+ * setpoint has the capability that carries it. A fixture that spelled its own
+ * `target_temperature` entry keeps it verbatim, min/max/step included, and its
+ * value wins — the entry is what production's own admission and the shed math
+ * both read, so the two cannot end up on different numbers.
+ *
+ * No setpoint anywhere means no entry, and therefore no facet.
  */
-const FIXTURE_DEFAULT_TEMPERATURE_C = 21;
+const fixtureTemperatureTargets = (device: {
+  currentTarget?: number;
+  plannedTarget?: number;
+  targets?: TargetCapabilitySnapshot[];
+}): TargetCapabilitySnapshot[] => {
+  const spelled = device.targets ?? [];
+  if (spelled.some((target) => target.id === TARGET_TEMPERATURE_CAPABILITY_ID)) return spelled;
+  // `plannedTarget` counts, `currentTemperature` does not, and the difference is
+  // which capability the fixture claimed. Both a current and a planned setpoint
+  // are statements ABOUT a setpoint, so either is evidence the device has one —
+  // a fixture that states only where it is heading describes a device sitting at
+  // that setpoint, which is the behaviour-neutral reading the cluster has always
+  // taken. A bare sensor reading claims `measure_temperature` and says nothing
+  // about a setpoint capability; inventing one there is the same fabrication in
+  // the other direction, and it would let a fixture pin a zero shed residual on
+  // a device production frees whole.
+  const setpoint = device.currentTarget ?? device.plannedTarget;
+  if (setpoint === undefined) return spelled;
+  return [...spelled, { id: TARGET_TEMPERATURE_CAPABILITY_ID, value: setpoint, unit: '°C' }];
+};
 
-const withFixtureTemperatureKind = <T extends { deviceType?: 'temperature' | 'onoff' }>(
-  fields: T & TemperatureDiscriminantProbe,
-):
-| Omit<T, keyof TemperatureDiscriminantProbe>
-| (Omit<T, keyof TemperatureDiscriminantProbe> & TemperatureKind) => {
-  const hasTemperatureSignal = fields.deviceType === 'temperature'
-    || fields.currentTarget !== undefined
-    || fields.currentTemperature !== undefined
-    || fields.plannedTarget !== undefined;
-  if (!hasTemperatureSignal) {
-    const {
-      currentTarget: _ct, currentTemperature: _cte, plannedTarget: _pt, ...rest
-    } = fields;
-    return rest;
-  }
-  // The temperature cluster is COMPLETE by producer invariant (atomic facet +
-  // total planner resolution), so any temperature signal synthesizes the full
-  // trio: a missing sensor reading defaults to "at setpoint" and a missing
-  // planned target to "no decision" (planned === current) — both behavior-
-  // neutral. Fixtures whose subject is one of these values set it explicitly.
-  const currentTarget = fields.currentTarget
-    ?? fields.plannedTarget
-    ?? fields.currentTemperature
-    ?? FIXTURE_DEFAULT_TEMPERATURE_C;
-  return withTemperatureDiscriminant({
-    deviceType: 'temperature' as const,
-    ...fields,
-    currentTarget,
-    currentTemperature: fields.currentTemperature ?? currentTarget,
-    plannedTarget: fields.plannedTarget ?? currentTarget,
+/**
+ * The observed temperature FACET a fixture's own signals imply — admitted by
+ * PRODUCTION'S OWN resolver, never restated here.
+ *
+ * The producer's shed-behaviour projection denies a `set_temperature` shed when
+ * the device carries no observed temperature, and this facet is what it reads.
+ * `resolveTemperatureObservation` admits one only with ALL THREE of a
+ * `target_temperature` entry, a defined sensor reading, and a finite target
+ * value; anything less is `undefined`, and `resolveResidualShedBehavior` falls
+ * back to `turn_off`.
+ *
+ * `currentTemperature` is therefore whatever the fixture SAID and nothing else.
+ * Defaulting it to the setpoint was the fabrication this helper used to commit:
+ * it resolved `set_temperature` where production resolves `turn_off`, and for a
+ * setpoint already at the shed temperature it stamped a ZERO shed residual on a
+ * device whose whole draw production frees — a shape the producer cannot emit,
+ * masking regressions in the missing-sensor planning path. A fixture that means
+ * a device with a sensor says so.
+ */
+const fixtureTemperatureObservation = (device: {
+  deviceType?: 'temperature' | 'onoff';
+  currentTarget?: number;
+  currentTemperature?: number;
+  plannedTarget?: number;
+  targets?: TargetCapabilitySnapshot[];
+}): TemperatureObservation | undefined => {
+  // An explicit `'onoff'` is the fixture denying the axis outright, the way
+  // `temperatureControlDisabled` denies it in production. Without this, a
+  // fixture could carry a facet while the plan device it lands on says `onoff`
+  // — the half-cluster split this pairing exists to prevent, in reverse.
+  if (device.deviceType === 'onoff') return undefined;
+  return resolveTemperatureObservation({
+    currentTemperature: device.currentTemperature,
+    targets: fixtureTemperatureTargets(device),
   });
 };
 
 /**
- * Test convenience: materialize the one producer-resolved bit
- * (`commandableNow`) from a fixture's readable `evChargingState: 'plugged_out'`
- * input, and KEEP the state itself — it is a planner field again, carried on the
- * EV cluster, and every plug-state question is answered from it.
+ * The `targets` list a plan INPUT device carries, paired with the facet the same
+ * way production pairs them. A fixture that spelled its own list and resolved no
+ * facet keeps that list verbatim.
+ */
+const fixtureDeviceTargets = (device: {
+  deviceType?: 'temperature' | 'onoff';
+  currentTarget?: number;
+  currentTemperature?: number;
+  plannedTarget?: number;
+  targets?: TargetCapabilitySnapshot[];
+}): TargetCapabilitySnapshot[] => {
+  const observation = fixtureTemperatureObservation(device);
+  return observation ? [observation.target] : (device.targets ?? []);
+};
+
+/**
+ * Stamp the plan device's temperature CLUSTER from the same facet the residual
+ * resolution reads, and strip it — discriminant included — when there is none.
  *
- * Mirrors the producer (`toPlanDevice`), so a fixture is faithful to a real
- * `PlanInputDevice`: the executor drift path reads `commandableNow` off it, and
- * plan consumers read no plug-state at all — the plan device does not carry
- * `evChargingState` (owner ruling 2026-08-15, `lib/plan/AGENTS.md`); the settings
- * UI sources it from the observer via `getObservedEvChargingState`.
+ * The cluster and the facet are ONE decision, exactly as they are in production:
+ * `resolveTemperatureInputFields` (`setup/appInit/toPlanDevice.ts`) derives
+ * `deviceType`, `currentTarget` and `currentTemperature` from facet presence, so
+ * "a snapshot claiming `'temperature'` without the facet plans as `'onoff'`,
+ * never as a half-cluster". A fixture that resolved them separately could claim
+ * temperature on the plan device while its residual resolution said onoff, which
+ * is the split this pairing exists to prevent.
+ *
+ * `plannedTarget` is the one field with no production counterpart here — it is a
+ * plan DECISION, not an observation — so a fixture that states none gets
+ * "planned === current", i.e. no move. (`fixtureTemperatureTargets` does read it,
+ * for a different question: whether the fixture claimed a setpoint capability at
+ * all. Its value is only the "no move" default that already applies here.)
+ */
+const withFixtureTemperatureKind = <T extends {
+  deviceType?: 'temperature' | 'onoff';
+  targets?: TargetCapabilitySnapshot[];
+}>(
+  fields: T & TemperatureDiscriminantProbe,
+):
+| (Omit<T, keyof TemperatureDiscriminantProbe | 'deviceType'> & { deviceType?: 'onoff' })
+| (Omit<T, keyof TemperatureDiscriminantProbe | 'deviceType'> & { deviceType: 'temperature' } & TemperatureKind) => {
+  const observation = fixtureTemperatureObservation(fields);
+  const {
+    currentTarget: _ct, currentTemperature: _cte, plannedTarget: _pt, deviceType, ...rest
+  } = fields;
+  if (!observation) {
+    return {
+      ...rest,
+      // Only a fixture that CLAIMED temperature is corrected; one that said
+      // nothing keeps saying nothing, so an unrelated fixture does not acquire a
+      // discriminant it never had.
+      ...(deviceType !== undefined ? { deviceType: 'onoff' as const } : {}),
+    };
+  }
+  return withTemperatureDiscriminant({
+    ...rest,
+    deviceType: 'temperature' as const,
+    currentTarget: observation.target.value,
+    currentTemperature: observation.currentTemperature,
+    plannedTarget: fields.plannedTarget ?? observation.target.value,
+    // The regrouper's return type is a union because it re-reads `deviceType` at
+    // runtime; this call always passes `'temperature'`, so the non-temperature
+    // member is unreachable and the cast just says so.
+  }) as Omit<T, keyof TemperatureDiscriminantProbe | 'deviceType'>
+  & { deviceType: 'temperature' } & TemperatureKind;
+};
+
+/**
+ * Resolve a fixture's readable `evChargingState: 'plugged_out'` input into the
+ * flat producer-resolved bits — `commandableNow`, `commandabilityReason`,
+ * `objectiveSessionInactive` — and then STRIP the raw field, exactly as
+ * `toPlanDevice` does.
+ *
+ * Stripping is the point, not a side effect: the plan device does not carry
+ * `evChargingState` (owner ruling 2026-08-15, `lib/plan/AGENTS.md`), so a fixture
+ * that kept it would be a plan-shaped device carrying a plug state production
+ * removed — a second answer to a question the flat bits already settle. Plan
+ * consumers read no plug-state at all; the executor drift path reads
+ * `commandableNow`, and the settings UI sources the state itself from the
+ * observer via `getObservedEvChargingState`.
  *
  * `commandableNow` is materialized for EVERY fixture, EV or not, because it is a
  * required base field — a fixture without it would let a consumer read
@@ -388,57 +488,6 @@ const fixtureBinaryAxisDisabled = (overrides: object): boolean => {
  */
 export type FixtureShedBehavior = ShedBehavior;
 
-/**
- * The observed temperature FACET a fixture's own signals imply.
- *
- * The producer's shed-behaviour projection denies a `set_temperature` shed when
- * the device carries no observed temperature, and that facet is what it reads —
- * fixtures spell the same fact as flat `currentTarget`/`currentTemperature`/
- * `plannedTarget`, so build the facet from them before handing the snapshot
- * over.
- *
- * Admission is EXACTLY `withFixtureTemperatureKind`'s signal set — deliberately
- * NOT widened to "carries a `target_temperature` capability". Production's
- * `resolveTemperatureObservation` returns `undefined` without a current-
- * temperature reading, so a device whose only evidence is the capability has NO
- * facet, and `resolveResidualShedBehavior` falls back to `turn_off`. A fixture
- * admitting on the capability alone would instead resolve `set_temperature`, and
- * for a setpoint already at the shed temperature it would stamp a ZERO shed
- * residual where production frees the whole draw — a shape the producer cannot
- * emit, masking regressions in the missing-sensor planning path.
- */
-const fixtureTemperatureObservation = (device: {
-  deviceType?: 'temperature' | 'onoff';
-  currentTarget?: number;
-  currentTemperature?: number;
-  plannedTarget?: number;
-  targets?: TargetCapabilitySnapshot[];
-}): TemperatureObservation | undefined => {
-  const target = getPrimaryTargetCapability(device.targets);
-  const temperatureTarget = target?.id === 'target_temperature' ? target : null;
-  const hasTemperatureSignal = device.deviceType === 'temperature'
-    || device.currentTarget !== undefined
-    || device.currentTemperature !== undefined
-    || device.plannedTarget !== undefined;
-  if (!hasTemperatureSignal) return undefined;
-  // The setpoint the SHED math reads is `targets[0].value`, so prefer it: a
-  // fixture spelling both must not leave the denial gate and the shed math
-  // reading different numbers. Production cannot disagree with itself here —
-  // `toPlanDevice` sets `currentTarget` FROM the facet's target value.
-  const currentTarget = (typeof temperatureTarget?.value === 'number' ? temperatureTarget.value : undefined)
-    ?? device.currentTarget
-    ?? FIXTURE_DEFAULT_TEMPERATURE_C;
-  return {
-    currentTemperature: device.currentTemperature ?? currentTarget,
-    target: {
-      unit: '°C',
-      ...(temperatureTarget ?? {}),
-      id: 'target_temperature',
-      value: currentTarget,
-    },
-  };
-};
-
 export type FixtureResidualKw = {
   shed: number;
   restore: { kw: number; source: RestorePowerSource };
@@ -484,6 +533,7 @@ export const fixtureResidualKw = (
   },
 ): FixtureResidualKw => {
   const currentDrawKw = fixtureCurrentDrawKw(device);
+  const temperature = fixtureTemperatureObservation(device);
   // Every field this function resolves ON the fixture's behalf, name- and
   // type-checked against the snapshot the producer expects. The outer cast below
   // is the fixture-constructor boundary and would hide a typo here; `satisfies`
@@ -511,7 +561,15 @@ export const fixtureResidualKw = (
     expectedPowerKw: fixtureExpectedPowerKw(device),
     // The atomic observed facet the shed-behaviour projection reads; fixtures
     // spell the same fact flat.
-    temperature: fixtureTemperatureObservation(device),
+    temperature,
+    // Production's transport emits the pair as ONE line
+    // (`managerParseDeviceFields.ts`): `targets = temperature ? [temperature.target] : []`.
+    // It matters here because the shed math reads the setpoint off `targets`
+    // (`toResidualTemperatureTarget`) and the denial gate reads it off the facet:
+    // a list that outlives its facet lets a sensorless fixture compare setpoints
+    // production would never have compared, and a list the facet was not built
+    // from lets the two read different numbers.
+    targets: temperature ? [temperature.target] : [],
   } satisfies Partial<
   DecoratedDeviceSnapshot & MeasuredPowerObservedProbe & TemperatureObservedProbe
   >;
@@ -795,7 +853,6 @@ export const buildPlanInputDevice = (
   return withBinaryDiscriminant({
     id: 'dev',
     name: 'Device',
-    targets: [],
     ...(!binaryExplicitlyDisabled ? { binaryControl: o.binaryControl ?? { on: true } } : {}),
     currentState,
     ...withFixtureSteppedTriple(withFixtureTemperatureKind({
@@ -807,6 +864,13 @@ export const buildPlanInputDevice = (
     // AFTER the caller spread, and destructured out of `rest` above: a required
     // field must not be settable to `undefined` by an explicit override.
     currentDrawKw: fixtureCurrentDrawKw(overrides),
+    // The setpoint capability the facet was admitted from. Production co-emits
+    // the two (`managerParseDeviceFields`: `targets = temperature ? [temperature.target] : []`),
+    // and the planner's own shed-candidate selection reads the LIST, not the
+    // cluster (`candidates.ts` keys `set_temperature` on `device.targets?.[0]`) —
+    // so a fixture with a temperature cluster and an empty list would take the
+    // binary candidate while its residual was resolved on the setpoint arm.
+    targets: fixtureDeviceTargets(overrides),
     // Required since the dual-read collapse: the producer always stamps a
     // residual, so a fixture without one is a shape production never emits and
     // `resolveRemainingSheddableLoadKw` would dereference `undefined`. Resolved

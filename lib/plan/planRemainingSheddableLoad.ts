@@ -1,10 +1,5 @@
-import type {
-  SteppedLoadCommandStatus,
-  SteppedLoadProfile,
-} from '../../packages/contracts/src/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import {
   isSteppedLoadDevice,
@@ -20,80 +15,42 @@ import {
   resolveKnownEffectiveStepId,
 } from './planSteppedLoadState';
 
-type RemainingSheddablePowerFields = {
-  // Producer-resolved draw; the raw reading is not carried on plan devices.
-  currentDrawKw: number;
-  expectedPowerKw?: number;
-  planningPowerKw?: number;
-};
-
 type RemainingSheddableResidualFields = {
   residualKw: { shed: number };
 };
 
-type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & RemainingSheddableResidualFields & {
+/**
+ * Flat consumer view of a device the shed math may still reduce.
+ *
+ * There is no kind here on purpose. This used to be a four-member union
+ * (simple / temperature / stepped / stepped+temperature) left over from the
+ * dual-read era, and it did nothing twice over: `resolveRemainingSheddableLoadKw`
+ * reads only `controllable`, the binary axis, `budgetExempt` and
+ * `residualKw.shed`, and the union was assignability-vacuous anyway
+ * (`A | (A & B)` accepts any bare `A`), so it constrained no caller. The
+ * kind-switch decision happens once, at the producer seam
+ * (`lib/device/deviceResidualKw.ts`); leaving a kind-shaped union in the module
+ * whose point was collapsing that switch is what invites the next consumer to
+ * branch on kind again.
+ *
+ * It keeps the local `{ shed: number }` residual view because that is the ONLY
+ * residual half this consumer reads: requiring the producer's full residual here
+ * would make a consumer demand a `restore` number it never looks at, and
+ * `toPlanRemainingSheddableDevice` legitimately builds a post-plan device that
+ * has only the recomputed shed half.
+ *
+ * By the same measure it carries no draw, no power estimate and no state label.
+ * The shed kW is already resolved when it arrives, so those were copied per
+ * device per plan cycle for nobody — the same cost the kind-shaped union was
+ * removed for.
+ */
+export type RemainingSheddableDevice = RemainingSheddableResidualFields & {
   id: string;
   controllable: boolean;
   // Producer-resolved on/off truth, present iff binary; read via `isBinaryPlanDevice`.
   currentOn?: boolean;
-  currentState?: string;
   budgetExempt: boolean;
 };
-
-export type RemainingSheddableTemperatureTarget = {
-  id: string;
-  currentValue?: number;
-  min?: number;
-  max?: number;
-  step?: number;
-};
-
-type RemainingSheddableTemperatureFields = {
-  temperatureTarget: RemainingSheddableTemperatureTarget;
-};
-
-// The local stepped discriminant is profile presence (`steppedLoadProfile`),
-// mirroring the planner-wide collapse off `controlModel`. The required profile
-// field is what distinguishes the stepped union members below.
-type RemainingSheddableSteppedFields = {
-  steppedLoadProfile: SteppedLoadProfile;
-  // Producer-guaranteed alongside the profile (stepped cluster).
-  selectedStepId: string;
-  desiredStepId?: string;
-  stepCommandPending: boolean;
-  stepCommandStatus?: SteppedLoadCommandStatus;
-};
-
-type SimpleRemainingSheddableDevice = RemainingSheddableBaseDevice;
-
-type TemperatureRemainingSheddableDevice = RemainingSheddableBaseDevice
-  & RemainingSheddableTemperatureFields;
-
-type SteppedRemainingSheddableDevice = RemainingSheddableBaseDevice & RemainingSheddableSteppedFields;
-
-type SteppedTemperatureRemainingSheddableDevice = RemainingSheddableBaseDevice
-  & RemainingSheddableSteppedFields
-  & RemainingSheddableTemperatureFields;
-
-/**
- * Structural superset covering the four shapes the legacy kind switch used to
- * inspect (simple / temperature / stepped / stepped+temperature).
- *
- * The shed dual-read is gone — `resolveRemainingSheddableLoadKw` reads
- * `residualKw.shed` and nothing else — so this union carries no fallback. It
- * keeps the local `{ shed: number }` view because that is the ONLY residual half
- * this consumer reads: requiring the restore half here would make a consumer
- * demand a number it never looks at.
- *
- * The variant members no longer discriminate anything for that reader, and the
- * union is assignability-vacuous (`A | (A&B)` accepts any bare `A`), so they
- * constrain no caller either.
- */
-export type RemainingSheddableDevice =
-  | SimpleRemainingSheddableDevice
-  | TemperatureRemainingSheddableDevice
-  | SteppedTemperatureRemainingSheddableDevice
-  | SteppedRemainingSheddableDevice;
 
 export type RemainingSheddableLoadParams = {
   device: RemainingSheddableDevice;
@@ -102,11 +59,12 @@ export type RemainingSheddableLoadParams = {
   capacityBreached: boolean;
 };
 
-type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & RemainingSheddableResidualFields & {
+type RemainingSheddableSourceDevice = RemainingSheddableResidualFields & {
   id: string;
   controllable: boolean;
   currentOn?: boolean;
-  currentState?: string;
+  // Optional here and required on the view: the producer's own `budgetExempt` is
+  // optional, and this projection is where absence becomes the explicit `false`.
   budgetExempt?: boolean;
 };
 
@@ -115,27 +73,13 @@ export function isCapacityBreached(totalKw: number | null, capacitySoftLimitKw: 
 }
 
 export function toInputRemainingSheddableDevice(device: PlanInputDevice): RemainingSheddableDevice {
-  const base = toRemainingSheddableBaseDevice(device);
-  const temperatureTarget = toRemainingTemperatureTarget(getPrimaryTargetCapability(device.targets));
-  return toRemainingSheddableDeviceFromParts({
-    base,
-    steppedSource: device,
-    temperatureTarget,
-  });
+  return toRemainingSheddableDevice(device);
 }
 
 export function toPlanRemainingSheddableDevice(device: DevicePlanDevice): RemainingSheddableDevice {
-  const base = toRemainingSheddableBaseDevice({
+  return toRemainingSheddableDevice({
     ...device,
     residualKw: { shed: residualKwAfterSnapshot(device) },
-  });
-  const temperatureTarget = device.shedAction === 'set_temperature'
-    ? toPlanRemainingTemperatureTarget(device)
-    : undefined;
-  return toRemainingSheddableDeviceFromParts({
-    base,
-    steppedSource: device,
-    temperatureTarget,
   });
 }
 
@@ -152,7 +96,7 @@ export function toPlanRemainingSheddableDevice(device: DevicePlanDevice): Remain
  * `turn_off` (the legacy default) so non-shed devices still get an honest
  * residual instead of a structural 0.
  */
-export function residualKwAfterSnapshot(device: DevicePlanDevice): number {
+function residualKwAfterSnapshot(device: DevicePlanDevice): number {
   const shedBehavior = toPlanResidualShedBehavior(device);
   const drawKw = device.currentDrawKw;
   const steppedLoad = toPlanResidualSteppedLoad(device);
@@ -244,75 +188,14 @@ export function sumRemainingSheddableLoadKw(params: {
   return totalKw;
 }
 
-function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice): RemainingSheddableBaseDevice {
+function toRemainingSheddableDevice(device: RemainingSheddableSourceDevice): RemainingSheddableDevice {
   return {
     id: device.id,
     controllable: device.controllable,
+    // Written unconditionally: `isBinaryPlanDevice` is a key-presence test, so
+    // dropping the key for a non-binary device would change the narrowing.
     currentOn: device.currentOn,
-    currentState: device.currentState,
     budgetExempt: device.budgetExempt === true,
-    currentDrawKw: device.currentDrawKw,
-    expectedPowerKw: device.expectedPowerKw,
-    planningPowerKw: device.planningPowerKw,
     residualKw: device.residualKw,
-  };
-}
-
-function toRemainingSheddableDeviceFromParts(params: {
-  base: RemainingSheddableBaseDevice;
-  steppedSource: PlanInputDevice | DevicePlanDevice;
-  temperatureTarget?: RemainingSheddableTemperatureTarget;
-}): RemainingSheddableDevice {
-  const { base, steppedSource, temperatureTarget } = params;
-  if (isSteppedLoadDevice(steppedSource)) {
-    const steppedFields: RemainingSheddableSteppedFields = {
-      steppedLoadProfile: steppedSource.steppedLoadProfile,
-      selectedStepId: steppedSource.selectedStepId,
-      desiredStepId: steppedSource.desiredStepId,
-      stepCommandPending: steppedSource.stepCommandPending === true,
-      stepCommandStatus: steppedSource.stepCommandStatus,
-    };
-    if (temperatureTarget) {
-      return {
-        ...base,
-        ...steppedFields,
-        temperatureTarget,
-      };
-    }
-    return {
-      ...base,
-      ...steppedFields,
-    };
-  }
-  if (temperatureTarget) {
-    return {
-      ...base,
-      temperatureTarget,
-    };
-  }
-  return base;
-}
-
-function toRemainingTemperatureTarget(target: {
-  id: string;
-  value?: number;
-  min?: number;
-  max?: number;
-  step?: number;
-} | null): RemainingSheddableTemperatureTarget | undefined {
-  if (!target) return undefined;
-  return {
-    id: target.id,
-    ...(typeof target.value === 'number' && Number.isFinite(target.value) ? { currentValue: target.value } : {}),
-    ...(typeof target.min === 'number' && Number.isFinite(target.min) ? { min: target.min } : {}),
-    ...(typeof target.max === 'number' && Number.isFinite(target.max) ? { max: target.max } : {}),
-    ...(typeof target.step === 'number' && Number.isFinite(target.step) ? { step: target.step } : {}),
-  };
-}
-
-function toPlanRemainingTemperatureTarget(device: DevicePlanDevice): RemainingSheddableTemperatureTarget {
-  return {
-    id: 'target_temperature',
-    ...(isTemperaturePlanDevice(device) ? { currentValue: device.currentTarget } : {}),
   };
 }

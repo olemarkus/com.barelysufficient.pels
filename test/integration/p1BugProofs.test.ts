@@ -355,6 +355,7 @@ describe('P1 bug proofs', () => {
         plannedState: 'shed',
         boostActive: false,
         currentTarget: 21,
+        currentTemperature: 21,
         plannedTarget: 21,
         binaryCapabilityId: 'onoff',
         reason: fixtureDeviceReason('shed due to capacity'),

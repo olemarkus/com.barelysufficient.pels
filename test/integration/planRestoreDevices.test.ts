@@ -50,7 +50,9 @@ describe('plan restore device helpers', () => {
       makeDevice({ id: 'high', priority: 5, currentState: 'off' }),
       makeDevice({ id: 'on', priority: 10, currentState: 'on' }),
       makeDevice({ id: 'na', priority: 7, currentState: 'not_applicable' }),
-      makeDevice({ id: 'temp-blocked', priority: 8, currentState: 'on', currentTarget: 21, plannedTarget: 21 }),
+      makeDevice({
+        id: 'temp-blocked', priority: 8, currentState: 'on', currentTarget: 21, currentTemperature: 21, plannedTarget: 21,
+      }),
       makeDevice({ id: 'shed', currentState: 'off', plannedState: 'shed' }),
     ];
 
@@ -61,11 +63,11 @@ describe('plan restore device helpers', () => {
         : { action: 'turn_off' }
     )).map((device) => device.id)).toEqual(['on', 'na']);
     expect(getOnDevices(
-      [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 23, plannedTarget: 23 })],
+      [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 23, currentTemperature: 23, plannedTarget: 23 })],
       () => ({ action: 'set_temperature', temperature: 20 }),
     ).map((device) => device.id)).toEqual(['temp']);
     expect(getOnDevices(
-      [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 20, plannedTarget: 20 })],
+      [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 20, currentTemperature: 20, plannedTarget: 20 })],
       () => ({ action: 'set_temperature', temperature: 20 }),
     )).toEqual([]);
   });

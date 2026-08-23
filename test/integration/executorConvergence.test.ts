@@ -95,6 +95,7 @@ describe('executorConvergence stepped device drift', () => {
         plannedState: 'keep',
         binaryCapabilityId: undefined,
         currentTarget: 21,
+        currentTemperature: 21,
         plannedTarget: 21,
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
@@ -114,6 +115,7 @@ describe('executorConvergence stepped device drift', () => {
         plannedState: 'keep',
         binaryCapabilityId: undefined,
         currentTarget: 21,
+        currentTemperature: 21,
         plannedTarget: 21,
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
@@ -137,6 +139,7 @@ describe('executorConvergence stepped device drift', () => {
         plannedState: 'keep',
         binaryCapabilityId: undefined,
         currentTarget: 21,
+        currentTemperature: 21,
         plannedTarget: 21,
         pendingTargetCommand: {
           desired: 21,
@@ -162,6 +165,7 @@ describe('executorConvergence stepped device drift', () => {
         plannedState: 'keep',
         binaryCapabilityId: undefined,
         currentTarget: 21,
+        currentTemperature: 21,
         plannedTarget: 21,
         pendingTargetCommand: {
           desired: 18,
@@ -551,6 +555,7 @@ describe('executorConvergence stepped device drift', () => {
         selectedStepId: 'low',
         desiredStepId: 'low',
         currentTarget: 21,
+        currentTemperature: 21,
         plannedTarget: 21,
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
@@ -674,6 +679,7 @@ describe('executorConvergence stepped device drift', () => {
         currentState: 'on',
         plannedState: 'keep',
         currentTarget: 20,
+        currentTemperature: 20,
         plannedTarget: 20,
         expectedPowerKw: 1,
         currentDrawKw: 1,
@@ -701,6 +707,7 @@ describe('executorConvergence stepped device drift', () => {
         plannedState: 'shed',
         shedAction: 'turn_off',
         currentTarget: 20,
+        currentTemperature: 20,
         plannedTarget: 20,
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
