@@ -88,27 +88,20 @@ export const formatFreshnessChip = (
 };
 
 /**
- * Formats the "energy used this hour" headline shown on the Overview hero and
- * emitted by the runtime logger so logs match the on-screen wording verbatim.
- * One decimal precision is applied to both sides to keep the pair consistent.
- */
-export const formatEnergyUsedOfBudget = (usedKWh: number, budgetKWh: number): string =>
-  `${usedKWh.toFixed(1)} of ${budgetKWh.toFixed(1)} kWh used`;
-
-/**
- * Presentation-only split of {@link formatEnergyUsedOfBudget} for the Overview
- * hero's numeric-first layout: the used value leads as the dominant number and
- * the budget context trails as a quiet qualifier. This is a PURE-PRESENTATION
- * helper — it exists so the UI can stack number + qualifier without mutating
- * the log-shared `formatEnergyUsedOfBudget` string.
+ * The "energy used this hour" headline shown on the Overview hero, split for
+ * the hero's numeric-first layout: the used value leads as the dominant number
+ * and the budget context trails as a quiet qualifier.
  *
- * The parts are derived from the SAME `toFixed(1)` values as
- * `formatEnergyUsedOfBudget`, and joining them with a single space
- * (`"<lead> <qualifier>"`) reproduces that wording VERBATIM — so the headline's
- * `textContent` stays byte-identical to the canonical `formatEnergyUsedOfBudget`
- * helper (pinned by a test). `formatEnergyUsedOfBudget` remains the single-string
- * helper for any log breadcrumb that needs it, so the on-screen and logged
- * wording can never drift (see `feedback_ui_text_shared_with_logs.md`).
+ * Both halves are one-decimal so the pair reads consistently, and joining them
+ * with a single space (`"<lead> <qualifier>"`) is the canonical wording —
+ * `"4.2 of 11.0 kWh used"` — pinned verbatim by a test.
+ *
+ * There is no log breadcrumb for this sentence today, and no runtime module
+ * imports this file at all. IF one is ever added it must compose these parts
+ * rather than re-format the numbers, so the logged and on-screen wording cannot
+ * drift (see `feedback_ui_text_shared_with_logs.md`). A second single-string
+ * helper kept "for logging" is what this replaced — it outlived every caller it
+ * ever had.
  */
 export const formatEnergyUsedOfBudgetParts = (
   usedKWh: number,
@@ -122,9 +115,10 @@ export const formatEnergyUsedOfBudgetParts = (
  * Formats the "projected this hour" subline that sits beneath the energy-used
  * headline on the Overview hero. Two-decimal precision matches the energy-bar
  * projection-marker tooltip so the printed numbers line up. Returns `null`
- * when no projection is available so the caller can omit the row entirely
- * (see `feedback_ui_text_shared_with_logs.md` — the runtime logger uses the
- * same helper so logs and UI never drift).
+ * when no projection is available so the caller can omit the row entirely.
+ * No runtime module imports this file; a log breadcrumb added later must call
+ * this helper rather than re-format the number (see
+ * `feedback_ui_text_shared_with_logs.md`).
  *
  * The projected value is floored at zero: in a net-export hour the projection
  * (used + remaining net kW) can go negative, and "projected -1.42 kWh"
@@ -142,9 +136,10 @@ export const formatProjectedEnergySubline = (projectedKWh: number | null): strin
 // hero exposes — used both as `aria-label` (screen-reader) and as the visible
 // legend row below the bar. Wording matches `notes/ui-terminology.md`
 // § "Hero bar vocabulary" so the screen-reader text mirrors the visible chip /
-// tooltip copy. The runtime logger imports these helpers when it emits
-// hero-render diagnostics so the wording never drifts between the UI and the
-// logs (see `feedback_ui_text_shared_with_logs.md`).
+// tooltip copy. No runtime module imports these helpers; hero-render
+// diagnostics added later must read the labels from here rather than restate
+// them, so the wording cannot drift between the UI and the logs (see
+// `feedback_ui_text_shared_with_logs.md`).
 
 export type HeroMeterMarkerLabels = {
   // Visible legend label. Power-bar markers include the numeric value
@@ -257,8 +252,9 @@ export const computeEnergyBarScaleKWh = (
 
 // ─── Decision sentence (named-subject declarative voice) ─────────────────────
 // Single plain-language conclusion at the bottom of the Overview hero. The
-// builder lives in shared-domain so the runtime logger and the settings UI
-// emit byte-identical wording (see `feedback_ui_text_shared_with_logs.md`).
+// builder lives in shared-domain so that any log breadcrumb added later emits
+// wording byte-identical to the settings UI; nothing in the runtime imports it
+// today (see `feedback_ui_text_shared_with_logs.md`).
 // Priority ladder is mirrored in `notes/overview-hero-spec.md` § "Decision
 // sentence" — keep both in sync.
 //

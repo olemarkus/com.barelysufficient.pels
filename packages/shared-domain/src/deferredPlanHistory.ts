@@ -544,8 +544,9 @@ const formatHourDiffAriaLabel = (hoursAdded: number, hoursRemoved: number): stri
  * `timeZone` is supplied by the caller (UI layer); shared-domain stays free
  * of locale defaults.
  *
- * Per `feedback_ui_text_shared_with_logs.md`, the same `revisionReason`
- * resolver feeds runtime log breadcrumbs so the two surfaces stay in sync.
+ * Per `feedback_ui_text_shared_with_logs.md`, the same `resolveRevisionReason`
+ * resolver is the one home for this copy, so a log breadcrumb added later reads
+ * the same labels instead of restating them. No runtime module reads them today.
  */
 export const formatPlanHistoryRevisionEntry = (
   entry: DeferredObjectivePlanHistoryRevisionLogEntry,

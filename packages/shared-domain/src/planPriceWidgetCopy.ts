@@ -137,8 +137,8 @@ const formatKwh = (value: number): string => {
 };
 
 // The status word for a tone (`On track` / `Over budget`), or null when there's
-// no budget comparison to report (tomorrow). Single-sourced so the flat line and
-// the two-tier parts agree on the wording.
+// no budget comparison to report (tomorrow). Keyed on `tone` ALONE: an unusable
+// `costUnit` drops the cost half of the headline and never touches this word.
 const resolveStatusText = (tone: PlanPriceSummaryTone | null): string | null => {
   if (tone === 'on_track') return 'On track';
   if (tone === 'over') return 'Over budget';
@@ -186,9 +186,19 @@ export type PlanPriceSummaryParts = {
 /**
  * Split the projected summary into a prominent headline and a toned status, for
  * the two-tier widget layout. The widget renders `headline` prominently and
- * `status` as a tone-coloured chip; a log breadcrumb can quote
- * `${headline} · ${status}`. Single source of truth with `formatPlanPriceSummary`
- * (which joins these into one flat line) so the two never drift.
+ * `status` as a tone-coloured chip. This is the single producer of that copy:
+ * nothing else builds the projected-summary wording, so the chip and any
+ * breadcrumb quoting it cannot drift apart.
+ *
+ * `status` is the EMPTY STRING, never `null`, when `tone` is `null` (tomorrow,
+ * where there is no budget to compare against) — the field stays a plain
+ * `string` so no consumer has to handle absence. That is its ONLY cause: an
+ * unusable `costUnit` drops the cost half of `headline` and leaves the status
+ * word untouched. A breadcrumb wanting the flat sentence must join
+ * conditionally
+ * (`status ? headline + ' · ' + status : headline`); an unguarded join leaves a
+ * dangling separator. The flat helper that used to carry that guard was deleted
+ * along with its last caller.
  */
 export const formatPlanPriceSummaryParts = (params: PlanPriceSummaryParams): PlanPriceSummaryParts => {
   const status = resolveStatusText(params.tone);
@@ -197,16 +207,4 @@ export const formatPlanPriceSummaryParts = (params: PlanPriceSummaryParams): Pla
     status: status ?? '',
     tone: status === null ? null : params.tone,
   };
-};
-
-/**
- * Build the projected-summary line shown above the chart, e.g.
- * `Projected today 12.4 kWh · 9.80 kr · On track`. The cost half is dropped
- * when no usable cost unit is known (Flow/Homey placeholder). The tone word is
- * dropped when `tone` is null (e.g. tomorrow, where there's no budget
- * comparison yet).
- */
-export const formatPlanPriceSummary = (params: PlanPriceSummaryParams): string => {
-  const { headline, status } = formatPlanPriceSummaryParts(params);
-  return status ? `${headline} · ${status}` : headline;
 };

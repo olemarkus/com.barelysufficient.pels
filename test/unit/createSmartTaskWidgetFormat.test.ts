@@ -12,7 +12,7 @@ import {
 } from '../../packages/shared-domain/src/deadlineLabels';
 import {
   formatScheduledHoursWindow,
-  formatSmartTaskScheduledLine,
+  composeSmartTaskScheduledLine,
   formatCheapestHoursSubtext,
 } from '../../packages/shared-domain/src/smartTaskDeadlineFormat';
 
@@ -109,27 +109,32 @@ describe('formatScheduledHoursWindow', () => {
   });
 });
 
-describe('formatSmartTaskScheduledLine', () => {
+// Producer/consumer split as production wires it: the API side localises the
+// window with `formatScheduledHoursWindow`, the widget side stitches the
+// pre-formatted strings with `composeSmartTaskScheduledLine` and does no
+// timestamp math of its own.
+describe('composeSmartTaskScheduledLine', () => {
   const labels = {
     scheduledLabel: CREATE_SMART_TASK_WIDGET_COPY.scheduledLabel,
     readyByLabel: CREATE_SMART_TASK_WIDGET_COPY.readyByLabel,
   };
 
   it('pairs the window with the resolved ready-by', () => {
-    const line = formatSmartTaskScheduledLine({
-      scheduledHours: [{ startsAtMs: at(2) }, { startsAtMs: at(3) }],
+    const line = composeSmartTaskScheduledLine({
+      scheduledWindowLabel: formatScheduledHoursWindow(
+        [{ startsAtMs: at(2) }, { startsAtMs: at(3) }],
+        UTC,
+      ),
       deadlineLabel: 'Tomorrow 07:00',
-      timeZone: UTC,
       ...labels,
     });
     expect(line).toBe('Scheduled 02:00–04:00 · Ready by Tomorrow 07:00');
   });
 
   it('collapses to just the ready-by when no hours are scheduled', () => {
-    const line = formatSmartTaskScheduledLine({
-      scheduledHours: [],
+    const line = composeSmartTaskScheduledLine({
+      scheduledWindowLabel: formatScheduledHoursWindow([], UTC),
       deadlineLabel: 'Tomorrow 07:00',
-      timeZone: UTC,
       ...labels,
     });
     expect(line).toBe('Ready by Tomorrow 07:00');

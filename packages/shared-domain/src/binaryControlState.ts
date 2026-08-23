@@ -15,8 +15,6 @@
  *
  * Browser-safe: a structural shape, no Homey SDK types.
  */
-import type { BinaryControlObservation } from '../../contracts/src/types';
-
 type BinaryControlObserved = { binaryControl?: { on: boolean } };
 
 /** A device narrowed to one that HAS observed binary control. */
@@ -63,19 +61,6 @@ export const isBinaryControlled = <T extends BinaryControlObserved>(
 export const getBinaryOn = (device: BinaryControlled): boolean => device.binaryControl.on;
 
 /**
- * The observed control-state shape the evidence reader below consumes.
- * Structural so
- * transport snapshots, plan-side decision snapshots, and executor snapshots
- * all fit. Browser-safe: contracts types only, no Homey SDK types.
- */
-type ObservedBinaryControlFields = BinaryControlObserved & {
-  binaryControlObservation?: Pick<
-    BinaryControlObservation,
-    'valid' | 'capabilityId' | 'observedValue' | 'observedCapabilityIds'
-  >;
-};
-
-/**
  * Planner command-equivalence state as one strict boolean. The producer has
  * already resolved the device-specific control capability into
  * `binaryControl`; physical activity such as EV charging remains a separate
@@ -85,23 +70,4 @@ export function resolveBinaryCommandCurrentOn(
   snapshot: BinaryControlled & { evCharging?: boolean },
 ): boolean {
   return snapshot.binaryControl.on;
-}
-
-/**
- * Whether trusted evidence says the device's binary control is observed OFF —
- * "trusted" meaning a real observation record for the CURRENT control
- * capability (`binaryControlObservation`), never the parse-boundary latched
- * fallback (`binaryControl.on` alone), which can be a cold-start contract
- * filler. Used to tell a no-op re-assert ("write off over an observed-off
- * device") from a real load-changing shed; absence of evidence resolves
- * `false` — an unproven no-op is treated as a real shed.
- *
- * State-derived off evidence (a charger paused with its switch still armed)
- * answers this question correctly — no charging activity means the off-write
- * changes no load.
- */
-export function isTrustedObservedBinaryOff(snapshot: ObservedBinaryControlFields | undefined): boolean {
-  const observation = snapshot?.binaryControlObservation;
-  if (observation?.valid !== true) return false;
-  return observation.observedValue === false;
 }

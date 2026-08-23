@@ -32,7 +32,7 @@ export type ActivePlanRevisionLogRow = {
   // Pre-resolved revision number (1-indexed). Useful for `aria-label`s and
   // for tests pinning ordering; the row template does not have to render it.
   revision: number;
-  // Short "what changed" copy from `revisionReason`. For `schedule_revised`
+  // Short "what changed" copy from `resolveRevisionReason`. For `schedule_revised`
   // revisions, this may be one of the disambiguated variants
   // (`Schedule revised — daily budget shifted`, `… — risk changed`,
   // `… — cheaper hour opened`) when the live-plan signals are conclusive.
@@ -188,8 +188,9 @@ const buildRow = (
  * revision (e.g. a pending plan with no allocation yet) so the view can
  * short-circuit the `<details>` block.
  *
- * Per `feedback_ui_text_shared_with_logs.md`, the `revisionReason` resolver
- * is shared with the runtime log breadcrumbs so the two surfaces stay in sync.
+ * Per `feedback_ui_text_shared_with_logs.md`, the `resolveRevisionReason`
+ * resolver is the one home for this copy, so a log breadcrumb added later reads
+ * the same labels instead of restating them. No runtime module reads them today.
  */
 export const buildActivePlanRevisionLog = (params: {
   latest: DeferredObjectiveActivePlanRevisionV1 | null;

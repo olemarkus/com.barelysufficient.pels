@@ -120,26 +120,6 @@ export const formatScheduledHoursWindow = (
   return scheduledHours.map((hour) => formatLocalHHMM(hour.startsAtMs, timeZone)).join(', ');
 };
 
-// The full preview "when" line pairing the clock-hour window with the resolved
-// ready-by, e.g. "Scheduled 02:00–04:00 · Ready by Tomorrow 07:00". When the
-// projection scheduled no hours yet, collapses to "Ready by Tomorrow 07:00" so
-// the deadline still anchors the preview. `scheduledLabel` / `readyByLabel`
-// come from `CREATE_SMART_TASK_WIDGET_COPY` so all the words stay sourced from
-// the copy table. `deadlineLabel` is the pre-formatted long deadline
-// ("Tomorrow 07:00").
-export const formatSmartTaskScheduledLine = (params: {
-  scheduledHours: readonly ScheduledHourLike[];
-  deadlineLabel: string;
-  timeZone: string | null;
-  scheduledLabel: string;
-  readyByLabel: string;
-}): string => composeSmartTaskScheduledLine({
-  scheduledWindowLabel: formatScheduledHoursWindow(params.scheduledHours, params.timeZone),
-  deadlineLabel: params.deadlineLabel,
-  scheduledLabel: params.scheduledLabel,
-  readyByLabel: params.readyByLabel,
-});
-
 // Stitch a pre-formatted scheduled-hours window (already localised by the
 // PRODUCER — e.g. the preview API formats it in the Homey timezone) with the
 // pre-formatted ready-by label into the same "Scheduled 02:00–04:00 · Ready by
