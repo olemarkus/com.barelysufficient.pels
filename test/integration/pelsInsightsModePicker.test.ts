@@ -1,124 +1,30 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
 import { captureLogger } from '../utils/loggerCapture';
+import type { PelsInsightsDeviceUnderTest } from '../helpers/pelsInsightsDeviceHarness';
 
-// The shared `homey` alias mock (test/mocks/homey.ts) only exposes `App`, not a
-// `Device` base class, so the insights device cannot extend it under that
-// alias. Provide a minimal `Device` base that mirrors the SDK surface the
-// driver actually uses, capturing capability listeners and capability values so
-// we can drive the mode-picker listener directly.
+// The insights device extends `Homey.Device`, which the shared `homey` alias
+// mock does not provide; `FakeInsightsDeviceBase` is that base. It is resolved
+// by a dynamic import inside the factory because `vi.mock` is hoisted above the
+// static imports.
+vi.mock('homey', async () => {
+  const { FakeInsightsDeviceBase: Device } = await import('../helpers/pelsInsightsDeviceHarness.js');
+  return { default: { Device } };
+});
 
-type CapabilityListener = (value: unknown) => Promise<void> | void;
+type DeviceUnderTest = PelsInsightsDeviceUnderTest;
 
-class FakeSettings {
-  private store = new Map<string, unknown>();
-
-  private listeners = new Map<string, Set<(key: string) => void>>();
-
-  // When set, `set` throws to simulate a rejected settings write.
-  public failOnSet = false;
-
-  // A value whose write rejects *asynchronously* (returns a rejected promise
-  // without storing) to model an in-flight write that fails after a later tap
-  // has already started.
-  public asyncFailValue: string | null = null;
-
-  get(key: string): unknown {
-    return this.store.get(key);
-  }
-
-  set(key: string, value: unknown): void | Promise<void> {
-    if (this.asyncFailValue !== null && value === this.asyncFailValue) {
-      return Promise.reject(new Error('settings write rejected (async)'));
-    }
-    if (this.failOnSet) {
-      throw new Error('settings write rejected');
-    }
-    this.store.set(key, value);
-    for (const listener of this.listeners.get('set') ?? []) listener(key);
-    return undefined;
-  }
-
-  on(event: string, listener: (key: string) => void): void {
-    const set = this.listeners.get(event) ?? new Set();
-    set.add(listener);
-    this.listeners.set(event, set);
-  }
-}
-
-class FakeDeviceBase {
-  public homey = {
-    settings: new FakeSettings(),
-    images: undefined,
-  };
-
-  public capabilityValues = new Map<string, unknown>();
-
-  public capabilityListeners = new Map<string, CapabilityListener>();
-
-  public errorCalls: unknown[][] = [];
-
-  hasCapability(): boolean {
-    return true;
-  }
-
-  async addCapability(): Promise<void> {
-    /* no-op for tests */
-  }
-
-  async removeCapability(): Promise<void> {
-    /* no-op for tests */
-  }
-
-  async setCapabilityValue(capabilityId: string, value: unknown): Promise<void> {
-    this.capabilityValues.set(capabilityId, value);
-  }
-
-  public setCapabilityOptionsCalls: unknown[][] = [];
-
-  async setCapabilityOptions(...args: unknown[]): Promise<void> {
-    this.setCapabilityOptionsCalls.push(args);
-  }
-
-  registerCapabilityListener(capabilityId: string, listener: CapabilityListener): void {
-    this.capabilityListeners.set(capabilityId, listener);
-  }
-
-  log(): void {
-    /* no-op for tests */
-  }
-
-  // The driver overrides these at runtime; declared on the fake so the
-  // `new () => FakeDeviceBase`-typed instance exposes the surface the tests drive.
-  async onInit(): Promise<void> {
-    /* overridden by the real driver */
-  }
-
-  error(...args: unknown[]): void {
-    this.errorCalls.push(args);
-  }
-}
-
-vi.mock('homey', () => ({
-  default: { Device: FakeDeviceBase },
-}));
-
-type DeviceUnderTest = FakeDeviceBase;
-
-// The driver uses `export =`, which surfaces as the module's default export
-// under esbuild. Resolved in `beforeAll` rather than at top level because this
-// file compiles as a CommonJS module (no top-level `await`); `.js` extension is
-// required under nodenext module resolution.
-let PelsInsightsDevice: new () => FakeDeviceBase;
+// Resolved in `beforeAll` rather than at top level because this file compiles
+// as a CommonJS module (no top-level `await`), and because the driver's class
+// body needs the hoisted `vi.mock('homey')` to have run.
+let PelsInsightsDevice: new () => PelsInsightsDeviceUnderTest;
 beforeAll(async () => {
-  // `vi.mock('homey')` is hoisted, so this import picks up the mocked `homey`
-  // and the driver extends FakeDeviceBase.
-  const driverModule = await import('../../drivers/pels_insights/device.js');
-  PelsInsightsDevice = (driverModule as { default: unknown }).default as new () => FakeDeviceBase;
+  const { loadPelsInsightsDeviceClass } = await import('../helpers/pelsInsightsDeviceHarness.js');
+  PelsInsightsDevice = await loadPelsInsightsDeviceClass();
 });
 
 const createDevice = (committedMode: string): DeviceUnderTest => {
-  const device = new PelsInsightsDevice() as DeviceUnderTest;
+  const device = new PelsInsightsDevice();
   device.homey.settings.set(OPERATING_MODE_SETTING, committedMode);
   return device;
 };
@@ -240,7 +146,7 @@ describe('pels_insights mode-options refresh coalescing', () => {
 
   it('coalesces a burst of mode-source writes into one setCapabilityOptions call', async () => {
     const device = await initDevice('Home');
-    const refreshSpy = vi.spyOn(device as unknown as { refreshModeOptions: () => Promise<void> }, 'refreshModeOptions');
+    const refreshSpy = vi.spyOn(device, 'refreshModeOptions');
 
     // Simulate a 10-device priority reorder: many writes in the same tick.
     for (let index = 0; index < 10; index += 1) {
@@ -331,7 +237,7 @@ describe('pels_insights mode-options refresh coalescing', () => {
     const device = await initDevice('Home');
 
     reorderPriorities(device, ['Home', 'Away']);
-    await (device as unknown as { onUninit: () => Promise<void> }).onUninit();
+    await device.onUninit();
 
     await flushImmediates();
 

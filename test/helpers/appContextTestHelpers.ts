@@ -38,7 +38,6 @@ type MockHomey = FlowHomeyLike & {
   };
   clock: {
     getTimezone: () => string;
-    getTimezoneOffset: () => number;
   };
 };
 
@@ -73,7 +72,6 @@ export function createHomeyMock(): { appHomey: AppContext['homey']; flowHomey: M
     },
     clock: {
       getTimezone: () => 'Europe/Oslo',
-      getTimezoneOffset: () => -60,
     },
   };
   return {
