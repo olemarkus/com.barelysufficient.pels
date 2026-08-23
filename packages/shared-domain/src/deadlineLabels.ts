@@ -109,8 +109,8 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
 // row at 320–480 px has roughly half the horizontal space the settings UI
 // list card uses, so the `Paused — unplugged` em-dash variant truncates or
 // pushes the row out of layout. The widget reuses the settings UI label for
-// every other state — only the `Paused — …` em-dash variants need the
-// compressed form. Keeping the override here (and not in the widget) preserves
+// every other state — `paused_unplugged` is the only em-dash label, so it is
+// the only override. Keeping the override here (and not in the widget) preserves
 // the "UI text shared with logs" rule: both the list label and the widget label
 // resolve from shared-domain helpers, not from hardcoded widget strings.
 export const SMART_TASK_WIDGET_STATUS_LABELS: Record<SmartTaskListStatusId, string> = {
@@ -1333,9 +1333,6 @@ export const resolveSmartTaskListStatus = (params: {
   // PELS plans nothing for a device it does not manage, so a cached revision is
   // no longer being executed and the chip must say so instead of "On track".
   if (diagnosticReasonCode === 'objective_device_unmanaged') return 'paused_unmanaged';
-  // Connected-but-not-resumable-mid-plan: same precedence as unplugged — fires
-  // even on a non-pending plan with a cached `latest`, so the chip says "can’t
-  // resume" instead of "On track" for a charger PELS can’t drive.
 
   if (pending || planStatus === undefined) {
     if (pendingReason === 'device_in_sub_home') return 'unavailable';

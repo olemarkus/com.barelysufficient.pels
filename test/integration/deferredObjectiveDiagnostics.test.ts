@@ -2612,11 +2612,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
   });
 
-  it('marks a met EV objective as satisfied even when the charger is not resumable (plugged_in)', () => {
-    // Regression: a connected-but-not-resumable charger whose fresh SoC already
-    // meets the target needs no resume — it must reach the satisfied path, not
-    // read "Paused — can't resume" (the not-resumable block only applies when
-    // there is still charge to deliver).
+  it('marks a met EV objective as satisfied on a bare-connected charger (plugged_in)', () => {
+    // Regression: a connected charger whose fresh SoC already meets the target
+    // needs no resume — it must reach the satisfied path rather than any paused
+    // verdict. `plugged_in` is a creditable session (`isEvSessionInactive`
+    // classifies only `plugged_out` / `plugged_in_discharging`), so nothing
+    // upstream may divert it.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',

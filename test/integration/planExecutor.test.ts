@@ -2250,9 +2250,10 @@ describe('PlanExecutor stepped loads', () => {
     });
     const evPlan: DevicePlan = { ...plan, devices: [plan.devices[0]!] };
 
-    // The plug-state rides on the EV cluster now — it is the single source every
-    // commandability question is answered from, so the plan device carries it
-    // instead of a fan of derived bits.
+    // The plug-state does NOT ride on the plan device — `toPlanDevice` resolves it
+    // into `commandableNow` / `commandabilityReason` / `objectiveSessionInactive`
+    // and strips the raw field. There is no EV cluster on the plan types
+    // (owner ruling, `lib/plan/AGENTS.md`).
     expect(evPlan.devices[0]).not.toHaveProperty('evChargingState');
     expect(evPlan.devices[0]).toHaveProperty('objectiveKind', 'ev_soc');
     expect(executor.hasStablePlanActuation(evPlan)).toBe(true);

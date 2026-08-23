@@ -123,12 +123,23 @@ it. Easee maps op mode 6 "Ready to Charge" AND 7 "Awaiting Authentication" to
 maps its own `Paused` state to `plugged_in` and never emits `plugged_in_paused`
 at all, so treating `plugged_in` as a block meant PELS could not resume a charger
 it had paused itself. go-e and Zaptec can use it for a finished session. PELS
-therefore probes this state: a rejected write fails immediately; an accepted
-write must produce fresh charger-state, measured-power, or associated-car
-charging evidence within 90 seconds. Failure backs off for 15, then 30, then 60
-minutes while other loads remain eligible. Verified on production 2026-07-26:
-PELS wrote `evcharger_charging=true` on a charger waiting for approval and the
-session started.
+therefore commands the state and lets the ordinary command-confirmation path
+judge the outcome: a rejected write fails immediately; an accepted write must
+settle within the confirmation window `resolveControlCommandConfirmationMs` picks
+for the device's communication model — 90 s local
+(`LOCAL_CONTROL_COMMAND_CONFIRMATION_MS`), 3 min cloud
+(`CLOUD_CONTROL_COMMAND_CONFIRMATION_MS`). **Settlement is strictly the `evcharger_charging`
+readback** — a `BinaryControlObservation` from one of `snapshot_refresh`,
+`realtime_capability`, or `device_update` — not measured power and not the
+associated car. `resolveEvChargingStateBinaryEvidence` still reads the
+plug-state, but only as a *freshness* gate now
+(`lib/device/transport/managerParseFreshness.ts`): it decides whether the
+plug-state capability counts toward "this device has fresh data", never whether
+a command landed. A write that does not settle backs off for 15, then 30, then
+60 minutes while other loads remain eligible — see "One back-off, and it is not
+EV-specific" below. Verified on production 2026-07-26: PELS wrote
+`evcharger_charging=true` on a charger waiting for approval and the session
+started.
 
 **There is no "unknown plug-state" to classify.** Every EV charger has a
 plug-state axis, and PELS requires it of every `evcharger`
@@ -156,21 +167,91 @@ resolved bit, not re-narrow for the raw one — and must read the bit that answe
 its own question: `commandableNow` folds in availability and PELS's own command
 back-off, so it is not a synonym for "no creditable session".
 
-**Only `plugged_in` is probed.** `plugged_in_paused` is resumed outright
-(`resolveEvStartProbePosture`, `packages/shared-domain/src/evPlugState.ts`). The split is what makes the
-back-off releasable. `plugged_in` is ambiguous — the Easee awaiting authorization and the Zaptec
-holding a car at its own charge limit report the same value, and only the probe separates them.
-`plugged_in_paused` is not ambiguous: it means a session that can resume, so gating it behind a
-back-off buys nothing and costs everything. Nothing in a full car's own state ever changes —
-it stays plugged in, available, and not charging — so had both states been probed, none of
-`hasRecovered`'s three triggers could fire and the only way out would be the 60-minute retry.
-Because the Zaptec moves a car that starts wanting current again from a finished session to
-`Connected_Requesting`, LEAVING the probed state is the recovery signal: `project` short-circuits
-on `!eligible` and the charger is commandable on the next rebuild.
+### One back-off, and it is not EV-specific
 
-That makes every producer of `plugged_in_paused` load-bearing, which none of them were before —
-the state used to differ from `plugged_in` only in wording. Three fed it in `nativeEvWiring.ts`,
-and all three had to agree that a FINISHED session is not a paused one:
+**There is no `plugged_in` / `plugged_in_paused` probe split.** It was deleted
+2026-08-13 (`7edb9517b`, "unify binary command settlement") along with
+`resolveEvStartProbePosture`, and replaced by `createBinaryCommandReachability`
+(`lib/plan/admission/binaryCommandReachability.ts`). What runs today is ONE
+unconditional, self-releasing back-off over every binary device, keyed on
+`deviceId` alone (a `desired === true` gate decides what arms and confirms it, but
+does not enter the key), with no knowledge of device class or plug-state:
+
+- **Arming.** `onDispatchFailed` and `onTimedOut` both record a failure and
+  schedule a rebuild at `now + RETRY_DELAYS_MS[failures - 1]`, where
+  `RETRY_DELAYS_MS = [15, 30, 60]` minutes — the same ladder the probe used. The
+  failure count saturates at three, so the wait never exceeds 60 minutes.
+- **Effect.** While the timer is pending, `project` answers
+  `{ commandableNow: false, reason: 'binary_command_retry' }` — for a device that
+  was otherwise commandable; one already blocked keeps its own `reason: 'none'`.
+  `toPlanDevice` folds that into `commandableNow`, so the device drops out of admission and
+  other loads stay eligible. Once `Date.now() >= retryAtMs` it is commandable
+  again with nothing having to clear the entry: the back-off releases itself.
+- **Early release.** Three things clear it before the timer: `onConfirmed` (the
+  write settled), `observedOn` (the `evcharger_charging` readback came back on,
+  by any route), and `available && sawUnavailable` (the device had gone offline
+  and has returned). `prune` drops entries for devices that leave the roster and
+  `dispose` clears them on teardown.
+
+Wired per home in `setup/homeRuntime/homeScope.ts` and
+`setup/homeRuntime/createHomeCapacityBundle.ts`, which pass `project` / `prune`
+into `toPlanDevice` and the lifecycle listener into the pending-binary-command
+store.
+
+**What the split's removal traded away — accepted, with its bound.** The old
+design had a fourth release trigger this one does not: LEAVING the probed
+plug-state. A Zaptec that moved a finished session back to `Connected_Requesting`
+was commandable on the very next rebuild, on the plug-state alone.
+
+The readback trigger covers part of that. `observedOn` is the `evcharger_charging`
+value folded through `resolveCurrentOn` (`toPlanDevice`), so any charger that
+actually starts reporting itself on releases the back-off. On the Zaptec overlay
+population `resolveZaptecChargingValue` can supply that value from the plug-state
+itself when `charging_button` carries no boolean — and then `Connected_Requesting`
+still releases the back-off — on the next re-parse, at the latest the :25 / :55
+snapshot refresh, but not on the realtime `charge_mode` push, which rewrites only
+the state capability.
+
+What is genuinely lost is the charger that becomes resumable while its
+`evcharger_charging` readback stays false — an Easee that clears authorization
+and reports `plugged_in`, say. That one waits out the remaining 15/30/60-minute
+timer. **That is latency, not deadlock**: the timer always expires and the wait is
+capped at 60 minutes.
+
+It is also unpaid so far. The back-off arms only through `recordFailure`, which
+is the sole emitter of the plan-rebuild reason `binary_command_reachability_changed`
+— that reason is the one always-logged signal it produces, since
+`binary_command_retry` is a `commandabilityReason` value that never reaches a log
+line. In the 2026-08-11→23 production log it appears **four times, all on
+2026-08-13, under commit `748a2337e`** — the pre-unify EV probe, which had its own
+failure-only rebuild request. The unified code first ran on 2026-08-15 (`f09dc988a`,
+the first deploy containing `7edb9517b`), and there has been **no occurrence since**.
+Do not read those four hits as counterexamples; check the deploy they fall under.
+
+This was chosen, not overlooked, and no TODO entry is filed for it. The obvious
+"fix" — release on a plug-state transition — would put raw EV plug-state
+vocabulary back into `lib/plan`, which `scripts/check-ev-vocab.mjs` forbids
+outright, and that guard exists precisely because consumers reading `plugged_*`
+strings is how PELS kept re-deriving semantics the producer had already resolved.
+Bounded latency in a path that has never fired does not justify reopening that
+door, and the alternative shape is an undecided design call — which the TODO
+Entry Bar excludes.
+
+### The `plugged_in` / `plugged_in_paused` mapping still matters, for other reasons
+
+Every predicate in `evPlugState.ts` classifies the two identically — both
+commandable, both a creditable session, both connected — so the choice between
+them no longer decides whether PELS may drive the charger. What it decides is the
+words the owner reads and a fallback readback:
+`packages/shared-domain/src/planSteppedCardText.ts` renders them `Paused` and
+`Not charging` (and splits them again in its charger-vs-car exception branches —
+`Waiting for car` against `Paused by the car`), and `resolveZaptecChargingValue`
+— when `charging_button` carries no boolean of its own — turns
+`plugged_in_paused` into a synthesized
+`evcharger_charging = true` and `plugged_in` into no synthesized value at all. A
+finished session is neither charging nor paused-and-resumable, so claiming
+otherwise is wrong on both counts. Three producers feed the state in
+`nativeEvWiring.ts`, and all three resolve a FINISHED session to `plugged_in`:
 
 - the `charge_mode` mapping, under both spellings Zaptec uses — the operation-mode name
   `Connected_Finishing` and the display label `Charging finished`. They disagreed until 2026-08-09;
@@ -179,11 +260,12 @@ and all three had to agree that a FINISHED session is not a paused one:
   DISCONNECTED charger and otherwise preserves what is there. `charge_mode` is change-only push and
   a car parked at its limit never re-sends it, so the overwrite used to stand until the :25/:55
   snapshot;
-- the snapshot fallback for an absent or unmapped `charge_mode`, which now resolves to the probed
+- the snapshot fallback for an absent or unmapped `charge_mode`, which now resolves to
   `plugged_in` rather than claiming a resumable pause.
 
 The rule they share: when all PELS knows is that a car is attached, the honest state is the
-ambiguous one. Probing costs 90 seconds and is bounded; the unprobed lane is not.
+ambiguous one — `plugged_in`, which asserts nothing about a session, rather than
+`plugged_in_paused`, which asserts one that can resume.
 
 This applies only to Zaptec models that do NOT publish both official EV capabilities; when the app
 publishes `evcharger_charging_state` itself, `applyNativeEvWiringOverlay` defers to it and the
@@ -260,7 +342,7 @@ charging have shipped.
 
 #### Device-card visible state — shipped
 
-`PlanDeviceCards.tsx:62` now renders an EV plan-state line via
+`PlanDeviceCards.tsx` now renders an EV plan-state line via
 `resolveEvCardStateLine` (`packages/shared-domain/src/deadlineLabels.ts`): a
 next-planned-start line, an active-charging finish line, and a plug-out paused
 line. Start/finish come from the active-plan recorder's `latest.hours`; the
@@ -273,7 +355,7 @@ observation layer reports `stateOfCharge.status === 'invalid'`).
 
 The deadline-plan hero surfaces "Planning speed: X.X kW" and an estimated
 duration via `planningSpeedKw` / `estimatedDurationText` in
-`packages/settings-ui/src/ui/deadlinePlan.ts:468-540` (commit `8720af37`),
+`packages/settings-ui/src/ui/deadlinePlan.ts` (commit `8720af37`),
 alongside the existing Plan inputs card (`deadlinePlanInputs.ts`) that shows the
 per-unit rate and max power per hour. The planning kW falls back to the
 calibration view built from `lib/device/devicePowerCalibration.ts` via
@@ -288,7 +370,8 @@ The kWh target is the only EV deadline path that does not depend on SoC
 observation at all — no native capability, no session validity, no
 freshness window. Stand-alone feature.
 
-`packages/contracts/src/deferredObjectiveSettings.ts:14-16` accepts only
+`DeferredObjectiveEvSocSettingsEntry`
+(`packages/contracts/src/deferredObjectiveSettings.ts`) accepts only
 `targetPercent` for the `ev_soc` variant today, and the flow-card JSON
 exposes only `target_percent`. Discriminate the contract variant to
 accept either `targetPercent` or `targetEnergyKwh`. Add a `target_kwh`

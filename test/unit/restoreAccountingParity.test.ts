@@ -25,7 +25,7 @@
  *        (path-2 → path-3 fall-through with `restoreStep.planningPowerW === 0`
  *        when the profile lowest-active step has no positive planning kW).
  *  - (b) stepped, `selectedStepId` absent and `hasKnownEffectiveStep === false`
- *        (measured-power fallback via path-3 `getRestoreDrawKw`).
+ *        (measured-power fallback via path-3 `getHighestKnownPowerKw`).
  *  - (c) stepped, `selectedStepId` absent but `hasKnownEffectiveStep === true`
  *        (`reportedStepId` set, or `selectedStepId` carries the planning fallback).
  *  - (d) temperature device with `currentValue == normalized shedTemperature`
@@ -131,7 +131,7 @@ function withProducerResolvedRestore(dev: RestoreFixture): RestoreFixture {
 
 describe('restore accounting parity — as built vs recomputed from the plan device', () => {
   // Four representative devices spanning the load-bearing branches:
-  //   A — binary EV charger, currently off (uses getRestoreDrawKw fallback path).
+  //   A — binary EV charger, currently off (uses getHighestKnownPowerKw fallback path).
   //   B — binary water heater, currently on (uses measured power directly).
   //   C — stepped device at a low step (observed-on with positive planning kW).
   //   D — stepped device observed-off (uses profile lowest-active step).

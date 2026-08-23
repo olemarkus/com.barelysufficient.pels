@@ -669,9 +669,9 @@ describe('native EV wiring shim', () => {
   // Zaptec reports `charge_mode` as either the operation-mode name or its
   // display label. Both spellings of one state must resolve identically —
   // `Connected_Finishing` and `Charging finished` once disagreed
-  // (`plugged_in_paused` vs `plugged_in`), which was invisible while both were
-  // commanded the same way and became load-bearing the moment only
-  // `plugged_in` got probed.
+  // (`plugged_in_paused` vs `plugged_in`), which left one spelling of a finished
+  // session claiming a resumable pause — a `Paused` label on the owner's card
+  // and a synthesized `evcharger_charging = true` readback.
   it.each([
     ['Connected_Charging', 'Charging', 'plugged_in_charging'],
     ['Connected_Requesting', 'Connecting to car', 'plugged_in_paused'],
@@ -698,8 +698,8 @@ describe('native EV wiring shim', () => {
   // `charge_mode` is change-only push, so a car parked at its own charge limit
   // never re-sends it. A `car_connected` event arriving on top must therefore
   // not overwrite the finished session with a resumable-looking one — that
-  // reclassification is invisible until the :25/:55 snapshot, and it moves a
-  // full car into the lane that is commanded without a probe.
+  // reclassification is invisible until the :25/:55 snapshot, and until then a
+  // full car reads `Paused` and can synthesize a charging readback.
   it('does not let a car_connected event reclassify a finished Zaptec session', () => {
     const normalized = normalizeNativeEvCapabilityUpdate({
       snapshot: {
@@ -721,7 +721,7 @@ describe('native EV wiring shim', () => {
     }]);
   });
 
-  it('promotes a disconnected Zaptec to the probed state on car_connected, not to paused', () => {
+  it('promotes a disconnected Zaptec to the ambiguous state on car_connected, not to paused', () => {
     const normalized = normalizeNativeEvCapabilityUpdate({
       snapshot: {
         controlAdapter: {
@@ -744,7 +744,7 @@ describe('native EV wiring shim', () => {
 
   // Same rule at the snapshot seam: a car_connected bit with no usable
   // charge_mode says a car is attached and nothing more.
-  it('falls back to the probed state when charge_mode is unrecognised', () => {
+  it('falls back to the ambiguous state when charge_mode is unrecognised', () => {
     const device = buildZaptecDevice();
     const capabilityObj = {
       ...device.capabilitiesObj,
@@ -761,10 +761,10 @@ describe('native EV wiring shim', () => {
   });
 
   // A finished session is the state a car at its own charge limit parks in, and
-  // it must land in the probed bucket: PELS cannot tell it apart from an Easee
-  // awaiting authorization without trying, and only the probe's failure gives
-  // it a reason to stop trying.
-  it('puts a finished Zaptec session in the probed plugged_in state, not paused', () => {
+  // it must land in the ambiguous bucket: PELS cannot tell it apart from an
+  // Easee awaiting authorization, so the honest state is the one that claims
+  // nothing about a session.
+  it('puts a finished Zaptec session in the ambiguous plugged_in state, not paused', () => {
     const device = buildZaptecDevice();
     const capabilityObj = {
       ...device.capabilitiesObj,

@@ -5,7 +5,7 @@
 // `resolveSurplusEligibility` (priority allocator; hoisted to `planBuilder` in
 // PR-7 and mirrored here by `buildDevices`) → `buildInitialPlanDevices` →
 // `resolvePlannedTarget` → `applySurplusAbsorbDelta` → the real eligibility gate
-// (`admission/surplusAbsorb`) → the real expected-draw resolver (`getRestoreDrawKw`),
+// (`admission/surplusAbsorb`) → the real expected-draw resolver (`getHighestKnownPowerKw`),
 // nothing internal mocked. The layer's outward seams are provided directly (the
 // `PlanContext` carrying the signed whole-home net power a P1/HAN meter yields, the
 // `PlanDevicesDeps`, and a faked clock); observation is the real output — the
@@ -296,7 +296,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
 
     // The thermostat now draws its ~1 kW element, pulling the home to net zero
     // export. Raw export is 0, but the device's own measured draw is added back
-    // (and feeds getRestoreDrawKw), so the underlying surplus still covers the
+    // (and feeds getHighestKnownPowerKw), so the underlying surplus still covers the
     // expected draw → the lift holds rather than self-cancelling.
     vi.setSystemTime(2 * SURPLUS_ABSORB_SETTLE_MS + SURPLUS_ABSORB_MIN_DWELL_MS);
     expect(cycle(state, 0, true, EXPECTED_DRAW_KW)).toBe(MODE_C + SURPLUS_DELTA_C);
