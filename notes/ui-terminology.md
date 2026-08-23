@@ -414,8 +414,9 @@ plan intent, through the simulation mood transform). The earlier rule that the
 row carried no plan reason except external-off guidance is deliberately
 revised: the answer to "why is this Limited?" must not sit three disclosures
 down in the activity log. `Turned off by PELS` / `Lowered by PELS` are not in
-that formatter at all — they lived in `resolveHeldStateActionLabel`, which now
-has no production caller.
+that formatter at all — they lived in `resolveHeldStateActionLabel`, which was
+deleted outright along with them (see the deletion record in
+`packages/shared-domain/src/deviceOverviewStrings.ts`).
 
 **Charging paused** survives as an EV *state* word (state row), not as a reason
 line — and only for a charger the plan actually **stops**. Since 2026-08-17 a
@@ -662,6 +663,17 @@ list card's width and the full em-dash forms truncate. Source:
 `SMART_TASK_WIDGET_STATUS_LABELS` in `deadlineLabels.ts`. The same compressed
 forms are the sanctioned inline status words on the list card's Ready-by line
 (where the full form's own em-dash would double the separator).
+
+**Retired 2026-08-23 — do not reintroduce:** `Paused — not charging yet` (the
+chip label), `Not charging yet` (its compressed widget / Ready-by word), and
+`Not drawing power yet` (`EV_NOT_RESUMABLE_CARD_LINE`, the device-card variant).
+All three belonged to the `paused_not_resumable` status id, which went with the
+`objective_charger_not_resumable` lane — deleted after production logs showed
+nothing had ever produced the code. The paused bucket carries two ids again
+(`paused_unplugged`, `paused_unmanaged`), but neither is a revival of that
+wording: both name a state the owner can act on — replug the car, or turn
+"Managed by PELS" back on — whereas `paused_not_resumable` claimed a charger was
+connected and undriveable, which nothing could ever observe.
 
 #### Empty-state headlines
 

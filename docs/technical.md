@@ -169,7 +169,7 @@ When available power returns:
 4. **Delayed restart after failed activation**: Devices that are resumed and then quickly need to be limited again require increasingly more available power before the next resume attempt
 5. **Respect swap targets**: If a lower-priority device was limited for a higher-priority device, the high-priority one must resume first
 
-For EV chargers, resume is only attempted when the charger is currently resumable. Chargers that are unplugged, discharging, missing a usable EV charging state, or missing a usable power estimate are marked `inactive` instead of limited. This keeps capacity suppression distinct from device unavailability.
+For EV chargers, resume is only attempted while the charger can actually be driven. A charger that is unplugged, discharging, reported unavailable by Homey, or still inside PELS's retry wait after a command that never landed is marked `inactive` instead of limited. This keeps capacity suppression distinct from device unavailability. (A charger that does not report a usable EV charging state at all is not marked `inactive` — it is dropped from the device list entirely, because the state is a capability contract.)
 
 ---
 

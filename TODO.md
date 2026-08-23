@@ -974,7 +974,7 @@ program) remain deferred.*
       stepper's restore/shed classification. Promoted 2026-08-17 out of the completed umbrella. [P2]
 
 - [ ] **Fixture `currentOn` precedence diverges from production (test-only).**
-      `resolveFixtureCurrentOn` (`test/utils/planTestUtils.ts:49-54`) lets an explicit `currentState`
+      `resolveFixtureCurrentOn` (`test/utils/planTestUtils.ts`) lets an explicit `currentState`
       label win over structural (binary + stepped) resolution; production `currentOn` stamping never
       consults the label. Still present as described, verified 2026-08-17. Reordering to resolve
       structurally first is more faithful but cascades: ~31 stepped fixtures express off-ness via
@@ -1079,7 +1079,9 @@ program) remain deferred.*
       `lib/objectives` reads guarded by it were dead code. In production an unplugged charger was
       reported as `objective_progress_stale` (a reading problem) for whole task windows, and
       `objective_invalid_session` had never been emitted once. The field and its false comment are
-      gone; the layer reads `commandableNow`. That raises the severity of the half still open here:
+      gone; the layer reads the producer-resolved `objectiveSessionInactive` (REQUIRED on
+      `PlanInputDevice`), NOT `commandableNow` — see the "Pick the producer bit that answers YOUR
+      question" rule in `lib/objectives/AGENTS.md`. That raises the severity of the half still open here:
       it is not tidiness, it is the same silent-strip failure mode with a live consumer. [P1]
 
 - [ ] **`objectiveKind` is write-only on both plan types.**

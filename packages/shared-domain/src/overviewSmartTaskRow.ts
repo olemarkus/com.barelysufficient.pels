@@ -11,9 +11,9 @@
 //      outranks post-hoc diagnosis
 //   2. recent-miss rollup (`formatMissStreakAggregateLine` copy, worst device)
 //   3. live `At risk`
-//   4. paused (compressed widget words — `Unplugged` / `Can’t resume` — the
-//      full `Paused — unplugged` after the device-name em-dash would chain
-//      three dashes)
+//   4. paused (compressed widget words — `Unplugged` / `Not managed`, the two
+//      ids the paused bucket carries — the full `Paused — …` forms after the
+//      device-name em-dash would chain three dashes)
 //   5. steady: ≥1 genuinely on-track task (`on_track`/`queued`) — the row is
 //      a FIXTURE, not an apparition: rendering only in crisis would make the
 //      owner meet an unfamiliar element for the first time under stress

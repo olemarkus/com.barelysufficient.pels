@@ -5,8 +5,8 @@ import type {
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 
 // Narrow diagnostic reason codes that the UI needs to render specific copy
-// (e.g. "car unplugged" / "charger can't resume") beyond what `pendingReason`
-// alone can express. Surfaced on the active plan even when it carries a cached
+// (e.g. "car unplugged") beyond what `pendingReason` alone can express.
+// Surfaced on the active plan even when it carries a cached
 // `latest` revision, so the list chip stays honest after a mid-plan transition.
 export const resolveDiagnosticReasonCode = (
   diag: DeferredObjectiveDiagnostic,

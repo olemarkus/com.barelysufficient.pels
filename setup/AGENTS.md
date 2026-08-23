@@ -53,10 +53,14 @@
 ## Boot path
 
 - `app.ts` injects `Homey.App` into the setup façades; `AppRuntimeApi.onInit` delegates to
-  `AppServiceWiring`, which consumes `setup/appInit.ts` — a thin barrel over `setup/appInit/` (31
-  focused factory/registrar files: `createPlanEngine`, `createPlanService`, `priceServices`,
-  `createDailyBudgetService`, `registerAppFlowCards`, `deferredRecorders`, …). Keep the barrel's
-  export surface stable; add new boot wiring as a new `setup/appInit/` file.
+  `AppServiceWiring`, which consumes `setup/appInit.ts` — a thin barrel over `setup/appInit/`, one
+  focused factory/registrar per file (`createPlanEngine`, `createPlanService`, `priceServices`,
+  `createDailyBudgetService`, `registerAppFlowCards`, `deferredRecorders`, …). The barrel does not
+  cover the whole directory: it re-exports the subset the setup façades (`appRuntimeApi.ts`,
+  `appServiceWiring.ts`, `appSmartTaskApi.ts`) and the tests import, and the rest are imported
+  directly by their own wiring sites — including the three `app.ts` reaches for itself, which do
+  NOT go through the barrel. Keep the barrel's export surface stable; add new boot wiring as a new
+  `setup/appInit/` file.
 - Load-bearing root files:
   - `appLifecycleHelpers.ts` — `runStartupStep` / `startAppServices`: ordered, traced startup sequencing. The order is load-bearing where a step's listeners reach a service a later step constructs: `initDeviceManager` → `initHomeMembership` → `initCapacityGuard` → `initPlanEngine` → `initPlanService` → `subscribePlanObservedState`.
   - `powerSamplePipeline.ts` — `PowerSamplePipeline`: routes power samples into capacity tracking and plan-rebuild scheduling.

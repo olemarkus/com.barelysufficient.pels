@@ -38,7 +38,7 @@
  * `lib/utils/deviceControlProfiles.ts`. Caller-side step-state pre-resolution
  * (e.g. `resolveKnownEffectiveStepId` in `lib/plan/planSteppedLoadState.ts`)
  * is funnelled in via `hasKnownEffectiveStep`. For restore, the observer-
- * resolved `currentState !== 'off'` decision and the `getRestoreDrawKw`
+ * resolved `currentState !== 'off'` decision and the `getHighestKnownPowerKw`
  * fallback are likewise pre-resolved by the wiring layer.
  *
  * Pure helpers: no side effects, no value dependencies on `lib/plan/**` or
@@ -268,7 +268,7 @@ export type ResidualKwRestoreDeviceInput = {
   steppedLoad?: ResidualKwRestoreSteppedDevice;
   /**
    * Pre-resolved binary/fallback restore draw from
-   * `lib/observer/observedPower.getRestoreDrawKw`. Funnelled in from the
+   * `lib/observer/observedPower.getHighestKnownPowerKw`. Funnelled in from the
    * wiring layer so the producer module doesn't depend on the observer.
    * Used:
    *   - directly for non-stepped devices, and

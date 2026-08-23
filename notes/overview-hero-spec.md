@@ -399,7 +399,7 @@ one-tap recourse) needs a smart-task signal here. Ladder + copy live in
 2. recent-miss rollup (`{Device} — 3 of last 4 runs missed`, alert — the
    Smart-tasks archive's `formatMissStreakAggregateLine` verbatim);
 3. live `At risk` (`{Device} — At risk · Ready by HH:MM`, warn);
-4. paused (compressed widget words `Unplugged` / `Can’t resume`, warn);
+4. paused (compressed widget words `Unplugged` / `Not managed`, warn);
 5. steady: `N smart tasks · on track` (muted), counting only genuinely
    on-track tasks (`on_track`/`queued`) — the row is a fixture, not an
    apparition: rendering only in crisis would make the owner meet an

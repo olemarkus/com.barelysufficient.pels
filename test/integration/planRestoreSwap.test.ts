@@ -16,8 +16,8 @@ import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 
 // Fixture shape: the shared output builders resolve the producer-owned `currentOn`
-// (the on/off truth `getRestoreDrawKw` now reads) from the
-// fixture's `binaryControl`, mirroring `toPlanDevice`.
+// (the on/off truth the restore path reads) from the fixture's `binaryControl`,
+// mirroring `toPlanDevice`.
 type BinaryFixture = DevicePlanDevice & { binaryControl?: { on: boolean } };
 
 const binaryDevice = (

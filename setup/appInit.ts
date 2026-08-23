@@ -2,7 +2,9 @@
  * Thin composition entry for the app-init wiring. The concrete service
  * factories and registrars live in focused `setup/appInit/` sub-files
  * (one purpose each, per the `setup/` convention); this barrel keeps the
- * public surface that `app.ts` and the integration tests import stable.
+ * public surface the setup façades (`appRuntimeApi.ts`, `appServiceWiring.ts`,
+ * `appSmartTaskApi.ts`) and the tests import stable. `app.ts` does not import
+ * this barrel — its three `appInit` needs are direct sub-file imports.
  *
  * New boot wiring lands as a new `setup/appInit/` file re-exported here —
  * never as logic in this barrel. Layer conventions (one purpose per file,

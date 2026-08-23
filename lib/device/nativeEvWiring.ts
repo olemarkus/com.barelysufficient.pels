@@ -64,20 +64,34 @@ function resolveLatestLastUpdated(...values: Array<string | number | Date | null
  *
  * `Connected_Finishing` and `Charging finished` are the SAME Zaptec state — a
  * session that has ended, which for a car at its own charge limit is where it
- * parks. Both therefore resolve to `plugged_in`, the probed state: a start
- * command may or may not land, and only the probe can tell. They previously
- * disagreed (the enum resolved to `plugged_in_paused`, the label to
- * `plugged_in`), which was invisible while both states were commanded
- * identically; once `plugged_in_paused` stopped being probed
- * (`resolveEvStartProbePosture`, `packages/shared-domain/src/evPlugState.ts`) the
- * disagreement would have meant a full car commanded every cycle forever, with
- * no probe and no back-off.
+ * parks. Both therefore resolve to `plugged_in`, the state that asserts nothing
+ * about a session. They disagreed until 2026-08-09 (the operation-mode name
+ * resolved to `plugged_in_paused`, the display label to `plugged_in`).
+ *
+ * What the choice controls is NOT commandability or any back-off: every
+ * predicate in `packages/shared-domain/src/evPlugState.ts` classifies
+ * `plugged_in` and `plugged_in_paused` identically, and the reachability
+ * back-off is device-class-agnostic and unconditional
+ * (`lib/plan/admission/binaryCommandReachability.ts`). It controls the owner-facing
+ * copy and one fallback readback:
+ *   - the device-card wording, throughout
+ *     `packages/shared-domain/src/planSteppedCardText.ts` — the plain
+ *     `EV_CHARGING_STATE_LABELS` pair (`Paused` vs `Not charging`), and the
+ *     charger-vs-car exception branches in `resolveSteppedEvExceptionLabel` /
+ *     `resolveEvCarExceptionLabel`, which read the two states separately
+ *     (`Waiting for car` on `plugged_in`, `Paused by the car` on
+ *     `plugged_in_paused`);
+ *   - {@link resolveZaptecChargingValue}, which falls back to the plug-state when
+ *     `charging_button` carries no boolean and then synthesizes
+ *     `evcharger_charging = true` from `plugged_in_paused` but no value at all
+ *     from `plugged_in`.
+ * A finished session is neither charging nor resumably paused, so `plugged_in`
+ * is the honest answer everywhere above.
  *
  * `Connected_Requesting` is the opposite case and keeps `plugged_in_paused`:
- * the car is asking for current, so the resume is expected to land. That is
- * also the transition a Zaptec makes when a full car starts accepting charge
- * again, which is what releases it from any back-off the finished session
- * accrued.
+ * the car is asking for current, so a resume is expected to land, and both the
+ * `Paused` label and the fallback `evcharger_charging = true` readback match
+ * what the charger is about to do.
  */
 function resolveZaptecChargingStateFromChargeMode(chargeMode: unknown): string | undefined {
   if (chargeMode === 'Connected_Charging' || chargeMode === 'Charging') return 'plugged_in_charging';
@@ -108,8 +122,9 @@ function resolveZaptecChargingState(capabilityObj: DeviceCapabilityMap): string 
   // Reached only when `charge_mode` is absent or carries a value outside the
   // mapping above (a firmware that renamed a mode, say). All that is known is
   // that a car is attached — not whether a session is running, paused, or
-  // finished — so this resolves to the AMBIGUOUS `plugged_in`, which is probed,
-  // rather than claiming a resumable pause that is commanded without one.
+  // finished — so this resolves to the AMBIGUOUS `plugged_in`, which asserts
+  // nothing about a session, rather than claiming a resumable pause it has no
+  // evidence for.
   if (carConnected === true) return 'plugged_in';
   if (carConnected === false) return 'plugged_out';
   return undefined;
@@ -232,9 +247,10 @@ export function normalizeNativeEvCapabilityUpdate(params: {
   // Reclassifying is how a finished session (`plugged_in`) used to be rewritten
   // as `plugged_in_paused` by a single realtime event: `charge_mode` is
   // change-only push and a car parked at its charge limit never changes it, so
-  // the wrong state then stood until the next snapshot refresh (:25 / :55).
-  // That matters now that only `plugged_in` is probed — it moved a full car into
-  // the lane that is commanded without a probe and never backs off.
+  // the wrong state then stood until the next snapshot refresh (:25 / :55) —
+  // long enough for the owner's card to read `Paused`, and for
+  // `resolveZaptecChargingValue`'s plug-state fallback to synthesize a charging
+  // readback, for a car that had finished.
   if (capabilityId === 'alarm_generic.car_connected' && typeof value === 'boolean') {
     if (value === false) {
       return [{ capabilityId: 'evcharger_charging_state', value: 'plugged_out' }];
@@ -244,9 +260,11 @@ export function normalizeNativeEvCapabilityUpdate(params: {
     // that. Charging and discharging were preserved first, the latter because a
     // V2G session collapsed to `plugged_in_paused` reads as commandable when it
     // is not (`isEvPlugStateCommandable`); `plugged_in` and `plugged_in_paused`
-    // are preserved for the same reason, now that the difference between them
-    // decides whether the resume is probed. Only a DISCONNECTED or unseen
-    // charger has nothing to lose, and it is promoted to the ambiguous state.
+    // are preserved for the same reason, since the difference between them
+    // decides the owner-facing label and the fallback `evcharger_charging`
+    // readback (see `resolveZaptecChargingStateFromChargeMode`). Only a
+    // DISCONNECTED or unseen charger has nothing to lose, and it is promoted to
+    // the ambiguous state.
     return [{
       capabilityId: 'evcharger_charging_state',
       value: snapshot.evChargingState !== undefined

@@ -201,16 +201,20 @@ at `plugged_in` forever. Keying settlement there meant every charger write ran t
 timeout and reported drift against a snapshot older than the write, on a command
 the charger had in fact accepted.
 
-**How long it waits.** One common `BINARY_SETTLE_WINDOW_MS` for every device and
-capability, deliberately **not** sized per device class. The window is armed
+**How long it waits.** One confirmation policy for every device and capability,
+deliberately **not** sized per device class or command kind
+(`resolveControlCommandConfirmationMs`, `lib/observer/controlCommandConfirmation.ts`);
+only the device communication model moves it — 90 s local
+(`LOCAL_CONTROL_COMMAND_CONFIRMATION_MS`), 3 min cloud. The window is armed
 before dispatch (a device echo can arrive before the write promise resolves, so
 re-arming on acceptance would miss it), so it must cover the round-trip plus the
-ack — 9.2 s at the observed maximum. It is set far above that, to 90 s, because
-the timeout is now the abnormal path only: it must never fire while the command
-is still inside its own pending window, the longest of which is
-`EV_START_COMMAND_PENDING_MS`, or PELS would report drift for a command it still
-considers outstanding. That inequality is pinned by a unit test rather than
-written as an alias.
+ack — 9.2 s at the observed maximum. It is set far above that because the
+timeout is now the abnormal path only: it must never fire while the command is
+still inside its own pending window, or PELS would report drift for a command it
+still considers outstanding. That is now true by construction rather than by a
+pinned inequality: `resolveBinaryCommandPendingMs` calls the same resolver, so
+the settle window and the pending window are the same number, and the EV-specific
+pending constant the inequality once had to outrun is gone.
 
 The window also carries a second job, added 2026-08-17: it is the *only*
 resolution mechanism for a write whose HTTP call timed out. Such a write is
@@ -225,9 +229,8 @@ for a *rejected* dispatch, never for an unanswered one: a rejection makes the
 echo untrustworthy, a timeout leaves it the best evidence available.
 
 **What this window does not answer.** Whether the device then draws belongs to
-the EV resume probe and to the pending-restore reservation, each with its own
-deadline. The settle window must not duplicate them — that duplication was the
-bug.
+the pending-restore reservation, with its own deadline. The settle window must
+not duplicate it — that duplication was the bug.
 
 ### Plan→device write inversion: killed in the same effort
 
