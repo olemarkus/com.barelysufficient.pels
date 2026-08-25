@@ -39,6 +39,7 @@ import type { PowerSampleRebuildState } from './lib/plan/rebuildScheduler/powerD
 import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { createHomePowerPipeline } from './setup/homeRuntime/createHomePowerPipeline';
 import type { PvForecastController } from './setup/appInit/createPvForecastService';
+import type { HomeySolarForecastController } from './lib/solar/homeySolarForecastController';
 import type { WeatherCollector } from './lib/weather/weatherCollector';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
 import { SettingsRepository } from './setup/settingsRepository';
@@ -242,6 +243,7 @@ class PelsApp extends PelsAppBase implements AppContext {
   private stopSettingsHandler?: () => void;
   protected weatherCollector?: WeatherCollector;
   private pvForecast?: PvForecastController;
+  private homeySolarForecast?: HomeySolarForecastController;
   protected readonly backgroundTasks = new BackgroundTasksController({
     homey: this.homey,
     log: (...args: unknown[]) => this.log(...args),
@@ -382,6 +384,8 @@ class PelsApp extends PelsAppBase implements AppContext {
     setWeatherCollector: (collector) => { this.weatherCollector = collector; },
     getPvForecast: () => this.pvForecast,
     setPvForecast: (pvForecast) => { this.pvForecast = pvForecast; },
+    getHomeySolarForecast: () => this.homeySolarForecast,
+    setHomeySolarForecast: (controller) => { this.homeySolarForecast = controller; },
     setNativeWiringUninitializing: (value) => { this.nativeWiringUninitializing = value; },
     isManagedFilterActive: () => this.isManagedFilterActive(),
     resolveNativeWiringEnabled: (deviceId) => this.resolveNativeWiringEnabled(deviceId),

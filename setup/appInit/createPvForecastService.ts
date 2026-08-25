@@ -215,6 +215,14 @@ export class PvForecastController {
     this.onRefreshed = callback;
   }
 
+  /** Whether the home has shown solar production (recorded history or a live
+   *  positive sample) — the same signal that arms this controller's own
+   *  Open-Meteo fetches. The Homey solar-forecast controller reads it as its
+   *  auto-probe arm signal so a non-solar home probes neither source. */
+  isActive(): boolean {
+    return this.active;
+  }
+
   /** Refetch the irradiance forecast and emit the learned gain. No-op while dormant
    *  (a non-solar home never reaches the network); failures are logged, not thrown. */
   async refresh(): Promise<void> {

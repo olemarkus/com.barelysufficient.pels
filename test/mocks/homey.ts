@@ -1,6 +1,7 @@
 import { createMockImagesManager } from './homeyImages';
 import { EventEmitter } from 'events';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
+import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
 
 type MockCapabilityMutationBehavior = {
   updateActual?: boolean;
@@ -506,6 +507,12 @@ export const mockHomeyInstance = {
       fetchDynamicElectricityPrices: async () => ([]),
       getCurrency: async () => ({ currency: 'NOK' }),
     },
+    // Homey Energy solar forecast route (fw 13.4.0+): `null` = route missing
+    // (pre-13.4.0 firmware — api.get keeps throwing its default not-implemented
+    // error, faithful to the real HTML "Cannot GET" rejection); a populated map
+    // serves per-local-date bodies, and a date with no entry throws an
+    // `HTTP 404`-shaped error (no forecast basis for that day).
+    _solarForecastByDate: null as Record<string, unknown> | null,
     _realtimeEvents: [] as Array<{ event: string; data: unknown }>,
     realtime: async (event: string, data: unknown) => {
       // Track realtime events for testing
@@ -540,6 +547,21 @@ export const mockHomeyInstance = {
       }
       if (path === 'manager/energy/live') {
         return { items: [] };
+      }
+      const solarForecastMatch = path.match(/^manager\/energy\/forecast\/solar\?date=([0-9-]+)$/);
+      if (solarForecastMatch) {
+        const byDate = mockHomeyInstance.api._solarForecastByDate;
+        if (byDate === null) {
+          // Route missing (pre-13.4.0 firmware): the real web server answers the
+          // unknown route with HTTP 404 + an HTML "Cannot GET" body, which the
+          // transport rejects as a typed HomeyHttpStatusError.
+          throw new HomeyHttpStatusError(404, '<!DOCTYPE html>... Cannot GET /api/manager/energy/forecast/solar');
+        }
+        const body = byDate[solarForecastMatch[1]];
+        if (body === undefined) {
+          throw new HomeyHttpStatusError(404, '{"error":"not_found","error_description":"No solar forecast"}');
+        }
+        return body;
       }
       if (path === 'manager/geolocation/option/location') {
         return {

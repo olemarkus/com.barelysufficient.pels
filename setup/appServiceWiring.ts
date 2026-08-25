@@ -42,6 +42,7 @@ import { buildHomeRuntimeReadPort, createHomeRuntimeRegistryForApp } from './app
 import { wireDeviceTransport } from './appInit/wireDeviceTransport';
 import type { HomeMembershipService } from './homeMembership';
 import type { PvForecastController } from './appInit/createPvForecastService';
+import type { HomeySolarForecastController } from '../lib/solar/homeySolarForecastController';
 import { flushDailyBudgetStateOnUninit, runStartupStep, startAppServices } from './appLifecycleHelpers';
 import { wireHomeMembership } from './appInit/wireHomeMembership';
 import {
@@ -101,6 +102,8 @@ export type AppServiceWiringDeps = {
   setWeatherCollector: (collector: WeatherCollector | undefined) => void;
   getPvForecast: () => PvForecastController | undefined;
   setPvForecast: (pvForecast: PvForecastController | undefined) => void;
+  getHomeySolarForecast: () => HomeySolarForecastController | undefined;
+  setHomeySolarForecast: (controller: HomeySolarForecastController | undefined) => void;
   setNativeWiringUninitializing: (value: boolean) => void;
   isManagedFilterActive: () => boolean;
   resolveNativeWiringEnabled: (deviceId: string) => boolean;
@@ -574,6 +577,7 @@ export class AppServiceWiring {
     this.homeMembershipService = undefined;
     ctx.homeMembership = undefined;
     this.deps.getPvForecast()?.stop();
+    this.deps.getHomeySolarForecast()?.stop();
     // Release the warmup gate so any rebuild awaiting it during a partial
     // startup unblocks (cancelAll below then drops the intent), instead of
     // dangling on a promise the gate would otherwise resolve via its

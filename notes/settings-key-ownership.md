@@ -64,7 +64,15 @@ from outside PELS.
 - A caller that needs to know how the bytes are shaped is a caller that should be
   asking the owner.
 
-Keys with owners so far: `mode_device_targets`. `capacity_priorities` has the
-same shape and the same two parsers and is the obvious next one — until then it
-keeps the older reject-the-whole-map policy, which is why
-`parseModeNumberMap` still exists alongside `readModeDeviceTargetsSetting`.
+Keys with owners so far: `mode_device_targets`, `pv_forecast_source`.
+`capacity_priorities` has the same shape and the same two parsers and is the
+obvious next one — until then it keeps the older reject-the-whole-map policy,
+which is why `parseModeNumberMap` still exists alongside
+`readModeDeviceTargetsSetting`.
+
+`pv_forecast_source` is the cheap case the rule still earns: a flat three-value
+union with nothing to sanitize partially, but two callers from day one (the
+runtime reader and the settings UI's select), so a second local parser would
+have been one drift away from planning and the UI naming different sources for
+the same bytes. Its policy is recognise-or-default rather than sanitize-and-keep
+— see the module for why defaulting is safe at this particular key.
