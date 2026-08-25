@@ -25,6 +25,9 @@ import { isFiniteNumber } from '../utils/appTypeGuards';
 
 const HOUR_MS = 3_600_000;
 const DEFAULT_RETENTION_MS = 90 * 24 * HOUR_MS;
+// The forward window `hasForwardForecast` asks about — the same day-ahead span
+// the planning price and the curtailment potential read.
+const FORWARD_FORECAST_HOURS = 24;
 
 /**
  * Per-hour shortwave irradiance (W/m²) for a UTC hour-start. Serves both the
@@ -205,6 +208,24 @@ export class PvForecastService {
       });
     }
     return fitPvGain(points);
+  }
+
+  /**
+   * Whether the learned lane can actually ANSWER for the hours ahead — a fit
+   * AND forward irradiance to apply it to. A fit alone is not enough: it can be
+   * restored from persistence while the in-memory irradiance provider has
+   * nothing forward (the location lookup or the startup refresh failed), and
+   * then `forecast()` skips every requested hour. Provenance derived from
+   * `getFit()` alone would claim a forecast that planning is not getting.
+   * Counterpart to `HomeyEnergySolarForecastSource.hasUsefulForecast`.
+   */
+  hasForwardForecast(nowMs: number): boolean {
+    const currentHourStartMs = hourStartMs(nowMs);
+    const hourStarts: number[] = [];
+    for (let index = 0; index < FORWARD_FORECAST_HOURS; index += 1) {
+      hourStarts.push(currentHourStartMs + index * HOUR_MS);
+    }
+    return this.forecast(hourStarts).length > 0;
   }
 
   /**

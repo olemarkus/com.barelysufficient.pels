@@ -48,6 +48,18 @@ export const startPostStartupBackgroundTasks = (
     logger: getLogger('solar'),
   });
   wireBudgetPrice(ctx, (ms) => getSelectedPvForecast()?.forecast([ms])[0]?.generationKwh);
+  // Provenance for the settings UI's Solar forecast section — read from the
+  // live selector so the UI can never disagree with what planning consumes.
+  // Both availability flags ask the producer whether it can answer for the
+  // hours AHEAD, never whether it merely holds a model: a fit restored from
+  // persistence with no forward irradiance forecasts nothing, and the section
+  // would have claimed planning was using it.
+  // eslint-disable-next-line functional/immutable-data
+  ctx.getPvForecastSourceUiStatus = () => ({
+    activeSource: getSelectedPvForecast()?.sourceId ?? null,
+    homeyForecastAvailable: collectors.homeySolarForecast.source.hasUsefulForecast(Date.now()),
+    learnedForecastAvailable: collectors.pvForecast.service.hasForwardForecast(Date.now()),
+  });
   const recomputeCombinedPrices = (): void => {
     try {
       ctx.priceCoordinator.updateCombinedPrices();

@@ -1108,6 +1108,25 @@ Canonical labels for the solar surfaces (Usage-tab Solar card, Overview hero
 | Money the self-consumed kWh would have cost to import | `Grid cost avoided` |
 | Money the exported kWh earned (signed) | `Earned from export` |
 
+Solar forecast source (Electricity prices view, `SolarForecastForm` in
+`ElectricityPricesView.tsx` — the setting choosing which forecast of the home's
+solar production feeds the planning price and surplus):
+
+| Concept | Label |
+|---|---|
+| Section title | `Solar forecast` |
+| Source option: prefer Homey when it has data, else learned | `Automatic` |
+| Source option: Homey Energy's own forecast (fw 13.4.0+) | `Homey's solar forecast` |
+| Source option: PELS's learned model | `Learned from your solar production` |
+| Provenance line, Homey active | `Using Homey's solar forecast.` |
+| Provenance line, learned active | `Using the forecast PELS learns from your solar production.` |
+| Provenance line, pinned Homey with nothing served | `Homey has no solar forecast yet, so planning runs without one. Switch to Automatic to use the forecast PELS learns from your solar production.` |
+| Provenance line, learned active but no fit yet | `PELS is still learning your solar production, so planning runs without a forecast yet.` |
+
+`pv`, `irradiance`, `gain`, `probe`, and the source ids (`homey_energy`,
+`learned`, `auto`) stay internal — the options and provenance lines above are
+the only user-facing renderings.
+
 Fixed line and heading forms:
 
 - Overview hero subline (inventoried in `notes/overview-hero-spec.md`), one

@@ -1,4 +1,8 @@
 import type { PriceScheme, NorwayPriceModel } from './priceSettingsPersistence.ts';
+import type {
+  PvForecastSourceSetting,
+  PvForecastSourceUiStatus,
+} from '../../../contracts/src/settingsUiApi.ts';
 import type { LiveSummarySignals } from './livePriceSignals.ts';
 
 export type StatusTone = 'ok' | 'warn';
@@ -30,6 +34,7 @@ export type GridCompanyOption = {
 };
 
 export type { PriceScheme, NorwayPriceModel };
+export type { PvForecastSourceSetting, PvForecastSourceUiStatus };
 
 /**
  * The Electricity prices page's full config state. Lives here (not in
@@ -63,6 +68,10 @@ export type PriceConfigState = {
   exportPriceEnabled: boolean;
   exportSpotFactor: number;
   exportFixed: number;
+  // Solar forecast source: the stored setting plus the runtime provenance
+  // (which source actually feeds planning) from the prices payload.
+  pvForecastSource: PvForecastSourceSetting;
+  pvForecastStatus: PvForecastSourceUiStatus | null;
 };
 
 /** Everything the page's config state takes from the settings store. */
@@ -81,6 +90,7 @@ export type PriceConfigSettingsPatch = Pick<
   | 'exportPriceEnabled'
   | 'exportSpotFactor'
   | 'exportFixed'
+  | 'pvForecastSource'
 >;
 
 /** The subset of the page's config state a save validates and writes. */

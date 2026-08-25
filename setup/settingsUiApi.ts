@@ -19,6 +19,7 @@ import {
 import { readAllObjectives } from '../lib/objectives/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
 import type {
+  PvForecastSourceUiStatus,
   SettingsUiBootstrap,
   SettingsUiDeferredObjectivePlanHistoryPayload,
   SettingsUiDeviceDiagnosticsResponse,
@@ -71,6 +72,7 @@ type SettingsUiApiApp = Homey.App & {
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
   getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV1 | null;
   getWeatherAdvisorReadout?: () => Promise<WeatherAdvisorReadoutPayload | null>;
+  getPvForecastSourceUiStatus?: () => PvForecastSourceUiStatus | null;
 };
 
 type ApiContext = {
@@ -361,6 +363,7 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
 };
 
 const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => {
+  const app = getApp(homey);
   const priceArea = homey.settings.get('price_area') as unknown;
   const homeyCurrency = homey.settings.get('homey_prices_currency') as unknown;
   // The settings-UI client (`deadlinePlanData.getCombinedPrices`) accepts
@@ -378,6 +381,7 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
     homeyCurrency: typeof homeyCurrency === 'string' ? homeyCurrency : null,
     homeyToday: homey.settings.get('homey_prices_today') as unknown ?? null,
     homeyTomorrow: homey.settings.get('homey_prices_tomorrow') as unknown ?? null,
+    pvForecastSource: app?.getPvForecastSourceUiStatus?.() ?? null,
   };
 };
 

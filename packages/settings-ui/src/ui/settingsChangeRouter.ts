@@ -41,6 +41,7 @@ import {
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   PRICE_SCHEME,
   WEATHER_ADVISOR_SETTINGS,
+  PV_FORECAST_SOURCE,
 } from '../../../contracts/src/settingsKeys.ts';
 import { refreshCurrentModes } from './currentModes.ts';
 import { loadAdvancedSettings, loadCapacitySettings, notifyAreaSimulationSettingChanged } from './capacity.ts';
@@ -107,6 +108,9 @@ const ADVANCED_SETTINGS_KEYS = new Set([
 
 const PRICE_REFRESH_KEYS = new Set([
   COMBINED_PRICES,
+  // The runtime's source re-selection changes the provenance carried on the
+  // prices payload, so a source write must invalidate the cached read model.
+  PV_FORECAST_SOURCE,
   'electricity_prices',
   'flow_prices_today',
   'flow_prices_tomorrow',

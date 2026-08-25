@@ -3,6 +3,7 @@ import {
   callApi,
   getApiReadModel,
   getSetting,
+  invalidateApiCache,
   primeApiCache,
   setSetting,
 } from './homey.ts';
@@ -24,7 +25,7 @@ import {
   readPriceConfigSettings,
   validateAndSavePriceSettings as saveValidatedPriceSettings,
 } from './priceConfigSettingsIo.ts';
-import { PRICE_OPTIMIZATION_ENABLED } from '../../../contracts/src/settingsKeys.ts';
+import { PRICE_OPTIMIZATION_ENABLED, PV_FORECAST_SOURCE } from '../../../contracts/src/settingsKeys.ts';
 import {
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
@@ -49,8 +50,10 @@ import type {
   GridCompanyOption,
   PriceScheme,
   NorwayPriceModel,
+  PvForecastSourceSetting,
 } from './priceConfigTypes.ts';
 import { liveStatusOrNull } from './powerStatusRead.ts';
+import { resolvePvForecastSourceUiStatus } from '../../../shared-domain/src/solar/pvForecastSourceStatus.ts';
 
 let configState: PriceConfigState = {
   optimizationEnabled: true,
@@ -70,6 +73,8 @@ let configState: PriceConfigState = {
   exportPriceEnabled: false,
   exportSpotFactor: 0,
   exportFixed: 0,
+  pvForecastSource: 'auto',
+  pvForecastStatus: null,
 };
 
 let electricityPricesSurface: HTMLElement | null = null;
@@ -132,6 +137,16 @@ const renderElectricityPrices = () => {
     // narrower "can the surplus POOL open" question (`surplusPoolReachable`),
     // while a fixed feed-in amount needs no pool at all.
     showExportSection: resolveHomeExhibitsSolar() || configState.exportPriceEnabled,
+    // Same solar gate as the export section, plus two escape hatches: a user
+    // who already pinned a non-default source is never stranded, and a home
+    // whose panels only Homey Energy knows about (no production feed reaches
+    // PELS, so resolveHomeExhibitsSolar is false) still gets the section the
+    // moment Homey serves a forecast.
+    showSolarForecastSection: resolveHomeExhibitsSolar()
+      || configState.pvForecastSource !== 'auto'
+      || configState.pvForecastStatus?.homeyForecastAvailable === true,
+    pvForecastSource: configState.pvForecastSource,
+    pvForecastStatus: configState.pvForecastStatus,
     exportPriceEnabled: configState.exportPriceEnabled,
     exportSpotFactor: configState.exportSpotFactor,
     exportFixed: configState.exportFixed,
@@ -146,6 +161,7 @@ const renderElectricityPrices = () => {
     onTariffGroupChange: handleTariffGroupChange,
     onRefreshPrices: handleRefreshPrices,
     onRefreshGridTariff: handleRefreshGridTariff,
+    onPvForecastSourceChange: handlePvForecastSourceChange,
     onExportEnabledChange: exportPriceHandlers.onEnabledChange,
     onExportSpotFactorChange: exportPriceHandlers.onSpotFactorChange,
     onExportFixedChange: exportPriceHandlers.onFixedChange,
@@ -183,6 +199,36 @@ const handleOptimizationToggle = async (enabled: boolean) => {
   } catch (error) {
     await logSettingsError('Failed to update price optimization', error, 'priceConfig');
     await showToastError(error, 'Failed to update price optimization setting.');
+  }
+};
+
+const handlePvForecastSourceChange = async (source: PvForecastSourceSetting) => {
+  const previous = configState.pvForecastSource;
+  configState = { ...configState, pvForecastSource: source };
+  renderAll();
+  try {
+    await setSetting(PV_FORECAST_SOURCE, source);
+    // The runtime re-selects (and, for homey/auto, re-probes) on the settings
+    // write. The prices read model is cache-first, so DROP the cached payload
+    // before re-reading or the sub-line would repaint from the pre-flip
+    // provenance (the settings router also invalidates on the echoed event;
+    // doing it here keeps the repaint deterministic, not race-dependent).
+    invalidateApiCache(SETTINGS_UI_PRICES_PATH);
+    await refreshStatusInfo();
+    renderAll();
+    await showToast('Solar forecast source saved.', 'ok');
+  } catch (error) {
+    // Only roll back if THIS request's selection is still the one on screen.
+    // Two quick changes race: if the earlier write fails after the later one
+    // started, an unconditional rollback would restore the value captured
+    // before the first request and leave the selector showing a source neither
+    // the store nor the runtime holds. Same rule as the scheme change below.
+    if (configState.pvForecastSource === source) {
+      configState = { ...configState, pvForecastSource: previous };
+      renderAll();
+    }
+    await logSettingsError('Failed to save solar forecast source', error, 'priceConfig');
+    await showToastError(error, 'Failed to save the solar forecast source.');
   }
 };
 
@@ -417,6 +463,7 @@ const refreshStatusInfo = async () => {
     const payload = pricesPayload ?? {
       combinedPrices: null, electricityPrices: null, priceArea: null, gridTariffData: null,
       flowToday: null, flowTomorrow: null, homeyCurrency: null, homeyToday: null, homeyTomorrow: null,
+      pvForecastSource: null,
     };
     configState = {
       ...configState,
@@ -426,6 +473,11 @@ const refreshStatusInfo = async () => {
       // disagrees across surfaces.
       currentPriceLevel: liveStatusOrNull(powerPayload?.status)?.priceLevel ?? null,
       liveSummary: resolveLiveSummarySignals(payload.combinedPrices, Date.now()),
+      // Shape-guarded at the seam: the prices read model crosses the Homey API
+      // bridge as a cast, so this nested object is untrusted until the adapter
+      // discriminates it (root AGENTS.md § "Clean and trusted interfaces").
+      // Inward of here the view reads it directly and never re-checks.
+      pvForecastStatus: resolvePvForecastSourceUiStatus(payload.pvForecastSource),
     };
   } catch (error) {
     await logSettingsError('Failed to refresh price status', error, 'priceConfig');

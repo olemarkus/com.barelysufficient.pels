@@ -997,6 +997,11 @@
     homeyCurrency: typeof settings.homey_prices_currency === 'string' ? settings.homey_prices_currency : null,
     homeyToday: settings.homey_prices_today ?? null,
     homeyTomorrow: settings.homey_prices_tomorrow ?? null,
+    // Runtime provenance of the PV-forecast source selection (mirrors
+    // getSettingsUiPrices). Seed `pv_forecast_source_status` in a scenario to
+    // render the Solar forecast provenance line; the default null is the
+    // pre-wiring boot window.
+    pvForecastSource: settings.pv_forecast_source_status ?? null,
   });
 
   const buildPlanPayload = () => {

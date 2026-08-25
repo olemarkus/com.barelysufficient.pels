@@ -75,6 +75,45 @@ describe('Learning a PV device (irradiance mocked)', () => {
     expect(forecast.some((h) => h.generationKwh === 0)).toBe(true); // night
   });
 
+  it('hasForwardForecast is false with a fit but no forward irradiance, and true once both exist', () => {
+    // A fit restored from persistence outlives the in-memory irradiance
+    // provider: if the location lookup or the startup refresh failed, the
+    // provider answers nothing forward and `forecast()` skips every hour.
+    // Provenance derived from `getFit()` alone would claim planning is using a
+    // learned forecast it is not getting.
+    const startMs = Date.UTC(2026, 5, 1, 0);
+    const days = 18;
+    const forwardMs = startMs + days * 24 * HOUR_MS;
+
+    const learned = new PvForecastService({
+      irradiance: mockIrradiance,
+      initialState: emptyPvForecastServiceState(),
+    });
+    recordDays(learned, startMs, days);
+    expect(learned.getFit()).not.toBeNull();
+    expect(learned.hasForwardForecast(forwardMs)).toBe(true);
+
+    // Same learned state, but the provider has no forward irradiance.
+    const blindProvider: PvIrradianceProvider = {
+      getIrradiance: (hourStartMs) => (hourStartMs >= forwardMs ? undefined : irradianceAt(hourStartMs)),
+    };
+    const blind = new PvForecastService({
+      irradiance: blindProvider,
+      initialState: learned.getState(),
+    });
+    expect(blind.getFit()).not.toBeNull();
+    expect(blind.forecast([forwardMs])).toEqual([]);
+    expect(blind.hasForwardForecast(forwardMs)).toBe(false);
+  });
+
+  it('hasForwardForecast is false while still cold (no fit at all)', () => {
+    const service = new PvForecastService({
+      irradiance: mockIrradiance,
+      initialState: emptyPvForecastServiceState(),
+    });
+    expect(service.hasForwardForecast(Date.UTC(2026, 5, 1, 0))).toBe(false);
+  });
+
   it('does not forecast until the device is learned (returns empty while cold)', () => {
     const service = new PvForecastService({
       irradiance: mockIrradiance,

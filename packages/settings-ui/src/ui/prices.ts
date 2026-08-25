@@ -14,6 +14,7 @@ const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
   homeyCurrency: null,
   homeyToday: null,
   homeyTomorrow: null,
+  pvForecastSource: null,
 };
 
 export const getPricesReadModel = async (): Promise<SettingsUiPricesPayload> => {
