@@ -41,15 +41,85 @@ export type PvForecastServiceState = {
   irradianceByHour: Record<string, number>;
 };
 
+/** The zero state a service starts from when persistence had nothing to offer. */
+export const emptyPvForecastServiceState = (): PvForecastServiceState => ({
+  history: emptyPvGenerationHistory(),
+  irradianceByHour: {},
+});
+
 export type PvForecastHour = { hourStartMs: number; generationKwh: number };
 
 export type PvForecastServiceDeps = {
   irradiance: PvIrradianceProvider;
-  retentionMs?: number;
-  initialState?: PvForecastServiceState;
+  /** Required: the caller resolves what the boot read produced (a loaded state
+   *  or `emptyPvForecastServiceState()`) — the service never guesses about
+   *  absence (resolution-in-producer). */
+  initialState: PvForecastServiceState;
 };
 
 const hourStartMs = (ms: number): number => Math.floor(ms / HOUR_MS) * HOUR_MS;
+
+/** One recovered bucket's taint mark, keyed by the hour of `atMs` — empty when
+ *  the recovered side holds no bucket there (nothing at risk to exclude). */
+const recoveredBucketTaint = (
+  recovered: PvGenerationHistory,
+  atMs: number,
+): Record<string, true> => {
+  const key = String(hourStartMs(atMs));
+  return recovered.hourly[key] === undefined ? {} : { [key]: true };
+};
+
+/** The restart hole is invisible to `recordPvSample`: the crash dropped its
+ *  anchor, so no re-anchor taint was ever recorded for the gap between the
+ *  recovered cursor and the first live sample. Mirror recordPvSample's
+ *  two-boundary gap semantics on the recovered buckets at BOTH ends:
+ *  - the LIVE-cursor hour — future samples integrate forward from the live
+ *    cursor into the merged bucket for that hour, so a recovered claim there
+ *    would concatenate pre-crash and post-boot accrual as if the outage never
+ *    happened;
+ *  - the RECOVERED-cursor hour — its bucket stopped accruing at the crash, so
+ *    its coverage can clear the training gate while silently missing the tail
+ *    of the hour (e.g. 58 min covered, crash at :58, live resumes next hour).
+ *  Tainting excludes both from training however their coverage reads. */
+const restartHoleTaint = (
+  recovered: PvGenerationHistory,
+  live: PvGenerationHistory,
+): Record<string, true> => {
+  if (live.lastSampleMs === undefined) return {}; // no post-boot samples ⇒ no hole yet
+  return {
+    ...recoveredBucketTaint(recovered, live.lastSampleMs),
+    ...(recovered.lastSampleMs === undefined ? {} : recoveredBucketTaint(recovered, recovered.lastSampleMs)),
+  };
+};
+
+/** Overlay live post-boot accruals onto a history recovered from persistence:
+ *  live hours win where they overlap, recovered hours fill the rest. The
+ *  cursor triple travels as a unit from the live side whenever it has one (in
+ *  a single-process timeline the live cursor is always the later of the two)
+ *  and from the recovered side otherwise — splitting the triple would pair a
+ *  recovered `lastNetW` with a live cursor and accrue net evidence over time
+ *  the net was never observed. Gap-taint marks are unioned (a recovered taint
+ *  keeps excluding its hour even when a fresh partial bucket overlays it), and
+ *  the live-cursor hour is tainted when both sides claim it — see
+ *  `restartHoleTaint`. */
+const mergeRecoveredHistory = (
+  recovered: PvGenerationHistory,
+  live: PvGenerationHistory,
+): PvGenerationHistory => {
+  const cursor = live.lastSampleMs === undefined ? recovered : live;
+  const taintedHourStarts = {
+    ...recovered.taintedHourStarts,
+    ...live.taintedHourStarts,
+    ...restartHoleTaint(recovered, live),
+  };
+  return {
+    hourly: { ...recovered.hourly, ...live.hourly },
+    ...(cursor.lastSampleMs === undefined ? {} : { lastSampleMs: cursor.lastSampleMs }),
+    ...(cursor.lastGenerationW === undefined ? {} : { lastGenerationW: cursor.lastGenerationW }),
+    ...(cursor.lastNetW === undefined ? {} : { lastNetW: cursor.lastNetW }),
+    ...(Object.keys(taintedHourStarts).length === 0 ? {} : { taintedHourStarts }),
+  };
+};
 
 export class PvForecastService {
   private history: PvGenerationHistory;
@@ -61,13 +131,11 @@ export class PvForecastService {
   // is sufficient — there is no location to key on.
   private cachedFit: PvGainFit | null | undefined;
   private readonly irradiance: PvIrradianceProvider;
-  private readonly retentionMs: number;
 
   constructor(deps: PvForecastServiceDeps) {
     this.irradiance = deps.irradiance;
-    this.retentionMs = deps.retentionMs ?? DEFAULT_RETENTION_MS;
-    this.history = deps.initialState?.history ?? emptyPvGenerationHistory();
-    this.irradianceByHour = { ...(deps.initialState?.irradianceByHour ?? {}) };
+    this.history = deps.initialState.history;
+    this.irradianceByHour = { ...deps.initialState.irradianceByHour };
   }
 
   /** Fold one generation power sample (W) and stamp the hour's concurrent
@@ -84,8 +152,8 @@ export class PvForecastService {
 
   /** Drop recorded generation + irradiance older than the retention window. */
   prune(nowMs: number): void {
-    this.history = pruneOldHours(this.history, nowMs, this.retentionMs);
-    const cutoff = nowMs - this.retentionMs;
+    this.history = pruneOldHours(this.history, nowMs, DEFAULT_RETENTION_MS);
+    const cutoff = nowMs - DEFAULT_RETENTION_MS;
     const irradianceByHour: Record<string, number> = {};
     for (const [key, value] of Object.entries(this.irradianceByHour)) {
       if (Number(key) >= cutoff) irradianceByHour[key] = value;
@@ -100,15 +168,17 @@ export class PvForecastService {
   }
 
   /**
-   * Replace the learned state with a blob recovered from persistence after a
-   * transient boot-read miss (see the load-grace path in `PvForecastController`).
-   * The recovered disk history is authoritative — any handful of samples folded
-   * since boot (at most the load-grace window) are dropped, which the controller
-   * accepts as the cost of never clobbering months of irreplaceable history.
+   * Fold a state recovered from persistence (after a suspect boot read — see
+   * the load-grace path in `PvForecastController`) into the live state.
+   * Per-hour accruals recorded since boot WIN where they overlap; the
+   * recovered history fills every other hour — so months of recorded
+   * generation survive a transient boot-read miss without discarding the
+   * samples folded while it healed. Cursor and taint semantics:
+   * `mergeRecoveredHistory`.
    */
-  adoptRecoveredState(recovered: PvForecastServiceState): void {
-    this.history = recovered.history;
-    this.irradianceByHour = { ...recovered.irradianceByHour };
+  mergeRecoveredState(recovered: PvForecastServiceState): void {
+    this.history = mergeRecoveredHistory(recovered.history, this.history);
+    this.irradianceByHour = { ...recovered.irradianceByHour, ...this.irradianceByHour };
     this.cachedFit = undefined; // recovered data ⇒ re-fit on next read
   }
 
