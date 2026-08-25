@@ -15,7 +15,7 @@ export {
 export type PowerSampleRebuildState = {
   lastMs: number;
   lastRebuildPowerW?: number;
-  lastSoftLimitKw?: number;
+  lastCapacityPaceKw?: number;
   lastHardCapBreached?: boolean;
   lastHardCapDeficitKw?: number;
   shortfallSuppressionInvalidated?: boolean;
@@ -30,7 +30,7 @@ export type PowerSampleRebuildState = {
   pendingResolve?: (reason?: string) => void;
   pendingReject?: (error: Error) => void;
   pendingPowerW?: number;
-  pendingSoftLimitKw?: number;
+  pendingCapacityPaceKw?: number;
   pendingReason?: PowerSampleRebuildTrigger;
   /**
    * Bumped by every device observation (`invalidateRebuildSuppressionForObservation`).
@@ -55,7 +55,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
   currentPowerW?: number;
   powerDeltaW?: number;
   limitKw: number;
-  softLimitKw?: number;
+  capacityPaceKw?: number;
   headroomKw?: number | null;
   isInShortfall?: boolean;
   planConvergenceActive?: boolean;
@@ -73,7 +73,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
     currentPowerW,
     powerDeltaW,
     limitKw,
-    softLimitKw,
+    capacityPaceKw,
     headroomKw,
     isInShortfall,
     planConvergenceActive,
@@ -128,7 +128,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
     nowMs: now,
     minIntervalMs,
     currentPowerW,
-    softLimitKw,
+    capacityPaceKw,
     triggerReason,
     hardCapBreach,
     isInShortfall,

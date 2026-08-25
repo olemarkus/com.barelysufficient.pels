@@ -95,7 +95,7 @@ function logHeadroomCheck(params: {
     event: 'headroom_for_device_checked',
     deviceId,
     deviceName: deviceSnap?.name,
-    softLimitKw: deps.getCapacityPaceKw(),
+    capacityPaceKw: deps.getCapacityPaceKw(),
     currentPowerKw: deps.getLatchedTotalKw(),
     deviceConsumptionKw: decision.observedKw,
     expectedPowerKw: deviceSnap?.expectedPowerKw ?? null,

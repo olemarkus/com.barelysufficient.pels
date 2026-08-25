@@ -13,8 +13,8 @@ type CapacityGuardView = Pick<
 
 type CapacityStatusMetrics = {
   total: number | null;
-  softLimit: number;
-  headroom: number | null;
+  capacityPace: number;
+  capacityPaceHeadroom: number | null;
   shortfallBudgetThreshold: number;
   shortfallBudgetHeadroom: number | null;
   hardCapHeadroom: number | null;
@@ -24,8 +24,17 @@ export type PeriodicStatusLogFields = {
   event: 'periodic_status';
   homeId: HomeId;
   powerKw: number | null;
-  softLimitKw: number;
-  softHeadroomKw: number | null;
+  capacityPaceKw: number;
+  /**
+   * Headroom against `capacityPaceKw`, raw. Deliberately NOT
+   * `capacityHeadroomKw`: `PlanContext` already owns that name for the
+   * restore-admission axis, which carries the stale-meter forcing (`stale_hold`
+   * → 0, `stale_fail_closed` → -1) and the exhausted-hour force. These two
+   * differ by exactly the forcing that decides whether a restore is admitted, so
+   * one name for both would be the `softLimit` overload this record just renamed
+   * its way out of.
+   */
+  capacityPaceHeadroomKw: number | null;
   shortfallBudgetThresholdKw: number;
   shortfallBudgetHeadroomKw: number | null;
   hardCapHeadroomKw: number | null;
@@ -51,8 +60,8 @@ export function buildPeriodicStatusLogFields(params: {
   capacityDryRun: boolean;
   starvedDeviceCount?: number;
   /**
-   * `capacityPaceKw` — the dynamic hourly threshold, resolved by the caller.
-   * Logged as `softLimitKw` (`notes/safe-pace-two-constraints.md`).
+   * The dynamic hourly threshold, resolved by the caller and logged under its
+   * canonical name (`notes/safe-pace-two-constraints.md` § "Canonical names").
    */
   capacityPaceKw: number;
   /** The shedding latch, read off `PlanEngineState` by the caller. */
@@ -78,8 +87,8 @@ export function buildPeriodicStatusLogFields(params: {
     event: 'periodic_status',
     homeId: MAIN_HOME_ID,
     powerKw: metrics.total,
-    softLimitKw: metrics.softLimit,
-    softHeadroomKw: metrics.headroom,
+    capacityPaceKw: metrics.capacityPace,
+    capacityPaceHeadroomKw: metrics.capacityPaceHeadroom,
     shortfallBudgetThresholdKw: metrics.shortfallBudgetThreshold,
     shortfallBudgetHeadroomKw: metrics.shortfallBudgetHeadroom,
     hardCapHeadroomKw: metrics.hardCapHeadroom,
@@ -100,17 +109,14 @@ function resolveCapacityStatusMetrics(params: {
 }): CapacityStatusMetrics {
   const { capacitySettings, powerTracker, capacityPaceKw } = params;
   const total = resolveLastTotalPowerKw(powerTracker);
-  const softLimit = capacityPaceKw;
-  // Derive headroom from the already-fetched softLimit to avoid a second provider call.
-  // CapacityGuard.getHeadroom() is just getSoftLimit() - mainPowerKw, so this is equivalent.
-  const headroom = total !== null ? softLimit - total : null;
+  const capacityPaceHeadroom = total !== null ? capacityPaceKw - total : null;
   const shortfallBudgetThreshold = computeShortfallThreshold({ capacitySettings, powerTracker });
   const shortfallBudgetHeadroom = total !== null ? shortfallBudgetThreshold - total : null;
   const hardCapHeadroom = total !== null ? capacitySettings.limitKw - total : null;
   return {
     total,
-    softLimit,
-    headroom,
+    capacityPace: capacityPaceKw,
+    capacityPaceHeadroom,
     shortfallBudgetThreshold,
     shortfallBudgetHeadroom,
     hardCapHeadroom,

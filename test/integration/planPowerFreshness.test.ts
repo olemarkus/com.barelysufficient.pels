@@ -71,6 +71,7 @@ describe('power sample freshness policy', () => {
     capacitySoftLimit?: number;
     dailySoftLimit?: number | null;
     budgetPaceKw?: number | null;
+    projectedExemptKw?: number | null;
     softLimitSource?: 'capacity' | 'daily';
     hourlyBudgetExhausted?: boolean;
   }) => buildPlanContext({
@@ -82,6 +83,7 @@ describe('power sample freshness policy', () => {
     capacitySoftLimit: params.capacitySoftLimit ?? 5,
     dailySoftLimit: params.dailySoftLimit ?? null,
     budgetPaceKw: params.budgetPaceKw ?? null,
+    projectedExemptKw: params.projectedExemptKw ?? null,
     softLimitSource: params.softLimitSource ?? 'capacity',
     modeTargetCFor: (d) => d.currentTarget,
     hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,

@@ -226,6 +226,48 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     expect(h.state.shedDecidedMs[PUMP]).toBeDefined();
   });
 
+  it('prunes the surplus-posture stamps when a held device leaves the snapshot', async () => {
+    // Uncovered behaviour, pinned: `releaseAbandonedSurplusPosture` iterates the
+    // STAMP MAP rather than `admittedDevices`, so a device that is gone while
+    // surplus-held is in neither `surplusOnlyNow`
+    // nor `shedSet` and falls through both guards to the clear. "Left the
+    // snapshot" means genuinely gone (removed from Homey, unpaired) — NOT a
+    // flaky SDK read: `shouldDeferEmptySnapshotCommit` declines to commit an
+    // empty raw read at all, and `mergeTargetedRefreshSnapshot` holds a
+    // per-device grace, so a transient miss never reaches this prune. That is
+    // what makes clearing safe here rather than a reset-on-one-missed-read.
+    // It matters because `surplusOnlyShedByDevice` is what the executor's capacity-control-off
+    // and uncontrolled restore lanes read INSTEAD of the plan device: were it to
+    // survive, a posture decided before the device left would still be answering
+    // for it. The function's own comment used to claim this case was unhandled —
+    // hence the pin.
+    const h = makeHarness({ totalKw: 2 });
+    await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
+    expect(h.state.surplusOnlyShedByDevice[PUMP]).toBe(true);
+    expect(h.state.shedDecidedMs[PUMP]).toBeDefined();
+
+    // The device vanishes from the snapshot while held.
+    await h.builder.buildDevicePlanSnapshot([]);
+    expect(h.state.surplusOnlyShedByDevice[PUMP]).toBeUndefined();
+    expect(h.state.shedDecidedMs[PUMP]).toBeUndefined();
+  });
+
+  it('re-stamps a returning device rather than reviving the pruned posture', async () => {
+    // The other half: the prune must not cost the device its posture when it comes
+    // back. The shed edge re-fires because an absent device has already fallen out
+    // of `lastPlannedShedIds`, so the stamps are rebuilt from this cycle's decision
+    // rather than revived from the last one. A prune, not a downgrade.
+    const h = makeHarness({ totalKw: 2 });
+    await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
+    await h.builder.buildDevicePlanSnapshot([]);
+    expect(h.state.shedDecidedMs[PUMP]).toBeUndefined();
+
+    const returned = await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
+    expect(deviceOf(returned, PUMP)?.plannedState).toBe('shed');
+    expect(h.state.surplusOnlyShedByDevice[PUMP]).toBe(true);
+    expect(h.state.shedDecidedMs[PUMP]).toBeDefined();
+  });
+
   it('flags surplusAbsorbActive only while the pump is eligible, unheld, and observed ON', async () => {
     const h = makeHarness({ totalKw: -2 });
     // Held and off: not active.

@@ -4,7 +4,7 @@ import { clearShortfallSuppressionInvalidation } from './shortfallSuppression';
 import {
   resolvePendingOrInFlight,
   resolvePendingPowerW,
-  resolvePendingSoftLimitKw,
+  resolvePendingCapacityPaceKw,
 } from './stateHelpers';
 import {
   isFutureMs,
@@ -176,7 +176,7 @@ const clearPendingState = (snapshot: PowerSampleRebuildState): PowerSampleRebuil
   pendingResolve: undefined,
   pendingReject: undefined,
   pendingPowerW: undefined,
-  pendingSoftLimitKw: undefined,
+  pendingCapacityPaceKw: undefined,
   pendingReason: undefined,
   pendingDueMs: undefined,
   pendingHardCapBreach: undefined,
@@ -211,7 +211,7 @@ const stagePendingRebuildRequest = (params: {
   nowMs: number;
   minIntervalMs: number;
   currentPowerW?: number;
-  softLimitKw?: number;
+  capacityPaceKw?: number;
   triggerReason: PowerSampleRebuildTrigger;
   hardCapBreach?: HardCapBreach;
   isInShortfall?: boolean;
@@ -228,7 +228,7 @@ const stagePendingRebuildRequest = (params: {
     nowMs,
     minIntervalMs,
     currentPowerW,
-    softLimitKw,
+    capacityPaceKw,
     triggerReason,
     hardCapBreach,
     isInShortfall,
@@ -248,7 +248,7 @@ const stagePendingRebuildRequest = (params: {
   nextState = {
     ...nextState,
     pendingPowerW: typeof currentPowerW === 'number' ? currentPowerW : nextState.pendingPowerW,
-    pendingSoftLimitKw: typeof softLimitKw === 'number' ? softLimitKw : nextState.pendingSoftLimitKw,
+    pendingCapacityPaceKw: typeof capacityPaceKw === 'number' ? capacityPaceKw : nextState.pendingCapacityPaceKw,
     pendingReason: triggerReason,
     pendingDueMs: typeof previousDueMs === 'number' ? Math.min(previousDueMs, dueMs) : dueMs,
     pendingHardCapBreach: hardCapBreach,
@@ -327,7 +327,7 @@ export function executePendingPowerRebuild(params: {
   const isInShortfall = snapshot.pendingIsInShortfall;
   const onTightNoopHardCapBreach = snapshot.pendingOnTightNoopHardCapBreach;
   const nextPowerW = resolvePendingPowerW(snapshot);
-  const nextSoftLimitKw = resolvePendingSoftLimitKw(snapshot);
+  const nextCapacityPaceKw = resolvePendingCapacityPaceKw(snapshot);
   const inFlight = snapshot.pending;
   // Captured BEFORE the await. Anything that moves this while the rebuild runs is
   // a device the rebuild's plan input never saw.
@@ -338,7 +338,7 @@ export function executePendingPowerRebuild(params: {
     inFlight,
     lastMs: getNowMs(),
     lastRebuildPowerW: typeof nextPowerW === 'number' ? nextPowerW : snapshot.lastRebuildPowerW,
-    lastSoftLimitKw: typeof nextSoftLimitKw === 'number' ? nextSoftLimitKw : snapshot.lastSoftLimitKw,
+    lastCapacityPaceKw: typeof nextCapacityPaceKw === 'number' ? nextCapacityPaceKw : snapshot.lastCapacityPaceKw,
   });
   recordPowerSampleRebuildExecution(reason);
 
@@ -461,7 +461,7 @@ export const requestPowerSampleRebuild = (params: {
   nowMs: number;
   minIntervalMs: number;
   currentPowerW?: number;
-  softLimitKw?: number;
+  capacityPaceKw?: number;
   triggerReason: PowerSampleRebuildTrigger;
   hardCapBreach?: HardCapBreach;
   isInShortfall?: boolean;
@@ -476,7 +476,7 @@ export const requestPowerSampleRebuild = (params: {
     nowMs,
     minIntervalMs,
     currentPowerW,
-    softLimitKw,
+    capacityPaceKw,
     triggerReason,
     hardCapBreach,
     isInShortfall,
@@ -493,7 +493,7 @@ export const requestPowerSampleRebuild = (params: {
     nowMs,
     minIntervalMs,
     currentPowerW,
-    softLimitKw,
+    capacityPaceKw,
     triggerReason,
     hardCapBreach,
     isInShortfall,

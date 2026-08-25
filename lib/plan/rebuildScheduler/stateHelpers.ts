@@ -8,12 +8,12 @@ export const resolvePendingPowerW = (
     : snapshot.lastRebuildPowerW
 );
 
-export const resolvePendingSoftLimitKw = (
+export const resolvePendingCapacityPaceKw = (
   snapshot: PowerSampleRebuildState,
 ): number | undefined => (
-  typeof snapshot.pendingSoftLimitKw === 'number'
-    ? snapshot.pendingSoftLimitKw
-    : snapshot.lastSoftLimitKw
+  typeof snapshot.pendingCapacityPaceKw === 'number'
+    ? snapshot.pendingCapacityPaceKw
+    : snapshot.lastCapacityPaceKw
 );
 
 export const resolvePendingOrInFlight = (

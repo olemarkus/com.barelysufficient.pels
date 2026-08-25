@@ -20,6 +20,7 @@ import {
   HOME_LIMITS_SAVED_TOAST,
   HOME_LIMITS_VALUE_PLACEHOLDER,
 } from '../../../shared-domain/src/homeLimitsCopy.ts';
+import { usableCapacityKw } from '../../../shared-domain/src/capacityAllowance.ts';
 import {
   formatHomeLimitsKw,
   resolveHomeLimitsStatus,
@@ -141,7 +142,7 @@ const reactionKwLabel = (hardCapKw: number | null, marginKw: number | null): str
   if (hardCapKw === null || hardCapKw <= 0 || marginKw === null || marginKw < 0) {
     return HOME_LIMITS_VALUE_PLACEHOLDER;
   }
-  return formatHomeLimitsKw(Math.max(0, hardCapKw - marginKw));
+  return formatHomeLimitsKw(usableCapacityKw(hardCapKw, marginKw));
 };
 
 const setStaticFormHidden = (hidden: boolean): void => {

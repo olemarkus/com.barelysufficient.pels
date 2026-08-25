@@ -105,9 +105,8 @@ export function schedulePlanRebuildFromSignal(params: {
     skipWhileShortfallUnrecoverable = false,
     unactionable,
   } = params;
-  const softLimitKw = capacityPaceKw;
-  const fallbackHeadroomKw = typeof currentPowerW === 'number' ? softLimitKw - currentPowerW / 1000 : null;
-  const headroomKw = latchedTotalKw !== null ? softLimitKw - latchedTotalKw : fallbackHeadroomKw;
+  const fallbackHeadroomKw = typeof currentPowerW === 'number' ? capacityPaceKw - currentPowerW / 1000 : null;
+  const headroomKw = latchedTotalKw !== null ? capacityPaceKw - latchedTotalKw : fallbackHeadroomKw;
   const isInShortfall = capacityGuard.isInShortfall() ?? false;
   const currentState = resetShortfallSuppressionInvalidationWhenRecovered({
     state: getState(),
@@ -158,7 +157,7 @@ export function schedulePlanRebuildFromSignal(params: {
     currentPowerW,
     powerDeltaW,
     limitKw: capacitySettings.limitKw,
-    softLimitKw,
+    capacityPaceKw,
     headroomKw,
     isInShortfall,
     planConvergenceActive,

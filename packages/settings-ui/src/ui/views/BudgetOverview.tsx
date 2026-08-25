@@ -46,6 +46,7 @@ import type { BudgetAdjustDraft, BudgetAdjustStatus } from '../budgetAdjustContr
 import type { AllocationWarning } from '../dailyBudgetAllocationWarning.ts';
 import type { PriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';
 import { priceRateLabelToAmountUnit } from '../../../../shared-domain/src/price/priceUnitLabel.ts';
+import { usableCapacityKw } from '../../../../shared-domain/src/capacityAllowance.ts';
 import { WEATHER_INSIGHT_TITLE } from '../../../../shared-domain/src/weatherInsightCopy.ts';
 import {
   WeatherBudgetCard,
@@ -752,11 +753,11 @@ const BudgetAdjustView = ({
     status,
     busy,
   } = adjust;
-  const usableCapacityKw = Number.isFinite(adjust.hardCapKw) && Number.isFinite(adjust.safetyMarginKw)
-    ? Math.max(0, adjust.hardCapKw - adjust.safetyMarginKw)
+  const hourStartPaceKw = Number.isFinite(adjust.hardCapKw) && Number.isFinite(adjust.safetyMarginKw)
+    ? usableCapacityKw(adjust.hardCapKw, adjust.safetyMarginKw)
     : null;
-  const recommendedMaxKWh = usableCapacityKw !== null && usableCapacityKw > 0
-    ? Math.min(MAX_DAILY_BUDGET_KWH, usableCapacityKw * 24)
+  const recommendedMaxKWh = hourStartPaceKw !== null && hourStartPaceKw > 0
+    ? Math.min(MAX_DAILY_BUDGET_KWH, hourStartPaceKw * 24)
     : null;
   const reserveValueText = `${reserveLabelFor(draft.controlledWeight)} reserve`;
   const flexibilityValueText = `${flexibilityLabelFor(draft.priceFlexShare)} flexibility`;
@@ -1000,10 +1001,10 @@ const BudgetAdjustView = ({
                 budget-constrained value. Not phrased as a ceiling — the live
                 safe pace legitimately rises above it (even above the cap)
                 late in an under-used hour. One phrasing on both pages. */}
-            {usableCapacityKw !== null ? (
+            {hourStartPaceKw !== null ? (
               <div class="settings-result" role="group">
                 <span class="settings-result__label">With these settings, safe pace starts each hour at</span>
-                <strong class="settings-result__value">{formatKw(usableCapacityKw)}</strong>
+                <strong class="settings-result__value">{formatKw(hourStartPaceKw)}</strong>
                 <span class="settings-result__note">(hard cap minus safety margin; it adapts as the hour is used)</span>
               </div>
             ) : (

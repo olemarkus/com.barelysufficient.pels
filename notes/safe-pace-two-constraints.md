@@ -51,20 +51,23 @@ followable is keyed to something `grep` can still find after the next refactor.
 | `safetyMarginKw` | `marginKw` | capacity settings |
 | `hourlyAllowanceKWh` | `netBudgetKWh`, `hourBudgetKWh`, `budgetKWh` | `resolveUsableCapacityKw` |
 | `sustainableRateKw` | same value as the row above, read as a rate; the canonical identifier exists only as a local inside `computeDynamicSoftLimit` | `resolveUsableCapacityKw` |
-| `capacityPaceKw` | `allowedKw`, `capacitySoftLimit`; *(landed as `capacityPaceKw` at the consumers)* | `computeDynamicSoftLimit` |
+| `capacityPaceKw` | `allowedKw`, `capacitySoftLimit`; *(landed at the consumers, in the rebuild scheduler, and in every log field)* | `computeDynamicSoftLimit` |
 | `projectedExemptKw` | *(landed)* | `sumBudgetExemptProjectedUsageKw` |
 | `measuredExemptKw` | *(landed as a sum, not yet as a published scalar)* | `sumBudgetExemptMeasuredUsageKw` |
 | `budgetPaceKw` | *(landed)* | `computeDailyUsageSoftLimit` |
 | `budgetPaceImportKw` | `dailySoftLimitKw`, `dailySoftLimit` | `PlanBuilder.computeDailySoftLimit` |
 | `bindingPaceKw` | `softLimit` (context), `softLimitKw` (meta/contract) | `PlanBuilder` |
 
-Note what the middle column still shows in one glance: **`softLimit` names more than
-one quantity**, meaning `capacityPaceKw` wherever a consumer logs it as `softLimitKw`
-(`lib/diagnostics/periodicStatus.ts`, `lib/plan/rebuildScheduler/signalDriven.ts`) and
-`bindingPaceKw` on `PlanContext`. The producer-side half of that defect is gone —
-`capacityGuard.getSoftLimit()` no longer exists, so no site can hand back a different
-quantity — but the overloaded name survives at the consumers, and it is why a pointer
-to this note earns more on those sites than anywhere else.
+**The overload is closed.** `softLimit` used to name two quantities at once:
+`capacityPaceKw` wherever a consumer logged it as `softLimitKw`, and `bindingPaceKw` on
+`PlanContext` and `plan.meta`. The first set is renamed — `periodicStatus` now logs
+`capacityPaceKw`/`capacityHeadroomKw`, the rebuild scheduler threads `capacityPaceKw`
+(with `pendingCapacityPaceKw` / `lastCapacityPaceKw` in its state), and
+`headroom_for_device_checked` names the field it always carried. What is left of
+`softLimit` — `PlanContext.softLimit` and `plan.meta.softLimitKw` — means
+`bindingPaceKw` and nothing else, so the name is now merely *unconverged*, not
+ambiguous. Renaming it is a wire-and-fixture rename with no defect behind it; do it
+when something else is already touching those fields, not on its own.
 
 One qualification on the table above, since the admission-scoped slice of § "Proposed
 model" has now shipped: `bindingPaceKw` is described there as "the threshold the
@@ -199,10 +202,11 @@ correct, but it is the reason the internal names have to be unambiguous.
 
 The names above are the target. Today the code still violates two legs of the rule, and one of those only in part.
 
-**One name, four concepts — the substitution resolved, the overload not.** `softLimit`
-still means `bindingPaceKw` in `planContext` and `capacityPaceKw` almost everywhere
-else, so the name is overloaded. What is gone is the silent substitution: no site can
-return a *different quantity* because something was unwired.
+**One name, four concepts — resolved.** `softLimit` used to mean `bindingPaceKw` in
+`planContext` and `capacityPaceKw` almost everywhere else. Both halves are now closed:
+the silent substitution first (no site can return a *different quantity* because
+something was unwired), and then the overload (every site that carried
+`capacityPaceKw` now says so).
 
 `capacityGuard.getSoftLimit()` used to return `capacityPaceKw` with a provider wired
 and `hourlyAllowanceKWh` without one, and `lib/executor/shortfallExecutor.ts` fell back
@@ -224,47 +228,59 @@ modelling it, so the fail-closed caller contract this section used to specify wa
 needed. Keep it that way: do not reintroduce a pace accessor that can answer with a
 substitute.
 
-What remains is the rename. The consumers already take the parameter as
-`capacityPaceKw`; the log field is still `softLimitKw`, and `PlanContext.softLimit`
-still means `bindingPaceKw`.
+The consumers take the parameter as `capacityPaceKw` and now log it under that name
+too. `PlanContext.softLimit` and `plan.meta.softLimitKw` still spell `bindingPaceKw`
+the old way, but they are the only survivors and they agree with each other, so no
+reader can be handed the wrong quantity by trusting the name.
 
-**One concept, five implementations.** `hardCapKw - safetyMarginKw` is recomputed
-inline at four sites besides the nominal owner (`resolveUsableCapacityKw` in
-`lib/power/capacityModel.ts`) — down from six, since `lib/power/capacityGuard.ts` and
-`lib/plan/rebuildScheduler/signalDriven.ts` both lost their copy when they started
-receiving a producer-resolved `capacityPaceKw`:
+**One concept, one implementation — resolved.** `hardCapKw - safetyMarginKw` was
+recomputed inline at up to six sites besides the nominal owner. The subtraction now
+exists exactly once, in `packages/shared-domain/src/capacityAllowance.ts`
+(`usableCapacityKw`); `resolveUsableCapacityKw` (`lib/power/capacityModel.ts`) is still
+the runtime owner and delegates to it, and `lib/power/sampleIngest.ts` asks the owner
+instead of recomputing `hourBudgetKWh`.
 
-| Site | What it feeds |
+An earlier draft of this section said the settings UI should simply receive the
+resolved value through the contract, "because only one side computes". That is wrong for
+**all three** settings-UI sites, and it is the reason the arithmetic sits in
+shared-domain rather than in `lib/power`. Each one renders the pace from values the
+runtime owner has never seen:
+
+| Site | Reads |
 |---|---|
-| `lib/power/sampleIngest.ts` | `hourBudgetKWh` |
-| `packages/settings-ui/src/ui/capacity.ts` | "safe pace starts each hour at" |
-| `packages/settings-ui/src/ui/homeLimits.ts` | per-home limits row |
-| `packages/settings-ui/src/ui/views/BudgetOverview.tsx` | daily-budget ceiling |
+| `reactionKwLabel` (`homeLimits.ts`) | `editor.hardCapValue` — unsaved meter-area form text, parsed mid-keystroke |
+| `BudgetAdjustView` (`views/BudgetOverview.tsx`) | `adjust.hardCapKw`, built at `budgetRedesign.ts` from `Number.parseFloat(settingsCapacityLimitInput?.value)` — the live DOM input, which is why the `Number.isFinite` guard is there |
+| `updateCapacityReactionHint` (`capacity.ts`) | the same Main capacity form's `limit`/`margin` |
 
-The owner is the capacity-settings owner, per the table above: it resolves the
-value once and hands it out, and the settings UI receives it through the contract
-as data. That is why the three settings-UI copies are duplicates to delete rather
-than a boundary problem to work around; nothing needs to live in
-`packages/shared-domain` for both sides to read, because only one side computes.
+No contract scalar can answer any of them, because the number exists nowhere but in the
+input box. Everything derived from *persisted* settings still goes through the runtime
+owner — that half of the rule stands — but "the UI never computes" was too strong, and a
+rule stated too strongly is how a duplicate gets re-added later with a good excuse.
 
-`BudgetOverview.tsx` is the sharpest of the three: it already spells its operands
-`hardCapKw` and `safetyMarginKw` — the canonical names from the table above — and
-still recomputes them in the browser. A name landing without its ownership landing
-is exactly the failure this section is about.
+That is not hypothetical: the first pass at this converted `homeLimits.ts` and
+`BudgetOverview.tsx`, declared the subtraction to exist "exactly once", and left
+`capacity.ts` inline — a site whose sweep the grep missed because it spells its operands
+`limit`/`margin`. Three surfaces render one sentence; all three now go through the
+helper.
+
+`BudgetOverview.tsx`'s local was renamed `hourStartPaceKw` to match the sentence it
+renders ("safe pace starts each hour at") rather than restating the helper's name.
 
 **One concept, two names — resolved.** `resolveCapacitySoftLimitKw` was an alias of
 `resolveUsableCapacityKw` that returned `hourlyAllowanceKWh` while its name promised
 `capacityPaceKw`. It is deleted; `resolveUsableCapacityKw` is the only name for the
-quantity. What it enabled is now only a naming mismatch: `lib/diagnostics/periodicStatus.ts`
-files `capacityPaceKw` under `softLimitKw`, so the field name is stale but the quantity
-is no longer a substituted allowance — see the leg above.
+quantity, and the mismatch it enabled — `lib/diagnostics/periodicStatus.ts` filing
+`capacityPaceKw` under `softLimitKw` — is renamed away with the overload leg above.
 
 **No name at all — resolved.** `budgetPaceKw` used to be an unnamed intermediate
 inside `computeDailySoftLimit`, with only the rebased `budgetPaceImportKw` reaching
 `PlanContext` and `plan.meta` as `dailySoftLimitKw`, so nothing downstream could
 obtain the pace that applies to the non-exempt house. It is now returned by name
 alongside `projectedExemptKw` and published on both `PlanContext` and `plan.meta`.
-Two legs of the rule are done; the other two below are not.
+
+All four legs of the naming rule are now closed. What the sections below still describe
+as open is a different thing: the *model* — one rebased `min()` where two predicates
+belong — not the names it is written in.
 
 ## Two constraints with different subjects
 
@@ -689,24 +705,50 @@ A measured slab therefore cannot honestly encode the current control predicate.
 Keep the first slice textual until the projected/measured delta has an explicit
 visual treatment.
 
-## What remains: materialise `P_nonExempt`
+## What remains: materialise `P_nonExempt`, in `lib/power`
 
 `P_nonExempt = P_import - exemptKw`, unclamped, is settled (see § "Canonical
-names"). The open work is that the power side never computes it as a value, only
-as an implicit term inside the rebased threshold. Until it exists as a named
-quantity on `PlanContext` and `plan.meta`:
+names"). The open work is that nothing computes it as a value — only as an
+implicit term inside the rebased threshold. Until it exists as a named quantity:
 
-- The hero cannot show the user what is being measured against their budget, which
-  means the textual composition can explain the "Safe pace now" jump but cannot
-  render the current non-exempt load as a measured quantity.
+- No surface can show the user what is being measured against their budget, so
+  the textual composition can explain the "Safe pace now" jump but cannot render
+  the current non-exempt load.
 - The reason copy and the starvation cause attribution keep inferring budget
   pressure from `softLimitSource` instead of reading `overBudgetPace`.
 - The negative case (solar more than covering the non-exempt load) is invisible
   everywhere, despite being a good thing to tell someone.
 
+**It belongs to `lib/power`, not to the planner** — this was tried the other way
+first and the attempt is what settled it. A draft published
+`plan.meta.nonExemptMeasuredKw`, resolved in `planBuilderMeta` as
+`power.measuredTotalKw === null ? null : measuredTotalKw - measuredExemptKw`.
+That `=== null` is the planner deciding what a doubtful meter reading means,
+which is exactly what this file's own § "Canonical names" and the `PlanContext`
+doc forbid: *`lib/power` owns the meter, so it decides what a doubtful reading
+means and answers in kW.* The nullable was the symptom; the layering was the
+defect. Two further facts point the same way:
+
+- Both ingredients already live in `lib/power`. `sampleIngest` computes the
+  exempt sum through its injected `sumBudgetExemptUsage` and records
+  `exemptPowerW` into the tracker's `exemptBuckets`. The planner subtracting a
+  device-list sum from a meter reading is a re-derivation.
+- The settings UI already has a power-owned channel, `SettingsUiPowerPayload`
+  (read via `getPowerReadModel()`, the same one the capacity scalars use). A
+  meter-derived figure belongs there, next to the freshness a consumer needs to
+  interpret it — not on the plan snapshot, where its absence would encode
+  freshness a second time and implicitly.
+
+That last point matters more than it looks. `measured` is true only inside the
+60 s `fresh` band (`POWER_SAMPLE_STALE_THRESHOLD_MS`), and the measurement gate
+is a once-ever latch, not a freshness gate — so plans keep building right through
+`stale_hold`. Under `power_source = flow`, where a gap between events is ordinary
+cadence rather than a fault, a plan-side nullable would be absent most of the
+time while `totalKw` showed a held value beside it.
+
 It needs to land twice, with different exempt sums: the daily-pace add-back uses
 the projected `sumBudgetExemptProjectedUsageKw`, while the measured-only
-`sumBudgetExemptMeasuredUsageKw` now feeds BOTH the restore-admission budget axis
+`sumBudgetExemptMeasuredUsageKw` feeds the restore-admission budget axis
 (`PlanContext.budgetHeadroomKw` — a control input, so a non-exempt restore cannot
 spend an off exempt device's projection) and, eventually, the hero's display
 value (§ "Overview hero").

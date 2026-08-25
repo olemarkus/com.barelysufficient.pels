@@ -702,82 +702,41 @@ What remains open is below.*
 
 ### P1 — targeted refactors (deferred)
 
-*Concrete, bounded changes to specific named surfaces (not structural re-splits — those stay P2).
-The flow-reported / pendingBinaryCommands / stepped-restore-wrapper / stepped-swap-completion /
-deviceOverview entries shipped in the 2026-06-03 train; the items below (the first a multi-slice
-program) remain deferred.*
+*Concrete, bounded changes to specific named surfaces (not structural re-splits — those stay P2).*
 
-- [ ] **One concept, one name, one owner for the pace/limit family.** `softLimit` currently names
-      three different quantities depending on call site: `bindingPaceKw` on `PlanContext`,
-      `capacityPaceKw` at every consumer that logs it as `softLimitKw`, and
-      `budgetPaceImportKw` as `dailySoftLimitKw`. The wiring-dependent half is closed — see (c)
-      — so a wiring regression can no longer degrade to a quieter limit; what remains is the
-      rename onto one name per quantity. Adopt the
-      canonical names in `notes/safe-pace-two-constraints.md` § "Canonical names"
-      (`hardCapKw`, `safetyMarginKw`, `hourlyAllowanceKWh`, `sustainableRateKw`, `capacityPaceKw`,
-      `budgetPaceKw`, `budgetPaceImportKw`, `bindingPaceKw`) and give each exactly one producer.
-      `hourlyAllowanceKWh` and `sustainableRateKw` are one owner with two named readings, since
-      `computeDynamicSoftLimit` subtracts it as energy and line 44 multiplies it as a rate. "One owner"
-      means one per scope: the capacity rows are per home (each bundle wires its own provider,
-      `setup/homeRuntime/createHomeCapacityBundle.ts:406`), the budget rows are main-only
-      (sub-homes get `getDailyBudgetSnapshot: () => null`, `createHomeCapacityBundle.ts:291`), so
-      a sub-home has no `budgetPaceKw` and its `softLimitSource` can never be `'daily'`. Concrete work:
-      (a) collapse the five independent `hardCapKw - safetyMarginKw` computations onto one
-      owner — the nominal owner `resolveUsableCapacityKw` (`lib/power/capacityModel.ts`) plus
-      four recomputations in `lib/power/sampleIngest.ts`,
-      `packages/settings-ui/src/ui/capacity.ts`, `packages/settings-ui/src/ui/homeLimits.ts`,
-      and `packages/settings-ui/src/ui/views/BudgetOverview.tsx` (the `lib/power/capacityGuard.ts`
-      and `lib/plan/rebuildScheduler/signalDriven.ts` copies went with the guard's soft-limit
-      fallback; inventory kept in
-      `notes/safe-pace-two-constraints.md` § "One concept, five implementations"). It is a pure function of two
-      settings values with no runtime state, so the owner is the capacity-settings owner, and it
-      should be handed out already resolved next to the existing `getHardCapKw` accessor
-      (`setup/homeRuntime/homeScope.ts`). The settings UI then receives it through the
-      contract as data rather than recomputing it, which also sidesteps that it cannot import
-      `lib/**`;
-      (b) — DONE: `resolveCapacitySoftLimitKw` is deleted and its one caller
-      (`lib/diagnostics/periodicStatus.ts`) reads `resolveUsableCapacityKw` directly. The naming
-      mismatch it documented survives at that call site only as a stale field name: it files
-      `capacityPaceKw` under `softLimitKw`. That is the rename in the preamble, not a missing alias;
-      (c) — DONE (2026-08-17, `refactor/capacity-guard-strip`): `capacityGuard.getSoftLimit()`,
-      its provider, and the guard's `limitKw`/`softMarginKw` mirror are deleted. Every consumer
-      is handed a producer-resolved `capacityPaceKw` from `computeDynamicSoftLimit`, and
-      `lib/executor/shortfallExecutor.ts` takes a non-optional guard, so its `hardCapKw`
-      fallback is gone too. The unresolved state was removed rather than modelled, so no
-      fail-closed caller contract was needed;
-      (d) give `budgetPaceKw` a real name and producer instead of leaving it an unnamed
-      intermediate inside `computeDailySoftLimit`, so downstream can obtain the pace that applies
-      to the non-exempt house;
-      (e) materialise `P_nonExempt = P_import - exemptKw` on `PlanContext` and `plan.meta`,
-      **unclamped**. The power side only ever has it as an implicit term inside the rebased
-      threshold, so nothing downstream can show the user what is actually measured against their
-      budget. It equals `nonExemptGross - solar` and goes negative when solar more than covers
-      the non-exempt load, which is the exact analogue of `P_import` going negative on export
-      (`resolveLastTotalPowerKw` hands it out signed and unfloored). Do not add a floor: it would break the
-      deficit identity in the item below (`capacityPaceKw` 20, `budgetPaceKw` 5, `exemptKw` 7,
-      `P_import` 2 gives 10 kW headroom today and 5 kW clamped, delaying restores). The kWh axis
-      keeps its floor for the separate reason at `lib/plan/planHourContext.ts:21-22`. Ship it as
-      **two distinctly named quantities with distinct contract fields**, not one field computed
-      two ways: `P_nonExemptControl = P_import - projectedExemptKw` and
-      `P_nonExemptMeasured = P_import - measuredExemptKw`. `sumBudgetExemptProjectedUsageKw` returns
-      the projected value (`getHighestKnownPowerKw` for observed-off devices), which is right for
-      control and wrong for the hero, whose segments are defined as current load
-      (`notes/overview-hero-spec.md:158-164`); the two can differ by several kW, so a single name
-      would leave a `plan.meta` consumer unable to tell whether hypothetical off-device load is
-      included. Do this before the
-      two-predicate item below, which is unwriteable while one identifier means four things.
-      Touches log event fields and test fixtures, so
-      expect churn in `pels-log-review` expectations. Source: safe-pace naming audit (2026-07-26).
+- [ ] **`P_nonExempt` has no owner, so no surface can show what is measured against the budget.**
+      `P_import - exemptKw` exists only as an implicit term inside the rebased threshold
+      (`planBuilder.ts` `computeDailySoftLimit`), so the hero cannot render the current
+      non-exempt load, and the negative case — solar more than covering it — is invisible
+      everywhere. **Produce it in `lib/power`, not in the planner.** An attempt to publish it as
+      `plan.meta.nonExemptMeasuredKw` was reverted: resolving it in `planBuilderMeta` meant
+      writing `power.measuredTotalKw === null ? null : ...`, which is the planner deciding what a
+      doubtful meter reading means — the thing `PlanContext`'s own doc forbids (*"`lib/power`
+      owns the meter, so it decides what a doubtful reading means and answers in kW"*). Both
+      ingredients are already there: `lib/power/sampleIngest.ts` computes the exempt sum via its
+      injected `sumBudgetExemptUsage` and records `exemptPowerW` into the tracker's
+      `exemptBuckets`. Ship it on `SettingsUiPowerPayload` (`packages/contracts/src/settingsUiApi.ts`,
+      read via `getPowerReadModel()`), where a consumer also gets the freshness it needs to
+      interpret the value — putting it on the plan snapshot would encode freshness a second time,
+      as absence, on a surface whose `powerFreshnessState` already says it outright. That is not
+      a corner case: `measured` is true only inside the 60 s `fresh` band, the measurement gate is
+      a once-ever latch rather than a freshness gate, and under `power_source = flow` a gap
+      between events is ordinary cadence — so a plan-side nullable would be absent most of the
+      time on those homes. Unclamped and signed, per the deficit identity in the item below. Done
+      when a `lib/power` producer hands out the non-exempt draw resolved, the settings UI reads it
+      off the power payload, and no plan type carries it. Source: naming-program follow-up,
+      2026-08-25; design in `notes/safe-pace-two-constraints.md` § "What remains".
 
 - [ ] **Express the soft limit as two predicates instead of one rebased `min()`.** Names below
-      are the canonical ones from the naming item above; land that first. `capacityPaceKw` and
+      are the canonical ones from `notes/safe-pace-two-constraints.md` § "Canonical names"; the
+      naming program this used to depend on has landed. `capacityPaceKw` and
       `budgetPaceKw` measure different loads: capacity counts all of `P_import`, the budget
       excludes budget-exempt devices. `planBuilder.ts:309-312` collapses them by rebasing the
       budget pace onto the import axis (`+ exemptKw`) and taking `min()`. Replace with
       `overCapacityPace = P_import > capacityPaceKw`,
       `overBudgetPace = P_nonExempt > budgetPaceKw`, and
       `deficitKw = max(P_import - capacityPaceKw, P_nonExempt - budgetPaceKw)`, with
-      `P_nonExempt` unclamped. That deficit is algebraically identical to today's, so shedding
+      `P_nonExempt` unclamped — which the item above must land first, in `lib/power`. That deficit is algebraically identical to today's, so shedding
       sizing and shed/restore timing do not change. **What it buys is provenance, not
       decoupling:** `P_nonExempt` contains `exemptKw` and the forms are identical, so control
       does not become exempt-independent; the planner just gains the ability to say which
@@ -793,19 +752,14 @@ program) remain deferred.*
       `lib/plan/restore/index.ts:55`, which gates startup stabilization on `=== 'capacity'`, so
       introducing `'both'` changes restore behaviour unless every consumer is updated or a
       separate `capacityActive` predicate is kept for the runtime gates; (iii) no floor inside
-      the deficit, per the naming item above. **Scope
+      the deficit, per the `P_nonExempt` item above. **Scope
       limit:** it does not make the displayed pace exempt-independent. Any single tick on a
       `P_import` axis is `min(capacityPaceKw, budgetPaceKw + exemptKw)` by construction, so
       `softLimitSource` must stay a common-axis argmin (what `resolveSoftLimitSource` computes
       today) and stays coupled to exempt draw; a raw argmin over the two paces is meaningless
       because they are on different
-      axes. Showing that coupling is the P2 hero carve-out's job, not this refactor's. Two
-      follow-ons: `'both'` becomes producible (already defined in
-      `packages/contracts/src/settingsUiApi.ts:156`, in `SAFE_PACE_TOOLTIP_BY_SOURCE`, and in
-      `notes/ui-terminology.md`, but `resolveSoftLimitSource` at `lib/plan/planBuilder.ts:522-526`
-      can only return `'capacity'` or `'daily'`, so that copy is unreachable today), meaning the
-      two common-axis thresholds agree within `SOFT_LIMIT_EPSILON`, which needs the existing
-      `'both'` tooltip reworded out of its current breach reading. Consumers that want "is the
+      axes. Showing that coupling is the P2 hero carve-out's job, not this refactor's. One
+      follow-on: consumers that want "is the
       non-exempt house over budget" must read `overBudgetPace` rather than infer it from the source
       string, as the reason copy and starvation attribution do today. Second follow-on: exempt
       shed candidacy
@@ -822,14 +776,20 @@ program) remain deferred.*
       from `softLimitSource` plus shed state and headroom sign. Preserve the two `headroom = -1`
       overrides at `lib/plan/planContext.ts:79-92` (stale fail-closed, exhausted-hour), which the
       deficit identity does not cover. Does **not** subsume the P3 hysteresis item on
-      `resolveSoftLimitSource` further down: a `'both'` band would keep the resolver stateless,
-      so a pace difference oscillating across the epsilon boundary still alternates
-      `capacity`/`both`/`daily` between rebuilds and every source-dependent surface still
-      flickers. That item stays open and needs retained state or enter/exit thresholds. Note the
-      `'both'` member itself was deleted on 2026-08-15 (no producer at any layer), so proposing
-      it here now costs re-adding user-facing copy — see that item for the full note. Fix the
-      `?? 0` P1 above first. Source: safe-pace model review (2026-07-26); design in
-      `notes/safe-pace-two-constraints.md`.
+      `resolveSoftLimitSource` further down: that item stays open and needs retained state or
+      enter/exit thresholds, which this refactor does not add.
+      **`softLimitSource` stays a two-member union.** An earlier draft of this entry proposed
+      making `'both'` producible. Do not: the member was deleted on 2026-08-15 for having no
+      producer at any layer, and `notes/ui-terminology.md` now rules that there are "exactly two,
+      never a third" and says *do not reintroduce it* — `resolveSoftLimitSource` answers
+      `'capacity'` when the paces coincide within `SOFT_LIMIT_EPSILON`, so "they meet here" is not
+      a state the app can be in. It is gone from the wire type and from
+      `SAFE_PACE_TOOLTIP_BY_SOURCE` (pinned to exactly `['capacity','daily']` by
+      `test/unit/planHeroTooltips.test.ts`). Reviving it means overturning that ruling and
+      re-adding user-facing copy — a separate decision, not part of this refactor. (Unrelated to
+      `limitReason` in the home-limits payload, which does have a real four-member union including
+      `both` — hence the converge-with note above.) Source: safe-pace model review (2026-07-26);
+      design in `notes/safe-pace-two-constraints.md`.
 
 - [ ] **COMMITTED v1.1 (dump-load train, own small PR): manual-on grace for "Run on solar surplus" devices.**
       Reconcile-after-drift corrects an externally-turned-ON surplus-held dump load (the v1 helper copy
@@ -856,18 +816,6 @@ program) remain deferred.*
       cleared on observed-on / re-engage. *Persona:* owner who opted a pool pump into surplus-only then
       changed their mind. *Hypothesis:* the instant-on after toggle-off reads as PELS ignoring the toggle.
       P2. Source: pels-runtime-reality on PR-7, 2026-07-02.
-
-- [ ] **`surplusOnlyShedByDevice` / `shedDecidedMs` stamps for a surplus-held device that leaves the
-      snapshot are not pruned.** `releaseAbandonedSurplusPosture` only clears a device still present in
-      `admittedDevices` (posture removed); a device that vanishes from the snapshot while held (removed
-      from Homey, or the transport drops it) keeps its stamps until it returns. This matches the
-      pre-existing `shedDecidedMs` cleanup profile (no lockstep prune on snapshot departure), and is
-      bounded (~a handful of bytes/device, re-cleared on return). Fix: add both stamps to the key set
-      `cleanupMissingHeadroomDevices` already sweeps in `lib/plan/planHeadroomState.ts:49-53`, alongside
-      `surplusEligibilityByDevice`. Done when a device that leaves the snapshot while surplus-held comes
-      back with no stale posture stamps. *Persona:* maintainer. *Hypothesis:* the stamps are harmless
-      while they leak, but a device that returns after a long absence is judged against a posture decided
-      before it left. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
 - [ ] **A stepped command settles inside the plan-input producer, not on the executor's settle
       path.** The store is now executor-owned (`lib/executor/steppedCommandStore.ts`, injected from

@@ -896,7 +896,7 @@ describe('MyApp initialization', () => {
       minIntervalMs: 1000,
       maxIntervalMs: 10_000,
       currentPowerW: 9500,
-      softLimitKw: 9,
+      capacityPaceKw: 9,
       headroomKw: -0.5,
     });
 
@@ -1089,7 +1089,7 @@ describe('MyApp initialization', () => {
       ...(app as any).powerSampleRebuildState,
       lastMs: nowMs,
       lastRebuildPowerW: 5000,
-      lastSoftLimitKw: 9.5,
+      lastCapacityPaceKw: 9.5,
     };
     (app as any).planEngine.state.lastRestoreMs = nowMs - 1_000;
     (app as any).planEngine.state.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
@@ -1139,7 +1139,7 @@ describe('MyApp initialization', () => {
       ...(app as any).powerSampleRebuildState,
       lastMs: nowMs,
       lastRebuildPowerW: 5000,
-      lastSoftLimitKw: 9.5,
+      lastCapacityPaceKw: 9.5,
     };
     (app as any).planEngine.state.wasOvershoot = true;
 
@@ -1173,7 +1173,7 @@ describe('MyApp initialization', () => {
       ...(app as any).powerSampleRebuildState,
       lastMs: nowMs,
       lastRebuildPowerW: 5000,
-      lastSoftLimitKw: 9.5,
+      lastCapacityPaceKw: 9.5,
     };
     (app as any).planEngine.state.wasOvershoot = true;
 
