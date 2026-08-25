@@ -50,6 +50,7 @@ import {
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
   PRICE_SCHEME,
+  PV_FORECAST_SOURCE,
   WEATHER_ADVISOR_SETTINGS,
 } from './settingsKeys';
 import { incPerfCounters } from './perfCounters';
@@ -93,6 +94,9 @@ export type SettingsHandlerDeps = {
   restartHomeyEnergyPoll?: () => void;
   /** Synchronous meter-event edge: invalidate any old-selection poll now. */
   onHomeyEnergyMeterObserved?: () => void;
+  /** A `pv_forecast_source` write was observed — kick the Homey solar-forecast
+   *  probe so a flip to `homey_energy`/`auto` does not wait out the 3 h tick. */
+  onPvForecastSourceObserved?: () => void;
   /** Schedule bounded Main authority repair after an explicit-meter event. */
   onMainMeterSelectionObserved?: () => void;
   /**
@@ -484,6 +488,13 @@ function buildPriceSettingsHandlers(
       }
     },
     [PRICE_SCHEME]: async () => {
+      await refreshPriceDerivedState(deps);
+    },
+    [PV_FORECAST_SOURCE]: async () => {
+      // Recompute first so the flip takes effect with whatever each source
+      // already holds; the kicked probe's own completion hook recomputes again
+      // when fresh Homey points land.
+      deps.onPvForecastSourceObserved?.();
       await refreshPriceDerivedState(deps);
     },
     [FLOW_PRICES_TODAY]: async () => {

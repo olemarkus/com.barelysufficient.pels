@@ -5,6 +5,8 @@ import type { WeatherCollector } from '../../lib/weather/weatherCollector';
 import type { BackgroundTasksController } from '../backgroundTasksController';
 import type { PvForecastController } from './createPvForecastService';
 import type { HomeySolarForecastController } from '../../lib/solar/homeySolarForecastController';
+import { createPvForecastSourceSelector } from './createPvForecastSourceSelector';
+import { getLogger } from '../../lib/logging/logger';
 import { createDeferredObjectiveLifecycleEmitter } from './deferredObjectiveLifecycle';
 import { startBackgroundCollectors } from './startBackgroundCollectors';
 import { wireBudgetPrice } from './wireBudgetPrice';
@@ -21,6 +23,7 @@ export type PostStartupBackgroundDeps = {
   getPvForecast: () => PvForecastController | undefined;
   setPvForecast: (pvForecast: PvForecastController | undefined) => void;
   setHomeySolarForecast: (controller: HomeySolarForecastController | undefined) => void;
+  getHomeySolarForecast: () => HomeySolarForecastController | undefined;
   runNativeWiringDetectionBestEffort: () => void;
 };
 
@@ -36,7 +39,15 @@ export const startPostStartupBackgroundTasks = (
   deps.setWeatherCollector(collectors.weatherCollector);
   deps.setPvForecast(collectors.pvForecast);
   deps.setHomeySolarForecast(collectors.homeySolarForecast);
-  wireBudgetPrice(ctx, (ms) => deps.getPvForecast()?.service.forecast([ms])?.[0]?.generationKwh);
+  // ONE selector closure feeds both forecast consumers, so the budget price and
+  // the curtailment potential always read the same selected source.
+  const getSelectedPvForecast = createPvForecastSourceSelector({
+    getLearned: deps.getPvForecast,
+    getHomey: deps.getHomeySolarForecast,
+    getNowMs: () => Date.now(),
+    logger: getLogger('solar'),
+  });
+  wireBudgetPrice(ctx, (ms) => getSelectedPvForecast()?.forecast([ms])[0]?.generationKwh);
   const recomputeCombinedPrices = (): void => {
     try {
       ctx.priceCoordinator.updateCombinedPrices();
@@ -54,7 +65,7 @@ export const startPostStartupBackgroundTasks = (
   // the forecast the planning price reads, so the hook keeps the persisted
   // planning price current.
   collectors.homeySolarForecast.setOnRefreshed(recomputeCombinedPrices);
-  const curtailment = wireCurtailmentSurplus(ctx, deps.getPvForecast);
+  const curtailment = wireCurtailmentSurplus(ctx, getSelectedPvForecast);
   // AppContext exposes these optional late-bound runtime seams by mutation.
   // eslint-disable-next-line functional/immutable-data
   ctx.recordCurtailmentSample = (netW, generationW, nowMs) => (
