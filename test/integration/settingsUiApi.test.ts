@@ -13,7 +13,6 @@ import {
   refreshSettingsUiDevices,
   refreshSettingsUiGridTariff,
   refreshSettingsUiPrices,
-  recomputeSettingsUiDailyBudget,
   resetSettingsUiPowerStats,
 } from '../../setup/settingsUiApi';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../packages/contracts/src/settingsUiApi';
@@ -97,7 +96,6 @@ describe('settingsUiApi', () => {
       persistPowerTrackerState();
     });
     const getDailyBudgetUiPayload = vi.fn().mockReturnValue({ days: {}, todayKey: '2026-03-03' });
-    const recomputeDailyBudgetToday = vi.fn().mockReturnValue({ days: {}, todayKey: '2026-03-03' });
     const previewDailyBudgetModel = vi.fn().mockImplementation((settings: Record<string, unknown>) => ({
       active: { days: {}, todayKey: '2026-03-03' },
       candidate: { days: {}, todayKey: '2026-03-03', tomorrowKey: '2026-03-04' },
@@ -193,7 +191,6 @@ describe('settingsUiApi', () => {
       },
       replacePowerTrackerForUi,
       getDailyBudgetUiPayload,
-      recomputeDailyBudgetToday,
       previewDailyBudgetModel,
       applyDailyBudgetModel,
       getDeviceDiagnosticsUiPayload,
@@ -233,7 +230,6 @@ describe('settingsUiApi', () => {
       updateDailyBudgetAndRecordCap,
       persistPowerTrackerState,
       getDailyBudgetUiPayload,
-      recomputeDailyBudgetToday,
       previewDailyBudgetModel,
       applyDailyBudgetModel,
       getDeviceDiagnosticsUiPayload,
@@ -380,19 +376,6 @@ describe('settingsUiApi', () => {
     expect(homey.applyDailyBudgetModel).toHaveBeenCalledWith(body);
     expect(preview?.candidate?.tomorrowKey).toBe('2026-03-04');
     expect(applied?.todayKey).toBe('2026-03-03');
-  });
-
-  it('rethrows daily budget recompute failures so the api wrapper can log them', () => {
-    // Logging now lives in `api.ts`'s `withApiLogging` wrapper so every UI API
-    // surfaces a single, consistent error log. The helper itself stays
-    // throw-through.
-    const homey = createHomey();
-    const error = new Error('recompute failed');
-    homey.recomputeDailyBudgetToday.mockImplementation(() => {
-      throw error;
-    });
-
-    expect(() => recomputeSettingsUiDailyBudget({ homey: homey as never })).toThrow(error);
   });
 
   it('builds dedicated read payloads for the remaining volatile UI models', () => {

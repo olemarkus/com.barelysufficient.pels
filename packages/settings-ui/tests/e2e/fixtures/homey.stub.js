@@ -1760,7 +1760,6 @@
     }),
     'POST /ui_refresh_prices': () => buildPricesPayload(),
     'POST /ui_refresh_grid_tariff': () => buildPricesPayload(),
-    'POST /ui_recompute_daily_budget': () => resolveDailyBudgetPayload(),
     'POST /ui_reset_power_stats': () => ({
       power: buildPowerPayload(),
       dailyBudget: resolveDailyBudgetPayload(),

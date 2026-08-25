@@ -218,7 +218,6 @@ describe('audit scenarios', () => {
       ['POST', '/ui_refresh_devices'],
       ['POST', '/ui_refresh_prices'],
       ['POST', '/ui_refresh_grid_tariff'],
-      ['POST', '/ui_recompute_daily_budget'],
       ['POST', '/ui_reset_power_stats'],
       ['POST', '/settings_ui_log'],
       ['POST', '/log_homey_device'],
