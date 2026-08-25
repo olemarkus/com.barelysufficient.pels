@@ -148,24 +148,39 @@ export type CurtailmentPersistedHoldState = {
 };
 
 /**
- * One read of the persisted slice, discriminating a FAILED read from a genuinely
- * absent one — the distinction `null` alone cannot carry.
- *
- * It is load-bearing rather than pedantic: treating an unavailable read as "no
- * state" makes the next transition write a fresh `holdLevel: 0` over a retained
- * refute ladder, which is a destructive reset of persisted state on a transient
- * settings failure (root `AGENTS.md`; `notes/persisted-settings-state.md`).
+ * One read of the persisted slice. Three specific arms because the caller acts
+ * on each differently:
+ * - `loaded` — a validated blob was read; adopt it.
+ * - `absent` — the store answered and there is GENUINELY nothing usable: an
+ *   unset key the key list agrees is unset, or a malformed blob the adapter
+ *   condemned (a bad blob must never poison the estimator). A safe fresh
+ *   start; absence permits a write.
+ * - `unreadable` — the read THREW or was contradicted by the key list, so what
+ *   is on disk is UNKNOWN rather than absent. A write is forbidden: treating
+ *   an unreadable read as "no state" makes the next transition write a fresh
+ *   `holdLevel: 0` over a retained refute ladder, which is a destructive reset
+ *   of persisted state on a transient settings failure (root `AGENTS.md`;
+ *   `notes/persisted-settings-state.md`).
  */
+export type CurtailmentHoldReadResolved =
+  | { readonly state: 'loaded'; readonly value: CurtailmentPersistedHoldState }
+  | { readonly state: 'absent' };
+
+/** `CurtailmentHoldReadResolved` is named (rather than derived via
+ *  `Exclude<...>`) so the adapter's normalization can return exactly the
+ *  answered subset: a discriminant rename can then never silently widen that
+ *  signature back to the full union. */
 export type CurtailmentHoldRead =
-  | { readonly state: 'resolved'; readonly value: CurtailmentPersistedHoldState | null }
-  | { readonly state: 'unavailable' };
+  | CurtailmentHoldReadResolved
+  | { readonly state: 'unreadable' };
 
 /** Store port for the persisted hold slice. Declared here in the domain; the
  *  setup adapter (`setup/curtailmentHoldStateAdapter.ts`) owns the Homey
  *  settings read/write AND the junk normalization — `read()` hands back a
- *  resolved state, a resolved `null` (fresh start), or `unavailable`, never a
- *  partial/malformed value. `write()` reports whether the value actually
- *  landed, so a swallowed failure can be retried rather than assumed. */
+ *  `loaded` state, `absent` (fresh start), or `unreadable` (transient store
+ *  failure), never a partial/malformed value. `write()` reports whether the
+ *  value actually landed, so a swallowed failure can be retried rather than
+ *  assumed. */
 export type CurtailmentHoldStore = {
   read: () => CurtailmentHoldRead;
   write: (state: CurtailmentPersistedHoldState) => boolean;
@@ -216,76 +231,132 @@ export class CurtailmentSurplusEstimator {
   private lastTermState: CurtailmentTermState = 'suppressed';
 
   // The boot read failed, so what is on disk is UNKNOWN rather than absent.
-  // While true, nothing may be written: a write would replace a retained ladder
-  // with this instance's blank one. Cleared by the first read that resolves, or
-  // abandoned once this instance has ladder evidence of its own.
+  // While true, nothing may be written: the level is provably 0 here (nothing
+  // was adopted and no refute has happened — a refute clears this flag), so
+  // every write withheld is exactly the blank `holdLevel: 0` that must never
+  // overwrite a retained ladder. Cleared by the first read that resolves
+  // (loaded or absent), or by first-hand ladder-LEVEL evidence (a refute) —
+  // never by a latch onset, whose write carries no ladder evidence. If the
+  // store never recovers, the suppression simply lasts the process lifetime
+  // and a clean restart rehydrates the untouched blob.
   private holdStateUnresolved = false;
-
-  // Whether a LOCAL transition has moved the ladder this session. Once it has,
-  // a late-resolving read is stale by construction and must not be folded in —
-  // that is what makes adoption order-independent, rather than a merge rule that
-  // has to guess which of two deadlines is the real one.
-  private ladderMutatedLocally = false;
 
   // Whether the armed latch is known to have reached disk. A swallowed write
   // would otherwise leave the bit set in memory and absent on disk — invisible
   // until the next restart, which is precisely the window it exists to cover.
   private armedPersisted = false;
 
+  // Some part of the in-memory hold slice never reached disk because its
+  // edge write failed: a merged import-latch deadline (adoption kept the
+  // LATER local one), or suppressed-then-licensed local progress persisted on
+  // an ABSENT resolution. Retried at the top of every sample tick — the
+  // arming retry cannot carry it: adopting an armed blob quiets that lane
+  // (`armedPersisted`), and it is gen-gated anyway, while generation ticks
+  // stop at night, exactly when import latches are live. Cleared by any
+  // landed write (every write carries the full slice).
+  private holdSliceUnpersisted = false;
+
   constructor(private readonly deps: CurtailmentSurplusDeps) {
     // Rehydrate the refute ladder so a crash-loop cannot reset it. The adapter
-    // behind `read()` has already normalized junk to a resolved null (fresh
-    // start); expired timestamps are harmless — every consumer compares them
-    // against nowMs.
-    this.adoptPersisted(deps.holdStore?.read());
+    // behind `read()` owns validation: junk is condemned to `absent` (fresh
+    // start) and a thrown/contradicted read is `unreadable`; expired timestamps
+    // are harmless — every consumer compares them against nowMs.
+    this.adoptFromStore();
+  }
+
+  // Read the optional store (absent in tests ⇒ purely in-memory) and fold the
+  // result into local state.
+  private adoptFromStore(): void {
+    const store = this.deps.holdStore;
+    if (store === undefined) return;
+    this.adoptPersisted(store.read());
   }
 
   /**
-   * Fold one store read into local state. Absent store ⇒ nothing to adopt.
+   * Fold one store read into local state.
    *
-   * The LADDER is adopted wholesale or not at all, and only while this instance
-   * has made no ladder transition of its own. That ordering rule is what keeps
-   * the merge honest: any attempt to reconcile a retained ladder with a locally
-   * evolved one has to decide which of two hold deadlines is real, and both
-   * plausible answers are wrong — taking the later one re-extends a hold the
-   * home already served, taking the local one silently shortens a retained hold
-   * and then writes the shortened value back. So disk wins while it is the only
-   * evidence, local wins the moment there is first-hand evidence, and the two
-   * are never blended.
+   * The LADDER (level + hold deadline) is adopted wholesale, and adoption only
+   * ever runs while the disk is the ONLY ladder evidence: at construction, and
+   * on the per-tick retry while the boot read is still unreadable. A refute
+   * ends the retry (first-hand ladder evidence clears `holdStateUnresolved`),
+   * so a late-resolving read after a local ladder transition is never
+   * consulted — the two ladders are never blended, and no merge rule has to
+   * guess which of two hold deadlines is the real one.
    *
-   * The ARMED bit is exempt: it is monotone and independent of the ladder, so a
-   * late read can only ever confirm it.
+   * Two facts are deliberately NOT wholesale:
+   * - The IMPORT LATCH keeps the LATER of the local and persisted deadlines.
+   *   It is a monotone safety hold-down (every gate-exceeding tick re-extends
+   *   it), so the later deadline is strictly more conservative — whereas
+   *   wholesale adoption would let a recovering read truncate a live latch
+   *   earned by an import episode the disk never saw ("not importing at this
+   *   instant" is exactly what the sticky latch refuses to trust). No ladder
+   *   state is blended by this; an expired persisted deadline loses the
+   *   comparison on its own. When the LOCAL deadline wins, the merged state
+   *   is persisted once on this edge so the newer deadline reaches disk and
+   *   survives a restart inside the remaining hold-down.
+   * - The ARMED bit is monotone and independent of the ladder, so a read can
+   *   only ever confirm it. When it is ADOPTION (not a local production
+   *   sample) that lifts dormancy, the lift baseline is seeded exactly as the
+   *   local arming path seeds it, so a lift already engaged beforehand is not
+   *   misread as a rising edge that opens a verify window on load the
+   *   inference never financed.
    */
-  private adoptPersisted(read: CurtailmentHoldRead | undefined): void {
-    if (read === undefined) return;
-    if (read.state === 'unavailable') {
+  private adoptPersisted(read: CurtailmentHoldRead): void {
+    if (read.state === 'unreadable') {
       this.holdStateUnresolved = true;
       return;
     }
     this.holdStateUnresolved = false;
+    if (read.state === 'absent') {
+      // Absence licenses a write — and local progress may exist whose writes
+      // were all suppressed while the disk was unknown (the armed latch, an
+      // import-latch onset). Nothing else would carry it: the arming retry is
+      // gen-gated (dead at night) and the onset edge has already passed, so a
+      // restart before the next gen-valid sample would lose the active
+      // hold-down. Persist the slice once on this resolution edge; a write
+      // that does not land arms the per-tick retry.
+      if (!this.dormant || this.importLatchUntilMs !== undefined) this.persistHoldStateOrRetry();
+      return;
+    }
     const persisted = read.value;
-    if (!persisted) return;
     if (persisted.armed === true) {
       // Rehydrating the ARMED latch only ever clears dormancy, never re-sets it;
       // the posture gate downstream depends on it surviving an overnight restart
       // (see `CurtailmentPersistedHoldState`).
+      if (this.dormant) this.lastLiftEngaged = this.deps.isSurplusLiftEngaged();
       this.dormant = false;
       this.armedPersisted = true;
     }
-    if (this.ladderMutatedLocally) return;
     this.level = persisted.holdLevel;
     this.holdUntilMs = persisted.holdUntilMs ?? undefined;
-    this.importLatchUntilMs = persisted.importLatchUntilMs ?? undefined;
+    const persistedLatch = persisted.importLatchUntilMs ?? undefined;
+    if (persistedLatch !== undefined
+      && (this.importLatchUntilMs === undefined || persistedLatch > this.importLatchUntilMs)) {
+      this.importLatchUntilMs = persistedLatch;
+    } else if (this.importLatchUntilMs !== undefined && this.importLatchUntilMs !== persistedLatch) {
+      // The LOCAL deadline won the merge, so the disk still holds the older
+      // one — persist the merged state once, on this adoption edge. Nothing
+      // else will: adopting an armed blob quiets the arming retry, and later
+      // importing ticks see an already-active latch (onset persists are
+      // edge-only), so without this write the newer deadline lives only in
+      // memory and a restart inside the hold-down would reload the stale one.
+      // A write that does not land arms the per-tick retry instead
+      // (`holdSliceUnpersisted`).
+      this.persistHoldStateOrRetry();
+    }
   }
 
   /**
-   * A local transition has moved the ladder. Marks disk stale for adoption, and
-   * ends the abandon-grace window on an unresolved read: the estimator now has
-   * first-hand evidence, so withholding writes any longer would lose it rather
-   * than protect anything.
+   * A ladder-LEVEL transition (a refute, a level-resetting confirm) is
+   * first-hand evidence: it ends the abandon-grace on an unreadable boot read,
+   * because withholding writes any longer would lose real evidence rather than
+   * protect anything, and it marks any late-resolving disk read stale (the
+   * per-tick retry stops with the flag). A latch ONSET is deliberately NOT
+   * ladder evidence — its write carries `holdLevel: 0`, exactly the blank that
+   * must never overwrite a retained ladder, so its persist stays suppressed
+   * while the disk is unknown (see `trackNetChannel`).
    */
-  private noteLadderMutated(): void {
-    this.ladderMutatedLocally = true;
+  private noteLadderEvidence(): void {
     this.holdStateUnresolved = false;
   }
 
@@ -300,11 +371,14 @@ export class CurtailmentSurplusEstimator {
    */
   recordSample(netW: number, generationW: number | undefined, nowMs: number): void {
     if (!isFiniteNumber(netW) || !isFiniteNumber(nowMs)) return;
-    // Retry an unresolved boot read HERE, ahead of every transition below, so a
-    // recovering store is always adopted before this tick can move the ladder.
-    // Adoption after a local transition would have to blend two ladders; this
-    // ordering means it never has to.
-    if (this.holdStateUnresolved) this.adoptPersisted(this.deps.holdStore?.read());
+    // Retry an unreadable boot read HERE, ahead of every transition below, so a
+    // recovering store is always adopted before this tick can move the ladder
+    // or persist anything. Adoption after a local transition would have to
+    // blend two ladders; this ordering means it never has to.
+    if (this.holdStateUnresolved) this.adoptFromStore();
+    // Retry a slice write that never landed — on every sample tick,
+    // gen-valid or not (see `holdSliceUnpersisted`).
+    if (this.holdSliceUnpersisted) this.persistHoldState();
     const genValid = isFiniteNumber(generationW);
     if (this.dormant) {
       // Dormancy arming is gen-gated: flow homes (gen undefined) and non-solar
@@ -436,7 +510,7 @@ export class CurtailmentSurplusEstimator {
     if (!observedNearDeadline || !loadBearing || !absorbed) return;
     if (this.level !== 0) {
       this.level = 0;
-      this.noteLadderMutated();
+      this.noteLadderEvidence();
       this.persistHoldState();
     }
     this.deps.logger.info({ event: 'curtailment_verify_confirmed' });
@@ -468,7 +542,7 @@ export class CurtailmentSurplusEstimator {
       this.level = Math.min(this.level + 1, CURTAIL_HOLD_MAX_LEVEL);
       const holdMs = CURTAIL_HOLD_BASE_MS * 2 ** (this.level - 1);
       this.holdUntilMs = nowMs + holdMs;
-      this.noteLadderMutated();
+      this.noteLadderEvidence();
       this.closeVerifyWindow();
       // `holdLevel`, not `level` — pino reserves `level` for the log severity.
       this.deps.logger.info({ event: 'curtailment_verify_refuted', holdLevel: this.level, holdMs });
@@ -477,28 +551,47 @@ export class CurtailmentSurplusEstimator {
     }
     // Latch ONSET persists (covers a restart mid-import-episode); the 10 s
     // re-extensions do not — writes stay transition-only, never per tick.
-    if (!latchWasActive) {
-      this.noteLadderMutated();
-      this.persistHoldState();
-    }
+    // While the boot read is still unreadable this persist is a suppressed
+    // no-op: an onset write would stamp `holdLevel: 0` over a possibly
+    // retained ladder — the destructive reset the abandon-grace exists to
+    // prevent. The in-memory latch still guards the term, and the retained
+    // ladder is adopted on the next resolving read.
+    if (!latchWasActive) this.persistHoldState();
+  }
+
+  // Persist the current slice on an edge where nothing else would carry it;
+  // a write that does not land arms the per-tick retry
+  // (`holdSliceUnpersisted`).
+  private persistHoldStateOrRetry(): void {
+    if (!this.persistHoldState()) this.holdSliceUnpersisted = true;
   }
 
   // Persist the minimal refute-ladder slice on TRANSITIONS only (refute, a
-  // level-resetting confirm, latch onset). Best-effort: the adapter absorbs a
-  // failed settings write, which merely restores pre-persistence behavior.
-  private persistHoldState(): void {
-    if (this.holdStateUnresolved) return;
+  // level-resetting confirm, latch onset, arming, the adoption latch merge).
+  // Best-effort: the adapter absorbs a failed settings write, which merely
+  // restores pre-persistence behavior. Returns whether the slice actually
+  // LANDED; any landed write also clears the slice retry flag, since every
+  // write carries the full current slice.
+  private persistHoldState(): boolean {
+    // Disk unknown ⇒ suppressed for as long as that lasts (possibly the whole
+    // process): see `holdStateUnresolved` — every write withheld here carries
+    // `holdLevel: 0`, the blank that must never overwrite a retained ladder.
+    if (this.holdStateUnresolved) return false;
     const store = this.deps.holdStore;
-    // No store configured (tests) is "nothing to persist", satisfied — not a
-    // failed write. Treating it as failure would make the arming retry below
-    // fire on every gen-valid tick forever.
-    if (store === undefined) return;
-    if (store.write({
+    // No store configured (tests) means nothing can land: the gen-gated
+    // arming retry then no-ops here forever, which is the cheap steady state.
+    if (store === undefined) return false;
+    const landed = store.write({
       holdLevel: this.level,
       holdUntilMs: this.holdUntilMs ?? null,
       importLatchUntilMs: this.importLatchUntilMs ?? null,
       armed: !this.dormant,
-    })) this.armedPersisted = !this.dormant;
+    });
+    if (landed) {
+      this.armedPersisted = !this.dormant;
+      this.holdSliceUnpersisted = false;
+    }
+    return landed;
   }
 
   // Verify-window lifecycle rides the lift edge: a rising edge while the term is
