@@ -2,6 +2,7 @@ import type {
   DevicePlanDevice, ShedBehavior, TemperatureKind, TemperatureShedBehavior,
 } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
+import { shedFloorCFor } from './normalizedShedFloor';
 import type { PlanEngineState } from './planState';
 import type { HeadroomReserve } from './admission';
 import type { RestoreHeadroomLedger } from './restore/headroomLedger';
@@ -65,13 +66,16 @@ function getProducerShedReason(params: {
 }
 
 // "The DEVICE reports the shed floor" — read off the observation, never off
-// `plannedTarget`, which this lane writes back every cycle.
+// `plannedTarget`, which this lane writes back every cycle. Compared against
+// the capability-NORMALIZED floor: the device reports the normalized value,
+// so a raw-config comparison never matches for an off-step configured floor
+// (`normalizedShedFloor.ts`).
 function isObservedAtShedFloor(
   dev: DevicePlanDevice,
-  behavior: TemperatureShedBehavior,
+  floorC: number,
 ): boolean {
   return isTemperaturePlanDevice(dev)
-    && dev.currentTarget === behavior.temperature;
+    && dev.currentTarget === floorC;
 }
 
 /**
@@ -98,18 +102,18 @@ function isObservedAtShedFloor(
  */
 function resolveHoldReason(params: {
   dev: DevicePlanDevice;
-  behavior: TemperatureShedBehavior;
+  floorC: number;
   state: PlanEngineState;
   shedReasons: Map<string, DeviceReason>;
   timing: OffDeviceReasonTiming;
   shouldHold: boolean;
 }): PlanReasonDecision {
-  const { dev, behavior, state, shedReasons, timing, shouldHold } = params;
+  const { dev, floorC, state, shedReasons, timing, shouldHold } = params;
   const producerReason = getProducerShedReason({ dev, shedReasons });
   if (producerReason) return producerReason;
   // `shouldHold` false means the shortfall guard aborted the restore with no
   // timing window at all; the ladder has no cause to name there.
-  if (!shouldHold || !isObservedAtShedFloor(dev, behavior)) return CAPACITY_FALLBACK_REASON;
+  if (!shouldHold || !isObservedAtShedFloor(dev, floorC)) return CAPACITY_FALLBACK_REASON;
   const timedReason = resolveOffDeviceReason(
     timing,
     renderPlanReasonDecision(CAPACITY_FALLBACK_REASON),
@@ -159,6 +163,20 @@ export type ShedHoldParams = {
   debugStructured?: StructuredDebugEmitter;
   restoreCooldownPreview?: RestoreCooldownPreview | null;
   getShedBehavior: (deviceId: string) => ShedBehavior;
+  /**
+   * The capability-normalized shed floor per temperature device, resolved once
+   * per build from the INPUT devices (the plan device carries no capability
+   * metadata). This is the SAME value `resolveShedIntent` stamps on a freshly
+   * shed device and the shed candidate builder filters on — one floor value
+   * per device per build. `applyHoldUpdate` must stamp from here, never the
+   * raw configured `behavior.temperature`: an at-floor device is filtered out
+   * of shed candidacy, so the held-build fallback is the COMMON case, and a
+   * raw stamp for an off-step configured floor plans a setpoint the device
+   * can never report back — a futile re-write per cycle — and flip-flops the
+   * pre-shed anchor's pinned floor (`preShedAnchor.ts`), destroying the
+   * anchor while the device is still parked.
+   */
+  normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
 };
 
 export function applyShedTemperatureHold(params: ShedHoldParams): {
@@ -189,6 +207,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     debugStructured,
     getShedBehavior,
     restoreCooldownPreview,
+    normalizedShedFloorCByDevice,
   } = params;
 
   // The shed-window facts, assembled once per cycle in the shape the shared
@@ -208,7 +227,9 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
   let headroom = availableHeadroom;
   let restoredOne = restoredOneThisCycle;
   const nextDevices: DevicePlanDevice[] = [];
-  const pendingRestoreDelay = getPendingRestoreDelay(planDevices, state, getShedBehavior);
+  const pendingRestoreDelay = getPendingRestoreDelay(
+    planDevices, state, getShedBehavior, normalizedShedFloorCByDevice,
+  );
   const cooldownPreviewState = restoreCooldownPreview
     ? buildRestoreCooldownPreviewState(restoreCooldownPreview)
     : undefined;
@@ -221,6 +242,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     const result = applyHoldToDevice({
       dev,
       behavior,
+      normalizedShedFloorCByDevice,
       state,
       shedReasons,
       inShedWindow,
@@ -257,17 +279,21 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
 
 function resolveHoldGating(params: {
   dev: DevicePlanDevice;
-  behavior: TemperatureShedBehavior;
+  floorC: number;
   state: PlanEngineState;
   inShedWindow: boolean;
   holdDuringRestoreCooldown: boolean;
   guardInShortfall: boolean;
 }): { shouldAbortRestoreForShortfall: boolean; shouldHold: boolean; wasShedLastPlan: boolean } {
-  const { dev, behavior, state, inShedWindow, holdDuringRestoreCooldown, guardInShortfall } = params;
+  const { dev, floorC, state, inShedWindow, holdDuringRestoreCooldown, guardInShortfall } = params;
   const isTemperature = isTemperaturePlanDevice(dev);
+  // All three floor facts read the NORMALIZED floor — the observation and the
+  // hold stamps both carry normalized values, so a raw comparison would make
+  // an off-step-floor device ineligible for the hold and let it restore
+  // through startup stabilization or an active overshoot.
   const atMinTemp = isTemperature
-    && (dev.currentTarget === behavior.temperature || dev.plannedTarget === behavior.temperature);
-  const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === behavior.temperature;
+    && (dev.currentTarget === floorC || dev.plannedTarget === floorC);
+  const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === floorC;
   const wasShedLastPlan = state.lastPlannedShedIds.has(dev.id);
   const eligible = dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan;
   const shouldAbortRestoreForShortfall = guardInShortfall && eligible;
@@ -278,6 +304,7 @@ function resolveHoldGating(params: {
 function resolveHoldDecision(params: {
   dev: DevicePlanDevice;
   behavior: TemperatureShedBehavior;
+  normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
   state: PlanEngineState;
   shedReasons: Map<string, DeviceReason>;
   inShedWindow: boolean;
@@ -297,6 +324,7 @@ function resolveHoldDecision(params: {
   const {
     dev,
     behavior,
+    normalizedShedFloorCByDevice,
     state,
     shedReasons,
     inShedWindow,
@@ -316,17 +344,19 @@ function resolveHoldDecision(params: {
     return { type: 'skip' };
   }
 
-
+  // ONE floor per device per build: every comparison below reads the
+  // capability-normalized floor (`normalizedShedFloor.ts`), never raw config.
+  const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id, behavior);
   const { shouldAbortRestoreForShortfall, shouldHold, wasShedLastPlan } = resolveHoldGating({
     dev,
-    behavior,
+    floorC,
     state,
     inShedWindow,
     holdDuringRestoreCooldown,
     guardInShortfall,
   });
 
-  const observedAtShedFloor = isObservedAtShedFloor(dev, behavior);
+  const observedAtShedFloor = isObservedAtShedFloor(dev, floorC);
   const globalRestoreHold = resolveGlobalRestoreHold(cooldownPreviewState, wasShedLastPlan, observedAtShedFloor);
   if (globalRestoreHold) return globalRestoreHold;
   const shouldResolveRestore = wasShedLastPlan && (
@@ -365,7 +395,7 @@ function resolveHoldDecision(params: {
     type: 'hold',
     reason: resolveHoldReason({
       dev,
-      behavior,
+      floorC,
       state,
       shedReasons,
       timing: offDeviceTiming,
@@ -436,6 +466,7 @@ function resolvePostHoldRestoreDecision(params: {
 function applyHoldToDevice(params: {
   dev: DevicePlanDevice;
   behavior: ShedBehavior;
+  normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
   state: PlanEngineState;
   shedReasons: Map<string, DeviceReason>;
   inShedWindow: boolean;
@@ -455,6 +486,7 @@ function applyHoldToDevice(params: {
   const {
     dev,
     behavior,
+    normalizedShedFloorCByDevice,
     state,
     shedReasons,
     inShedWindow,
@@ -488,6 +520,7 @@ function applyHoldToDevice(params: {
   const decision = resolveHoldDecision({
     dev,
     behavior,
+    normalizedShedFloorCByDevice,
     state,
     shedReasons,
     inShedWindow,
@@ -513,13 +546,14 @@ function applyHoldToDevice(params: {
     };
   }
   if (decision.type === 'hold') {
-    return applyHoldUpdate(
+    return applyHoldUpdate({
       dev,
       behavior,
-      renderPlanReasonDecision(decision.reason),
+      normalizedShedFloorCByDevice,
+      reason: renderPlanReasonDecision(decision.reason),
       availableHeadroom,
       restoredOneThisCycle,
-    );
+    });
   }
   return { device: dev, availableHeadroom, restoredOneThisCycle };
 }
@@ -528,6 +562,7 @@ function getPendingRestoreDelay(
   planDevices: DevicePlanDevice[],
   state: PlanEngineState,
   getShedBehavior: (deviceId: string) => ShedBehavior,
+  normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
 ): PendingRestoreDelay | null {
   let maxRemainingMs = 0;
   let countdownStartedAtMs: number | null = null;
@@ -536,8 +571,9 @@ function getPendingRestoreDelay(
     const behavior = getShedBehavior(dev.id);
     if (behavior.action !== 'set_temperature') continue;
     if (!isTemperaturePlanDevice(dev)) continue;
-    if (dev.currentTarget !== behavior.temperature) continue;
-    if (dev.plannedTarget <= behavior.temperature) continue;
+    const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id, behavior);
+    if (dev.currentTarget !== floorC) continue;
+    if (dev.plannedTarget <= floorC) continue;
 
     const lastRestoreMs = state.lastDeviceRestoreMs[dev.id];
     if (!lastRestoreMs) continue;
@@ -557,23 +593,32 @@ function getPendingRestoreDelay(
   };
 }
 
-function applyHoldUpdate(
-  dev: DevicePlanDevice & TemperatureKind,
-  behavior: TemperatureShedBehavior,
-  reason: DeviceReason,
-  availableHeadroom: number,
-  restoredOneThisCycle: boolean,
-): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
+function applyHoldUpdate(params: {
+  dev: DevicePlanDevice & TemperatureKind;
+  behavior: TemperatureShedBehavior;
+  normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
+  reason: DeviceReason;
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+}): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const { dev, behavior, normalizedShedFloorCByDevice, reason, availableHeadroom, restoredOneThisCycle } = params;
   // Annotated so `plannedTarget` lands on the temperature cluster rather than
   // reading as a stray property on the bare union. It used to ride in through a
   // `behavior.temperature !== null` conditional spread — a branch the caller's
   // narrow has already decided, and one that could never have been false.
+  //
+  // The floor VALUE comes from the per-build normalized map (semantics on
+  // `ShedHoldParams.normalizedShedFloorCByDevice`) so every stage stamps the
+  // SAME capability-normalized floor a fresh shed would. The raw fallback is
+  // the map-absent case only — a caller that resolved no capability floor for
+  // this device (scalar-only test harnesses) — never the ordinary held build.
+  const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id, behavior);
   const device: DevicePlanDevice & TemperatureKind = {
     ...dev,
     plannedState: 'shed',
     shedAction: 'set_temperature',
-    shedTemperature: behavior.temperature,
-    plannedTarget: behavior.temperature,
+    shedTemperature: floorC,
+    plannedTarget: floorC,
     reason,
   };
   return { device, availableHeadroom, restoredOneThisCycle };

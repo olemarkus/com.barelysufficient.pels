@@ -160,6 +160,7 @@ const parseChargerSnapshot = (
 const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
   meta: buildPlanMeta({ totalKw: 0.2, softLimitKw: 6.75, headroomKw: 6.55}),
   devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default',
+    recordRestoreOnTargetApply: false,
     currentDrawKw: 0,
     id: DEVICE_ID,
     name: 'Elbillader',

@@ -123,6 +123,7 @@ const buildPlan = (): DevicePlan => ({
     headroomKw: 4}),
   devices: [
     withTemperatureDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
+      recordRestoreOnTargetApply: false,
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
@@ -152,6 +153,9 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
     headroomKw: 4}),
   devices: [
     withTemperatureDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
+      // What production's `finalizePlanDevices` stamps for this harness's flat
+      // 16° floor: observed at the floor and the plan raises it.
+      recordRestoreOnTargetApply: currentTarget === 16 && plannedTarget > currentTarget,
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
@@ -1697,6 +1701,7 @@ describe('PlanExecutor stepped loads', () => {
         headroomKw: 4}),
       devices: [
         withTemperatureDiscriminant(withSteppedDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
+          recordRestoreOnTargetApply: false,
           ...merged,
           currentState: (merged as { currentState?: string }).currentState ?? 'on',
           currentOn: resolveFixtureCurrentOn(merged),
@@ -4127,6 +4132,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
 
     const shedDevice = withFixtureResidualKw({
+      recordRestoreOnTargetApply: false,
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       controllable: true, available: true, reason: CAPACITY_REASON, boostActive: false,
       hasStandingDemand: true,
@@ -4135,6 +4141,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
     });
     const steppedDevice = (desiredStepId: string) => (withFixtureResidualKw({
+      recordRestoreOnTargetApply: false,
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
       controllable: true, available: true, reason: KEEP_REASON, commandableNow: true,
       boostActive: false, hasStandingDemand: true,

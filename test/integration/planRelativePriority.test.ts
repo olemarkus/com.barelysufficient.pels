@@ -34,6 +34,7 @@ describe('PlanBuilder relative priority constraint', () => {
     lastPowerW = (0) * 1000;
     const decoratedPriorities: Record<string, number | undefined> = {};
     const builder = new PlanBuilder({
+      getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),

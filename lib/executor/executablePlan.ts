@@ -279,6 +279,23 @@ export type ExecutableTargetIntent = {
   desired: number;
   communicationModel?: 'local' | 'cloud';
   purpose: 'target_update' | 'shed_temperature';
+  /** Planner-resolved (`finalizePlanDevices`): applying this write counts as
+   * a restore, so the executor stamps the restore clocks when it lands. The
+   * executor never re-derives this from shed config — why the planner chose
+   * the setpoint is the planner's problem (owner ruling, 2026-08-25).
+   *
+   * Classified against the observation the PLAN was decided from, not a
+   * re-read at apply time (the old executor inference compared the live
+   * snapshot against raw shed config). If the observation moves between
+   * build and apply, this stamp describes the build's world: an observed
+   * value that converged onto the desired one no-ops before the flag is ever
+   * read, and any other move is one rebuild away from a fresh classification
+   * — in production every executor tick IS a rebuild. The projection honors
+   * the flag only when the write actually RAISES the setpoint (a pure
+   * diff-domain guard): a frozen restore verdict applied to an observation
+   * that moved above the desired value would advance the restore clocks for
+   * a LOWERING write and delay legitimate restores by the backoff. */
+  recordRestoreOnTargetApply: boolean;
 };
 
 export type ExecutableTargetCommand = {

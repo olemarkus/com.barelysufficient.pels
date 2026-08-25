@@ -579,6 +579,20 @@ type DevicePlanDeviceBase = {
    */
   plannedShedTargetKind?: PlannedShedTargetKind;
   /**
+   * Executor bookkeeping, planner-resolved: applying this plan's target write
+   * counts as a RESTORE — the executor stamps the restore clocks
+   * (`lastRestoreMs`/`lastDeviceRestoreMs`, cooldown bump) when it lands.
+   * True exactly when the device's observed setpoint sits AT its
+   * capability-normalized shed floor and the planned target raises it.
+   * Stamped once, by `finalizePlanDevices` (like `plannedShedTargetKind`:
+   * anything derived earlier goes stale when a later stage revises
+   * `plannedState`/`plannedTarget`); every constructor before finalize sets
+   * `false`. The executor consumes this instead of re-deriving the
+   * classification from shed config — why the planner chose the setpoint is
+   * the planner's problem (owner ruling, 2026-08-25).
+   */
+  recordRestoreOnTargetApply: boolean;
+  /**
    * Producer-resolved reachability. REQUIRED because the transport already
    * answers it for every device — but note HOW: `managerHelpers.getIsAvailable`
    * resolves a non-boolean read OPTIMISTICALLY to `true`. So this field means

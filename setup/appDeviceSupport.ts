@@ -19,6 +19,8 @@ import {
   normalizeShedTemperature,
 } from '../lib/utils/airtreatmentShedTemperature';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../lib/utils/targetCapabilities';
+import { resolveAnchoredSetpoint, type PreShedAnchorReader } from '../lib/plan/preShedAnchor';
+import type { ShedBehavior } from '../lib/plan/planTypes';
 
 type StructuredEventEmitter = (event: Record<string, unknown>) => void;
 
@@ -405,7 +407,10 @@ export function disableUnsupportedDevices(params: {
 }
 
 type ModeTargetsBlob = Record<string, Record<string, number>>;
-type SeedPlan = { device: TargetDeviceSnapshot; modes: string[]; value: number; homeId: HomeId };
+type SeedValueSource = 'device_setpoint' | 'pre_shed_anchor';
+type SeedPlan = {
+  device: TargetDeviceSnapshot; modes: string[]; value: number; source: SeedValueSource; homeId: HomeId;
+};
 
 function parseModeDeviceTargets(value: unknown): ModeTargetsBlob | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -433,9 +438,8 @@ function parseModeDeviceTargets(value: unknown): ModeTargetsBlob | null {
 // restarts — by which point the user has either fixed the device, removed
 // it, or the operator has a fresh signal to act on.
 const skipEmissionFingerprints = new Set<string>();
-const skipFingerprint = (deviceId: string, mode: string, reason: string): string => (
-  `${deviceId}::${mode}::${reason}`
-);
+const skipFingerprint = (deviceId: string, mode: string, reason: string): string =>
+  `${deviceId}::${mode}::${reason}`;
 
 // Per-process record of (deviceId, mode) entries we've already auto-seeded.
 // Once an entry has been seeded, we don't re-seed it again in this process
@@ -445,21 +449,59 @@ const skipFingerprint = (deviceId: string, mode: string, reason: string): string
 // the next boot, seeding it again is the correct behaviour (and the user
 // hasn't had a chance to clear it post-restart).
 const seededEntryFingerprints = new Set<string>();
-const seededEntryFingerprint = (homeId: HomeId, deviceId: string, mode: string): string => (
-  `${homeId}::${mode}::${deviceId}`
-);
+const seededEntryFingerprint = (homeId: HomeId, deviceId: string, mode: string): string =>
+  `${homeId}::${mode}::${deviceId}`;
 
 export function __resetSeedSkipDedupeForTests(): void {
   skipEmissionFingerprints.clear();
   seededEntryFingerprints.clear();
 }
 
-function resolveSeedValue(device: TargetDeviceSnapshot): number | null {
+type ResolvedSeedValue =
+  | { kind: 'value'; value: number; source: SeedValueSource }
+  | { kind: 'skip'; reason: 'no_seed_source' | 'anchor_unavailable' };
+
+/** The two deps the anchor-aware seed resolution reads, bundled so the seed
+ * helpers stay within the parameter budget. */
+type AnchorSeedGate =
+  { preShedAnchors: PreShedAnchorReader; getShedBehavior: (deviceId: string) => ShedBehavior };
+
+function resolveSeedValue(device: TargetDeviceSnapshot, anchorGate: AnchorSeedGate): ResolvedSeedValue {
+  const anchorRead = anchorGate.preShedAnchors.read(device.id);
+  if (anchorRead.kind === 'unavailable') {
+    // Transient adapter state (boot-read abandon-grace): seeding from the live
+    // value now could record a shed floor as the permanent mode target, so
+    // skip this device — seeding re-runs on the next snapshot refresh.
+    return { kind: 'skip', reason: 'anchor_unavailable' };
+  }
   const target = getPrimaryTargetCapability(device.targets);
   const current = target?.value;
-  if (typeof current !== 'number' || !Number.isFinite(current)) return null;
-  const normalized = normalizeTargetCapabilityValue({ target, value: current });
-  return Number.isFinite(normalized) ? normalized : null;
+  if (typeof current !== 'number' || !Number.isFinite(current)) {
+    return { kind: 'skip', reason: 'no_seed_source' };
+  }
+  // A device parked AT a shed floor is showing the shed value, not the user's
+  // intent — most importantly right after a restart, when the in-memory shed
+  // state is gone but the persisted anchor is not. Seed from the anchor (the
+  // pre-shed setpoint) instead of the live value; gate semantics on
+  // `resolveAnchoredSetpoint` (`lib/plan/preShedAnchor.ts`). The CURRENT
+  // configured floor is resolved here through the same capability
+  // normalization the planner applies, because a mis-seed is a durable write
+  // no rebuild undoes: a floor edit landing right before a restart leaves the
+  // device observed at the NEW floor while the anchor still pins the old one,
+  // and pinned-floor-only recognition would persist that shed floor as the
+  // permanent mode target.
+  const behavior = anchorGate.getShedBehavior(device.id);
+  const configuredFloorsC = behavior.action === 'set_temperature'
+    ? [normalizeTargetCapabilityValue({ target, value: behavior.temperature })]
+    : [];
+  const anchored = resolveAnchoredSetpoint(anchorRead, current, configuredFloorsC);
+  const seed = anchored.kind === 'anchor'
+    ? { value: anchored.value, source: 'pre_shed_anchor' as const }
+    : { value: current, source: 'device_setpoint' as const };
+  const normalized = normalizeTargetCapabilityValue({ target, value: seed.value });
+  return Number.isFinite(normalized)
+    ? { kind: 'value', value: normalized, source: seed.source }
+    : { kind: 'skip', reason: 'no_seed_source' };
 }
 
 function isSeedCandidate(
@@ -467,11 +509,10 @@ function isSeedCandidate(
   managed: BooleanMap,
   controllable: BooleanMap,
 ): boolean {
-  if (!supportsTemperatureControl(device)) return false;
-  if (getPrimaryTargetCapability(device.targets) === null) return false;
-  if (managed[device.id] !== true) return false;
-  if (controllable[device.id] !== true) return false;
-  return true;
+  return supportsTemperatureControl(device)
+    && getPrimaryTargetCapability(device.targets) !== null
+    && managed[device.id] === true
+    && controllable[device.id] === true;
 }
 
 function findMissingModesForDevice(
@@ -508,7 +549,7 @@ function applySeedPlans(existing: ModeTargetsBlob, plans: SeedPlan[]): ModeTarge
 
 function emitSeedSkipped(
   plan: { device: TargetDeviceSnapshot; modes: string[] },
-  reason: 'no_seed_source' | 'normalize_failed',
+  reason: 'no_seed_source' | 'normalize_failed' | 'anchor_unavailable',
   structuredLog?: StructuredEventEmitter,
 ): void {
   plan.modes.forEach((mode) => {
@@ -529,29 +570,40 @@ function buildSeedPlans(
   candidates: TargetDeviceSnapshot[],
   existing: ModeTargetsBlob,
   homeId: HomeId,
+  anchorGate: AnchorSeedGate,
   structuredLog?: StructuredEventEmitter,
 ): SeedPlan[] {
   return candidates.flatMap((device) => {
     const modes = findMissingModesForDevice(device, existing, homeId);
     if (modes.length === 0) return [];
-    const value = resolveSeedValue(device);
-    if (value === null) {
-      emitSeedSkipped({ device, modes }, 'no_seed_source', structuredLog);
+    const resolved = resolveSeedValue(device, anchorGate);
+    if (resolved.kind === 'skip') {
+      // The skip-emission dedupe only quiets the LOG; the skip itself is
+      // re-evaluated on every pass, so an `anchor_unavailable` device seeds
+      // normally once the adapter leaves its grace window.
+      emitSeedSkipped({ device, modes }, resolved.reason, structuredLog);
       return [];
     }
-    return [{ device, modes, value, homeId }];
+    return [{ device, modes, value: resolved.value, source: resolved.source, homeId }];
   });
 }
 
 export function seedMissingModeTargets(params: {
   snapshot: TargetDeviceSnapshot[];
   settings: Homey.App['homey']['settings'];
+  /** Pre-shed anchor store (read slice): a device parked at a shed floor
+   * seeds from the anchor, never from the shed value. */
+  preShedAnchors: PreShedAnchorReader;
+  /** The SAME shed-behaviour resolution the planner uses (`ctx.getShedBehavior`),
+   * so the seeder's at-floor recognition covers the current configured floor —
+   * not just the anchor's pinned one — across a mid-hold floor edit + restart. */
+  getShedBehavior: (deviceId: string) => ShedBehavior;
   resolveHomeIdForDevice?: (deviceId: string) => HomeId | null;
   structuredLog?: StructuredEventEmitter;
   debugStructured: StructuredEventEmitter;
 }): void {
   const {
-    snapshot, settings, resolveHomeIdForDevice, structuredLog, debugStructured,
+    snapshot, settings, preShedAnchors, getShedBehavior, resolveHomeIdForDevice, structuredLog, debugStructured,
   } = params;
   const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
   const controllable = parseBooleanMap(settings.get(CONTROLLABLE_DEVICES) as unknown);
@@ -573,7 +625,7 @@ export function seedMissingModeTargets(params: {
     // No modes configured at all → nothing to seed against. A fresh catalog
     // is populated by its marker-last initializer before this pass can write it.
     if (!existing || Object.keys(existing).length === 0) return [];
-    const plans = buildSeedPlans(devices, existing, homeId, structuredLog);
+    const plans = buildSeedPlans(devices, existing, homeId, { preShedAnchors, getShedBehavior }, structuredLog);
     return plans.length === 0
       ? []
       : [{ homeId, plans, next: applySeedPlans(existing, plans) }];
@@ -599,7 +651,7 @@ export function seedMissingModeTargets(params: {
       deviceName: entry.device.name,
       seededModes: entry.modes,
       seededValue: entry.value,
-      source: 'device_setpoint',
+      source: entry.source,
     });
   });
   debugStructured({

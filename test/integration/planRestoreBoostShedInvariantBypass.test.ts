@@ -96,6 +96,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -146,6 +147,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -185,6 +187,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },

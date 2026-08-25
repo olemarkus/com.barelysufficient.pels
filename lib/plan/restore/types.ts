@@ -10,6 +10,10 @@ import type { RestoreTiming } from './timing';
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
   getShedBehavior: (deviceId: string) => ShedBehavior;
+  /** This build's capability-normalized configured shed floor per device —
+   * resolved once by the builder (`resolveNormalizedShedFloors`); every
+   * floor comparison in the restore/swap pass reads through it. */
+  normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;

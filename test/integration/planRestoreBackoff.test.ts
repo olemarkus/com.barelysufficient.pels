@@ -116,6 +116,7 @@ describe('restore cooldown backoff', () => {
 
     const deps = {
       powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+      normalizedShedFloorCByDevice: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -152,6 +153,7 @@ describe('restore cooldown backoff', () => {
 
     const deps = {
       powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+      normalizedShedFloorCByDevice: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -201,6 +203,7 @@ describe('restore cooldown backoff', () => {
 
     const deps = {
       powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
+      normalizedShedFloorCByDevice: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -231,6 +234,7 @@ describe('restore cooldown backoff', () => {
     const state = createPlanEngineState();
     const deps = {
       powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
+      normalizedShedFloorCByDevice: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -277,6 +281,7 @@ describe('restore cooldown backoff', () => {
     const state = createPlanEngineState();
     const deps = {
       powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
+      normalizedShedFloorCByDevice: new Map(),
       getShedBehavior: () => ({ action: 'set_step' as const }),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -321,6 +326,7 @@ describe('restore cooldown backoff', () => {
     const state = createPlanEngineState();
     const deps = {
       powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
+      normalizedShedFloorCByDevice: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -390,6 +396,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -435,6 +442,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -496,6 +504,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -544,6 +553,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -587,6 +597,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -640,6 +651,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
         logDebug: vi.fn(),
       },
@@ -689,6 +701,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1000,6 +1013,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1035,6 +1049,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1071,6 +1086,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1103,6 +1119,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1143,6 +1160,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1183,6 +1201,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1224,6 +1243,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1265,6 +1285,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1300,6 +1321,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1331,6 +1353,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1362,6 +1385,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1391,6 +1415,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1432,6 +1457,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1491,6 +1517,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1545,6 +1572,7 @@ describe('restore cooldown backoff', () => {
       deps: {
         // Stale whole-home sample (no fresh measurement past lastRestoreMs) → meter settling.
         powerTracker: { lastTimestamp: null } as unknown as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1598,6 +1626,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1652,6 +1681,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1707,6 +1737,7 @@ describe('restore cooldown backoff', () => {
       deps: {
         // Stale whole-home sample (no fresh measurement past lastRestoreMs) → meter settling.
         powerTracker: { lastTimestamp: null } as unknown as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -1746,6 +1777,7 @@ describe('restore cooldown backoff', () => {
     const context = buildContext({ headroomRaw: 5, headroom: 5 });
     const deps = {
       powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+      normalizedShedFloorCByDevice: new Map(),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       logDebug: vi.fn(),
     };
@@ -1758,6 +1790,8 @@ describe('restore cooldown backoff', () => {
       deps,
     });
     const held = applyShedTemperatureHold({
+        // Scalar-only harness: flat integer floors — empty map keeps behaviour.
+        normalizedShedFloorCByDevice: new Map(),
       planDevices: restore.planDevices,
       state,
       shedReasons: new Map(),
@@ -1817,11 +1851,14 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: now - 10_000 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior,
         logDebug: vi.fn(),
       },
     });
     const held = applyShedTemperatureHold({
+        // Scalar-only harness: flat integer floors — empty map keeps behaviour.
+        normalizedShedFloorCByDevice: new Map(),
       planDevices: restore.planDevices,
       state,
       shedReasons: new Map(),
@@ -1869,6 +1906,7 @@ describe('restore cooldown backoff', () => {
     })];
     const deps = {
       powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+      normalizedShedFloorCByDevice: new Map(),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       logDebug: vi.fn(),
     };
@@ -1880,6 +1918,8 @@ describe('restore cooldown backoff', () => {
       deps,
     });
     const held = applyShedTemperatureHold({
+        // Scalar-only harness: flat integer floors — empty map keeps behaviour.
+        normalizedShedFloorCByDevice: new Map(),
       planDevices: restore.planDevices,
       state,
       shedReasons: new Map(),
@@ -1927,6 +1967,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: null } as unknown as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -2008,6 +2049,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -2053,6 +2095,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -2138,6 +2181,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -2173,6 +2217,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -2208,6 +2253,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -2244,6 +2290,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -2280,6 +2327,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -2317,6 +2365,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -2354,6 +2403,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -2390,6 +2440,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -2426,6 +2477,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 15 }),
         logDebug: vi.fn(),
       },
@@ -2439,6 +2491,7 @@ describe('restore cooldown backoff', () => {
 // Shared deps factory for restore tests below
 const makeDeps = () => ({
   powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+  normalizedShedFloorCByDevice: new Map(),
   getShedBehavior: () => ({ action: 'turn_off' as const }),
   log: vi.fn(),
   logDebug: vi.fn(),
@@ -2608,6 +2661,7 @@ describe('restore admission — headroom and penalty gates', () => {
   const freshBatchDeps = (now: number) => ({
     ...makeDeps(),
     powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
+    normalizedShedFloorCByDevice: new Map(),
   });
 
   const batchDevice = (id: string, priority: number, expectedPowerKw = 0.5) => buildPlanDevice({
@@ -2740,6 +2794,7 @@ describe('restore admission — headroom and penalty gates', () => {
       deps: {
         ...makeDeps(),
         powerTracker: { lastTimestamp: now - 61_000 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
       },
     });
 
@@ -3106,6 +3161,8 @@ describe('restore admission — headroom and penalty gates', () => {
     state.lastPlannedShedIds = new Set(['dev-temp']);
 
     const result = applyShedTemperatureHold({
+        // Scalar-only harness: flat integer floors — empty map keeps behaviour.
+        normalizedShedFloorCByDevice: new Map(),
       planDevices: [
         buildBinaryPlanDevice({
           id: 'dev-temp',
@@ -3158,6 +3215,8 @@ describe('restore admission — headroom and penalty gates', () => {
     const debugStructured = vi.fn();
 
     const result = applyShedTemperatureHold({
+        // Scalar-only harness: flat integer floors — empty map keeps behaviour.
+        normalizedShedFloorCByDevice: new Map(),
       planDevices: [
         buildBinaryPlanDevice({
           id: 'dev-temp',
@@ -3230,6 +3289,7 @@ describe('restore admission — headroom and penalty gates', () => {
       guardInShortfall: true,
       deps: {
         powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -3264,6 +3324,7 @@ describe('restore admission — headroom and penalty gates', () => {
       guardInShortfall: true,
       deps: {
         powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'set_step' as const }),
         logDebug: vi.fn(),
       },
@@ -3302,6 +3363,7 @@ describe('restore admission — headroom and penalty gates', () => {
       guardInShortfall: true,
       deps: {
         powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -3322,6 +3384,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
 
   const makeDepsFloor = () => ({
     powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+    normalizedShedFloorCByDevice: new Map(),
     getShedBehavior: () => ({ action: 'turn_off' as const }),
     logDebug: vi.fn(),
   });
@@ -3362,6 +3425,8 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     state.lastPlannedShedIds = new Set(['dev-temp']);
     // This exercises the target-restore headroom path via applyShedTemperatureHold
     const result = applyShedTemperatureHold({
+        // Scalar-only harness: flat integer floors — empty map keeps behaviour.
+        normalizedShedFloorCByDevice: new Map(),
       planDevices: [buildBinaryPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
@@ -4212,6 +4277,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -4256,6 +4322,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -4301,6 +4368,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -4346,6 +4414,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -4389,6 +4458,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
         debugStructured,
@@ -4454,6 +4524,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
         debugStructured,
@@ -4506,6 +4577,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
         debugStructured,
@@ -4577,6 +4649,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -4626,6 +4699,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -4662,6 +4736,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -4705,6 +4780,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -4751,6 +4827,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -4801,6 +4878,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -4845,6 +4923,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -4911,6 +4990,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },
@@ -4958,6 +5038,7 @@ describe('stepped-load shed invariant', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 201 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },

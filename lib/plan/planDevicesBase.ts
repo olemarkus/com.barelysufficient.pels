@@ -213,6 +213,8 @@ export function buildBasePlanDevice(params: {
     ...resolveInputBinaryControlField(dev),
     currentState,
     plannedState,
+    // Finalize decides (`finalizePlanDevices`); pre-finalize always false.
+    recordRestoreOnTargetApply: false,
     ...pickTemperatureClusterFields(dev, resolvedPlannedTarget),
     communicationModel: dev.communicationModel,
     ...pickSteppedPlanFields(dev),

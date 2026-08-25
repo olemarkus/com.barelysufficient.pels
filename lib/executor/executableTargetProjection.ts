@@ -1,7 +1,7 @@
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isRestoreAdmissionHoldReason } from '../planContract/planDecisionSemantics';
 import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
-import type { DevicePlan, ShedBehavior } from '../plan/planTypes';
+import type { DevicePlan } from '../plan/planTypes';
 import type {
   ExecutableObservedDeviceState,
   ExecutableTargetCommand,
@@ -25,6 +25,7 @@ export function buildExecutableTargetIntent(dev: PlanDevice): ExecutableTargetIn
     purpose: dev.plannedShedTargetKind === 'target_value'
       ? 'shed_temperature'
       : 'target_update',
+    recordRestoreOnTargetApply: dev.recordRestoreOnTargetApply,
   };
   return intent;
 }
@@ -32,7 +33,6 @@ export function buildExecutableTargetIntent(dev: PlanDevice): ExecutableTargetIn
 export function buildExecutableTargetUpdate(
   intent: ExecutableTargetIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
-  getShedBehavior: (deviceId: string) => ShedBehavior,
 ): ExecutableTargetUpdate | null {
   if (!intent) return null;
   const command = buildExecutableTargetCommand(intent, observed);
@@ -41,11 +41,16 @@ export function buildExecutableTargetUpdate(
 
   return {
     ...command,
-    isRestoring: isTargetRestore({
-      intent,
-      observedValue: command.observedValue,
-      getShedBehavior,
-    }),
+    // Planner-resolved, raise-guarded in the diff domain the executor owns:
+    // the plan's verdict is frozen at build time, so if the observation moved
+    // ABOVE the desired value before apply, this write LOWERS the setpoint —
+    // advancing the restore clocks for it would delay legitimate restores by
+    // the backoff. The guard compares only desired vs observed (no config,
+    // no policy — the owner ruling stands); why the write is a restore was
+    // decided where the setpoint was chosen.
+    isRestoring: intent.recordRestoreOnTargetApply
+      && typeof command.observedValue === 'number'
+      && command.desired > command.observedValue,
   };
 }
 
@@ -63,16 +68,3 @@ export function buildExecutableTargetCommand(
     communicationModel: intent.communicationModel,
   };
 }
-
-const isTargetRestore = (params: {
-  intent: ExecutableTargetIntent;
-  observedValue: unknown;
-  getShedBehavior: (deviceId: string) => ShedBehavior;
-}): boolean => {
-  const { intent, observedValue, getShedBehavior } = params;
-  if (typeof observedValue !== 'number') return false;
-  const shedBehavior = getShedBehavior(intent.deviceId);
-  return shedBehavior.action === 'set_temperature'
-    && observedValue === shedBehavior.temperature
-    && intent.desired > observedValue;
-};

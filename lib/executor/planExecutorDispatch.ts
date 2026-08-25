@@ -23,7 +23,6 @@ import type {
   ExecutableSteppedLoadDevice,
   ExecutableSteppedLoadIntent,
   ExecutableTargetIntent,
-  ExecutableTargetUpdate,
   ExecutorDeviceSnapshot,
 } from './executablePlan';
 import {
@@ -191,12 +190,6 @@ const resolveLatestObservedDevice = (
   return snapshot ? buildExecutableObservedDeviceStateFromSnapshot(snapshot) : observed;
 };
 
-const buildTargetUpdateAction = (
-  core: PlanExecutorCore,
-  intent: ExecutableTargetIntent | undefined,
-  observed: ExecutableObservedDeviceState | undefined,
-): ExecutableTargetUpdate | null => buildExecutableTargetUpdate(intent, observed, core.getShedBehavior);
-
 const applyShedTemperatureIntent = async (
   core: PlanExecutorCore,
   intent: ExecutableTargetIntent,
@@ -230,7 +223,7 @@ const applyTargetIntent = async (
   }
   return applyTargetUpdate(
     core.buildTargetExecutorContext(),
-    buildTargetUpdateAction(core, intent, latestObserved),
+    buildExecutableTargetUpdate(intent, latestObserved),
   );
 };
 
