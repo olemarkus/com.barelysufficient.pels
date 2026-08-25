@@ -53,6 +53,18 @@ and the EV car-link store (each per-store, per the ruling above) now add:
   and production PELS is routinely OOM-killed before `onUninit` runs, so the
   shutdown flush is a bonus, not the mechanism.
 
+The pre-shed anchor store (`setup/preShedAnchorStoreAdapter.ts`, 2026-08-25)
+is a fourth per-store implementation of the pattern, per the ruling above:
+write-through persistence (no debounce — mutations are rare and restarts are
+routinely unclean), marker key + `getKeys()` cross-check on the boot read,
+abandon-grace on a suspect read, dirty cleared only on a successful write and
+retried on the next mutation. It covers this addendum's first-write concern
+in a simpler shape fitting its tiny record: no write happens during the grace
+window at all — every access re-reads the persisted value until it recovers
+or the grace expires, and captures that arrive meanwhile are deferred
+record-if-absent, so a recovered blob always wins over anything decided while
+it was unreadable.
+
 ## Historical Proposal
 
 ## Why this note exists

@@ -64,6 +64,7 @@ import { getAppPlanRebuildNowMs, PlanRebuildIntentPolicy } from './setup/planReb
 import { AppNativeWiring } from './setup/appNativeWiring';
 import { AppServiceWiring } from './setup/appServiceWiring';
 import { AppPowerTracker } from './setup/appPowerTracker';
+import { createPreShedAnchorStore } from './setup/preShedAnchorStoreAdapter';
 import { TimerRegistry } from './lib/utils/timerRegistry';
 import type { FlowReportedCapabilitiesByDevice } from './lib/device/transport/flowReportedCapabilities';
 import { withAppApi } from './setup/appRuntimeApi';
@@ -254,6 +255,14 @@ class PelsApp extends PelsAppBase implements AppContext {
   });
   protected structuredLogger?: PinoLogger;
   public readonly timers = new TimerRegistry();
+
+  // Persisted pre-shed setpoint anchors (`lib/plan/preShedAnchor.ts`): one
+  // app-wide store shared by every home's planner and by mode-target seeding.
+  // Lazy settings access, so constructing it as a field needs no boot ordering.
+  public readonly preShedAnchors = createPreShedAnchorStore(
+    () => this.homey.settings,
+    () => Date.now(),
+  );
   private readonly targetPowerReachabilityWiring = createTargetPowerReachabilityAppWiring(this);
   public readonly snapshotHelpers: AppSnapshotHelpers = new AppSnapshotHelpers({
     getPowerSource: () => this.getPowerSource(),
@@ -277,6 +286,8 @@ class PelsApp extends PelsAppBase implements AppContext {
     }),
     seedMissingModeTargets: (snapshot) => seedMissingModeTargetsHelper({
       snapshot, settings: this.homey.settings,
+      preShedAnchors: this.preShedAnchors,
+      getShedBehavior: (deviceId) => this.getShedBehavior(deviceId),
       resolveHomeIdForDevice: (deviceId) => homeMode.resolveHomeIdForModeCatalogSeed(this.ctx, deviceId),
       structuredLog: (event) => this.getStructuredLogger('devices')?.info(event),
       debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),

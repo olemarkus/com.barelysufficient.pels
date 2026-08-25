@@ -131,6 +131,10 @@ describe('planExecutablePlan', () => {
       currentTarget: 16,
       currentTemperature: 16,
       plannedTarget: 21,
+      // Planner-stamped at finalize: the observed setpoint sits at the
+      // normalized shed floor and the plan raises it. The executor no longer
+      // re-derives this from shed config — it copies the plan's fact.
+      recordRestoreOnTargetApply: true,
     });
     const intent = buildExecutableTargetIntent(thermostat);
     const observed = buildExecutableObservedDeviceStateFromSnapshot({
@@ -144,7 +148,6 @@ describe('planExecutablePlan', () => {
     expect(buildExecutableTargetUpdate(
       intent,
       observed,
-      () => ({ action: 'set_temperature', temperature: 16 }),
     )).toEqual({
       deviceId: 'thermostat-1',
       name: 'Thermostat',
@@ -152,6 +155,75 @@ describe('planExecutablePlan', () => {
       desired: 21,
       observedValue: 16,
       isRestoring: true,
+      communicationModel: undefined,
+    });
+  });
+
+  it('honors the plan-time restore stamp only while the write actually raises the setpoint', () => {
+    // The planner's verdict is frozen at build time; the projection's
+    // raise-guard (pure diff domain: desired vs observed, no config) keeps a
+    // drifted observation honest. Drift UPWARD but still below the desired
+    // value: the write still raises — the stamp holds. Documented on
+    // `ExecutableTargetIntent.recordRestoreOnTargetApply`.
+    const thermostat = buildPlanDevice({
+      id: 'thermostat-1',
+      name: 'Thermostat',
+      currentTarget: 16,
+      currentTemperature: 16,
+      plannedTarget: 21,
+      recordRestoreOnTargetApply: true,
+    });
+    const intent = buildExecutableTargetIntent(thermostat);
+    // Observed moved off the floor (a person nudged it to 17) after the build.
+    const observed = buildExecutableObservedDeviceStateFromSnapshot({
+      available: true,
+      id: 'thermostat-1',
+      name: 'Thermostat',
+      binaryControl: { on: true },
+      targets: [{ id: 'target_temperature', value: 17, unit: '°C' }],
+    });
+
+    expect(buildExecutableTargetUpdate(intent, observed)).toEqual({
+      deviceId: 'thermostat-1',
+      name: 'Thermostat',
+      target: 'temperature',
+      desired: 21,
+      observedValue: 17,
+      isRestoring: true,
+      communicationModel: undefined,
+    });
+  });
+
+  it('suppresses the restore stamp when the drifted observation makes the write a LOWERING one', () => {
+    // The user moved the device to 22 between build and apply: writing 21 now
+    // LOWERS the setpoint. Advancing the restore clocks for it would delay
+    // legitimate restores by the backoff, so the raise-guard suppresses the
+    // frozen verdict; the next rebuild re-classifies from the fresh
+    // observation.
+    const thermostat = buildPlanDevice({
+      id: 'thermostat-1',
+      name: 'Thermostat',
+      currentTarget: 16,
+      currentTemperature: 16,
+      plannedTarget: 21,
+      recordRestoreOnTargetApply: true,
+    });
+    const intent = buildExecutableTargetIntent(thermostat);
+    const observed = buildExecutableObservedDeviceStateFromSnapshot({
+      available: true,
+      id: 'thermostat-1',
+      name: 'Thermostat',
+      binaryControl: { on: true },
+      targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
+    });
+
+    expect(buildExecutableTargetUpdate(intent, observed)).toEqual({
+      deviceId: 'thermostat-1',
+      name: 'Thermostat',
+      target: 'temperature',
+      desired: 21,
+      observedValue: 22,
+      isRestoring: false,
       communicationModel: undefined,
     });
   });
@@ -367,10 +439,11 @@ describe('planExecutablePlan', () => {
       targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
     });
 
+    // An ordinary target raise (18 -> 20, not from a shed floor) carries no
+    // planner restore stamp, so the update is not a restore.
     expect(buildExecutableTargetUpdate(
       intent,
       observed,
-      () => ({ action: 'turn_off' }),
     )).toEqual({
       deviceId: 'thermostat-1',
       name: 'Thermostat',

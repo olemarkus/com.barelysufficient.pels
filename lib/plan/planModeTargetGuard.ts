@@ -3,6 +3,10 @@ import type { PlanEngineState } from './planState';
 
 export type ResolvedModeTargetSeed =
   | { kind: 'mode'; value: number }
+  /** Mode target missing but a pre-shed anchor is owed and the device still
+   * sits at its captured shed floor: the anchor is the intended target
+   * (`lib/plan/preShedAnchor.ts`). Unmodulated, like `fallback`. */
+  | { kind: 'anchor'; value: number }
   | { kind: 'fallback'; value: number };
 
 // Per-device emit-on-first-occurrence + N-minute heartbeat for the

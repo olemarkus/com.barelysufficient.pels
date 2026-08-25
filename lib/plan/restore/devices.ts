@@ -6,6 +6,7 @@ import {
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { resolveCommandabilityDetail } from '../../../packages/shared-domain/src/commandableNowReason';
 import type { DevicePlanDevice, ShedBehavior, SteppedPlanDevice } from '../planTypes';
+import { shedFloorCFor } from '../normalizedShedFloor';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
@@ -143,6 +144,7 @@ export function getRestoreCandidates(planDevices: DevicePlanDevice[]): RestoreCa
 export function getOnDevices(
   planDevices: DevicePlanDevice[],
   getShedBehavior: (deviceId: string) => ShedBehavior,
+  normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
 ): DevicePlanDevice[] {
   const filtered = planDevices
     .filter((device) => {
@@ -151,9 +153,9 @@ export function getOnDevices(
       if (isSteppedLoadDevice(device)) {
         return behavior.action === 'turn_off'
           && isBinaryPlanDevice(device)
-          && canSwapOutDevice(device, behavior);
+          && canSwapOutDevice(device, behavior, normalizedShedFloorCByDevice);
       }
-      return canSwapOutDevice(device, behavior);
+      return canSwapOutDevice(device, behavior, normalizedShedFloorCByDevice);
     });
   return sortByPriorityDesc(filtered);
 }
@@ -211,12 +213,16 @@ export function markOffDevicesStayOff(params: {
 function canSwapOutDevice(
   dev: DevicePlanDevice,
   behavior: ShedBehavior,
+  normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
 ): boolean {
   if (behavior.action !== 'set_temperature') return true;
   // A non-temperature device has no setpoint to compare — swappable. The old
   // fail-open on a null observed target is gone with the nullable field.
   if (!isTemperaturePlanDevice(dev)) return true;
-  return dev.currentTarget > behavior.temperature;
+  // Normalized floor, never raw config: the device reports the normalized
+  // value, so an off-step configured floor compared raw would classify an
+  // at-floor thermostat as still swappable (`normalizedShedFloor.ts`).
+  return dev.currentTarget > shedFloorCFor(normalizedShedFloorCByDevice, dev.id, behavior);
 }
 
 /**

@@ -235,6 +235,7 @@ describe('planner behavior under stale power freshness states', () => {
     state?: ReturnType<typeof createPlanEngineState>;
   }): PlanBuilder {
     return new PlanBuilder({
+      getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),

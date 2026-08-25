@@ -55,13 +55,14 @@ export const createFencedActuator = (
 });
 
 const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult => {
-  const state = createPlanEngineState(Date.now(), deps.isExternalOffHeld);
+  const state = createPlanEngineState(Date.now(), deps.isExternalOffHeld, deps.preShedAnchors);
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(
     state.pendingBinaryCommands,
     deps.binaryCommandLifecycle,
   );
   const builderDeps: PlanBuilderDeps = {
     setCapacityInShortfall: deps.setCapacityInShortfall,
+    getCapacityDryRun: deps.getCapacityDryRun,
     capacityGuard: deps.capacityGuard,
     getCapacitySettings: deps.getCapacitySettings,
     getOperatingMode: deps.getOperatingMode,
@@ -171,6 +172,9 @@ export function createPlanEngineComposition(
     // resolution the producer applies, so plan and executor share one definition
     // of "held".
     isExternalOffHeld: (deviceId) => isExternalOffHeldForDevice(ctx, deviceId),
+    // Persisted pre-shed setpoint anchors; one app-wide store (device ids are
+    // globally unique), so every home's planner shares the same debt ledger.
+    preShedAnchors: ctx.preShedAnchors,
     getObservationStale: (deviceId) => {
       const observed = ctx.getObservedState(deviceId);
       return observed !== undefined && isDeviceObservationStale(observed);

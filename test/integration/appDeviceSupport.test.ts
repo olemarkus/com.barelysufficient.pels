@@ -4,6 +4,7 @@ import {
   seedMissingModeTargets,
   __resetSeedSkipDedupeForTests,
 } from '../../setup/appDeviceSupport';
+import { createInMemoryPreShedAnchorStore } from '../../lib/plan/preShedAnchor';
 import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
@@ -207,6 +208,11 @@ describe('isManagedFilterActive', () => {
   });
 });
 
+// Default for existing specs: an empty in-memory store (every read answers
+// `none`, so seeding behaves exactly as before the anchor existed). Anchor
+// specs build their own populated store.
+const preShedAnchors = () => createInMemoryPreShedAnchorStore();
+
 describe('seedMissingModeTargets', () => {
   beforeEach(() => {
     __resetSeedSkipDedupeForTests();
@@ -234,6 +240,10 @@ describe('seedMissingModeTargets', () => {
     const debugStructured = vi.fn();
 
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog,
@@ -258,6 +268,10 @@ describe('seedMissingModeTargets', () => {
     const settings = baseSettings({ Home: { 't-1': 19 }, Away: { 't-1': 17 } });
 
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog: vi.fn(),
@@ -272,6 +286,10 @@ describe('seedMissingModeTargets', () => {
     const structuredLog = vi.fn();
 
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog,
@@ -297,6 +315,10 @@ describe('seedMissingModeTargets', () => {
     });
 
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [thermostat],
       settings: settings as any,
       structuredLog: vi.fn(),
@@ -316,6 +338,10 @@ describe('seedMissingModeTargets', () => {
     });
 
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [thermostat],
       settings: settings as any,
       structuredLog,
@@ -343,6 +369,10 @@ describe('seedMissingModeTargets', () => {
     });
 
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [
         buildThermostat({ id: 't-unmanaged' }),
         buildThermostat({ id: 't-uncontrollable' }),
@@ -365,6 +395,10 @@ describe('seedMissingModeTargets', () => {
     });
 
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog: vi.fn(),
@@ -381,6 +415,10 @@ describe('seedMissingModeTargets', () => {
     });
 
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog: vi.fn(),
@@ -401,6 +439,10 @@ describe('seedMissingModeTargets', () => {
     });
 
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog: vi.fn(),
@@ -424,6 +466,10 @@ describe('seedMissingModeTargets', () => {
     const structuredLog = vi.fn();
 
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [buildThermostat()],
       settings: initial as any,
       structuredLog,
@@ -440,6 +486,10 @@ describe('seedMissingModeTargets', () => {
     structuredLog.mockClear();
 
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [buildThermostat()],
       settings: afterClear as any,
       structuredLog,
@@ -464,6 +514,10 @@ describe('seedMissingModeTargets', () => {
 
     // First pass seeds the original device, recording its fingerprints.
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog,
@@ -475,6 +529,10 @@ describe('seedMissingModeTargets', () => {
     // A new device appears in the snapshot — never seeded — and must be
     // seeded normally even though the prior device's fingerprints exist.
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [
         buildThermostat(),
         buildThermostat({ id: 't-new', name: 'Bad', targets: [
@@ -506,12 +564,20 @@ describe('seedMissingModeTargets', () => {
     });
 
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [thermostat],
       settings: settings as any,
       structuredLog,
       debugStructured: vi.fn(),
     });
     seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: preShedAnchors(),
       snapshot: [thermostat],
       settings: settings as any,
       structuredLog,
@@ -523,5 +589,169 @@ describe('seedMissingModeTargets', () => {
       .filter((event: any) => event.event === 'mode_target_seed_skipped');
     expect(skippedEvents).toHaveLength(2);
     expect(skippedEvents.map((e: any) => e.mode).sort()).toEqual(['Away', 'Home']);
+  });
+
+  it('seeds from the pre-shed anchor when the live setpoint sits at the captured shed floor', () => {
+    // Bug regression: a restart while a heater is shed used to record the shed
+    // setpoint (16°C) as the permanent mode target — the in-memory shed state
+    // is gone after a restart, but the persisted anchor is not.
+    const settings = baseSettings({ Home: {}, Away: {} });
+    const structuredLog = vi.fn();
+    const anchors = createInMemoryPreShedAnchorStore();
+    anchors.record('t-1', { anchorC: 21, shedFloorC: 16 });
+
+    seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: anchors,
+      snapshot: [buildThermostat({
+        targets: [{ id: 'target_temperature', value: 16, unit: '°C', min: 5, max: 35, step: 0.5 }],
+      })],
+      settings: settings as any,
+      structuredLog,
+      debugStructured: vi.fn(),
+    });
+
+    expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
+      Home: { 't-1': 21 },
+      Away: { 't-1': 21 },
+    });
+    expect(structuredLog).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'mode_target_auto_seeded',
+      deviceId: 't-1',
+      seededValue: 21,
+      source: 'pre_shed_anchor',
+    }));
+  });
+
+  it('seeds from the live setpoint when it has left the captured shed floor', () => {
+    // The anchor speaks only while the device shows the shed value; once the
+    // setpoint is anywhere else (release landed, or a person moved it), the
+    // live value is the user's intent.
+    const settings = baseSettings({ Home: {} });
+    const anchors = createInMemoryPreShedAnchorStore();
+    anchors.record('t-1', { anchorC: 21, shedFloorC: 16 });
+
+    seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: anchors,
+      snapshot: [buildThermostat({
+        targets: [{ id: 'target_temperature', value: 18, unit: '°C', min: 5, max: 35, step: 0.5 }],
+      })],
+      settings: settings as any,
+      structuredLog: vi.fn(),
+      debugStructured: vi.fn(),
+    });
+
+    expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
+      Home: { 't-1': 18 },
+    });
+  });
+
+  it('skips a device while the anchor store is unavailable, then seeds on a later pass', () => {
+    // A transient adapter grace window must be a no-op, not a decision: the
+    // device is skipped (with a skip event), and the NEXT pass — store loaded
+    // — seeds normally, because the skip-emission dedupe only quiets the log.
+    const settings = baseSettings({ Home: {} });
+    const structuredLog = vi.fn();
+
+    seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: { read: () => ({ kind: 'unavailable' as const }) },
+      snapshot: [buildThermostat({
+        targets: [{ id: 'target_temperature', value: 16, unit: '°C', min: 5, max: 35, step: 0.5 }],
+      })],
+      settings: settings as any,
+      structuredLog,
+      debugStructured: vi.fn(),
+    });
+
+    expect(settings.set).not.toHaveBeenCalled();
+    expect(structuredLog).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'mode_target_seed_skipped',
+      deviceId: 't-1',
+      reason: 'anchor_unavailable',
+      mode: 'Home',
+    }));
+
+    const anchors = createInMemoryPreShedAnchorStore();
+    anchors.record('t-1', { anchorC: 21, shedFloorC: 16 });
+    seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: anchors,
+      snapshot: [buildThermostat({
+        targets: [{ id: 'target_temperature', value: 16, unit: '°C', min: 5, max: 35, step: 0.5 }],
+      })],
+      settings: settings as any,
+      structuredLog: vi.fn(),
+      debugStructured: vi.fn(),
+    });
+
+    expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
+      Home: { 't-1': 21 },
+    });
+  });
+
+  it('seeds the anchor after a restart that races a mid-hold floor edit', () => {
+    // Durable-write regression: floor edited 16.5 -> 17 while held, the
+    // 17-write lands, then PELS restarts before any plan build re-pins the
+    // anchor. Boot seeding sees the device at 17 while the anchor still pins
+    // 16.5 — with pinned-floor-only recognition it would persist 17 (the shed
+    // floor) as the permanent mode target. The configured-floor candidate
+    // resolved through getShedBehavior closes it: seeds the anchor value.
+    const settings = baseSettings({ Home: {} });
+    const structuredLog = vi.fn();
+    const anchors = createInMemoryPreShedAnchorStore();
+    anchors.record('t-1', { anchorC: 21, shedFloorC: 16.5 });
+
+    seedMissingModeTargets({
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 17 }),
+      preShedAnchors: anchors,
+      snapshot: [buildThermostat({
+        targets: [{ id: 'target_temperature', value: 17, unit: '°C', min: 5, max: 35, step: 0.5 }],
+      })],
+      settings: settings as any,
+      structuredLog,
+      debugStructured: vi.fn(),
+    });
+
+    expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
+      Home: { 't-1': 21 },
+    });
+    expect(structuredLog).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'mode_target_auto_seeded',
+      seededValue: 21,
+      source: 'pre_shed_anchor',
+    }));
+  });
+
+  it('normalizes an anchor seed through the capability bounds and step', () => {
+    const settings = baseSettings({ Home: {} });
+    const anchors = createInMemoryPreShedAnchorStore();
+    anchors.record('t-1', { anchorC: 21.34, shedFloorC: 16 });
+
+    seedMissingModeTargets({
+      // Behaviour-neutral default: no set_temperature floor, so the gate's
+      // configured-floor candidates stay empty as before this seam existed.
+      getShedBehavior: () => ({ action: 'turn_off' as const }),
+      preShedAnchors: anchors,
+      snapshot: [buildThermostat({
+        targets: [{ id: 'target_temperature', value: 16, unit: '°C', min: 5, max: 35, step: 0.5 }],
+      })],
+      settings: settings as any,
+      structuredLog: vi.fn(),
+      debugStructured: vi.fn(),
+    });
+
+    expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
+      Home: { 't-1': 21.5 },
+    });
   });
 });

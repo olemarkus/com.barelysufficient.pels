@@ -682,6 +682,8 @@ DevicePlanDevice => {
     // Producer-resolved label (an explicit override in `...rest` still wins below).
     currentState: resolveFixtureCurrentState({ ...o, binaryControllable: !binaryExplicitlyDisabled }),
     plannedState: 'keep',
+    // Finalize-stamped in production; fixture default mirrors pre-finalize.
+    recordRestoreOnTargetApply: false,
     reason: fixtureDeviceReason('keep')!,
     ...withFixtureSteppedTriple(withFixtureTemperatureKind({
       ...withMaterializedEvPlugState(rest),

@@ -6,6 +6,7 @@ import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../lib/log
 import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingBinaryCommands';
 import type { PlanBuilderDeps } from '../../lib/plan/planBuilder';
 import type { PendingTargetObservationSource, ShedBehavior } from '../../lib/plan/planTypes';
+import type { PreShedAnchorStore } from '../../lib/plan/preShedAnchor';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 
@@ -38,6 +39,10 @@ export type PlanEngineWiring = {
   getInferredSurplusKw?: () => number | null;
   getObservationStale?: (deviceId: string) => boolean;
   isExternalOffHeld?: (deviceId: string) => boolean;
+  /** Pre-shed setpoint anchor store — the persisted adapter, shared across
+   * homes (device ids are globally unique). Required: a home wired without it
+   * would silently lose anchors across restarts. */
+  preShedAnchors: PreShedAnchorStore;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
   decorateDeferredObjectives?: PlanBuilderDeps['decorateDeferredObjectives'];

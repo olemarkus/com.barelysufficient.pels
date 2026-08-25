@@ -39,6 +39,8 @@ import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import { runSurplusPass, type PriceOptDeviceConfig } from './planBuilderSurplus';
 import { sumBudgetExemptProjectedUsageKw } from './planUsage';
 import { PlanMaterializationStages } from './planBuilderMaterialization';
+import { resolveNormalizedShedFloors } from './normalizedShedFloor';
+import { maintainPreShedAnchors } from './preShedAnchor';
 import { trackPlanStage, trackPlanStageAsync } from './planStageTiming';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { incPerfCounter } from '../utils/perfCounters';
@@ -64,6 +66,11 @@ import { attachDeferredReleaseIntents, buildIdentityDecorationBundle } from './p
 
 export type PlanBuilderDeps = {
   setCapacityInShortfall: (inShortfall: boolean) => void;
+  /** Per-home dry-run posture — the same fact `shouldApplyPlan` consults
+   * before actuating. The builder reads it to gate pre-shed anchor CAPTURE:
+   * a simulated shed's write never happens, so persisting an anchor for it
+   * would record a debt no device ever incurred. */
+  getCapacityDryRun: () => boolean;
   capacityGuard: CapacityGuard;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getOperatingMode: () => string;
@@ -258,10 +265,26 @@ export class PlanBuilder {
     const deviceNameById = new Map(admittedDevices.map((d) => [d.id, d.name]));
 
     let planDevices = this.stages.buildPlanDevices(context, sheddingPlan, getCyclePriority);
-    const restoreResult = this.stages.applyRestorePlan(planDevices, context, sheddingPlan, deviceNameById);
+    // One capability-normalized configured floor per device per build — the
+    // single source the restore/swap pass, the hold lane, reason
+    // normalization, and pre-shed anchor maintenance all read, so no stage
+    // can disagree about what "at the floor" means within a build
+    // (semantics on `resolveNormalizedShedFloors`).
+    const normalizedShedFloorCByDevice = resolveNormalizedShedFloors(
+      context.devices,
+      (deviceId) => this.deps.getShedBehavior(deviceId),
+    );
+    const restoreResult = this.stages.applyRestorePlan(
+      planDevices, context, sheddingPlan, deviceNameById, normalizedShedFloorCByDevice,
+    );
     planDevices = restoreResult.planDevices;
 
-    const holdResult = this.stages.applyHoldPlan(planDevices, restoreResult, sheddingPlan);
+    const holdResult = this.stages.applyHoldPlan(
+      planDevices,
+      restoreResult,
+      sheddingPlan,
+      normalizedShedFloorCByDevice,
+    );
     planDevices = holdResult.planDevices;
 
     planDevices = this.stages.normalizeReasons({
@@ -269,6 +292,7 @@ export class PlanBuilder {
       context,
       restoreResult,
       sheddingPlan,
+      normalizedShedFloorCByDevice,
       holds: {
         deferredObjectiveAvoidDeviceIds: deferredAvoidDeviceIds,
         surplusHoldReasonById,
@@ -277,13 +301,26 @@ export class PlanBuilder {
     });
     planDevices = attachDeferredReleaseIntents(planDevices, deferredReleaseIntentByDeviceId, context);
     this.stages.syncHeadroomCardState(planDevices);
-    const finalized = this.stages.finalizePlan(planDevices);
+    const finalized = this.stages.finalizePlan(planDevices, normalizedShedFloorCByDevice);
     // Decision-time shed clock (edge-set) + the plan-less-safe surplus-posture
     // stamp — semantics on `PlanEngineState.recordPlannedShedDecisions`.
     this.state.recordPlannedShedDecisions({
       shedIds: finalized.lastPlannedShedIds,
       surplusOnlyIds: new Set(admittedDevices.filter((dev) => dev.surplusOnly === true).map((dev) => dev.id)),
       nowTs,
+    });
+    // Pre-shed setpoint anchors: capture on entry into setpoint-shed posture,
+    // settle on release — semantics on `maintainPreShedAnchors`
+    // (`preShedAnchor.ts`).
+    maintainPreShedAnchors({
+      planDevices: finalized.planDevices,
+      anchors: this.state.preShedAnchors,
+      normalizedShedFloorCByDevice,
+      // Mirrors `shouldApplyPlan`'s dry-run refusal: a simulated build's shed
+      // writes never happen, so no capture (or floor re-pin) may persist from
+      // one. Settle/clear still runs — it reacts to OBSERVATIONS, which are
+      // real-world facts regardless of who changed the device.
+      captureEnabled: !this.deps.getCapacityDryRun(),
     });
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
       context,

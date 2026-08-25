@@ -31,6 +31,7 @@ import {
   type ResolvedModeTargetSeed,
 } from './planModeTargetGuard';
 import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
+import { resolveAnchoredSetpoint } from './preShedAnchor';
 
 const logger = getLogger('plan/devices');
 
@@ -349,6 +350,31 @@ function resolveTemperatureSeed(
     // transition back into missing emits immediately.
     clearMissingModeEmitState(state, dev.id);
     return { kind: 'mode', value: Number(desired) };
+  }
+  // Mode target missing, but the device sits AT a shed floor with a live
+  // pre-shed anchor: the current setpoint IS the shed value, so falling back
+  // to it would make the release write a no-op and strand the device at the
+  // floor forever. The anchor is the setpoint the shed lowered from — the
+  // real intent; gate semantics on `resolveAnchoredSetpoint`
+  // (`lib/plan/preShedAnchor.ts`). The current build's configured floor is
+  // resolved HERE with the same normalization the hold lane's map applies
+  // (this runs before that map exists), making the gate transition-proof
+  // across a mid-hold floor edit. This consumer's grace policy: an
+  // `unavailable` read falls through to the live-setpoint fallback — a
+  // transient adapter grace is a no-op, never a decision.
+  const anchorRead = state.preShedAnchors.read(dev.id);
+  if (anchorRead.kind !== 'unavailable') {
+    const behavior = deps.getShedBehavior(dev.id);
+    const configuredFloorsC = behavior.action === 'set_temperature'
+      ? [normalizeTargetCapabilityValue({
+        target: getPrimaryTargetCapability(dev.targets),
+        value: behavior.temperature,
+      })]
+      : [];
+    const anchored = resolveAnchoredSetpoint(anchorRead, dev.currentTarget, configuredFloorsC);
+    if (anchored.kind === 'anchor') {
+      return { kind: 'anchor', value: anchored.value };
+    }
   }
   // Mode target missing (user config absence, the only remaining miss) — fall
   // back to the device's own current setpoint, a no-op seed guaranteed finite

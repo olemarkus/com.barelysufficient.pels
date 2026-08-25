@@ -1,6 +1,7 @@
 import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
+import { createInMemoryPreShedAnchorStore, type PreShedAnchorStore } from './preShedAnchor';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,
@@ -183,6 +184,19 @@ export class PlanEngineState {
    * behaviour.
    */
   isExternalOffHeld?: (deviceId: string) => boolean;
+
+  /**
+   * Pre-shed setpoint anchors — the setpoint PELS owes a temperature device
+   * back after a `set_temperature` shed (`lib/plan/preShedAnchor.ts`). A flat
+   * port for the same reason as `isExternalOffHeld`: the planner reads/writes
+   * it directly, and production wiring backs it with the persisted adapter
+   * (`setup/preShedAnchorStoreAdapter.ts`) so the anchor survives a restart —
+   * the whole point, since a restart while shed is exactly when the live
+   * setpoint stops being a record of the user's intent. Defaults to an
+   * in-memory store so tests get real semantics without settings wiring; the
+   * field itself is always assigned (never optional).
+   */
+  readonly preShedAnchors: PreShedAnchorStore;
 
   /**
    * Arming clock for startup power reservations (`lib/plan/admission/headroomReserve.ts`): when a
@@ -377,9 +391,14 @@ export class PlanEngineState {
     lastEmitAtMs: number;
   }> = {};
 
-  constructor(nowTs = Date.now(), isExternalOffHeld?: (deviceId: string) => boolean) {
+  constructor(
+    nowTs = Date.now(),
+    isExternalOffHeld?: (deviceId: string) => boolean,
+    preShedAnchors: PreShedAnchorStore = createInMemoryPreShedAnchorStore(),
+  ) {
     this.appStartedAtMs = nowTs;
     this.isExternalOffHeld = isExternalOffHeld;
+    this.preShedAnchors = preShedAnchors;
   }
 
   /**
@@ -391,6 +410,10 @@ export class PlanEngineState {
    * maintains the plan-less-safe surplus-posture stamp
    * (`surplusOnlyShedByDevice`): REFRESHED (not edge-set) for every currently
    * planned-shed device, so toggling the posture off while held clears it.
+   * (Pre-shed anchor capture deliberately does NOT share this edge: it keys
+   * on entry into SET-TEMPERATURE shed posture with an off-floor setpoint —
+   * see `maintainPreShedAnchors` — because a behaviour flip to
+   * `set_temperature` mid-hold lowers the setpoint without any shed-set edge.)
    */
   recordPlannedShedDecisions(params: {
     shedIds: Set<string>;
@@ -478,6 +501,7 @@ export class PlanEngineState {
 export function createPlanEngineState(
   nowTs = Date.now(),
   isExternalOffHeld?: (deviceId: string) => boolean,
+  preShedAnchors: PreShedAnchorStore = createInMemoryPreShedAnchorStore(),
 ): PlanEngineState {
-  return new PlanEngineState(nowTs, isExternalOffHeld);
+  return new PlanEngineState(nowTs, isExternalOffHeld, preShedAnchors);
 }

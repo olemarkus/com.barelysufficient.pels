@@ -229,6 +229,7 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
 const buildRestoreToLowPlan = (): DevicePlan => ({
   meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5, headroomKw: 5}),
   devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default',
+    recordRestoreOnTargetApply: false,
     currentDrawKw: 0,
     id: DEVICE_ID,
     name: 'Connected 300',

@@ -173,6 +173,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
+        normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
       },

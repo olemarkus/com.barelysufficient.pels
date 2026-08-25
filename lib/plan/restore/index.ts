@@ -218,7 +218,7 @@ function applyFullRestorePass(params: {
   let { restoredOneThisCycle } = params;
   const snapshot = Array.from(deviceMap.values());
   const restoreCandidates = getRestoreCandidates(snapshot);
-  const onDevices = getOnDevices(snapshot, deps.getShedBehavior);
+  const onDevices = getOnDevices(snapshot, deps.getShedBehavior, deps.normalizedShedFloorCByDevice);
   const steppedSwapExecutor = buildSteppedSwapExecutor({
     deviceMap,
     onDevices,
@@ -275,7 +275,7 @@ function applyRestorePlanInCooldown(params: {
   } = params;
   const steppedSwapExecutor = buildSteppedSwapExecutor({
     deviceMap,
-    onDevices: getOnDevices(Array.from(deviceMap.values()), deps.getShedBehavior),
+    onDevices: getOnDevices(Array.from(deviceMap.values()), deps.getShedBehavior, deps.normalizedShedFloorCByDevice),
     swapState,
     state,
     timing: effectiveTiming,
@@ -336,7 +336,7 @@ function applyRestorePlanInCooldown(params: {
   ({ restoredOneThisCycle: previewAdmitted } = applyRestoreCandidates({
     restoreCandidates: getRestoreCandidates(snapshot),
     deviceMap,
-    onDevices: getOnDevices(snapshot, deps.getShedBehavior),
+    onDevices: getOnDevices(snapshot, deps.getShedBehavior, deps.normalizedShedFloorCByDevice),
     swapState,
     state,
     timing: previewTiming,

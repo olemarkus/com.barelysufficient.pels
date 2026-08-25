@@ -21,6 +21,7 @@ import type { PlanEngine } from '../plan/planEngine';
 import type { ExternalOffHoldPolicy } from '../observer/externalOffHold';
 import type { SnapshotWarmupGate } from '../plan/snapshotWarmupGate';
 import type { PendingTargetObservationSource, ShedBehavior } from '../plan/planTypes';
+import type { PreShedAnchorStore } from '../plan/preShedAnchor';
 import type { PlanService } from '../plan/planService';
 import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatcher';
 import type { PriceLevel } from '../price/priceLevels';
@@ -181,6 +182,9 @@ export type AppContext = {
   getTemperatureBoostConfig: (deviceId: string) => TemperatureBoostConfig | undefined;
   getEvBoostConfig: (deviceId: string) => EvBoostConfig | undefined;
   getShedBehavior: (deviceId: string) => ShedBehavior;
+  /** Persisted pre-shed setpoint anchor store (`lib/plan/preShedAnchor.ts`),
+   * constructed as an app field (lazy settings access, no boot ordering). */
+  readonly preShedAnchors: PreShedAnchorStore;
   computeDynamicSoftLimit: () => number;
   getDynamicSoftLimitOverride: () => number | null;
   logTargetRetryComparison?: (params: {

@@ -117,6 +117,7 @@ export class PlanMaterializationStages {
     context: PlanContext,
     sheddingPlan: SheddingPlan,
     deviceNameById: ReadonlyMap<string, string>,
+    normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
   ): RestorePlanResult {
     return trackPlanStage('plan_restore_ms', () => this.applyRestorePlanAndUpdateState({
       planDevices,
@@ -124,6 +125,7 @@ export class PlanMaterializationStages {
       sheddingActive: sheddingPlan.sheddingActive,
       guardInShortfall: sheddingPlan.guardInShortfall,
       deviceNameById,
+      normalizedShedFloorCByDevice,
     }));
   }
 
@@ -131,8 +133,14 @@ export class PlanMaterializationStages {
     planDevices: DevicePlanDevice[],
     restoreResult: RestorePlanResult,
     sheddingPlan: SheddingPlan,
+    // Resolved ONCE per build by the builder and shared with the pre-shed
+    // anchor maintenance pass, so the hold lane's stamps and the anchor's
+    // at-floor recognition can never disagree about this build's floor.
+    // Semantics on `ShedHoldParams.normalizedShedFloorCByDevice`.
+    normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
   ): HoldPlanResult {
     return trackPlanStage('plan_hold_ms', () => applyShedTemperatureHold({
+      normalizedShedFloorCByDevice,
       ledger: buildRestoreHeadroomLedger({
         capacityAvailableKw: restoreResult.capacityAvailableKw,
         budgetAvailableKw: restoreResult.budgetAvailableKw,
@@ -173,8 +181,11 @@ export class PlanMaterializationStages {
     sheddingPlan: SheddingPlan;
     holds: ShedReasonHoldInputs;
     holdResult: HoldPlanResult;
+    normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
   }): DevicePlanDevice[] {
-    const { planDevices, context, restoreResult, sheddingPlan, holds, holdResult } = params;
+    const {
+      planDevices, context, restoreResult, sheddingPlan, holds, holdResult, normalizedShedFloorCByDevice,
+    } = params;
     return trackPlanStage('plan_reasons_ms', () => normalizeShedReasons({
       planDevices,
       shedReasons: sheddingPlan.shedReasons,
@@ -215,7 +226,11 @@ export class PlanMaterializationStages {
           // a swap can never actually shed (stepped `set_step` behavior,
           // thermostats already at their shed floor, uncommandable devices),
           // understating the displayed gap.
-          onDevices: getOnDevices(planDevices, (deviceId) => this.deps.getShedBehavior(deviceId)),
+          onDevices: getOnDevices(
+            planDevices,
+            (deviceId) => this.deps.getShedBehavior(deviceId),
+            normalizedShedFloorCByDevice,
+          ),
           // `state.swapByDevice` was refreshed from this cycle's restore pass
           // in `applyRestorePlanAndUpdateState`, so the swap surface the
           // shortfall folds in is the same one the next swap decision reads.
@@ -235,8 +250,12 @@ export class PlanMaterializationStages {
     }));
   }
 
-  finalizePlan(planDevices: DevicePlanDevice[]): FinalizedPlanResult {
-    return trackPlanStage('plan_finalize_ms', () => finalizePlanDevices(planDevices, {
+  finalizePlan(
+    planDevices: DevicePlanDevice[],
+    normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
+  ): FinalizedPlanResult {
+    return trackPlanStage('plan_finalize_ms', () => finalizePlanDevices(
+      planDevices, normalizedShedFloorCByDevice, this.state.preShedAnchors, {
       onInvalidReasonPair: (issue) => {
         this.deps.structuredLog?.warn({
           event: 'plan_reason_pair_invalid',
@@ -299,8 +318,11 @@ export class PlanMaterializationStages {
     sheddingActive: boolean;
     guardInShortfall: boolean;
     deviceNameById: ReadonlyMap<string, string>;
+    normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
   }): RestorePlanResult {
-    const { planDevices, context, sheddingActive, guardInShortfall, deviceNameById } = params;
+    const {
+      planDevices, context, sheddingActive, guardInShortfall, deviceNameById, normalizedShedFloorCByDevice,
+    } = params;
     const restoreResult = applyRestorePlan({
       planDevices,
       context,
@@ -310,6 +332,7 @@ export class PlanMaterializationStages {
       deps: {
         powerTracker: this.deps.getPowerTracker(),
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
+        normalizedShedFloorCByDevice,
         deviceDiagnostics: this.deps.deviceDiagnostics,
         structuredLog: this.deps.structuredLog,
         debugStructured: this.deps.debugStructured,

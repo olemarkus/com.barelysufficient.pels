@@ -276,6 +276,7 @@ describe('PlanService', () => {
         headroomKw: -0.97}),
       devices: [
         withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
+          recordRestoreOnTargetApply: false,
           id: 'dev-1',
           name: 'Heater 1',
           commandableNow: true,
@@ -295,6 +296,7 @@ describe('PlanService', () => {
           reason: insufficientHeadroomFixtureReason({ needKw: 0.98, availableKw: -0.97 }),
         }))) as DevicePlan['devices'][number],
         withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
+          recordRestoreOnTargetApply: false,
           id: 'dev-2',
           name: 'Heater 2',
           commandableNow: true,
@@ -314,6 +316,7 @@ describe('PlanService', () => {
           reason: insufficientHeadroomFixtureReason({ needKw: 1.1, availableKw: -0.97 }),
         }))) as DevicePlan['devices'][number],
         withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
+          recordRestoreOnTargetApply: false,
           id: 'ev-1',
           name: 'EV',
           commandableNow: true,
