@@ -312,3 +312,41 @@ export const pruneEvCarLinkSnapshot = (params: {
         ...(snapshot.sessions ? { sessions: snapshot.sessions } : {}),
     };
 };
+
+/**
+ * Overlay in-memory accepted state on recovered persisted history before the
+ * first post-grace write. Used when the boot-time settings read was suspect
+ * (abandon-grace engaged) and a recovery re-read later returned real history:
+ * writing the in-memory snapshot alone would overwrite the multi-session
+ * evidence the probe exists to gather.
+ *
+ * In-memory entries win per key (pair and car records observed since boot
+ * reflect current reality); recovered history fills everything else, with
+ * cars bounded by `EV_CAR_LINK_MAX_TRACKED_CARS` (recovered entries dropped
+ * first). A colliding pair record is taken from memory WHOLESALE — no
+ * per-field sub-merge like calibration's per-(device, step) overlay —
+ * because vote counts cannot be combined without double-counting: a plug
+ * edge spanning the restart can be counted on both sides (persisted
+ * pre-crash, voted again after resume), so summing would inflate exactly
+ * the affinity evidence the votes exist to accumulate, while calibration's
+ * step EMAs are independent keyed observations with no such overlap.
+ * Sessions are deliberately NOT filled from the recovered side:
+ * in-memory absence cannot distinguish "never seen" from "cleared by an
+ * observed session end since boot", and re-injecting a cleared session long
+ * after boot re-arms the wrong-resume risk `evCarLinkSessionResume.ts`
+ * documents (a car connected elsewhere reports connected exactly like one
+ * connected here). Sessions are lifecycle state, not the evidence this merge
+ * exists to preserve.
+ */
+export const mergeRecoveredEvCarLinkHistory = (params: {
+    inMemory: EvCarLinkSnapshot;
+    recovered: EvCarLinkSnapshot;
+}): EvCarLinkSnapshot => ({
+    version: EV_CAR_LINK_VERSION,
+    pairs: { ...params.recovered.pairs, ...params.inMemory.pairs },
+    cars: Object.fromEntries([
+        ...Object.entries(params.inMemory.cars),
+        ...Object.entries(params.recovered.cars).filter(([carId]) => !(carId in params.inMemory.cars)),
+    ].slice(0, EV_CAR_LINK_MAX_TRACKED_CARS)),
+    sessions: { ...params.inMemory.sessions },
+});

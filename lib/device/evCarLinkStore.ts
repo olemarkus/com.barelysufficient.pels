@@ -28,6 +28,7 @@ import { normalizeError } from '../utils/errorUtils';
 import {
     createEmptyEvCarLinkSnapshot,
     isStrictlyValidPersistedEvCarLink,
+    mergeRecoveredEvCarLinkHistory,
     normalizeEvCarLinkSnapshot,
     pruneEvCarLinkSnapshot,
 } from './evCarLinkSnapshot';
@@ -36,6 +37,18 @@ const moduleLogger = getLogger('device/ev-car-link-store');
 
 const DEFAULT_PERSIST_DEBOUNCE_MS = 60_000;
 const DEFAULT_LOAD_GRACE_MS = 5 * 60 * 1000;
+/**
+ * How long a *transient-miss* recovery re-read (SDK answering, value absent,
+ * init marker present) may keep deferring the first write, measured from the
+ * FIRST deferred attempt — not from boot, so a store whose first vote arrives
+ * hours later still gets a full window of spaced re-reads instead of
+ * abandoning on a single one. Past the deadline the value has been absent
+ * across spaced re-reads and writing over an absent key destroys nothing. A
+ * *thrown* re-read never uses this deadline — it defers indefinitely, because
+ * every retry re-reads and a healed SDK then recovers the history. Mirrors
+ * `devicePowerCalibrationStore.ts`.
+ */
+const DEFAULT_RECOVERY_DEFERRAL_MS = 5 * 60 * 1000;
 
 export type EvCarLinkStoreOptions = {
     initialSnapshot?: EvCarLinkSnapshot;
@@ -46,11 +59,43 @@ export type EvCarLinkStoreOptions = {
     nowMs?: number;
 };
 
+/**
+ * What a recovery re-read of the persisted snapshot established, applied by
+ * the private settle step of {@link EvCarLinkStore.resolveRecoveryForWrite}.
+ */
+type RecoveredEvCarLinkHistory =
+    | { kind: 'recovered'; snapshot: EvCarLinkSnapshot }
+    | { kind: 'nothing_recoverable' };
+
+/**
+ * Outcome of settling the boot-time recovery re-read ahead of a write.
+ * `ready` carries the snapshot to persist (merged when history was
+ * recovered); `deferred` means the persisted value may still be recoverable
+ * but was not readable right now, so this write must not happen — the store
+ * stays dirty and the persist guard retries, re-reading each time.
+ */
+type RecoveryWriteResolution =
+    | { kind: 'ready'; snapshot: EvCarLinkSnapshot }
+    | { kind: 'deferred' };
+
 /** In-memory cache with a dirty flag, a debounce window, and a load-grace gate. */
 export class EvCarLinkStore {
     private snapshot: EvCarLinkSnapshot;
     private dirty = false;
     private lastPersistMs = 0;
+    private recoveryPending: boolean;
+    /** Throttle cursor for recovery re-reads; sentinel = never attempted. */
+    private lastRecoveryAttemptMs = Number.NEGATIVE_INFINITY;
+    /**
+     * Per-arm deferral windows, each armed by that arm's FIRST deferred
+     * attempt; 0 = not armed yet. They must stay separate: a long thrown
+     * phase that healed into a transiently-absent read would otherwise hand
+     * the transient-miss arm an already-expired shared window, abandoning
+     * recovery after ZERO spaced absent re-reads — the exact overwrite this
+     * machinery exists to prevent.
+     */
+    private readThrewDeferralUntilMs = 0;
+    private transientMissDeferralUntilMs = 0;
     private readonly persistDebounceMs: number;
     private readonly persistGraceUntilMs: number;
 
@@ -59,6 +104,10 @@ export class EvCarLinkStore {
         this.persistDebounceMs = options.persistDebounceMs ?? DEFAULT_PERSIST_DEBOUNCE_MS;
         const graceMs = options.loadGraceMs ?? 0;
         this.persistGraceUntilMs = graceMs > 0 ? (options.nowMs ?? Date.now()) + graceMs : 0;
+        // A grace window engages exactly when the boot read was suspect, so the
+        // same signal marks the persisted value as still worth a recovery
+        // re-read before the first write is allowed to overwrite it.
+        this.recoveryPending = this.persistGraceUntilMs > 0;
     }
 
     getSnapshot(): EvCarLinkSnapshot {
@@ -98,6 +147,134 @@ export class EvCarLinkStore {
         if (!this.dirty) return null;
         if (nowMs < this.persistGraceUntilMs) return null;
         return this.snapshot;
+    }
+
+    /**
+     * Resolve the pending recovery re-read before the first post-grace write.
+     * The abandon-grace window blocks writes while a transiently unreadable
+     * boot read might still recover, but blocking alone only postpones the
+     * overwrite — this re-read is what actually recovers the value. Same
+     * decision table as `devicePowerCalibrationStore.ts`: value present →
+     * merge and write; absent with no marker → write; absent with marker →
+     * defer until a bounded window armed by that arm's first deferred
+     * attempt, then write; re-read threw → defer with no deadline (every
+     * retry re-reads, so a healed SDK recovers the history), escalating the
+     * log to warn past its own window.
+     *
+     * This is the ONLY seam over the recovery state machine, and only the
+     * write path (`writeAndMark`, via `persistEvCarLinkIfDue` /
+     * `persistEvCarLinkFlush`) may call it: the throttle, the deferral
+     * windows, and the settle step are private precisely so no other caller
+     * can settle recovery without performing the re-read — settling from
+     * outside would silently disarm first-write protection.
+     */
+    resolveRecoveryForWrite(
+        params: { homey: HomeyRuntime; nowMs: number },
+        snapshot: EvCarLinkSnapshot,
+    ): RecoveryWriteResolution {
+        if (!this.recoveryPending) return { kind: 'ready', snapshot };
+        // Rate-limit: without this gate the deferral path re-reads and logs
+        // on every accepted vote for as long as the SDK stays broken.
+        if (!this.beginRecoveryAttempt(params.nowMs)) return { kind: 'deferred' };
+        const reread = readPersistedSnapshot(params.homey);
+        if (!reread.threw && reread.value !== undefined && reread.value !== null) {
+            // Prune mirrors the load path: the recovered value skipped
+            // prune-on-load when the boot read failed, and nothing else ever
+            // prunes this store.
+            const recovered = pruneEvCarLinkSnapshot({
+                snapshot: normalizeEvCarLinkSnapshot(reread.value, params.nowMs),
+                nowMs: params.nowMs,
+            });
+            this.settleRecovery({ kind: 'recovered', snapshot: recovered });
+            moduleLogger.info({
+                event: 'ev_car_link_recovery_merged',
+                recoveredPairs: Object.keys(recovered.pairs).length,
+                recoveredCars: Object.keys(recovered.cars).length,
+            });
+            return { kind: 'ready', snapshot: this.snapshot };
+        }
+        if (!reread.threw) {
+            const markerRead = readInitMarker(params.homey);
+            const markerPresent = markerRead.threw ? true : markerRead.value;
+            if (!markerPresent) {
+                // Absent value and no we've-written-before marker: nothing was
+                // ever (or is any longer) persisted — nothing to recover.
+                this.settleRecovery({ kind: 'nothing_recoverable' });
+                return { kind: 'ready', snapshot };
+            }
+            if (this.noteRecoveryDeferred(params.nowMs, 'transient_miss') === 'past_window') {
+                this.settleRecovery({ kind: 'nothing_recoverable' });
+                moduleLogger.warn({ event: 'ev_car_link_recovery_abandoned' });
+                return { kind: 'ready', snapshot };
+            }
+            moduleLogger.info({
+                event: 'ev_car_link_recovery_write_deferred',
+                reason: 'transient_miss',
+            });
+            return { kind: 'deferred' };
+        }
+        const deferredPayload = {
+            event: 'ev_car_link_recovery_write_deferred',
+            reason: 'read_threw',
+        };
+        if (this.noteRecoveryDeferred(params.nowMs, 'read_threw') === 'past_window') {
+            moduleLogger.warn(deferredPayload);
+        } else {
+            moduleLogger.info(deferredPayload);
+        }
+        return { kind: 'deferred' };
+    }
+
+    /**
+     * Throttle gate for recovery re-reads: at most one attempt per persist
+     * debounce window. Records the attempt when it admits one.
+     */
+    private beginRecoveryAttempt(nowMs: number): boolean {
+        if (nowMs - this.lastRecoveryAttemptMs < this.persistDebounceMs) return false;
+        this.lastRecoveryAttemptMs = nowMs;
+        return true;
+    }
+
+    /**
+     * Record that a recovery attempt could not read the persisted value and
+     * had to defer the write. The first call for an arm arms THAT arm's
+     * deferral window; the answer says whether it has since elapsed. The
+     * *transient-miss* arm abandons recovery on `past_window` (the value has
+     * been absent across its own spaced re-reads and writing over an absent
+     * key destroys nothing); the *thrown* arm never abandons and uses
+     * `past_window` only to escalate its log level, so a permanent read stall
+     * is visible to log triage.
+     */
+    private noteRecoveryDeferred(
+        nowMs: number,
+        arm: 'read_threw' | 'transient_miss',
+    ): 'within_window' | 'past_window' {
+        if (arm === 'read_threw') {
+            if (this.readThrewDeferralUntilMs === 0) {
+                this.readThrewDeferralUntilMs = nowMs + DEFAULT_RECOVERY_DEFERRAL_MS;
+            }
+            return nowMs < this.readThrewDeferralUntilMs ? 'within_window' : 'past_window';
+        }
+        if (this.transientMissDeferralUntilMs === 0) {
+            this.transientMissDeferralUntilMs = nowMs + DEFAULT_RECOVERY_DEFERRAL_MS;
+        }
+        return nowMs < this.transientMissDeferralUntilMs ? 'within_window' : 'past_window';
+    }
+
+    /**
+     * Settle the recovery re-read. `recovered` merges the re-read history under
+     * the in-memory accepted state (in-memory wins per key; recovered fills
+     * everything else); `nothing_recoverable` records that the persisted value
+     * is genuinely gone. Leaves the dirty flag as-is in both arms.
+     */
+    private settleRecovery(outcome: RecoveredEvCarLinkHistory): void {
+        if (outcome.kind === 'recovered') {
+            this.snapshot = mergeRecoveredEvCarLinkHistory({
+                inMemory: this.snapshot,
+                recovered: outcome.snapshot,
+            });
+        }
+        this.recoveryPending = false;
     }
 
     /** Only after a durable write — a premature call silently drops buffered votes. */
@@ -196,8 +373,13 @@ const writeAndMark = (params: {
     store: EvCarLinkStore;
     nowMs: number;
 }, snapshot: EvCarLinkSnapshot): boolean => {
+    const resolution = params.store.resolveRecoveryForWrite(
+        { homey: params.homey, nowMs: params.nowMs },
+        snapshot,
+    );
+    if (resolution.kind === 'deferred') return false;
     try {
-        params.homey.settings.set(EV_CAR_LINK_STATE, snapshot);
+        params.homey.settings.set(EV_CAR_LINK_STATE, resolution.snapshot);
         params.homey.settings.set(EV_CAR_LINK_STATE_INITIALIZED, true);
         params.store.markPersisted(params.nowMs);
         return true;

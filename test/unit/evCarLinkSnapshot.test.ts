@@ -7,6 +7,7 @@ import {
   createEmptyEvCarLinkSnapshot,
   getEvCarLinkVotes,
   isStrictlyValidPersistedEvCarLink,
+  mergeRecoveredEvCarLinkHistory,
   normalizeEvCarLinkSnapshot,
   parseEvCarLinkPairKey,
   pruneEvCarLinkSnapshot,
@@ -210,5 +211,61 @@ describe('future timestamps', () => {
       cars: {},
     }, 5_000);
     expect(normalized.pairs['car|charger'].lastVotedAtMs).toBe(1_000);
+  });
+});
+
+describe('mergeRecoveredEvCarLinkHistory', () => {
+  const affinity = (votes: number, lastVotedAtMs: number) => ({ votes, lastVotedAtMs });
+  const stops = (pct: number, lastObservedAtMs: number) => ({ stopSocPct: [pct], lastObservedAtMs });
+
+  it('in-memory entries win per key; recovered history fills pairs and cars, never sessions', () => {
+    const merged = mergeRecoveredEvCarLinkHistory({
+      inMemory: {
+        version: EV_CAR_LINK_VERSION,
+        pairs: { 'car|charger': affinity(1, 2_000) },
+        cars: { car: stops(78, 2_000) },
+        sessions: { charger: { carId: 'car', sinceMs: 1_900 } },
+      },
+      recovered: {
+        version: EV_CAR_LINK_VERSION,
+        pairs: { 'car|charger': affinity(9, 1_000), 'other|charger2': affinity(4, 900) },
+        cars: { car: stops(80, 1_000), other: stops(90, 900) },
+        sessions: { charger2: { carId: 'other', sinceMs: 800 } },
+      },
+    });
+    // Collisions: the post-boot record reflects current reality.
+    expect(merged.pairs['car|charger'].votes).toBe(1);
+    expect(merged.cars.car.stopSocPct).toEqual([78]);
+    // Fills: multi-session evidence the boot read failed to deliver.
+    expect(merged.pairs['other|charger2'].votes).toBe(4);
+    expect(merged.cars.other.stopSocPct).toEqual([90]);
+    // Sessions come from memory ONLY: in-memory absence cannot distinguish
+    // "never seen" from "cleared by an observed session end since boot", and
+    // re-injecting a cleared session re-arms the documented wrong-resume risk.
+    expect(merged.sessions).toEqual({ charger: { carId: 'car', sinceMs: 1_900 } });
+  });
+
+  it('keeps the merged car set bounded, dropping recovered entries first', () => {
+    const inMemoryCars = Object.fromEntries(
+      Array.from({ length: 3 }, (_, i) => [`mem-${i}`, stops(70 + i, 2_000)]),
+    );
+    const recoveredCars = Object.fromEntries(
+      Array.from({ length: EV_CAR_LINK_MAX_TRACKED_CARS }, (_, i) => [`old-${i}`, stops(60 + i, 1_000)]),
+    );
+    const merged = mergeRecoveredEvCarLinkHistory({
+      inMemory: { version: EV_CAR_LINK_VERSION, pairs: {}, cars: inMemoryCars, sessions: {} },
+      recovered: { version: EV_CAR_LINK_VERSION, pairs: {}, cars: recoveredCars, sessions: {} },
+    });
+    expect(Object.keys(merged.cars)).toHaveLength(EV_CAR_LINK_MAX_TRACKED_CARS);
+    // Every post-boot record survives; recovered fill takes the remainder.
+    expect(Object.keys(merged.cars).filter((id) => id.startsWith('mem-'))).toHaveLength(3);
+  });
+
+  it('tolerates snapshots without a sessions record', () => {
+    const merged = mergeRecoveredEvCarLinkHistory({
+      inMemory: { version: EV_CAR_LINK_VERSION, pairs: {}, cars: {} },
+      recovered: { version: EV_CAR_LINK_VERSION, pairs: {}, cars: {} },
+    });
+    expect(merged.sessions).toEqual({});
   });
 });

@@ -160,7 +160,7 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
       ctx.deviceControlHelpers.reconcileTargetPowerReachability([snapshot], nowMs);
     },
     observedStateDispatcher: deps.getObservedStateEmitter().asDispatcher(deps.getObservedHomePower()),
-    evCarLinkSnapshotAccess: createPersistedEvCarLinkAccess(ctx.homey),
+    evCarLinkSnapshotAccess: createPersistedEvCarLinkAccess(ctx.homey, deps.timers),
   });
   // eslint-disable-next-line functional/immutable-data -- shared AppContext write
   ctx.deviceManager = deviceManager;
