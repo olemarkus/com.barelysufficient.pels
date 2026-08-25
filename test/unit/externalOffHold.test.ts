@@ -310,6 +310,243 @@ describe('external-off hold policy — unavailable is not empty', () => {
   });
 });
 
+// The recovery path above replays a tombstoned release against the read that
+// comes back. This block covers the read that never comes back: grace expiry
+// may stop the reloads, but it must not drop the release — the reconciling
+// write has to land, or a restart reloads the stale persisted hold and strands
+// a device the user already turned back on.
+describe('external-off hold policy — a release survives a store that never recovers', () => {
+  const buildBrokenStore = (save: (holds: PersistedExternalOffHolds) => void) => {
+    let clock = NOW;
+    const policy = createExternalOffHoldPolicy({
+      nowMs: () => clock,
+      readOptIn: () => optedIn({ a: true }),
+      load: () => { throw new Error('settings unavailable'); },
+      hasWrittenBefore: () => true,
+      save,
+    });
+    return { policy, advancePastGrace: () => { clock = NOW + EXTERNAL_OFF_HOLD_LOAD_GRACE_MS + 1; } };
+  };
+
+  it('lands the reconciling write at grace expiry, so a restart cannot strand the device', () => {
+    const save = vi.fn<(holds: PersistedExternalOffHolds) => void>();
+    const { policy, advancePastGrace } = buildBrokenStore(save);
+    // The unreadable blob may hold `a`; the user turns the device on and the
+    // sweep releases the hold against the empty in-memory map.
+    expect(policy.isHeld('a')).toBe(true);
+    policy.clearHold('a');
+    expect(policy.isHeld('a')).toBe(false);
+    // Grace still withholds writes — this is not a licence to wipe early.
+    expect(save).not.toHaveBeenCalled();
+    // The read never recovers. Expiry makes the in-memory map authoritative,
+    // and the pending clear is flushed instead of dropped on the floor.
+    advancePastGrace();
+    policy.heldDeviceIds();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0][0].entriesByDeviceId).toEqual({});
+    // A restart loads what the reconciling write persisted: no stale hold.
+    const restarted = createExternalOffHoldPolicy({
+      nowMs: () => NOW + EXTERNAL_OFF_HOLD_LOAD_GRACE_MS + 2,
+      readOptIn: () => optedIn({ a: true }),
+      load: () => save.mock.calls[0][0],
+      hasWrittenBefore: () => true,
+    });
+    expect(restarted.isHeld('a')).toBe(false);
+  });
+
+  it('retries the reconciling write when the post-grace save throws', () => {
+    const save = vi.fn<(holds: PersistedExternalOffHolds) => void>();
+    save.mockImplementation(() => { throw new Error('settings write failed'); });
+    const { policy, advancePastGrace } = buildBrokenStore(save);
+    policy.clearHold('a');
+    advancePastGrace();
+    policy.heldDeviceIds();
+    expect(save).toHaveBeenCalledTimes(1);
+    save.mockImplementation(() => {});
+    // Any later access retries the withheld write, like any other mutation.
+    policy.isHeld('a');
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1][0].entriesByDeviceId).toEqual({});
+  });
+
+  it('still writes nothing at grace expiry when nothing changed during the outage', () => {
+    const save = vi.fn<(holds: PersistedExternalOffHolds) => void>();
+    const { policy, advancePastGrace } = buildBrokenStore(save);
+    expect(policy.isHeld('a')).toBe(true);
+    advancePastGrace();
+    policy.heldDeviceIds();
+    // No release was recorded, so expiry alone must not full-replace the blob
+    // with an empty map — that would be the wipe the grace window exists to stop.
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('does not let sweep clears of un-opted devices force the wipe at expiry', () => {
+    const save = vi.fn<(holds: PersistedExternalOffHolds) => void>();
+    const { policy, advancePastGrace } = buildBrokenStore(save);
+    // The pull sweep clears every observed-ON device each plan cycle — lamps
+    // and TVs included. None of them can be held, so none of their tombstones
+    // may pend the reconciling full-replace: that write would destroy every
+    // hold the unreadable blob still has, on every outage that reaches expiry.
+    policy.clearHold('lamp');
+    policy.clearHold('tv');
+    advancePastGrace();
+    policy.heldDeviceIds();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('reconciles by merge when the read heals after expiry, keeping untouched holds', () => {
+    let clock = NOW;
+    let broken = true;
+    const save = vi.fn<(holds: PersistedExternalOffHolds) => void>();
+    save.mockImplementation(() => { throw new Error('settings write failed'); });
+    const policy = createExternalOffHoldPolicy({
+      nowMs: () => clock,
+      readOptIn: () => optedIn({ a: true, b: true }),
+      hasWrittenBefore: () => true,
+      load: () => {
+        if (broken) throw new Error('settings unavailable');
+        return persisted({ a: { sinceMs: 500 }, b: { sinceMs: 600 } });
+      },
+      save,
+    });
+    policy.clearHold('a');
+    clock = NOW + EXTERNAL_OFF_HOLD_LOAD_GRACE_MS + 1;
+    // Expiry passes with the save still broken: the release stays pending, and
+    // reload attempts continue precisely because it is outstanding.
+    policy.heldDeviceIds();
+    expect(save).toHaveBeenCalledTimes(1);
+    broken = false;
+    save.mockImplementation(() => {});
+    clock += EXTERNAL_OFF_HOLD_RELOAD_RETRY_MS + 1;
+    // The read heals first, so the reconcile is a merge: `b`'s untouched hold
+    // survives instead of being flattened by the full-replace fallback, and
+    // `a`'s release is applied and written durably.
+    expect(policy.heldDeviceIds()).toEqual(['b']);
+    expect(policy.isHeld('a')).toBe(false);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1][0].entriesByDeviceId).toEqual({ b: { sinceMs: 600 } });
+  });
+
+  it('reconciles a release recorded only after grace expiry in that same call', () => {
+    const save = vi.fn<(holds: PersistedExternalOffHolds) => void>();
+    const { policy, advancePastGrace } = buildBrokenStore(save);
+    advancePastGrace();
+    policy.heldDeviceIds();
+    // Quiet expiry: nothing pending, nothing written, blob left for a restart.
+    expect(save).not.toHaveBeenCalled();
+    // The user turns the device on only now. The delete lands on nothing, but
+    // the abandoned blob may still record the hold — and under sparse access
+    // (`power_source = flow`) the next access can be far away, so the clear
+    // itself must run the reconcile instead of leaving the write pending for
+    // a restart to lose.
+    policy.clearHold('a');
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0][0].entriesByDeviceId).toEqual({});
+  });
+
+  it('lands a tombstoned clear durably within the single clearHold call', () => {
+    let clock = NOW;
+    let broken = true;
+    const save = vi.fn<(holds: PersistedExternalOffHolds) => void>();
+    const policy = createExternalOffHoldPolicy({
+      nowMs: () => clock,
+      readOptIn: () => optedIn({ a: true, b: true }),
+      hasWrittenBefore: () => true,
+      load: () => {
+        if (broken) throw new Error('settings unavailable');
+        return persisted({ a: { sinceMs: 500 }, b: { sinceMs: 600 } });
+      },
+      save,
+    });
+    clock = NOW + EXTERNAL_OFF_HOLD_LOAD_GRACE_MS + 1;
+    policy.heldDeviceIds();
+    expect(save).not.toHaveBeenCalled();
+    broken = false;
+    // One clearHold, no follow-up access: the tail reconcile reads first —
+    // merging `b`'s untouched hold back — and writes the release durably
+    // before a restart can lose it.
+    policy.clearHold('a');
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0][0].entriesByDeviceId).toEqual({ b: { sinceMs: 600 } });
+    expect(policy.isHeld('a')).toBe(false);
+    expect(policy.isHeld('b')).toBe(true);
+  });
+
+  it('does not lose a release arriving on the very access that expires the grace', () => {
+    const save = vi.fn<(holds: PersistedExternalOffHolds) => void>();
+    const { policy, advancePastGrace } = buildBrokenStore(save);
+    advancePastGrace();
+    // `settleState` inside this call performs the expiry flip before the clear
+    // is examined — the release must still be recorded and reconciled.
+    policy.clearHold('a');
+    policy.heldDeviceIds();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0][0].entriesByDeviceId).toEqual({});
+  });
+
+  it('merges instead of full-replacing when recovery lands inside the reload throttle window', () => {
+    let clock = NOW;
+    let broken = true;
+    const save = vi.fn<(holds: PersistedExternalOffHolds) => void>();
+    save.mockImplementation(() => { throw new Error('settings write failed'); });
+    const policy = createExternalOffHoldPolicy({
+      nowMs: () => clock,
+      readOptIn: () => optedIn({ a: true, b: true }),
+      hasWrittenBefore: () => true,
+      load: () => {
+        if (broken) throw new Error('settings unavailable');
+        return persisted({ a: { sinceMs: 500 }, b: { sinceMs: 600 } });
+      },
+      save,
+    });
+    policy.clearHold('a');
+    clock = NOW + EXTERNAL_OFF_HOLD_LOAD_GRACE_MS + 1;
+    policy.heldDeviceIds();
+    expect(save).toHaveBeenCalledTimes(1);
+    // The whole service heals at once, and the next access arrives INSIDE the
+    // reload throttle window. The flush fires on every access, so it must read
+    // before it saves: going straight to the save would full-replace the blob
+    // with the never-read in-memory map and durably erase `b`'s hold.
+    broken = false;
+    save.mockImplementation(() => {});
+    clock += 1;
+    expect(policy.heldDeviceIds()).toEqual(['b']);
+    expect(policy.isHeld('a')).toBe(false);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1][0].entriesByDeviceId).toEqual({ b: { sinceMs: 600 } });
+  });
+
+  it('reads before saving in the post-grace window while the state is still unavailable', () => {
+    let clock = NOW;
+    let broken = true;
+    const save = vi.fn<(holds: PersistedExternalOffHolds) => void>();
+    const policy = createExternalOffHoldPolicy({
+      nowMs: () => clock,
+      readOptIn: () => optedIn({ a: true, b: true }),
+      hasWrittenBefore: () => true,
+      load: () => {
+        if (broken) throw new Error('settings unavailable');
+        return persisted({ a: { sinceMs: 500 }, b: { sinceMs: 600 } });
+      },
+      save,
+    });
+    // A reload attempt lands just before the grace boundary, throttling the
+    // next attempt to just after it, and a release is recorded meanwhile.
+    clock = NOW + EXTERNAL_OFF_HOLD_LOAD_GRACE_MS - 5000;
+    policy.isHeld('a');
+    policy.clearHold('a');
+    // The service heals right as the grace ends. The flush that runs before
+    // the expiry flip — state still "unavailable", reload still throttled —
+    // must also read first rather than blind-writing the in-memory map.
+    broken = false;
+    clock = NOW + EXTERNAL_OFF_HOLD_LOAD_GRACE_MS + 1;
+    expect(policy.heldDeviceIds()).toEqual(['b']);
+    expect(policy.isHeld('a')).toBe(false);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0][0].entriesByDeviceId).toEqual({ b: { sinceMs: 600 } });
+  });
+});
+
 // The adapter is a pure function of an injected `settings` object, so its
 // classification of a flaky store belongs here rather than at a wider tier.
 describe('external-off hold settings adapter — a flaky store', () => {

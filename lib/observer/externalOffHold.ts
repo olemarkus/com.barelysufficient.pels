@@ -29,6 +29,11 @@
  *  - A mutation the grace window (or a throwing `save`) kept out of the store is
  *    retained and flushed on a later access. Repeating the same `startHold` is a
  *    no-op, so without this a transient failure would silently lose the hold.
+ *    Releases get the same durability: a `clearHold` whose deletion could not
+ *    land on the unreadable map is tombstoned, and — for a device the blob
+ *    could actually hold — kept as a pending write across grace expiry, so a
+ *    reconciling read-merge or write eventually lands and a restart cannot
+ *    reload the stale persisted hold and strand a device the user released.
  *  - A corrupt individual entry is skipped, not fatal, and entries are rebuilt
  *    field-by-field on load so a tampered blob cannot smuggle extra keys through
  *    into the next write.
@@ -220,8 +225,21 @@ export const createExternalOffHoldPolicy = (
   let nextReloadAtMs = now() + EXTERNAL_OFF_HOLD_RELOAD_RETRY_MS;
   // A mutation the grace window or a throwing `save` kept out of the store.
   let unpersistedMutation = false;
-  // Devices released while the state was unavailable, so the deletion could not
-  // land on a map we did not have. Replayed against the recovered read.
+  // True from grace expiry until a read or write reconciles the persisted blob.
+  // Expiry makes the in-memory map authoritative WITHOUT the blob ever having
+  // been read, so a release that lands on nothing in the map may still be
+  // recorded in the blob — only a reconciling read-merge or full-replace write
+  // settles the difference, and until one does, `clearHold` must keep
+  // tombstoning (see there). Deliberately not a wipe licence: the abandoned
+  // blob is left in place so a restart can still recover the holds nobody
+  // touched.
+  let blobAbandonedUnreconciled = false;
+  // Devices released while the persisted state was unknown (unavailable, or
+  // abandoned unread after grace expiry), so the deletion could not land on a
+  // map we did not have. Replayed against a recovered read — and, for a device
+  // the blob could actually hold, carried as a pending write so the release
+  // still lands durably when the read never recovers (see `clearHold`). Spent
+  // only by the reconcile itself: a successful read-merge or a successful save.
   const releasedWhileUnavailable = new Set<string>();
 
   const readOptIn = (): ExternalOffHoldOptInRead => (
@@ -233,12 +251,31 @@ export const createExternalOffHoldPolicy = (
     return read.status === 'resolved' && read.optIn[deviceId] === true;
   };
 
+  /**
+   * Whether a persisted blob we could not read might hold this device. This is
+   * the fail-closed guess `isHeld` answers while the state is unavailable, and
+   * the gate for treating a tombstoned clear as a pending write: an unresolved
+   * opt-in read cannot rule any device out, so every device stays in.
+   */
+  const mayBeHeldInUnreadBlob = (deviceId: string): boolean => {
+    const read = readOptIn();
+    return read.status !== 'resolved' || read.optIn[deviceId] === true;
+  };
+
   const flushPendingWrite = (): void => {
     if (!unpersistedMutation || !deps.save) return;
     if (stateUnavailable && now() < persistBlockedUntilMs) return;
     try {
       deps.save(serializeHolds(holdsByDeviceId));
       unpersistedMutation = false;
+      // The blob now equals the map: every release recorded against a blob we
+      // could not read has been applied durably, so no reconciling write is
+      // owed any more and a restart has no stale blob to resurrect holds from.
+      blobAbandonedUnreconciled = false;
+      // While the state is still unavailable the tombstones stay, though: they
+      // are what keeps `isHeld` from re-guessing "held" for a device the user
+      // just released, until a recovered read or grace expiry settles the state.
+      if (!stateUnavailable) releasedWhileUnavailable.clear();
     } catch {
       // Stay pending and retry on the next access. A permanent failure degrades
       // to in-memory-only, which beats crashing the observation path.
@@ -287,6 +324,11 @@ export const createExternalOffHoldPolicy = (
     }
     releasedWhileUnavailable.clear();
     stateUnavailable = false;
+    // A read reconciled the blob. When this recovery arrives only after grace
+    // expiry, the union revives holds the bounded abandon had dropped — that is
+    // restart-equivalent (the blob would have been loaded then anyway), and
+    // every consumer pairs `isHeld` with "still observed off".
+    blobAbandonedUnreconciled = false;
     // The union differs from what is stored, so it has to be written back.
     if (changedMeanwhile) unpersistedMutation = true;
     dropDeOptedHolds();
@@ -295,16 +337,41 @@ export const createExternalOffHoldPolicy = (
   /**
    * Re-attempt an unavailable read, then flush anything that was withheld. Driven
    * from every read and write, so recovery needs no timer and no scheduler.
+   * Reload attempts continue past grace expiry for as long as a tombstoned
+   * release is outstanding: a successful read lets the reconcile be a surgical
+   * merge (keeping every hold the release did not touch) instead of the
+   * full-replace write, which remains the fallback when only `save` recovers.
    */
   const settleState = (): void => {
-    if (stateUnavailable && now() >= nextReloadAtMs) {
+    // A reconcile is owed when a pending write would land on a blob that has
+    // never been read since its content last mattered (still unavailable past
+    // grace, or abandoned at expiry). The flush below runs on EVERY access
+    // while the reload path is throttled, so without a read-before-save order
+    // a recovering service is a race the blind save usually wins — it would
+    // full-replace the blob with the never-read in-memory map and durably
+    // erase every hold the blob still recorded, defeating the restart
+    // recovery the abandon deliberately leaves possible. Reading un-throttled
+    // right before that flush turns a healed read into the surgical merge;
+    // the full replace remains only for a store whose read never heals.
+    const reconcileOwed = unpersistedMutation
+      && (blobAbandonedUnreconciled || (stateUnavailable && now() >= persistBlockedUntilMs));
+    const reloadWorthwhile = stateUnavailable || releasedWhileUnavailable.size > 0;
+    if (reconcileOwed || (reloadWorthwhile && now() >= nextReloadAtMs)) {
       nextReloadAtMs = now() + EXTERNAL_OFF_HOLD_RELOAD_RETRY_MS;
       const reloaded = loadPersistedHolds(deps);
       if (!reloaded.unavailable) adoptReloadedHolds(reloaded.holds);
-      // Grace expired with the read still broken: stop withholding forever and
+      // Grace expired with the read still broken: stop failing closed and
       // accept the in-memory map as authoritative, matching the bounded
-      // abandon-grace contract in `notes/persisted-settings-state.md`.
-      else if (now() >= persistBlockedUntilMs) stateUnavailable = false;
+      // abandon-grace contract in `notes/persisted-settings-state.md`. The
+      // blob itself is now abandoned unread — deliberately NOT wiped, so a
+      // restart can still recover the holds nobody touched — and anything
+      // recorded against it (a tombstoned release and its pending write)
+      // stays outstanding until a reconciling read or write settles it; the
+      // trailing flush below makes the first attempt.
+      else if (stateUnavailable && now() >= persistBlockedUntilMs) {
+        stateUnavailable = false;
+        blobAbandonedUnreconciled = true;
+      }
     }
     flushPendingWrite();
   };
@@ -331,12 +398,12 @@ export const createExternalOffHoldPolicy = (
       // could not read, and answering "not held" is exactly the resume this
       // feature exists to prevent. Bounded by the grace window, and harmless for
       // a running device — every consumer pairs this with "still observed off".
-      const read = readOptIn();
       // When the OPT-IN map is unreadable too, we cannot even tell which devices
-      // those are, so every device fails closed. That window means the settings
-      // service is wholly unavailable — normally cleared by the first retry
-      // seconds later, and hard-bounded by the grace window.
-      return read.status !== 'resolved' || read.optIn[deviceId] === true;
+      // those are, so every device fails closed (see `mayBeHeldInUnreadBlob`).
+      // That window means the settings service is wholly unavailable — normally
+      // cleared by the first retry seconds later, and hard-bounded by the grace
+      // window.
+      return mayBeHeldInUnreadBlob(deviceId);
     },
     startHold: (deviceId) => {
       settleState();
@@ -348,8 +415,39 @@ export const createExternalOffHoldPolicy = (
     },
     clearHold: (deviceId) => {
       settleState();
-      if (stateUnavailable) releasedWhileUnavailable.add(deviceId);
-      return applyMutation(() => holdsByDeviceId.delete(deviceId));
+      const blobMayStillRecordHolds = stateUnavailable || blobAbandonedUnreconciled;
+      if (blobMayStillRecordHolds && !releasedWhileUnavailable.has(deviceId)) {
+        releasedWhileUnavailable.add(deviceId);
+        // The map misses what the blob may record, so the delete below can land
+        // on nothing — and a clear that retains no pending write is dropped on
+        // the floor when the read never recovers: a restart then reloads the
+        // stale hold and strands a device the user already turned back on. A
+        // tombstoned clear of a device the blob could actually hold is
+        // therefore itself an unpersisted mutation, pending until a
+        // reconciling read-merge or save lands; the flush retries a throwing
+        // save on every access, like any other withheld mutation. The opt-in
+        // gate keeps the pull sweep — which clears every observed-ON device,
+        // opted in or not — from pending that write for devices a RESOLVED
+        // opt-in read rules out. That protection is conditional: while the
+        // opt-in read is unavailable too (a total settings outage — both keys
+        // sit behind the same settings service), no device can be ruled out
+        // and every tombstone pends the write; containment then falls to the
+        // read-before-save reconcile in `settleState` — a merge when the read
+        // heals, the full replace only when it never does.
+        if (mayBeHeldInUnreadBlob(deviceId)) unpersistedMutation = true;
+      }
+      const removed = applyMutation(() => holdsByDeviceId.delete(deviceId));
+      // A delete that landed on nothing performed no mutation, so
+      // `applyMutation` did not flush — and the `settleState` at the top of
+      // this call ran before the tombstone above existed. Settle again so the
+      // reconcile this very call created (`reconcileOwed`: un-throttled
+      // read-before-save, then flush) runs NOW rather than on the next
+      // access: under `power_source = flow` the next access can be far away,
+      // and a restart inside that gap would lose a release a healthy write
+      // path could have landed immediately. During the grace window this is
+      // a designed no-op — the flush stays blocked and the blob protected.
+      if (!removed && unpersistedMutation) settleState();
+      return removed;
     },
     heldDeviceIds: () => {
       settleState();
