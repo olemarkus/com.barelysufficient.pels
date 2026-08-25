@@ -32,6 +32,7 @@ import { flattenPlanHistoryEntries, resolveMissStreakBadges } from '../../../sha
 import { resolveSmartTaskListStatus } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { PlanSnapshot } from './planTypes.ts';
 import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts';
+import { liveStatusOrNull } from './powerStatusRead.ts';
 
 let cachedPowerStatus: SettingsUiPowerStatus | null = null;
 // Raw triple for the hero's "Solar now" subline; resolution (finiteness +
@@ -131,7 +132,7 @@ type PlanPowerRead = {
 const readPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
   try {
     const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
-    return { status: payload?.status ?? null, solarNowInput: toSolarNowInput(payload?.tracker ?? null) };
+    return { status: liveStatusOrNull(payload?.status), solarNowInput: toSolarNowInput(payload?.tracker ?? null) };
   } catch {
     return { status: null, solarNowInput: null };
   }
@@ -396,7 +397,7 @@ const readScopedPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
     const read = await readUsagePower();
     if (read.state !== 'served') return { status: null, solarNowInput: null };
     return {
-      status: read.payload.status ?? null,
+      status: liveStatusOrNull(read.payload.status),
       solarNowInput: toSolarNowInput(read.payload.tracker ?? null),
     };
   } catch {

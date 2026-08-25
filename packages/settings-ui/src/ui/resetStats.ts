@@ -39,7 +39,8 @@ export const handleResetStats = async (btn: MdButtonElement) => {
     // The reset answers for the main home only; drop the sub-home entries it
     // cannot speak for instead of leaving them to serve pre-reset figures.
     invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
-    primeApiCache(SETTINGS_UI_POWER_PATH, response?.power ?? { tracker: null, status: null, heartbeat: null });
+    primeApiCache(SETTINGS_UI_POWER_PATH, response?.power
+      ?? { tracker: null, status: { state: 'unavailable', reason: 'read_failed' }, heartbeat: null });
 
     // Repaint through the generation-fenced refresh (not directly captured
     // reads): a scope pick landing while the reset repaints would otherwise

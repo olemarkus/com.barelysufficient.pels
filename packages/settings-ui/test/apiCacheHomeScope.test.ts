@@ -249,7 +249,7 @@ describe('unavailable scoped responses', () => {
 
   it('caches a resolved scoped payload on the first read', async () => {
     const uri = scoped(SETTINGS_UI_POWER_PATH, AREA);
-    const resolved = { tracker: null, status: null, homeScope: { state: 'resolved', homeId: AREA } };
+    const resolved = { tracker: null, status: { state: 'unavailable', reason: 'no_status_recorded' }, homeScope: { state: 'resolved', homeId: AREA } };
     responses.push(resolved);
 
     expect(await getApiReadModel(uri)).toEqual(resolved);

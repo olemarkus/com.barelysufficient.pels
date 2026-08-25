@@ -4,6 +4,7 @@ import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../co
 import { getApiReadModel, homeScopedApiUri } from './homey.ts';
 import { getHomeScope } from './homeScope.ts';
 import { logSettingsError } from './logging.ts';
+import { resolvePowerStatusRead } from './powerStatusRead.ts';
 
 /**
  * The scope-following `ui_power` read (multi-home). Named for the Usage
@@ -40,23 +41,36 @@ const hasOwn = (value: Record<string, unknown>, key: string): boolean => (
   Object.prototype.hasOwnProperty.call(value, key)
 );
 
-const isMainPowerPayload = (value: unknown): value is SettingsUiPowerPayload => {
+/**
+ * The Main power ENVELOPE, status member excluded: `status` is classified
+ * per-member below (`resolvePowerStatusRead`), never envelope-rejected — an
+ * unclassifiable status (a legacy raw blob across version skew, say) is the
+ * seam's own `read_failed`, while the tracker beside it is perfectly valid
+ * usage history the panel must keep serving. Only a malformed envelope itself
+ * refuses the read.
+ */
+type MainPowerEnvelope = Omit<SettingsUiPowerPayload, 'status'> & { status: unknown };
+
+const isMainPowerEnvelope = (value: unknown): value is MainPowerEnvelope => {
   if (!isRecord(value) || hasOwn(value, 'homeScope')) return false;
-  if (!hasOwn(value, 'tracker') || !hasOwn(value, 'status') || !hasOwn(value, 'heartbeat')) return false;
+  if (!hasOwn(value, 'tracker') || !hasOwn(value, 'heartbeat')) return false;
   if (value.tracker !== null && !isRecord(value.tracker)) return false;
-  if (value.status !== null && !isRecord(value.status)) return false;
   if (value.heartbeat !== null && (typeof value.heartbeat !== 'number' || !Number.isFinite(value.heartbeat))) {
     return false;
   }
   return value.hasManagedSolarDevice === undefined || typeof value.hasManagedSolarDevice === 'boolean';
 };
 
+const resolveMainPowerRead = (value: unknown): HomeScopedRead<SettingsUiPowerPayload> => {
+  if (!isMainPowerEnvelope(value)) return { state: 'unavailable' };
+  return { state: 'served', payload: { ...value, status: resolvePowerStatusRead(value.status) } };
+};
+
 export const readUsagePower = async (): Promise<HomeScopedRead<SettingsUiPowerPayload>> => {
   const { selectedHomeId } = getHomeScope();
   if (selectedHomeId === MAIN_HOME_ID) {
     try {
-      const payload = await getApiReadModel<unknown>(SETTINGS_UI_POWER_PATH);
-      return isMainPowerPayload(payload) ? { state: 'served', payload } : { state: 'unavailable' };
+      return resolveMainPowerRead(await getApiReadModel<unknown>(SETTINGS_UI_POWER_PATH));
     } catch (caught) {
       void logSettingsError('Failed to read the whole home\'s power data', caught, 'usagePowerRead');
       return { state: 'unavailable' };

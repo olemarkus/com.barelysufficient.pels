@@ -66,14 +66,16 @@ export type ResolvedSubHomeScope = Extract<SettingsUiRequestedHomeScope, { state
 
 /**
  * One sub-home's own status-blob read, discriminated at this adapter boundary.
- * `resolved` carries the object-guarded blob, or flat `null` for genuine
- * absence (the home has not committed a status yet — exactly as main's
- * unsuffixed read reports it). `unavailable` is a THROWN settings read: a
- * transient Homey store failure is not absence, and must neither escape as an
- * untyped transport error nor be dressed up as "no status yet".
+ * `resolved` carries the object-guarded blob; `absent` is genuine absence (the
+ * home has not committed a status yet, or the stored value fails the object
+ * guard — exactly the cases main's unsuffixed read treats as "no blob").
+ * `unavailable` is a THROWN settings read: a transient Homey store failure is
+ * not absence, and must neither escape as an untyped transport error nor be
+ * dressed up as "no status yet".
  */
 export type SubHomeStatusRead =
-  | { readonly state: 'resolved'; readonly status: SettingsUiPowerStatus | null }
+  | { readonly state: 'resolved'; readonly status: SettingsUiPowerStatus }
+  | { readonly state: 'absent' }
   | { readonly state: 'unavailable' };
 
 const asQueryRecord = (value: unknown): Record<string, unknown> | null => (
@@ -159,12 +161,9 @@ export class SettingsUiHomeScopeAdapter {
     } catch {
       return { state: 'unavailable' };
     }
-    return {
-      state: 'resolved',
-      status: status !== null && typeof status === 'object' && !Array.isArray(status)
-        ? status as SettingsUiPowerStatus
-        : null,
-    };
+    return status !== null && typeof status === 'object' && !Array.isArray(status)
+      ? { state: 'resolved', status: status as SettingsUiPowerStatus }
+      : { state: 'absent' };
   }
 
   /**

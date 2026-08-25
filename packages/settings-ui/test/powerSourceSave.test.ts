@@ -436,7 +436,7 @@ describe('savePowerSourceSetting', () => {
     select.value = 'homey_energy';
     capacitySettings.setPowerSourceConfigured(true);
     capacitySettings.updateStaleDataStatusFromPowerPayload({
-      tracker: null, status: null, heartbeat: null,
+      tracker: null, status: { state: 'unavailable', reason: 'no_measurement' }, heartbeat: null,
     });
     select.value = 'flow';
 

@@ -28,6 +28,7 @@ import type {
   SettingsUiPlanPayload,
   SettingsUiPlanSnapshot,
   SettingsUiPowerPayload,
+  SettingsUiPowerStatusRead,
   SettingsUiPricesPayload,
   SettingsUiResetPowerStatsResponse,
 } from '../packages/contracts/src/settingsUiApi';
@@ -38,8 +39,12 @@ import type {
 } from '../packages/contracts/src/types';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { hasSolarProductionCandidate } from '../lib/device/solarPresence';
+import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
 import type { WeatherAdvisorReadoutPayload } from '../packages/contracts/src/weatherAdvisorTypes';
 import {
+  asPowerStatusBlobRead,
+  classifyPowerStatusRead,
+  type PowerMeasurementEvidence,
   getAssociatedCarForUiFromApp,
   getLatestDevicesForUiFromApp,
   getObservedStateForUiFromApp,
@@ -260,22 +265,51 @@ const resolveMainCapacityScalars = (
   return { limitKw, marginKw };
 };
 
+/**
+ * The pull composers' evidence, from the same predicate the home's plan-build
+ * gate asks of the same live tracker (`PowerMeasurementGate.isOpen` ⇔
+ * `hasPowerMeasurement(getPowerTracker())`): a latch is what makes the stored
+ * blob a live claim. A home whose gate is shut builds no plan, so nothing this
+ * run rewrites the persisted blob — serving it as live would show the PREVIOUS
+ * run's watts and available power labelled `'fresh'` for as long as the home
+ * stays unmeasured. The gate's refusal is correct and the blob is deliberately
+ * PRESERVED; only what this read CLAIMS about it changes. One classifier for
+ * every producer — both composers here and the realtime push
+ * (`classifyPowerStatusRead`, setup/settingsUiAppRuntime.ts).
+ */
+const latchEvidence = (measured: boolean): PowerMeasurementEvidence => (
+  measured ? { state: 'latched' } : { state: 'none' }
+);
+
+/**
+ * The whole-home classification asks the LIVE tracker, never the persisted
+ * `POWER_TRACKER_STATE` fallback. The live latch is itself restored across an
+ * ordinary restart (`loadPowerTracker`) — that is the planner's own
+ * restored-sample policy, and the open gate then rewrites the blob promptly.
+ * What this classification closes is the truly gated home: first-ever boot,
+ * post-meter-swap, or a corrupt tracker restore, where nothing this run will
+ * vouch for the stored blob.
+ */
+const classifyMainPowerStatus = (homey: ApiContext['homey']): SettingsUiPowerStatusRead => {
+  const liveTracker = getPowerTrackerForUiFromApp(homey);
+  return classifyPowerStatusRead(
+    latchEvidence(liveTracker !== null && hasPowerMeasurement(liveTracker)),
+    asPowerStatusBlobRead(homey.settings.get('pels_status')),
+  );
+};
+
 const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
   const app = getApp(homey);
   const mainCapacityScalars = resolveMainCapacityScalars(app?.capacitySettings);
+  // The tracker keeps the persisted fallback: it carries usage HISTORY
+  // (buckets, daily totals, solar families) whose consumers age it themselves
+  // (stale-data banner, solar-now staleness gate). Liveness claims ride the
+  // classified `status` read only.
   const tracker = getPowerTrackerForUiFromApp(homey)
     ?? (homey.settings.get(POWER_TRACKER_STATE) as PowerTrackerState | null);
-  const status = homey.settings.get('pels_status') as {
-    headroomKw?: number;
-    lastPowerUpdate?: number | null;
-    priceLevel?: string | null;
-    powerNowKw?: number | null;
-    hasLivePowerSample?: boolean;
-    powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
-  } | null;
   return {
     tracker: tracker && typeof tracker === 'object' ? tracker : null,
-    status: status && typeof status === 'object' ? status : null,
+    status: classifyMainPowerStatus(homey),
     heartbeat: null,
     ...(typeof app?.capacityDryRun === 'boolean'
       ? { mainDryRunEffective: app.capacityDryRun }
@@ -363,7 +397,10 @@ const UNAVAILABLE_PLAN_PAYLOAD: SettingsUiPlanPayload = {
   plan: null, homeScope: { state: 'unavailable' },
 };
 const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
-  tracker: null, status: null, heartbeat: null, homeScope: { state: 'unavailable' },
+  tracker: null,
+  status: { state: 'unavailable', reason: 'home_scope_unavailable' },
+  heartbeat: null,
+  homeScope: { state: 'unavailable' },
 };
 const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
   devices: [], homeScope: { state: 'unavailable' },
@@ -401,9 +438,16 @@ const powerPayloadForHome = (
   // nothing in this payload depends on which one is configured, so reading it
   // purely to classify its failure would fence a home out of its own payload
   // over a setting the payload does not use.
+  //
+  // Same read-boundary classification as the whole-home composer, against this
+  // home's OWN live tracker — the identical predicate its bundle's plan-build
+  // gate asks (`createPlanService` wires the gate per scope). A gated sub-home
+  // (its area meter never reported this run) keeps its suffixed blob but is
+  // never served it as live. The thrown-read arm was refused above, so only
+  // `resolved`/`absent` reach the classifier.
   return {
     tracker: reading.powerTracker,
-    status: statusRead.status,
+    status: classifyPowerStatusRead(latchEvidence(hasPowerMeasurement(reading.powerTracker)), statusRead),
     heartbeat: null,
     // Always false when scoped to a SUB-HOME, even when that home owns a solar
     // device. The flag promises production DATA, not the presence of a panel,

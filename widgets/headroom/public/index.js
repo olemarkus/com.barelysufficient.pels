@@ -26,6 +26,18 @@
     /** Shown when there is no status to render yet. */
     noDataSubtitle: "No data yet",
     /**
+     * Meta line while the tile's reading is not current — the payload builder
+     * aged the persisted status by its own `lastPowerUpdate` (or the planner
+     * reported no live sample). The numbers above it are from before, so the
+     * available-power / held-back claims are withheld and this line says so.
+     * The AGING is what makes this honest: across the persisted-blob transport
+     * the widget cannot ask the runtime's gate, so the blob's own timestamp is
+     * the only evidence — after a restart with a dead meter it dates the data
+     * to before the reboot. Plain language per notes/ui-terminology.md — say
+     * what happens.
+     */
+    notCurrentNote: "No recent power reading",
+    /**
      * Shown when the widget API call fails. The dominant cause is the Homey host
      * orphaning the widget instance ("Widget Not Found"), which only a fresh
      * dashboard open clears — so the copy names that remedy. Kept short: it renders
@@ -299,16 +311,17 @@
     setChipPriceLevel(chipEl, payload.priceLevel);
     const ratio = payload.hourBudgetKw > 0 ? Math.min(1, Math.max(0, payload.currentKw / payload.hourBudgetKw)) : 0;
     barFillEl.style.width = `${(ratio * 100).toFixed(1)}%`;
-    const tone = TONE_BY_LIMIT_STATE[payload.limitState];
+    const tone = payload.stale ? "neutral" : TONE_BY_LIMIT_STATE[payload.limitState];
     barFillEl.dataset.tone = tone;
     root.dataset.tone = tone;
-    setStateLabel(stateLabelEl, payload.limitState);
+    setStateLabel(stateLabelEl, payload.stale ? "under" : payload.limitState);
     const availableLabel = headroomAvailableLabel(formatKw(Math.max(0, payload.headroomKw)));
     const heldBackLabel = headroomHeldBackLabel(payload.shedCount);
-    const metaText = payload.shedCount > 0 ? `${availableLabel} \xB7 ${heldBackLabel}` : availableLabel;
+    const liveMetaText = payload.shedCount > 0 ? `${availableLabel} \xB7 ${heldBackLabel}` : availableLabel;
+    const metaText = payload.stale ? HEADROOM_WIDGET_COPY.notCurrentNote : liveMetaText;
     metaEl.textContent = metaText;
     metaEl.dataset.tone = tone === "danger" ? "danger" : "ok";
-    const stateSummary = headroomLimitStateLabel(payload.limitState);
+    const stateSummary = payload.stale ? "" : headroomLimitStateLabel(payload.limitState);
     const priceAria = headroomPriceAriaLabel(payload.priceLevel);
     const ariaParts = [
       `${HEADROOM_WIDGET_COPY.powerNowLabel} ${currentLabel} kW`,

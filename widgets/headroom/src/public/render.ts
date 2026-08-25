@@ -84,11 +84,17 @@ const renderReady = (targets: RenderTargets, payload: HeadroomWidgetReadyPayload
     ? Math.min(1, Math.max(0, payload.currentKw / payload.hourBudgetKw))
     : 0;
   barFillEl.style.width = `${(ratio * 100).toFixed(1)}%`;
-  const tone = TONE_BY_LIMIT_STATE[payload.limitState];
+  // A stale payload withdraws every CURRENT-state claim, not only the meta
+  // line: the tones and the state label ("Above hard cap", "At safe pace")
+  // assert a state of the house nothing vouches for any more — a gated boot
+  // would otherwise paint a fully saturated red alarm from the previous run's
+  // blob under a line saying the data is not current. Only the dimmed numbers
+  // remain, as the last known reading.
+  const tone = payload.stale ? 'neutral' : TONE_BY_LIMIT_STATE[payload.limitState];
   barFillEl.dataset.tone = tone;
   root.dataset.tone = tone;
 
-  setStateLabel(stateLabelEl, payload.limitState);
+  setStateLabel(stateLabelEl, payload.stale ? 'under' : payload.limitState);
 
   const availableLabel = headroomAvailableLabel(formatKw(Math.max(0, payload.headroomKw)));
   const heldBackLabel = headroomHeldBackLabel(payload.shedCount);
@@ -97,11 +103,17 @@ const renderReady = (targets: RenderTargets, payload: HeadroomWidgetReadyPayload
   // carries the severity ("Above hard cap", red tone), and the clamped
   // "0 kW available" is factually right — on pace over the cap implies draw
   // above the safe pace, so there is no available power.
-  const metaText = payload.shedCount > 0 ? `${availableLabel} · ${heldBackLabel}` : availableLabel;
+  //
+  // A stale payload replaces the whole meta line: the numbers above are from
+  // before (dimmed via `data-stale`), so asserting current available power or
+  // a held-back count would present a previous reading — possibly a previous
+  // RUN's — as live. The line says the data is not current instead.
+  const liveMetaText = payload.shedCount > 0 ? `${availableLabel} · ${heldBackLabel}` : availableLabel;
+  const metaText = payload.stale ? HEADROOM_WIDGET_COPY.notCurrentNote : liveMetaText;
   metaEl.textContent = metaText;
   metaEl.dataset.tone = tone === 'danger' ? 'danger' : 'ok';
 
-  const stateSummary = headroomLimitStateLabel(payload.limitState);
+  const stateSummary = payload.stale ? '' : headroomLimitStateLabel(payload.limitState);
   const priceAria = headroomPriceAriaLabel(payload.priceLevel);
   const ariaParts = [
     `${HEADROOM_WIDGET_COPY.powerNowLabel} ${currentLabel} kW`,

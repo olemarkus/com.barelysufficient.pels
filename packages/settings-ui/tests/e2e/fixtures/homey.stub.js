@@ -142,6 +142,13 @@
     const unreliableEnd = unreliableStart + 2 * 3600 * 1000;
 
     return {
+      // The default story is a healthy MEASURED home: the live latch mirrors
+      // production `recordPowerSample`, which stamps `lastPowerW` and
+      // `lastTimestamp` together. `buildPowerPayload` classifies the status
+      // read on this latch exactly like the real producer, so without it the
+      // whole suite would render the gated `no_measurement` state.
+      lastPowerW: 5200,
+      lastTimestamp: Date.now() - 12 * 1000,
       buckets,
       controlledBuckets,
       uncontrolledBuckets,
@@ -941,6 +948,21 @@
 
   applyExportPricesToCombined();
 
+  // Mirrors the real read-boundary classification (`classifyMainPowerStatus`
+  // and the scoped composer, setup/settingsUiApi.ts): a tracker with no
+  // `lastPowerW` latch is a home whose measurement gate is shut, and its
+  // persisted `pels_status` blob is NEVER served as live — the union arm says
+  // why instead. Keep in sync with the producer.
+  const classifyPowerStatus = (tracker, statusBlob) => {
+    const lastPowerW = tracker && typeof tracker === 'object' ? tracker.lastPowerW : undefined;
+    if (typeof lastPowerW !== 'number' || !Number.isFinite(lastPowerW)) {
+      return { state: 'unavailable', reason: 'no_measurement' };
+    }
+    return statusBlob && typeof statusBlob === 'object' && !Array.isArray(statusBlob)
+      ? { state: 'live', status: statusBlob }
+      : { state: 'unavailable', reason: 'no_status_recorded' };
+  };
+
   const buildPowerPayload = () => {
     // Branch on `!== undefined` (not `?? baseline`) so a scenario can force a
     // null power payload to exercise the "power feed missing" UI state.
@@ -950,7 +972,7 @@
     }
     return {
       tracker: settings.power_tracker_state ?? null,
-      status: settings.pels_status ?? null,
+      status: classifyPowerStatus(settings.power_tracker_state, settings.pels_status),
       heartbeat: typeof settings.app_heartbeat === 'number' ? settings.app_heartbeat : null,
       // Mirrors the real producer (setup/settingsUiApi.ts getSettingsUiPower):
       // a solarpanel device in the snapshot AND the homey_energy power source
@@ -1637,7 +1659,10 @@
       // The area's OWN suffixed fixtures — absence is honest "not committed
       // yet", never main's tracker/status under an area badge.
       tracker: settings[`power_tracker_state:${scope.homeId}`] ?? null,
-      status: settings[`pels_status:${scope.homeId}`] ?? null,
+      status: classifyPowerStatus(
+        settings[`power_tracker_state:${scope.homeId}`],
+        settings[`pels_status:${scope.homeId}`],
+      ),
       heartbeat: null,
       // Same source gate as `buildPowerPayload` above, because the scoped
       // producer (`powerPayloadForHome`) applies it too: `readPowerSource()`
@@ -1969,16 +1994,23 @@
 
   const buildScenarioPressurePower = () => ({
     tracker: null,
+    // The wire union, exactly as the producer serves it — a raw blob here
+    // would be classified `read_failed` by the client seam and the audit
+    // capture would render the missing-power state instead of the live
+    // capacity-shortfall pressure it exists to show.
     status: {
-      capacityShortfall: true,
-      shortfallBudgetThresholdKw: 8.0,
-      shortfallBudgetHeadroomKw: 0,
-      hardCapHeadroomKw: 0,
-      headroomKw: 0,
-      powerKnown: true,
-      hasLivePowerSample: true,
-      powerFreshnessState: 'fresh',
-      lastPowerUpdate: Date.now() - 5 * 1000,
+      state: 'live',
+      status: {
+        capacityShortfall: true,
+        shortfallBudgetThresholdKw: 8.0,
+        shortfallBudgetHeadroomKw: 0,
+        hardCapHeadroomKw: 0,
+        headroomKw: 0,
+        powerKnown: true,
+        hasLivePowerSample: true,
+        powerFreshnessState: 'fresh',
+        lastPowerUpdate: Date.now() - 5 * 1000,
+      },
     },
     heartbeat: Date.now() - 4 * 1000,
   });

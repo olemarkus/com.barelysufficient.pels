@@ -37,13 +37,13 @@ const HOUR_ISO = new Date(Date.UTC(2025, 0, 6, 11, 0, 0)).toISOString();
 
 const mainPowerPayload = () => ({
   tracker: { buckets: { [HOUR_ISO]: 2 } },
-  status: null,
+  status: { state: 'unavailable', reason: 'no_status_recorded' },
   heartbeat: null,
 });
 
 const areaPowerPayload = () => ({
   tracker: { buckets: { [HOUR_ISO]: 0.7 } },
-  status: null,
+  status: { state: 'unavailable', reason: 'no_status_recorded' },
   heartbeat: null,
   homeScope: { state: 'resolved', homeId: AREA },
 });

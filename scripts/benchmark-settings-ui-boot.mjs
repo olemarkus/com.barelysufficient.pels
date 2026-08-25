@@ -302,8 +302,11 @@ const buildFixture = () => {
       power: {
         tracker: settings.power_tracker_state,
         status: {
-          lastPowerUpdate: settings.power_tracker_state.lastTimestamp,
-          priceLevel: 'normal',
+          state: 'live',
+          status: {
+            lastPowerUpdate: settings.power_tracker_state.lastTimestamp,
+            priceLevel: 'normal',
+          },
         },
         heartbeat: Date.now(),
       },
@@ -328,8 +331,11 @@ const buildFixture = () => {
     'GET /ui_power': {
       tracker: settings.power_tracker_state,
       status: {
-        lastPowerUpdate: settings.power_tracker_state.lastTimestamp,
-        priceLevel: 'normal',
+        state: 'live',
+        status: {
+          lastPowerUpdate: settings.power_tracker_state.lastTimestamp,
+          priceLevel: 'normal',
+        },
       },
       heartbeat: Date.now(),
     },

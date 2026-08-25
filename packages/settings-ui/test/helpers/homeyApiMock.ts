@@ -253,12 +253,30 @@ const buildUiPlan = async (homey: MockHomeyClient) => {
   return null;
 };
 
+// Mirrors the real read-boundary classification (`classifyMainPowerStatus`,
+// setup/settingsUiApi.ts): a tracker with no `lastPowerW` latch is a home
+// whose measurement gate is shut, and its persisted `pels_status` blob is
+// never served as live. Keep in sync with the producer (and with the
+// Playwright stub's `classifyPowerStatus`, tests/e2e/fixtures/homey.stub.js).
+const classifyUiPowerStatus = (tracker: unknown, statusBlob: unknown) => {
+  const lastPowerW = tracker && typeof tracker === 'object'
+    ? (tracker as { lastPowerW?: unknown }).lastPowerW
+    : undefined;
+  if (typeof lastPowerW !== 'number' || !Number.isFinite(lastPowerW)) {
+    return { state: 'unavailable', reason: 'no_measurement' };
+  }
+  return statusBlob && typeof statusBlob === 'object' && !Array.isArray(statusBlob)
+    ? { state: 'live', status: statusBlob }
+    : { state: 'unavailable', reason: 'no_status_recorded' };
+};
+
 const buildUiPower = async (homey: MockHomeyClient) => {
   const override = getUiOverride(homey, 'power');
   if (override !== undefined) return override;
+  const tracker = await getHomeySetting(homey, 'power_tracker_state') || null;
   return {
-    tracker: await getHomeySetting(homey, 'power_tracker_state') || null,
-    status: await getHomeySetting(homey, 'pels_status') || null,
+    tracker,
+    status: classifyUiPowerStatus(tracker, await getHomeySetting(homey, 'pels_status')),
     heartbeat: await getHomeySetting(homey, 'app_heartbeat') || null,
   };
 };

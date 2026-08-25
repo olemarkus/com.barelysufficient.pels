@@ -1,8 +1,11 @@
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../lib/power/tracker';
+import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
 import type {
   SettingsUiPlanDevice,
   SettingsUiPlanSnapshot,
+  SettingsUiPowerStatus,
+  SettingsUiPowerStatusRead,
 } from '../packages/contracts/src/settingsUiApi';
 import type {
   AssociatedCarSnapshot,
@@ -40,28 +43,84 @@ type SettingsUiRuntimeApp = Homey.App & {
   ) => Promise<void>;
   replacePowerTrackerForUi?: (nextState: PowerTrackerState) => void;
 };
-type PelsStatus = {
-  headroomKw?: number;
-  lastPowerUpdate?: number | null;
-  priceLevel?: string | null;
-  powerNowKw?: number | null;
-  hasLivePowerSample?: boolean;
-  powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
+/** A stored `pels_status` blob, object-guarded into the two states a read can hold. */
+export type PowerStatusBlobRead =
+  | { readonly state: 'resolved'; readonly status: SettingsUiPowerStatus }
+  | { readonly state: 'absent' };
+
+export const asPowerStatusBlobRead = (value: unknown): PowerStatusBlobRead => (
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? { state: 'resolved', status: value as SettingsUiPowerStatus }
+    : { state: 'absent' }
+);
+
+/**
+ * The measurement evidence a `pels_status` read is classified against, passed
+ * explicitly so every producer — both `ui_power` composers AND the realtime
+ * push — answers the one liveness question through the one classifier below,
+ * never through a second resolver that can drift.
+ *
+ * - `none` — the live tracker holds no latch: the home's plan-build gate is
+ *   shut, and nothing this run vouches for a stored blob.
+ * - `latched` — a measurement is latched (`hasPowerMeasurement`); the pull
+ *   composers' evidence.
+ * - `sample_recorded` — a sample just landed, with its own stamp; the realtime
+ *   push's evidence. The stamp overlays `lastPowerUpdate`, and an absent blob
+ *   still yields a live minimal status carrying just the stamp — the
+ *   stale-data banner reads it during the first-sample-before-first-plan
+ *   window.
+ */
+export type PowerMeasurementEvidence =
+  | { readonly state: 'none' }
+  | { readonly state: 'latched' }
+  | { readonly state: 'sample_recorded'; readonly sampleAtMs: number };
+
+/**
+ * Classify the `pels_status` blob AT THE READ. `none` evidence answers
+ * `no_measurement` regardless of the blob — a gated home keeps its persisted
+ * blob (`notes/persisted-settings-state.md`) but is never served it as live.
+ */
+export const classifyPowerStatusRead = (
+  evidence: PowerMeasurementEvidence,
+  blob: PowerStatusBlobRead,
+): SettingsUiPowerStatusRead => {
+  if (evidence.state === 'none') return { state: 'unavailable', reason: 'no_measurement' };
+  if (evidence.state === 'sample_recorded') {
+    return {
+      state: 'live',
+      status: {
+        ...(blob.state === 'resolved' ? blob.status : {}),
+        lastPowerUpdate: evidence.sampleAtMs,
+      },
+    };
+  }
+  return blob.state === 'resolved'
+    ? { state: 'live', status: blob.status }
+    : { state: 'unavailable', reason: 'no_status_recorded' };
+};
+
+/**
+ * The push's evidence: it rides a recorded sample, so the tracker handed in is
+ * the live one. `recordPowerSample` stamps `lastPowerW` and `lastTimestamp`
+ * together, so a latched tracker without a finite stamp is a torn state real
+ * ingest cannot produce — it degrades to plain `latched` evidence and answers
+ * exactly as the pull composers would for the same tracker.
+ */
+const toRealtimeMeasurementEvidence = (powerTracker: PowerTrackerState): PowerMeasurementEvidence => {
+  if (!hasPowerMeasurement(powerTracker)) return { state: 'none' };
+  const lastTimestamp = powerTracker.lastTimestamp;
+  return typeof lastTimestamp === 'number' && Number.isFinite(lastTimestamp)
+    ? { state: 'sample_recorded', sampleAtMs: lastTimestamp }
+    : { state: 'latched' };
 };
 
 const resolveRealtimePowerStatus = (
-  status: PelsStatus | null,
+  rawStatus: unknown,
   powerTracker: PowerTrackerState,
-): PelsStatus | null => {
-  const lastTimestamp = powerTracker.lastTimestamp;
-  if (typeof lastTimestamp !== 'number' || !Number.isFinite(lastTimestamp)) {
-    return status && typeof status === 'object' ? status : null;
-  }
-  return {
-    ...(status && typeof status === 'object' ? status : {}),
-    lastPowerUpdate: lastTimestamp,
-  };
-};
+): SettingsUiPowerStatusRead => classifyPowerStatusRead(
+  toRealtimeMeasurementEvidence(powerTracker),
+  asPowerStatusBlobRead(rawStatus),
+);
 
 const getRuntimeApp = (homey: Homey.App['homey']): SettingsUiRuntimeApp | null => {
   if (!homey || typeof homey !== 'object') return null;
@@ -185,7 +244,7 @@ export const emitSettingsUiPowerUpdatedForApp = (
   const api = homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
   const realtime = api?.realtime;
   if (typeof realtime !== 'function') return;
-  const status = homey.settings.get('pels_status') as PelsStatus | null;
+  const status = homey.settings.get('pels_status') as unknown;
   realtime.call(api, 'power_updated', {
     tracker: null,
     status: resolveRealtimePowerStatus(status, powerTracker),

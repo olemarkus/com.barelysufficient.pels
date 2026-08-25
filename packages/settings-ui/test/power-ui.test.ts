@@ -51,7 +51,7 @@ const installHomeyClient = async (tracker: unknown, timeZone = 'UTC') => {
       const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
       if (!callback) return;
       if (method === 'GET' && uri === '/ui_power') {
-        callback(null, { tracker, status: null, heartbeat: null });
+        callback(null, { tracker, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null });
         return;
       }
       callback(null, null);

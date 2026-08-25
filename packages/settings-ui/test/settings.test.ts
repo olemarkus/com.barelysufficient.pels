@@ -442,7 +442,7 @@ describe('settings script', () => {
           },
           dailyBudget: null,
           plan: null,
-          power: { tracker: null, status: null, heartbeat: null },
+          power: { tracker: null, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null },
           prices: {
             combinedPrices: null,
             electricityPrices: null,
@@ -2065,7 +2065,7 @@ describe('Plan sorting', () => {
     const now = Date.now();
     installedHomeyMock().__uiState.power = {
       tracker: { lastTimestamp: now - 5_000 },
-      status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' },
+      status: { state: 'live', status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' } },
       heartbeat: now,
     };
 
@@ -2079,7 +2079,7 @@ describe('Plan sorting', () => {
     const now = Date.now();
     installedHomeyMock().__uiState.power = {
       tracker: { lastTimestamp: now - 5_000 },
-      status: { lastPowerUpdate: now - 5_000, priceLevel: 'cheap' },
+      status: { state: 'live', status: { lastPowerUpdate: now - 5_000, priceLevel: 'cheap' } },
       heartbeat: now - 2 * 60_000,
     };
 
@@ -2093,7 +2093,7 @@ describe('Plan sorting', () => {
     const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
     const stalePower = {
       tracker: { lastTimestamp: Date.now() - 2 * 60_000 },
-      status: { lastPowerUpdate: Date.now() - 2 * 60_000, priceLevel: 'cheap' },
+      status: { state: 'live', status: { lastPowerUpdate: Date.now() - 2 * 60_000, priceLevel: 'cheap' } },
       heartbeat: Date.now(),
     };
 
@@ -2112,7 +2112,7 @@ describe('Plan sorting', () => {
     (installedHomeyMock().api as ReturnType<typeof vi.fn>).mockClear();
     const freshPower = {
       tracker: null,
-      status: { lastPowerUpdate: Date.now() - 5_000, priceLevel: 'cheap' },
+      status: { state: 'live', status: { lastPowerUpdate: Date.now() - 5_000, priceLevel: 'cheap' } },
       heartbeat: null,
     };
     const powerCallbacks = listeners.power_updated || [];
@@ -2140,7 +2140,7 @@ describe('Plan sorting', () => {
 
     const freshPower = {
       tracker: null,
-      status: { lastPowerUpdate: Date.now() - 5_000, priceLevel: 'cheap' },
+      status: { state: 'live', status: { lastPowerUpdate: Date.now() - 5_000, priceLevel: 'cheap' } },
       heartbeat: null,
     };
     (listeners.power_updated || []).forEach((cb) => cb(freshPower));
@@ -2157,7 +2157,7 @@ describe('Plan sorting', () => {
     installedHomeyMock().__uiState = {
       power: {
         tracker: { hourly: {}, daily: {}, lastTimestamp: Date.now() },
-        status: { lastPowerUpdate: Date.now(), priceLevel: 'cheap' },
+        status: { state: 'live', status: { lastPowerUpdate: Date.now(), priceLevel: 'cheap' } },
         heartbeat: null,
       },
     };
@@ -2175,17 +2175,17 @@ describe('Plan sorting', () => {
     (installedHomeyMock().api as ReturnType<typeof vi.fn>).mockClear();
     const freshPower = {
       tracker: null,
-      status: { lastPowerUpdate: Date.now(), priceLevel: 'cheap' },
+      status: { state: 'live', status: { lastPowerUpdate: Date.now(), priceLevel: 'cheap' } },
       heartbeat: null,
     };
     (listeners.power_updated || []).forEach((cb) => cb(freshPower));
     (listeners.power_updated || []).forEach((cb) => cb({
       ...freshPower,
-      status: { lastPowerUpdate: Date.now() + 2_000, priceLevel: 'cheap' },
+      status: { state: 'live', status: { lastPowerUpdate: Date.now() + 2_000, priceLevel: 'cheap' } },
     }));
     (listeners.power_updated || []).forEach((cb) => cb({
       ...freshPower,
-      status: { lastPowerUpdate: Date.now() + 4_000, priceLevel: 'cheap' },
+      status: { state: 'live', status: { lastPowerUpdate: Date.now() + 4_000, priceLevel: 'cheap' } },
     }));
     await flushPromises();
 
@@ -2208,7 +2208,7 @@ describe('Plan sorting', () => {
       const now = Date.now();
       installedHomeyMock().__uiState.power = {
         tracker: { lastTimestamp: now - 5_000 },
-        status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' },
+        status: { state: 'live', status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' } },
         heartbeat: now,
       };
 
@@ -2219,7 +2219,7 @@ describe('Plan sorting', () => {
 
       installedHomeyMock().__uiState.power = {
         tracker: { lastTimestamp: now - 2 * 60_000 },
-        status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' },
+        status: { state: 'live', status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' } },
         heartbeat: now,
       };
 

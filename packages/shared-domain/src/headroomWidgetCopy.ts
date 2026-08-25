@@ -50,6 +50,18 @@ export const HEADROOM_WIDGET_COPY = {
   /** Shown when there is no status to render yet. */
   noDataSubtitle: 'No data yet',
   /**
+   * Meta line while the tile's reading is not current — the payload builder
+   * aged the persisted status by its own `lastPowerUpdate` (or the planner
+   * reported no live sample). The numbers above it are from before, so the
+   * available-power / held-back claims are withheld and this line says so.
+   * The AGING is what makes this honest: across the persisted-blob transport
+   * the widget cannot ask the runtime's gate, so the blob's own timestamp is
+   * the only evidence — after a restart with a dead meter it dates the data
+   * to before the reboot. Plain language per notes/ui-terminology.md — say
+   * what happens.
+   */
+  notCurrentNote: 'No recent power reading',
+  /**
    * Shown when the widget API call fails. The dominant cause is the Homey host
    * orphaning the widget instance ("Widget Not Found"), which only a fresh
    * dashboard open clears — so the copy names that remedy. Kept short: it renders

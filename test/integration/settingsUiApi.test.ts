@@ -78,7 +78,15 @@ describe('settingsUiApi', () => {
         reportedStepId: 'low',
       },
     ];
-    let powerTracker: Record<string, unknown> = { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } };
+    // Latched by default (production `recordPowerSample` stamps `lastPowerW`
+    // and `lastTimestamp` together): the harness home is a MEASURED home, so
+    // the classified `pels_status` read serves the blob as live. Tests for the
+    // gated read clear the latch explicitly.
+    let powerTracker: Record<string, unknown> = {
+      lastPowerW: 5200,
+      lastTimestamp: 123,
+      buckets: { '2026-03-03T00:00:00.000Z': 1.2 },
+    };
     const refreshTargetDevicesSnapshot = vi.fn().mockImplementation(async () => {
       latestDevices = [{ id: 'dev-2', name: 'Pump' }];
     });
@@ -253,8 +261,8 @@ describe('settingsUiApi', () => {
       devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: fixtureDeviceReason('keep')! }],
     });
     expect(result.power).toEqual({
-      tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
-      status: { lastPowerUpdate: 123, priceLevel: 'cheap' },
+      tracker: { lastPowerW: 5200, lastTimestamp: 123, buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
+      status: { state: 'live', status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
       heartbeat: null,
       // No solarpanel-class device in the fixture candidates.
       hasManagedSolarDevice: false,
@@ -273,6 +281,32 @@ describe('settingsUiApi', () => {
     expect(getSettingsUiPowerPayload({ homey: homey as never }).mainDryRunEffective).toBe(false);
     expect(getSettingsUiPowerPayload({ homey: homey as never }).mainCapacityScalars)
       .toEqual({ limitKw: 12, marginKw: 0.4 });
+  });
+
+  // The read boundary classifies the persisted `pels_status` blob against the
+  // same predicate the plan-build gate asks of the same live tracker
+  // (`hasPowerMeasurement`). A gated boot — no meter reading THIS run — must
+  // not serve the previous run's blob as live, and must not destroy it either.
+  it('answers no_measurement — and preserves the stored blob — while the live tracker holds no measurement', () => {
+    const homey = createHomey();
+    // A gated boot: the live tracker restored no latch (never sampled this
+    // run / corrupt restore / in-place meter swap cleared it).
+    (homey.app as { powerTracker: unknown }).powerTracker = { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } };
+
+    const payload = getSettingsUiPowerPayload({ homey: homey as never });
+    expect(payload.status).toEqual({ state: 'unavailable', reason: 'no_measurement' });
+    // Usage HISTORY still serves — the tracker field is accounting, not a
+    // liveness claim; its consumers age it themselves.
+    expect(payload.tracker).toEqual({ buckets: { '2026-03-03T00:00:00.000Z': 1.2 } });
+    // The persisted blob survives untouched: a shut gate changes only what the
+    // read CLAIMS, never the stored state.
+    expect(homey.settings.get('pels_status')).toEqual({ lastPowerUpdate: 123, priceLevel: 'cheap' });
+  });
+
+  it('answers no_status_recorded when the home is measured but no pels_status blob is committed yet', () => {
+    const homey = createHomey({ settings: { pels_status: undefined } });
+    expect(getSettingsUiPowerPayload({ homey: homey as never }).status)
+      .toEqual({ state: 'unavailable', reason: 'no_status_recorded' });
   });
 
   it('serves the assembled per-device objectives under deferred_objectives (not the legacy blob)', async () => {
@@ -335,6 +369,11 @@ describe('settingsUiApi', () => {
     });
     expect(homey.persistPowerTrackerState).toHaveBeenCalledTimes(1);
     expect(result.power.tracker).toEqual({
+      // Reset clears STATS, not the measurement latch: `...currentState`
+      // carries `lastPowerW`/`lastTimestamp` forward, so the home stays
+      // measured and the classified status read stays live across a reset.
+      lastPowerW: 5200,
+      lastTimestamp: 123,
       buckets: {},
       controlledBuckets: {},
       controlledDailyTotals: {},
@@ -411,8 +450,8 @@ describe('settingsUiApi', () => {
       },
     });
     expect(getSettingsUiPowerPayload({ homey: homey as never })).toEqual({
-      tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
-      status: { lastPowerUpdate: 123, priceLevel: 'cheap' },
+      tracker: { lastPowerW: 5200, lastTimestamp: 123, buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
+      status: { state: 'live', status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
       heartbeat: null,
       // No solarpanel-class device in the fixture candidates.
       hasManagedSolarDevice: false,

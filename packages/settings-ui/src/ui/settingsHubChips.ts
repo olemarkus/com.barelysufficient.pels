@@ -12,6 +12,7 @@ import { isPriceFeedAwaiting, resolveSimulationChipLabel } from '../../../shared
 import { resolveSimulationPosture } from '../../../shared-domain/src/simulationPosture.ts';
 import { getApiReadModel, getSetting } from './homey.ts';
 import { state } from './state.ts';
+import { liveStatusOrNull } from './powerStatusRead.ts';
 
 const setChipHidden = (id: string, hidden: boolean): void => {
   const el = document.getElementById(id);
@@ -31,7 +32,7 @@ const readBudgetChipHidden = async (): Promise<boolean> => (
 // settings tests enforce).
 const readPricesChipHidden = async (): Promise<boolean> => {
   const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
-  return !isPriceFeedAwaiting(payload?.status?.priceLevel ?? null);
+  return !isPriceFeedAwaiting(liveStatusOrNull(payload?.status)?.priceLevel ?? null);
 };
 
 // Async chip states resolve first, then commit in one guarded step: the
