@@ -323,6 +323,15 @@ export class PlanEngineState {
 
   currentRebuildTrigger: PlanRebuildTrigger | null = null;
 
+  /**
+   * Whether this hour's capacity budget is spent, as of the pace stamp taken at
+   * the top of the current build. `PlanBuilder.stampCapacityPace` is the only
+   * writer, and only the build calls it: a status log, a Flow condition or the
+   * rebuild scheduler asking for the pace is a read
+   * (`PlanBuilder.computeDynamicSoftLimit`) and must leave this alone. One
+   * writer per build is what keeps the shed decision and the reason/meta pass
+   * that labels it answering to the same hour.
+   */
   hourlyBudgetExhausted: boolean = false;
 
   wasOvershoot: boolean = false;
@@ -336,7 +345,8 @@ export class PlanEngineState {
    * computation. Always resolved — the hour's budget is a fact about the hour,
    * independent of which pace is in force — so consumers read a plain number.
    * Read by the shed grace to price what waiting would cost; 0 means the hour is
-   * spent, which buys no grace at all.
+   * spent, which buys no grace at all. Written by `stampCapacityPace` only —
+   * same single-writer rule as `hourlyBudgetExhausted`.
    */
   hourlyRemainingKWh: number = 0;
 

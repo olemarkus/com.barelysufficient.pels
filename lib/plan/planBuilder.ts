@@ -163,7 +163,47 @@ export class PlanBuilder {
     return this.deps.getDailyBudgetSnapshot?.() ?? null;
   }
 
+  /**
+   * The capacity pace as a plain read: the same number `stampCapacityPace`
+   * returns, override precedence included, and no write.
+   *
+   * Every caller outside the plan build gets this one. A periodic status log, a
+   * Flow condition asking "is there available power", the rebuild scheduler's
+   * threshold input and the shortfall log line all ask what the pace *is*; none
+   * of them is deciding a plan, so none of them may leave a stamp behind.
+   *
+   * The window this closes is narrow but real. Most of a build is one turn of
+   * the event loop, so nothing can get between the stamp and the reads — but the
+   * guard's shortfall path awaits a settings write (`ShortfallExecutor`), and
+   * that await sits between the shed decision (`buildSheddingPlan` reads
+   * `hourlyBudgetExhausted` before `updateGuardState`) and the reason and meta
+   * passes that label it (`planBuilderMaterialization`, `buildPlanMeta`, both
+   * after). While this method also wrote, a caller firing in that window across
+   * an hour boundary re-stamped the flag, and the plan explained itself against
+   * an hour its own decision never saw.
+   */
   public computeDynamicSoftLimit(): number {
+    return this.resolveCapacityPace().paceKw;
+  }
+
+  /**
+   * The build's call: the same resolution, plus the two `PlanEngineState` fields
+   * the rest of this cycle reads off it. The one writer of both — keep it that
+   * way, so "what hour is it" is answered once per plan rather than by whoever
+   * last asked for the number.
+   */
+  private stampCapacityPace(): number {
+    const resolved = this.resolveCapacityPace();
+    this.state.hourlyRemainingKWh = resolved.remainingKWh;
+    this.state.hourlyBudgetExhausted = resolved.hourlyBudgetExhausted;
+    return resolved.paceKw;
+  }
+
+  private resolveCapacityPace(): {
+    paceKw: number;
+    remainingKWh: number;
+    hourlyBudgetExhausted: boolean;
+  } {
     // Computed unconditionally: the hour's remaining budget is a fact about the
     // hour, not about which pace is in force, so an override replaces the pace
     // and leaves the budget untouched. Resolving it on both paths keeps
@@ -172,15 +212,15 @@ export class PlanBuilder {
       capacitySettings: this.capacitySettings,
       powerTracker: this.powerTracker,
     });
-    this.state.hourlyRemainingKWh = result.remainingKWh;
-
     const override = this.deps.getDynamicSoftLimitOverride?.();
     if (typeof override === 'number' && Number.isFinite(override)) {
-      this.state.hourlyBudgetExhausted = false;
-      return override;
+      return { paceKw: override, remainingKWh: result.remainingKWh, hourlyBudgetExhausted: false };
     }
-    this.state.hourlyBudgetExhausted = result.hourlyBudgetExhausted;
-    return result.allowedKw;
+    return {
+      paceKw: result.allowedKw,
+      remainingKWh: result.remainingKWh,
+      hourlyBudgetExhausted: result.hourlyBudgetExhausted,
+    };
   }
 
   /**
@@ -399,7 +439,7 @@ export class PlanBuilder {
     overshootDecision: SoftOvershootDecision;
   }> {
     const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
-    const capacitySoftLimit = this.computeDynamicSoftLimit();
+    const capacitySoftLimit = this.stampCapacityPace();
     const dailySoftLimitResolution = this.computeDailySoftLimit(dailyBudgetSnapshot, devices);
     const dailySoftLimit = dailySoftLimitResolution?.dailySoftLimitKw ?? null;
     const softLimit = dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit;
@@ -431,7 +471,7 @@ export class PlanBuilder {
     }));
     const overshootDecision = resolveSoftOvershootDecision({
       headroomKw: context.headroom,
-      // Stamped by `computeDynamicSoftLimit` a few lines above, from the same
+      // Stamped by `stampCapacityPace` a few lines above, from the same
       // hourly budget the soft limit itself is paced against.
       hourRemainingKWh: this.state.hourlyRemainingKWh,
       // Only price a wait when a restore PELS issued is still settling, and only

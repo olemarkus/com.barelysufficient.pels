@@ -150,6 +150,17 @@ each uses is the point:
 
 Before adding a fourth, be explicit about which exempt sum it needs and why.
 
+**Asking for the pace is a read; only the build stamps.** `PlanBuilder.stampCapacityPace`
+resolves `capacityPaceKw` *and* writes `PlanEngineState.hourlyBudgetExhausted` /
+`hourlyRemainingKWh` for the rest of that cycle to read; it is private and the build is
+its only caller. Everyone else — the periodic status log, a `has_headroom` Flow condition,
+the rebuild scheduler's threshold input, the shortfall log line — goes through the public
+`computeDynamicSoftLimit`, which returns the same number and writes nothing. Keep it that
+way when you add a caller: the build's reads of those two fields are not all in one
+synchronous turn (the shed decision runs before `updateGuardState`, the reason and meta
+passes that label it run after), so a foreign stamp landing in that window would have the
+plan explain itself against an hour its own decision never saw.
+
 ## Not in this module
 
 - Actuation/dispatch (`lib/executor`, `lib/actuator`), Homey SDK reads/writes (producer + setup adapters), smart-task logic (`lib/objectives/deferredObjectives/`).
