@@ -587,17 +587,20 @@ describe('classifyIdleState — capped_idle', () => {
 describe('pruneIdleDetectorState', () => {
   it('drops entries for device ids not in the live set', () => {
     const state: IdleDetectorState = new Map();
+    // Basis value is immaterial here — this exercises key retention only.
     state.set('keep', {
       idleSinceMs: 1,
       lastClassification: 'near_target_idle',
       samples: [],
       firstSampleAtMs: 1,
+      targetTemperatureBasis: 65,
     });
     state.set('drop', {
       idleSinceMs: 2,
       lastClassification: 'unresponsive',
       samples: [],
       firstSampleAtMs: 2,
+      targetTemperatureBasis: 65,
     });
     pruneIdleDetectorState(state, ['keep']);
     expect(state.has('keep')).toBe(true);

@@ -159,6 +159,13 @@ export type IdleDetectorEntry = {
    * once pruning has discarded the original oldest sample.
    */
   firstSampleAtMs: number;
+  /**
+   * The setpoint every sample in this entry was gathered under. The streak and
+   * the 20-minute window are evidence about ONE setpoint; when it moves, that
+   * evidence describes the old basis and is discarded rather than re-read
+   * against the new one. See the basis check in `classifyIdleState`.
+   */
+  targetTemperatureBasis: number | undefined;
 };
 
 export type IdleDetectorState = Map<string, IdleDetectorEntry>;
@@ -176,7 +183,21 @@ export type IdleDetectorResult = {
   idleDurationMs: number;
   /** Current vs target gap when both are known; undefined otherwise. */
   temperatureGapC?: number;
+  /**
+   * The device setpoint this verdict was measured against — NOT any smart-task
+   * target. `near_target_idle` only means "parked near *this* setpoint", so a
+   * consumer that reads the verdict as "the objective is as met as it gets"
+   * must first check the setpoint covers its own target: PELS parks a device by
+   * writing a lower setback setpoint, and a device idling at that setback is
+   * trivially "near target" without having delivered the task's target at all.
+   * Null when the device exposes no setpoint (the classification is then never
+   * a stall — `passesCommonEligibility` requires one).
+   */
+  classifiedAgainstTargetValue: number | null;
 };
+
+/** A verdict before `classifyIdleState` stamps the setpoint it was measured against. */
+type IdleDetectorVerdict = Omit<IdleDetectorResult, 'classifiedAgainstTargetValue'>;
 
 const measuredIsIdle = (kw: number | undefined): boolean => (
   isFiniteNumber(kw) && kw >= 0 && kw <= IDLE_MEASURED_POWER_THRESHOLD_KW
@@ -377,15 +398,17 @@ type ClassifyContext = {
   gap: number | undefined;
 };
 
-// Common-eligibility break — purge the streak entry and report "active"
-// with the just-lost duration so the cleared-event payload stays honest.
-const buildIneligibleResult = (
+// Streak reset — an eligibility break, or a setpoint change that invalidates
+// the retained evidence. Purge the entry and report "active" with the just-lost
+// duration so the cleared-event payload stays honest. `previousClassification`
+// is preserved so the transition log still emits the matching `_cleared` event.
+const buildStreakResetResult = (
   state: IdleDetectorState,
   input: IdleDetectorInput,
   previousEntry: IdleDetectorEntry | undefined,
   previousClassification: IdleClassification | undefined,
   gap: number | undefined,
-): IdleDetectorResult => {
+): IdleDetectorVerdict => {
   const idleDurationMs = elapsedSince(previousEntry, input.now);
   if (previousEntry) state.delete(input.deviceId);
   return {
@@ -398,13 +421,14 @@ const buildIneligibleResult = (
 
 // Device is drawing power and doesn't match the cycling pattern — close
 // the idle streak but keep accumulating samples for the next window check.
-const buildDrawingActiveResult = (ctx: ClassifyContext): IdleDetectorResult => {
+const buildDrawingActiveResult = (ctx: ClassifyContext): IdleDetectorVerdict => {
   const idleDurationMs = elapsedSince(ctx.previousEntry, ctx.input.now);
   ctx.state.set(ctx.input.deviceId, {
     idleSinceMs: ctx.input.now,
     lastClassification: 'active',
     samples: ctx.samples,
     firstSampleAtMs: ctx.firstSampleAtMs,
+    targetTemperatureBasis: ctx.input.targetTemperature,
   });
   return {
     classification: 'active',
@@ -419,12 +443,13 @@ const buildDrawingActiveResult = (ctx: ClassifyContext): IdleDetectorResult => {
 // on-cycles in the window. Streak start is the now-moment — `capped_idle`
 // doesn't accumulate a contiguous idle streak by definition, so reporting
 // zero duration is the honest answer.
-const buildCappedIdleResult = (ctx: ClassifyContext): IdleDetectorResult => {
+const buildCappedIdleResult = (ctx: ClassifyContext): IdleDetectorVerdict => {
   ctx.state.set(ctx.input.deviceId, {
     idleSinceMs: ctx.input.now,
     lastClassification: 'capped_idle',
     samples: ctx.samples,
     firstSampleAtMs: ctx.firstSampleAtMs,
+    targetTemperatureBasis: ctx.input.targetTemperature,
   });
   return {
     classification: 'capped_idle',
@@ -434,7 +459,7 @@ const buildCappedIdleResult = (ctx: ClassifyContext): IdleDetectorResult => {
   };
 };
 
-const buildMeasuredIdleResult = (ctx: ClassifyContext): IdleDetectorResult => {
+const buildMeasuredIdleResult = (ctx: ClassifyContext): IdleDetectorVerdict => {
   const idleSinceMs = ctx.previousEntry?.idleSinceMs ?? ctx.input.now;
   const idleDurationMs = Math.max(0, ctx.input.now - idleSinceMs);
   const classification = classifyByGapAndDuration(ctx.gap, idleDurationMs, ctx.previousClassification);
@@ -443,6 +468,7 @@ const buildMeasuredIdleResult = (ctx: ClassifyContext): IdleDetectorResult => {
     lastClassification: classification,
     samples: ctx.samples,
     firstSampleAtMs: ctx.firstSampleAtMs,
+    targetTemperatureBasis: ctx.input.targetTemperature,
   });
   return {
     classification,
@@ -461,12 +487,38 @@ export function classifyIdleState(
   input: IdleDetectorInput,
   state: IdleDetectorState,
 ): IdleDetectorResult {
+  // Stamped once here rather than in each of the four result builders, so a
+  // future builder cannot ship a verdict that has silently lost the setpoint it
+  // was measured against. (This module has already been bitten once by an
+  // optional field going quietly unset — see `currentDrawKw` above.)
+  return {
+    ...classifyIdleStateInner(input, state),
+    classifiedAgainstTargetValue: input.targetTemperature ?? null,
+  };
+}
+
+function classifyIdleStateInner(
+  input: IdleDetectorInput,
+  state: IdleDetectorState,
+): IdleDetectorVerdict {
   const previousEntry = state.get(input.deviceId);
   const previousClassification = previousEntry?.lastClassification;
   const gap = computeTemperatureGap(input.currentTemperature, input.targetTemperature);
 
+  // The retained streak and 20-minute window are evidence about ONE setpoint.
+  // When PELS moves it — releasing a 40 °C setback to a 65 °C smart-task target
+  // is the live case — that evidence describes the old basis and cannot be
+  // re-read against the new one. `capped_idle` is the sharp edge: it is derived
+  // almost entirely from the retained window, so a device that had been cycling
+  // happily at its setback would otherwise certify as "parked at its own cap"
+  // on the very FIRST tick after the raise, and a deferred objective would
+  // terminally mark the new target satisfied without heating toward it at all.
+  if (previousEntry !== undefined && previousEntry.targetTemperatureBasis !== input.targetTemperature) {
+    return buildStreakResetResult(state, input, previousEntry, previousClassification, gap);
+  }
+
   if (!passesCommonEligibility(input)) {
-    return buildIneligibleResult(state, input, previousEntry, previousClassification, gap);
+    return buildStreakResetResult(state, input, previousEntry, previousClassification, gap);
   }
 
   // Common eligibility holds — record the sample (regardless of

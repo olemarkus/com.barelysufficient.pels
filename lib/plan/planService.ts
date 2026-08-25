@@ -56,7 +56,7 @@ import {
   type IdleClassifier,
   type IdleClassifierDeviceInput,
 } from '../observer/idleClassifier';
-import type { IdleClassification } from '../../packages/shared-domain/src/idleClassificationCopy';
+import type { StallEvidence } from '../../packages/shared-domain/src/idleClassificationCopy';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import { PlanStatusWriter } from './planStatusWriter';
@@ -174,10 +174,15 @@ export class PlanService {
   // negligible against the 15-min `IDLE_UNRESPONSIVE_MIN_DURATION_MS`
   // window, but it does mean a fresh boot returns `undefined` until at
   // least one plan tick has run.
-  getStallClassification(
+  // Carries the setpoint the verdict was measured against, not just the verdict:
+  // PELS parks a managed device by writing a lower setback setpoint, and a device
+  // idling at that setback is trivially `near_target_idle` while having delivered
+  // nothing toward a higher smart-task target. Consumers gate on
+  // `stallEvidenceCoversTarget`.
+  getStallEvidence(
     deviceId: string,
-  ): IdleClassification | undefined {
-    return this.idleClassifier.getClassification(deviceId);
+  ): StallEvidence | undefined {
+    return this.idleClassifier.getStallEvidence(deviceId);
   }
 
   computeDynamicSoftLimit(): number {

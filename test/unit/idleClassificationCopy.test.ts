@@ -1,6 +1,7 @@
 import {
   classificationImpliesStallSatisfied,
   formatIdleClassificationCopy,
+  stallEvidenceCoversTarget,
 } from '../../packages/shared-domain/src/idleClassificationCopy';
 
 describe('classificationImpliesStallSatisfied', () => {
@@ -12,6 +13,40 @@ describe('classificationImpliesStallSatisfied', () => {
   it('never treats a fault or the absence of a classification as satisfied', () => {
     expect(classificationImpliesStallSatisfied('unresponsive')).toBe(false);
     expect(classificationImpliesStallSatisfied(undefined)).toBe(false);
+  });
+});
+
+describe('stallEvidenceCoversTarget', () => {
+  const parkedAt = (classifiedAgainstTargetValue: number) => ({
+    classification: 'near_target_idle' as const,
+    classifiedAgainstTargetValue,
+  });
+
+  it('accepts a verdict measured against a setpoint at or above the task target', () => {
+    expect(stallEvidenceCoversTarget(parkedAt(65), 65)).toBe(true);
+    expect(stallEvidenceCoversTarget(parkedAt(70), 65)).toBe(true);
+  });
+
+  // The production failure: PELS parks a device by writing a lower setback
+  // setpoint, the device idles there, and the verdict reads `near_target_idle`
+  // without a single kWh delivered toward the task's own target.
+  it('refuses a verdict measured against a setback below the task target', () => {
+    expect(stallEvidenceCoversTarget(parkedAt(40), 65)).toBe(false);
+  });
+
+  // Only the objective's target is nullable — an objective can lack one. The
+  // verdict setpoint is not: `getStallEvidence` withholds evidence it cannot
+  // resolve, so there is no null-setpoint case left to test here.
+  it('refuses when there is no objective target, or no verdict at all', () => {
+    expect(stallEvidenceCoversTarget(parkedAt(65), null)).toBe(false);
+    expect(stallEvidenceCoversTarget(undefined, 65)).toBe(false);
+  });
+
+  it('still refuses a fault verdict however high the setpoint was', () => {
+    expect(stallEvidenceCoversTarget(
+      { classification: 'unresponsive', classifiedAgainstTargetValue: 90 },
+      65,
+    )).toBe(false);
   });
 });
 

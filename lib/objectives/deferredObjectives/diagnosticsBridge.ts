@@ -33,8 +33,8 @@ import {
   type PriorityAllocationTracker,
 } from './priorityAllocation';
 import {
-  classificationImpliesStallSatisfied,
-  type IdleClassification,
+  stallEvidenceCoversTarget,
+  type StallEvidence,
 } from '../../../packages/shared-domain/src/idleClassificationCopy';
 import {
   buildObjectiveDeviceExclusionPredicate,
@@ -108,7 +108,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   // (which already promotes such runs to `satisfied(stalled)`). The decoration /
   // actuation path deliberately OMITS this so admission keeps reading the raw
   // trajectory status — only `horizonPlan.status` (untouched) drives commitment.
-  getStallClassification?: (deviceId: string) => IdleClassification | undefined;
+  getStallClassification?: (deviceId: string) => StallEvidence | undefined;
   // Durable device-exclusion resolver, injected by the wiring layer (this
   // leafward subsystem reads neither home membership nor the managed-device map
   // itself). A non-null answer short-circuits the diagnostic to `unknown` with
@@ -276,19 +276,24 @@ const STALL_RESOLVABLE_STATUSES = new Set<ReturnType<typeof resolvedTrajectorySt
 
 const resolveStallReportedStatus = (
   diagnostic: DeferredObjectiveDiagnostic,
-  classification: IdleClassification | undefined,
+  evidence: StallEvidence | undefined,
   hasEstablishedPlan: boolean,
 ): DeferredObjectiveDiagnostic => {
   // First-seen tasks read a stale, device-keyed classifier verdict — wait until
   // the run is established (a committed revision exists) so the classification
   // belongs to THIS objective. See `hasEstablishedActivePlan`.
   if (!hasEstablishedPlan) return diagnostic;
-  if (!classificationImpliesStallSatisfied(classification)) return diagnostic;
+  // Gate on the setpoint the verdict was measured against, not the verdict
+  // alone: PELS parks a managed device by writing a lower setback setpoint, and
+  // a device idling there is `near_target_idle` without having delivered this
+  // task's target. Mirrors `maybePromoteOnStall` so the live status and the
+  // recorded outcome cannot disagree.
+  if (!stallEvidenceCoversTarget(evidence, diagnostic.targetValue)) return diagnostic;
   if (!STALL_RESOLVABLE_STATUSES.has(resolvedTrajectoryStatus(diagnostic))) return diagnostic;
   return {
     ...diagnostic,
     trajectory: { kind: 'resolved', status: 'satisfied' },
-    reasonCode: classification === 'capped_idle'
+    reasonCode: evidence.classification === 'capped_idle'
       ? 'objective_stalled_device_capped'
       : 'objective_stalled_near_target',
   };

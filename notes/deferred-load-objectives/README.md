@@ -121,6 +121,17 @@ setpoint against which it was classified and applies only when that setpoint is 
 smart-task target. A classification against a lowered ordinary-mode setpoint must never satisfy
 a higher smart-task target.
 
+The verdict and its setpoint travel together as `StallEvidence`, and
+`stallEvidenceCoversTarget` (`packages/shared-domain/src/idleClassificationCopy.ts`) is the one
+gate — applied by BOTH stall consumers, `diagnosticsBridge.resolveStallReportedStatus` (live
+status) and `planHistory.maybePromoteOnStall` (recorded outcome), so the two cannot disagree.
+Passing the bare classification is what let a setback satisfy a higher target in production on
+2026-08-24: PELS parked a Connected 300 by writing `target_temperature = 40` while the task
+wanted more, the classifier reported `near_target_idle` against that 40 °C, and because stall
+promotion is terminal (`computeMergedMetState` freezes it, `recordNonPlannableTick` excludes it
+from the re-open path) the run stayed satisfied through an 18 °C collapse and finalized `met`
+on 6.67 of 10.89 planned kWh. Terminality is deliberate — the gate belongs on what may arm it.
+
 ## Soft Temperature Runtime Semantics
 
 The first temperature UI stores the objective and lets horizon planning calculate planned hours.

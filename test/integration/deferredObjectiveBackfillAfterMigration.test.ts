@@ -61,7 +61,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
       // back-fill — exactly the path under test.
       planService: {
         getPlanDevices: () => [],
-        getStallClassification: () => undefined,
+        getStallEvidence: () => undefined,
         rebuildPlanFromCache: vi.fn(async () => undefined),
         evaluateHeadroomForDevice: vi.fn(() => null),
         syncLivePlanStateInline: vi.fn(() => false),

@@ -2492,7 +2492,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
-      const stallNearTarget = () => 'near_target_idle' as const;
+      const stallNearTarget = () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65 });
 
       // Run starts cold; classifier hasn't fired yet.
       recorder.observe(
@@ -2527,6 +2527,78 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.finalProgressValue).toBeCloseTo(61.8, 1);
     });
 
+    // Regression: production Connected 300, 2026-08-24. PELS parks a managed
+    // device by writing a LOWER setback setpoint (`target_temperature = 40` at
+    // 10:59:54Z); ~30 s later the classifier reported `near_target_idle` — but
+    // against that setback, not against the smart-task target (45 °C at the
+    // time; this fixture uses the 65 °C default for the same shape). The
+    // recorder promoted on the bare verdict, and because stall promotion is
+    // terminal by design the run stayed `satisfied` through a later 18 °C
+    // collapse and finalized `met` on 6.67 of 10.89 planned kWh.
+    //
+    // Design of record: `notes/deferred-load-objectives/README.md` § "Observer
+    // stall evidence" — the evidence "applies only when that setpoint is at
+    // least the smart-task target. A classification against a lowered
+    // ordinary-mode setpoint must never satisfy a higher smart-task target."
+    it('does not promote when the stall was classified against a setback below the task target', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      // Tank parked at the 40 °C setback PELS wrote; the task wants 65 °C.
+      const stallAgainstSetback = () => ({
+        classification: 'near_target_idle' as const,
+        classifiedAgainstTargetValue: 40,
+      });
+
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 40.9 })],
+        0,
+      );
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 40.6 })],
+        3 * HOUR_MS,
+        null,
+        stallAgainstSetback,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.metReason).toBeUndefined();
+      expect(entry.outcome).toBe('missed');
+    });
+
+    // Boundary of the `>=` rule: a device parked at exactly the requested
+    // setpoint is the ordinary "as warm as it'll hold" stall the promotion
+    // exists for, so equality must still promote. Guards the gate against
+    // over-blocking the case it was never meant to touch.
+    it('promotes when the classification setpoint exactly equals the task target', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const stallAtTaskTarget = () => ({
+        classification: 'near_target_idle' as const,
+        classifiedAgainstTargetValue: 65,
+      });
+
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })],
+        0,
+      );
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        3 * HOUR_MS,
+        null,
+        stallAtTaskTarget,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('stalled');
+    });
+
     it('keeps recording 15-minute post-stall samples while the plateau freeze holds', () => {
       // The stall freeze pins `satisfied` / `metAtMs` / `finalProgress*` at
       // the plateau reading, but the progress-sample ring is deliberately NOT
@@ -2538,7 +2610,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
       const QUARTER_MS = 15 * 60 * 1000;
-      const stallNearTarget = () => 'near_target_idle' as const;
+      const stallNearTarget = () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65 });
 
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })],
@@ -2606,7 +2678,12 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       });
 
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })], 0);
-      recorder.observe([resolvedDiag(61.8)], 3 * HOUR_MS, null, () => 'near_target_idle');
+      recorder.observe(
+        [resolvedDiag(61.8)],
+        3 * HOUR_MS,
+        null,
+        () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65 }),
+      );
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();
 
@@ -2643,7 +2720,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
-      const stuckUnresponsive = () => 'unresponsive' as const;
+      const stuckUnresponsive = () => ({ classification: 'unresponsive' as const, classifiedAgainstTargetValue: 65 });
 
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 20 })],
@@ -2678,7 +2755,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
-      const cappedIdle = () => 'capped_idle' as const;
+      const cappedIdle = () => ({ classification: 'capped_idle' as const, classifiedAgainstTargetValue: 65 });
 
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
@@ -2709,7 +2786,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
-      const cappedIdle = () => 'capped_idle' as const;
+      const cappedIdle = () => ({ classification: 'capped_idle' as const, classifiedAgainstTargetValue: 65 });
       const noClassifier = () => undefined;
 
       recorder.observe(
@@ -2745,7 +2822,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
-      const stallNearTarget = () => 'near_target_idle' as const;
+      const stallNearTarget = () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65 });
       const noClassifier = () => undefined;
 
       // First tick: brand-new record. The carryover guard skips promotion
@@ -2795,7 +2872,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
-      const stallNearTarget = () => 'near_target_idle' as const;
+      const stallNearTarget = () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65 });
 
       // Brand-new record — classifier already says near_target_idle from
       // the *previous* run's plateau. The recorder must not promote here.
@@ -2834,7 +2911,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
-      const stallNearTarget = () => 'near_target_idle' as const;
+      const stallNearTarget = () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65 });
       const unknown = (): DeferredObjectiveDiagnostic['trajectory'] => (
         { kind: 'unavailable', reasonCode: 'objective_progress_stale' }
       );
@@ -2884,7 +2961,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
-      const stallNearTarget = () => 'near_target_idle' as const;
+      const stallNearTarget = () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65 });
 
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
@@ -2911,7 +2988,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
-      const stallNearTarget = () => 'near_target_idle' as const;
+      const stallNearTarget = () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65 });
 
       // Two ticks to clear the first-tick carryover guard; promotion lands
       // on the second tick.
@@ -2983,7 +3060,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
         CAPPED_IDLE_MIN_WINDOW_MS + tickMs,
         null,
-        (deviceId) => classifier.getClassification(deviceId),
+        (deviceId) => classifier.getStallEvidence(deviceId),
       );
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();

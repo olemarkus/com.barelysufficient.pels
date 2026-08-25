@@ -910,6 +910,33 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **A stall promotion is unattributable in the logs: nothing records the verdict or setpoint
+      that armed it.** `maybePromoteOnStall` (`lib/objectives/deferredObjectives/planHistory.ts`)
+      and `resolveStallReportedStatus` (`.../diagnosticsBridge.ts`) both act on
+      `StallEvidence`, and a promotion latches the run `satisfied` for good —
+      `computeMergedMetState` freezes it and `recordNonPlannableTick` excludes stall reasons from
+      the re-open path. The classifier logs only *transitions*
+      (`device_near_target_idle_started` / `_cleared`), so the per-cycle verdict the gate actually
+      read is never written anywhere. `deferred_objective_horizon_planned` carries the resulting
+      `status` / `reasonCode` but not its cause.
+
+      This blocked a real investigation on 2026-08-24: a Connected 300 run reported
+      `satisfied` / `objective_stalled_near_target` at 40.6 °C against a 65 °C target with 7.25 kWh
+      still booked, and the logs could not say which verdict and setpoint produced it — the last
+      classifier transition was five hours earlier and pointed the other way (`unresponsive`).
+
+      **Where:** the stall gate call sites above; the `deferred_objective_horizon_planned` payload
+      in `diagnosticsBridge.ts`.
+
+      **What changes:** emit the evidence the gate consumed — `classification` and
+      `classifiedAgainstTargetValue` alongside the objective's `targetValue` — either as fields on
+      the existing horizon-planned event or as a dedicated event at the promotion site. Log it on
+      the promotion, not on every cycle; a latch that fires once deserves one line.
+
+      **Done when:** a `satisfied` / `objective_stalled_*` status in a production log can be traced
+      to the verdict and setpoint that produced it without re-deriving them from device writes,
+      pinned by a test asserting the fields appear when a promotion fires.
+
 - [ ] **Unmanaged picker devices are served from a cached parse, so their observed state is
       up to half an hour stale.** `/ui_devices` merges the managed snapshot with the
       unmanaged-but-eligible picker list, and `withLiveObservedState`

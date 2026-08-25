@@ -12,7 +12,10 @@ import { getLogger } from '../../logging/logger';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
-import type { IdleClassification } from '../../../packages/shared-domain/src/idleClassificationCopy';
+import {
+  stallEvidenceCoversTarget,
+  type StallEvidence,
+} from '../../../packages/shared-domain/src/idleClassificationCopy';
 import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './endedEventBus';
 import { resolveFinalProgressValue } from '../../../packages/shared-domain/src/deferredObjectiveValues';
 import {
@@ -67,7 +70,7 @@ const ABANDON_GRACE_MS = 60 * 60 * 1000;
 // silently call a tripped breaker "succeeded".
 export type DeferredObjectiveStallClassificationReader = (
   deviceId: string,
-) => IdleClassification | undefined;
+) => StallEvidence | undefined;
 
 export type DeferredObjectiveBackfillConfig = {
   deviceId: string;
@@ -251,8 +254,15 @@ export class DeferredObjectivePlanHistoryRecorder {
     nowMs: number,
     getStallClassification?: DeferredObjectiveStallClassificationReader,
   ): InProgressRecord {
-    const classification = getStallClassification?.(diag.deviceId);
-    const reason = stallClassificationToMetReason(classification);
+    const evidence = getStallClassification?.(diag.deviceId);
+    // The verdict alone is not enough: a device idling at a setback setpoint
+    // PELS itself wrote is `near_target_idle` without having delivered this
+    // task's target. Only evidence measured against a setpoint that covers the
+    // target may promote. See `notes/deferred-load-objectives/README.md`
+    // § "Observer stall evidence".
+    const reason = stallEvidenceCoversTarget(evidence, diag.targetValue)
+      ? stallClassificationToMetReason(evidence.classification)
+      : null;
     return reason === null
       ? record
       : promoteRecordToStalled(record, diag, nowMs, reason);

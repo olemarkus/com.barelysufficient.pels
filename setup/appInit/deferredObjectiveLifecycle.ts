@@ -298,6 +298,6 @@ export function createDeferredObjectiveLifecycleEmitter(
       recorder.observe(diagnostics, nowMs);
       recorder.flushIfDirty();
     },
-    getStallClassification: (deviceId) => requirePlanService(ctx).getStallClassification(deviceId),
+    getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
   });
 }
