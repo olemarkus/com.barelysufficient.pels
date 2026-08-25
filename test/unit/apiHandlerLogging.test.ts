@@ -13,7 +13,6 @@ vi.mock('../../setup/settingsUiApi', () => ({
   getSettingsUiPricesPayload: vi.fn(),
   getSettingsUiDeviceDiagnosticsPayload: vi.fn(),
   getSettingsUiDeferredObjectivePlanHistoryPayload: vi.fn(),
-  recomputeSettingsUiDailyBudget: vi.fn(),
   previewSettingsUiDailyBudgetModel: vi.fn(),
   applySettingsUiDailyBudgetModel: vi.fn(),
   refreshSettingsUiDevices: vi.fn(),
@@ -52,7 +51,6 @@ const cases: Array<{
   { handler: 'ui_prices', stub: 'getSettingsUiPricesPayload' },
   { handler: 'ui_device_diagnostics', stub: 'getSettingsUiDeviceDiagnosticsPayload' },
   { handler: 'ui_deferred_objective_history', stub: 'getSettingsUiDeferredObjectivePlanHistoryPayload' },
-  { handler: 'ui_recompute_daily_budget', stub: 'recomputeSettingsUiDailyBudget' },
 ];
 
 const stubFor = (name: keyof typeof stubs): ReturnType<typeof vi.fn> => (

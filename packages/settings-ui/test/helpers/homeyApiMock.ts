@@ -26,7 +26,6 @@ import {
   SETTINGS_UI_REFRESH_DEVICES_PATH,
   SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
   SETTINGS_UI_REFRESH_PRICES_PATH,
-  SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH,
   SETTINGS_UI_RESET_POWER_STATS_PATH,
   SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH,
   SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH,
@@ -382,9 +381,6 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('POST', SETTINGS_UI_LOG_PATH)]: () => async () => ({ ok: true }),
-  [buildRouteKey('POST', SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH)]: (homey) => async () => (
-    getUiOverride(homey, 'dailyBudget') ?? null
-  ),
   [buildRouteKey('POST', SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH)]: (homey) => async ({ body }) => ({
     active: getUiOverride(homey, 'dailyBudget') ?? null,
     candidate: getUiOverride(homey, 'dailyBudget') ?? null,

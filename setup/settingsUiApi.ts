@@ -57,7 +57,6 @@ type SettingsUiApiApp = Homey.App & {
   capacityDryRun?: unknown;
   capacitySettings?: unknown;
   getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
-  recomputeDailyBudgetToday?: () => DailyBudgetUiPayload | null;
   previewDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetModelPreviewResponse;
   applyDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetUiPayload | null;
   getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
@@ -601,13 +600,6 @@ export const resetSettingsUiPowerStats = async ({ homey }: ApiContext): Promise<
     power: getSettingsUiPower({ homey }),
     dailyBudget: app?.getDailyBudgetUiPayload?.() ?? null,
   };
-};
-
-export const recomputeSettingsUiDailyBudget = ({ homey }: ApiContext): DailyBudgetUiPayload | null => {
-  const app = getApp(homey);
-  if (!app?.recomputeDailyBudgetToday) return null;
-  // No try/catch: let exceptions bubble to the api.ts wrapper for logging.
-  return app.recomputeDailyBudgetToday();
 };
 
 export const previewSettingsUiDailyBudgetModel = (

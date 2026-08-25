@@ -72,10 +72,6 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.requireDailyBudgetService().getUiPayload();
   }
 
-  public recomputeDailyBudgetToday(): DailyBudgetUiPayload | null {
-    return this.requireDailyBudgetService().recomputeTodayPlan();
-  }
-
   public previewDailyBudgetModel(settings: DailyBudgetSettingsInput): DailyBudgetModelPreviewResponse {
     return this.requireDailyBudgetService().previewModelSettings(settings);
   }

@@ -28,7 +28,6 @@ import {
   refreshSettingsUiDevices,
   refreshSettingsUiGridTariff,
   refreshSettingsUiPrices,
-  recomputeSettingsUiDailyBudget,
   resetSettingsUiPowerStats,
 } from './setup/settingsUiApi';
 import {
@@ -52,7 +51,6 @@ type ApiContext = {
 
 type DailyBudgetApp = Homey.App & {
   getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
-  recomputeDailyBudgetToday?: () => DailyBudgetUiPayload | null;
   getApiStructuredLogger?: () => PinoLogger | undefined;
 };
 
@@ -137,9 +135,6 @@ export = {
   }),
   ui_weather_advisor_readout: withApiLogging('ui_weather_advisor_readout', ({ homey }: ApiContext) => (
     getSettingsUiWeatherAdvisorReadout({ homey })
-  )),
-  ui_recompute_daily_budget: withApiLogging('ui_recompute_daily_budget', ({ homey }: ApiContext) => (
-    recomputeSettingsUiDailyBudget({ homey })
   )),
   ui_preview_daily_budget_model: withApiLogging(
     'ui_preview_daily_budget_model',
