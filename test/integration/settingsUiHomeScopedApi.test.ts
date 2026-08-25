@@ -45,13 +45,18 @@ const failOnlyPowerSource = (readRealSetting: (key: string) => unknown) => (key:
 };
 
 const AREA_PLAN = { generatedAtMs: 42, meta: buildSettingsUiPlanMeta({ totalKw: 1.5 }), devices: [] };
-const AREA_TRACKER = { buckets: { '2026-07-26T10:00:00.000Z': 0.4 } };
+// Latched (production `recordPowerSample` stamps `lastPowerW` and
+// `lastTimestamp` together): the served area is a MEASURED home, so its
+// suffixed blob classifies as live. The gated-area test clears the latch.
+const AREA_TRACKER = { lastPowerW: 1500, lastTimestamp: 4242, buckets: { '2026-07-26T10:00:00.000Z': 0.4 } };
 
-const areaReading = (): HomeRuntimeReading => ({
+const areaReading = (
+  tracker: Record<string, unknown> = AREA_TRACKER,
+): HomeRuntimeReading => ({
   homeId: AREA_ID,
   plan: AREA_PLAN,
   planUpdatedAtMs: 42,
-  powerTracker: AREA_TRACKER as unknown as HomeRuntimeReading['powerTracker'],
+  powerTracker: tracker as unknown as HomeRuntimeReading['powerTracker'],
   diagnostics: {
     homeId: AREA_ID,
     meterDeviceId: 'meter-1',
@@ -101,6 +106,7 @@ const installBoundary = (options: {
   ownershipReady?: boolean;
   pendingGeneration?: boolean;
   settings?: Record<string, unknown>;
+  areaTracker?: Record<string, unknown>;
 } = {}) => {
   const seeded: Record<string, unknown> = {
     power_source: 'homey_energy',
@@ -114,7 +120,7 @@ const installBoundary = (options: {
   });
   const homeRuntimeRead: HomeRuntimeReadPort = {
     readHome: (homeId) => (homeId === AREA_ID
-      ? { state: 'resolved', reading: areaReading() }
+      ? { state: 'resolved', reading: areaReading(options.areaTracker) }
       : { state: 'unavailable' }),
   };
   const homeMembership = createMembershipPort({
@@ -130,7 +136,7 @@ const installBoundary = (options: {
     ],
     getUiPickerDevices: () => [],
     getLatestPlanSnapshotForUi: () => null,
-    powerTracker: { buckets: {} },
+    powerTracker: { lastPowerW: 5200, lastTimestamp: 4242, buckets: {} },
     ...(options.hasReadPort === false ? {} : { homeRuntimeRead }),
     ...(options.hasMembership === false ? {} : { homeMembership }),
   };
@@ -181,7 +187,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       // membership — the area's heater stays present.
       expect(deviceIds(getSettingsUiDevicesPayload({ homey }))).toEqual(['dev-main', 'dev-area']);
       expect(getSettingsUiPowerPayload({ homey }).status).toEqual({
-        headroomKw: 9, priceLevel: 'cheap',
+        state: 'live', status: { headroomKw: 9, priceLevel: 'cheap' },
       });
     });
   });
@@ -199,7 +205,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
           plan: null, homeScope: { state: 'unavailable' },
         });
         expect(getSettingsUiPowerPayload({ homey, query })).toEqual({
-          tracker: null, status: null, heartbeat: null, homeScope: { state: 'unavailable' },
+          tracker: null, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, heartbeat: null, homeScope: { state: 'unavailable' },
         });
         // The solar flags are OMITTED, not fabricated `false` — absence is the
         // only honest value an unservable home can carry.
@@ -225,8 +231,9 @@ describe('settings-UI `?homeId=` endpoints', () => {
 
       const power = getSettingsUiPowerPayload({ homey, query });
       expect(power.tracker).toEqual(AREA_TRACKER);
-      // The area's OWN suffixed blob, never main's.
-      expect(power.status).toEqual({ headroomKw: 3, priceLevel: 'normal' });
+      // The area's OWN suffixed blob, never main's — live, because the area's
+      // own tracker holds a measurement.
+      expect(power.status).toEqual({ state: 'live', status: { headroomKw: 3, priceLevel: 'normal' } });
       expect(power.homeScope).toEqual({ state: 'resolved', homeId: AREA_ID });
     });
 
@@ -254,7 +261,8 @@ describe('settings-UI `?homeId=` endpoints', () => {
       expect(getSettingsUiPlanPayload({ homey, query }).homeScope)
         .toEqual({ state: 'unavailable' });
       // Crucially NOT main's status blob.
-      expect(getSettingsUiPowerPayload({ homey, query }).status).toBeNull();
+      expect(getSettingsUiPowerPayload({ homey, query }).status)
+        .toEqual({ state: 'unavailable', reason: 'home_scope_unavailable' });
       expect(getSettingsUiDevicesPayload({ homey, query }).devices).toEqual([]);
     });
 
@@ -279,7 +287,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
         devices: [], homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
-        tracker: null, status: null, heartbeat: null, homeScope: { state: 'unavailable' },
+        tracker: null, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, heartbeat: null, homeScope: { state: 'unavailable' },
       });
     });
 
@@ -296,7 +304,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
         devices: [], homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query })).toEqual({
-        tracker: null, status: null, heartbeat: null, homeScope: { state: 'unavailable' },
+        tracker: null, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, heartbeat: null, homeScope: { state: 'unavailable' },
       });
       // The plan composer consumes no membership, so it stays served: the
       // committed plan is the runtime's own truth, not an attribution claim.
@@ -306,7 +314,21 @@ describe('settings-UI `?homeId=` endpoints', () => {
 
     it('reports absence when the area has committed no plan or status yet', () => {
       const { homey } = installBoundary({ settings: { [`pels_status:${AREA_ID}`]: undefined } });
-      expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } }).status).toBeNull();
+      expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } }).status)
+        .toEqual({ state: 'unavailable', reason: 'no_status_recorded' });
+    });
+
+    it('never serves a gated area its stale suffixed blob as live — and preserves the blob', () => {
+      // The area's live tracker holds no measurement (its meter never reported
+      // this run), so the suffixed blob is a previous era's: the classified
+      // read says so instead of serving the previous run's numbers as live.
+      const { homey } = installBoundary({ areaTracker: { buckets: {} } });
+      const power = getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } });
+      expect(power.status).toEqual({ state: 'unavailable', reason: 'no_measurement' });
+      expect(power.homeScope).toEqual({ state: 'resolved', homeId: AREA_ID });
+      // The stored blob survives untouched — the read changes only its claim.
+      expect(homey.settings.get(`pels_status:${AREA_ID}`))
+        .toEqual({ headroomKw: 3, priceLevel: 'normal' });
     });
 
     it('classifies a thrown scoped status read as unavailable, not a rejected request', () => {
@@ -318,7 +340,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       get.mockImplementation(failOnlyScopedStatus(readRealSetting));
 
       expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
-        tracker: null, status: null, heartbeat: null, homeScope: { state: 'unavailable' },
+        tracker: null, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, heartbeat: null, homeScope: { state: 'unavailable' },
       });
     });
 

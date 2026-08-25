@@ -87,7 +87,10 @@ const installGatheringStub = async (page: Page) => {
         target_devices_snapshot: [
           { id: 'dev_pv', name: 'Solar Roof', deviceClass: 'solarpanel', targets: [] },
         ],
-        power_tracker_state: {},
+        // Measured (latched) but with NO generation buckets yet: the
+        // gathering story is "solar configured, data not accrued", not a
+        // gated home — the stub's status classification keys on the latch.
+        power_tracker_state: { lastPowerW: 1100, lastTimestamp: Date.now() - 12_000 },
       },
     };
   });

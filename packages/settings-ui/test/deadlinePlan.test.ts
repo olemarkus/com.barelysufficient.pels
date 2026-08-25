@@ -141,7 +141,7 @@ const buildBootstrap = (
         },
       },
     },
-    status: null,
+    status: { state: 'unavailable', reason: 'no_status_recorded' },
     heartbeat: null,
   },
   prices: {

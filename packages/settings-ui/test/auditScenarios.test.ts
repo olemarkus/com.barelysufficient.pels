@@ -121,7 +121,11 @@ describe('audit scenarios', () => {
       expect(Array.isArray(scenario.plan.devices)).toBe(true);
     }
     if (scenario.power) {
-      expect(scenario.power).toHaveProperty('status');
+      // The wire union, never a raw blob: the client seam classifies a raw
+      // blob as `read_failed`, so a legacy-shaped patch would silently render
+      // the missing-power state instead of the scenario's story.
+      const statusRead = (scenario.power as { status: { state?: unknown } }).status;
+      expect(['live', 'unavailable']).toContain(statusRead.state);
     }
     if (scenario.deferredObjectiveActivePlans) {
       expect(scenario.deferredObjectiveActivePlans.version).toBe(1);
@@ -200,6 +204,18 @@ describe('audit scenarios', () => {
     stub.clearAuditScenario();
     const after = await callApi(stub, 'GET', '/ui_plan') as { plan: { devices?: unknown[] } | null };
     expect(after.plan?.devices?.length).toBeGreaterThan(2); // baseline has 7+ devices
+  });
+
+  it('pressure serves the live capacity-shortfall status through the stub', async () => {
+    const stub = loadBrowserStub();
+    stub.applyAuditScenario('pressure');
+    const power = await callApi(stub, 'GET', '/ui_power') as {
+      status: { state?: string; status?: { capacityShortfall?: boolean } };
+    };
+    // A raw blob here would be the client seam's `read_failed` — the audit
+    // capture would show missing power instead of the pressure story.
+    expect(power.status.state).toBe('live');
+    expect(power.status.status?.capacityShortfall).toBe(true);
   });
 
   it('serves every declared route after a scenario is applied', async () => {

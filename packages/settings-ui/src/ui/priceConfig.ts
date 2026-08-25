@@ -50,6 +50,7 @@ import type {
   PriceScheme,
   NorwayPriceModel,
 } from './priceConfigTypes.ts';
+import { liveStatusOrNull } from './powerStatusRead.ts';
 
 let configState: PriceConfigState = {
   optimizationEnabled: true,
@@ -423,7 +424,7 @@ const refreshStatusInfo = async () => {
       homeyStatus: configState.priceScheme === 'homey' ? buildHomeyStatus(payload) : null,
       // Same `priceLevel` field the budget hero reads, so the tier chip never
       // disagrees across surfaces.
-      currentPriceLevel: powerPayload?.status?.priceLevel ?? null,
+      currentPriceLevel: liveStatusOrNull(powerPayload?.status)?.priceLevel ?? null,
       liveSummary: resolveLiveSummarySignals(payload.combinedPrices, Date.now()),
     };
   } catch (error) {

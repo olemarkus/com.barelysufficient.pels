@@ -93,6 +93,11 @@ const buildScopedTracker = (kWh: number) => {
   const currentHourStartMs = FIXED_NOW_MS - (FIXED_NOW_MS % (60 * 60 * 1000));
   const currentHourIso = new Date(currentHourStartMs).toISOString();
   return {
+    // Latched: production `recordPowerSample` stamps `lastPowerW` and
+    // `lastTimestamp` together, and the stub's status classification keys on
+    // the latch — without it this scene would silently model a GATED home.
+    lastPowerW: 1200,
+    lastTimestamp: FIXED_NOW_MS - 12_000,
     buckets: { [currentHourIso]: kWh },
     hourlySampleCounts: { [currentHourIso]: 6 },
   };

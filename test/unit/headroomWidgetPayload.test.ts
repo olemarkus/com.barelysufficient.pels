@@ -6,14 +6,30 @@ import { buildHeadroomWidgetPayload, EMPTY_SUBTITLE_DEFAULT } from '../../widget
 const NOW = new Date('2026-03-19T10:00:00.000Z').getTime();
 
 describe('buildHeadroomWidgetPayload', () => {
-  test('returns empty payload when status missing', () => {
-    const payload = buildHeadroomWidgetPayload({ status: null, nowMs: NOW });
+  test('returns empty payload when no status blob is recorded', () => {
+    const payload = buildHeadroomWidgetPayload({
+      status: { state: 'unavailable', reason: 'no_status_recorded' },
+      nowMs: NOW,
+    });
+    expect(payload).toEqual({ state: 'empty', subtitle: EMPTY_SUBTITLE_DEFAULT });
+  });
+
+  test('a home with no measurement renders empty — never last run blob as current', () => {
+    // The app-side classifier (widget api.ts → classifyPowerStatusRead)
+    // answers `no_measurement` when the live tracker holds no latch (meter
+    // swap, corrupt restore, first boot). The widget must not present the
+    // persisted blob's numbers for even the first 90 seconds — timestamp
+    // aging alone cannot see a latch cleared moments after a fresh sample.
+    const payload = buildHeadroomWidgetPayload({
+      status: { state: 'unavailable', reason: 'no_measurement' },
+      nowMs: NOW,
+    });
     expect(payload).toEqual({ state: 'empty', subtitle: EMPTY_SUBTITLE_DEFAULT });
   });
 
   test('renders last-known data with stale flag when power not yet known', () => {
     const payload = buildHeadroomWidgetPayload({
-      status: { powerKnown: false, headroomKw: 1, hourlyLimitKw: 7, lastPowerUpdate: NOW - 5_000 },
+      status: { state: 'live', status: { powerKnown: false, headroomKw: 1, hourlyLimitKw: 7, lastPowerUpdate: NOW - 5_000 } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', currentKw: 6, hourBudgetKw: 7, stale: true });
@@ -22,11 +38,14 @@ describe('buildHeadroomWidgetPayload', () => {
   test('derives current draw from hourly limit minus headroom', () => {
     const payload = buildHeadroomWidgetPayload({
       status: {
-        headroomKw: 3.8,
-        hourlyLimitKw: 7,
-        devicesOff: 2,
-        priceLevel: 'cheap',
-        lastPowerUpdate: NOW - 5_000,
+        state: 'live',
+        status: {
+          headroomKw: 3.8,
+          hourlyLimitKw: 7,
+          devicesOff: 2,
+          priceLevel: 'cheap',
+          lastPowerUpdate: NOW - 5_000,
+        },
       },
       nowMs: NOW,
     });
@@ -44,7 +63,7 @@ describe('buildHeadroomWidgetPayload', () => {
 
   test('reports at_pace (not danger) when draw reaches safe pace with the hour on track', () => {
     const payload = buildHeadroomWidgetPayload({
-      status: { headroomKw: 0, hourlyLimitKw: 6.3, projectedOverHardCap: false },
+      status: { state: 'live', status: { headroomKw: 0, hourlyLimitKw: 6.3, projectedOverHardCap: false } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', currentKw: 6.3, limitState: 'at_pace' });
@@ -52,7 +71,7 @@ describe('buildHeadroomWidgetPayload', () => {
 
   test('reports near when approaching but below the safe pace', () => {
     const payload = buildHeadroomWidgetPayload({
-      status: { headroomKw: 0.5, hourlyLimitKw: 6 },
+      status: { state: 'live', status: { headroomKw: 0.5, hourlyLimitKw: 6 } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', limitState: 'near' });
@@ -62,7 +81,7 @@ describe('buildHeadroomWidgetPayload', () => {
     // The flag means "this hour is projected past the cap's kWh" — it is never
     // derived widget-side from instantaneous kW vs the cap.
     const payload = buildHeadroomWidgetPayload({
-      status: { headroomKw: 0, hourlyLimitKw: 6.3, projectedOverHardCap: true },
+      status: { state: 'live', status: { headroomKw: 0, hourlyLimitKw: 6.3, projectedOverHardCap: true } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', limitState: 'over_cap' });
@@ -70,7 +89,7 @@ describe('buildHeadroomWidgetPayload', () => {
 
   test('does not escalate to over_cap when the trajectory flag is absent', () => {
     const payload = buildHeadroomWidgetPayload({
-      status: { headroomKw: -0.5, hourlyLimitKw: 6 },
+      status: { state: 'live', status: { headroomKw: -0.5, hourlyLimitKw: 6 } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', limitState: 'at_pace' });
@@ -78,7 +97,7 @@ describe('buildHeadroomWidgetPayload', () => {
 
   test('clamps negative current to zero', () => {
     const payload = buildHeadroomWidgetPayload({
-      status: { headroomKw: 8, hourlyLimitKw: 7 },
+      status: { state: 'live', status: { headroomKw: 8, hourlyLimitKw: 7 } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', currentKw: 0 });
@@ -87,9 +106,12 @@ describe('buildHeadroomWidgetPayload', () => {
   test('flags stale when last power update is older than 90s', () => {
     const payload = buildHeadroomWidgetPayload({
       status: {
-        headroomKw: 1,
-        hourlyLimitKw: 5,
-        lastPowerUpdate: NOW - 120_000,
+        state: 'live',
+        status: {
+          headroomKw: 1,
+          hourlyLimitKw: 5,
+          lastPowerUpdate: NOW - 120_000,
+        },
       },
       nowMs: NOW,
     });
@@ -98,7 +120,7 @@ describe('buildHeadroomWidgetPayload', () => {
 
   test('maps unknown price level to "unknown"', () => {
     const payload = buildHeadroomWidgetPayload({
-      status: { headroomKw: 1, hourlyLimitKw: 5, priceLevel: undefined },
+      status: { state: 'live', status: { headroomKw: 1, hourlyLimitKw: 5, priceLevel: undefined } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', priceLevel: 'unknown' });

@@ -39,6 +39,7 @@ import {
   refreshStaleDataStatus,
   runLoggedTask,
 } from './uiRefreshTasks.ts';
+import { liveStatusOrNull, resolvePowerStatusRead } from './powerStatusRead.ts';
 
 /**
  * The WebView's realtime subscriptions: the four `homey.on(...)` pushes the app
@@ -128,12 +129,16 @@ const handleDevicesUpdated = () => {
 
 const handlePowerUpdated = (power: unknown) => {
   const payload = power as SettingsUiPowerPayload;
+  // Classify the pushed status ONCE at this seam; a malformed push is the
+  // client's own `read_failed`, never a live status.
+  const statusRead = resolvePowerStatusRead(payload?.status);
+  const liveStatus = liveStatusOrNull(statusRead);
   const hasFullTracker = Boolean(payload?.tracker && typeof payload.tracker === 'object');
   // Main's stream, like `plan_updated` — never widened. Drop the sub-home
   // entries this push does not refresh; the bare entry is seeded/patched below.
   invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
   if (hasFullTracker) {
-    primeApiCache(SETTINGS_UI_POWER_PATH, payload);
+    primeApiCache(SETTINGS_UI_POWER_PATH, { ...payload, status: statusRead });
   } else {
     // Status-only push: patch status/heartbeat and PRESERVE the cached
     // tracker (and hasManagedSolarDevice). Every runtime `power_updated` push
@@ -144,19 +149,19 @@ const handlePowerUpdated = (power: unknown) => {
     // that need a FRESH tracker already invalidate before refetching (see
     // refreshPowerDataIfVisible and the usage-tab activation hook).
     updateApiCache<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH, {
-      status: payload?.status ?? null,
+      status: statusRead,
       heartbeat: payload?.heartbeat ?? null,
     }, { tracker: null });
   }
   // Only a full-tracker push refreshes the hero's "Solar now" triple; a
   // status-only push keeps the cached one (the resolver's staleness gate
   // retires it on its own).
-  updatePlanPower(payload?.status ?? null, hasFullTracker ? payload.tracker : undefined);
-  updateBudgetPower(payload?.status ?? null);
+  updatePlanPower(liveStatus, hasFullTracker ? payload.tracker : undefined);
+  updateBudgetPower(liveStatus);
   // The hub's `Awaiting prices` chip reads the price level this push just
   // primed into the power cache — cheap idempotent DOM sync.
   syncSettingsHubChips();
-  updateStaleDataStatusFromPowerPayload(payload ?? null);
+  updateStaleDataStatusFromPowerPayload(payload ? { ...payload, status: statusRead } : null);
   refreshPowerDataIfVisible('realtime power_updated', {
     force: hasFullTracker,
     invalidateBeforeRefresh: !hasFullTracker,

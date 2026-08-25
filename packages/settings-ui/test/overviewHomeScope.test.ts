@@ -78,7 +78,7 @@ const MALFORMED_PLAN = {
 
 const SERVED_AREA_POWER = {
   tracker: null,
-  status: { powerFreshnessState: 'fresh' },
+  status: { state: 'live', status: { powerFreshnessState: 'fresh' } },
   heartbeat: null,
   homeScope: { state: 'resolved', homeId: AREA },
 };
@@ -295,7 +295,7 @@ describe('Overview under a selected meter area', () => {
       api: {
         '/ui_homes': ROSTER_PAYLOAD,
         '/ui_plan': { plan: MAIN_PLAN },
-        '/ui_power': { tracker: null, status: null, heartbeat: null },
+        '/ui_power': { tracker: null, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null },
         '/ui_prices': null,
         '/ui_deferred_objective_history': { version: 1, entriesByDeviceId: {} },
         [SCOPED_PLAN_URI]: { plan: AREA_PLAN, homeScope: { state: 'resolved', homeId: AREA } },
@@ -335,7 +335,7 @@ describe('Overview under a selected meter area', () => {
         '/ui_homes': ROSTER_PAYLOAD,
         '/ui_prices': null,
         [SCOPED_PLAN_URI]: { plan: null, homeScope: { state: 'unavailable' } },
-        [SCOPED_POWER_URI]: { tracker: null, status: null, heartbeat: null, homeScope: { state: 'unavailable' } },
+        [SCOPED_POWER_URI]: { tracker: null, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, heartbeat: null, homeScope: { state: 'unavailable' } },
       },
     });
     await selectArea();
@@ -413,7 +413,7 @@ describe('Overview under a selected meter area', () => {
       api: {
         '/ui_homes': ROSTER_PAYLOAD,
         '/ui_plan': { plan: MAIN_PLAN },
-        '/ui_power': { tracker: null, status: null, heartbeat: null },
+        '/ui_power': { tracker: null, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null },
         '/ui_prices': null,
         '/ui_deferred_objective_history': { version: 1, entriesByDeviceId: {} },
         [SCOPED_PLAN_URI]: { plan: AREA_PLAN, homeScope: { state: 'resolved', homeId: AREA } },
@@ -509,7 +509,7 @@ describe('the bare-URI-prime realtime trap', () => {
       api: {
         '/ui_homes': ROSTER_PAYLOAD,
         '/ui_plan': { plan: MAIN_PLAN },
-        '/ui_power': { tracker: null, status: null, heartbeat: null },
+        '/ui_power': { tracker: null, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null },
         '/ui_prices': null,
         '/ui_deferred_objective_history': { version: 1, entriesByDeviceId: {} },
         '/ui_starvation_rescue_devices': { rescuableDeviceIds: [] },
@@ -567,7 +567,7 @@ describe('the bare-URI-prime realtime trap', () => {
     // Main's power stream going fail-closed says nothing about the area.
     emit('power_updated', {
       tracker: null,
-      status: { powerFreshnessState: 'stale_fail_closed' },
+      status: { state: 'live', status: { powerFreshnessState: 'stale_fail_closed' } },
       heartbeat: null,
     });
     await flushAsync();
@@ -585,7 +585,7 @@ describe('the bare-URI-prime realtime trap', () => {
 
     emit('power_updated', {
       tracker: null,
-      status: { powerFreshnessState: 'stale_fail_closed' },
+      status: { state: 'live', status: { powerFreshnessState: 'stale_fail_closed' } },
       heartbeat: null,
     });
     await flushAsync();
@@ -650,7 +650,7 @@ describe('overlapping Main refreshes across a scope round trip', () => {
       api: {
         '/ui_homes': ROSTER_PAYLOAD,
         '/ui_plan': { plan: MAIN_PLAN },
-        '/ui_power': { tracker: null, status: null, heartbeat: null },
+        '/ui_power': { tracker: null, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null },
         '/ui_prices': null,
         '/ui_deferred_objective_history': { version: 1, entriesByDeviceId: {} },
         '/settings_ui_log': { ok: true },
@@ -713,7 +713,7 @@ describe('Overview activation after a scope change while it was hidden', () => {
       api: {
         '/ui_homes': ROSTER_PAYLOAD,
         '/ui_plan': { plan: MAIN_PLAN },
-        '/ui_power': { tracker: null, status: null, heartbeat: null },
+        '/ui_power': { tracker: null, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null },
         '/ui_prices': null,
         '/ui_deferred_objective_history': { version: 1, entriesByDeviceId: {} },
         '/ui_starvation_rescue_devices': { rescuableDeviceIds: [] },

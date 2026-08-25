@@ -126,7 +126,7 @@ let setHourlyPatternToggleActive: (view: HourlyPatternView | null) => void = () 
 // keeps the scope discriminated.
 const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
   const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
-  return payload ?? { tracker: null, status: null, heartbeat: null };
+  return payload ?? { tracker: null, status: { state: 'unavailable', reason: 'read_failed' }, heartbeat: null };
 };
 
 const getTimeZoneWeekRange = (now: Date, weekOffset: number, timeZone: string) => {

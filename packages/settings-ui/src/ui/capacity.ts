@@ -60,6 +60,7 @@ import { logSettingsError } from './logging.ts';
 import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
+import { liveStatusOrNull } from './powerStatusRead.ts';
 
 export type PowerSource = 'flow' | 'homey_energy';
 
@@ -455,7 +456,7 @@ const resolveLastPowerUpdate = (power: SettingsUiPowerPayload): number | null =>
   if (typeof trackerTimestamp === 'number' && Number.isFinite(trackerTimestamp)) {
     return trackerTimestamp;
   }
-  const statusTimestamp = power.status?.lastPowerUpdate;
+  const statusTimestamp = liveStatusOrNull(power.status)?.lastPowerUpdate;
   return typeof statusTimestamp === 'number' && Number.isFinite(statusTimestamp) ? statusTimestamp : null;
 };
 

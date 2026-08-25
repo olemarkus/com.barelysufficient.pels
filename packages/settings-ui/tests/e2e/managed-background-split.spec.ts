@@ -30,7 +30,16 @@ const buildSplitTrackerState = (nowMs = FIXED_NOW_MS) => {
   buckets[currentIso] = 1.2;
   controlledBuckets[currentIso] = 0.5;
   uncontrolledBuckets[currentIso] = 0.7;
-  return { buckets, controlledBuckets, uncontrolledBuckets };
+  return {
+    // Latched: production `recordPowerSample` stamps `lastPowerW` and
+    // `lastTimestamp` together, and the stub's status classification keys on
+    // the latch — without it this scene would silently model a GATED home.
+    lastPowerW: 1200,
+    lastTimestamp: nowMs - 12_000,
+    buckets,
+    controlledBuckets,
+    uncontrolledBuckets,
+  };
 };
 
 const installFixedNow = async (page: Page) => {

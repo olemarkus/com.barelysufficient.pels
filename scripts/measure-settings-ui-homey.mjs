@@ -278,13 +278,26 @@ const createHomeyContext = async ({ appId, homeyId }) => {
     Array.isArray(allSettings[key]) ? allSettings[key] : []
   );
 
+  // Mirrors the producer's read-boundary classification
+  // (`classifyPowerStatusRead`, setup/settingsUiAppRuntime.ts): a raw blob on
+  // the wire would be classified `read_failed` by the client seam and the
+  // measurement would exercise the missing-power paths instead of the surface
+  // it is timing. Keep in sync with the producer.
   const buildPowerPayload = (allSettings) => {
     const tracker = allSettings.power_tracker_state;
     const status = allSettings.pels_status;
     const heartbeat = allSettings.app_heartbeat;
+    const lastPowerW = tracker && typeof tracker === 'object' ? tracker.lastPowerW : undefined;
+    const measured = typeof lastPowerW === 'number' && Number.isFinite(lastPowerW);
+    let statusRead = { state: 'unavailable', reason: 'no_measurement' };
+    if (measured) {
+      statusRead = status && typeof status === 'object' && !Array.isArray(status)
+        ? { state: 'live', status }
+        : { state: 'unavailable', reason: 'no_status_recorded' };
+    }
     return {
       heartbeat: typeof heartbeat === 'number' ? heartbeat : null,
-      status: status && typeof status === 'object' ? status : null,
+      status: statusRead,
       tracker: tracker && typeof tracker === 'object' ? tracker : null,
     };
   };

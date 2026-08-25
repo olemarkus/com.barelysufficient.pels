@@ -145,6 +145,43 @@ describe('headroom widget browser', () => {
     expect(targets.metaEl.textContent).toContain('2 held back');
   });
 
+  test('a stale payload says the data is not current instead of asserting available power', () => {
+    // The payload builder ages `pels_status` by its own `lastPowerUpdate`, so
+    // after a restart with a dead meter the tile's numbers are a previous
+    // run's. The meta line must SAY so — dimming alone still presented the
+    // old available-power and held-back claims as live.
+    const targets = resolveTargets();
+    renderWidget(targets, {
+      ...READY, currentKw: 3.2, hourBudgetKw: 7, headroomKw: 3.8, limitState: 'under', shedCount: 2, stale: true,
+    });
+
+    expect(targets.root.dataset.stale).toBe('true');
+    expect(targets.metaEl.textContent).toBe('No recent power reading');
+    expect(targets.metaEl.textContent).not.toContain('available');
+    expect(targets.metaEl.textContent).not.toContain('held back');
+    // Calm tone: the alarm would be about numbers nothing vouches for.
+    expect(targets.metaEl.dataset.tone).toBe('ok');
+    const aria = targets.root.getAttribute('aria-label') ?? '';
+    expect(aria).toContain('No recent power reading');
+  });
+
+  test('a stale over_cap payload withdraws every current-state claim, not only the meta line', () => {
+    // A gated boot serving last run's over-cap blob must not paint a live red
+    // alarm: the tones, the "Above hard cap" label, and the aria summary are
+    // all claims about NOW, and nothing vouches for them any more.
+    const targets = resolveTargets();
+    renderWidget(targets, {
+      ...READY, currentKw: 6.7, hourBudgetKw: 6.3, headroomKw: -0.4, limitState: 'over_cap', stale: true,
+    });
+    expect(targets.metaEl.textContent).toBe('No recent power reading');
+    expect(targets.metaEl.dataset.tone).toBe('ok');
+    expect(targets.root.dataset.tone).toBe('neutral');
+    expect(targets.barFillEl.dataset.tone).toBe('neutral');
+    expect(targets.stateLabelEl.hidden).toBe(true);
+    const aria = targets.root.getAttribute('aria-label') ?? '';
+    expect(aria).not.toContain('Above hard cap');
+  });
+
   test('renders the canonical price chip and a grammatical aria phrase', () => {
     const targets = resolveTargets();
     renderWidget(targets, { ...READY, priceLevel: 'cheap' });

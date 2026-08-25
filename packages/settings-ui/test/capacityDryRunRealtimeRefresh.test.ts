@@ -65,7 +65,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
           uiState: {
             power: {
               tracker: null,
-              status: null,
+              status: { state: 'unavailable', reason: 'no_status_recorded' },
               heartbeat: null,
               mainDryRunEffective,
               ...(mainCapacityScalars ? { mainCapacityScalars } : {}),

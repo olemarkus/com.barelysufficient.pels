@@ -228,9 +228,15 @@ test.describe('Power source setting', () => {
     await openLimitsAndSafety(page);
 
     // Force stale power data but keep heartbeat fresh so the banner shows
-    // the power-specific message rather than the heartbeat-missing message
+    // the power-specific message rather than the heartbeat-missing message.
+    // Production's stale home is "total present, timestamp OLD" — the tracker
+    // keeps its latch (so the home stays measured and the status read stays
+    // live) while both stamps age past the banner threshold. The banner reads
+    // the tracker stamp first, so aging only the blob would leave the default
+    // fixture's fresh tracker hiding it.
     await page.evaluate(() => {
       const stub = (window as any).Homey.__stub;
+      stub.setSetting('power_tracker_state', { lastPowerW: 5200, lastTimestamp: Date.now() - 120_000 });
       stub.setSetting('pels_status', { lastPowerUpdate: Date.now() - 120_000 });
       stub.setSetting('app_heartbeat', Date.now());
       stub.emitSettingsSet('pels_status');

@@ -403,9 +403,49 @@ export type SettingsUiPowerStatus = {
   projectedOverHardCap?: boolean;
 };
 
+/**
+ * Why a power-status read carries no live status. Every arm is one specific,
+ * producer- or seam-owned cause — no catch-all:
+ *
+ * - `no_measurement` — the home's measurement gate is shut: its live tracker
+ *   holds no measurement latch for this home's meter (first-ever boot, an
+ *   in-place meter swap cleared it, or a corrupt tracker restore). The latch
+ *   is durable on purpose: an ordinary restart of an ever-measured home
+ *   restores it (the planner's restored-sample policy) and stays `live`,
+ *   with the running planner rewriting the blob promptly. When this arm DOES
+ *   resolve, any persisted `pels_status` blob describes a previous era and
+ *   must not be served as live — the blob itself is preserved untouched
+ *   (`setup/powerMeasurementGate.ts`).
+ * - `no_status_recorded` — a measurement exists but no parsable `pels_status`
+ *   blob has been committed yet (first plan not yet written).
+ * - `home_scope_unavailable` — the `?homeId=` read could not be served; the
+ *   payload is the empty shape and its `homeScope` block says the same.
+ * - `read_failed` — the WebView-side transport adapter could not obtain or
+ *   validate a payload at all (the Homey API bridge is an untrusted transport;
+ *   the client classifies its own failed read once, at that seam).
+ */
+export type SettingsUiPowerStatusUnavailableReason =
+  | 'no_measurement'
+  | 'no_status_recorded'
+  | 'home_scope_unavailable'
+  | 'read_failed';
+
+/**
+ * The classified result of reading the home's `pels_status`. The producer
+ * (`getSettingsUiPower` / `powerPayloadForHome`, setup/settingsUiApi.ts)
+ * resolves it at the read boundary: `live` means the running planner vouches
+ * for the blob (the home's measurement gate is open, so the blob is maintained
+ * by THIS run); `unavailable` means no live status claim exists and the reason
+ * arm says exactly why. Consumers branch on `state` and never re-derive
+ * liveness from blob fields such as `powerFreshnessState`.
+ */
+export type SettingsUiPowerStatusRead =
+  | { readonly state: 'live'; readonly status: SettingsUiPowerStatus }
+  | { readonly state: 'unavailable'; readonly reason: SettingsUiPowerStatusUnavailableReason };
+
 export type SettingsUiPowerPayload = {
   tracker: PowerTrackerState | null;
-  status: SettingsUiPowerStatus | null;
+  status: SettingsUiPowerStatusRead;
   heartbeat: number | null;
   // Runtime-authoritative Main-home simulation posture. The persisted
   // `capacity_dry_run` key may be absent while the running app deliberately
@@ -431,7 +471,8 @@ export type SettingsUiPowerPayload = {
   hasManagedSolarDevice?: boolean;
   // Present only on a `?homeId=` read; absent keeps the whole-home payload
   // byte-identical (realtime pushes never carry it either). `unavailable` means
-  // `tracker: null` / `status: null` are the empty shape, NOT a measured idle.
+  // `tracker: null` / the unavailable status arm are the empty shape, NOT a
+  // measured idle.
   homeScope?: SettingsUiHomeScope;
 };
 

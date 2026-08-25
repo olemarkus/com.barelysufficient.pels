@@ -124,6 +124,7 @@ import {
   unmountDeadlinePlan,
 } from './deadlinePlanMount.ts';
 import { initDeadlinePlanRouter } from './deadlinePlanRouter.ts';
+import { liveStatusOrNull } from './powerStatusRead.ts';
 
 // `showTab` only STARTS the target panel's async scope work (a Main-only deep
 // link switches scope first, and the panel's activation hook re-reads the
@@ -377,7 +378,7 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
     // is visible on first render. Without this it stays hidden until the
     // first `power_updated` realtime push lands (gh-address-comments review
     // on PR #884; chatgpt-codex finding).
-    updateBudgetPower(bootstrap.power?.status ?? null);
+    updateBudgetPower(liveStatusOrNull(bootstrap.power?.status));
     primeApiCache(SETTINGS_UI_PRICES_PATH, bootstrap.prices);
     // Persist active plans so device cards can read EV schedule state without
     // re-fetching the full bootstrap on every render cycle. Realtime replans

@@ -1041,8 +1041,13 @@ describe('MyApp initialization', () => {
     expect(powerEvents).toHaveLength(1);
     expect(powerEvents[0].data).toMatchObject({
       tracker: null,
+      // The classified read: a push rides a recorded sample, so the status is
+      // the live arm with the sample's own stamp overlaid.
       status: expect.objectContaining({
-        lastPowerUpdate: now,
+        state: 'live',
+        status: expect.objectContaining({
+          lastPowerUpdate: now,
+        }),
       }),
     });
   });
@@ -1671,11 +1676,47 @@ describe('MyApp initialization', () => {
     expect(powerEvents).toHaveLength(1);
     expect(powerEvents[0].data).toMatchObject({
       tracker: null,
+      // The classified read: a push rides a recorded sample, so the status is
+      // the live arm with the sample's own stamp overlaid.
       status: expect.objectContaining({
-        lastPowerUpdate: now,
+        state: 'live',
+        status: expect.objectContaining({
+          lastPowerUpdate: now,
+        }),
       }),
     });
     expect(mockHomeyInstance.settings.get('power_tracker_state')).toMatchObject(nextState);
+  });
+
+  it('classifies a power_updated push from a latch-less tracker as not measured, never last run\'s blob', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+    // The state the classifier exists to close: a persisted blob from a
+    // previous era survives in settings while nothing this run vouches for it.
+    mockHomeyInstance.settings.set('pels_status', { lastPowerUpdate: 1, powerFreshnessState: 'fresh' });
+    mockHomeyInstance.api.clearRealtimeEvents();
+
+    // A tracker replacement with no measurement latch (import/backfill of
+    // history only). The push must not resurrect the stored blob as live.
+    (app as any).replacePowerTrackerForUi({
+      buckets: { [getHourBucketKey(Date.now())]: 0 },
+    });
+
+    const powerEvents = mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'power_updated');
+    expect(powerEvents).toHaveLength(1);
+    expect(powerEvents[0].data).toMatchObject({
+      tracker: null,
+      status: { state: 'unavailable', reason: 'no_measurement' },
+    });
+    // The stored blob is preserved — the push changed only the claim.
+    expect(mockHomeyInstance.settings.get('pels_status'))
+      .toEqual({ lastPowerUpdate: 1, powerFreshnessState: 'fresh' });
   });
 
   it('coalesces same-hour power tracker settings persistence while a save is pending', async () => {

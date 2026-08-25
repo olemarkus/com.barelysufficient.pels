@@ -1,4 +1,5 @@
 import type { HeadroomWidgetLimitState } from '../../../packages/shared-domain/src/headroomWidgetCopy';
+import type { SettingsUiPowerStatusUnavailableReason } from '../../../packages/contracts/src/settingsUiApi';
 import { EMPTY_SUBTITLE_DEFAULT } from './headroomWidgetConstants';
 import type {
   HeadroomWidgetEmptyPayload,
@@ -24,18 +25,36 @@ const resolvePriceLevel = (value: unknown): HeadroomWidgetPriceLevel => {
   return 'unknown';
 };
 
+export type HeadroomWidgetStatusBlob = {
+  headroomKw?: number;
+  hourlyLimitKw?: number;
+  projectedOverHardCap?: boolean;
+  controlledKw?: number;
+  uncontrolledKw?: number;
+  devicesOff?: number;
+  priceLevel?: unknown;
+  lastPowerUpdate?: number | null;
+  powerKnown?: boolean;
+};
+
+/**
+ * The classified `pels_status` read the widget API hands in — the same shape
+ * the app's own composers serve (`classifyPowerStatusRead`,
+ * setup/settingsUiAppRuntime.ts), so the widget answers the liveness question
+ * through the one shared classifier instead of trusting the persisted blob.
+ * `live` still gets AGED below (`STALE_AFTER_MS`): a latched home whose meter
+ * died keeps its blob, and the not-current presentation is the honest render
+ * for it. `unavailable` has no vouched numbers at all and renders the empty
+ * "No data yet" state — a gate-shut home (meter swap, corrupt restore, first
+ * boot) must not present the previous run's figures as current, not even for
+ * the first 90 seconds.
+ */
+export type HeadroomWidgetStatusRead =
+  | { readonly state: 'live'; readonly status: HeadroomWidgetStatusBlob }
+  | { readonly state: 'unavailable'; readonly reason: SettingsUiPowerStatusUnavailableReason };
+
 export type HeadroomWidgetInput = {
-  status: {
-    headroomKw?: number;
-    hourlyLimitKw?: number;
-    projectedOverHardCap?: boolean;
-    controlledKw?: number;
-    uncontrolledKw?: number;
-    devicesOff?: number;
-    priceLevel?: unknown;
-    lastPowerUpdate?: number | null;
-    powerKnown?: boolean;
-  } | null;
+  status: HeadroomWidgetStatusRead;
   nowMs?: number;
 };
 
@@ -70,8 +89,8 @@ const emptyPayload = (subtitle: string): HeadroomWidgetEmptyPayload => ({
 });
 
 export const buildHeadroomWidgetPayload = (input: HeadroomWidgetInput): HeadroomWidgetPayload => {
-  const status = input.status;
-  if (!status) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
+  if (input.status.state !== 'live') return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
+  const status = input.status.status;
 
   const hourBudgetKw = isFiniteNumber(status.hourlyLimitKw) ? status.hourlyLimitKw : null;
   const headroomKw = isFiniteNumber(status.headroomKw) ? status.headroomKw : null;
