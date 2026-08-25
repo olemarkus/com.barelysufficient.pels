@@ -34,6 +34,79 @@ const heaterAt = (
 });
 
 describe('createIdleClassifier', () => {
+  // `StallEvidence.classifiedAgainstTargetValue` is non-nullable, and the stall
+  // gate relies on that. The guarantee is a cross-field invariant, not a type:
+  // a reportable verdict can only exist when `passesCommonEligibility` saw the
+  // atomic temperature cluster. These pin the producer end of it.
+  describe('getStallEvidence', () => {
+    it('carries the setpoint the verdict was measured against', () => {
+      const classifier = createIdleClassifier();
+      const t0 = 1_000_000;
+      // Park the heater at its setpoint long enough to classify.
+      classifier.classifyAll([heaterAt({ temperature: { currentTemperature: 64.5, currentTarget: 65 } })], t0);
+      classifier.classifyAll(
+        [heaterAt({ temperature: { currentTemperature: 64.5, currentTarget: 65 } })],
+        t0 + IDLE_HOLD_MIN_DURATION_MS,
+      );
+
+      expect(classifier.getClassification('heater-1')).toBe('near_target_idle');
+      expect(classifier.getStallEvidence('heater-1')).toEqual({
+        classification: 'near_target_idle',
+        classifiedAgainstTargetValue: 65,
+      });
+    });
+
+    // A device with no temperature cluster can never be reportable, so there is
+    // no evidence to hand out — the producer withholds it rather than emitting
+    // a null setpoint for consumers to hedge on.
+    it('withholds evidence for a device with no temperature cluster', () => {
+      const classifier = createIdleClassifier();
+      const t0 = 1_000_000;
+      classifier.classifyAll([heaterAt({ temperature: undefined })], t0);
+      classifier.classifyAll([heaterAt({ temperature: undefined })], t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS);
+
+      expect(classifier.getClassification('heater-1')).toBeUndefined();
+      expect(classifier.getStallEvidence('heater-1')).toBeUndefined();
+    });
+
+    it('withholds evidence for a device the classifier has never seen', () => {
+      expect(createIdleClassifier().getStallEvidence('unknown-device')).toBeUndefined();
+    });
+
+    // PR #2192 review (chatgpt-codex-connector, P1). `capped_idle` is derived
+    // almost entirely from the retained 20-minute cycling window. A heater
+    // cycling happily at a 40 °C setback fills that window; the moment a smart
+    // task raises the setpoint to 65 °C the gap alone clears the near-target
+    // band, so without a reset the stale window would certify `capped_idle`
+    // against 65 °C on the FIRST tick — and the stall gate would terminally
+    // mark the task satisfied at 40 °C. The evidence belongs to the setpoint it
+    // was gathered under.
+    it('discards the cycling window when the setpoint moves, so a setback cannot certify a raised target', () => {
+      const classifier = createIdleClassifier();
+      const tickMs = 30_000;
+      let cursor = 0;
+      let drawing = true;
+      // 20+ min of cycling at a stable 40 °C while parked at the 40 °C setback.
+      while (cursor <= CAPPED_IDLE_MIN_WINDOW_MS) {
+        classifier.classifyAll([heaterAt({
+          currentDrawKw: drawing ? 1.2 : 0,
+          temperature: { currentTemperature: 40, currentTarget: 40 },
+        })], cursor);
+        cursor += tickMs;
+        drawing = !drawing;
+      }
+
+      // Smart task releases the setback: setpoint 40 -> 65, tank still 40 °C.
+      classifier.classifyAll([heaterAt({
+        currentDrawKw: 0,
+        temperature: { currentTemperature: 40, currentTarget: 65 },
+      })], cursor);
+
+      expect(classifier.getClassification('heater-1')).toBeUndefined();
+      expect(classifier.getStallEvidence('heater-1')).toBeUndefined();
+    });
+  });
+
   // near_target_idle is the benign duty-cycle classification: it must NOT reach
   // the ungated info sink (which feeds the no-debug diagnostics report) — it
   // routes to the topic-gated debug emitter instead.

@@ -23,8 +23,12 @@ import {
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { emitGated, type DeviationSurprise } from '../logging/deviationGate';
 import type { PlannedDeviceState } from '../../packages/contracts/src/types';
-import { formatIdleClassificationCopy } from '../../packages/shared-domain/src/idleClassificationCopy';
+import {
+  formatIdleClassificationCopy,
+  type StallEvidence,
+} from '../../packages/shared-domain/src/idleClassificationCopy';
 import type { ObservedTemperatureState } from './observedDeviceStateProjection';
+import { isFiniteNumber } from '../utils/appTypeGuards';
 
 /**
  * Subset of DevicePlanDevice used by the classifier — keeps coupling thin.
@@ -63,6 +67,13 @@ export type IdleClassifier = {
    * undefined for active devices.
    */
   getClassification: (deviceId: string) => Exclude<IdleClassification, 'active'> | undefined;
+  /**
+   * The same verdict plus the setpoint it was measured against — for consumers
+   * that act on a stall rather than merely display it. A deferred objective may
+   * only treat a stall as "as met as it gets" once that setpoint covers its own
+   * target, so the two travel together and cannot be read apart.
+   */
+  getStallEvidence: (deviceId: string) => StallEvidence | undefined;
 };
 
 export type IdleClassifierDeps = {
@@ -259,5 +270,17 @@ export function createIdleClassifier(deps: IdleClassifierDeps = {}): IdleClassif
     return result.classification === 'active' ? undefined : result.classification;
   };
 
-  return { classifyAll, getClassification };
+  const getStallEvidence = (deviceId: string): StallEvidence | undefined => {
+    const result = lastResultById.get(deviceId);
+    if (result === undefined || result.classification === 'active') return undefined;
+    const { classifiedAgainstTargetValue } = result;
+    // Eligibility required the temperature cluster, so a reportable verdict
+    // always carries a finite setpoint. A non-finite one here is a producer
+    // contract violation, not a state worth modelling — withhold the evidence
+    // rather than widen `StallEvidence` and make every consumer hedge.
+    if (!isFiniteNumber(classifiedAgainstTargetValue)) return undefined;
+    return { classification: result.classification, classifiedAgainstTargetValue };
+  };
+
+  return { classifyAll, getClassification, getStallEvidence };
 }

@@ -3844,7 +3844,9 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       ...params,
-      getStallClassification: (id: string) => (id === 'ev-1' ? 'near_target_idle' : undefined),
+      getStallClassification: (id: string) => (id === 'ev-1'
+        ? { classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 60 }
+        : undefined),
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('satisfied');
     expect(diagnostic?.reasonCode).toBe('objective_stalled_near_target');
@@ -3860,7 +3862,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       ...params,
-      getStallClassification: () => 'capped_idle',
+      getStallClassification: () => ({ classification: 'capped_idle' as const, classifiedAgainstTargetValue: 60 }),
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('satisfied');
     expect(diagnostic?.reasonCode).toBe('objective_stalled_device_capped');
@@ -3871,7 +3873,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
   it('never treats an unresponsive (likely-fault) device as satisfied', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       ...withEstablishedPlan(atRiskParams()),
-      getStallClassification: () => 'unresponsive',
+      getStallClassification: () => ({ classification: 'unresponsive' as const, classifiedAgainstTargetValue: 60 }),
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
   });
@@ -3882,7 +3884,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     // task to satisfied. Regression guard for the stale-classifier window.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       ...atRiskParams(),
-      getStallClassification: () => 'near_target_idle',
+      getStallClassification: () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 60 }),
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
   });

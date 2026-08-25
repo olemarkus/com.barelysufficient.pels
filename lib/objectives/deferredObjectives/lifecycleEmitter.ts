@@ -19,10 +19,10 @@ import type { DeferredObjectiveStatusBus } from './statusBus';
 import type { DeferredObjectiveHoursRemainingBus } from './hoursRemainingBus';
 import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
 import type { DeferredObjectiveSettingsV1 } from './settings';
-import type { IdleClassification } from '../../../packages/shared-domain/src/idleClassificationCopy';
+import type { StallEvidence } from '../../../packages/shared-domain/src/idleClassificationCopy';
 import { PriorityAllocationTracker } from './priorityAllocation';
 
-type StallClassification = IdleClassification | undefined;
+type StallClassification = StallEvidence | undefined;
 
 /**
  * Clock-driven smart-task lifecycle emission.
