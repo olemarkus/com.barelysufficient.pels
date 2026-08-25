@@ -198,6 +198,11 @@ export const PV_FORECAST_STATE = 'pv_forecast_state';
 // the abandon-grace window instead of overwriting up to 90 days of learned
 // generation history). Read/written only by `setup/pvForecastStateAdapter.ts`.
 export const PV_FORECAST_STATE_INITIALIZED = 'pv_forecast_state_initialized';
+// Which PV-generation forecast feeds planning: 'auto' (prefer Homey Energy's
+// solar forecast when it has useful data, else the learned model) |
+// 'homey_energy' | 'learned'. Absence/junk reads as 'auto'
+// (setup/pvForecastSourceSetting.ts).
+export const PV_FORECAST_SOURCE = 'pv_forecast_source';
 // Curtailment-surplus refute ladder: {holdLevel, holdUntilMs, importLatchUntilMs},
 // written on verification transitions only (crash-loop resilience).
 export const CURTAILMENT_HOLD_STATE = 'curtailment_hold_state';

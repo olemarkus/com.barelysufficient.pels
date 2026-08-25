@@ -154,6 +154,15 @@ export type SettingsUiBootstrap = SettingsUiSettingsPatch & {
   prices: SettingsUiPricesPayload;
 };
 
+/**
+ * The `pv_forecast_source` setting values — the ONE declaration of this union.
+ * Runtime code re-exports it type-only (`lib/solar/pvForecastSource.ts`), and
+ * the shared junk classifier lives in
+ * `packages/shared-domain/src/settings/pvForecastSource.ts` so the runtime
+ * and the settings UI can never disagree on what a junk value means.
+ */
+export type PvForecastSourceSetting = 'auto' | 'homey_energy' | 'learned';
+
 export type SettingsUiLogRequest = SettingsUiLogEntry;
 
 export type SettingsUiPlanPendingTargetCommand = {

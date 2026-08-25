@@ -3,6 +3,7 @@ import http from 'http';
 import https from 'https';
 import type { Logger, RawHomeyDeviceLike } from '../../utils/types';
 import { HomeyRequestTimeoutError, normalizeError } from '../../utils/errorUtils';
+import { HomeyHttpStatusError } from '../../utils/homeyHttpStatusError';
 import { getLogger } from '../../logging/logger';
 
 export const DEVICES_API_PATH = 'manager/devices/device';
@@ -322,7 +323,7 @@ function homeyHttpRequest(
           return;
         }
         if (!res.statusCode || res.statusCode >= 400) {
-          reject(new Error(`HTTP ${res.statusCode}: ${raw.slice(0, 200)}`));
+          reject(new HomeyHttpStatusError(res.statusCode, raw.slice(0, 200)));
           return;
         }
         if (!raw.trim()) {
