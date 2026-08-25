@@ -31,6 +31,11 @@ export const createRootLogger = (destination: Writable, level = 'info'): pino.Lo
   {
     level,
     timestamp: false,
+    // `pid`/`hostname` are pino's default `base`. Neither is meaningful here —
+    // the app is one process on one Homey — and `createHomeyDestination` used
+    // to parse every serialized line back to JSON purely to strip them again.
+    // Not emitting them removes both the write and that half of the strip.
+    base: null,
     mixin: () => ({ ...getCurrentContext() }),
   },
   destination,

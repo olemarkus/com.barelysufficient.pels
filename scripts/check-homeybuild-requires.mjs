@@ -72,24 +72,28 @@ const collectEntries = () => {
   }
   // Widget APIs are loaded by the Homey widget runtime, never required from
   // the app graph, so they need their own seeds. Expectations derive from the
-  // SOURCE tree: every widget directory must have its compiled API in the
-  // build — the committed api.js shim requires ./src/api, and a tsconfig
-  // regression that stops emitting it would otherwise pass this smoke and
-  // MODULE_NOT_FOUND at boot. The shim itself is only present in fully
-  // assembled builds (the Homey CLI copies static files after tsc); seed it
-  // too when present so its own require is walked.
+  // SOURCE tree: every widget directory must have an app-side API in the build
+  // that actually resolves, because a tsconfig regression that stops emitting
+  // it would otherwise pass this smoke and MODULE_NOT_FOUND at boot.
+  //
+  // Two build shapes are legitimate and the target differs between them:
+  //  - fully assembled (`scripts/bundle-homey-build.mjs` has run): the committed
+  //    `api.js` shim is rewritten to require the single `_pels-runtime.js`
+  //    bundle, and `src/api.js` is gone because it was inlined into it;
+  //  - bare `tsc` (no CLI source copy, so no shim): only `src/api.js` exists.
+  // Seeding whichever is present and letting the walk below resolve its require
+  // covers both — the failure this guards against is a widget with NEITHER.
   const widgetsSourceDir = path.resolve(process.cwd(), 'widgets');
   if (existsSync(widgetsSourceDir)) {
     for (const widget of readdirSync(widgetsSourceDir)) {
       if (widget.startsWith('_') || !statSync(path.join(widgetsSourceDir, widget)).isDirectory()) continue;
       const compiledApi = path.join(buildDir, 'widgets', widget, 'src', 'api.js');
-      if (existsSync(compiledApi)) {
-        entries.push(compiledApi);
-      } else {
-        missingWidgetApis.push(`widgets/${widget}/src/api.js`);
-      }
       const shim = path.join(buildDir, 'widgets', widget, 'api.js');
       if (existsSync(shim)) entries.push(shim);
+      if (existsSync(compiledApi)) entries.push(compiledApi);
+      if (!existsSync(shim) && !existsSync(compiledApi)) {
+        missingWidgetApis.push(`widgets/${widget}/{api.js,src/api.js}`);
+      }
     }
   }
   return entries;

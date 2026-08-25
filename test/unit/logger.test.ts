@@ -41,6 +41,21 @@ describe('logger', () => {
     expect(parsed.msg).toBe('hello');
   });
 
+  it('does not include pino base fields (pid/hostname)', async () => {
+    const dest = new PassThrough();
+    const pending = waitForLine(dest);
+    const logger = createRootLogger(dest);
+
+    logger.info({ event: 'base_fields' }, 'hello');
+    const parsed = JSON.parse(await pending);
+
+    // The Homey destination forwards the serialized record onward and only
+    // strips `level`. If `base` were ever restored, `pid`/`hostname` would ride
+    // into every forwarded line instead of being dropped as they once were.
+    expect(parsed).not.toHaveProperty('pid');
+    expect(parsed).not.toHaveProperty('hostname');
+  });
+
   it('does not include timestamp field', async () => {
     const dest = new PassThrough();
     const pending = waitForLine(dest);
