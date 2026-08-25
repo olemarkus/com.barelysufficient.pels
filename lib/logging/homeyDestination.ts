@@ -21,7 +21,12 @@ export const createHomeyDestination = (callbacks: HomeyLogCallbacks): Writable =
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const record = parsed as Record<string, unknown>;
         level = typeof record.level === 'number' ? record.level : 0;
-        const { level: _level, pid: _pid, hostname: _hostname, ...forwardRecord } = record;
+        // `level` is the one field that must be read here and must not be
+        // forwarded: it is how a record is routed to Homey's error channel
+        // rather than its log channel, and pino cannot express that routing in
+        // the serialized line alone. `pid`/`hostname` are no longer emitted
+        // (`base: null` in createRootLogger), so this is all that is stripped.
+        const { level: _level, ...forwardRecord } = record;
         forwarded = JSON.stringify(forwardRecord);
       }
     } catch {

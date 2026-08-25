@@ -51,8 +51,16 @@ const nodeModulesDependentChecks = [
  * rather than a denylist because the failure this catches is always something
  * *new* arriving — screenshots/ and docs-shots/ rode along for weeks because
  * nothing was looking for entries nobody had thought of.
+ *
+ * `scripts/bundle-homey-build.mjs` inlines every module reachable from the
+ * entry points into `_pels-runtime.js` and then deletes the directories it
+ * consumed, so a bundled build has no `lib/`, `setup/`, `flowCards/` or
+ * `packages/` left. Those stay listed here because this governs what MAY
+ * appear, not what must — an unbundled tree (plain `tsc`) is still a shape
+ * worth checking.
  */
 const expectedRootEntries = new Set([
+  '_pels-runtime.js',
   'api.js',
   'app.js',
   'app.json',

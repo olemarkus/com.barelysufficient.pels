@@ -21,7 +21,7 @@ describe('homeyDestination', () => {
     const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
 
-    const line = JSON.stringify({ level: 30, pid: 1, hostname: 'homey', msg: 'hello' }) + '\n';
+    const line = JSON.stringify({ level: 30, msg: 'hello' }) + '\n';
     await writeChunk(dest, line);
     expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'hello' }));
     expect(error).not.toHaveBeenCalled();
@@ -32,7 +32,7 @@ describe('homeyDestination', () => {
     const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
 
-    const line = JSON.stringify({ level: 20, pid: 1, hostname: 'homey', msg: 'debug' }) + '\n';
+    const line = JSON.stringify({ level: 20, msg: 'debug' }) + '\n';
     await writeChunk(dest, line);
     expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'debug' }));
     expect(error).not.toHaveBeenCalled();
@@ -43,7 +43,7 @@ describe('homeyDestination', () => {
     const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
 
-    const line = JSON.stringify({ level: 40, pid: 1, hostname: 'homey', msg: 'warn' }) + '\n';
+    const line = JSON.stringify({ level: 40, msg: 'warn' }) + '\n';
     await writeChunk(dest, line);
     expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'warn' }));
     expect(error).not.toHaveBeenCalled();
@@ -54,7 +54,7 @@ describe('homeyDestination', () => {
     const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
 
-    const line = JSON.stringify({ level: 50, pid: 1, hostname: 'homey', msg: 'fail' }) + '\n';
+    const line = JSON.stringify({ level: 50, msg: 'fail' }) + '\n';
     await writeChunk(dest, line);
     expect(error).toHaveBeenCalledWith(JSON.stringify({ msg: 'fail' }));
     expect(log).not.toHaveBeenCalled();
@@ -65,7 +65,7 @@ describe('homeyDestination', () => {
     const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
 
-    const line = JSON.stringify({ level: 60, pid: 1, hostname: 'homey', msg: 'fatal' }) + '\n';
+    const line = JSON.stringify({ level: 60, msg: 'fatal' }) + '\n';
     await writeChunk(dest, line);
     expect(error).toHaveBeenCalledWith(JSON.stringify({ msg: 'fatal' }));
   });
@@ -75,7 +75,7 @@ describe('homeyDestination', () => {
     const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
 
-    const line = JSON.stringify({ level: 30, pid: 1, hostname: 'homey', msg: 'no newline' });
+    const line = JSON.stringify({ level: 30, msg: 'no newline' });
     await endChunk(dest, line);
     expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'no newline' }));
   });
@@ -102,7 +102,7 @@ describe('homeyDestination', () => {
     const log = vi.fn();
     const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
-    const line = JSON.stringify({ level: 50, pid: 1, hostname: 'homey', msg: 'split' }) + '\n';
+    const line = JSON.stringify({ level: 50, msg: 'split' }) + '\n';
     const mid = Math.floor(line.length / 2);
 
     await writeChunk(dest, line.slice(0, mid));
