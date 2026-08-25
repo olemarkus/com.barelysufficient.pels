@@ -192,6 +192,12 @@ export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
 export const WEATHER_HISTORY_STATE = 'weather_history_state';
 // Learned PV-generation forecast: recorded generation history + concurrent irradiance.
 export const PV_FORECAST_STATE = 'pv_forecast_state';
+// Written-before marker for the above (the `power_calibration_initialized`
+// precedent): lets the boot read tell a fresh install (no marker ⇒ nothing to
+// protect, persist immediately) from a transient SDK miss (marker set ⇒ engage
+// the abandon-grace window instead of overwriting up to 90 days of learned
+// generation history). Read/written only by `setup/pvForecastStateAdapter.ts`.
+export const PV_FORECAST_STATE_INITIALIZED = 'pv_forecast_state_initialized';
 // Curtailment-surplus refute ladder: {holdLevel, holdUntilMs, importLatchUntilMs},
 // written on verification transitions only (crash-loop resilience).
 export const CURTAILMENT_HOLD_STATE = 'curtailment_hold_state';

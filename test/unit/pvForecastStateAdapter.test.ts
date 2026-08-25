@@ -4,7 +4,15 @@
 // field coercion (kwh/coveredMs/irradiance) is exercised incidentally.
 import { describe, expect, it } from 'vitest';
 import { normalizePvForecastState } from '../../setup/pvForecastStateAdapter';
+import type { PvForecastServiceState } from '../../lib/solar/pvForecastService';
 import { classifyHourNetEvidence } from '../../packages/shared-domain/src/solar/pvGenerationHistory';
+
+/** Unwrap a parse expected to be valid; a malformed parse fails the assertion. */
+const parseValid = (raw: unknown): PvForecastServiceState => {
+  const parsed = normalizePvForecastState(raw);
+  if (parsed.kind !== 'valid') throw new Error(`expected a valid parse, got '${parsed.kind}'`);
+  return parsed.state;
+};
 
 const HOUR_MS = 3_600_000;
 const BASE = Date.UTC(2026, 5, 21, 10, 0, 0);
@@ -21,7 +29,7 @@ describe('normalizePvForecastState net-evidence fields', () => {
       },
       irradianceByHour: { [KEY]: 640 },
     };
-    expect(normalizePvForecastState(legacy)).toEqual(legacy);
+    expect(parseValid(legacy)).toEqual(legacy);
   });
 
   it('keeps valid evidence fields and the signed lastNetW anchor', () => {
@@ -36,11 +44,11 @@ describe('normalizePvForecastState net-evidence fields', () => {
       },
       irradianceByHour: {},
     };
-    expect(normalizePvForecastState(state)).toEqual(state);
+    expect(parseValid(state)).toEqual(state);
   });
 
   it('omits each junk evidence field individually, keeping the hour itself', () => {
-    const normalized = normalizePvForecastState({
+    const normalized = parseValid({
       history: {
         hourly: {
           [KEY]: {
@@ -54,18 +62,18 @@ describe('normalizePvForecastState net-evidence fields', () => {
       },
     });
     // The hour survives with its energy; without netMs it classifies 'unknown'.
-    expect(normalized?.history.hourly[KEY]).toEqual({ kwh: 1.2, coveredMs: HOUR_MS });
+    expect(normalized.history.hourly[KEY]).toEqual({ kwh: 1.2, coveredMs: HOUR_MS });
   });
 
   it('omits a wrong-shape evidence field without dropping its valid siblings', () => {
-    const normalized = normalizePvForecastState({
+    const normalized = parseValid({
       history: {
         hourly: {
           [KEY]: { kwh: 1.2, coveredMs: HOUR_MS, netMs: HOUR_MS, importMs: 'junk', exportMs: 0 },
         },
       },
     });
-    expect(normalized?.history.hourly[KEY]).toEqual({ kwh: 1.2, coveredMs: HOUR_MS, netMs: HOUR_MS, exportMs: 0 });
+    expect(normalized.history.hourly[KEY]).toEqual({ kwh: 1.2, coveredMs: HOUR_MS, netMs: HOUR_MS, exportMs: 0 });
   });
 
   it('bounds import/export sub-durations by netMs — a corrupt blob cannot classify unclamped', () => {
@@ -73,14 +81,14 @@ describe('normalizePvForecastState net-evidence fields', () => {
     // net-covered time. This blob claims importMs == coveredMs with netMs below it
     // — each field passes the coveredMs check alone, and unbounded it would
     // classify 'unclamped' (importMs >= 0.95 × netMs).
-    const normalized = normalizePvForecastState({
+    const normalized = parseValid({
       history: {
         hourly: {
           [KEY]: { kwh: 1.2, coveredMs: HOUR_MS, netMs: 0.95 * HOUR_MS, importMs: HOUR_MS, exportMs: HOUR_MS },
         },
       },
     });
-    const bucket = normalized?.history.hourly[KEY];
+    const bucket = normalized.history.hourly[KEY];
     expect(bucket).toEqual({ kwh: 1.2, coveredMs: HOUR_MS, netMs: 0.95 * HOUR_MS });
     expect(classifyHourNetEvidence(bucket!)).toBe('suspect');
   });
@@ -88,28 +96,41 @@ describe('normalizePvForecastState net-evidence fields', () => {
   it('drops an hour whose coveredMs exceeds a physical hour (corrupt oversized blob)', () => {
     // A blob with an oversized coveredMs — and net/import durations sized to match
     // it — would otherwise survive normalization and forge `unclamped` evidence to
-    // train the PV gain. The boundary rejects the physically-impossible hour.
-    const normalized = normalizePvForecastState({
+    // train the PV gain. The boundary rejects the physically-impossible hour while
+    // keeping its valid sibling (a companion hour, so the per-hour drop is pinned
+    // independently of the every-claimed-hour-dropped ⇒ malformed rule).
+    const KEY2 = String(BASE + HOUR_MS);
+    const normalized = parseValid({
       history: {
         hourly: {
           [KEY]: { kwh: 5, coveredMs: 10 * HOUR_MS, netMs: 10 * HOUR_MS, importMs: 10 * HOUR_MS },
+          [KEY2]: { kwh: 0.4, coveredMs: HOUR_MS },
         },
       },
     });
-    expect(normalized?.history.hourly[KEY]).toBeUndefined();
+    expect(normalized.history.hourly[KEY]).toBeUndefined();
+    expect(normalized.history.hourly[KEY2]).toEqual({ kwh: 0.4, coveredMs: HOUR_MS });
   });
 
   it('drops an hour whose coveredMs is negative', () => {
     // A negative coveredMs is physically impossible and would give the sub-duration
-    // bound a nonsensical ceiling; the boundary rejects the whole hour.
-    const normalized = normalizePvForecastState({
-      history: { hourly: { [KEY]: { kwh: 1.2, coveredMs: -1, netMs: 0 } } },
+    // bound a nonsensical ceiling; the boundary rejects the whole hour (companion
+    // hour as above).
+    const KEY2 = String(BASE + HOUR_MS);
+    const normalized = parseValid({
+      history: {
+        hourly: {
+          [KEY]: { kwh: 1.2, coveredMs: -1, netMs: 0 },
+          [KEY2]: { kwh: 0.4, coveredMs: HOUR_MS },
+        },
+      },
     });
-    expect(normalized?.history.hourly[KEY]).toBeUndefined();
+    expect(normalized.history.hourly[KEY]).toBeUndefined();
+    expect(normalized.history.hourly[KEY2]).toEqual({ kwh: 0.4, coveredMs: HOUR_MS });
   });
 
   it('collapses the sub-duration bound to zero when netMs itself is invalid', () => {
-    const normalized = normalizePvForecastState({
+    const normalized = parseValid({
       history: {
         hourly: {
           [KEY]: { kwh: 1.2, coveredMs: HOUR_MS, netMs: -1, importMs: 600_000, exportMs: 0 },
@@ -117,26 +138,68 @@ describe('normalizePvForecastState net-evidence fields', () => {
       },
     });
     // importMs > 0 has no net-covered time to sit inside ⇒ dropped; a literal 0 is harmless.
-    expect(normalized?.history.hourly[KEY]).toEqual({ kwh: 1.2, coveredMs: HOUR_MS, exportMs: 0 });
+    expect(normalized.history.hourly[KEY]).toEqual({ kwh: 1.2, coveredMs: HOUR_MS, exportMs: 0 });
   });
 
   it('drops a non-finite lastNetW instead of fabricating a value', () => {
-    const normalized = normalizePvForecastState({
+    const normalized = parseValid({
       history: { lastNetW: Number.POSITIVE_INFINITY, hourly: {} },
     });
-    expect(normalized?.history.lastNetW).toBeUndefined();
+    expect(normalized.history.lastNetW).toBeUndefined();
   });
 
   it('strips unknown bucket fields (pins the rollback contract: older builds discard, never crash)', () => {
     // On rollback the OLD normalizer strips these evidence fields the same way —
     // accrued evidence is silently discarded and re-upgrade restarts from
     // 'unknown', but nothing breaks. This pins the strip semantics forward.
-    const normalized = normalizePvForecastState({
+    const normalized = parseValid({
       history: {
         hourly: { [KEY]: { kwh: 1.2, coveredMs: HOUR_MS, netMs: HOUR_MS, futureEvidenceMs: 123 } },
       },
     });
-    expect(normalized?.history.hourly[KEY]).toEqual({ kwh: 1.2, coveredMs: HOUR_MS, netMs: HOUR_MS });
-    expect(Object.keys(normalized?.history.hourly[KEY] ?? {})).not.toContain('futureEvidenceMs');
+    expect(normalized.history.hourly[KEY]).toEqual({ kwh: 1.2, coveredMs: HOUR_MS, netMs: HOUR_MS });
+    expect(Object.keys(normalized.history.hourly[KEY] ?? {})).not.toContain('futureEvidenceMs');
+  });
+
+  it('classifies a non-record blob as malformed (never an empty state)', () => {
+    // Malformed means the blob cannot vouch for any history AT ALL — the boot
+    // read stays suspect instead of starting the service empty and letting the
+    // persist timer overwrite recorded history.
+    expect(normalizePvForecastState('junk')).toEqual({ kind: 'malformed' });
+    expect(normalizePvForecastState(undefined)).toEqual({ kind: 'malformed' });
+  });
+
+  it('classifies a blob whose history is not a record as malformed', () => {
+    expect(normalizePvForecastState({ history: 'junk', irradianceByHour: {} })).toEqual({ kind: 'malformed' });
+  });
+
+  it('classifies a history without an hourly record as malformed (no writer produces one)', () => {
+    expect(normalizePvForecastState({ history: {}, irradianceByHour: {} })).toEqual({ kind: 'malformed' });
+    expect(normalizePvForecastState({ history: { hourly: 'junk' } })).toEqual({ kind: 'malformed' });
+  });
+
+  it('classifies a blob whose EVERY claimed hour fails coercion as malformed, not empty', () => {
+    // Partial corruption must stay suspect: parsing this to an empty-but-valid
+    // state would let the next persist overwrite a possibly-recoverable blob.
+    expect(normalizePvForecastState({
+      history: { hourly: { [KEY]: { kwh: 'junk', coveredMs: HOUR_MS } } },
+    })).toEqual({ kind: 'malformed' });
+  });
+
+  it('classifies array-shaped payloads as malformed — arrays are not records', () => {
+    // `typeof [] === 'object'`: an array-shaped hourly (numeric indices pass
+    // the hour-key check) or blob must not pass plausibility as a valid empty
+    // state and let the first dirty persist overwrite a suspect blob.
+    expect(normalizePvForecastState({ history: { hourly: [] } })).toEqual({ kind: 'malformed' });
+    expect(normalizePvForecastState({
+      history: { hourly: [{ kwh: 1.2, coveredMs: HOUR_MS }] },
+    })).toEqual({ kind: 'malformed' });
+    expect(normalizePvForecastState([])).toEqual({ kind: 'malformed' });
+    expect(normalizePvForecastState({ history: [] })).toEqual({ kind: 'malformed' });
+  });
+
+  it('keeps a genuinely empty hourly record valid — the persisted empty state is real', () => {
+    const empty = { history: { hourly: {} }, irradianceByHour: {} };
+    expect(parseValid(empty)).toEqual(empty);
   });
 });

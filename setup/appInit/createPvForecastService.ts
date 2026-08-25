@@ -6,8 +6,13 @@
 // async op is guarded so a transient SDK/network failure can never crash the loop.
 
 import { OpenMeteoIrradianceProvider } from '../../lib/solar/openMeteoIrradiance';
-import { PvForecastService } from '../../lib/solar/pvForecastService';
-import { createPvForecastStore, type PvForecastStore } from '../pvForecastStateAdapter';
+import { emptyPvForecastServiceState, PvForecastService } from '../../lib/solar/pvForecastService';
+import {
+  createPvForecastStore,
+  type PvForecastStateRead,
+  type PvForecastStore,
+  type PvForecastStoreSettings,
+} from '../pvForecastStateAdapter';
 import { readHubCoordinates, type HubCoordinatesResult } from '../homeyLocationAdapter';
 import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
 import { normalizeError } from '../../lib/utils/errorUtils';
@@ -19,16 +24,40 @@ const PV_FORECAST_USER_AGENT = 'com.barelysufficient.pels (PELS PV forecast)';
 const REFRESH_INTERVAL_MS = 3 * 60 * 60 * 1000; // forecast is hourly; refresh every 3 h
 const PERSIST_INTERVAL_MS = 5 * 60 * 1000;
 const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
-// Abandon-grace after an absent/implausible boot read: while it is open, every
-// persist RE-READS the store first, so a transient SDK miss that has since healed
-// is adopted rather than overwritten. Kept comfortably above PERSIST_INTERVAL_MS
-// so several persist ticks fall inside the window before emptiness is accepted as
-// a genuine fresh install. Mirrors WeatherCollector's LOAD_GRACE_MS.
-const LOAD_GRACE_MS = 15 * 60 * 1000;
+// Per-arm write-gate doctrine (the #2197/#2198 precedent). An `unreadable`
+// store — thrown, malformed, or self-contradicting probes — defers writes for
+// the PROCESS LIFETIME: no clock may expire ambiguity into a write, because a
+// time-bounded abandonment overwrites up to 90 days at the exact moment the
+// SDK heals. Only a CLEANLY OBSERVED shape may open the gate, and each does so
+// by being re-observed across spaced re-reads for a window measured from ITS
+// OWN transition (never inherited from boot or a previous shape — a single
+// clean read right after an unreadable stretch proves nothing).
+//
+// `absent` (fresh install: no blob, no marker, healthy key list without the
+// key) confirms after one further spaced re-read — there is provably nothing
+// recorded, and a brand-new install's first persist should not wait long.
+const ABSENT_CONFIRM_GRACE_MS = PERSIST_INTERVAL_MS;
+// `marker_only` (half-persist: the marker-first write landed, the blob write
+// never did) confirms across ~3 spaced re-reads. It is the arm that un-wedges
+// a store whose marker survived a crash — without it, process-lifetime
+// deferral would leave PV persistence permanently unwritable — but it is also
+// the shape a correlated get/getKeys lie would fake, so it earns the longer
+// window before a write may land on it.
+const MARKER_ONLY_CONFIRM_GRACE_MS = 15 * 60 * 1000;
 
-export type PvForecastControllerHomey = {
-  settings: { get: (key: string) => unknown; set: (key: string, value: unknown) => void };
-};
+export type PvForecastControllerHomey = { settings: PvForecastStoreSettings };
+
+// Whether the boot read may be trusted as the last word on persisted history.
+// While anything but `trusted`, destructive persists are deferred and every
+// persist tick re-reads the store, so a healed read is merged, never
+// overwritten. `suspect_unreadable` carries no clock — ambiguity never expires
+// into a write. `confirming` tracks one cleanly observed shape being
+// re-observed across spaced re-reads; its window starts at the transition into
+// that shape (see the per-arm doctrine at the grace constants).
+type PvBootReadTrust =
+  | { kind: 'trusted' }
+  | { kind: 'suspect_unreadable' }
+  | { kind: 'confirming'; observed: 'absent' | 'marker_only'; sinceMs: number; graceMs: number };
 
 /** Minimal structured-log surface (satisfied by the pino logger). */
 export type PvForecastLogger = {
@@ -54,12 +83,7 @@ export class PvForecastController {
   private readonly logger: PvForecastLogger;
   private timers: Array<ReturnType<typeof setInterval>> = [];
   private dirty = false;
-  // Set at boot when the persisted read came back absent/implausible (a transient
-  // SDK miss OR a genuine fresh install — indistinguishable at that instant).
-  // While set and within LOAD_GRACE_MS, persists re-read before overwriting so a
-  // transient miss cannot clobber learned history. Cleared once a real state is
-  // recovered or the first post-grace write lands.
-  private loadedEmptyAtMs?: number;
+  private bootReadTrust: PvBootReadTrust;
   // Completion hook: fires after each SUCCESSFUL provider refresh (fresh
   // irradiance landed). Wiring registers it AFTER the budget-price inputs are
   // wired (`wireBudgetPrice`), so it can never trigger a combined-prices
@@ -82,43 +106,91 @@ export class PvForecastController {
     this.provider = new OpenMeteoIrradianceProvider({
       userAgent: ctx.userAgent,
     });
-    // Capture the boot read once: an absent/implausible read (a transient SDK
-    // miss OR a genuine fresh install) both yield `undefined`. Arming the load
-    // grace makes the early persists re-read before overwriting — a transient
-    // miss then heals into a recovery instead of clobbering months of learned
-    // history; a real fresh install just waits out the grace, then persists.
-    const initialState = this.store.read();
-    this.service = new PvForecastService({ irradiance: this.provider, initialState });
+    // Classify the boot read once at the adapter seam: `loaded` seeds the
+    // service and is trusted outright; a cleanly observed `absent` or
+    // `marker_only` starts its confirmation across spaced re-reads; an
+    // `unreadable` read defers writes with no clock at all — so the 5-minute
+    // persist timer cannot overwrite up to 90 days of learned generation
+    // history on the strength of one failed SDK read.
+    const boot = this.store.read();
+    this.service = new PvForecastService({
+      irradiance: this.provider,
+      initialState: boot.kind === 'loaded' ? boot.state : emptyPvForecastServiceState(),
+    });
     this.active = Object.keys(this.service.getState().history.hourly).length > 0;
-    if (initialState === undefined) this.loadedEmptyAtMs = this.getNowMs();
+    this.bootReadTrust = this.initialTrustFor(boot);
+    // One structured line per boot: how the persisted state was classified —
+    // the only trace of a thrown/malformed/unproven read at the moment it
+    // happened (the adapter classifies instead of throwing).
+    this.logger.info({
+      event: 'pv_forecast_boot_read',
+      result: boot.kind,
+      ...(boot.kind === 'unreadable' ? { reason: boot.reason } : {}),
+    });
   }
 
-  private isLoadGraceActive(): boolean {
-    return this.loadedEmptyAtMs !== undefined
-      && this.getNowMs() - this.loadedEmptyAtMs < LOAD_GRACE_MS;
+  private initialTrustFor(boot: PvForecastStateRead): PvBootReadTrust {
+    if (boot.kind === 'loaded') return { kind: 'trusted' };
+    if (boot.kind === 'unreadable') return { kind: 'suspect_unreadable' };
+    return this.startConfirming(boot.kind);
   }
 
-  /** Re-read the store after an absent/implausible boot read; adopt real history
-   *  and clear the grace on success. Returns false while the store is still
-   *  unreadable or genuinely empty (a fresh install). The re-read hits the Homey
-   *  SDK, and this runs inside a `setInterval` / `stop()` path, so a transient
-   *  `settings.get` throw must be swallowed here — otherwise it escapes the timer
-   *  and crashes the process during exactly the boot-read failure this guards. */
-  private tryRecoverPersistedState(): boolean {
-    try {
-      const recovered = this.store.read();
-      if (recovered === undefined || Object.keys(recovered.history.hourly).length === 0) return false;
-      this.service.adoptRecoveredState(recovered);
-      this.active = true;
-      this.loadedEmptyAtMs = undefined;
-      this.logger.info({ event: 'pv_forecast_state_recovered' });
-      return true;
-    } catch (error) {
-      // Treat a thrown re-read like a still-unreadable store: keep the grace armed
-      // so a later tick retries, and never overwrite possibly-good on-disk history.
-      this.logger.warn({ event: 'pv_forecast_recovery_failed', err: normalizeError(error) });
-      return false;
+  /** Enter the confirmation state for a cleanly observed shape. The window is
+   *  measured from THIS transition — never inherited from boot or a previous
+   *  shape — so clean absence must persist across spaced re-reads. */
+  private startConfirming(observed: 'absent' | 'marker_only'): PvBootReadTrust {
+    return {
+      kind: 'confirming',
+      observed,
+      sinceMs: this.getNowMs(),
+      graceMs: observed === 'absent' ? ABSENT_CONFIRM_GRACE_MS : MARKER_ONLY_CONFIRM_GRACE_MS,
+    };
+  }
+
+  /** Re-read the store while the boot read is untrusted and advance the trust
+   *  state machine. A `loaded` answer merges the recovered state into the live
+   *  one (a no-op overlay when the recovered side is empty — a store that
+   *  answered with a real blob has proved itself readable) and clears the
+   *  suspicion. An `unreadable` answer discards any confirmation progress —
+   *  ambiguity never expires into a write. A clean `absent` / `marker_only`
+   *  either continues its own confirmation (trusted once re-observed past the
+   *  window) or starts one at this transition. Never throws — the adapter
+   *  classifies a thrown SDK read as `unreadable`, so this stays safe inside
+   *  the `setInterval` / `stop()` paths. */
+  private tryRecoverPersistedState(): void {
+    const reread = this.store.read();
+    if (reread.kind === 'loaded') {
+      this.service.mergeRecoveredState(reread.state);
+      const wasActive = this.active;
+      this.active = wasActive || Object.keys(this.service.getState().history.hourly).length > 0;
+      this.bootReadTrust = { kind: 'trusted' };
+      this.logger.info({
+        event: 'pv_forecast_state_recovered',
+        recoveredHours: Object.keys(reread.state.history.hourly).length,
+      });
+      // A dormant boot skipped start()'s initial refresh. Recovered history
+      // arming the forecaster must fetch irradiance NOW — waiting for the
+      // fixed 3-hour refresh tick would leave forecasts dark for hours.
+      // `refresh()` no-ops after stop(), so a shutdown-path recovery is safe.
+      if (!wasActive && this.active) void this.refresh();
+      return;
     }
+    if (reread.kind === 'unreadable') {
+      this.bootReadTrust = { kind: 'suspect_unreadable' };
+      return;
+    }
+    // A cleanly observed shape (`absent` | `marker_only`).
+    const trust = this.bootReadTrust;
+    if (trust.kind === 'confirming' && trust.observed === reread.kind) {
+      if (this.getNowMs() - trust.sinceMs >= trust.graceMs) {
+        // Re-observed past its own window: the shape is confirmed and the
+        // write gate opens on a recoverable fresh start.
+        this.bootReadTrust = { kind: 'trusted' };
+        this.logger.info({ event: 'pv_forecast_absence_confirmed', observed: reread.kind });
+      }
+      return;
+    }
+    this.bootReadTrust = this.startConfirming(reread.kind);
   }
 
   /** Fold a generation power sample from the power pipeline (no-op if unknown).
@@ -206,12 +278,15 @@ export class PvForecastController {
   }
 
   private persistIfDirty(): void {
+    // While the boot read is untrusted, try to resolve it on EVERY tick —
+    // before the dirty gate, so a home with no generation overnight still
+    // re-reads all night instead of meeting the store exactly once at sunrise.
+    if (this.bootReadTrust.kind !== 'trusted') this.tryRecoverPersistedState();
     if (!this.dirty) return;
-    // Booted from an absent/implausible read: re-read the store before writing so
-    // a transient SDK miss that has since healed is ADOPTED, never overwritten.
-    // Emptiness is accepted (a genuine fresh install) only once every re-read
-    // across the grace window still comes back unreadable.
-    if (this.loadedEmptyAtMs !== undefined && !this.tryRecoverPersistedState() && this.isLoadGraceActive()) {
+    if (this.bootReadTrust.kind !== 'trusted') {
+      // Still unresolved: the write gate opens only through a `loaded` merge
+      // or a clean shape re-observed past its own confirmation window — never
+      // by time elapsing over an unreadable store.
       // Diagnostic trace that a write was intentionally deferred to protect
       // possibly-good on-disk history (mirrors WeatherCollector's skip log): if
       // the app is killed inside the window, the log shows samples were dropped
@@ -223,7 +298,7 @@ export class PvForecastController {
       this.store.write(this.service.getState());
       this.dirty = false;
       // The store now reflects memory; a later re-read could only regress to it.
-      this.loadedEmptyAtMs = undefined;
+      this.bootReadTrust = { kind: 'trusted' };
     } catch (error) {
       this.logger.warn({ event: 'pv_forecast_persist_failed', err: normalizeError(error) });
     }
