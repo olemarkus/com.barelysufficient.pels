@@ -490,14 +490,16 @@ describe('CurtailmentSurplusEstimator — two-channel ingest (gen outage)', () =
 });
 
 describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop resilience)', () => {
-  const fakeStore = (initial: CurtailmentPersistedHoldState | null): {
+  const loaded = (value: CurtailmentPersistedHoldState): CurtailmentHoldRead => ({ state: 'loaded', value });
+
+  const fakeStore = (initial: CurtailmentHoldRead): {
     store: CurtailmentHoldStore;
     writes: CurtailmentPersistedHoldState[];
   } => {
     const writes: CurtailmentPersistedHoldState[] = [];
     return {
       store: {
-        read: () => ({ state: 'resolved' as const, value: initial }),
+        read: () => initial,
         write: (state) => { writes.push(state); return true; },
       },
       writes,
@@ -505,16 +507,16 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
   };
 
   // Read-your-writes, so a second estimator over the same store models a restart.
-  const roundTripStore = (): CurtailmentHoldStore & { state: CurtailmentPersistedHoldState | null } => {
+  const roundTripStore = (): CurtailmentHoldStore & { disk: CurtailmentHoldRead } => {
     const store = {
-      state: null as CurtailmentPersistedHoldState | null,
-      read: (): CurtailmentHoldRead => ({ state: 'resolved', value: store.state }),
-      write: (next: CurtailmentPersistedHoldState) => { store.state = next; return true; },
+      disk: { state: 'absent' } as CurtailmentHoldRead,
+      read: (): CurtailmentHoldRead => store.disk,
+      write: (next: CurtailmentPersistedHoldState) => { store.disk = loaded(next); return true; },
     };
     return store;
   };
 
-  it('never overwrites a retained ladder after an UNAVAILABLE boot read', () => {
+  it('never overwrites a retained ladder after an UNREADABLE boot read', () => {
     // The destructive-reset hazard. A thrown settings read is not "nothing
     // stored": writing this instance's blank ladder over the retained one would
     // reset the refute escalation on a transient failure, which the
@@ -524,7 +526,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     const retained = { holdLevel: 2, holdUntilMs: T0 + 60_000, importLatchUntilMs: null };
     const writes: CurtailmentPersistedHoldState[] = [];
     const store: CurtailmentHoldStore = {
-      read: () => (failing ? { state: 'unavailable' } : { state: 'resolved', value: retained }),
+      read: () => (failing ? { state: 'unreadable' } : { state: 'loaded', value: retained }),
       write: (state) => { writes.push(state); return true; },
     };
 
@@ -550,7 +552,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     const retained = { holdLevel: 3, holdUntilMs: T0 + 50 * 60_000, importLatchUntilMs: null };
     const writes: CurtailmentPersistedHoldState[] = [];
     const store: CurtailmentHoldStore = {
-      read: () => (failing ? { state: 'unavailable' } : { state: 'resolved', value: retained }),
+      read: () => (failing ? { state: 'unreadable' } : { state: 'loaded', value: retained }),
       write: (state) => { writes.push(state); return true; },
     };
 
@@ -581,7 +583,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     const writes: CurtailmentPersistedHoldState[] = [];
     const store: CurtailmentHoldStore = {
       read: () => ({
-        state: 'resolved',
+        state: 'loaded',
         value: { holdLevel: 3, holdUntilMs: T0 - 1, importLatchUntilMs: null },
       }),
       write: (state) => { writes.push(state); return true; },
@@ -604,7 +606,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     let accepting = false;
     const writes: CurtailmentPersistedHoldState[] = [];
     const store: CurtailmentHoldStore = {
-      read: () => ({ state: 'resolved', value: null }),
+      read: () => ({ state: 'absent' }),
       write: (state) => { if (accepting) writes.push(state); return accepting; },
     };
 
@@ -634,7 +636,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     const armed = build(undefined, store);
     armed.estimator.recordSample(0, 500, T0);
     expect(armed.estimator.canContributeSurplus()).toBe(true);
-    expect(store.state?.armed).toBe(true);
+    expect(store.disk).toMatchObject({ state: 'loaded', value: { armed: true } });
 
     expect(build(undefined, store).estimator.canContributeSurplus()).toBe(true);
   });
@@ -643,13 +645,13 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     // Absence is "not proven", never a fabricated capability — it costs one
     // production sample to re-earn.
     const store = roundTripStore();
-    store.state = { holdLevel: 0, holdUntilMs: null, importLatchUntilMs: null };
+    store.disk = loaded({ holdLevel: 0, holdUntilMs: null, importLatchUntilMs: null });
     expect(build(undefined, store).estimator.canContributeSurplus()).toBe(false);
   });
 
   it('a rehydrated hold blocks arming after a simulated restart until it expires', () => {
     const holdUntilMs = T0 + 10 * 60_000;
-    const { store } = fakeStore({ holdLevel: 2, holdUntilMs, importLatchUntilMs: null });
+    const { store } = fakeStore(loaded({ holdLevel: 2, holdUntilMs, importLatchUntilMs: null }));
     const h = build(undefined, store); // "restarted" estimator
     h.estimator.recordSample(0, 500, T0); // arms (dormancy is not persisted)
     expect(h.estimator.getCurtailedSurplusKw(T0)).toBeNull(); // hold live across the restart
@@ -659,7 +661,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
 
   it('a rehydrated ladder keeps escalating: the next refute jumps past the restart level', () => {
     // Hold already expired before the restart — only the level survives.
-    const { store, writes } = fakeStore({ holdLevel: 2, holdUntilMs: T0 - 1, importLatchUntilMs: null });
+    const { store, writes } = fakeStore(loaded({ holdLevel: 2, holdUntilMs: T0 - 1, importLatchUntilMs: null }));
     const h = build(undefined, store);
     const last = ticks(h, T0, 2, 0);
     h.ctl.lift = true;
@@ -674,7 +676,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
 
   it('a rehydrated import latch stays live across the restart', () => {
     const latchUntilMs = T0 + 60_000;
-    const { store } = fakeStore({ holdLevel: 0, holdUntilMs: null, importLatchUntilMs: latchUntilMs });
+    const { store } = fakeStore(loaded({ holdLevel: 0, holdUntilMs: null, importLatchUntilMs: latchUntilMs }));
     const h = build(undefined, store);
     h.estimator.recordSample(0, 500, T0);
     expect(h.estimator.getCurtailedSurplusKw(T0)).toBeNull(); // latched
@@ -682,8 +684,8 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     expect(h.estimator.getCurtailedSurplusKw(latchUntilMs + TICK_MS)).toBeCloseTo(2.2, 6);
   });
 
-  it('a null store read (junk blob normalized upstream) starts fresh', () => {
-    const { store } = fakeStore(null);
+  it('an ABSENT store read (unset key or junk blob condemned upstream) starts fresh', () => {
+    const { store } = fakeStore({ state: 'absent' });
     const h = build(undefined, store);
     h.estimator.recordSample(0, 500, T0);
     expect(h.estimator.getCurtailedSurplusKw(T0)).toBeCloseTo(2.2, 6);
@@ -693,7 +695,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     // The rule is "never per tick", not "never on arming". Arming happens once
     // per install, and it MUST be written: the armed latch is what carries the
     // home's capability across a restart.
-    const { store, writes } = fakeStore(null);
+    const { store, writes } = fakeStore({ state: 'absent' });
     const h = build(undefined, store);
     h.estimator.recordSample(0, 500, T0); // arm — one write, the latch
     expect(writes).toHaveLength(1);
@@ -705,7 +707,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
   });
 
   it('a level-resetting confirm persists the reset', () => {
-    const { store, writes } = fakeStore({ holdLevel: 1, holdUntilMs: T0 - 1, importLatchUntilMs: null });
+    const { store, writes } = fakeStore(loaded({ holdLevel: 1, holdUntilMs: T0 - 1, importLatchUntilMs: null }));
     const h = build(undefined, store);
     const last = ticks(h, T0, 2, 0);
     h.ctl.lift = true;
@@ -714,5 +716,212 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     ticks(h, engagedAt + TICK_MS, Math.ceil(CURTAIL_VERIFY_WINDOW_MS / TICK_MS) + 2, 0);
     expect(eventNames(h)).toContain('curtailment_verify_confirmed');
     expect(writes.at(-1)).toMatchObject({ holdLevel: 0 });
+  });
+
+  it('a latch ONSET during an UNREADABLE boot read persists nothing — the blank ladder never lands', () => {
+    // The recorded defect (TODO "Curtailment hold-state read failure resets the
+    // refute ladder"): a latch onset is a transition, but its write carries
+    // `holdLevel: 0`. Ending the abandon-grace on it stamped that blank over
+    // the retained ladder — a 60-min hold reset to 15-min on the next refute.
+    // A latch onset is NOT ladder evidence: the write stays suppressed, the
+    // in-memory latch still guards the term, and a recovering read adopts the
+    // retained ladder.
+    let failing = true;
+    const retained = { holdLevel: 3, holdUntilMs: T0 + 30 * 60_000, importLatchUntilMs: null };
+    const writes: CurtailmentPersistedHoldState[] = [];
+    const store: CurtailmentHoldStore = {
+      read: () => (failing ? { state: 'unreadable' } : { state: 'loaded', value: retained }),
+      write: (state) => { writes.push(state); return true; },
+    };
+
+    const h = build(undefined, store);
+    h.estimator.recordSample(0, 500, T0); // arms — suppressed
+    h.estimator.recordSample((CURTAIL_NET_GATE_KW + 1) * 1000, 500, T0 + TICK_MS); // latch ONSET
+    expect(writes).toHaveLength(0);
+    // The latch itself still guards the term in memory.
+    expect(h.estimator.getCurtailedSurplusKw(T0 + TICK_MS)).toBeNull();
+
+    // The store recovers: the RETAINED ladder is adopted (level 3), and every
+    // write from here carries it — never this instance's blank 0.
+    failing = false;
+    h.estimator.recordSample((CURTAIL_NET_GATE_KW + 1) * 1000, 500, T0 + 2 * TICK_MS);
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.every((w) => w.holdLevel === 3)).toBe(true);
+    expect(writes.at(-1)).toMatchObject({ holdLevel: 3, armed: true });
+  });
+
+  it('suppresses the blank-ladder persist for the WHOLE process lifetime when the read never recovers', () => {
+    // Reads stay down while writes would land — `settings.get` and `.set` fail
+    // independently, which is exactly the TODO hazard. Every transition this
+    // session carries `holdLevel: 0`, so nothing may ever be written: the next
+    // clean restart must rehydrate the untouched on-disk blob.
+    const writes: CurtailmentPersistedHoldState[] = [];
+    const store: CurtailmentHoldStore = {
+      read: () => ({ state: 'unreadable' }),
+      write: (state) => { writes.push(state); return true; },
+    };
+
+    const h = build(undefined, store);
+    h.estimator.recordSample(0, 500, T0); // arming persist — suppressed
+    ticks(h, T0 + TICK_MS, 3, (CURTAIL_NET_GATE_KW + 1) * 1000); // latch onset + re-extensions
+    // A SECOND onset after the first latch fully expires — still suppressed:
+    // the suppression is for the process lifetime, not just the first write.
+    const afterExpiry = T0 + 3 * TICK_MS + CURTAIL_IMPORT_HOLD_DOWN_MS + TICK_MS;
+    h.estimator.recordSample((CURTAIL_NET_GATE_KW + 1) * 1000, 500, afterExpiry);
+    expect(writes).toHaveLength(0);
+  });
+
+  it('a recovering read never truncates a live in-memory import latch (later deadline wins)', () => {
+    // The latch is sticky BECAUSE "not importing at this instant" is not
+    // proof: a short spike latches in-memory during the outage, and the store
+    // recovers on the next tick with the typical retained blob (armed, no
+    // latch, no hold) AFTER the import already ceased. Wholesale adoption
+    // would trim the 90 s hold-down to one poll interval; the later of the
+    // two deadlines wins instead.
+    let failing = true;
+    const retained = { holdLevel: 0, holdUntilMs: null, importLatchUntilMs: null, armed: true };
+    const store: CurtailmentHoldStore = {
+      read: () => (failing ? { state: 'unreadable' } : { state: 'loaded', value: retained }),
+      write: () => true,
+    };
+
+    const h = build(undefined, store);
+    h.estimator.recordSample(0, 500, T0); // arms
+    const spikeAt = T0 + TICK_MS;
+    h.estimator.recordSample((CURTAIL_NET_GATE_KW + 1) * 1000, 500, spikeAt); // latch until spikeAt + 90 s
+    failing = false;
+    h.estimator.recordSample(0, 500, spikeAt + TICK_MS); // import ceased; store recovers
+    // Still inside the LOCAL hold-down: the adopted blank latch must not lift it.
+    expect(h.estimator.getCurtailedSurplusKw(spikeAt + 2 * TICK_MS)).toBeNull();
+    // ...and the local deadline still expires on its own clock.
+    const afterHoldDown = spikeAt + CURTAIL_IMPORT_HOLD_DOWN_MS + TICK_MS;
+    h.estimator.recordSample(0, 500, afterHoldDown);
+    expect(h.estimator.getCurtailedSurplusKw(afterHoldDown)).toBeCloseTo(2.2, 6);
+  });
+
+  it('persists the merged latch when adoption keeps a LATER in-memory deadline than the disk', () => {
+    // The kept-local merge must reach disk. Adopting an ARMED blob quiets the
+    // arming retry (armedPersisted), and later importing ticks see an
+    // already-active latch (onset persists are edge-only) — so without a
+    // persist on the adoption edge the newer deadline lives only in memory,
+    // and a restart inside the remaining hold-down reloads the stale one,
+    // exposing inferred surplus right after a real import.
+    let failing = true;
+    const writes: CurtailmentPersistedHoldState[] = [];
+    const retained = { holdLevel: 1, holdUntilMs: T0 - 1, importLatchUntilMs: null, armed: true };
+    const store: CurtailmentHoldStore = {
+      read: () => (failing ? { state: 'unreadable' } : { state: 'loaded', value: retained }),
+      write: (state) => { writes.push(state); return true; },
+    };
+
+    const h = build(undefined, store);
+    h.estimator.recordSample(0, 500, T0); // arms (suppressed)
+    const spikeAt = T0 + TICK_MS;
+    h.estimator.recordSample((CURTAIL_NET_GATE_KW + 1) * 1000, 500, spikeAt); // local latch (suppressed)
+    expect(writes).toHaveLength(0);
+
+    failing = false;
+    h.estimator.recordSample(0, 500, spikeAt + TICK_MS); // recovery: local deadline wins the merge
+    expect(writes.at(-1)).toMatchObject({
+      holdLevel: 1,
+      importLatchUntilMs: spikeAt + CURTAIL_IMPORT_HOLD_DOWN_MS,
+      armed: true,
+    });
+
+    // A restart inside the hold-down reloads the MERGED deadline, not null.
+    const restarted = build(undefined, {
+      read: () => ({ state: 'loaded', value: writes.at(-1)! }),
+      write: () => true,
+    });
+    restarted.estimator.recordSample(0, 500, spikeAt + 3 * TICK_MS);
+    expect(restarted.estimator.getCurtailedSurplusKw(spikeAt + 3 * TICK_MS)).toBeNull();
+  });
+
+  it('an ABSENT resolution persists suppressed local progress (armed + live latch) at once', () => {
+    // While the disk was unknown, the arming and the latch onset were both
+    // write-suppressed. When the retry resolves ABSENT (genuinely nothing on
+    // disk), absence licenses the write — and nothing else would carry it:
+    // the arming retry is gen-gated (dead at night) and the onset edge has
+    // passed. A restart before the next gen-valid sample would lose the
+    // active hold-down and the armed capability.
+    let failingRead = true;
+    const writes: CurtailmentPersistedHoldState[] = [];
+    const store: CurtailmentHoldStore = {
+      read: () => (failingRead ? { state: 'unreadable' } : { state: 'absent' }),
+      write: (state) => { writes.push(state); return true; },
+    };
+
+    const h = build(undefined, store);
+    h.estimator.recordSample(0, 500, T0); // arms (suppressed)
+    const spikeAt = T0 + TICK_MS;
+    h.estimator.recordSample((CURTAIL_NET_GATE_KW + 1) * 1000, 500, spikeAt); // latch onset (suppressed)
+    expect(writes).toHaveLength(0);
+
+    failingRead = false;
+    // Resolution lands on a gen-INVALID (night) tick: the edge persist still fires.
+    h.estimator.recordSample(0, undefined, spikeAt + TICK_MS);
+    expect(writes.at(-1)).toMatchObject({
+      holdLevel: 0,
+      importLatchUntilMs: spikeAt + CURTAIL_IMPORT_HOLD_DOWN_MS,
+      armed: true,
+    });
+  });
+
+  it('retries a merged-latch write that failed on the adoption edge until it lands', () => {
+    // Best-effort writes can fail on the adoption edge too — and by then the
+    // ARMED adoption has quieted the arming retry, which is gen-gated anyway
+    // (no generation ticks at night, exactly when latches are live). A
+    // dedicated per-tick retry must carry the merged deadline to disk.
+    let failingRead = true;
+    let acceptingWrites = false;
+    const writes: CurtailmentPersistedHoldState[] = [];
+    const retained = { holdLevel: 2, holdUntilMs: T0 - 1, importLatchUntilMs: null, armed: true };
+    const store: CurtailmentHoldStore = {
+      read: () => (failingRead ? { state: 'unreadable' } : { state: 'loaded', value: retained }),
+      write: (state) => { if (acceptingWrites) writes.push(state); return acceptingWrites; },
+    };
+
+    const h = build(undefined, store);
+    h.estimator.recordSample(0, 500, T0); // arms (suppressed)
+    const spikeAt = T0 + TICK_MS;
+    h.estimator.recordSample((CURTAIL_NET_GATE_KW + 1) * 1000, 500, spikeAt); // local latch (suppressed)
+    failingRead = false;
+    h.estimator.recordSample(0, 500, spikeAt + TICK_MS); // adoption edge: the merge write FAILS
+    expect(writes).toHaveLength(0);
+
+    acceptingWrites = true;
+    // Next tick is gen-INVALID (night): the per-tick retry still lands the merge.
+    h.estimator.recordSample(0, undefined, spikeAt + 2 * TICK_MS);
+    expect(writes.at(-1)).toMatchObject({
+      holdLevel: 2,
+      importLatchUntilMs: spikeAt + CURTAIL_IMPORT_HOLD_DOWN_MS,
+      armed: true,
+    });
+
+    // The landed write cleared the flag: no further writes on quiet ticks.
+    const after = writes.length;
+    h.estimator.recordSample(0, undefined, spikeAt + 3 * TICK_MS);
+    expect(writes).toHaveLength(after);
+  });
+
+  it('adoption-armed rehydration does not misread an already-engaged lift as a rising edge', () => {
+    // A restart while a lift is ALREADY engaged (e.g. financed by measured
+    // export): the armed bit rehydrates dormancy away in the constructor, so
+    // the lift baseline must be seeded there exactly as the local arming path
+    // seeds it — otherwise the first tick reads a rising edge and opens a
+    // verify window on load the inference never financed, and any import
+    // inside it escalates the persisted ladder on someone else's draw.
+    const { store } = fakeStore(loaded({ holdLevel: 0, holdUntilMs: null, importLatchUntilMs: null, armed: true }));
+    const events: Array<Record<string, unknown>> = [];
+    const estimator = new CurtailmentSurplusEstimator({
+      getPotential: () => ({ kw: 3, confidence: 'high' }),
+      hasHomeBattery: () => false,
+      isSurplusLiftEngaged: () => true, // engaged since before this process
+      holdStore: store,
+      logger: { info: (obj) => { events.push(obj); } },
+    });
+
+    estimator.recordSample(0, 500, T0); // first tick: an ALREADY-engaged lift, not an edge
+    expect(events.map((e) => String(e.event))).not.toContain('curtailment_verify_started');
   });
 });
