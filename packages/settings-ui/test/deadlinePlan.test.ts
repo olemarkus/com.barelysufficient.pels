@@ -154,6 +154,7 @@ const buildBootstrap = (
     homeyCurrency: null,
     homeyToday: null,
     homeyTomorrow: null,
+    pvForecastSource: null,
   },
 });
 
@@ -185,6 +186,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -261,6 +263,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -318,6 +321,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -372,6 +376,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -435,6 +440,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const renderInput = testExports.resolveRenderInput({
       bootstrap: buildBootstrap({
@@ -487,6 +493,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -551,6 +558,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -621,6 +629,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -686,6 +695,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -742,6 +752,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -799,6 +810,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -866,6 +878,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -931,6 +944,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const activePlan = buildHeaterActivePlan({
       now,
@@ -1032,6 +1046,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1114,6 +1129,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1194,6 +1210,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1267,6 +1284,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1351,6 +1369,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1426,6 +1445,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const renderInput = testExports.resolveRenderInput({
       bootstrap: buildBootstrap({
@@ -1474,6 +1494,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1537,6 +1558,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const evRevision = {
       revision: 1,
@@ -1619,6 +1641,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1672,6 +1695,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1727,6 +1751,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -1790,6 +1815,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -1848,6 +1874,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -1902,6 +1929,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'ev',
@@ -1964,6 +1992,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'ev',
@@ -2046,6 +2075,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrapRevision = {
       revision: 1,
@@ -2130,6 +2160,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const learnedRevision = {
       revision: 2,
@@ -2233,6 +2264,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const revision = {
       revision: 2,
@@ -2339,6 +2371,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const revision = {
       revision: 1,
@@ -2423,6 +2456,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const learnedRevision = {
       revision: 2,
@@ -2517,6 +2551,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrapRevision = {
       revision: 1,
@@ -2604,6 +2639,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const learnedRevision = {
       revision: 2,
@@ -2686,6 +2722,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const allocatedRevision = {
       revision: 1,
@@ -2760,6 +2797,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -2817,6 +2855,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -2874,6 +2913,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
@@ -2940,6 +2980,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3002,6 +3043,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3067,6 +3109,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -3129,6 +3172,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     // Recorder-style revision with a learned rate + energy need. The hero's
     // "Needs" stat pair carries the energy figure as a bold payoff value (the
@@ -3205,6 +3249,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'ev',
@@ -3269,6 +3314,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -3333,6 +3379,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3392,6 +3439,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3457,6 +3505,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3551,6 +3600,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3626,6 +3676,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -3981,6 +4032,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -4046,6 +4098,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const plan = buildHeaterActivePlan({
       now,
@@ -4118,6 +4171,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap: buildBootstrap({
@@ -4181,6 +4235,7 @@ describe('deadline plan page payload', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     });
     const settings = {
       capacity_limit_kw: 8,
@@ -4392,6 +4447,7 @@ describe('energy estimate range (expected…planned, end-to-end through buildObj
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const activePlan = buildHeaterActivePlan({
       now,
@@ -5053,6 +5109,7 @@ describe('cost + delivered-so-far hero lines', () => {
     homeyCurrency: null,
     homeyToday: null,
     homeyTomorrow: null,
+    pvForecastSource: null,
   });
 
   const buildStubBootstrap = (
@@ -5347,6 +5404,7 @@ describe('cost + delivered-so-far hero lines', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const plan = buildHeaterActivePlan({
       now,
@@ -5711,6 +5769,7 @@ describe('pending hero producer wiring', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const relocatedPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({
@@ -5782,6 +5841,7 @@ describe('pending hero producer wiring', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const unmanagedPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({
@@ -5844,6 +5904,7 @@ describe('pending hero producer wiring', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -5901,6 +5962,7 @@ describe('pending hero producer wiring', () => {
       homeyCurrency: null,
       homeyToday: null,
       homeyTomorrow: null,
+      pvForecastSource: null,
     };
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'ev',

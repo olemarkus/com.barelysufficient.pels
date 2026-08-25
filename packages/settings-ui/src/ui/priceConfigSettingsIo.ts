@@ -11,7 +11,9 @@ import { readExportPriceSettings } from './exportPriceSettings.ts';
 import {
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
+  PV_FORECAST_SOURCE,
 } from '../../../contracts/src/settingsKeys.ts';
+import { normalizePvForecastSourceSetting } from '../../../shared-domain/src/settings/pvForecastSource.ts';
 import type { PriceConfigSettingsPatch, PriceSettingsSaveInput } from './priceConfigTypes.ts';
 
 /**
@@ -86,6 +88,7 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
     tariffGroup,
     priceOptSettings,
     exportSettings,
+    pvForecastSource,
   ] = await Promise.all([
     getSetting(PRICE_SCHEME),
     getSetting('norway_price_model'),
@@ -99,6 +102,7 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
     getSetting('nettleie_tariffgruppe'),
     getSetting('price_optimization_settings'),
     readExportPriceSettings(),
+    getSetting(PV_FORECAST_SOURCE),
   ]);
 
   if (priceOptSettings && typeof priceOptSettings === 'object') {
@@ -119,5 +123,6 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
     exportPriceEnabled: exportSettings.enabled,
     exportSpotFactor: exportSettings.spotFactorPercent,
     exportFixed: exportSettings.fixed,
+    pvForecastSource: normalizePvForecastSourceSetting(pvForecastSource),
   };
 };

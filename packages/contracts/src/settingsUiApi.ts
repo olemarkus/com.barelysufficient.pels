@@ -485,6 +485,22 @@ export type SettingsUiPowerPayload = {
   homeScope?: SettingsUiHomeScope;
 };
 
+/**
+ * Live provenance of the PV-forecast source selection, for the Electricity
+ * prices view's Solar forecast section (`PvForecastSourceSetting` itself is
+ * declared once further up). `activeSource` is what actually feeds planning
+ * right now; the two availability flags say whether each producer currently
+ * has a usable forecast — Homey Energy's route (firmware 13.4.0+ with a solar
+ * device) and the learned model's fit — so the section can state honestly when
+ * the selected source is still running without one. All come from the runtime
+ * selector, never recomputed UI-side.
+ */
+export type PvForecastSourceUiStatus = {
+  activeSource: Exclude<PvForecastSourceSetting, 'auto'> | null;
+  homeyForecastAvailable: boolean;
+  learnedForecastAvailable: boolean;
+};
+
 export type SettingsUiPricesPayload = {
   combinedPrices: unknown | null;
   electricityPrices: unknown | null;
@@ -495,6 +511,8 @@ export type SettingsUiPricesPayload = {
   homeyCurrency: string | null;
   homeyToday: unknown | null;
   homeyTomorrow: unknown | null;
+  /** `null` only during the boot window before the forecast selector is wired. */
+  pvForecastSource: PvForecastSourceUiStatus | null;
 };
 
 export type SettingsUiDeviceDiagnosticsResponse = SettingsUiDeviceDiagnosticsPayload;

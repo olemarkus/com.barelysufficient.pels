@@ -63,6 +63,9 @@ export const DAILY_BUDGET_RESET = 'daily_budget_reset';
 export const COMBINED_PRICES = 'combined_prices';
 export const DEBUG_LOGGING_TOPICS = 'debug_logging_topics';
 export const PRICE_SCHEME = 'price_scheme';
+// Mirror of lib/utils/settingsKeys.ts PV_FORECAST_SOURCE (the settings UI
+// cannot import lib) — keep both in sync.
+export const PV_FORECAST_SOURCE = 'pv_forecast_source';
 export const NORWAY_PRICE_MODEL = 'norway_price_model';
 export const FLOW_PRICES_TODAY = 'flow_prices_today';
 export const FLOW_PRICES_TOMORROW = 'flow_prices_tomorrow';

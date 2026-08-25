@@ -5,8 +5,11 @@ import type {
   FlowStatus,
   HomeyStatus,
   GridCompanyOption,
+  PvForecastSourceSetting,
+  PvForecastSourceUiStatus,
 } from '../priceConfigTypes.ts';
 import { resolvePriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';
+import { resolvePvForecastStatusLine } from '../../../../shared-domain/src/solar/pvForecastSourceStatus.ts';
 import { EXPORT_PRICE_LABEL } from '../../../../shared-domain/src/price/planningPrice.ts';
 import {
   MdFilledSelect,
@@ -71,6 +74,11 @@ export type ElectricityPricesViewProps = {
   // when the home has a managed solar device OR export pricing is already on
   // (never strand an enabled user behind the gate).
   showExportSection: boolean;
+  // Solar forecast source section. Solar-gated like the export section, plus
+  // shown whenever a non-default source is already stored (never strand it).
+  showSolarForecastSection: boolean;
+  pvForecastSource: PvForecastSourceSetting;
+  pvForecastStatus: PvForecastSourceUiStatus | null;
   exportPriceEnabled: boolean;
   exportSpotFactor: number;
   exportFixed: number;
@@ -85,6 +93,7 @@ export type ElectricityPricesViewProps = {
   onTariffGroupChange: (group: string) => void;
   onRefreshPrices: () => void;
   onRefreshGridTariff: () => void;
+  onPvForecastSourceChange: (source: PvForecastSourceSetting) => void;
   onExportEnabledChange: (enabled: boolean) => void;
   // Numeric export handlers also receive the field element so a rejected or
   // unsaved value can be snapped back to the stored one (see ExportPriceForm).
@@ -436,6 +445,48 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
   );
 };
 
+// Where the forecast of the home's solar production comes from. Lives on the
+// Electricity prices view because its output IS the planning price's surplus
+// input (the `using your solar` reason line above); labels follow
+// `notes/ui-terminology.md` — say what happens, no internal jargon.
+const SolarForecastForm = ({ pvForecastSource, pvForecastStatus, onPvForecastSourceChange }: {
+  pvForecastSource: PvForecastSourceSetting;
+  pvForecastStatus: PvForecastSourceUiStatus | null;
+  onPvForecastSourceChange: (source: PvForecastSourceSetting) => void;
+}) => {
+  const statusLine = resolvePvForecastStatusLine(pvForecastStatus);
+  return (
+    <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
+      <h3 class="section-title">Solar forecast</h3>
+      <div class="field">
+        <MdFilledSelect
+          id="solar-forecast-source-select"
+          aria-label="Solar forecast source"
+          value={pvForecastSource}
+          onChange={(e) => onPvForecastSourceChange(readValue(e) as PvForecastSourceSetting)}
+        >
+          <MdSelectOption value="auto">
+            <div slot="headline">Automatic</div>
+          </MdSelectOption>
+          <MdSelectOption value="homey_energy">
+            <div slot="headline">Homey&rsquo;s solar forecast</div>
+          </MdSelectOption>
+          <MdSelectOption value="learned">
+            <div slot="headline">Learned from your solar production</div>
+          </MdSelectOption>
+        </MdFilledSelect>
+        <small class="field__hint">
+          PELS plans cheap hours and solar surplus around this forecast of your
+          solar production. Automatic uses Homey&rsquo;s forecast when Homey has
+          forecast data, and the forecast PELS learns from your solar production
+          otherwise.
+        </small>
+      </div>
+      {statusLine && <p class="muted">{statusLine}</p>}
+    </form>
+  );
+};
+
 // Spot-share hint, three-way:
 //   • Norway: the percentage multiplies the VAT-INCLUSIVE spot (the same
 //     grossed spot the import price uses — lib/price/exportPrice.ts), but
@@ -650,6 +701,13 @@ const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => {
         planningPriceReasonLine={props.planningPriceReasonLine}
       />
       <SourceForm {...props} />
+      {props.showSolarForecastSection && (
+        <SolarForecastForm
+          pvForecastSource={props.pvForecastSource}
+          pvForecastStatus={props.pvForecastStatus}
+          onPvForecastSourceChange={props.onPvForecastSourceChange}
+        />
+      )}
       {props.showExportSection && (
         <ExportPriceForm
           priceScheme={props.priceScheme}
