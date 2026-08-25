@@ -512,6 +512,17 @@ export class AppServiceWiring {
       observeOwnershipConfigurationChanged: () => {
         this.homeMembershipService?.observeOwnershipConfigurationChanged();
       },
+      // Lazy over the app field: the controller starts in a later step
+      // (startPostStartupBackgroundTasks); until then a write is a no-op and
+      // the controller's own start() probe covers it.
+      // The ONLY way `pv_forecast_source` changes. Re-resolve the held setting
+      // FIRST so the probe gate and both forecast consumers see the new choice,
+      // then kick the probe — the handler recomputes prices straight after.
+      onPvForecastSourceObserved: () => {
+        const controller = this.deps.getHomeySolarForecast();
+        controller?.refreshSourceSetting();
+        void controller?.refresh();
+      },
     }));
   }
 

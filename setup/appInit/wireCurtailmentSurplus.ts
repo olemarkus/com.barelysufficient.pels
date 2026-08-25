@@ -1,5 +1,5 @@
 // Wiring for the curtailment-surplus estimator (zero-export homes): joins the
-// learned PV forecast (lib/solar), the transport's battery awareness
+// selected PV forecast (lib/solar), the transport's battery awareness
 // (lib/device), and the plan engine's live surplus-lift state (lib/plan) into
 // the flat deps the SDK-free estimator consumes. Lives in the neutral wiring
 // layer so none of those domains depends on the others — lib/plan ↔ lib/solar
@@ -12,7 +12,7 @@ import { createCurtailmentHoldStore } from '../curtailmentHoldStateAdapter';
 import { getLogger } from '../../lib/logging/logger';
 import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
 import type { AppContext } from '../../lib/app/appContext';
-import type { PvForecastController } from './createPvForecastService';
+import type { PvForecastSourceId, SelectedPvForecast } from '../../lib/solar/pvForecastSource';
 
 /**
  * Construct the curtailment-surplus estimator over the app context. The caller
@@ -30,37 +30,56 @@ import type { PvForecastController } from './createPvForecastService';
 // CPU on a cpuwarn-sensitive Homey). The potential only moves on the hourly
 // irradiance grid / 3-hourly refresh / slow fit drift, so a short TTL loses
 // nothing. Dogfood-tunable.
+// The memo is keyed on the SELECTED SOURCE as well as the hour: the owner can
+// flip `pv_forecast_source` mid-hour, and the settings handler rebuilds prices
+// and the plan straight away. Keyed on the hour alone, a switch away from a
+// positive learned forecast would keep authorizing curtailment-based load from
+// the source that is no longer selected for the rest of the TTL. Reading the
+// selection to check the key is cheap — `getSelectedPvForecast()` only builds
+// closures and tests `hasUsefulForecast`; the expensive `forecast()` /
+// `getConfidence()` calls stay behind the memo.
 const POTENTIAL_MEMO_TTL_MS = 30_000;
 
 export function wireCurtailmentSurplus(
   ctx: AppContext,
-  getPvForecast: () => PvForecastController | undefined,
+  getSelectedPvForecast: () => SelectedPvForecast | undefined,
 ): CurtailmentSurplusEstimator {
-  let potentialMemo: { hourStartMs: number; atMs: number; value: CurtailmentPotential | null } | undefined;
-  const resolvePotential = (hourStartMs: number): CurtailmentPotential | null => {
-    const service = getPvForecast()?.service;
-    if (!service) return null;
-    const kwh = service.forecast([hourStartMs])[0]?.generationKwh;
-    const confidence = service.getFit()?.confidence;
-    if (!isFiniteNumber(kwh) || confidence === undefined) return null;
+  let potentialMemo: {
+    hourStartMs: number;
+    atMs: number;
+    sourceId: PvForecastSourceId;
+    value: CurtailmentPotential | null;
+  } | undefined;
+  const resolvePotential = (
+    selected: SelectedPvForecast,
+    hourStartMs: number,
+  ): CurtailmentPotential | null => {
+    const kwh = selected.forecast([hourStartMs])[0]?.generationKwh;
+    const confidence = selected.getConfidence();
+    if (!isFiniteNumber(kwh) || confidence === null) return null;
     return { kw: kwh, confidence };
   };
   return new CurtailmentSurplusEstimator({
     // Forecast potential for a UTC hour-start: the 1-hour forecast kWh IS the
-    // mean kW over that hour; the fit's confidence rides along so the estimator
-    // can resolve its discount. Null (fail-closed) when the forecast is not yet
-    // wired/armed, has no fit, or skips the hour (no forecast irradiance).
+    // mean kW over that hour; the selected source's confidence rides along so
+    // the estimator can resolve its discount. Null (fail-closed) when the
+    // forecast is not yet wired/armed, reports no confidence, or skips the hour.
     getPotential: (hourStartMs): CurtailmentPotential | null => {
       const nowMs = Date.now();
+      const selected = getSelectedPvForecast();
+      // Not wired yet (pre-boot): fail closed and memo nothing, so the first
+      // real selection is resolved rather than served from an empty entry.
+      if (!selected) return null;
       if (
         potentialMemo
         && potentialMemo.hourStartMs === hourStartMs
+        && potentialMemo.sourceId === selected.sourceId
         && nowMs - potentialMemo.atMs < POTENTIAL_MEMO_TTL_MS
       ) {
         return potentialMemo.value;
       }
-      const value = resolvePotential(hourStartMs);
-      potentialMemo = { hourStartMs, atMs: nowMs, value };
+      const value = resolvePotential(selected, hourStartMs);
+      potentialMemo = { hourStartMs, atMs: nowMs, sourceId: selected.sourceId, value };
       return value;
     },
     hasHomeBattery: () => ctx.deviceManager?.hasBatteryDevices() ?? false,

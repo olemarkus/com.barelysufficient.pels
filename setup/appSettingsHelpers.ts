@@ -448,6 +448,8 @@ export function initSettingsHandlerForApp(
     onHomeRuntimePowerSourceChanged?: () => void;
     /** Invalidate an in-flight poll at the synchronous meter-event edge. */
     onHomeyEnergyMeterObserved?: () => void;
+    /** Kick the Homey solar-forecast probe after a `pv_forecast_source` write. */
+    onPvForecastSourceObserved?: () => void;
     /** Schedule bounded Main authority repair for the observed selection. */
     onMainMeterSelectionObserved?: () => void;
     /** Close the shared homes/pins ownership generation synchronously. */
@@ -469,6 +471,7 @@ export function initSettingsHandlerForApp(
     onHomeRuntimePowerSourceChanged: options?.onHomeRuntimePowerSourceChanged,
     onTemperatureControlPolicyObserved: ctx.loadTemperatureControlPolicySettings,
     onHomeyEnergyMeterObserved: options?.onHomeyEnergyMeterObserved,
+    onPvForecastSourceObserved: options?.onPvForecastSourceObserved,
     onMainMeterSelectionObserved: options?.onMainMeterSelectionObserved,
     onHomeOwnershipConfigurationObserved: options?.onHomeOwnershipConfigurationObserved,
     // Lazy read on purpose: the membership service is assigned by a separate

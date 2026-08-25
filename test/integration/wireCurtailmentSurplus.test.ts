@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
 import { wireCurtailmentSurplus } from '../../setup/appInit/wireCurtailmentSurplus';
 import { CURTAIL_IMPORT_HOLD_DOWN_MS } from '../../lib/solar/curtailmentSurplus';
 import type { AppContext } from '../../lib/app/appContext';
-import type { PvForecastController } from '../../setup/appInit/createPvForecastService';
+import type { SelectedPvForecast } from '../../lib/solar/pvForecastSource';
 
 const T0 = Date.UTC(2026, 5, 19, 12, 0, 0); // hour-aligned noon
 const TICK = 10_000;
@@ -32,12 +32,11 @@ type LiftMaps = {
 };
 
 // A forecast fixed at 3 kW potential / high confidence ⇒ term = 0.9×3 − 0.5 = 2.2 kW.
-const fakeForecast = (): PvForecastController => ({
-  service: {
-    forecast: (hourStarts: readonly number[]) => hourStarts.map((hourStartMs) => ({ hourStartMs, generationKwh: 3 })),
-    getFit: () => ({ confidence: 'high' as const }),
-  },
-} as unknown as PvForecastController);
+const fakeForecast = (): SelectedPvForecast => ({
+  sourceId: 'learned',
+  forecast: (hourStarts: readonly number[]) => hourStarts.map((hourStartMs) => ({ hourStartMs, generationKwh: 3 })),
+  getConfidence: () => 'high',
+});
 
 const makeCtx = (state: LiftMaps): AppContext => {
   const settings = new Map<string, unknown>();
@@ -85,5 +84,44 @@ describe('wireCurtailmentSurplus — the lift-state predicate that gates verific
     est.recordSample(0, 500, at);
     // No window opened, so the import was only a 90 s latch — the term is back.
     expect(est.getCurtailedSurplusKw(at)).toBeCloseTo(2.2, 6);
+  });
+
+  it('a source flip inside the memo TTL is resolved fresh, not served from the old source', () => {
+    // The owner can change `pv_forecast_source` mid-hour and the settings
+    // handler rebuilds prices immediately. Keyed on the hour alone, the memo
+    // would keep authorizing curtailment load from the deselected source for
+    // the rest of the 30 s TTL.
+    const learnedCalls: number[] = [];
+    const homeyCalls: number[] = [];
+    const learned: SelectedPvForecast = {
+      sourceId: 'learned',
+      forecast: (hourStarts) => {
+        learnedCalls.push(hourStarts.length);
+        return hourStarts.map((hourStartMs) => ({ hourStartMs, generationKwh: 3 }));
+      },
+      getConfidence: () => 'high',
+    };
+    // Homey selected but carrying nothing usable ⇒ no potential at all.
+    const homey: SelectedPvForecast = {
+      sourceId: 'homey_energy',
+      forecast: (hourStarts) => {
+        homeyCalls.push(hourStarts.length);
+        return [];
+      },
+      getConfidence: () => null,
+    };
+    let selected: SelectedPvForecast = learned;
+    const ctx = makeCtx({ surplusAbsorbActiveByDevice: {}, surplusEligibilityByDevice: {} });
+    const est = wireCurtailmentSurplus(ctx, () => selected);
+
+    est.recordSample(0, 500, T0);
+    expect(est.getCurtailedSurplusKw(T0)).toBeCloseTo(2.2, 6);
+    expect(learnedCalls.length).toBeGreaterThan(0);
+
+    // Same hour, well inside the 30 s TTL — only the SOURCE changed.
+    selected = homey;
+    est.recordSample(0, 500, T0 + TICK);
+    expect(est.getCurtailedSurplusKw(T0 + TICK)).toBeNull();
+    expect(homeyCalls.length).toBeGreaterThan(0);
   });
 });

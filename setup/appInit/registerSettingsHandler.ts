@@ -8,10 +8,12 @@ export const registerSettingsHandler = (params: {
   getHomeRuntimeRegistry: () => HomeRuntimeRegistry | undefined;
   requestMainAuthorityRecovery: (timing?: 'scheduled' | 'immediate') => void;
   observeOwnershipConfigurationChanged: () => void;
+  onPvForecastSourceObserved: () => void;
 }): (() => void) => {
   const settingsHandler = initSettingsHandlerForApp(params.ctx, {
     ...buildHomeRuntimeSettingsHooks(params.getHomeRuntimeRegistry),
     onHomeyEnergyMeterObserved: () => params.ctx.homeyEnergyHelpers.invalidate(),
+    onPvForecastSourceObserved: params.onPvForecastSourceObserved,
     onMainMeterSelectionObserved: () => params.requestMainAuthorityRecovery(),
     onHomeOwnershipConfigurationObserved: params.observeOwnershipConfigurationChanged,
     onHomeOwnershipConfigurationRecomputed: () => params.requestMainAuthorityRecovery('immediate'),
