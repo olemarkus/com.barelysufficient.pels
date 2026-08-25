@@ -2,6 +2,7 @@ import type { HomeyRuntime } from '../ports/homeyRuntime';
 import type { PowerTrackerState } from './tracker';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
+import { resolveUsableCapacityKw } from './capacityModel';
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
@@ -213,7 +214,7 @@ export async function recordPowerSampleForApp(params: {
     sumBudgetExemptUsage,
     updateObjectiveProfiles,
   } = params;
-  const hourBudgetKWh = Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
+  const hourBudgetKWh = resolveUsableCapacityKw(capacitySettings);
   const snapshot = getLatestTargetSnapshot();
   // Authoritative whole-home actual consumption = net grid import + gross
   // generation. With no generation signal this is exactly `currentPowerW`, so

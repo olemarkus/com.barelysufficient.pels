@@ -39,7 +39,7 @@ describe('periodic status used kWh', () => {
     nowSpy.mockRestore();
 
     expect(fields.homeId).toBe('main');
-    expect(fields.softLimitKw).toBe(6.5);
+    expect(fields.capacityPaceKw).toBe(6.5);
     expect(fields.usedKWh).toBe(0.75);
     expect(fields.hourRemainingKWh).toBe(5.75);
   });
@@ -71,7 +71,7 @@ describe('periodic status used kWh', () => {
     });
     nowSpy.mockRestore();
 
-    expect(fields.softLimitKw).toBe(4);
+    expect(fields.capacityPaceKw).toBe(4);
     // The shortfall threshold is the hard cap paced over the time left, not the
     // hard cap itself: 5 kWh allowance minus 2.52 used, over the last 5 minutes.
     expect(fields.shortfallBudgetThresholdKw).toBeCloseTo(29.76, 8);
@@ -117,7 +117,7 @@ describe('periodic status used kWh', () => {
     });
     nowSpy.mockRestore();
 
-    expect(fields.softHeadroomKw).toBeCloseTo(-2.6, 8);
+    expect(fields.capacityPaceHeadroomKw).toBeCloseTo(-2.6, 8);
     // Half the hour is left and none of the 6 kWh allowance is spent, so the
     // paced threshold sits well above the 7.4 kW draw even though the physical
     // ceiling is already breached — that separation is the point of the field.

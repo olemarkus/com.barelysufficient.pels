@@ -50,6 +50,7 @@ import {
 } from '../../../shared-domain/src/utils/debugLogging.ts';
 import { renderLegacyTopicsHint } from './debugLoggingHint.ts';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../../shared-domain/src/powerFreshness.ts';
+import { usableCapacityKw } from '../../../shared-domain/src/capacityAllowance.ts';
 import {
   resolveSimulationBannerContent,
   type SimulationBannerScope,
@@ -308,7 +309,7 @@ const updateCapacityReactionHint = (limit: number, margin: number) => {
   // "safe pace now" — that live value is the Overview hero's job and can differ
   // when today's daily budget is the tighter constraint. This element carries
   // only the loud accent value so the two surfaces never contradict.
-  const reactionAt = Math.max(0, limit - margin).toFixed(1);
+  const reactionAt = usableCapacityKw(limit, margin).toFixed(1);
   settingsCapacityReactionHint.textContent = `${reactionAt} kW`;
 };
 

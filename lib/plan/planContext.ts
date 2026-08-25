@@ -124,10 +124,11 @@ export type PlanContext = {
   softLimit: number;
   capacitySoftLimit: number;
   dailySoftLimit: number | null;
-  // Required-but-nullable on the OUTPUT: `null` is "no daily budget axis this
-  // cycle", which is a real state, but "the caller did not mention it" is not
-  // one a consumer should have to distinguish. The INPUT below stays optional —
-  // the resolution happens once, here, at the point of production.
+  // Required-but-nullable: `null` is "no daily budget axis this cycle", which is
+  // a real state. "The caller did not mention it" is not, and the input says so
+  // too — it was `?: number | null` for a single caller that always passes an
+  // explicit value, so the optionality only ever bought a second absence to
+  // collapse.
   budgetPaceKw: number | null;
   projectedExemptKw: number | null;
   softLimitSource: SoftLimitSource;
@@ -172,14 +173,6 @@ export type PlanContext = {
   dailyBudget?: DailyBudgetContext;
 };
 
-/**
- * Collapses "the caller omitted it" into "there is no daily-budget axis", so
- * the two states downstream consumers would otherwise have to tell apart become
- * one. Extracted rather than inlined as `?? null` at the return: `buildPlanContext`
- * sits at its complexity ceiling, and two more coalesces pushed it over.
- */
-const resolveDailyPaceAxis = (value: number | null | undefined): number | null => value ?? null;
-
 export function buildPlanContext(params: {
   devices: PlanInputDevice[];
   /**
@@ -193,8 +186,8 @@ export function buildPlanContext(params: {
   softLimit: number;
   capacitySoftLimit: number;
   dailySoftLimit: number | null;
-  budgetPaceKw?: number | null;
-  projectedExemptKw?: number | null;
+  budgetPaceKw: number | null;
+  projectedExemptKw: number | null;
   softLimitSource: SoftLimitSource;
   /**
    * The setpoint this home's active mode holds a temperature device at.
@@ -279,8 +272,8 @@ export function buildPlanContext(params: {
     softLimit,
     capacitySoftLimit,
     dailySoftLimit,
-    budgetPaceKw: resolveDailyPaceAxis(budgetPaceKw),
-    projectedExemptKw: resolveDailyPaceAxis(projectedExemptKw),
+    budgetPaceKw,
+    projectedExemptKw,
     softLimitSource,
     // "Capacity is not the constraint doing the work" — which requires having
     // MEASURED that, not merely having synthesized a headroom. The old form was

@@ -179,8 +179,15 @@ export function applyPostSheddingHolds(params: {
  * only let the device restore sooner. Only clears a device the shed set no
  * longer holds (`!shedSet.has(id)`) — a device the posture left but that
  * capacity is still shedding keeps its decision clock (it stays shed; the
- * decision-time readers must not under-stamp it). A device that left the
- * snapshot entirely is not handled here — tracked in TODO.md.
+ * decision-time readers must not under-stamp it).
+ *
+ * A device that left the SNAPSHOT entirely is covered, and the loop shape is why:
+ * it iterates the stamp map, not `admittedDevices`. An absent device is in
+ * neither `surplusOnlyNow` nor `shedSet`, so it falls through both guards to the
+ * clear. An earlier version of this comment said the case was unhandled and sent
+ * readers to TODO.md for it; that was a misreading of this loop, and the two
+ * prune pins in `test/integration/surplusDumpLoadPlan.test.ts` exist so it cannot
+ * be made true by accident.
  */
 export function releaseAbandonedSurplusPosture(params: {
   state: Pick<PlanEngineState, 'surplusOnlyShedByDevice' | 'clearShedDecision'>;
