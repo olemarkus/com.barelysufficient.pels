@@ -249,6 +249,43 @@ export function pruneStale(
   };
 }
 
+/**
+ * Overlay in-memory accepted state on recovered persisted history before the
+ * first post-grace write. Used when the boot-time settings read was suspect
+ * (abandon-grace engaged) and a recovery re-read later returned real history:
+ * writing the in-memory snapshot alone would overwrite everything the boot
+ * read failed to deliver.
+ *
+ * Granularity is per (device, step), not per device: step EMAs are
+ * independent, and a device re-observed since boot has typically only visited
+ * one or two of its steps — dropping the recovered EMAs for the others would
+ * discard exactly the history this merge exists to preserve. On a collision
+ * the in-memory step wins (its EMA reflects post-boot reality; two EMAs with
+ * different anchors cannot be meaningfully averaged).
+ */
+export function mergeRecoveredCalibrationHistory(params: {
+  inMemory: PowerCalibrationSnapshot;
+  recovered: PowerCalibrationSnapshot;
+}): PowerCalibrationSnapshot {
+  const { inMemory, recovered } = params;
+  const overlapping = Object.entries(inMemory.devices).flatMap(([deviceId, inMemoryDevice]) => {
+    if (!(deviceId in recovered.devices)) return [];
+    const recoveredDevice = recovered.devices[deviceId];
+    return [[deviceId, {
+      steps: { ...recoveredDevice.steps, ...inMemoryDevice.steps },
+      lastTouchedMs: Math.max(recoveredDevice.lastTouchedMs, inMemoryDevice.lastTouchedMs),
+    }] as const];
+  });
+  return {
+    version: POWER_CALIBRATION_VERSION,
+    devices: {
+      ...recovered.devices,
+      ...inMemory.devices,
+      ...Object.fromEntries(overlapping),
+    },
+  };
+}
+
 function evaluateRecordSampleGates(params: {
   input: RecordSampleInput;
   config: RecordSampleConfig;

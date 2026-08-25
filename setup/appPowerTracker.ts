@@ -24,6 +24,13 @@ import { type DebugLoggingTopic } from '../packages/shared-domain/src/utils/debu
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
+/**
+ * Cadence of the calibration persist guard — slightly above the store's 60 s
+ * persist debounce so a tick landing one debounce after a successful write is
+ * not knife-edged out by the few milliseconds the write itself took (which
+ * would silently double the effective retry latency).
+ */
+const POWER_CALIBRATION_PERSIST_GUARD_INTERVAL_MS = 65 * 1000;
 
 const shouldForcePersistPowerTracker = (
   previousState: PowerTrackerState,
@@ -143,6 +150,18 @@ export class AppPowerTracker {
     this.deps.timers.registerInterval('powerTrackerPruneInterval', setInterval(
       () => this.deps.prunePowerTrackerHistory(),
       POWER_TRACKER_PRUNE_INTERVAL_MS,
+    ));
+    // Persist guard for the calibration store, started here because this class
+    // already owns every other calibration persist trigger. Without it,
+    // accepted samples can sit memory-only indefinitely: the device snapshot
+    // mutation hook marks the store dirty without ever attempting a persist,
+    // the per-sample attempt in `savePowerTracker` stops with the meter, and
+    // a failed write is only retried by another mutation or shutdown — while
+    // PELS is routinely OOM-killed before `onUninit` can flush. The tick is
+    // an isDirty() no-op when there is nothing to write.
+    this.deps.timers.registerInterval('powerCalibrationPersistGuard', setInterval(
+      () => this.deps.persistPowerCalibrationIfDue(Date.now()),
+      POWER_CALIBRATION_PERSIST_GUARD_INTERVAL_MS,
     ));
   }
 

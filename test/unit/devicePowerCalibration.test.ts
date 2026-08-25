@@ -5,6 +5,7 @@ import {
   getDeliveryPowerKw,
   hasRecentDrawAt,
   isStepCalibrationConfident,
+  mergeRecoveredCalibrationHistory,
   normalizePowerCalibrationSnapshot,
   POWER_CALIBRATION_CONSTANTS,
   POWER_CALIBRATION_VERSION,
@@ -365,5 +366,67 @@ describe('exposed constants', () => {
     expect(POWER_CALIBRATION_CONSTANTS.CONFIDENCE_MIN_SUSTAINED_SECONDS).toBe(300);
     expect(POWER_CALIBRATION_CONSTANTS.DEFAULT_FRESHNESS_WINDOW_MS).toBe(60_000);
     expect(POWER_CALIBRATION_CONSTANTS.NAMEPLATE_TOLERANCE_RATIO).toBe(0.02);
+  });
+});
+
+describe('mergeRecoveredCalibrationHistory', () => {
+  const step = (observedKw: number, lastSampleMs: number) => ({
+    observedKw,
+    nameplateAtSampleKw: 3,
+    samples: 6,
+    sustainedSeconds: 600,
+    lastSampleMs,
+  });
+
+  it('fills devices the in-memory store has not re-observed since boot', () => {
+    const merged = mergeRecoveredCalibrationHistory({
+      inMemory: {
+        version: POWER_CALIBRATION_VERSION,
+        devices: { fresh: { steps: { high: step(2.6, 2_000) }, lastTouchedMs: 2_000 } },
+      },
+      recovered: {
+        version: POWER_CALIBRATION_VERSION,
+        devices: { historic: { steps: { high: step(2.9, 1_000) }, lastTouchedMs: 1_000 } },
+      },
+    });
+    expect(Object.keys(merged.devices).sort()).toEqual(['fresh', 'historic']);
+    expect(merged.devices.historic.steps.high.observedKw).toBeCloseTo(2.9);
+    expect(merged.devices.fresh.steps.high.observedKw).toBeCloseTo(2.6);
+  });
+
+  it('merges a shared device per step: in-memory wins on collision, recovered fills the rest', () => {
+    // The in-memory device has only re-visited one step since boot. Recovered
+    // EMAs for the other steps are exactly the history the merge preserves.
+    const merged = mergeRecoveredCalibrationHistory({
+      inMemory: {
+        version: POWER_CALIBRATION_VERSION,
+        devices: { shared: { steps: { max: step(2.6, 2_000) }, lastTouchedMs: 2_000 } },
+      },
+      recovered: {
+        version: POWER_CALIBRATION_VERSION,
+        devices: {
+          shared: {
+            steps: { low: step(1.1, 500), medium: step(1.6, 800), max: step(2.9, 1_000) },
+            lastTouchedMs: 1_000,
+          },
+        },
+      },
+    });
+    expect(Object.keys(merged.devices.shared.steps).sort()).toEqual(['low', 'max', 'medium']);
+    expect(merged.devices.shared.steps.max.observedKw).toBeCloseTo(2.6);
+    expect(merged.devices.shared.steps.low.observedKw).toBeCloseTo(1.1);
+    expect(merged.devices.shared.lastTouchedMs).toBe(2_000);
+  });
+
+  it('returns the recovered history untouched when nothing mutated in memory', () => {
+    const recovered = {
+      version: POWER_CALIBRATION_VERSION,
+      devices: { historic: { steps: { high: step(2.9, 1_000) }, lastTouchedMs: 1_000 } },
+    };
+    const merged = mergeRecoveredCalibrationHistory({
+      inMemory: createEmptyPowerCalibrationSnapshot(),
+      recovered,
+    });
+    expect(merged.devices).toEqual(recovered.devices);
   });
 });

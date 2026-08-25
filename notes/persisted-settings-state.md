@@ -12,6 +12,47 @@ policy. A generic helper would have to absorb those different policies,
 increasing coupling and indirection while removing little. This note remains as
 the rationale for not re-raising the refactor.
 
+### Addendum (2026-08-25): first-write recovery and the persist guard
+
+The abandon-grace window alone only *postpones* the destructive reset: nothing
+re-read the recoverable value, so the first accepted write after the grace
+still overwrote real history with empty-derived state. The calibration store
+and the EV car-link store (each per-store, per the ruling above) now add:
+
+- **First-write recovery re-read** — while the boot read was suspect (grace
+  engaged), the write path re-reads the persisted value before its first
+  `settings.set`. A present value is normalised, pruned, and merged *under*
+  the in-memory accepted state (in-memory wins per key — per (device, step)
+  for calibration; recovered history fills everything else; the EV store
+  deliberately does **not** refill `sessions` from the recovered side, since
+  in-memory absence cannot distinguish "never seen" from "cleared by an
+  observed session end since boot"). Absent value + no marker writes
+  immediately (nothing to recover). Absent value + marker present defers the
+  write for a bounded window armed by that arm's **own first deferred
+  attempt** — not by boot, and not shared with the thrown arm, so a store
+  whose first mutation arrives hours later (or whose reads threw for a long
+  stretch before healing into an absent read) still gets its full run of
+  spaced re-reads — then treats the value as genuinely gone (writing over an
+  absent key destroys nothing). A *thrown* re-read defers with **no**
+  deadline: every retry re-reads, so a healed SDK recovers the history,
+  whereas abandoning on a clock would overwrite it at exactly the moment the
+  SDK heals; past its own deferral window the deferral log escalates to
+  `warn` so a permanent read stall is triagable. Recovery attempts are throttled to one
+  per persist-debounce window (the ordinary debounce never advances before
+  the first successful write, so without the throttle the deferral path
+  would re-read and log on every 10 s power sample). One honest limit: when
+  the grace engaged because the persisted value was *malformed* (not absent),
+  the re-read sees the same bytes and recovers only what the lenient
+  normaliser already salvaged at boot — unparseable data stays unparseable.
+- **Persist guard** — a 65 s interval per store (`powerCalibrationPersistGuard`
+  in `setup/appPowerTracker.ts`, `evCarLinkPersistGuard` in
+  `setup/appInit/evCarLinkAccess.ts`; slightly above the 60 s debounce so the
+  tick after a successful write is not knife-edged out) that retries
+  `persist*IfDue` while the store is dirty. Without it, a failed write or a mutation that landed inside
+  the debounce sat memory-only until the next mutation or the shutdown flush —
+  and production PELS is routinely OOM-killed before `onUninit` runs, so the
+  shutdown flush is a bonus, not the mechanism.
+
 ## Historical Proposal
 
 ## Why this note exists

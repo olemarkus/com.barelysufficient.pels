@@ -15,6 +15,7 @@ import {
   POWER_CALIBRATION_VERSION,
   createEmptyPowerCalibrationSnapshot,
   isStrictlyValidPersistedDevice,
+  mergeRecoveredCalibrationHistory,
   normalizePowerCalibrationSnapshot,
   pruneStale,
   recordSample,
@@ -47,6 +48,19 @@ const DEFAULT_PRUNE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
  * "Homey SDK reads can transiently fail" feedback note.
  */
 const DEFAULT_LOAD_GRACE_MS = 5 * 60 * 1000;
+/**
+ * How long a *transient-miss* recovery re-read (SDK answering, value absent,
+ * init marker present) may keep deferring the first write, measured from the
+ * FIRST deferred attempt — not from boot, so a store whose first mutation
+ * arrives hours later still gets a full window of spaced re-reads instead of
+ * abandoning on a single one. Repeated genuine absence across those re-reads
+ * means the persisted key is really gone, and writing over an absent key
+ * destroys nothing — so past the deadline the store stops waiting. A *thrown*
+ * re-read never uses this deadline: it defers indefinitely, because every
+ * retry re-reads and a healed SDK then recovers the history, while abandoning
+ * on a clock would overwrite it at exactly the moment the SDK heals.
+ */
+const DEFAULT_RECOVERY_DEFERRAL_MS = 5 * 60 * 1000;
 
 export type PowerCalibrationStoreOptions = {
   initialSnapshot?: PowerCalibrationSnapshot;
@@ -70,6 +84,25 @@ export type PowerCalibrationStoreOptions = {
 export type IngestDeviceSnapshotOutcome = RecordSampleOutcome | null;
 
 /**
+ * What a recovery re-read of the persisted snapshot established, applied by
+ * the private settle step of {@link PowerCalibrationStore.resolveRecoveryForWrite}.
+ */
+type RecoveredCalibrationHistory =
+  | { kind: 'recovered'; snapshot: PowerCalibrationSnapshot }
+  | { kind: 'nothing_recoverable' };
+
+/**
+ * Outcome of settling the boot-time recovery re-read ahead of a write.
+ * `ready` carries the snapshot to persist (merged when history was
+ * recovered); `deferred` means the persisted value may still be recoverable
+ * but was not readable right now, so this write must not happen — the store
+ * stays dirty and the persist guard retries, re-reading each time.
+ */
+type RecoveryWriteResolution =
+  | { kind: 'ready'; snapshot: PowerCalibrationSnapshot }
+  | { kind: 'deferred' };
+
+/**
  * Mutable in-memory cache around the immutable {@link recordSample} pipeline.
  * Tracks a dirty flag and a debounce window so callers can flush to settings
  * without writing on every accepted sample.
@@ -78,6 +111,19 @@ export class PowerCalibrationStore {
   private snapshot: PowerCalibrationSnapshot;
   private dirty = false;
   private lastPersistMs: number;
+  private recoveryPending: boolean;
+  /** Throttle cursor for recovery re-reads; sentinel = never attempted. */
+  private lastRecoveryAttemptMs = Number.NEGATIVE_INFINITY;
+  /**
+   * Per-arm deferral windows, each armed by that arm's FIRST deferred
+   * attempt; 0 = not armed yet. They must stay separate: a long thrown phase
+   * that healed into a transiently-absent read would otherwise hand the
+   * transient-miss arm an already-expired shared window, abandoning recovery
+   * after ZERO spaced absent re-reads — the exact overwrite this machinery
+   * exists to prevent.
+   */
+  private readThrewDeferralUntilMs = 0;
+  private transientMissDeferralUntilMs = 0;
   private readonly recordConfig: RecordSampleConfig | undefined;
   private readonly persistDebounceMs: number;
   private readonly pruneMaxAgeMs: number;
@@ -93,17 +139,153 @@ export class PowerCalibrationStore {
     this.persistGraceUntilMs = graceMs > 0
       ? (options.nowMs ?? Date.now()) + graceMs
       : 0;
+    // A grace window engages exactly when the boot read was suspect, so the
+    // same signal marks the persisted value as still worth a recovery re-read
+    // before the first write is allowed to overwrite it.
+    this.recoveryPending = this.persistGraceUntilMs > 0;
   }
 
   getSnapshot(): PowerCalibrationSnapshot {
     return this.snapshot;
   }
 
-  /** Replace the in-memory snapshot. Clears the dirty flag (assumes the caller
-   * just synced from persistence). */
-  importSnapshot(snapshot: PowerCalibrationSnapshot): void {
-    this.snapshot = snapshot;
-    this.dirty = false;
+  /**
+   * Resolve the pending recovery re-read before the first post-grace write.
+   * The abandon-grace window blocks writes while a transiently unreadable
+   * boot read might still recover, but blocking alone only postpones the
+   * overwrite — this re-read is what actually recovers the value (TODO
+   * "Persisted-store load grace only postpones a destructive reset").
+   * Decision table:
+   *  - Value present → normalise (prune mirrors what the load path would
+   *    have done, honouring the configured retention) and merge under the
+   *    in-memory state; write.
+   *  - Value absent, marker absent → genuine wipe/fresh state; write.
+   *  - Value absent, marker present (or marker read threw) → transient miss;
+   *    defer until `DEFAULT_RECOVERY_DEFERRAL_MS` past that arm's FIRST
+   *    deferred attempt, then treat as genuinely gone (writing over an
+   *    absent key destroys nothing).
+   *  - Re-read threw → defer with no deadline: every retry re-reads, so a
+   *    healed SDK recovers the history, while a deadline would overwrite it
+   *    at exactly the moment the SDK heals. While the SDK throws on reads,
+   *    the paired write would almost certainly fail anyway. Past its own
+   *    deferral window the log escalates to warn so a permanent stall is
+   *    triagable.
+   *
+   * This is the ONLY seam over the recovery state machine, and only the
+   * write path (`writeAndMark`, via `persistPowerCalibrationIfDue` /
+   * `persistPowerCalibrationFlush`) may call it: the throttle, the deferral
+   * windows, and the settle step are private precisely so no other caller
+   * can settle recovery without performing the re-read — settling from
+   * outside would silently disarm first-write protection.
+   */
+  resolveRecoveryForWrite(
+    params: { homey: HomeyRuntime; nowMs: number },
+    snapshot: PowerCalibrationSnapshot,
+  ): RecoveryWriteResolution {
+    if (!this.recoveryPending) return { kind: 'ready', snapshot };
+    // Rate-limit: without this gate the deferral path re-reads and logs on
+    // every power sample (10 s) for as long as the SDK stays broken. The
+    // ordinary debounce cannot help — it never advances before the first
+    // successful write.
+    if (!this.beginRecoveryAttempt(params.nowMs)) return { kind: 'deferred' };
+    const reread = readPersistedSnapshot(params.homey);
+    if (!reread.threw && reread.value !== undefined && reread.value !== null) {
+      const recovered = pruneStale(
+        normalizePowerCalibrationSnapshot(reread.value),
+        this.pruneMaxAgeMs,
+        params.nowMs,
+      );
+      this.settleRecovery({ kind: 'recovered', snapshot: recovered });
+      moduleLogger.info({
+        event: 'power_calibration_recovery_merged',
+        recoveredDevices: Object.keys(recovered.devices).length,
+        inMemoryDevices: Object.keys(snapshot.devices).length,
+      });
+      return { kind: 'ready', snapshot: this.snapshot };
+    }
+    if (!reread.threw) {
+      const markerRead = readInitMarker(params.homey);
+      const markerPresent = markerRead.threw ? true : markerRead.value;
+      if (!markerPresent) {
+        // Absent value and no we've-written-before marker: nothing was ever
+        // (or is any longer) persisted, so there is nothing to recover.
+        this.settleRecovery({ kind: 'nothing_recoverable' });
+        return { kind: 'ready', snapshot };
+      }
+      if (this.noteRecoveryDeferred(params.nowMs, 'transient_miss') === 'past_window') {
+        this.settleRecovery({ kind: 'nothing_recoverable' });
+        moduleLogger.warn({ event: 'power_calibration_recovery_abandoned' });
+        return { kind: 'ready', snapshot };
+      }
+      moduleLogger.info({
+        event: 'power_calibration_recovery_write_deferred',
+        reason: 'transient_miss',
+      });
+      return { kind: 'deferred' };
+    }
+    const deferredPayload = {
+      event: 'power_calibration_recovery_write_deferred',
+      reason: 'read_threw',
+    };
+    if (this.noteRecoveryDeferred(params.nowMs, 'read_threw') === 'past_window') {
+      moduleLogger.warn(deferredPayload);
+    } else {
+      moduleLogger.info(deferredPayload);
+    }
+    return { kind: 'deferred' };
+  }
+
+  /**
+   * Throttle gate for recovery re-reads: at most one attempt per persist
+   * debounce window. Records the attempt when it admits one.
+   */
+  private beginRecoveryAttempt(nowMs: number): boolean {
+    if (nowMs - this.lastRecoveryAttemptMs < this.persistDebounceMs) return false;
+    this.lastRecoveryAttemptMs = nowMs;
+    return true;
+  }
+
+  /**
+   * Record that a recovery attempt could not read the persisted value and had
+   * to defer the write. The first call for an arm arms THAT arm's deferral
+   * window; the answer says whether it has since elapsed. The *transient-miss*
+   * arm abandons recovery on `past_window` (the value has been absent across
+   * its own spaced re-reads and writing over an absent key destroys nothing);
+   * the *thrown* arm never abandons and uses `past_window` only to escalate
+   * its log level, so a permanent read stall is visible to log triage.
+   */
+  private noteRecoveryDeferred(
+    nowMs: number,
+    arm: 'read_threw' | 'transient_miss',
+  ): 'within_window' | 'past_window' {
+    if (arm === 'read_threw') {
+      if (this.readThrewDeferralUntilMs === 0) {
+        this.readThrewDeferralUntilMs = nowMs + DEFAULT_RECOVERY_DEFERRAL_MS;
+      }
+      return nowMs < this.readThrewDeferralUntilMs ? 'within_window' : 'past_window';
+    }
+    if (this.transientMissDeferralUntilMs === 0) {
+      this.transientMissDeferralUntilMs = nowMs + DEFAULT_RECOVERY_DEFERRAL_MS;
+    }
+    return nowMs < this.transientMissDeferralUntilMs ? 'within_window' : 'past_window';
+  }
+
+  /**
+   * Settle the recovery re-read. `recovered` merges the re-read history under
+   * the in-memory accepted state (in-memory wins per (device, step); recovered
+   * fills everything else); `nothing_recoverable` records that the persisted
+   * value is genuinely gone. Leaves the dirty flag as-is in both arms: a merge
+   * with no pending mutations does not create something to write, and pending
+   * mutations still need the write they were waiting for.
+   */
+  private settleRecovery(outcome: RecoveredCalibrationHistory): void {
+    if (outcome.kind === 'recovered') {
+      this.snapshot = mergeRecoveredCalibrationHistory({
+        inMemory: this.snapshot,
+        recovered: outcome.snapshot,
+      });
+    }
+    this.recoveryPending = false;
   }
 
   /** Submit a sample. Updates the snapshot in place when accepted. */
@@ -350,8 +532,13 @@ function writeAndMark(
   },
   snapshot: PowerCalibrationSnapshot,
 ): boolean {
+  const resolution = params.store.resolveRecoveryForWrite(
+    { homey: params.homey, nowMs: params.nowMs },
+    snapshot,
+  );
+  if (resolution.kind === 'deferred') return false;
   try {
-    params.homey.settings.set(POWER_CALIBRATION, snapshot);
+    params.homey.settings.set(POWER_CALIBRATION, resolution.snapshot);
     params.store.markPersisted(params.nowMs);
   } catch (err) {
     moduleLogger.error({
