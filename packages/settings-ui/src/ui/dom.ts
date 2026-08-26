@@ -205,6 +205,22 @@ export const deviceDetailDumpLoadRow = qs('#device-detail-dump-load-row');
 export const deviceDetailDumpLoadOpt = document.querySelector('#device-detail-dump-load-opt') as MdSwitchElement;
 export const deviceDetailDumpLoadDisabledHint = qs('#device-detail-dump-load-disabled-hint');
 export const deviceDetailDumpLoadPowerLimitHint = qs('#device-detail-dump-load-power-limit-hint');
+export const deviceDetailSurplusTrackSection = qs('#device-detail-surplus-track-section');
+export const deviceDetailSurplusTrackRow = qs('#device-detail-surplus-track-row');
+export const deviceDetailSurplusTrackOpt = document.querySelector(
+  '#device-detail-surplus-track-opt',
+) as MdSwitchElement;
+export const deviceDetailSurplusTrackLabel = qs('#device-detail-surplus-track-label');
+export const deviceDetailSurplusTrackHint = qs('#device-detail-surplus-track-hint');
+export const deviceDetailSurplusTrackLead = qs('#device-detail-surplus-track-lead');
+export const deviceDetailSurplusTrackGateHint = qs('#device-detail-surplus-track-gate-hint');
+export const deviceDetailSurplusTrackDisabledHint = qs('#device-detail-surplus-track-disabled-hint');
+export const deviceDetailSurplusTrackPowerLimitHint
+  = qs('#device-detail-surplus-track-power-limit-hint');
+export const deviceDetailSurplusFloor = document.querySelector(
+  '#device-detail-surplus-floor',
+) as MdFilledSelectElement;
+export const deviceDetailSurplusFloorHint = qs('#device-detail-surplus-floor-hint');
 export const deviceDetailShedAction = document.querySelector('#device-detail-overshoot') as MdFilledSelectElement;
 export const deviceDetailShedSegmented = qs('#device-detail-overshoot-segmented');
 export const deviceDetailShedSegmentedLabel = qs('#device-detail-overshoot-segmented-label');

@@ -7,7 +7,7 @@ description: Use more of your own rooftop solar with PELS — automatic capacity
 
 If you have rooftop solar (PV), this page explains what PELS does with it today.
 
-**Short version:** PELS uses your solar to protect your capacity for free; it can nudge a heater to soak surplus — or run an on/off load such as a pool pump only while you export — instead of sending it to the grid; and it shows what your solar did — production, self-consumption, export, and the grid cost it avoided. It does not yet drive your export to zero or control a battery or inverter (see [What PELS does not do yet](#what-pels-does-not-do-yet)).
+**Short version:** PELS uses your solar to protect your capacity for free; it can nudge a heater to soak surplus, run an on/off load such as a pool pump only while you export, or match an EV charger's current to your surplus — instead of sending it to the grid; and it shows what your solar did — production, self-consumption, export, and the grid cost it avoided. It does not yet drive your export to zero or control a battery or inverter (see [What PELS does not do yet](#what-pels-does-not-do-yet)).
 
 ::: warning Needs a signal that you export
 The solar features below need a signal that you are exporting — either a solar device that reports production, or a meter that shows your solar export.
@@ -25,7 +25,7 @@ To use more of your own solar with PELS:
 
 1. **Confirm PELS can see your export** — on the Power meter source, that your solar device's production shows up in Homey Energy; on the Flow source, that the reading you send goes negative while exporting. Capacity protection then works automatically — there is nothing else to turn on.
 2. **Optionally turn on "Use solar surplus"** on a managed heating device (a water tank, floor heating, or a room heater) so surplus warms your home instead of going to the grid.
-3. **Keep an EV charger managed with current control.** While the sun is up, a charging car naturally uses the freed-up power, so much of that charge comes from your own solar.
+3. **Keep an EV charger managed with current control.** While the sun is up, a charging car naturally uses the freed-up power, so much of that charge comes from your own solar. To go further and charge *only* on the sun, turn on **"Charge on solar surplus"** on the charger.
 
 How much this helps depends on your home and the weather — it lowers your export modestly and automatically. A precise "use every watt" maximiser is a future direction, not a setting today.
 
@@ -72,11 +72,31 @@ Through a run of cloudy days a device set to run on solar surplus never turns on
 
 The device shows **"Waiting for solar surplus"** on its card while PELS keeps it off, and **"On to use your solar power"** while running on your export. Devices with an active [smart task](./smart-tasks.md) are not held — the smart task's schedule wins.
 
+### Charge a car on solar surplus
+
+On a managed device with **levels** — an EV charger set to an EV control mode, or any device you configured as a stepped load — you can turn on **"Charge on solar surplus"** (a charger) or **"Match solar surplus"** (anything else). PELS then picks the level your export covers and moves it up and down as the sun changes, instead of running the device as hard as your hard cap allows.
+
+For an EV charger this is the "leave it plugged in all week" setting: the car charges on the sun, and stops when the sun stops.
+
+::: warning There is no level between off and 6 A
+A charger's lowest usable current is **6 A** — about **1.4 kW** on one phase, about **4.1 kW** on three. Below that there is nothing to select, so PELS asks you what to do when your surplus falls short, under **"When surplus runs out"**:
+
+- **Stop** (the default) — charging stops. Nothing is ever drawn from the grid on this setting's account.
+- **Keep going at the lowest level** — charging continues at that lowest current and the grid covers whatever the sun does not. On a three-phase charger that can be over 4 kW of grid import, so pick it deliberately.
+:::
+
+Some things to know:
+
+- **Your hard cap and daily budget still come first.** The surplus setting can only ever lower the level PELS would otherwise pick, never raise it past a capacity decision.
+- **A smart task wins.** If the device has a [smart task](./smart-tasks.md) with a deadline, the task's schedule decides while it is running — a deadline you asked for is not something "use only your own sun" should quietly miss.
+- **It moves in steps, not smoothly**, and it waits a couple of minutes between increases so a passing cloud does not change your charging current every few seconds. Decreases are immediate.
+- The card reads **"Waiting for solar surplus"** while a device on the **Stop** setting is held off.
+
 ### Big flexible loads use the freed-up power
 
-Devices that run as hard as they can — such as an EV charger with current control — take up the room solar frees, up to your hard cap. So if a car is charging while the sun is up, much of that draw comes from your own solar rather than the grid.
+A managed device that is *not* set to match your surplus runs as hard as it can — an EV charger with current control takes up the room solar frees, up to your hard cap. So if a car is charging while the sun is up, much of that draw comes from your own solar rather than the grid.
 
-PELS runs these loads to **available power up to your hard cap**, not matched to your surplus — so a large load can keep running (drawing from the grid) past the point the sun alone would cover, and charging after dark pulls entirely from the grid.
+PELS runs these loads to **available power up to your hard cap**, not matched to your surplus — so a large load can keep running (drawing from the grid) past the point the sun alone would cover, and charging after dark pulls entirely from the grid. If that is not what you want, the surplus setting above is how you change it.
 
 ### Your accounting stays honest under export
 
@@ -103,7 +123,7 @@ If you also have a battery: because PELS only sees net power and cannot command 
 
 ## What PELS does not do yet
 
-- It does not drive your grid export to exactly zero — it uses surplus opportunistically (the heating boost, plus whatever your flexible loads want), but it does not trim a device moment to moment to match your surplus, and it does not command your inverter. In a **zero-export home** the heating boost can now recover throttled production opportunistically (see above) — but that works by adding useful load so the inverter produces more on its own, not by controlling the inverter.
+- It does not drive your grid export to exactly zero. A device you have set to match your surplus is trimmed to it (in steps, and no faster than every couple of minutes), and the heating boost soaks up what it can — but PELS does not balance your whole home to zero export, and it does not command your inverter. In a **zero-export home** the heating boost can now recover throttled production opportunistically (see above) — but that works by adding useful load so the inverter produces more on its own, not by controlling the inverter.
 - Solar money is shown for **today only** — a month-by-month "what my solar earned" history is a future direction.
 - It does not charge a home battery from surplus, or control a battery or inverter — and battery control is not on the near-term roadmap.
 
