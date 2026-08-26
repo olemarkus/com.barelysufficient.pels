@@ -1,6 +1,4 @@
-import {
-  canTurnOnDevice,
-} from '../plan/planExecutorSupport';
+import { canTurnOnDevice } from '../plan/deviceCommandability';
 import { getLogger } from '../logging/logger';
 import type { ExecutorDeviceSnapshot } from './executablePlan';
 import {

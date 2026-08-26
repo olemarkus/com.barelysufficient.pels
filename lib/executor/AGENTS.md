@@ -58,6 +58,18 @@
   Do not reintroduce a **mode** — a lane-wide flag that exempts a whole class of writes from those
   brakes because of where the write came from. Provenance is not a reason to skip a cooldown.
 
+  **The inverse is also banned: this layer may not veto a decided write on pacing grounds.**
+  `inc_26449fb9` was apply-without-decide. Its mirror is *decide-without-apply* — the executor
+  silently dropping a decision it was handed — and a 5 s per-device shed throttle used to do
+  exactly that inside `shouldSkipShedding`, so a stepped device the planner escalated to fully
+  off kept running for up to 5 s under the pressure that produced the escalation. It was
+  deleted, not relocated (`notes/state-management/actuation-clocks-and-settle.md`).
+
+  The line: this layer may skip a write for facts about **the write itself** — the device is
+  unreachable, the state already matches, one of its own commands is in flight. Never for how
+  recently something else happened. Pacing is planner admission, where a blocked decision is
+  visible as a plan reason instead of a dropped write.
+
   This is NOT a ban on every `force`. A narrow, per-call override justified by device physics is
   legitimate and one already exists: `planExecutorDispatch.ts` passes
   `force: stepRestore.wroteBinary` into `applySteppedLoadCommand`, which uses it to bypass the

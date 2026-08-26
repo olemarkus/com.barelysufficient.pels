@@ -3,9 +3,7 @@ import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
 } from '../utils/deviceControlProfiles';
-import {
-  canTurnOnDevice,
-} from '../plan/planExecutorSupport';
+import { canTurnOnDevice } from '../plan/deviceCommandability';
 import { runBinaryControl, skipRestoreForExternalOffHold } from './binaryControlShared';
 import type {
   ExecutableSteppedLoadDevice,

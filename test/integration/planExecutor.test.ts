@@ -1394,6 +1394,29 @@ describe('PlanExecutor pending target commands', () => {
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
   });
 
+  it('sheds a device the planner escalated to off seconds after its last shed write', async () => {
+    // A stepped device stepped DOWN 2 s ago, which stamps the actuation-time shed
+    // clock (`recordShedActuation`). The planner has since decided that rung is not
+    // enough and wants the device off. Dropping that write because the clock is
+    // young is the executor overriding a decision it was handed — and it does so at
+    // the moment capacity pressure is highest.
+    const state = createPlanEngineState();
+    state.markDeviceShed('dev-1', Date.now() - 2000);
+    const { executor, deviceManager } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        binaryCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        binaryControl: { on: true },
+      },
+    ]);
+
+    await expect(executor.applySheddingToDevice('dev-1', 'Heater')).resolves.toBe(true);
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+  });
+
   it('tags plan-driven target updates in the user-visible log', async () => {
     const state = createPlanEngineState();
     const { executor, deviceManager } = buildExecutor(state, [
