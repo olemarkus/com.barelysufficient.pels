@@ -281,6 +281,7 @@ export class PlanBuilder {
       state: this.state,
       admittedDevices,
       shedSet: sheddingPlan.shedSet,
+      shedStepTargets: sheddingPlan.shedStepTargets,
       decoration: { forceShedSet, deferredAvoidDeviceIds, deferredReleaseIntentByDeviceId, admittedDeviceIds },
       getConfig: (deviceId) => this.priceOptimizationSettings[deviceId],
       getInferredSurplusKw: this.deps.getInferredSurplusKw,

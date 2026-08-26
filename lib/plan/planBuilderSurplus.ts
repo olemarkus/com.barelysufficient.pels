@@ -48,6 +48,8 @@ export function runSurplusPass(params: {
   state: PlanEngineState;
   admittedDevices: PlanInputDevice[];
   shedSet: Set<string>;
+  /** The shedding plan's decided rungs; the surplus hold adds its own. */
+  shedStepTargets: Map<string, string>;
   decoration: Pick<
     DeferredDecorationBundle,
     'forceShedSet' | 'deferredAvoidDeviceIds' | 'deferredReleaseIntentByDeviceId' | 'admittedDeviceIds'
@@ -94,6 +96,13 @@ export function runSurplusPass(params: {
     admittedDevices,
     state,
   });
+  // Carry the hold's DECIDED rung into the shedding plan. Materialization reads
+  // the decided rung and only falls back to the device's configured shed floor
+  // when none was decided — which for a `set_step` tracker would mean its lowest
+  // ACTIVE rung, i.e. still drawing, while the card says it is waiting for sun.
+  for (const [deviceId, stepId] of surplusHold.stepTargetById) {
+    params.shedStepTargets.set(deviceId, stepId);
+  }
   return surplusHold.reasonById;
 }
 

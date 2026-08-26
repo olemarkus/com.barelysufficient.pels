@@ -1,5 +1,6 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedBehavior } from './planTypes';
 import { isBinaryPlanDevice } from './planBinaryDevice';
+import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import type { PlanEngineState } from './planState';
 import type { CurrentHourPriceLevel, PlanContext } from './planContext';
 import { buildEffectiveShedPosture, isAnyOtherDeviceLimited } from './keepInvariantPosture';
@@ -10,7 +11,7 @@ import {
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isCoolingCapableTemperatureDeviceClass } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import { applySurplusAbsorbDelta, type PriceOptDeviceConfig } from './planSurplusAbsorb';
-import { isEligibleAndRunnable } from './shedding/surplusHold';
+import { isSurplusHeldDevice } from './shedding/surplusHold';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import {
@@ -119,6 +120,20 @@ export function buildInitialPlanDevices(params: {
         && !shedSet.has(dev.id)
         && dev.currentOn;
     }
+    // The tracking modality's counterpart. `surplusCeilingStepId` is the rung the
+    // allocator bought this device; it is passed FLAT to the base builder rather
+    // than the builder reading engine state, matching how `surplusAbsorbActive`
+    // and `boostActive` already cross that seam. A ceiling that names an off rung
+    // is not "running on solar" — the device is waiting for sun, and the hold
+    // below is what says so on the card.
+    const surplusCeilingStepId = dev.surplusTracking === true
+      ? state.surplusTrackingStepByDevice[dev.id]
+      : undefined;
+    if (dev.surplusTracking === true && isSteppedLoadDevice(dev)) {
+      state.surplusAbsorbActiveByDevice[dev.id] = surplusCeilingStepId !== undefined
+        && !isSteppedLoadOffStep(dev.steppedLoadProfile, surplusCeilingStepId)
+        && !shedSet.has(dev.id);
+    }
     const currentState = resolveCurrentState(dev);
     const controllable = dev.controllable;
     const shedBehavior: ShedBehavior = (
@@ -147,6 +162,7 @@ export function buildInitialPlanDevices(params: {
       boostActive,
       // Set by resolvePlannedTarget above (read after it ran for this device).
       surplusAbsorbActive: state.surplusAbsorbActiveByDevice[dev.id] === true,
+      surplusCeilingStepId,
     });
     baseMs += Date.now() - t1;
     state.boostActiveByDevice[dev.id] = base.boostActive;
@@ -388,14 +404,11 @@ function isSurplusOnlyHoldShed(params: {
   shedReasons: Map<string, DeviceReason>;
 }): boolean {
   const { dev, state, shedReasons } = params;
-  // Mirror `resolveSurplusHold` EXACTLY: a surplusOnly device with no fresh
-  // capacity shed reason is a solar hold (excluded from capacity-pressure
-  // counting) whenever it is NOT eligible-and-runnable — which covers both the
-  // not-eligible case AND the release-pending window (eligible latched, still
-  // off, `pendingSinceMs` set). Using the raw `eligible !== true` proxy here
-  // missed that window, letting a pump waiting for solar clamp unrelated stepped
-  // loads to their lowest step.
-  return dev.surplusOnly === true
-    && !shedReasons.has(dev.id)
-    && !isEligibleAndRunnable(dev, state.surplusEligibilityByDevice[dev.id]);
+  // Delegates to `isSurplusHeldDevice`, the one definition shared with
+  // `resolveSurplusHold`. These two were hand-mirrored and drifted once: the
+  // proxy used here missed the release-pending window (eligible latched, still
+  // off, `pendingSinceMs` set), letting a pump waiting for solar clamp unrelated
+  // stepped loads to their lowest step. A fresh capacity shed reason still wins
+  // — that is a real decision this cycle, not a standing posture.
+  return !shedReasons.has(dev.id) && isSurplusHeldDevice(dev, state);
 }

@@ -288,4 +288,25 @@ export function clearSurplusEligibility(state: PlanEngineState, deviceId: string
 export function clearSurplusTrackingStep(state: PlanEngineState, deviceId: string): void {
   const map = state.surplusTrackingStepByDevice;
   delete map[deviceId];
+  const raised = state.surplusTrackingRaisedMs;
+  delete raised[deviceId];
 }
+
+/**
+ * Minimum interval between UPWARD moves of a tracking device's ceiling.
+ *
+ * The ceiling is recomputed every plan build — every 10 s on the Homey Energy
+ * power source — and each change is a real command to the device (a `target_power`
+ * write, or the `desired_stepped_load_changed` Flow that carries
+ * `planning_current_a` to a charger app). Chasing a fluctuating pool at build
+ * cadence would mean a current change every 10 s, which cars and charger apps
+ * both handle badly, and which the existing command machinery is not paced for
+ * either (`STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS` starts at 30 s).
+ *
+ * Deliberately asymmetric: climbs wait, drops are immediate. The same shape as
+ * the engage/release band above and for the same reason — being slow to take
+ * more power costs a little self-consumption, while being slow to give it back
+ * means importing against a surplus that is already gone. The 90 s settle still
+ * governs the on/off flip; this only paces movement once running.
+ */
+export const SURPLUS_TRACK_STEP_MIN_INTERVAL_MS = 120_000;

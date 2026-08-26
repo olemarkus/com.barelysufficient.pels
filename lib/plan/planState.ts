@@ -367,6 +367,11 @@ export class PlanEngineState {
   // next build re-allocates from a fresh meter reading.
   surplusTrackingStepByDevice: Record<string, string> = {};
 
+  // Per-device: when the tracking ceiling above last MOVED UP. Paces climbs only
+  // — see `SURPLUS_TRACK_STEP_MIN_INTERVAL_MS`. In-memory, pruned in lockstep
+  // with the ceiling itself.
+  surplusTrackingRaisedMs: Record<string, number> = {};
+
   lastOvershootSummarySignature: string | null = null;
 
   steppedRestoreRejectedByDevice: Record<string, {

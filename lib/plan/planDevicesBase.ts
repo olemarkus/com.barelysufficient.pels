@@ -148,6 +148,12 @@ export function buildBasePlanDevice(params: {
   shedReasons: Map<string, DeviceReason>;
   boostActive: boolean;
   surplusAbsorbActive: boolean;
+  /**
+   * The rung this cycle's surplus allocation bought a surplus-TRACKING device,
+   * or undefined for every other device. A ceiling on the keep step, never a
+   * target — see `resolveSteppedKeepDesiredStepId`.
+   */
+  surplusCeilingStepId: string | undefined;
 }): DevicePlanDevice {
   const {
     dev,
@@ -163,6 +169,7 @@ export function buildBasePlanDevice(params: {
     shedReasons,
     boostActive,
     surplusAbsorbActive,
+    surplusCeilingStepId,
   } = params;
   const initialDesiredStepId = resolveSteppedLoadInitialDesiredStepId(dev);
   const runtimeDesiredStepId = dev.desiredStepId ?? initialDesiredStepId;
@@ -186,6 +193,7 @@ export function buildBasePlanDevice(params: {
   }, {
     anyOtherDeviceLimited: params.anyOtherDeviceLimited,
     boostActive,
+    surplusCeilingStepId,
   });
   const baseReason: DeviceReason = controllable
     ? shedReasons.get(dev.id) ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
@@ -269,18 +277,19 @@ function pickSteppedPlanFields(
 function pickPropagatedPlanFields(
   dev: Pick<
     PlanInputDevice,
-    'stepPowerCalibration' | 'residualKw' | 'surplusOnly'
+    'stepPowerCalibration' | 'residualKw' | 'surplusOnly' | 'surplusTracking'
     | 'externalOffHoldActive' | 'reservesStartupPower'
   >,
 ): Partial<Pick<
   DevicePlanDevice,
-  'stepPowerCalibration' | 'surplusOnly'
+  'stepPowerCalibration' | 'surplusOnly' | 'surplusTracking'
   | 'externalOffHoldActive' | 'reservesStartupPower'
 >> & Pick<DevicePlanDevice, 'residualKw'> {
   return {
     ...(dev.stepPowerCalibration ? { stepPowerCalibration: dev.stepPowerCalibration } : {}),
     residualKw: dev.residualKw,
     ...(dev.surplusOnly === true ? { surplusOnly: true as const } : {}),
+    ...(dev.surplusTracking === true ? { surplusTracking: true as const } : {}),
     ...(dev.externalOffHoldActive === true ? { externalOffHoldActive: true as const } : {}),
     ...(dev.reservesStartupPower === true ? { reservesStartupPower: true as const } : {}),
   };
