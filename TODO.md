@@ -3466,6 +3466,25 @@ non-blocking follow-ups.*
       actually covers the current hour. Files: `lib/plan/pelsStatus.ts`. *P3 (release-review adversarial
       verify, 2026-07-03).*
 
+- [ ] **A smart task and "match solar surplus" cannot combine on one device — the task wins outright.**
+      `runSurplusPass` (`lib/plan/planBuilderSurplus.ts:72-77`) drops every device in
+      `admittedDeviceIds` from BOTH the allocator and the hold, so a charger with a soft deadline
+      stops tracking surplus entirely for the whole life of the task — including the sunny hours
+      long before the deadline bites, which is exactly when the owner wanted solar-only charging.
+      The settings UI mirrors it by disabling the toggle outright. What changes: let a device whose
+      deferred objective is `enforcement: 'soft'` and whose deadline is not yet pressing keep its
+      surplus ceiling, and hand the task priority only once its own admission says it must charge
+      to make the deadline (the horizon planner already computes that boundary). Options if that
+      proves too fine-grained: a per-task "prefer solar" flag, or leaving the current all-or-nothing
+      and saying so in the toggle copy instead. Done when a charger with a soft deadline tomorrow
+      morning charges only on surplus through a sunny afternoon, then takes grid power overnight to
+      make the deadline. *Persona:* prosumer with PV + EV (`notes/personas.md` — the Smart tasks row
+      names this as the remaining gap). *Hypothesis:* the two features were built independently and
+      the exclusion is a precedence shortcut, not a considered product ruling; combining them is the
+      shape owners actually ask for ("leave it plugged in, use the sun, but be full by 07:00").
+      *Why:* without it "charge on solar surplus" and "be charged by X" are mutually exclusive, and
+      an owner who wants both must pick one. *P2 (from the surplus-tracking train, 2026-08-26).*
+
 - [ ] **Battery surplus Flow trigger: "Solar surplus started/stopped" + kW token (deferred from the surplus ladder).**
       *Hypothesis:* battery control stays permanently out (docs/solar.md commitment), but a Flow
       trigger carrying the post-allocator pool remainder lets a battery app charge with exactly the

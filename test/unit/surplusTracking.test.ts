@@ -11,7 +11,10 @@ import {
   type SurplusFloorPolicy,
 } from '../../lib/plan/planSurplusAbsorb';
 import { resolveHighestStepWithinKw } from '../../lib/plan/planSteppedLoad';
-import { SURPLUS_ABSORB_SETTLE_MS } from '../../lib/plan/admission/surplusAbsorb';
+import {
+  SURPLUS_ABSORB_SETTLE_MS,
+  SURPLUS_TRACK_STEP_MIN_INTERVAL_MS,
+} from '../../lib/plan/admission/surplusAbsorb';
 import { createPlanEngineState, type PlanEngineState } from '../../lib/plan/planState';
 import { buildPlanInputDevice, steppedProfile } from '../utils/planTestUtils';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
@@ -264,6 +267,71 @@ describe('surplus tracking — the variable claimant', () => {
       devices: [buildTracker({ currentDrawKw: 2.0 })],
     });
     expect(ceiling(state)).toBe(engagedRung);
+  });
+
+  describe('rung pacing', () => {
+    it('holds a climb back until the pacing interval has passed', () => {
+      const state = createPlanEngineState();
+      engage({ state, signedNetKw: -1.6, devices: [buildTracker()] });
+      expect(ceiling(state)).toBe('low');
+
+      // Sun comes out one build later. The pool now covers `max`, but the
+      // ceiling only moved up a moment ago — a charger current change every
+      // build is exactly what the interval exists to prevent.
+      resolve({
+        state,
+        signedNetKw: -3.3,
+        nowTs: SURPLUS_ABSORB_SETTLE_MS + 2,
+        devices: [buildTracker({ currentDrawKw: 1.25 })],
+      });
+      expect(ceiling(state)).toBe('low');
+
+      resolve({
+        state,
+        signedNetKw: -3.3,
+        nowTs: SURPLUS_ABSORB_SETTLE_MS + SURPLUS_TRACK_STEP_MIN_INTERVAL_MS + 2,
+        devices: [buildTracker({ currentDrawKw: 1.25 })],
+      });
+      expect(ceiling(state)).toBe('max');
+    });
+
+    it('drops immediately — pacing is asymmetric on purpose', () => {
+      const state = createPlanEngineState();
+      engage({ state, signedNetKw: -3.3, devices: [buildTracker()] });
+      expect(ceiling(state)).toBe('max');
+
+      // A cloud, one build later. The device is drawing 3.0 kW against a true
+      // surplus that just fell to 2.2 kW, so the meter now shows 0.8 kW of
+      // IMPORT — and the pool reconstructs to 2.2 kW through the add-back,
+      // leaving 1.95 kW after the reserve. The answer is to step down,
+      // immediately: waiting would mean importing against surplus that is
+      // already gone.
+      resolve({
+        state,
+        signedNetKw: 0.8,
+        nowTs: SURPLUS_ABSORB_SETTLE_MS + 2,
+        devices: [buildTracker({ currentDrawKw: 3.0 })],
+      });
+      expect(ceiling(state)).toBe('low');
+    });
+
+    it('steps down rather than releasing when its own draw is what pushed net positive', () => {
+      // The regression this guards: the shared hard-off test reads raw net
+      // import at a 0.35 kW threshold. Applied to a modulating absorber it would
+      // fire on ANY cloud — the device's own draw is what made net positive — and
+      // slam it to `off` instead of down a rung. A tracking device is therefore
+      // hard-off on the POOL being gone, not on the meter reading positive.
+      const state = createPlanEngineState();
+      engage({ state, signedNetKw: -3.3, devices: [buildTracker()] });
+      resolve({
+        state,
+        signedNetKw: 1.5,
+        nowTs: SURPLUS_ABSORB_SETTLE_MS + 2,
+        devices: [buildTracker({ currentDrawKw: 3.0 })],
+      });
+      // Pool = -1.5 + 3.0 = 1.5 kW, budget 1.25 → still on the ladder, at `low`.
+      expect(ceiling(state)).toBe('low');
+    });
   });
 
   it('gates on the ladder FLOOR — the cost of running at all', () => {

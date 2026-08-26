@@ -25,6 +25,7 @@ export {
   clearSurplusEligibility,
   clearSurplusTrackingStep,
   SURPLUS_ABSORB_HARD_OFF_IMPORT_KW,
+  SURPLUS_TRACK_STEP_MIN_INTERVAL_MS,
   SURPLUS_ABSORB_RESERVE_KW,
   syncSurplusEligibilityState,
 } from './surplusAbsorb';

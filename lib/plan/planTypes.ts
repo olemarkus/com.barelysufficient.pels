@@ -529,6 +529,11 @@ type DevicePlanDeviceBase = {
   // builder can maintain the plan-less-safe `surplusOnlyShedByDevice` stamp from the
   // finalized shed set.
   surplusOnly?: true;
+  // Producer-resolved "Match solar surplus" tracking posture, forwarded flat from
+  // `PlanInputDevice.surplusTracking` (see its doc block). Rides the plan device
+  // so the reason-pair validator can pair `awaiting_solar_surplus` with the
+  // posture that earned it, exactly as `surplusOnly` does.
+  surplusTracking?: true;
   // Producer-resolved "Leave off until turned on again" posture, forwarded flat
   // from `PlanInputDevice.externalOffHoldActive` (see its doc block). The planner
   // makes the device inactive and never asks why it is off.

@@ -19,7 +19,7 @@ import {
   isSteppedLoadDevice,
   resolveSteppedLoadRestoreDeltaKw,
 } from '../planSteppedLoad';
-import { getSteppedLoadLowestActiveStep } from '../../utils/deviceControlProfiles';
+import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../../utils/deviceControlProfiles';
 import {
   getActivationPenaltyLevel,
   getActivationRestoreBlockCountdownTiming,
@@ -170,6 +170,32 @@ export function blockRestoreForRecentActivationSetback(params: {
   return true;
 }
 
+/**
+ * Answers the restore step if it may be taken, or null. Null for a
+ * surplus-TRACKING device whose next rung sits above the one this cycle's solar
+ * allocation bought it; the step unchanged for every other device.
+ *
+ * The ceiling has to be enforced here as well as on the keep path, because
+ * restore is a separate lane that decides from grid HEADROOM rather than from
+ * the surplus pool — without this it would silently undo the ceiling every
+ * cycle. A boosted device passes: a boost is a live demand that outranks "use
+ * only your own sun", the same call `resolveSteppedKeepDesiredStepId` makes.
+ */
+function admitStepUnderSurplusCeiling<T extends { id: string; planningPowerW: number }>(
+  dev: SteppedPlanDevice,
+  state: PlanEngineState,
+  nextStep: T | null,
+): T | null {
+  if (!nextStep) return null;
+  if (dev.surplusTracking !== true) return nextStep;
+  if (dev.boostActive === true) return nextStep;
+  const ceilingStepId = state.surplusTrackingStepByDevice[dev.id];
+  if (ceilingStepId === undefined) return nextStep;
+  const ceilingStep = getSteppedLoadStep(dev.steppedLoadProfile, ceilingStepId);
+  if (!ceilingStep) return nextStep;
+  return nextStep.planningPowerW <= ceilingStep.planningPowerW ? nextStep : null;
+}
+
 export function planRestoreForSteppedDevice(params: {
   dev: SteppedPlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -204,7 +230,11 @@ export function planRestoreForSteppedDevice(params: {
   // restore cooldown or meter-settling gate — per-device restore timing still applies. Resolve
   // "active" via the step axis so a step-only stepper (no binary handle) is recognised too.
   const deviceIsActive = isActiveSteppedRestoreCandidate(dev);
-  const nextStep = getSteppedLoadNextRestoreStep(dev);
+  const requestedStep = getSteppedLoadNextRestoreStep(dev);
+  // The gates below see the step the ladder WANTED — that is what their logging
+  // and admission are about — while `nextStep` is the step the surplus ceiling
+  // actually admits, and drives everything after it.
+  const nextStep = admitStepUnderSurplusCeiling(dev, state, requestedStep);
   if (applySteppedDeviceGates({
     dev,
     deviceMap,
@@ -215,7 +245,7 @@ export function planRestoreForSteppedDevice(params: {
     restoreDebugKey,
     availableHeadroom,
     phase,
-    requestedStepId: nextStep?.id ?? null,
+    requestedStepId: requestedStep?.id ?? null,
     debugStructured,
     admissionMode,
   })) {

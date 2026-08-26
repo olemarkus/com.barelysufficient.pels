@@ -265,7 +265,18 @@ export const resolveSteppedKeepDesiredStepId = (
     currentOn?: boolean;
     plannedState?: string;
   },
-  options: { anyOtherDeviceLimited?: boolean; boostActive?: boolean } = {},
+  options: {
+    anyOtherDeviceLimited?: boolean;
+    boostActive?: boolean;
+    /**
+     * The rung this cycle's surplus allocation bought a surplus-TRACKING device
+     * (`PlanEngineState.surplusTrackingStepByDevice`), resolved by the producer
+     * and passed flat. A CEILING, never a target: it can only lower the answer
+     * this function would otherwise give, so capacity shedding stays the ceiling
+     * above it and the ordinary keep logic still owns everything below.
+     */
+    surplusCeilingStepId?: string;
+  } = {},
 ): string | undefined => {
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return device.desiredStepId;
@@ -283,6 +294,9 @@ export const resolveSteppedKeepDesiredStepId = (
     const baseStepId = device.desiredStepId && isSteppedLoadOffStep(profile, device.desiredStepId)
       ? lowestActiveStepId
       : device.desiredStepId;
+    // Boost bypasses the surplus ceiling deliberately, exactly as it bypasses
+    // the lowest-active fairness clamp: a boost is a live demand the owner (or a
+    // smart task) asked for, and "use only your own sun" must not outrank it.
     if (options.boostActive) {
       return resolveHigherSteppedLoadStepId({
         profile,
@@ -290,26 +304,49 @@ export const resolveSteppedKeepDesiredStepId = (
         secondStepId: resolvePlannerEffectiveStepId(device),
       }) ?? lowestActiveStepId;
     }
-    return clampToLowestActiveWhenOtherDevicesLimited({
+    return clampToSurplusCeiling(profile, clampToLowestActiveWhenOtherDevicesLimited({
       profile,
       stepId: baseStepId,
       lowestActiveStep,
       anyOtherDeviceLimited: options.anyOtherDeviceLimited === true,
-    });
+    }), options.surplusCeilingStepId);
   }
 
   if (isPlanDeviceObservedOff(device)) {
-    return lowestActiveStepId;
+    return clampToSurplusCeiling(profile, lowestActiveStepId, options.surplusCeilingStepId);
   }
 
   const selectedStep = getSteppedLoadStep(profile, resolvePlannerEffectiveStepId(device));
-  if (!selectedStep || selectedStep.planningPowerW <= 0) return lowestActiveStepId;
-  return clampToLowestActiveWhenOtherDevicesLimited({
+  if (!selectedStep || selectedStep.planningPowerW <= 0) {
+    return clampToSurplusCeiling(profile, lowestActiveStepId, options.surplusCeilingStepId);
+  }
+  return clampToSurplusCeiling(profile, clampToLowestActiveWhenOtherDevicesLimited({
     profile,
     stepId: selectedStep.id,
     lowestActiveStep,
     anyOtherDeviceLimited: options.anyOtherDeviceLimited === true,
-  });
+  }), options.surplusCeilingStepId);
+};
+
+/**
+ * Lower `stepId` to the surplus allocation's rung when it sits above it. Never
+ * raises: a device already below its allocation stays where it is, so the
+ * ceiling can only ever cost the device power, never hand it any. That
+ * one-directionality is what keeps this an admission term rather than an
+ * actuation decision (`lib/plan/shedding/AGENTS.md` — "express it as an
+ * admission term instead").
+ */
+const clampToSurplusCeiling = (
+  profile: SteppedLoadProfile,
+  stepId: string | undefined,
+  surplusCeilingStepId: string | undefined,
+): string | undefined => {
+  if (surplusCeilingStepId === undefined || stepId === undefined) return stepId;
+  if (stepId === surplusCeilingStepId) return stepId;
+  const ceilingStep = getSteppedLoadStep(profile, surplusCeilingStepId);
+  const step = getSteppedLoadStep(profile, stepId);
+  if (!ceilingStep || !step) return stepId;
+  return step.planningPowerW > ceilingStep.planningPowerW ? ceilingStep.id : stepId;
 };
 
 const resolveHigherSteppedLoadStepId = (params: {

@@ -68,17 +68,21 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
 const REASON_REQUIRED_FLAGS = [
   {
     code: PLAN_REASON_CODES.awaitingSolarSurplus,
-    flag: 'surplusOnly',
-    label: 'awaiting solar surplus requires surplusOnly',
+    // Either surplus posture that can hold a device OFF earns the reason: the
+    // binary dump load, and a tracking device whose allocation clamped it to an
+    // off rung. A tracking device under the `'minimum'` floor is limited rather
+    // than held, so it never carries this code in the first place.
+    flags: ['surplusOnly', 'surplusTracking'],
+    label: 'awaiting solar surplus requires surplusOnly or surplusTracking',
   },
   {
     code: PLAN_REASON_CODES.externalOffHold,
-    flag: 'externalOffHoldActive',
+    flags: ['externalOffHoldActive'],
     label: 'external off hold requires externalOffHoldActive',
   },
 ] as const satisfies readonly {
   code: PlanReasonCode;
-  flag: keyof DevicePlanDevice;
+  flags: readonly (keyof DevicePlanDevice)[];
   label: string;
 }[];
 
@@ -134,7 +138,7 @@ function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidation
   // and `externalOffHold` would claim PELS is respecting an off action it never
   // observed. Cheap to check at finalization; a violation is a planner bug.
   const requiredFlag = REASON_REQUIRED_FLAGS.find((rule) => rule.code === reasonCode);
-  if (requiredFlag && dev[requiredFlag.flag] !== true) {
+  if (requiredFlag && !requiredFlag.flags.some((flag) => dev[flag] === true)) {
     return {
       deviceId: dev.id,
       deviceName: dev.name,

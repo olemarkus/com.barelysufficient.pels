@@ -3,6 +3,7 @@ import type { PlanInputDevice } from './planTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type {
   SteppedLoadProfile,
+  SteppedLoadStep,
   TargetCapabilitySnapshot,
 } from '../../packages/contracts/src/types';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
@@ -12,6 +13,7 @@ import {
   clearSurplusTrackingStep,
   SURPLUS_ABSORB_HARD_OFF_IMPORT_KW,
   SURPLUS_ABSORB_RESERVE_KW,
+  SURPLUS_TRACK_STEP_MIN_INTERVAL_MS,
   syncSurplusEligibilityState,
 } from './admission';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
@@ -22,6 +24,7 @@ import {
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadOffStep,
+  getSteppedLoadStep,
 } from '../utils/deviceControlProfiles';
 import {
   isSteppedLoadDevice,
@@ -267,6 +270,45 @@ function pruneNonCandidateSurplusState(
   }
 }
 
+/**
+ * Hold a ceiling CLIMB back until `SURPLUS_TRACK_STEP_MIN_INTERVAL_MS` has passed
+ * since the last one; drops pass through untouched. Answers the rung to use.
+ *
+ * The pool is recomputed every build, so without this the ceiling would chase
+ * every cloud edge at build cadence — a charger current change every 10 s. The
+ * asymmetry is the point: waiting to take more power costs a little
+ * self-consumption, while waiting to give it back means importing against
+ * surplus that is already gone.
+ */
+function paceCeilingClimb(params: {
+  dev: PlanInputDevice;
+  state: PlanEngineState;
+  target: SteppedLoadStep;
+  nowTs: number;
+}): SteppedLoadStep {
+  const { dev, state, target, nowTs } = params;
+  const currentId = state.surplusTrackingStepByDevice[dev.id];
+  if (currentId === undefined || currentId === target.id) {
+    state.surplusTrackingRaisedMs[dev.id] = nowTs;
+    return target;
+  }
+  if (!isSteppedLoadDevice(dev)) return target;
+  const current = getSteppedLoadStep(dev.steppedLoadProfile, currentId);
+  // An unknown current rung (profile changed under us) is not evidence of
+  // anything — take the fresh answer rather than pacing against a ghost.
+  if (!current) {
+    state.surplusTrackingRaisedMs[dev.id] = nowTs;
+    return target;
+  }
+  if (target.planningPowerW <= current.planningPowerW) return target;
+  const raisedMs = state.surplusTrackingRaisedMs[dev.id];
+  if (isFiniteNumber(raisedMs) && nowTs - raisedMs < SURPLUS_TRACK_STEP_MIN_INTERVAL_MS) {
+    return current;
+  }
+  state.surplusTrackingRaisedMs[dev.id] = nowTs;
+  return target;
+}
+
 const resolveFloorPolicy = (config: SurplusConfig | undefined): SurplusFloorPolicy => (
   readSurplusFloorPolicy(config?.surplusFloor)
 );
@@ -305,11 +347,19 @@ function claimForTrackingDevice(params: {
   dev: PlanInputDevice;
   state: PlanEngineState;
   poolKw: number;
-  hardOff: boolean;
   nowTs: number;
   floor: SurplusFloorPolicy;
 }): number {
-  const { dev, state, poolKw, hardOff, nowTs, floor } = params;
+  const { dev, state, poolKw, nowTs, floor } = params;
+  // A tracking device gets its OWN hard-off test, and it must: the shared one
+  // (`isHardOffCondition`) reads raw net import, which for a fixed-draw absorber
+  // is honest evidence that surplus is gone. For a modulating one it is not —
+  // this device's own draw is what pushed net positive, so any cloud at all
+  // would trip a 0.35 kW threshold and release it outright. The right answer to
+  // "my rung is now too high" is to step DOWN, which the pool arithmetic already
+  // produces (the add-back reconstructs the true surplus). So the unambiguous
+  // condition here is the POOL being gone, not the meter reading positive.
+  const hardOff = poolKw <= 0;
   // Narrowing, not a re-derivation: the posture already required a ladder, so a
   // device reaching here without one is a producer bug rather than a state to
   // model. Leave it unclamped.
@@ -349,8 +399,9 @@ function claimForTrackingDevice(params: {
     ? resolveHighestStepWithinKw(dev, poolKw - SURPLUS_ABSORB_RESERVE_KW)
     : null;
   if (fitting) {
-    state.surplusTrackingStepByDevice[dev.id] = fitting.id;
-    return resolveStepAdmissionKw(dev, fitting.id);
+    const paced = paceCeilingClimb({ dev, state, target: fitting, nowTs });
+    state.surplusTrackingStepByDevice[dev.id] = paced.id;
+    return resolveStepAdmissionKw(dev, paced.id);
   }
 
   // Nothing fits (or the gate has not engaged). The floor policy is the owner's
@@ -474,7 +525,7 @@ export function resolveSurplusEligibility(params: {
   for (const dev of ordered) {
     if (dev.surplusTracking === true) {
       poolKw -= claimForTrackingDevice({
-        dev, state, poolKw, hardOff, nowTs, floor: resolveFloorPolicy(getConfig(dev.id)),
+        dev, state, poolKw, nowTs, floor: resolveFloorPolicy(getConfig(dev.id)),
       });
       continue;
     }
