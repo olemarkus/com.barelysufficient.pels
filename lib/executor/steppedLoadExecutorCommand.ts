@@ -4,7 +4,7 @@ import {
 import type { SteppedLoadStep } from '../../packages/contracts/src/types';
 import {
   recordActivationAttemptStarted,
-} from '../plan/planExecutorSupport';
+} from './executorSupport';
 import { resolveSteppedLoadCommandPendingMs } from '../plan/planObservationPolicy';
 import { isRequestedStepMaterialized } from './steppedLoadActuation';
 import type {

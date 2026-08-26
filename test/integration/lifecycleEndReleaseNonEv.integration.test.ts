@@ -350,18 +350,17 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       expect(onoffWritesAfterReEmit).toHaveLength(1); // unchanged from the first cycle
     });
 
-    // Counter-case: a heater whose snapshot still reads `currentOn: true` on
-    // the second cycle (e.g. the device hasn't reported back yet) is gated by
-    // the per-device shed throttle in `shouldSkipShedding`. Without the
-    // throttle, the executor would re-issue the same off command every cycle
-    // until telemetry confirms.
-    it('throttles re-firing within the shed cooldown when the snapshot has not caught up', async () => {
+    // Counter-case: a heater whose snapshot still reads `currentOn: true` on the
+    // second cycle (the device hasn't reported back yet) must not have the same
+    // off command re-issued. The guard that holds is the pending-binary-command
+    // record — a matching command in flight suppresses the duplicate for the
+    // whole confirmation window (`lib/observer/controlCommandConfirmation.ts`).
+    it('does not re-fire the off command while the first one is still pending', async () => {
       const heater = buildBinaryHeaterSnapshot();
       const harness = buildHarness([heater]);
-      // Drive the first shed manually through `applyBinarySheddingToDevice`
-      // to seed `lastDeviceShedMs` (mirrors what the executor records after a
-      // successful shed). Pre-throttle the snapshot back to currentOn=true to
-      // simulate "the off command landed but telemetry hasn't refreshed yet."
+      // Drive the first shed manually through `applyBinarySheddingToDevice`,
+      // then put the snapshot back to currentOn=true to simulate "the off
+      // command landed but telemetry hasn't refreshed yet."
       await applyBinarySheddingToDevice(harness.binaryCtx, {
         deviceId: heater.id,
         deviceName: heater.name,
@@ -378,16 +377,12 @@ describe('idle-bucket release for non-EV devices — integration', () => {
         binaryCtx: harness.binaryCtx,
         targetCtx: harness.targetCtx,
       });
-      // shouldSkipShedding consults `state.lastDeviceShedMs` and `Date.now()`;
-      // applyBinarySheddingToDevice did NOT set lastDeviceShedMs (that's
-      // recorded by `recordShedActuation` at the executor layer). What it
-      // DID set is the pending state lifecycle through pendingSheds (add/
-      // delete in a try/finally), which is empty by the time we re-enter.
-      // So the second call here is gated by the `pendingBinaryCommands`
-      // store: the first call recorded a pending entry, and
-      // `shouldSkipShedding` checks `state.pendingSheds` for the in-flight
-      // window. Since pendingSheds is cleared in the finally block, the
-      // gate that actually fires is the pending binary command record.
+      // `shouldSkipShedding` only asks whether the device is reachable and
+      // whether one of THIS executor's writes is still in flight
+      // (`state.pendingSheds`), and pendingSheds is cleared in the first call's
+      // finally block. So the gate that actually fires is one level down: the
+      // first call recorded a pending binary command, and `shouldSkipBinaryControl`
+      // skips a matching desired state as `already_pending`.
       const secondResult = await applyShedReleaseIntent({
         intent,
         steppedLoadIntent: undefined,
@@ -395,9 +390,8 @@ describe('idle-bucket release for non-EV devices — integration', () => {
         snapshot: racedSnap,
         deps,
       });
-      // Either the pending-binary-command guard or the already-off / pending
-      // path skips the write. Either way the test pins that no SECOND
-      // capability write is issued.
+      // The pending-binary-command guard skips the write; no SECOND capability
+      // write is issued.
       expect(secondResult).toBe(false);
       const onoffWrites = harness.setCapabilityCalls.filter((c) => c.capabilityId === 'onoff');
       // Exactly one onoff write across both cycles.

@@ -13,7 +13,7 @@ import type { PlanEngineState } from '../plan/planState';
 import {
   shouldSkipShedding,
   shouldSkipUnavailable,
-} from '../plan/planExecutorSupport';
+} from './executorSupport';
 import { getLogger } from '../logging/logger';
 import type {
   ExecutableBinaryIntent,

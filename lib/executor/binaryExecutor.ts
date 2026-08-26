@@ -6,7 +6,7 @@ import {
 import { getLogger } from '../logging/logger';
 import {
   shouldSkipShedding,
-} from '../plan/planExecutorSupport';
+} from './executorSupport';
 import {
   getBinaryControlPlan,
 } from '../plan/planBinaryControl';

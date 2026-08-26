@@ -23,7 +23,7 @@ import {
   recordActivationAttemptStarted,
   recordDiagnosticsRestore,
   recordDiagnosticsShed,
-} from '../plan/planExecutorSupport';
+} from './executorSupport';
 import { getLogger } from '../logging/logger';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { Actuator } from '../actuator/deviceActuator';

@@ -1,61 +1,15 @@
 import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
-import type { DeviceDescriptor, ObservedDeviceState } from '../../packages/contracts/src/types';
-import type { PlanEngineState } from './planState';
-import { isCanSetControl } from '../device/deviceActionProjection';
+import type { ObservedDeviceState } from '../../packages/contracts/src/types';
+import type { PlanEngineState } from '../plan/planState';
 import {
   type ActivationAttemptSource,
   closeActivationAttemptForShed,
   recordActivationAttemptStart,
-} from './admission';
+} from '../plan/admission';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { getLogger } from '../logging/logger';
 
-const logger = getLogger('plan/executor-support');
-
-const isShedThrottled = (params: {
-  state: Pick<PlanEngineState, 'lastDeviceShedMs'>;
-  deviceId: string;
-  nowTs: number;
-}): number | null => {
-  const lastForDevice = params.state.lastDeviceShedMs[params.deviceId];
-  const throttleMs = 5000;
-  if (!lastForDevice) return null;
-  const elapsedMs = params.nowTs - lastForDevice;
-  return elapsedMs < throttleMs ? elapsedMs : null;
-};
-
-/**
- * Restore-time admission gate: true when the device is commandable AND its
- * binary control capability is writeable this cycle. Reads producer-resolved
- * bits (`commandableNow`, `canSetControlResolved`) when present (planner
- * call sites) and falls back to resolution from the observer's semantic binary
- * state plus descriptor writeability flags for executor snapshot call sites.
- *
- * Chunk 6 of the planner-detype refactor: producer now resolves both bits
- * so this gate no longer round-trips through `getBinaryControlPlan` +
- * `getEvRestoreBlockReason`.
- *
- * Reads observer-resolved commandability plus descriptor writeability — the decomposed snapshot halves, not
- * the raw producer `TargetDeviceSnapshot`. The full snapshot stays assignable.
- */
-export type CanTurnOnDeviceSnapshot = ObservedDeviceState
-  & Pick<DeviceDescriptor, 'capabilities' | 'canSetControl'>
-  & { currentOn?: boolean; commandableNow?: boolean };
-
-export const canTurnOnDevice = (snapshot?: CanTurnOnDeviceSnapshot): boolean => {
-  if (!snapshot) return false;
-  // `canTurnOnDevice` takes a raw observed snapshot, so this IS the producer
-  // call — the one sanctioned reader of the plug-state for this carrier.
-  if (snapshot.commandableNow === false || snapshot.available === false) return false;
-  if (!isCanSetControl({
-    binaryControl: snapshot.binaryControl,
-    currentOn: snapshot.currentOn,
-    capabilities: snapshot.capabilities,
-    canSetControl: snapshot.canSetControl,
-    canSetOnOff: (snapshot as { canSetOnOff?: boolean }).canSetOnOff,
-  })) return false;
-  return true;
-};
+const logger = getLogger('executor/support');
 
 export const shouldSkipUnavailable = (params: {
   // Stage 5: narrowed to the observed surface — this gate reads only the
@@ -79,12 +33,21 @@ export const shouldSkipUnavailable = (params: {
   return true;
 };
 
+/**
+ * The executor's own precheck before it writes a shed: is this device reachable,
+ * and is one of my own writes already in flight for it? Both are facts about the
+ * write, not about pacing.
+ *
+ * There is deliberately NO cooldown here. Pacing — how soon PELS may change a
+ * device again — is planner admission, and enforcing it in the write path let the
+ * executor silently drop a shed the planner had already decided. See
+ * `notes/state-management/actuation-clocks-and-settle.md`.
+ */
 export const shouldSkipShedding = (params: {
-  state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'pendingSheds'>;
+  state: Pick<PlanEngineState, 'pendingSheds'>;
   deviceId: string;
   deviceName: string;
   snapshotState: Pick<ObservedDeviceState, 'available' | 'binaryControl'> | undefined;
-  nowTs?: number;
 }): boolean => {
   const {
     state,
@@ -101,20 +64,6 @@ export const shouldSkipShedding = (params: {
       deviceId,
       deviceName,
       msg: `Actuator: skip shedding ${deviceName}, device unavailable`,
-    });
-    return true;
-  }
-
-  const nowTs = params.nowTs ?? Date.now();
-  const throttledElapsedMs = isShedThrottled({ state, deviceId, nowTs });
-  if (throttledElapsedMs !== null) {
-    logger.debug({
-      event: 'plan_shed_skipped',
-      reasonCode: 'throttled',
-      deviceId,
-      deviceName,
-      throttledElapsedMs,
-      msg: `Actuator: skip shedding ${deviceName}, throttled (${throttledElapsedMs}ms since last)`,
     });
     return true;
   }

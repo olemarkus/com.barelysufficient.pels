@@ -7,7 +7,7 @@
  * returns the same value as the pre-PR version.
  */
 import { describe, expect, it } from 'vitest';
-import { canTurnOnDevice, type CanTurnOnDeviceSnapshot } from '../../lib/plan/planExecutorSupport';
+import { canTurnOnDevice, type CanTurnOnDeviceSnapshot } from '../../lib/plan/deviceCommandability';
 import type { EvObservedProbe } from '../../packages/contracts/src/types';
 
 const baseSnapshot = (
