@@ -31,10 +31,17 @@ export const TEMPERATURE_SURPLUS_REASON = 'Raised to use your solar power';
 // no separate binary card-text module.
 export const BINARY_SURPLUS_ACTIVE_REASON = 'On to use your solar power';
 
-// A dump-load surplus run is a benign, user-opted-in posture — surface it ONLY while
-// the device is actively running (`kind === 'active'`), mirroring
+// A surplus run is a benign, user-opted-in posture — surface it ONLY while the
+// device is actively running (`kind === 'active'`), mirroring
 // `resolveSurplusAbsorbReason` below: the claim "PELS turned this on to use your
 // solar" must never sit on an off/held/manual/unavailable card.
+//
+// Serves BOTH non-temperature modalities. The name is historical (the dump load
+// came first) but the question it asks — is a surplus posture the reason this
+// device is running right now — is the same for a stepped device tracking its
+// surplus, and `surplusAbsorbActive` is set for both. A tracking device is only
+// stamped active while parked above its off rung, so a device waiting for sun
+// falls through to the hold reason instead, exactly as a dump load does.
 export const resolveBinarySurplusReasonLine = (
   device: Pick<DeviceOverviewSnapshot, 'surplusAbsorbActive'>,
   kind: string,

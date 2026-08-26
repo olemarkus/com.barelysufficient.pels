@@ -48,6 +48,10 @@ import {
   updateSurplusSectionVisibility,
 } from './solarSurplus.ts';
 import {
+  initDeviceDetailSurplusTrackingHandlers,
+  setDeviceDetailSurplusTrackingControl,
+} from './solarSurplusTracking.ts';
+import {
   initDeviceDetailShedHandlers,
   loadShedBehaviors,
   setDeviceDetailShedBehavior,
@@ -221,6 +225,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   // Binary sibling: the "Run on solar surplus" dump-load posture row (solarSurplus.ts
   // owns the gate — managed binary device, solar present, not temperature/stepped/EV).
   setDeviceDetailDumpLoadControl({ deviceId, getDeviceById });
+  setDeviceDetailSurplusTrackingControl({ deviceId, getDeviceById });
   syncRespectExternalOffRow({ deviceId, getDeviceById });
   syncTemperatureControlDisabledRow({ deviceId, getDeviceById });
 
@@ -477,6 +482,10 @@ export const initDeviceDetailHandlers = () => {
     getDeviceById,
   });
   initDeviceDetailSurplusOptHandlers({
+    getCurrentDetailDeviceId,
+    getDeviceById,
+  });
+  initDeviceDetailSurplusTrackingHandlers({
     getCurrentDetailDeviceId,
     getDeviceById,
   });

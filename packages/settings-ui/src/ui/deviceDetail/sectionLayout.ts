@@ -28,6 +28,7 @@ const SECTION_IDS = {
   modes: 'device-detail-modes-section',
   delta: 'device-detail-delta-section',
   surplus: 'device-detail-surplus-section',
+  surplusTrack: 'device-detail-surplus-track-section',
   shedding: 'device-detail-shedding-section',
   stepped: 'device-detail-stepped-section',
   charging: 'device-detail-charging-section',
@@ -47,9 +48,9 @@ const ALL_SECTION_KEYS = Object.keys(SECTION_IDS) as SectionKey[];
 // gates hide) is derived, so an omitted key can never strand a section at the
 // previous kind's position.
 const SECTION_HEAD: Record<DeviceDetailKind, readonly SectionKey[]> = {
-  ev_charger: ['charging', 'car', 'stepped', 'setup', 'activityLog', 'diagnostics'],
+  ev_charger: ['charging', 'surplusTrack', 'car', 'stepped', 'setup', 'activityLog', 'diagnostics'],
   temperature: ['modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'activityLog', 'diagnostics'],
-  stepped: ['stepped', 'shedding', 'setup', 'activityLog', 'diagnostics'],
+  stepped: ['stepped', 'surplusTrack', 'shedding', 'setup', 'activityLog', 'diagnostics'],
   binary: ['shedding', 'surplus', 'setup', 'activityLog', 'diagnostics'],
 };
 

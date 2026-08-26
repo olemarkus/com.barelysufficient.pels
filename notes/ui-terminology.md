@@ -539,17 +539,26 @@ The **Available power** (headroom) dashboard widget shares vocabulary with the r
 
 ## Solar surplus vocabulary
 
-Two per-device surplus controls share the `surplusWilling` opt-in; the label names what happens for that device's modality:
+THREE per-device surplus controls share the `surplusWilling` opt-in; the label names what happens for that device's modality, and the device's own shape picks which one it gets:
 
 | Concept | Label |
 |---|---|
 | Temperature device setpoint lift (toggle) | `Use solar surplus` |
 | Binary dump-load posture (toggle) | `Run on solar surplus` |
+| Stepped-load tracking posture, EV charger (toggle) | `Charge on solar surplus` |
+| Stepped-load tracking posture, other stepped device (toggle) | `Match solar surplus` |
+| Tracking floor setting (select) | `When surplus runs out` → `Stop` / `Keep going at the lowest level` |
 | Temperature card reason while lifted | `Raised to use your solar power` |
-| Dump-load card reason while running on surplus | `On to use your solar power` |
-| Dump-load card reason while held off | `Waiting for solar surplus` |
+| Dump-load or tracking card reason while running on surplus | `On to use your solar power` |
+| Dump-load or tracking card reason while held off | `Waiting for solar surplus` |
 
-Sources: `packages/shared-domain/src/planTemperatureCardText.ts` (both card reasons) and `PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS` in `planStateLabels.ts`.
+Sources: `packages/shared-domain/src/planTemperatureCardText.ts` (the two card reasons), `PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS` in `planStateLabels.ts`, and `packages/shared-domain/src/solarSurplusTrackingCopy.ts` (every tracking string).
+
+The tracking toggle is the one place the label varies by device kind, and it varies because *what happens* varies: a charger's level is a charging current, a generic stepped load's is a level. Both are resolved from `resolveDeviceDetailKind`, never hardcoded per screen.
+
+**The floor hint must always name the real kilowatts.** A charger's lowest usable current is 6 A — about 1.4 kW on one phase and about 4.1 kW on three — so "keep going at the lowest level" can mean over four kilowatts of grid import on a three-phase charger. `resolveSurplusFloorHint` states that number whichever way the owner leans, read from the device's own configured levels rather than assumed. Do not soften this or move it to a tooltip: a toggle that quietly imports 4.1 kW while its section is titled "Solar surplus" would be dishonest, and the hover tooltip is unreachable in the touch WebView.
+
+A tracking device only carries `Waiting for solar surplus` when its allocation clamped it fully off — the `Stop` floor. Under `Keep going at the lowest level` it is still running, so it is limited rather than waiting, and saying otherwise on the card would be false.
 
 ### Leave off until turned on again
 

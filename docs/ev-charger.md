@@ -77,7 +77,20 @@ This feedback lets PELS confirm which charging level the charger selected. Use t
 
 When the reported value is amps, add `A` after the tag in the **matching** field, for example `[[Charger dynamic current]] A`. Without the `A` suffix, Homey may pass the number without a unit and PELS cannot reliably match it as charger current.
 
-## Step 4: Configure Boost Mode Battery Reporting
+## Step 4 (Optional): Charge on Solar Surplus
+
+If you have solar and PELS can see your export, you can have the charger follow the sun instead of running to your hard cap. In the charger's device page, turn on **Charge on solar surplus**.
+
+PELS then picks the charging current your export covers and adjusts it as the sun changes. Because a charger cannot go below **6 A** — about 1.4 kW on one phase, 4.1 kW on three — you also choose what happens when your surplus falls short, under **When surplus runs out**:
+
+| Setting | What happens |
+| --- | --- |
+| **Stop** (default) | Charging stops. Nothing is drawn from the grid for charging. |
+| **Keep going at the lowest level** | Charging continues at 6 A and the grid covers the rest. On a three-phase charger that is over 4 kW of import. |
+
+Your hard cap and daily budget still come first, and a smart task with a deadline overrides this while it is running. See [Solar and Self-Consumption](/solar) for the full picture.
+
+## Step 5: Configure Boost Mode Battery Reporting
 
 This step is optional. Basic capacity control does not need battery reporting.
 
@@ -94,7 +107,7 @@ Choose the same charger in the PELS action card, and map the battery percentage 
 
 After this Flow is running, PELS has battery reporting for the charger. EV boost mode can use that battery level to give the charger extra priority while the car is below the configured boost threshold.
 
-## Step 5: Check the Setup
+## Step 6: Check the Setup
 
 Start with **Simulation mode** if you are still tuning the rest of PELS. Then verify:
 
