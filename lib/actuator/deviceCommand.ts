@@ -67,7 +67,17 @@ export type ActuatorTransport = {
  * "already in posture" skips and never call the actuator in that case.
  */
 export type ActuatorOutcome =
-  | { requested: false }
+  | {
+    requested: false;
+    /**
+     * Why nothing was issued, when the transport can distinguish it. Absent
+     * means the plain case: there was no surface to command. `flow_trigger_timeout`
+     * means the opposite — a trigger DID go out and was never acknowledged, which
+     * callers must treat as an unknown outcome rather than an ordinary skip. The
+     * transport is the only layer that can tell these apart, so it says which.
+     */
+    reason?: 'flow_trigger_timeout';
+  }
   | {
     requested: true;
     kind: 'binary';

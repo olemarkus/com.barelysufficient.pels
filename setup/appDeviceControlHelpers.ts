@@ -384,13 +384,26 @@ export class AppDeviceControlHelpers {
   }
 
   markSteppedLoadDesiredStepIssued(params: MarkSteppedLoadDesiredStepIssuedParams): void {
-    const stepPowers = resolveIssuedTargetPowerStepPowers({
+    // An unacknowledged write arms no probe — see `unacknowledged` on the params
+    // type. `targetPowerProbeConfirmedMaxPowerW` is the field that arms it
+    // (`buildSteppedLoadPowerMetadata` stamps `targetPowerProbeStartedAtMs` only
+    // when it is present), so drop exactly that one. The planning powers stay:
+    // they are ordinary command metadata, and dropping them would change the
+    // continuing-probe comparison for a later acknowledged retry of the step.
+    const resolvedStepPowers = resolveIssuedTargetPowerStepPowers({
       config: this.deps.getTargetPowerConfig?.(params.deviceId),
       confirmedProfile: this.getSteppedLoadProfile(params.deviceId),
       desiredStepId: params.desiredStepId,
       previousStepId: params.previousStepId,
       issuedAtMs: params.issuedAtMs ?? Date.now(),
     });
+    const {
+      targetPowerProbeConfirmedMaxPowerW: _armsTheProbe,
+      ...planningPowersOnly
+    } = resolvedStepPowers;
+    const stepPowers = params.unacknowledged === true
+      ? planningPowersOnly
+      : resolvedStepPowers;
     markSteppedLoadDesiredStepIssued({
       runtimeState: this.runtimeState,
       deviceId: params.deviceId,

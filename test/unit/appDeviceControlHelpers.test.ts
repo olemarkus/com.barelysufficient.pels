@@ -424,6 +424,61 @@ describe('appDeviceControlHelpers', () => {
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
   });
 
+  it('arms no reachability probe for a write the hub never acknowledged', () => {
+    const baseConfig: TargetPowerSteppedLoadConfig = {
+      enabled: true,
+      preset: 'ev_charger_1_phase',
+      max: 7_360,
+    };
+    let config: TargetPowerConfigWithReachability = {
+      ...baseConfig,
+      reachability: buildTargetPowerReachabilityState({ config: baseConfig, maxReachedPowerW: 5_750 }),
+    };
+    const scheduleTargetPowerProbeSettlement = vi.fn();
+    const snapshot = baseSnapshot({
+      name: 'Quiet EV charger',
+      binaryControl: { on: true },
+      controlModel: 'stepped_load',
+      steppedLoadProfile: buildEvTargetPowerCandidateProfile(config),
+      targetPowerConfig: config,
+      reportedStepPowerW: 5_750,
+      reportedStepObservedAtMs: 500,
+    });
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getTargetPowerConfig: () => config,
+      updateTargetPowerReachability: (_deviceId, reachability) => {
+        config = { ...config, reachability };
+        return true;
+      },
+      scheduleTargetPowerProbeSettlement,
+      getDeviceSnapshots: () => [snapshot],
+      getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
+      debugStructured: vi.fn(),
+    });
+
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: '28a',
+      previousStepId: '25a',
+      issuedAtMs: 1_000,
+      pendingWindowMs: 100,
+      unacknowledged: true,
+    });
+
+    // No probe armed, and no settlement scheduled to fail later.
+    expect(scheduleTargetPowerProbeSettlement).not.toHaveBeenCalled();
+    const desired = helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1');
+    expect(desired?.targetPowerProbeStartedAtMs).toBeUndefined();
+    // The pending record itself is still written — the device stays unsettled.
+    expect(desired).toMatchObject({ lastIssuedAtMs: 1_000, stepId: '28a' });
+
+    // Settling the window records no reachability failure: PELS learned nothing
+    // about this charger from a socket it abandoned.
+    helpers.reconcileTargetPowerReachability([snapshot], 1_100);
+    expect(config.reachability).toMatchObject({ probeFailureCount: 0 });
+  });
+
   it('keeps a probe settlement anchored to its first issue across command retries', () => {
     const baseConfig: TargetPowerSteppedLoadConfig = {
       enabled: true,

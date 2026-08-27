@@ -59,6 +59,19 @@ This note is for contributors changing runtime logging.
 - `stepped_load_command_requested`
 - `stepped_load_command_skipped`
 - `stepped_load_command_failed`
+- `stepped_load_command_outcome_unknown` — the stepped twin of
+  `binary_command_outcome_unknown`: the write was abandoned (native transport
+  timeout) or the Flow trigger went unacknowledged, so the command stays pending
+  and telemetry settles it. Carries `effectiveTransition`, which says which
+  cooldown clock it stamped.
+- `homey_request_late_response` — a request the caller abandoned was answered
+  anyway. `failed_after_abandon` carries the owning app's own error body (this is
+  the only place a cloud device's real failure is visible); `landed_after_abandon`
+  means the write went through after PELS stopped waiting.
+- `homey_request_late_failure` — the abandoned request never produced a response.
+- `stepped_load_flow_trigger_unacknowledged` — emitted by the transport for the
+  Flow half of the above. Deliberately a distinct name so one occurrence is not
+  counted twice; the executor owns the `outcome_unknown` line.
 - `stepped_load_binary_transition_applied`
 - `restore_command_skipped`
 - `device_snapshot_refresh_completed`

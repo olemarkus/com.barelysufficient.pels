@@ -71,6 +71,8 @@ export type PlanEngineWiring = {
     issuedAtMs?: number;
     pendingWindowMs?: number;
     confirmationPolicy?: 'required' | 'assume_applied';
+    /** See `MarkSteppedLoadDesiredStepIssuedParams`: no probe on an unanswered write. */
+    unacknowledged?: boolean;
   }) => void;
   getSteppedLoadCommandSession: (deviceId: string) => {
     initializationAssumedStepId?: string;

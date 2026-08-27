@@ -207,8 +207,17 @@ export async function requestSteppedLoadStep(ctx: TransportContext, params: {
             deviceId,
         }));
         if (outcome === 'timed_out') {
-            (ctx.logger.structuredLog ?? moduleLogger).error({
-                event: 'stepped_load_command_failed',
+            // Unacknowledged, not failed: the trigger went out and nothing came
+            // back. The executor resolves it like a slow success and waits for
+            // telemetry, so this must not claim the command definitely failed.
+            //
+            // Its OWN event, not `stepped_load_command_outcome_unknown`: the
+            // executor emits that one for this same trigger, and it is the layer
+            // that knows the command's direction and which clocks it stamped.
+            // Two layers emitting one event name would double-count every Flow
+            // device in any triage that tallies unknown outcomes.
+            (ctx.logger.structuredLog ?? moduleLogger).warn({
+                event: 'stepped_load_flow_trigger_unacknowledged',
                 reasonCode: 'flow_trigger_timeout',
                 deviceId,
                 deviceName: snapshot?.name,
