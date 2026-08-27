@@ -25,6 +25,7 @@ import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import type { SplitControlledUsage, SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
+import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
 
 // Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
 // snapshots go through `withHeadroomCurrentOn` — the producer boundary that
@@ -40,7 +41,7 @@ const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
   devices,
-  desiredForMode: {},
+  modeTargetCFor: (d: PlanInputDevice & TemperaturePlanInputKind) => d.currentTarget,
   ...planContextPower(1.25),
   hourBucketKey: '2025-01-01T00',
   softLimit: 5,
@@ -295,7 +296,6 @@ describe('P1 bug proofs', () => {
       guardInShortfall: false,
       deps: {
         getShedBehavior: () => ({ action: 'set_step' }),
-        getPriorityForDevice: () => 100,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         pendingBinaryCommandStore: createPendingBinaryCommandStore(planState.pendingBinaryCommands),

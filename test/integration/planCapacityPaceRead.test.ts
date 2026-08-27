@@ -36,7 +36,6 @@ const buildPaceBuilder = (params: {
   getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
   getPowerTracker: params.getPowerTracker,
   getDailyBudgetSnapshot: () => null,
-  getPriorityForDevice: () => 100,
   getDynamicSoftLimitOverride: params.getDynamicSoftLimitOverride,
   getShedBehavior: () => ({ action: 'turn_off' }),
   log: vi.fn(),

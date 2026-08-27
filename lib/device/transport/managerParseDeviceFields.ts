@@ -452,7 +452,6 @@ function resolveParsedDeviceSettings(
 ): ParsedDeviceSettings {
     const base = {
         communicationModel: providers.getCommunicationModel?.(deviceId) ?? 'local',
-        priority: providers.getPriority?.(deviceId),
         controllable: providers.getControllable?.(deviceId),
         managed: providers.getManaged?.(deviceId),
         budgetExempt: providers.getBudgetExempt?.(deviceId),

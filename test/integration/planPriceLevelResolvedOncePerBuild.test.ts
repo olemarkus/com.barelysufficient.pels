@@ -89,7 +89,6 @@ const buildBuilder = (params: {
     getCurrentHourPriceLevel: params.getCurrentHourPriceLevel,
     getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
     getDailyBudgetSnapshot: () => null,
-    getPriorityForDevice: () => 100,
     getShedBehavior: () => ({ action: 'turn_off' }),
     getDynamicSoftLimitOverride: () => 10,
     deviceDiagnostics: params.deviceDiagnostics,

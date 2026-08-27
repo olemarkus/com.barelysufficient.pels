@@ -46,7 +46,6 @@ export type DeviceTransportParseProviders = {
      * registry exists.
      */
     onAdditionalMeterReadings?: (readings: Record<string, number>, nowMs: number) => void;
-    getPriority?: (deviceId: string) => number;
     getControllable?: (deviceId: string) => boolean;
     getManaged?: (deviceId: string) => boolean;
     isManagedFilterActive?: () => boolean;

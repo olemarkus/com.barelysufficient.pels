@@ -6,7 +6,7 @@
  *
  * One rule, one map: every COMPARISON against a configured shed floor in
  * `lib/plan` — hold gating, observed-at-floor, pending-restore delay, swap-out
- * eligibility, hold stamps, pre-shed anchor settle — reads through
+ * eligibility, hold stamps, restore classification — reads through
  * `shedFloorCFor` over the map the builder resolves once per build. Raw
  * `behavior.temperature` used to leak into comparisons piecemeal, and every
  * leak was the same bug: for a configured floor off the device's step (the
@@ -24,7 +24,7 @@ import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../u
  * temperature device in this build's input set. Devices without a
  * `set_temperature` behaviour (or without a temperature cluster) get no entry.
  * Called once per build by the builder; the result feeds the restore/swap
- * pass, the hold lane, reason normalization, and pre-shed anchor maintenance.
+ * pass, the hold lane, reason normalization, and restore classification.
  */
 export function resolveNormalizedShedFloors(
   devices: readonly PlanInputDevice[],

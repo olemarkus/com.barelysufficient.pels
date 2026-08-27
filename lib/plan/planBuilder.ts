@@ -40,7 +40,7 @@ import { runSurplusPass, type PriceOptDeviceConfig } from './planBuilderSurplus'
 import { sumBudgetExemptProjectedUsageKw } from './planUsage';
 import { PlanMaterializationStages } from './planBuilderMaterialization';
 import { resolveNormalizedShedFloors } from './normalizedShedFloor';
-import { maintainPreShedAnchors } from './preShedAnchor';
+import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
 import { trackPlanStage, trackPlanStageAsync } from './planStageTiming';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { incPerfCounter } from '../utils/perfCounters';
@@ -67,9 +67,7 @@ import { attachDeferredReleaseIntents, buildIdentityDecorationBundle } from './p
 export type PlanBuilderDeps = {
   setCapacityInShortfall: (inShortfall: boolean) => void;
   /** Per-home dry-run posture — the same fact `shouldApplyPlan` consults
-   * before actuating. The builder reads it to gate pre-shed anchor CAPTURE:
-   * a simulated shed's write never happens, so persisting an anchor for it
-   * would record a debt no device ever incurred. */
+   * before actuating. */
   getCapacityDryRun: () => boolean;
   capacityGuard: CapacityGuard;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
@@ -88,7 +86,6 @@ export type PlanBuilderDeps = {
   holdsModeTargetRaisesWhilePowerUnknown?: () => boolean;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
-  getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => ShedBehavior;
   getDynamicSoftLimitOverride?: () => number | null;
   // Observer-owned pending-binary-command store. Plan-side reads consult
@@ -241,16 +238,6 @@ export class PlanBuilder {
 
   private async buildPlanSnapshotWithTimings(devices: PlanInputDevice[]): Promise<DevicePlan> {
     const nowTs = Date.now();
-    // `HomeScope.getPlanDevices` has already projected this home's active set
-    // to unique relative ranks. Snapshot those producer-resolved values so
-    // smart-task decoration, shed/restore, and materialization all consume the
-    // same cycle order even if settings change during the async plan build.
-    const inputPriorityByDeviceId = new Map(
-      devices.map((device) => [device.id, device.priority] as const),
-    );
-    const getCyclePriority = (deviceId: string): number => (
-      inputPriorityByDeviceId.get(deviceId) ?? this.deps.getPriorityForDevice(deviceId)
-    );
     // Evaluate deferred objectives at the planner boundary and translate active objectives
     // into a plain managed-device shape: cap-off devices become controllable=true for the
     // cycle (so they participate in shed/restore), and idle hours seed the shedding shed-set.
@@ -284,7 +271,6 @@ export class PlanBuilder {
       admittedDevices,
       nowTs,
       dailyBudgetSnapshot,
-      getCyclePriority,
     );
     // Surplus allocator + the "Run on solar surplus" dump-load hold + the
     // post-shedding hold merges, all in `runSurplusPass` (hoisted so eligibility
@@ -297,17 +283,16 @@ export class PlanBuilder {
       shedSet: sheddingPlan.shedSet,
       decoration: { forceShedSet, deferredAvoidDeviceIds, deferredReleaseIntentByDeviceId, admittedDeviceIds },
       getConfig: (deviceId) => this.priceOptimizationSettings[deviceId],
-      getPriority: getCyclePriority,
       getInferredSurplusKw: this.deps.getInferredSurplusKw,
       debugStructured: this.deps.debugStructured,
       nowTs,
     }));
     const deviceNameById = new Map(admittedDevices.map((d) => [d.id, d.name]));
 
-    let planDevices = this.stages.buildPlanDevices(context, sheddingPlan, getCyclePriority);
+    let planDevices = this.stages.buildPlanDevices(context, sheddingPlan);
     // One capability-normalized configured floor per device per build — the
     // single source the restore/swap pass, the hold lane, reason
-    // normalization, and pre-shed anchor maintenance all read, so no stage
+    // normalization, and restore classification all read, so no stage
     // can disagree about what "at the floor" means within a build
     // (semantics on `resolveNormalizedShedFloors`).
     const normalizedShedFloorCByDevice = resolveNormalizedShedFloors(
@@ -348,19 +333,6 @@ export class PlanBuilder {
       shedIds: finalized.lastPlannedShedIds,
       surplusOnlyIds: new Set(admittedDevices.filter((dev) => dev.surplusOnly === true).map((dev) => dev.id)),
       nowTs,
-    });
-    // Pre-shed setpoint anchors: capture on entry into setpoint-shed posture,
-    // settle on release — semantics on `maintainPreShedAnchors`
-    // (`preShedAnchor.ts`).
-    maintainPreShedAnchors({
-      planDevices: finalized.planDevices,
-      anchors: this.state.preShedAnchors,
-      normalizedShedFloorCByDevice,
-      // Mirrors `shouldApplyPlan`'s dry-run refusal: a simulated build's shed
-      // writes never happen, so no capture (or floor re-pin) may persist from
-      // one. Settle/clear still runs — it reacts to OBSERVATIONS, which are
-      // real-world facts regardless of who changed the device.
-      captureEnabled: !this.deps.getCapacityDryRun(),
     });
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
       context,
@@ -429,7 +401,6 @@ export class PlanBuilder {
     devices: PlanInputDevice[],
     nowTs: number,
     dailyBudgetSnapshot: DailyBudgetUiPayload | null,
-    getCyclePriority: (deviceId: string) => number,
   ): Promise<{
     context: PlanContext;
     // Display-only facts, carried BESIDE the context rather than on it so no
@@ -438,7 +409,17 @@ export class PlanBuilder {
     sheddingPlan: SheddingPlan;
     overshootDecision: SoftOvershootDecision;
   }> {
-    const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
+    // Resolved ONCE, here, into a total function. `persistFilledModeTargets`
+    // keeps the stored catalog complete — it writes an entry for every planned
+    // temperature device on the settings refresh, before the first plan of that
+    // cycle — so the fallback covers only the boot window before its first write
+    // lands, where holding the device at its own setpoint commands nothing new.
+    // Downstream there is no map and no absent case, so no stage can ask whether
+    // this mode has a target for a device.
+    const stored = this.modeDeviceTargets[this.operatingMode] ?? {};
+    const modeTargetCFor = (device: PlanInputDevice & TemperaturePlanInputKind): number => (
+      stored[device.id] ?? device.currentTarget
+    );
     const capacitySoftLimit = this.stampCapacityPace();
     const dailySoftLimitResolution = this.computeDailySoftLimit(dailyBudgetSnapshot, devices);
     const dailySoftLimit = dailySoftLimitResolution?.dailySoftLimitKw ?? null;
@@ -464,7 +445,7 @@ export class PlanBuilder {
       budgetPaceKw: dailySoftLimitResolution?.budgetPaceKw ?? null,
       projectedExemptKw: dailySoftLimitResolution?.projectedExemptKw ?? null,
       softLimitSource,
-      desiredForMode,
+      modeTargetCFor,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
       currentHourPriceLevel: this.resolveCurrentHourPriceLevel(devices),
       dailyBudget: buildPlanDailyBudgetContext(dailyBudgetSnapshot),
@@ -500,7 +481,6 @@ export class PlanBuilder {
         shortfallThresholdKw: this.computeShortfallThreshold(),
         powerTracker: this.powerTracker,
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-        getPriorityForDevice: getCyclePriority,
         pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
         log: (...args: unknown[]) => this.deps.log(...args),
         debugStructured: this.deps.debugStructured,

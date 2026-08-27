@@ -42,7 +42,7 @@ import {
   getSteppedLoadLowestActiveStep,
   resolveSteppedLoadPlanningPowerKw,
 } from '../../lib/utils/deviceControlProfiles';
-import { resolveTemperatureDeniedControlModel } from '../temperatureControlDenial';
+import { projectTemperatureDeniedDevice } from '../temperatureControlDenial';
 import { resolveSurplusOnlyPosture } from '../../lib/plan/planSurplusAbsorb';
 import { resolveSurplusPoolReachable } from '../../packages/shared-domain/src/solar/surplusPoolReachable';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
@@ -337,25 +337,6 @@ function resolveTemperatureInputFields(
   };
 }
 
-function projectEffectiveControlDevice(
-  device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe
-    & TemperatureObservedProbe & StateOfChargeObservedProbe,
-): DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe
-  & TemperatureObservedProbe & StateOfChargeObservedProbe {
-  if (device.temperatureControlDisabled !== true) return device;
-  // Strictly the temperature axis. The step cluster, `targetPowerConfig` and
-  // `controlAdapter` stay: they carry no setpoint write, and clearing them left
-  // a flagged stepped device with no ladder (so PELS could only switch it off)
-  // and no native stepped wiring.
-  return {
-    ...device,
-    targets: [],
-    temperature: undefined,
-    deviceType: 'onoff',
-    controlModel: resolveTemperatureDeniedControlModel(device.controlModel),
-  };
-}
-
 function resolveEffectiveShedBehavior(
   ctx: AppContext,
   device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
@@ -462,12 +443,24 @@ function resolveManagedControlPosture(
 // it resolves the flat EV sub-fields below and strips the raw field off the
 // spread. The decorated snapshots the caller holds physically carry the field
 // (transport writes it); the base type omits it for consumers.
+/**
+ * A plan input device before it has been ranked.
+ *
+ * `priority` is REQUIRED on `PlanInputDevice` — the whole planned set is ranked
+ * at once, so no consumer ever meets an unranked device — but ranking needs the
+ * SET, and this projection runs per device. `buildHomePlanDevices` filters to
+ * the planned set, resolves the ranks through the mode catalog owner, and
+ * stamps them; this type is the shape in between, so the gap is visible in the
+ * signature instead of surviving as an optional field nobody could remove.
+ */
+export type UnrankedPlanInputDevice = Omit<PlanInputDevice, 'priority'>;
+
 export function toPlanDevice(
   ctx: AppContext,
   rawDevice: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe
     & TemperatureObservedProbe & StateOfChargeObservedProbe,
   opts?: ToPlanDeviceOptions,
-): PlanInputDevice {
+): UnrankedPlanInputDevice {
   // Both reads reproduce the pre-R7b wiring EXACTLY when `opts` is absent (the
   // main home): surplus posture enabled, pending-binary read via `ctx.planEngine`
   // (MAIN's engine). A sub-home bundle overrides both — see
@@ -478,7 +471,7 @@ export function toPlanDevice(
   // staleness, and the plan device carries no staleness flag. Freshness reporting
   // (overview gray-state, idle classifier, diagnostics) is sourced from the
   // observer projection at its own wiring seams (`getObservationStale`).
-  const device = projectEffectiveControlDevice(rawDevice);
+  const device = projectTemperatureDeniedDevice(rawDevice);
   const plannerSteppedLoadProfile = isSteppedLoadSnapshot(device)
     ? resolveEvTargetPowerPlannerProfile({
       config: ctx.deviceTargetPowerConfigs[device.id] ?? device.targetPowerConfig,

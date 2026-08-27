@@ -26,7 +26,7 @@ import { createPlanEngineState } from '../../lib/plan/planState';
 
 const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
-  desiredForMode: {},
+  modeTargetCFor: (d) => d.currentTarget,
   total: 0,
   softLimit: 0,
   capacitySoftLimit: 0,

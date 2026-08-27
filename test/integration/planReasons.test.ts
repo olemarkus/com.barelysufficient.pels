@@ -9,7 +9,6 @@ import { buildRestoreHeadroomReason } from '../../lib/plan/planReasonStrings';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
 import { createPlanEngineState } from '../../lib/plan/planState';
-import { createInMemoryPreShedAnchorStore } from '../../lib/plan/preShedAnchor';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
@@ -841,7 +840,7 @@ describe('finalizePlanDevices', () => {
   it('requires finalized devices to carry a structured reason contract', () => {
     const finalized = finalizePlanDevices([buildPlanDevice({
       plannedState: 'keep',
-    })], new Map(), createInMemoryPreShedAnchorStore());
+    })], new Map(), new Set<string>());
 
     expect(finalized.planDevices[0]?.reason.code).toBe('keep');
   });
@@ -850,35 +849,35 @@ describe('finalizePlanDevices', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
       reason: fixtureDeviceReason('restore low -> high (need 1.20kW)')!,
-    })], new Map(), createInMemoryPreShedAnchorStore())).toThrow(/Invalid plan reason pair/);
+    })], new Map(), new Set<string>())).toThrow(/Invalid plan reason pair/);
   });
 
   it('allows legacy restore cooldown shed reasons that are still emitted by stay-off paths', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
       reason: fixtureDeviceReason('cooldown (restore, 30s remaining)')!,
-    })], new Map(), createInMemoryPreShedAnchorStore())).not.toThrow();
+    })], new Map(), new Set<string>())).not.toThrow();
   });
 
   it('allows meter-settling shed reasons for blocked restore candidates', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
       reason: fixtureDeviceReason('meter settling (30s remaining)')!,
-    })], new Map(), createInMemoryPreShedAnchorStore())).not.toThrow();
+    })], new Map(), new Set<string>())).not.toThrow();
   });
 
   it('allows legacy restore cooldown keep reasons that still surface during restore holds', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'keep',
       reason: fixtureDeviceReason('cooldown (restore, 30s remaining)')!,
-    })], new Map(), createInMemoryPreShedAnchorStore())).not.toThrow();
+    })], new Map(), new Set<string>())).not.toThrow();
   });
 
   it('allows restore pending reasons for keep devices that are waiting on stepped confirmation', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'keep',
       reason: fixtureDeviceReason('restore pending (30s remaining)')!,
-    })], new Map(), createInMemoryPreShedAnchorStore())).not.toThrow();
+    })], new Map(), new Set<string>())).not.toThrow();
   });
 
   it('allows an awaitingSolarSurplus shed reason on a surplusOnly dump-load device', () => {
@@ -886,23 +885,20 @@ describe('finalizePlanDevices', () => {
       plannedState: 'shed',
       surplusOnly: true,
       reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
-    })], new Map(), createInMemoryPreShedAnchorStore())).not.toThrow();
+    })], new Map(), new Set<string>())).not.toThrow();
   });
 
   it('stamps the restore classification for a release parked at the anchor-pinned OLD floor', () => {
     // Floor-edit transition: the configured floor moved 16.5 -> 17 but the
-    // device still reports the pinned old floor. The classification uses the
-    // same both-floors recognition as the anchor gate, so this release still
-    // stamps the restore clocks; comparing only the current floor missed it.
-    const anchors = createInMemoryPreShedAnchorStore();
-    anchors.record('dev', { anchorC: 21, shedFloorC: 16.5 });
+    // device still reports the old one, so no floor comparison can match. It was
+    // in the previous build's shed set, and that is what classifies the raise.
     const finalized = finalizePlanDevices([buildPlanDevice({
       deviceType: 'temperature',
       plannedState: 'keep',
       currentTarget: 16.5,
       currentTemperature: 16.5,
       plannedTarget: 21,
-    })], new Map([['dev', 17]]), anchors);
+    })], new Map([['dev', 17]]), new Set(['dev']));
 
     expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(true);
   });
@@ -914,7 +910,7 @@ describe('finalizePlanDevices', () => {
       currentTarget: 18,
       currentTemperature: 18,
       plannedTarget: 21,
-    })], new Map([['dev', 16]]), createInMemoryPreShedAnchorStore());
+    })], new Map([['dev', 16]]), new Set<string>());
 
     expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(false);
   });
@@ -925,7 +921,7 @@ describe('finalizePlanDevices', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
       reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus },
-    })], new Map(), createInMemoryPreShedAnchorStore())).toThrow(/Invalid plan reason pair|surplusOnly/);
+    })], new Map(), new Set<string>())).toThrow(/Invalid plan reason pair|surplusOnly/);
   });
 });
 

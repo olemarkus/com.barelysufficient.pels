@@ -55,7 +55,7 @@ export const createFencedActuator = (
 });
 
 const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult => {
-  const state = createPlanEngineState(Date.now(), deps.isExternalOffHeld, deps.preShedAnchors);
+  const state = createPlanEngineState(Date.now(), deps.isExternalOffHeld);
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(
     state.pendingBinaryCommands,
     deps.binaryCommandLifecycle,
@@ -74,7 +74,6 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     getPowerTracker: deps.getPowerTracker,
     getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
     getObservationStale: deps.getObservationStale,
-    getPriorityForDevice: deps.getPriorityForDevice,
     getShedBehavior: deps.getShedBehavior,
     getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
     holdsModeTargetRaisesWhilePowerUnknown: deps.holdsModeTargetRaisesWhilePowerUnknown,
@@ -174,7 +173,6 @@ export function createPlanEngineComposition(
     isExternalOffHeld: (deviceId) => isExternalOffHeldForDevice(ctx, deviceId),
     // Persisted pre-shed setpoint anchors; one app-wide store (device ids are
     // globally unique), so every home's planner shares the same debt ledger.
-    preShedAnchors: ctx.preShedAnchors,
     getObservationStale: (deviceId) => {
       const observed = ctx.getObservedState(deviceId);
       return observed !== undefined && isDeviceObservationStale(observed);
@@ -207,7 +205,6 @@ export function createPlanEngineComposition(
     decorateDeferredObjectives: scope.decorateDeferredObjectives,
     // Scope-owned: priorities are ranked per mode, and only the scope knows
     // this home's ACTIVE mode (a sub-home may pin its own; see homeScope.ts).
-    getPriorityForDevice: scope.getPriorityForDevice,
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
     getDynamicSoftLimitOverride: scope.getDynamicSoftLimitOverride,
     markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),

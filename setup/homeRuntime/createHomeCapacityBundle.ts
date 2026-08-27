@@ -81,7 +81,6 @@ import { installBundleReadinessAndFreshness } from './homeCapacityBundleReadines
 import {
   createHomeModeCatalog,
   getConfiguredPriorityFromHomeModeCatalog,
-  getPriorityFromHomeModeCatalog,
   type HomeModeCatalog,
 } from './homeModeCatalog';
 import { installHomeCapacityBundleSourceRecovery } from './homeCapacityBundleSourceRecovery';
@@ -383,7 +382,8 @@ function buildSubHomeScope(params: {
     // shed that reading IS the shed setpoint, so on release `plannedTarget`
     // equalled `currentTarget`, the executor dropped the write, and an area
     // temperature device stayed cold indefinitely. Price-opt and surplus stay
-    // gated separately above — they only modulate a `kind: 'mode'` seed.
+    // gated separately above: both need a per-device config entry, and the
+    // empty map bound there has none.
     //
     // Mode names, targets and priorities are independent per meter area. The
     // catalog adapter exposes one coherent last-good snapshot, and retains the
@@ -391,9 +391,6 @@ function buildSubHomeScope(params: {
     // succeeds.
     getOperatingMode: () => modeCatalog.getSnapshot().operatingMode,
     getModeDeviceTargets: () => modeCatalog.getSnapshot().targets,
-    getPriorityForDevice: (deviceId) => (
-      getPriorityFromHomeModeCatalog(modeCatalog.getSnapshot(), deviceId)
-    ),
     // ...but a RAISE to that target is held while this area's own draw is
     // unknown. It adds load, and it is the one load-adding write nothing else
     // fences: a restore is gated on headroom (0 whenever power is unknown),

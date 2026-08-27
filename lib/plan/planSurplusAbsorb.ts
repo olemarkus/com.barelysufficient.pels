@@ -209,7 +209,6 @@ export function resolveSurplusEligibility(params: {
   // on inference alone).
   inferredSurplusKw?: number | null;
   getConfig: (deviceId: string) => SurplusConfig | undefined;
-  getPriority: (deviceId: string) => number;
   // Smart-task precedence at the ALLOCATION stage (mirrors the hold exclusion):
   // a device an active deferred objective currently governs must never be
   // eligible for surplus and must never RESERVE the shared pool ahead of a
@@ -221,7 +220,7 @@ export function resolveSurplusEligibility(params: {
   debugStructured?: StructuredDebugEmitter;
   nowTs?: number;
 }): void {
-  const { state, getConfig, getPriority } = params;
+  const { state, getConfig } = params;
   const excludeIds = params.excludeIds;
   // One timestamp for the whole admission pass, so a single plan build cannot
   // flip devices on different milliseconds at the settle/dwell threshold.
@@ -282,7 +281,7 @@ export function resolveSurplusEligibility(params: {
   });
 
   // Top priority first (PELS priority `1` is highest — ascending order).
-  const ordered = [...willing].sort((a, b) => getPriority(a.id) - getPriority(b.id));
+  const ordered = [...willing].sort((a, b) => a.priority - b.priority);
   for (const dev of ordered) {
     const expectedDrawKw = getHighestKnownPowerKw(dev).kw;
     const { eligible } = syncSurplusEligibilityState({

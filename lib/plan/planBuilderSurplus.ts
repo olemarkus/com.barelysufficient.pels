@@ -53,7 +53,6 @@ export function runSurplusPass(params: {
     'forceShedSet' | 'deferredAvoidDeviceIds' | 'deferredReleaseIntentByDeviceId' | 'admittedDeviceIds'
   >;
   getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined;
-  getPriority: (deviceId: string) => number;
   // Zero-export inferred curtailed-surplus term (producer:
   // `lib/solar/curtailmentSurplus.ts`), injected flat through the plan deps and
   // enlarging the same pool as measured export. Absent ⇒ measured export only.
@@ -84,7 +83,6 @@ export function runSurplusPass(params: {
     inferredSurplusKw: params.getInferredSurplusKw?.() ?? null,
     excludeIds,
     getConfig: params.getConfig,
-    getPriority: params.getPriority,
     debugStructured: params.debugStructured,
     nowTs: params.nowTs,
   });

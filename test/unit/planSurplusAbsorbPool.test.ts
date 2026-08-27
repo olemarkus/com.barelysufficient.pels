@@ -45,7 +45,6 @@ const resolve = (params: {
     signedNetKw: (params.powerKnown ?? true) ? params.signedNetKw : null,
     inferredSurplusKw: params.inferredSurplusKw,
     getConfig: () => surplusConfig,
-    getPriority: params.getPriority ?? (() => 100),
     debugStructured: params.debugStructured,
     nowTs: params.nowTs,
   });

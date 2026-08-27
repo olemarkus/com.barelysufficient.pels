@@ -227,9 +227,9 @@ mode target is the **restore anchor**. Binding it to `{}` for a sub-home made
 `resolveTemperatureSeed` fall back to the device's live setpoint, which while
 shed IS the shed setpoint, so on release `plannedTarget === currentTarget`, the
 executor dropped the write, and an area temperature device stayed cold
-indefinitely. Price optimization and surplus absorb stay off for a sub-home
-independently, via `getPriceOptimizationSettings: () => ({})` — they only
-modulate a `kind: 'mode'` seed and both require a per-device config entry.
+indefinitely. Price optimization and surplus absorb stay off for a sub-home independently, via
+`getPriceOptimizationSettings: () => ({})`: both require a per-device config
+entry, and an empty map has none.
 
 Binding those targets live for a sub-home also opened a LOAD-ADDING write, so
 one more per-home posture rides alongside them: **`holdsModeTargetRaisesWhile
@@ -264,9 +264,12 @@ load-bearing in these ways:
   unreadable (`buildTargets` omits `value` on a malformed read), no target is
   planned at all: any emitted value would reach the executor with
   `observedValue` undefined, where the no-op fence cannot trip.
-- **Honest to the planner.** The mode target stays present, so the device is not
-  routed through `resolveMissingModeTargetSeed` — no false `missing_mode_target`
-  diagnostics and no grace-window `skip` dropping the device from the plan.
+- **Honest to the planner.** The hold modulates the resolved mode target rather
+  than replacing it, so nothing downstream sees the device as unconfigured. (It
+  once mattered more: a device that fell through to the old fallback seed was
+  routed past price and surplus modulation entirely. The mode catalog owner now
+  answers for every temperature device, so there is no fallback path left to
+  fall into — `notes/temperature-ownership.md`.)
 - **Freshness-based, not "never sampled".** `planningTotalKw` returns to `null`
   on every stale window, so an area meter that reports once and then dies stops
   earning raises.

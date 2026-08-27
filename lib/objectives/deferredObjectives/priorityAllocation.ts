@@ -15,7 +15,7 @@ import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
 } from './settings';
-import { rankActiveDevicePriorities } from '../../../packages/shared-domain/src/modePriorities';
+import { rankModeDevices } from '../../../packages/shared-domain/src/modeCatalogResolution';
 import {
   selectMinimumStepForEnergy,
 } from './stepSelection';
@@ -184,18 +184,20 @@ export const orderDeferredObjectives = (params: {
     )),
     ...entries.flatMap((entry) => entry.reservationEligible ? [entry.deviceId] : []),
   ];
-  const activePriorityByDeviceId = rankActiveDevicePriorities(
-    activeDeviceIds,
-    (deviceId) => {
-      if (params.getBasePriorityForDevice) return params.getBasePriorityForDevice(deviceId);
-      return resolvedPriority(params.deviceById.get(deviceId));
-    },
-  );
-  const inactivePriorityByDeviceId = rankActiveDevicePriorities(
-    entries.flatMap((entry) => entry.reservationEligible ? [] : [entry.deviceId]),
-    (deviceId) => params.getBasePriorityForDevice
+  // Two independent rankings, each through the mode catalog owner: the devices
+  // competing for allocation, and separately the ones held out of it. Ranks are
+  // unique within each set by construction — no two devices can tie, which is
+  // what makes the allocation order total.
+  const activePriorityByDeviceId = rankModeDevices(activeDeviceIds, (deviceId) => (
+    params.getBasePriorityForDevice
       ? params.getBasePriorityForDevice(deviceId)
-      : DEFAULT_PRIORITY,
+      : resolvedPriority(params.deviceById.get(deviceId))
+  ));
+  const inactivePriorityByDeviceId = rankModeDevices(
+    entries.flatMap((entry) => entry.reservationEligible ? [] : [entry.deviceId]),
+    (deviceId) => (params.getBasePriorityForDevice
+      ? params.getBasePriorityForDevice(deviceId)
+      : DEFAULT_PRIORITY),
   );
   const activeDeviceCount = Object.keys(activePriorityByDeviceId).length;
   return entries

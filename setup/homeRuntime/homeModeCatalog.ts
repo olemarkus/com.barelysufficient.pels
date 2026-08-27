@@ -21,7 +21,6 @@ import {
 } from '../../lib/utils/settingsKeys';
 import {
   resolveConfiguredDevicePriority,
-  resolveDevicePriority,
   resolveModeName,
 } from '../../lib/utils/capacityHelpers';
 import {
@@ -306,11 +305,6 @@ export const createHomeModeCatalog = (ctx: AppContext, homeId: HomeId): HomeMode
     reload,
   };
 };
-
-export const getPriorityFromHomeModeCatalog = (
-  catalog: HomeModeCatalogSnapshot,
-  deviceId: string,
-): number => resolveDevicePriority(catalog.priorities, catalog.operatingMode, deviceId);
 
 export const getConfiguredPriorityFromHomeModeCatalog = (
   catalog: HomeModeCatalogSnapshot,

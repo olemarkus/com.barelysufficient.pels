@@ -165,7 +165,6 @@ describe('DeviceTransport', () => {
     describe('parseDeviceListForTests', () => {
         it('materializes the representative thermostat snapshot shape unchanged', () => {
             const parsingDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
-                getPriority: (deviceId) => (deviceId === 'thermo-1' ? 7 : 0),
                 getControllable: (deviceId) => deviceId === 'thermo-1',
                 getManaged: (deviceId) => deviceId === 'thermo-1',
                 getBudgetExempt: (deviceId) => deviceId === 'thermo-1',
@@ -217,7 +216,6 @@ describe('DeviceTransport', () => {
                 deviceClass: 'thermostat',
                 deviceType: 'temperature',
                 communicationModel: 'cloud',
-                priority: 7,
                 controllable: true,
                 managed: true,
                 budgetExempt: true,
@@ -1533,10 +1531,9 @@ describe('DeviceTransport', () => {
         });
 
         it('uses providers to populate priority and controllable fields', async () => {
-            const getPriority = vi.fn().mockReturnValue(1);
             const getControllable = vi.fn().mockReturnValue(false);
 
-            deviceManager = new DeviceTransport(homeyMock, loggerMock, { getPriority, getControllable });
+            deviceManager = new DeviceTransport(homeyMock, loggerMock, { getControllable });
             await deviceManager.init();
 
             mockApiGet.mockResolvedValue({
@@ -1556,9 +1553,10 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot();
             const snapshot = deviceManager.getSnapshot();
 
-            expect(snapshot[0].priority).toBe(1);
+            // No `priority` here any more: a rank is a property of a SET, so it is
+            // resolved over the whole device list by `/ui_devices`, not stamped
+            // per device while parsing.
             expect(snapshot[0].controllable).toBe(false);
-            expect(getPriority).toHaveBeenCalledWith('dev1');
             expect(getControllable).toHaveBeenCalledWith('dev1');
         });
 

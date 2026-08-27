@@ -40,7 +40,6 @@ export const buildDeviceParseProviders = (params: {
     // (The whole-home meter IDENTITY is not a parse provider: it rides the
     // sample into the admitted ingest — `PowerSamplePipeline`.)
     ...buildHomeRuntimeMeterProviders(getHomeRuntimeRegistry),
-    getPriority: (id) => ctx.getPriorityForDevice(id),
     getControllable: (id) => ctx.isCapacityControlEnabled(id),
     getManaged: (id) => ctx.resolveManagedState(id),
     isManagedFilterActive: () => deps.isManagedFilterActive(),

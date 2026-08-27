@@ -218,10 +218,6 @@ const buildBuilder = (
     getPowerTracker: () => powerTrackerRef.current,
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
-    getPriorityForDevice: (deviceId) => {
-      const mode = overrides.modeRef?.current ?? 'Home';
-      return overrides.priorityByModeRef?.current?.[mode]?.[deviceId] ?? 1;
-    },
     getShedBehavior: () => ({ action: 'turn_off' }),
     log: vi.fn(),
     logDebug: vi.fn(),
@@ -360,7 +356,6 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getPowerTracker: () => powerTrackerRef.current,
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
       decorateDeferredObjectives: (input) => deferredController.decorate(input),
-      getPriorityForDevice: () => 1,
       getShedBehavior: () => ({ action: 'turn_off' }),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -615,7 +610,6 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getPowerTracker: () => powerTracker,
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
       decorateDeferredObjectives: (input) => deferredController.decorate(input),
-      getPriorityForDevice: () => 1,
       getShedBehavior: () => ({ action: 'turn_off' }),
       log: vi.fn(),
       logDebug: vi.fn(),

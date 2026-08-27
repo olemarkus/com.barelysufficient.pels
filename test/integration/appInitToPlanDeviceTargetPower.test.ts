@@ -7,6 +7,12 @@ import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 
+// `toPlanDevice` is the per-device half of a two-stage producer: ranking needs
+// the SET, so `buildHomePlanDevices` stamps `priority` right after. These specs
+// exercise the first half alone, so they stand in for the second.
+const ranked = <T extends object>(device: T): T & { priority: number } => ({ ...device, priority: 1 });
+
+
 describe('toPlanDevice target-power reachability boundary', () => {
   it('keeps the planner ladder capped until the runtime retry becomes due', () => {
     const baseConfig = {
@@ -38,14 +44,14 @@ describe('toPlanDevice target-power reachability boundary', () => {
       getNow: () => new Date(1_999),
     });
 
-    const beforeDue = toPlanDevice(ctx, device);
+    const beforeDue = ranked(toPlanDevice(ctx, device));
     expect(isSteppedLoadDevice(beforeDue)).toBe(true);
     if (!isSteppedLoadDevice(beforeDue)) throw new Error('expected stepped plan device');
     expect(beforeDue.steppedLoadProfile?.steps.at(-1)?.id).toBe('25a');
     expect(beforeDue.targetPowerConfig).toEqual(baseConfig);
 
     ctx.getNow = () => new Date(2_000);
-    const whenDue = toPlanDevice(ctx, device);
+    const whenDue = ranked(toPlanDevice(ctx, device));
     expect(isSteppedLoadDevice(whenDue)).toBe(true);
     if (!isSteppedLoadDevice(whenDue)) throw new Error('expected stepped plan device');
     expect(whenDue.steppedLoadProfile?.steps.at(-1)?.id).toBe('28a');
@@ -79,7 +85,7 @@ describe('toPlanDevice target-power reachability boundary', () => {
     };
     const ctx = createAppContextMock({ deviceTargetPowerConfigs: { charger: config } });
 
-    const planDevice = toPlanDevice(ctx, device);
+    const planDevice = ranked(toPlanDevice(ctx, device));
 
     expect(isSteppedLoadDevice(planDevice)).toBe(true);
     if (!isSteppedLoadDevice(planDevice)) throw new Error('expected stepped plan device');

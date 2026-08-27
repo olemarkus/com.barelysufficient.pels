@@ -172,9 +172,7 @@ export type ShedHoldParams = {
    * raw configured `behavior.temperature`: an at-floor device is filtered out
    * of shed candidacy, so the held-build fallback is the COMMON case, and a
    * raw stamp for an off-step configured floor plans a setpoint the device
-   * can never report back — a futile re-write per cycle — and flip-flops the
-   * pre-shed anchor's pinned floor (`preShedAnchor.ts`), destroying the
-   * anchor while the device is still parked.
+   * can never report back — a futile re-write per cycle.
    */
   normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
 };

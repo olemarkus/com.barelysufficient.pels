@@ -609,9 +609,16 @@ export const fixtureResidualKw = (
  * no binary signal is indistinguishable from a raw override that means the
  * builder's default.
  */
+/**
+ * Also stamps a default `priority`: it is REQUIRED on both plan device types
+ * because the producer ranks the whole planned set before any consumer sees it,
+ * and a hand-rolled fixture that does not care about ordering still has to
+ * carry one. Declared values win.
+ */
 export const withFixtureResidualKw = <T extends object>(
   fields: T,
-): T & { residualKw: FixtureResidualKw } => {
+): T & { residualKw: FixtureResidualKw; priority: number } => {
+  const priority = (fields as { priority?: number }).priority ?? 1;
   const declared = (fields as { residualKw?: Partial<FixtureResidualKw> }).residualKw;
   // A fully declared residual is taken verbatim and nothing is resolved. That is
   // the only way to express the one shape the producer cannot be handed at all:
@@ -619,11 +626,12 @@ export const withFixtureResidualKw = <T extends object>(
   // projection failure. Asking the producer to read it would throw, and
   // production resolves the residual long before such a ladder reaches a plan.
   if (declared?.shed !== undefined && declared.restore !== undefined) {
-    return { ...fields, residualKw: { shed: declared.shed, restore: declared.restore } };
+    return { ...fields, priority, residualKw: { shed: declared.shed, restore: declared.restore } };
   }
   const resolved = fixtureResidualKw(fields as Parameters<typeof fixtureResidualKw>[0]);
   return {
     ...fields,
+    priority,
     residualKw: {
       shed: declared?.shed ?? resolved.shed,
       restore: declared?.restore ?? resolved.restore,
@@ -710,6 +718,11 @@ DevicePlanDevice => {
     // as missing, which would propagate as NaN through every restore
     // reservation and headroom sum.
     expectedPowerKw: fixtureExpectedPowerKw(overrides),
+    // Same treatment, same reason: `priority` is REQUIRED on both plan device
+    // types because the producer ranks the whole planned set before anyone sees
+    // it. A fixture that does not care about ordering still needs a rank, and
+    // `1` is the only one a single-device spec could mean.
+    priority: overrides.priority ?? 1,
     // Same treatment, same reason: the contract makes the source REQUIRED, and
     // this builder's cast is the one place that could still ship it absent.
     // `'default'` is what the producer emits for a device nothing is known
@@ -887,6 +900,11 @@ export const buildPlanInputDevice = (
     // as missing, which would propagate as NaN through every restore
     // reservation and headroom sum.
     expectedPowerKw: fixtureExpectedPowerKw(overrides),
+    // Same treatment, same reason: `priority` is REQUIRED on both plan device
+    // types because the producer ranks the whole planned set before anyone sees
+    // it. A fixture that does not care about ordering still needs a rank, and
+    // `1` is the only one a single-device spec could mean.
+    priority: overrides.priority ?? 1,
     // Same treatment, same reason: the contract makes the source REQUIRED, and
     // this builder's cast is the one place that could still ship it absent.
     // `'default'` is what the producer emits for a device nothing is known

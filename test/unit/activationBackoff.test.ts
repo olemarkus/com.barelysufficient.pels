@@ -42,7 +42,7 @@ const FIXTURE_TOTAL_KW = 3;
 
 const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
-  desiredForMode: {},
+  modeTargetCFor: (d) => d.currentTarget,
   ...planContextPower(FIXTURE_TOTAL_KW),
   softLimit: 0,
   capacitySoftLimit: 0,

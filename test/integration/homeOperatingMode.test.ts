@@ -66,7 +66,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import {
   createHomeModeCatalog,
-  getPriorityFromHomeModeCatalog,
+  getConfiguredPriorityFromHomeModeCatalog,
   readPersistedHomeModeCatalog,
   transferModeTargetsForOwnershipMoves,
 } from '../../setup/homeRuntime/homeModeCatalog';
@@ -573,7 +573,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       const persisted = readPersistedHomeModeCatalog(rig.ctx, 'h_a');
       expect(persisted.state).toBe('resolved');
       if (persisted.state === 'resolved') {
-        expect(getPriorityFromHomeModeCatalog(persisted.snapshot, 'dev-1')).toBe(2);
+        expect(getConfiguredPriorityFromHomeModeCatalog(persisted.snapshot, 'dev-1')).toBe(2);
       }
     } finally {
       settingsHandler.stop();

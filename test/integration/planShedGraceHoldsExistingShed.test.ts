@@ -92,7 +92,6 @@ describe('shed grace', () => {
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
       getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 5.4 * 1000 }),
       getDailyBudgetSnapshot: () => null,
-      getPriorityForDevice: () => 100,
       // The binding pace, well under the 6 kW hard cap — the deficit is real and
       // far above the soft-overshoot deadband.
       getDynamicSoftLimitOverride: () => 1.84,

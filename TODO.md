@@ -557,31 +557,6 @@ What remains open is below.*
       `setup/homeRuntime/createHomeCapacityBundle.ts`.
       Source: multi-home finishing train PR 8a, 2026-07-26.
 
-- [ ] **A setpoint-shed temperature device with no mode target stays stranded at its shed setpoint.**
-      *Persona:* any owner who never opened the Modes screen and has a managed radiator or panel heater
-      (Main home or a meter area). *Hypothesis:* PELS auto-assigns the `set_temperature` shed behaviour
-      without user action (`enforceTemperatureWithoutOnOffOvershootBehaviors`,
-      `setup/appDeviceSupport.ts`), but the RESTORE ANCHOR is the mode target, which requires user
-      action — `seedMissingModeTargets` bails out entirely on an empty `mode_device_targets` blob
-      (`setup/appDeviceSupport.ts:466-468`). With no anchor, `resolveTemperatureSeed` falls back to the
-      live setpoint, which while shed IS the shed setpoint, so on release `plannedTarget ===
-      currentTarget` and the executor drops the write (`lib/executor/executableTargetProjection.ts:37`).
-      Reproduced on a Main-home-only install with no meter areas: the shed to 16 C lands and the resume
-      never happens in 60 poll cycles. The structural fix is a **pre-shed setpoint memory** captured when
-      the shed write goes out and consumed on release, which closes this for every home and every device
-      regardless of settings; binding mode targets per home (2026-07-26) only closed the anchored case.
-      Source: pels-runtime-reality review of the multi-home finishing train PR 1.
-
-- [ ] **`seedMissingModeTargets` can re-seed a shed setpoint as the permanent anchor.**
-      *Persona:* owner who clears a heater's per-mode target, then restarts PELS (or updates the app)
-      while that heater is shed. *Hypothesis:* the seeder fills a missing entry from the device's
-      *current* setpoint with no shed-state guard, and its "already seeded" fingerprints are in-memory
-      only (`setup/appDeviceSupport.ts:370-376,457-484`), so a restart while shed records the shed
-      setpoint (e.g. 16 C) as the mode target. PELS then holds the device there indefinitely and reverts
-      any manual raise. Before mode targets bound for meter areas this mis-seed was inert for an area
-      device; it is now actively enforced. Fix: skip seeding while the device is shed, or seed from the
-      pre-shed value. Source: pels-runtime-reality review of the multi-home finishing train PR 1.
-
 - [ ] **Homes UI: explain cached rows that stay locked after a refresh failure.**
       A failed `/ui_homes` refresh preserves the last-good rows and correctly disables mutations, but
       the ready/list view gives no visible reason its Add/Edit/Remove controls remain unavailable.

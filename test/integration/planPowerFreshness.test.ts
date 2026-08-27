@@ -83,7 +83,7 @@ describe('power sample freshness policy', () => {
     dailySoftLimit: params.dailySoftLimit ?? null,
     budgetPaceKw: params.budgetPaceKw ?? null,
     softLimitSource: params.softLimitSource ?? 'capacity',
-    desiredForMode: {},
+    modeTargetCFor: (d) => d.currentTarget,
     hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,
     currentHourPriceLevel: { cheap: false, expensive: false },
   });
@@ -246,7 +246,6 @@ describe('planner behavior under stale power freshness states', () => {
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
       getPowerTracker: () => params.tracker,
       getDailyBudgetSnapshot: () => null,
-      getPriorityForDevice: () => 100,
       getShedBehavior: () => ({ action: 'turn_off' }),
       structuredLog: params.structuredLog as never,
       log: vi.fn(),

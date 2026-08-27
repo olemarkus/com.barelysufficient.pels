@@ -48,7 +48,6 @@ const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
     powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
     getShedBehavior: () => ({ action: 'turn_off' }),
     // No stored priority for any device → caller-side default for the whole bucket.
-    getPriorityForDevice: () => 100,
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
     log: () => {},
   },
@@ -139,9 +138,13 @@ describe('default-priority deterministic tiebreak (shed & restore)', () => {
       buildShedDevice('alpha'),
       buildShedDevice('zulu'),
     ]);
-    // zulu has a LOWER stored priority number → sheds LAST (higher number sheds
-    // first). Despite 'zulu' > 'alpha' lexically, priority wins.
-    params.deps.getPriorityForDevice = (id) => (id === 'zulu' ? 1 : 9);
+    // zulu has a LOWER rank number → sheds LAST (higher number sheds first).
+    // Despite 'zulu' > 'alpha' lexically, priority wins. The rank rides on the
+    // device now: the producer ranks the whole planned set before the shedding
+    // pass sees it, so there is no per-device lookup left to stub.
+    params.devices = params.devices.map((device) => (
+      { ...device, priority: device.id === 'zulu' ? 1 : 9 }
+    ));
     const ids = buildSheddingCandidates(params).candidates.map((c) => c.id);
     expect(ids).toEqual(['alpha', 'zulu']);
   });

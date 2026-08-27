@@ -138,10 +138,16 @@ const buildDeviceReading = (
 // point of it. `controllable: false` (cap-off — the deferred objective is the
 // only reason PELS drives this device) comes from the mock's default
 // `isCapacityControlEnabled`.
-const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean }): PlanInputDevice => toPlanDevice(
-  createAppContextMock({ getNow: () => new Date(nowMs) }),
-  buildDeviceReading(tempC, nowMs, opts),
-);
+// `priority` is stamped here because `toPlanDevice` is only the per-device half
+// of the producer: `buildHomePlanDevices` ranks the whole planned set right
+// after it, and this spec drives the projection on its own.
+const buildDevice = (tempC: number, nowMs: number, opts: { withSteps: boolean }): PlanInputDevice => ({
+  ...toPlanDevice(
+    createAppContextMock({ getNow: () => new Date(nowMs) }),
+    buildDeviceReading(tempC, nowMs, opts),
+  ),
+  priority: 1,
+});
 
 // The learned kWh/°C rate is present and confident throughout — in prod it never
 // degraded; only the step ladder did.

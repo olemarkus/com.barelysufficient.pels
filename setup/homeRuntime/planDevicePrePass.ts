@@ -25,7 +25,7 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
-import { rankActiveDevicePriorities } from '../../packages/shared-domain/src/modePriorities';
+import { rankModeDevices } from '../../packages/shared-domain/src/modeCatalogResolution';
 import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
 
 type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
@@ -109,7 +109,9 @@ export const buildHomePlanDevices = (
   const devices = homeDevices
     .map((device) => toPlanDevice(ctx, device, options))
     .filter(isRuntimePlannedDevice);
-  const priorityByDeviceId = rankActiveDevicePriorities(
+  // The mode catalog owner puts the home's planned set in order: unique,
+  // gap-free, no ties (`packages/shared-domain/src/modeCatalogResolution.ts`).
+  const priorityByDeviceId = rankModeDevices(
     devices.map((device) => device.id),
     options?.getBasePriorityForDevice ?? ((deviceId) => (
       resolveConfiguredDevicePriority(ctx.capacityPriorities, ctx.operatingMode, deviceId)

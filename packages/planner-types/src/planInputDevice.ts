@@ -181,7 +181,16 @@ export type PlanInputDeviceBase = {
    * `externalOffHoldActive`.
    */
   steppedLadderMissing?: true;
-  priority?: number;
+  /**
+   * This device's rank in the home's active mode: unique, gap-free `1..N`, lower
+   * wins. REQUIRED — the producer (`buildHomePlanDevices`) ranks the whole planned
+   * set through the mode catalog owner before any consumer sees it
+   * (`packages/shared-domain/src/modeCatalogResolution.ts`), so there is no
+   * unranked device for a consumer to default. The old optional made every
+   * comparison site invent its own `?? 100`, which tied every unranked device
+   * with every other one.
+   */
+  priority: number;
   /**
    * Producer-resolved bit: true when the device is commandable in this cycle,
    * false when physically blocked (EV unplugged/discharging, snapshot

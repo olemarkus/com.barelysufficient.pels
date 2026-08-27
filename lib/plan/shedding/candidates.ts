@@ -155,7 +155,7 @@ function addCandidatePower(params: {
   deficitKw: number;
   deps: Pick<
     SheddingDeps,
-    'getPriorityForDevice' | 'getShedBehavior' | 'debugStructured' | 'pendingBinaryCommandStore'
+    'getShedBehavior' | 'debugStructured' | 'pendingBinaryCommandStore'
   >;
   recorder: ShedCandidateSkipRecorder;
 }): ShedCandidate | null {
@@ -169,7 +169,7 @@ function addCandidatePower(params: {
     deps,
     recorder,
   } = params;
-  const priority = deps.getPriorityForDevice(device.id);
+  const priority = device.priority;
   const recentlyRestored = resolveRecentRestoreState({
     device,
     state,

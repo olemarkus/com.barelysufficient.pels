@@ -10,7 +10,7 @@ import {
   resolveSmartTaskDeviceKind,
   resolveSmartTaskGoalBounds,
 } from '../packages/shared-domain/src/smartTaskDeviceKind';
-import { rankActiveDevicePriorities } from '../packages/shared-domain/src/modePriorities';
+import { rankModeDevices } from '../packages/shared-domain/src/modeCatalogResolution';
 import { isSteppedLoadSnapshot } from '../packages/shared-domain/src/steppedLoadObservedState';
 import {
   hasOpenDeferredObjective,
@@ -361,13 +361,9 @@ export class AppSmartTaskApi {
     const previewDevices = candidateDevice && !planDevices.some((device) => device.id === candidateDevice.id)
       ? [...planDevices, candidateDevice]
       : planDevices;
-    const previewPriorityByDeviceId = rankActiveDevicePriorities(
+    const previewPriorityByDeviceId = rankModeDevices(
       previewDevices.map((device) => device.id),
-      (id) => resolveConfiguredDevicePriority(
-        this.ctx.capacityPriorities,
-        this.ctx.operatingMode,
-        id,
-      ),
+      (id) => resolveConfiguredDevicePriority(this.ctx.capacityPriorities, this.ctx.operatingMode, id),
     );
     const devices = previewDevices.map((device) => ({
       ...device,

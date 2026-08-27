@@ -185,12 +185,6 @@ export const MODE_TARGET_OWNERSHIP_STATE = 'mode_target_ownership_state';
 export const MODE_TARGET_OWNERSHIP_STATE_INITIALIZED = 'mode_target_ownership_state_initialized';
 export const POWER_CALIBRATION = 'power_calibration';
 export const POWER_CALIBRATION_INITIALIZED = 'power_calibration_initialized';
-// Pre-shed setpoint anchors ({deviceId: {anchorC, shedFloorC}}) plus the
-// written-before marker distinguishing a fresh install from a transient SDK
-// read miss. Global (device ids are unique across homes); see
-// `lib/plan/preShedAnchor.ts` and `setup/preShedAnchorStoreAdapter.ts`.
-export const PRE_SHED_ANCHORS = 'pre_shed_anchors';
-export const PRE_SHED_ANCHORS_INITIALIZED = 'pre_shed_anchors_initialized';
 // Weather-insight feature: config blob (enable flag + device ids, written by the
 // Settings UI master switch/pickers or via `homey api`) plus the persisted
 // usage/temperature history.

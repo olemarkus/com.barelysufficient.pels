@@ -84,7 +84,7 @@ const heaterInputDevice = (): PlanInputDevice =>
 
 const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices,
-  desiredForMode: { [HEATER_ID]: 21 },
+  modeTargetCFor: (d) => (({ [HEATER_ID]: 21 })[d.id] ?? d.currentTarget),
   ...planContextPower(FIXTURE_TOTAL_KW),
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
@@ -138,7 +138,6 @@ const emptyRestoreResult: RestorePlanResult = {
 };
 
 const defaultDeps: PlanDevicesDeps = {
-  getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
@@ -179,7 +178,6 @@ describe('solar device as managed observe-only — control-path exclusion lock',
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        getPriorityForDevice: () => 100,
         pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
         log: () => undefined,
       },
@@ -196,7 +194,6 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       state,
       signedNetKw: -3,
       getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
-      getPriority: () => 1,
       nowTs: Date.UTC(2025, 0, 1, 12, 0, 0),
     });
     expect(state.surplusEligibilityByDevice[SOLAR_ID]).toBeUndefined();

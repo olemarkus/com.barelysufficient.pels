@@ -27,7 +27,7 @@ const r = (reason: string) => fixtureDeviceReason(reason)!;
 
 const buildContext = (
   device: PlanInputDevice,
-  desiredForMode: Record<string, number> = {},
+  modeTargets: Record<string, number> = {},
   softLimitSource: PlanContext['softLimitSource'] = 'capacity',
   // What the meter read, or `null` for a cycle with no measurement. The power
   // answers follow from it (`planContextPower`), as they do in production.
@@ -35,7 +35,7 @@ const buildContext = (
   currentHourPriceLevel: PlanContext['currentHourPriceLevel'] = { cheap: false, expensive: false },
 ): PlanContext => ({
   devices: [device],
-  desiredForMode,
+  modeTargetCFor: (d) => modeTargets[d.id] ?? d.currentTarget,
   ...planContextPower(fixtureTotalKw),
   softLimit: 5,
   capacitySoftLimit: 5,
@@ -109,7 +109,7 @@ const buildObservation = (params: {
   inputDevice: InputDeviceFixture;
   planDevice: PlanDeviceFixture;
   restoreResult?: Partial<RestorePlanResult>;
-  desiredForMode?: Record<string, number>;
+  modeTargets?: Record<string, number>;
   softLimitSource?: PlanContext['softLimitSource'];
   fixtureTotalKw?: number | null;
   priceOptimizationEnabled?: boolean;
@@ -121,7 +121,7 @@ const buildObservation = (params: {
 }) => buildDeviceDiagnosticsObservations({
   context: buildContext(
     buildPlanInputDevice(params.inputDevice),
-    params.desiredForMode,
+    params.modeTargets,
     params.softLimitSource,
     params.fixtureTotalKw,
     params.currentHourPriceLevel,
@@ -167,7 +167,7 @@ describe('plan diagnostics observations', () => {
         inCooldown: true,
         inShedWindow: true,
       },
-      desiredForMode: { 'heater-1': 22 },
+      modeTargets: { 'heater-1': 22 },
     });
 
     expect(observation).toMatchObject({
@@ -269,7 +269,7 @@ describe('plan diagnostics observations', () => {
         inCooldown: true,
         inShedWindow: true,
       },
-      desiredForMode: { 'heater-1': 22 },
+      modeTargets: { 'heater-1': 22 },
     });
 
     expect(observation.blockCause).toBe('cooldown_backoff');
@@ -348,7 +348,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     });
 
     expect(observation).toMatchObject({
@@ -393,14 +393,14 @@ describe('plan diagnostics observations', () => {
     expect(buildObservation({
       inputDevice,
       planDevice: { ...basePlanDevice, plannedTarget: 16 },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     }).commandedTargetC).toBe(16);
 
     // No planned setpoint → fall back to the held current setpoint.
     expect(buildObservation({
       inputDevice,
       planDevice: basePlanDevice,
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     }).commandedTargetC).toBe(19);
   });
 
@@ -434,7 +434,7 @@ describe('plan diagnostics observations', () => {
     expect(buildObservation({
       inputDevice,
       planDevice: { ...basePlanDevice, shedAction: 'turn_off' },
-      desiredForMode: { 'heater-1': 18 },
+      modeTargets: { 'heater-1': 18 },
     })).toMatchObject({
       pelsCommandsTurnOffShed: true,
       commandedTargetC: 18,
@@ -446,14 +446,14 @@ describe('plan diagnostics observations', () => {
     expect(buildObservation({
       inputDevice,
       planDevice: { ...basePlanDevice, plannedState: 'keep', shedAction: 'turn_off' },
-      desiredForMode: { 'heater-1': 18 },
+      modeTargets: { 'heater-1': 18 },
     }).pelsCommandsTurnOffShed).toBe(false);
 
     // A setpoint-lowering shed is not a turn_off off shed.
     expect(buildObservation({
       inputDevice,
       planDevice: { ...basePlanDevice, shedAction: 'set_temperature', plannedTarget: 16 },
-      desiredForMode: { 'heater-1': 18 },
+      modeTargets: { 'heater-1': 18 },
     }).pelsCommandsTurnOffShed).toBe(false);
   });
 
@@ -494,7 +494,7 @@ describe('plan diagnostics observations', () => {
     expect(buildObservation({
       inputDevice,
       planDevice: offShed,
-      desiredForMode: { 'heater-1': 18 },
+      modeTargets: { 'heater-1': 18 },
     })).toMatchObject({
       pelsHoldsBelowTarget: true,
       unmetDemand: true,
@@ -508,14 +508,14 @@ describe('plan diagnostics observations', () => {
     expect(buildObservation({
       inputDevice: { ...inputDevice, currentTemperature: 18.5 },
       planDevice: { ...offShed, currentTemperature: 18.5 },
-      desiredForMode: { 'heater-1': 18 },
+      modeTargets: { 'heater-1': 18 },
     })).toMatchObject({ pelsHoldsBelowTarget: false, unmetDemand: false });
 
     // The user turned it off — PELS is not withholding anything.
     expect(buildObservation({
       inputDevice,
       planDevice: { ...offShed, plannedState: 'keep' },
-      desiredForMode: { 'heater-1': 18 },
+      modeTargets: { 'heater-1': 18 },
     })).toMatchObject({ pelsHoldsBelowTarget: false, unmetDemand: false });
   });
 
@@ -546,7 +546,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 20 },
+      modeTargets: { 'heater-1': 20 },
       priceOptimizationEnabled: true,
       priceOptimizationSettings: { 'heater-1': { enabled: true, cheapDelta: 4, expensiveDelta: -4 } },
       currentHourPriceLevel: { cheap: true, expensive: false },
@@ -593,7 +593,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     });
 
     expect(observation.eligibleForStarvation).toBe(true);
@@ -628,7 +628,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     });
 
     expect(observation.eligibleForStarvation).toBe(true);
@@ -667,7 +667,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     });
 
     expect(observation).toMatchObject({
@@ -704,7 +704,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     });
 
     expect(observation).toMatchObject({
@@ -741,7 +741,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     });
     const restoreObservation = buildObservation({
       inputDevice: {
@@ -769,7 +769,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     });
 
     // A device PELS is commanding in full is not held back by PELS.
@@ -809,7 +809,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     });
 
     expect(observation.countingCause).toBe('cooldown');
@@ -858,7 +858,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
       softLimitSource: 'daily',
     });
 
@@ -908,7 +908,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
       softLimitSource: 'capacity',
     });
 
@@ -960,7 +960,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
       softLimitSource: 'daily',
       // No measurement this cycle — the hold exists regardless of the budget.
       fixtureTotalKw: null,
@@ -1003,7 +1003,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
       softLimitSource: 'daily',
     });
 
@@ -1040,7 +1040,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     });
 
     expect(observation.countingCause).toBe('activation_backoff');
@@ -1075,7 +1075,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     });
 
     expect(observation.countingCause).toBe('restore_throttled');
@@ -1117,7 +1117,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
       },
-      desiredForMode: { 'heater-1': 21 },
+      modeTargets: { 'heater-1': 21 },
     });
 
     // Its own cause, not folded into `capacity` — device detail must be able to say the
@@ -1173,7 +1173,7 @@ describe('daily-bound headroom starvation flows through to the overview budget b
       available: true,
       currentTemperature: 18,
     },
-    desiredForMode: { 'heater-1': 21 },
+    modeTargets: { 'heater-1': 21 },
     softLimitSource: 'daily',
   });
 
@@ -1248,7 +1248,7 @@ describe('daily-bound headroom starvation flows through to the overview budget b
       available: true,
       currentTemperature: 18,
     },
-    desiredForMode: { 'heater-1': 21 },
+    modeTargets: { 'heater-1': 21 },
     softLimitSource: 'daily',
   });
 
@@ -1348,7 +1348,7 @@ describe('a device held under a restore cooldown accumulates held-back time', ()
       available: true,
       currentTemperature: 18,
     },
-    desiredForMode: { 'heater-1': 21 },
+    modeTargets: { 'heater-1': 21 },
   });
 
   it('enters held-back after the entry delay and attributes the time to the cooldown', () => {
@@ -1447,7 +1447,7 @@ describe('turn_off shed reaches the persisted demand counters', () => {
         currentTemperature: 16,
         expectedPowerKw: 1.14,
       },
-      desiredForMode: { 'heater-1': 18 },
+      modeTargets: { 'heater-1': 18 },
       softLimitSource: 'daily',
     });
 

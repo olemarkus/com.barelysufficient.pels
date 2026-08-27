@@ -297,9 +297,11 @@ describe('resolveClaimedReserveKw', () => {
     })).toBeCloseTo(2.65, 5);
   });
 
-  it('defaults a missing priority to 100, so an unranked device yields to a ranked one', () => {
+  it('yields to a reserve held by a higher-ranked device', () => {
+    // Every device carries a rank now — the producer ranks the whole planned set
+    // before admission runs — so there is no "unranked" case left to default.
     expect(resolveClaimedReserveKw({
-      dev: { id: 'x' }, reserves: [reserve('heater', 1, 1.25)],
+      dev: { id: 'x', priority: 9 }, reserves: [reserve('heater', 1, 1.25)],
     })).toBe(1.25);
   });
 });

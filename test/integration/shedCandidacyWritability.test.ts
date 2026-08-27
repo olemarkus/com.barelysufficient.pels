@@ -25,7 +25,7 @@ const FIXTURE_TOTAL_KW = 3;
 
 const buildContext = (devices: PlanInputDevice[], headroom: number): PlanContext => ({
   devices,
-  desiredForMode: {},
+  modeTargetCFor: (d) => d.currentTarget,
   ...planContextPower(FIXTURE_TOTAL_KW),
   softLimit: 4,
   capacitySoftLimit: 4,
@@ -53,7 +53,6 @@ const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuar
   pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   getShedBehavior: () => ({ action: 'turn_off' as const }),
   // Cap-less device sorts first (higher number sheds first).
-  getPriorityForDevice: (id: string) => (id === 'unwritable' ? 200 : 100),
   log: vi.fn(),
   debugStructured: vi.fn(),
 });

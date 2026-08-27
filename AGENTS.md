@@ -205,6 +205,7 @@ Key timing:
 | Starvation detection | `lib/diagnostics/AGENTS.md` (invariants digest), `notes/starvation/` |
 | Capacity model internals | `docs/technical.md` |
 | Safe pace (cap vs daily budget), budget exemption | `notes/safe-pace-two-constraints.md` |
+| **Who owns a thermostat's setpoint, and what it restores to** | `notes/temperature-ownership.md` |
 | Daily budget logic | `docs/daily-budget.md` |
 | Flow card design | `docs/flow-cards.md` |
 | EV car ↔ charger link probe | `notes/ev-car-link/README.md` |
