@@ -1,46 +1,45 @@
 import type Homey from 'homey';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import type { DeviceOperatingModeOutcome } from './homeRuntime/homeOperatingMode';
 import { isBooleanMap, isModeDeviceTargets } from '../lib/utils/appTypeGuards';
 import {
   MODE_DEVICE_TARGETS,
   MAIN_HOME_ID,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
-  OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
   PRICE_OPTIMIZATION_SETTINGS,
   homeScopedSettingsKey,
   type HomeId,
 } from '../lib/utils/settingsKeys';
-import { AIRTREATMENT_SHED_FLOOR_C, NON_ONOFF_TEMPERATURE_SHED_FLOOR_C } from '../lib/utils/airtreatmentConstants';
-import {
-  computeDefaultAirtreatmentShedTemperature,
-  normalizeShedTemperature,
-} from '../lib/utils/airtreatmentShedTemperature';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../lib/utils/targetCapabilities';
-import { resolveAnchoredSetpoint, type PreShedAnchorReader } from '../lib/plan/preShedAnchor';
-import type { ShedBehavior } from '../lib/plan/planTypes';
+import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
+import type { UnrankedPlanInputDevice } from './appInit/toPlanDevice';
+import {
+  enforceTemperatureWithoutOnOffOvershootBehaviors,
+  type OvershootBehaviorEntry,
+  type ResolveOperatingModeForDevice,
+} from './temperatureShedFloorDefaults';
+
+export type { ResolveOperatingModeForDevice };
+import { DEFAULT_MODE_NAME } from '../packages/shared-domain/src/modeLabels';
+import {
+  resolveModeTargets,
+  type ModeTargetDevice,
+} from '../packages/shared-domain/src/modeCatalogResolution';
 
 type StructuredEventEmitter = (event: Record<string, unknown>) => void;
 
-/**
- * Per-device active-mode resolution, carrying the producer's read-outcome
- * discriminant. Consumers that PERSIST a mode-derived value must skip on
- * `unavailable` rather than substitute a mode of their own.
- */
-export type ResolveOperatingModeForDevice = (deviceId: string) => DeviceOperatingModeOutcome;
-
 type BooleanMap = Record<string, boolean>;
 type PriceSettings = Record<string, { enabled?: boolean }>;
-type OvershootBehaviorEntry = { action?: string; temperature?: number; stepId?: string };
 
-function supportsTemperatureControl(device: TargetDeviceSnapshot): boolean {
+// Capability, not permission: "this device HAS a setpoint". Whether PELS may
+// write it is a separate, later question (`projectTemperatureDeniedDevice`).
+function hasTemperatureCapability(device: TargetDeviceSnapshot): boolean {
   return device.deviceType === 'temperature';
 }
 
 function supportsPriceOnlyWithoutPower(device: TargetDeviceSnapshot): boolean {
-  return device.powerCapable === false && supportsTemperatureControl(device);
+  return device.powerCapable === false && hasTemperatureCapability(device);
 }
 
 function parseBooleanMap(value: unknown): BooleanMap {
@@ -83,83 +82,6 @@ function parsePriceSettings(value: unknown): PriceSettings | null {
 function parseOvershootSettings(value: unknown): Record<string, OvershootBehaviorEntry> {
   if (!value || typeof value !== 'object') return {};
   return value as Record<string, OvershootBehaviorEntry>;
-}
-
-function isTemperatureWithoutOnOff(device: TargetDeviceSnapshot): boolean {
-  const hasTarget = Array.isArray(device.targets) && device.targets.length > 0;
-  const hasOnOff = device.capabilities?.includes('onoff') === true;
-  return supportsTemperatureControl(device) && hasTarget && !hasOnOff;
-}
-
-function resolveTemperatureShedFloor(device: TargetDeviceSnapshot): number {
-  const classKey = (device.deviceClass || '').trim().toLowerCase();
-  return classKey === 'airtreatment' ? AIRTREATMENT_SHED_FLOOR_C : NON_ONOFF_TEMPERATURE_SHED_FLOOR_C;
-}
-
-/**
- * The active mode governing one device's mode target. Default: the historical
- * raw unsuffixed read (main-home behaviour). The app wires
- * `resolveOperatingModeForDevice` (setup/homeRuntime/homeOperatingMode.ts) so
- * a sub-home member resolves through ITS home's effective mode instead of
- * silently using the global one.
- */
-function resolveModeForDeviceTarget(params: {
-  settings: Homey.App['homey']['settings'];
-  deviceId: string;
-  resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
-}): DeviceOperatingModeOutcome {
-  if (params.resolveOperatingModeForDevice) {
-    return params.resolveOperatingModeForDevice(params.deviceId);
-  }
-  const operatingModeRaw = params.settings.get(OPERATING_MODE_SETTING) as unknown;
-  return {
-    state: 'resolved',
-    mode: typeof operatingModeRaw === 'string' && operatingModeRaw.trim() ? operatingModeRaw : null,
-    homeId: MAIN_HOME_ID,
-    catalogHomeId: MAIN_HOME_ID,
-  };
-}
-
-/**
- * `unavailable` is NOT "no target configured": either the owning home's active
- * mode or the mode-targets blob needed to resolve that mode is unknown. It is
- * kept distinct all the way to the seed decision because the two demand
- * opposite handling — absent DEVICE target = fall back to the device setpoint,
- * unavailable mode evidence = write nothing.
- */
-type ModeTargetRead =
-  | { state: 'resolved'; modeTarget: number | null }
-  | { state: 'unavailable' };
-
-function readModeTarget(params: {
-  settings: Homey.App['homey']['settings'];
-  deviceId: string;
-  resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
-}): ModeTargetRead {
-  const operatingMode = resolveModeForDeviceTarget(params);
-  if (operatingMode.state === 'unavailable') return { state: 'unavailable' };
-  if (operatingMode.mode === null) return { state: 'resolved', modeTarget: null };
-
-  let modeTargetsRaw: unknown;
-  try {
-    modeTargetsRaw = params.settings.get(
-      homeScopedSettingsKey(MODE_DEVICE_TARGETS, operatingMode.catalogHomeId),
-    ) as unknown;
-  } catch {
-    return { state: 'unavailable' };
-  }
-  if (!modeTargetsRaw || typeof modeTargetsRaw !== 'object' || Array.isArray(modeTargetsRaw)) {
-    return { state: 'unavailable' };
-  }
-
-  const modeTargets = modeTargetsRaw as Record<string, Record<string, unknown>>;
-  const modeMap = modeTargets[operatingMode.mode];
-  if (modeMap === undefined) return { state: 'resolved', modeTarget: null };
-  if (!modeMap || typeof modeMap !== 'object' || Array.isArray(modeMap)) {
-    return { state: 'unavailable' };
-  }
-  const value = modeMap[params.deviceId];
-  return { state: 'resolved', modeTarget: Number.isFinite(value) ? Number(value) : null };
 }
 
 function applyFalseOverrides(params: {
@@ -225,80 +147,6 @@ function getUnsupportedBuckets(snapshot: TargetDeviceSnapshot[]): {
       .filter((entry) => entry.isPriceOnly)
       .map((entry) => entry.device),
   };
-}
-
-function resolveTemperatureWithoutOnOffOvershootUpdate(params: {
-  settings: Homey.App['homey']['settings'];
-  device: TargetDeviceSnapshot;
-  existing: OvershootBehaviorEntry | undefined;
-  resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
-}): OvershootBehaviorEntry | null {
-  const { settings, device, existing, resolveOperatingModeForDevice } = params;
-  const existingTemp = typeof existing?.temperature === 'number' ? existing.temperature : null;
-  const minFloorC = resolveTemperatureShedFloor(device);
-
-  let normalizedTemp: number;
-  if (existingTemp !== null) {
-    const normalizedExisting = normalizeShedTemperature(existingTemp);
-    normalizedTemp = Math.max(minFloorC, normalizedExisting);
-  } else {
-    const modeTargetRead = readModeTarget({
-      settings,
-      deviceId: device.id,
-      resolveOperatingModeForDevice,
-    });
-    // The owning home's active mode is unknown (ownership is provisional, a
-    // settings read failed, or a rename is between its target and alias writes),
-    // so the default we would derive cannot be attributed to a mode.
-    // Seed NOTHING: a wrong-mode default persists — every later refresh keeps
-    // the entry that already exists — while a missing entry is re-derived on
-    // the next refresh, once the read succeeds.
-    if (modeTargetRead.state === 'unavailable') return null;
-    normalizedTemp = computeDefaultAirtreatmentShedTemperature({
-      modeTarget: modeTargetRead.modeTarget,
-      currentTarget: getPrimaryTargetCapability(device.targets)?.value ?? null,
-      minFloorC,
-    });
-  }
-
-  const needsUpdate = existing?.action !== 'set_temperature'
-    || existingTemp === null
-    || Math.abs(normalizedTemp - existingTemp) > 1e-9;
-  if (!needsUpdate) return null;
-
-  return { action: 'set_temperature', temperature: normalizedTemp };
-}
-
-function enforceTemperatureWithoutOnOffOvershootBehaviors(params: {
-  settings: Homey.App['homey']['settings'];
-  snapshot: TargetDeviceSnapshot[];
-  managed: BooleanMap;
-  controllable: BooleanMap;
-  overshootSettings: Record<string, OvershootBehaviorEntry>;
-  resolveOperatingModeForDevice?: ResolveOperatingModeForDevice;
-}): number {
-  const {
-    settings, snapshot, managed, controllable, overshootSettings, resolveOperatingModeForDevice,
-  } = params;
-  const updates = Object.fromEntries(snapshot.flatMap((device) => {
-    if (device.powerCapable === false) return [];
-    if (!isTemperatureWithoutOnOff(device)) return [];
-    if (managed[device.id] !== true || controllable[device.id] !== true) return [];
-
-    const update = resolveTemperatureWithoutOnOffOvershootUpdate({
-      settings,
-      device,
-      existing: overshootSettings[device.id],
-      resolveOperatingModeForDevice,
-    });
-    return update ? [[device.id, update] as const] : [];
-  }));
-
-  const updated = Object.keys(updates).length;
-  if (!updated) return 0;
-
-  settings.set(OVERSHOOT_BEHAVIORS, { ...overshootSettings, ...updates });
-  return updated;
 }
 
 function logUnsupportedChanges(params: {
@@ -406,20 +254,206 @@ export function disableUnsupportedDevices(params: {
   }
 }
 
+/**
+ * Persist the per-mode targets `resolveModeTargets` had to fill.
+ *
+ * The resolver already answers completely, so nothing downstream depends on
+ * this pass having run — a device that appeared a second ago is planned with a
+ * resolved target either way. What this adds is durability: PELS owns a managed
+ * thermostat's setpoint, and a setpoint that is re-derived from the device on
+ * every boot is not owned, it is followed. Writing the first resolution down
+ * makes it the owner's target from then on, editable on the Modes screen and
+ * stable across a restart.
+ *
+ * Runs on the snapshot refresh, before the plan cycle, so the write is a
+ * deliberate act on the producer's pass rather than a side effect hiding inside
+ * a plan build.
+ *
+ * Takes PLAN devices, not the snapshot the settings UI reads. The question here
+ * — "what setpoint does PELS hold this device at" — is a control question, and
+ * the two views answer differently on purpose: a device whose owner switched
+ * temperature control off is still a temperature device to the UI (that is what
+ * renders the toggle and the saved targets beneath it) and is NOT one to
+ * control. Consuming the planner's type is what keeps this pass from having a
+ * concept of the flag at all.
+ */
+export function persistFilledModeTargets(params: {
+  devices: readonly UnrankedPlanInputDevice[];
+  settings: Homey.App['homey']['settings'];
+  resolveHomeIdForDevice?: (deviceId: string) => HomeId | null;
+  structuredLog?: StructuredEventEmitter;
+  debugStructured: StructuredEventEmitter;
+}): void {
+  const {
+    devices: planDevices, settings, resolveHomeIdForDevice, structuredLog, debugStructured,
+  } = params;
+  const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
+  const candidates = planDevices.filter((device) => isRuntimePlannedDevice({ managed: managed[device.id] }));
+  if (candidates.length === 0) return;
+
+  const byHome = new Map<HomeId, UnrankedPlanInputDevice[]>();
+  candidates.forEach((device) => {
+    const homeId = resolveHomeIdForDevice ? resolveHomeIdForDevice(device.id) : MAIN_HOME_ID;
+    if (homeId === null) return;
+    byHome.set(homeId, [...(byHome.get(homeId) ?? []), device]);
+  });
+
+  const writes = [...byHome].flatMap(([homeId, devices]) => {
+    const key = homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId);
+    const read = readModeTargetsCatalog(settings, key);
+    // Read failed, or the payload is not something this code recognizes: decide
+    // nothing, retry next refresh, and never write over it.
+    if (read.state === 'unavailable') return [];
+    const probes = devices.flatMap(buildModeTargetProbe);
+    // Every mode the home has, so switching modes never lands on a blank. A
+    // home whose catalog has never been written starts at the default mode —
+    // Main's blob is only ever written by the settings UI, so an owner who
+    // never opened the Modes screen had none at all while PELS planned, shed,
+    // and auto-assigned a `set_temperature` shed to their heaters.
+    const modes = Object.keys(read.catalog).length === 0
+      ? [DEFAULT_MODE_NAME]
+      : Object.keys(read.catalog);
+    const filled = modes.flatMap((mode) => {
+      const resolved = resolveModeTargets({
+        targetCFor: (deviceId) => read.catalog[mode]?.[deviceId],
+        devices: probes,
+      });
+      return Object.entries(resolved.unstoredTargetsByDeviceId)
+        // Once filled in this process, never re-fill: otherwise this pass would
+        // race a user-clear on the Modes screen and bring the value back.
+        .filter(([deviceId]) => !alreadyFilled(homeId, mode, deviceId))
+        .map(([deviceId, targetC]) => ({ mode, deviceId, targetC }));
+    });
+    if (filled.length === 0) return [];
+    const next: ModeTargetsBlob = Object.fromEntries([
+      ...Object.entries(read.catalog),
+      ...modes.map((mode) => [mode, {
+        ...(read.catalog[mode] ?? {}),
+        ...Object.fromEntries(filled.filter((f) => f.mode === mode).map((f) => [f.deviceId, f.targetC])),
+      }] as const),
+    ]);
+    return [{ homeId, key, next, filled }];
+  });
+  if (writes.length === 0) return;
+  if (writes.some((write) => !isModeDeviceTargets(write.next))) return;
+
+  writes.forEach((write) => {
+    settings.set(write.key, write.next);
+    write.filled.forEach((entry) => {
+      filledEntryFingerprints.add(filledEntryFingerprint(write.homeId, entry.mode, entry.deviceId));
+    });
+    // One line per device, naming the modes it was filled for — a device joining
+    // five modes is one fact, not five.
+    [...new Set(write.filled.map((entry) => entry.deviceId))].forEach((deviceId) => {
+      const entries = write.filled.filter((entry) => entry.deviceId === deviceId);
+      structuredLog?.({
+        event: 'mode_target_filled',
+        deviceId,
+        deviceName: planDevices.find((device) => device.id === deviceId)?.name,
+        filledModes: entries.map((entry) => entry.mode),
+        targetC: entries[0]?.targetC,
+      });
+    });
+  });
+  debugStructured({
+    event: 'mode_targets_persisted',
+    entryCount: writes.reduce((sum, write) => sum + write.filled.length, 0),
+  });
+}
+
+/**
+ * One device's facts for the resolver, or nothing if it has no setpoint to be
+ * told.
+ *
+ * `isTemperaturePlanDevice` is the whole test — the same one the planner uses —
+ * and it already answers correctly for BOTH reasons a device might have none: no
+ * `target_temperature` capability, or an owner who switched temperature control
+ * off, which `toPlanDevice` resolved away before this pass ever saw the device.
+ *
+ * The setpoint is normalized to the device's own min/max/step, so what gets
+ * persisted is a value the device can actually hold.
+ */
+function buildModeTargetProbe(device: UnrankedPlanInputDevice): ModeTargetDevice[] {
+  if (!isTemperaturePlanDevice(device)) return [];
+  const normalized = normalizeTargetCapabilityValue({
+    target: getPrimaryTargetCapability(device.targets),
+    value: device.currentTarget,
+  });
+  // Guaranteed finite by the observer's atomic temperature facet, so the only
+  // way this fails is a capability whose bounds cannot hold the reading.
+  if (!Number.isFinite(normalized)) return [];
+  return [{ id: device.id, heldSetpointC: normalized }];
+}
+
 type ModeTargetsBlob = Record<string, Record<string, number>>;
-type SeedValueSource = 'device_setpoint' | 'pre_shed_anchor';
-type SeedPlan = {
-  device: TargetDeviceSnapshot; modes: string[]; value: number; source: SeedValueSource; homeId: HomeId;
-};
+
+// Per-process record of (home, mode, device) entries this process has already
+// filled. Once filled, never re-fill in this process even if the entry goes
+// missing again — otherwise a snapshot refresh would race a user-clear from the
+// settings UI and bring the value straight back. Deliberately not persisted: if
+// the entry is still missing after a restart, the owner has not had a chance to
+// clear it, so filling again is the right call.
+const filledEntryFingerprints = new Set<string>();
+const filledEntryFingerprint = (homeId: HomeId, mode: string, deviceId: string): string =>
+  `${homeId}::${mode}::${deviceId}`;
+const alreadyFilled = (homeId: HomeId, mode: string, deviceId: string): boolean =>
+  filledEntryFingerprints.has(filledEntryFingerprint(homeId, mode, deviceId));
+
+export function __resetModeTargetFillDedupeForTests(): void {
+  filledEntryFingerprints.clear();
+}
+
+type ModeTargetsCatalogRead =
+  | { state: 'resolved'; catalog: ModeTargetsBlob }
+  | { state: 'unavailable' };
+
+/**
+ * The mode-target catalog for one home, with genuine absence separated from a
+ * failed read. Only a key the store demonstrably never held resolves to an
+ * EMPTY catalog — the one state this pass may build a default mode on top of.
+ * A thrown read, an unusable key list, a payload the parser does not recognize,
+ * or a present-but-null key all answer `unavailable`, because the next act is a
+ * whole-blob `set` and one transient SDK miss must not become a wipe
+ * (`notes/persisted-settings-state.md`).
+ *
+ * The SDK answers an unwritten setting with `null` on Homey Pro and the
+ * Self-Hosted Server, and object doubles in specs answer `undefined`; the key
+ * list is the authority for absence in both cases (`setup/AGENTS.md`).
+ */
+function readModeTargetsCatalog(
+  settings: Homey.App['homey']['settings'],
+  key: string,
+): ModeTargetsCatalogRead {
+  let raw: unknown;
+  try {
+    raw = settings.get(key) as unknown;
+  } catch {
+    return { state: 'unavailable' };
+  }
+  const parsed = parseModeDeviceTargets(raw);
+  if (parsed !== null) return { state: 'resolved', catalog: parsed };
+  if (raw !== undefined && raw !== null) return { state: 'unavailable' };
+  let keys: unknown;
+  try {
+    keys = settings.getKeys() as unknown;
+  } catch {
+    return { state: 'unavailable' };
+  }
+  // An EMPTY key list is itself a suspect read — a real install always has keys.
+  if (!Array.isArray(keys) || keys.length === 0 || !keys.every((entry) => typeof entry === 'string')) {
+    return { state: 'unavailable' };
+  }
+  return keys.includes(key) ? { state: 'unavailable' } : { state: 'resolved', catalog: {} };
+}
 
 function parseModeDeviceTargets(value: unknown): ModeTargetsBlob | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>).map(([mode, entries]) => {
-      // Preserve the mode key even when its value is missing/null/primitive
-      // — dropping it would silently delete a user-configured mode from the
-      // blob on the next write. Coerce to an empty entry instead so the
-      // mode survives and the seed pass can still populate it.
+      // Preserve the mode key even when its value is missing/null/primitive —
+      // dropping it would silently delete a user-configured mode from the blob
+      // on the next write. Coerce to an empty entry instead so the mode
+      // survives and this pass can still populate it.
       if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
         return [mode, {} as Record<string, number>] as const;
       }
@@ -430,234 +464,4 @@ function parseModeDeviceTargets(value: unknown): ModeTargetsBlob | null {
       return [mode, cleaned] as const;
     }),
   );
-}
-
-// Per-process dedupe so a permanently-broken device (no finite setpoint)
-// doesn't emit `mode_target_seed_skipped` on every snapshot refresh. Once a
-// (device, mode, reason) tuple has been logged, we stay quiet until the app
-// restarts — by which point the user has either fixed the device, removed
-// it, or the operator has a fresh signal to act on.
-const skipEmissionFingerprints = new Set<string>();
-const skipFingerprint = (deviceId: string, mode: string, reason: string): string =>
-  `${deviceId}::${mode}::${reason}`;
-
-// Per-process record of (deviceId, mode) entries we've already auto-seeded.
-// Once an entry has been seeded, we don't re-seed it again in this process
-// even if the user later clears it from the UI — otherwise the next snapshot
-// refresh would race the user-clear and re-populate it. Persistence across
-// restarts is intentionally not provided; if the entry is still missing on
-// the next boot, seeding it again is the correct behaviour (and the user
-// hasn't had a chance to clear it post-restart).
-const seededEntryFingerprints = new Set<string>();
-const seededEntryFingerprint = (homeId: HomeId, deviceId: string, mode: string): string =>
-  `${homeId}::${mode}::${deviceId}`;
-
-export function __resetSeedSkipDedupeForTests(): void {
-  skipEmissionFingerprints.clear();
-  seededEntryFingerprints.clear();
-}
-
-type ResolvedSeedValue =
-  | { kind: 'value'; value: number; source: SeedValueSource }
-  | { kind: 'skip'; reason: 'no_seed_source' | 'anchor_unavailable' };
-
-/** The two deps the anchor-aware seed resolution reads, bundled so the seed
- * helpers stay within the parameter budget. */
-type AnchorSeedGate =
-  { preShedAnchors: PreShedAnchorReader; getShedBehavior: (deviceId: string) => ShedBehavior };
-
-function resolveSeedValue(device: TargetDeviceSnapshot, anchorGate: AnchorSeedGate): ResolvedSeedValue {
-  const anchorRead = anchorGate.preShedAnchors.read(device.id);
-  if (anchorRead.kind === 'unavailable') {
-    // Transient adapter state (boot-read abandon-grace): seeding from the live
-    // value now could record a shed floor as the permanent mode target, so
-    // skip this device — seeding re-runs on the next snapshot refresh.
-    return { kind: 'skip', reason: 'anchor_unavailable' };
-  }
-  const target = getPrimaryTargetCapability(device.targets);
-  const current = target?.value;
-  if (typeof current !== 'number' || !Number.isFinite(current)) {
-    return { kind: 'skip', reason: 'no_seed_source' };
-  }
-  // A device parked AT a shed floor is showing the shed value, not the user's
-  // intent — most importantly right after a restart, when the in-memory shed
-  // state is gone but the persisted anchor is not. Seed from the anchor (the
-  // pre-shed setpoint) instead of the live value; gate semantics on
-  // `resolveAnchoredSetpoint` (`lib/plan/preShedAnchor.ts`). The CURRENT
-  // configured floor is resolved here through the same capability
-  // normalization the planner applies, because a mis-seed is a durable write
-  // no rebuild undoes: a floor edit landing right before a restart leaves the
-  // device observed at the NEW floor while the anchor still pins the old one,
-  // and pinned-floor-only recognition would persist that shed floor as the
-  // permanent mode target.
-  const behavior = anchorGate.getShedBehavior(device.id);
-  const configuredFloorsC = behavior.action === 'set_temperature'
-    ? [normalizeTargetCapabilityValue({ target, value: behavior.temperature })]
-    : [];
-  const anchored = resolveAnchoredSetpoint(anchorRead, current, configuredFloorsC);
-  const seed = anchored.kind === 'anchor'
-    ? { value: anchored.value, source: 'pre_shed_anchor' as const }
-    : { value: current, source: 'device_setpoint' as const };
-  const normalized = normalizeTargetCapabilityValue({ target, value: seed.value });
-  return Number.isFinite(normalized)
-    ? { kind: 'value', value: normalized, source: seed.source }
-    : { kind: 'skip', reason: 'no_seed_source' };
-}
-
-function isSeedCandidate(
-  device: TargetDeviceSnapshot,
-  managed: BooleanMap,
-  controllable: BooleanMap,
-): boolean {
-  return supportsTemperatureControl(device)
-    && getPrimaryTargetCapability(device.targets) !== null
-    && managed[device.id] === true
-    && controllable[device.id] === true;
-}
-
-function findMissingModesForDevice(
-  device: TargetDeviceSnapshot,
-  existing: ModeTargetsBlob,
-  homeId: HomeId,
-): string[] {
-  return Object.keys(existing).filter((mode) => {
-    // Edge-trigger: if we've already auto-seeded this (device, mode) once in
-    // this process, never re-seed it — even if it's currently missing. A
-    // user-clear from the settings UI must stick within the session;
-    // otherwise the snapshot refresh races the clear and brings the value
-    // back. On process restart we lose this memory, which is acceptable: if
-    // the entry is still missing the user hasn't had a chance to clear it
-    // post-restart, so re-seeding is the right call.
-    if (seededEntryFingerprints.has(seededEntryFingerprint(homeId, device.id, mode))) return false;
-    const value = existing[mode]?.[device.id];
-    return !(typeof value === 'number' && Number.isFinite(value));
-  });
-}
-
-function applySeedPlans(existing: ModeTargetsBlob, plans: SeedPlan[]): ModeTargetsBlob {
-  return Object.fromEntries(
-    Object.entries(existing).map(([mode, entries]) => {
-      const additions = Object.fromEntries(
-        plans
-          .filter((plan) => plan.modes.includes(mode))
-          .map((plan) => [plan.device.id, plan.value] as const),
-      );
-      return [mode, { ...entries, ...additions }];
-    }),
-  );
-}
-
-function emitSeedSkipped(
-  plan: { device: TargetDeviceSnapshot; modes: string[] },
-  reason: 'no_seed_source' | 'normalize_failed' | 'anchor_unavailable',
-  structuredLog?: StructuredEventEmitter,
-): void {
-  plan.modes.forEach((mode) => {
-    const fingerprint = skipFingerprint(plan.device.id, mode, reason);
-    if (skipEmissionFingerprints.has(fingerprint)) return;
-    skipEmissionFingerprints.add(fingerprint);
-    structuredLog?.({
-      event: 'mode_target_seed_skipped',
-      deviceId: plan.device.id,
-      deviceName: plan.device.name,
-      mode,
-      reason,
-    });
-  });
-}
-
-function buildSeedPlans(
-  candidates: TargetDeviceSnapshot[],
-  existing: ModeTargetsBlob,
-  homeId: HomeId,
-  anchorGate: AnchorSeedGate,
-  structuredLog?: StructuredEventEmitter,
-): SeedPlan[] {
-  return candidates.flatMap((device) => {
-    const modes = findMissingModesForDevice(device, existing, homeId);
-    if (modes.length === 0) return [];
-    const resolved = resolveSeedValue(device, anchorGate);
-    if (resolved.kind === 'skip') {
-      // The skip-emission dedupe only quiets the LOG; the skip itself is
-      // re-evaluated on every pass, so an `anchor_unavailable` device seeds
-      // normally once the adapter leaves its grace window.
-      emitSeedSkipped({ device, modes }, resolved.reason, structuredLog);
-      return [];
-    }
-    return [{ device, modes, value: resolved.value, source: resolved.source, homeId }];
-  });
-}
-
-export function seedMissingModeTargets(params: {
-  snapshot: TargetDeviceSnapshot[];
-  settings: Homey.App['homey']['settings'];
-  /** Pre-shed anchor store (read slice): a device parked at a shed floor
-   * seeds from the anchor, never from the shed value. */
-  preShedAnchors: PreShedAnchorReader;
-  /** The SAME shed-behaviour resolution the planner uses (`ctx.getShedBehavior`),
-   * so the seeder's at-floor recognition covers the current configured floor —
-   * not just the anchor's pinned one — across a mid-hold floor edit + restart. */
-  getShedBehavior: (deviceId: string) => ShedBehavior;
-  resolveHomeIdForDevice?: (deviceId: string) => HomeId | null;
-  structuredLog?: StructuredEventEmitter;
-  debugStructured: StructuredEventEmitter;
-}): void {
-  const {
-    snapshot, settings, preShedAnchors, getShedBehavior, resolveHomeIdForDevice, structuredLog, debugStructured,
-  } = params;
-  const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
-  const controllable = parseBooleanMap(settings.get(CONTROLLABLE_DEVICES) as unknown);
-  const candidates = snapshot.filter((device) => isSeedCandidate(device, managed, controllable));
-  if (candidates.length === 0) return;
-
-  const byHome = new Map<HomeId, TargetDeviceSnapshot[]>();
-  candidates.forEach((device) => {
-    const homeId = resolveHomeIdForDevice
-      ? resolveHomeIdForDevice(device.id)
-      : MAIN_HOME_ID;
-    if (homeId === null) return;
-    const entries = byHome.get(homeId) ?? [];
-    byHome.set(homeId, [...entries, device]);
-  });
-  const homeSeedPlans = [...byHome].flatMap(([homeId, devices]) => {
-    const key = homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId);
-    const existing = parseModeDeviceTargets(settings.get(key) as unknown);
-    // No modes configured at all → nothing to seed against. A fresh catalog
-    // is populated by its marker-last initializer before this pass can write it.
-    if (!existing || Object.keys(existing).length === 0) return [];
-    const plans = buildSeedPlans(devices, existing, homeId, { preShedAnchors, getShedBehavior }, structuredLog);
-    return plans.length === 0
-      ? []
-      : [{ homeId, plans, next: applySeedPlans(existing, plans) }];
-  });
-  const plans = homeSeedPlans.flatMap((entry) => entry.plans);
-  if (plans.length === 0) return;
-
-  if (homeSeedPlans.some((entry) => !isModeDeviceTargets(entry.next))) {
-    plans.forEach((plan) => emitSeedSkipped(plan, 'normalize_failed', structuredLog));
-    return;
-  }
-
-  homeSeedPlans.forEach((entry) => {
-    settings.set(homeScopedSettingsKey(MODE_DEVICE_TARGETS, entry.homeId), entry.next);
-  });
-  plans.forEach((entry) => {
-    entry.modes.forEach((mode) => {
-      seededEntryFingerprints.add(seededEntryFingerprint(entry.homeId, entry.device.id, mode));
-    });
-    structuredLog?.({
-      event: 'mode_target_auto_seeded',
-      deviceId: entry.device.id,
-      deviceName: entry.device.name,
-      seededModes: entry.modes,
-      seededValue: entry.value,
-      source: entry.source,
-    });
-  });
-  debugStructured({
-    event: 'mode_targets_seeded',
-    deviceCount: plans.length,
-    deviceIds: plans.map((entry) => entry.device.id),
-    deviceNames: plans.map((entry) => entry.device.name),
-  });
 }

@@ -83,7 +83,6 @@ export type SheddingDeps = {
   shortfallThresholdKw: number;
   powerTracker: PowerTrackerState;
   getShedBehavior: (deviceId: string) => ShedBehavior;
-  getPriorityForDevice: (deviceId: string) => number;
   // Observer-owned pending-binary-command store; candidate builders read
   // unconfirmed-relief state through `peek(id)` (raw read) instead of
   // touching `state.pendingBinaryCommands[id]` directly.

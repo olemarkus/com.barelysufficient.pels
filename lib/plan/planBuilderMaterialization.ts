@@ -89,7 +89,6 @@ export class PlanMaterializationStages {
   buildPlanDevices(
     context: PlanContext,
     sheddingPlan: SheddingPlan,
-    getCyclePriority: (deviceId: string) => number,
   ): DevicePlanDevice[] {
     return trackPlanStage('plan_devices_ms', () => buildInitialPlanDevices({
       context,
@@ -99,7 +98,6 @@ export class PlanMaterializationStages {
       shedStepTargets: sheddingPlan.shedStepTargets,
       guardInShortfall: sheddingPlan.guardInShortfall,
       deps: {
-        getPriorityForDevice: getCyclePriority,
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
         getPriceOptimizationEnabled: () => this.deps.getPriceOptimizationEnabled(),
         getPriceOptimizationSettings: () => this.priceOptimizationSettings,
@@ -133,9 +131,8 @@ export class PlanMaterializationStages {
     planDevices: DevicePlanDevice[],
     restoreResult: RestorePlanResult,
     sheddingPlan: SheddingPlan,
-    // Resolved ONCE per build by the builder and shared with the pre-shed
-    // anchor maintenance pass, so the hold lane's stamps and the anchor's
-    // at-floor recognition can never disagree about this build's floor.
+    // Resolved ONCE per build by the builder and shared with restore
+    // classification, so no stage can disagree about this build's floor.
     // Semantics on `ShedHoldParams.normalizedShedFloorCByDevice`.
     normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
   ): HoldPlanResult {
@@ -255,7 +252,7 @@ export class PlanMaterializationStages {
     normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
   ): FinalizedPlanResult {
     return trackPlanStage('plan_finalize_ms', () => finalizePlanDevices(
-      planDevices, normalizedShedFloorCByDevice, this.state.preShedAnchors, {
+      planDevices, normalizedShedFloorCByDevice, this.state.lastPlannedShedIds, {
       onInvalidReasonPair: (issue) => {
         this.deps.structuredLog?.warn({
           event: 'plan_reason_pair_invalid',

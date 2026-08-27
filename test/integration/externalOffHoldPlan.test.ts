@@ -139,7 +139,7 @@ describe('external-off hold — plan-device propagation', () => {
   // and the other plan specs build fixtures with the bit already set.
   const buildContext = (devices: PlanContext['devices']): PlanContext => ({
     devices,
-    desiredForMode: {},
+    modeTargetCFor: (d) => d.currentTarget,
     ...planContextPower(FIXTURE_TOTAL_KW),
     hourBucketKey: '2026-07-25T12',
     softLimit: 10,
@@ -161,7 +161,6 @@ describe('external-off hold — plan-device propagation', () => {
   });
 
   const deps: PlanDevicesDeps = {
-    getPriorityForDevice: () => 100,
     getShedBehavior: () => ({ action: 'turn_off' }),
     getPriceOptimizationEnabled: () => false,
     getPriceOptimizationSettings: () => ({}),

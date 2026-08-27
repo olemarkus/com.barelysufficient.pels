@@ -23,20 +23,10 @@ import { buildBasePlanDevice } from './planDevicesBase';
 import { emitBoostStateChange, resolveBoostActive } from './planBoost';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { addPerfDuration } from '../utils/perfCounters';
-import { getLogger } from '../logging/logger';
 import type { StructuredDebugEmitter } from '../logging/logger';
-import {
-  clearMissingModeEmitState,
-  resolveMissingModeTargetSeed,
-  type ResolvedModeTargetSeed,
-} from './planModeTargetGuard';
 import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
-import { resolveAnchoredSetpoint } from './preShedAnchor';
-
-const logger = getLogger('plan/devices');
 
 export type PlanDevicesDeps = {
-  getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => ShedBehavior;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
@@ -110,10 +100,10 @@ export function buildInitialPlanDevices(params: {
   // `state.surplusEligibilityByDevice` — it never advances the allocator.
   const result = context.devices.map((dev) => {
     const t0 = Date.now();
-    const priority = deps.getPriorityForDevice(dev.id);
+    const priority = dev.priority;
     const plannedTarget = resolvePlannedTarget({
       dev,
-      desiredForMode: context.desiredForMode,
+      modeTargetCFor: context.modeTargetCFor,
       powerIsMeasured: context.powerIsMeasured,
       currentHourPriceLevel: context.currentHourPriceLevel,
       state,
@@ -176,7 +166,7 @@ export function buildInitialPlanDevices(params: {
 }
 function resolvePlannedTarget(params: {
   dev: PlanInputDevice;
-  desiredForMode: Record<string, number>;
+  modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
   /** Producer-resolved: did this cycle have a measurement at all. */
   powerIsMeasured: boolean;
   /** `context.currentHourPriceLevel`: producer-resolved once for this build. */
@@ -186,7 +176,7 @@ function resolvePlannedTarget(params: {
 }): ResolvedPlannedTarget {
   const {
     dev,
-    desiredForMode,
+    modeTargetCFor,
     powerIsMeasured,
     currentHourPriceLevel,
     state,
@@ -202,22 +192,16 @@ function resolvePlannedTarget(params: {
   const target = getPrimaryTargetCapability(dev.targets);
   const deferredC = dev.deadlineFloorTargetC;
   const hasDeferred = typeof deferredC === 'number';
-  const seed = resolveTemperatureSeed(dev, desiredForMode[dev.id], state, deps);
-  // Price-opt and surplus-absorb only modulate a configured mode setpoint; for a
-  // current-reading fallback seed, leaving it unmodulated keeps PELS a no-op
-  // against whatever the user already chose.
-  const modulated = seed.kind === 'mode'
-    ? applyModeSeedModulation({
-      seedValue: seed.value,
-      dev,
-      config: deps.getPriceOptimizationSettings()[dev.id],
-      observedTarget: dev.currentTarget,
-      powerIsMeasured,
-      currentHourPriceLevel,
-      state,
-      deps,
-    })
-    : { kind: 'value' as const, plannedTarget: seed.value, nonSurplusTarget: seed.value };
+  const modulated = applyModeSeedModulation({
+    seedValue: modeTargetCFor(dev),
+    dev,
+    config: deps.getPriceOptimizationSettings()[dev.id],
+    observedTarget: dev.currentTarget,
+    powerIsMeasured,
+    currentHourPriceLevel,
+    state,
+    deps,
+  });
   const resolved = resolveModulatedSeedTargets(modulated, { deferredC });
   if (resolved.done) return resolved.value;
   let plannedTarget = resolved.plannedTarget;
@@ -339,56 +323,6 @@ function applyModeSeedModulation(params: {
   return { kind: 'value', plannedTarget: surplusTarget, nonSurplusTarget: pricedTarget };
 }
 
-function resolveTemperatureSeed(
-  dev: PlanInputDevice & TemperaturePlanInputKind,
-  desired: number | undefined,
-  state: PlanEngineState,
-  deps: PlanDevicesDeps,
-): ResolvedModeTargetSeed {
-  if (Number.isFinite(desired)) {
-    // Mode target is set — clear any missing-mode emit throttling so the next
-    // transition back into missing emits immediately.
-    clearMissingModeEmitState(state, dev.id);
-    return { kind: 'mode', value: Number(desired) };
-  }
-  // Mode target missing, but the device sits AT a shed floor with a live
-  // pre-shed anchor: the current setpoint IS the shed value, so falling back
-  // to it would make the release write a no-op and strand the device at the
-  // floor forever. The anchor is the setpoint the shed lowered from — the
-  // real intent; gate semantics on `resolveAnchoredSetpoint`
-  // (`lib/plan/preShedAnchor.ts`). The current build's configured floor is
-  // resolved HERE with the same normalization the hold lane's map applies
-  // (this runs before that map exists), making the gate transition-proof
-  // across a mid-hold floor edit. This consumer's grace policy: an
-  // `unavailable` read falls through to the live-setpoint fallback — a
-  // transient adapter grace is a no-op, never a decision.
-  const anchorRead = state.preShedAnchors.read(dev.id);
-  if (anchorRead.kind !== 'unavailable') {
-    const behavior = deps.getShedBehavior(dev.id);
-    const configuredFloorsC = behavior.action === 'set_temperature'
-      ? [normalizeTargetCapabilityValue({
-        target: getPrimaryTargetCapability(dev.targets),
-        value: behavior.temperature,
-      })]
-      : [];
-    const anchored = resolveAnchoredSetpoint(anchorRead, dev.currentTarget, configuredFloorsC);
-    if (anchored.kind === 'anchor') {
-      return { kind: 'anchor', value: anchored.value };
-    }
-  }
-  // Mode target missing (user config absence, the only remaining miss) — fall
-  // back to the device's own current setpoint, a no-op seed guaranteed finite
-  // by the atomic facet, and emit the throttled diagnostic (see
-  // `planModeTargetGuard.ts`).
-  return resolveMissingModeTargetSeed({
-    state,
-    deviceId: dev.id,
-    capabilityValue: dev.currentTarget,
-    payload: { deviceId: dev.id, deviceName: dev.name, operatingMode: deps.getOperatingMode?.() ?? null },
-    debugStructured: deps.debugStructured,
-    logger,
-  });
-}
 function applyPriceOptimizationDelta(
   target: number,
   config: { cheapDelta: number; expensiveDelta: number },

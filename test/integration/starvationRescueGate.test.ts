@@ -214,7 +214,6 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(hoursInDay),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
-    getPriorityForDevice: () => 1,
     getShedBehavior: () => ({ action: 'turn_off' }),
     log: vi.fn(),
     logDebug: vi.fn(),

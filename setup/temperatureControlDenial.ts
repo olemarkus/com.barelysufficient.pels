@@ -26,3 +26,42 @@ export const resolveTemperatureDeniedControlModel = (
 ): DeviceControlModel | undefined => (
   controlModel === 'temperature_target' ? 'binary_power' : controlModel
 );
+
+/**
+ * The device as everything downstream of control resolution should see it.
+ *
+ * A flagged device comes out as a PLAIN non-temperature device: no target axis,
+ * no temperature facet, `deviceType: 'onoff'`. That is the whole point — nothing
+ * past this projection needs a concept of "temperature control disabled", and
+ * nothing past it should ask. `isTemperaturePlanDevice` is then the only question
+ * anyone has to answer, and it answers correctly for both reasons a device might
+ * have no setpoint.
+ *
+ * Strictly the temperature axis. The step cluster, `targetPowerConfig` and
+ * `controlAdapter` stay: they carry no setpoint write, and clearing them left a
+ * flagged stepped device with no ladder (so PELS could only switch it off) and
+ * no native stepped wiring.
+ *
+ * NOT applied to the snapshot the settings UI reads. There, `deviceType` still
+ * means "this device HAS a temperature capability" — which is what renders the
+ * toggle in the first place, and the saved targets beneath it
+ * (`supportsTemperatureDevice` vs `supportsTemperatureControlDevice`).
+ */
+export const projectTemperatureDeniedDevice = <T extends {
+  temperatureControlDisabled?: boolean;
+  controlModel?: DeviceControlModel;
+}>(device: T): T => {
+  if (device.temperatureControlDisabled !== true) return device;
+  // The assertion is sound and cannot be expressed without one: the result has
+  // every key of `T`, and the four it overrides are narrowed to values the
+  // caller's own type already admits (`targets: []`, `temperature: undefined`,
+  // `deviceType: 'onoff'`). Spelling that as a mapped return type would force a
+  // union on every caller for no gain.
+  return {
+    ...device,
+    targets: [],
+    temperature: undefined,
+    deviceType: 'onoff',
+    controlModel: resolveTemperatureDeniedControlModel(device.controlModel),
+  } as T;
+};

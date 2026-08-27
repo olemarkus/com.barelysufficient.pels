@@ -115,9 +115,10 @@ export type HomeScope = {
    * `resolveTemperatureSeed` fall back to the device's live setpoint; while shed
    * that reading IS the shed setpoint, so on release `plannedTarget` equalled
    * `currentTarget`, the executor dropped the write, and an area temperature
-   * device stayed cold indefinitely. Price optimization and surplus absorb are
-   * gated independently by `getPriceOptimizationSettings` (both require a
-   * per-device config entry), so binding these live does not widen policy.
+   * device stayed cold indefinitely. Price optimization and surplus absorb are gated
+   * independently by `getPriceOptimizationSettings`: both require a per-device
+   * config entry, and an empty map has none, so binding these live does not
+   * widen policy.
    */
   getModeDeviceTargets: PlanEngineWiring['getModeDeviceTargets'];
   /**
@@ -125,7 +126,6 @@ export type HomeScope = {
    * mode. Main binds the historical app resolver; a meter-area bundle binds
    * the priority map in its coherent catalog snapshot.
    */
-  getPriorityForDevice: PlanEngineWiring['getPriorityForDevice'];
   /**
    * Does this home hold a mode-target RAISE while its own power reading is
    * unknown? A raise ADDS load and is issued as an ordinary `target_update`, so
@@ -285,7 +285,6 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
     getOperatingMode: () => ctx.operatingMode,
     getModeDeviceTargets: () => ctx.modeDeviceTargets,
-    getPriorityForDevice: (deviceId) => ctx.getPriorityForDevice(deviceId),
     // Main keeps its pre-existing behaviour: mode targets are commanded whether
     // or not a power sample has landed. See the contract above for why the hold
     // is a sub-home posture rather than a global rule.

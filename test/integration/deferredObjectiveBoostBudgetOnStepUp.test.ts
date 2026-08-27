@@ -279,7 +279,6 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     // Daily budget ON: the per-hour budget slice is the binding soft limit.
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(nowMs),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
-    getPriorityForDevice: (deviceId) => (deviceId === STEP_DEVICE_ID ? 1 : 5),
     getShedBehavior: () => ({ action: 'turn_off' }),
     log: vi.fn(),
     logDebug: vi.fn(),

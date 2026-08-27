@@ -56,7 +56,7 @@ const buildPlan = (
 
 const buildContext = (device: PlanInputDevice): PlanContext => ({
   devices: [device],
-  desiredForMode: {},
+  modeTargetCFor: (d) => d.currentTarget,
   ...planContextPower(FIXTURE_TOTAL_KW),
   hourBucketKey: '2025-01-01T00',
   softLimit: 4,
@@ -111,7 +111,6 @@ describe('planner current-state consistency', () => {
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        getPriorityForDevice: () => 100,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         log: vi.fn(),
       },

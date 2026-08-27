@@ -29,6 +29,9 @@ describe('buildPlanInputDevice', () => {
       id: 'dev-1',
       name: 'Device',
       targets: [],
+      // Required: the producer ranks the whole planned set before any consumer
+      // sees it, so no plan input device reaches one unranked.
+      priority: 1,
       // Required base field — resolved the way the producer resolves it, never
       // left undefined for a consumer to read as "not commandable".
       commandableNow: true,

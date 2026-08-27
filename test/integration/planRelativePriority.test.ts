@@ -47,7 +47,6 @@ describe('PlanBuilder relative priority constraint', () => {
       getDailyBudgetSnapshot: () => null,
       // The live dependency is intentionally stale: every consumer in this
       // cycle must use the relative ranks snapshotted on the input devices.
-      getPriorityForDevice: () => 100,
       getShedBehavior: () => ({ action: 'turn_off' }),
       decorateDeferredObjectives: (input) => {
         for (const device of input.devices) decoratedPriorities[device.id] = device.priority;

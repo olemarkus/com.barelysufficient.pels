@@ -1,5 +1,4 @@
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import { configuredFloorsFor, type PreShedAnchorReader } from './preShedAnchor';
 import type { DevicePlanDevice } from './planTypes';
 import {
   formatDeviceReason,
@@ -160,10 +159,10 @@ export function finalizePlanDevices(
    * (`resolveNormalizedShedFloors`) — the restore classification below reads
    * it, never raw config. */
   normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
-  /** The pre-shed anchor store (read slice): the restore classification
-   * recognizes the anchor's pinned floor too, exactly like the consumption
-   * gate, so a floor-edit transition still classifies as a restore. */
-  anchors: PreShedAnchorReader,
+  /** The PREVIOUS build's final shed set: the restore classification counts a
+   * raise off it even when the device no longer sits at the configured floor,
+   * which is how a mid-hold floor edit still classifies as a restore. */
+  wasShedLastBuild: ReadonlySet<string>,
   options?: {
     onInvalidReasonPair?: (issue: PlanReasonPairValidationIssue) => void;
     throwOnInvalid?: boolean;
@@ -182,7 +181,7 @@ export function finalizePlanDevices(
   const stamped = planDevices.map((dev): DevicePlanDevice => ({
     ...dev,
     plannedShedTargetKind: resolvePlannedShedTargetKind(dev),
-    recordRestoreOnTargetApply: resolveRecordRestoreOnTargetApply(dev, normalizedShedFloorCByDevice, anchors),
+    recordRestoreOnTargetApply: resolveRecordRestoreOnTargetApply(dev, normalizedShedFloorCByDevice, wasShedLastBuild),
   }));
   const sorted = sortByPriorityAsc(stamped);
   const issues = sorted
@@ -209,27 +208,25 @@ export function finalizePlanDevices(
  * it — applying that write is a restore, and the executor stamps the restore
  * clocks when it lands.
  *
- * "At a shed floor" is the SAME transition-proof recognition the anchor
- * consumption gate uses (`resolveAnchoredSetpoint`): the anchor's PINNED
- * floor or this build's capability-normalized configured floor. Comparing
- * only the current floor missed the floor-edit transition — a device parked
- * at the pinned OLD floor released without ever stamping the restore clocks;
- * comparing raw config missed every off-step floor the same way. One truth,
- * no second comparison.
+ * Two independent signals, either of which makes the raise a restore, because
+ * each covers the case the other misses:
+ *
+ * - The device sits at this build's capability-normalized configured floor.
+ *   Survives a restart, where nothing in memory remembers the shed.
+ * - PELS had it in the shed set on the previous build. Survives a mid-hold
+ *   floor edit, where the device is still parked at the OLD floor and comparing
+ *   against the configured one finds nothing.
+ *
+ * Comparing the RAW configured floor missed every off-step floor, which is why
+ * the normalized map exists.
  */
 function resolveRecordRestoreOnTargetApply(
   dev: DevicePlanDevice,
   normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
-  anchors: PreShedAnchorReader,
+  wasShedLastBuild: ReadonlySet<string>,
 ): boolean {
   if (!isTemperaturePlanDevice(dev)) return false;
   if (dev.plannedTarget <= dev.currentTarget) return false;
-  const floors = configuredFloorsFor(normalizedShedFloorCByDevice, dev.id);
-  const read = anchors.read(dev.id);
-  // The pinned floor counts only from a readable anchored entry; `none` and
-  // `unavailable` both fall back to the configured floor alone (a transient
-  // adapter grace decides nothing extra, it just is not extra-recognized).
-  return read.kind === 'anchored'
-    ? dev.currentTarget === read.entry.shedFloorC || floors.includes(dev.currentTarget)
-    : floors.includes(dev.currentTarget);
+  return normalizedShedFloorCByDevice.get(dev.id) === dev.currentTarget
+    || wasShedLastBuild.has(dev.id);
 }

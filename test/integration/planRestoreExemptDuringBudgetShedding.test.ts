@@ -33,7 +33,7 @@ const FIXTURE_TOTAL_KW = 3;
 
 const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
-  desiredForMode: {},
+  modeTargetCFor: (d) => d.currentTarget,
   total: 2,
   softLimit: 1.2,
   capacitySoftLimit: 7,
@@ -361,7 +361,6 @@ const buildBuilder = (params: {
   getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
-  getPriorityForDevice: (deviceId: string) => (deviceId === THERMOSTAT_ID ? 1 : 100),
   getShedBehavior: () => ({ action: 'turn_off' }),
   log: vi.fn(),
   logDebug: vi.fn(),

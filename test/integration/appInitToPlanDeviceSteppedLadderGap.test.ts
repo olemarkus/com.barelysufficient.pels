@@ -31,6 +31,12 @@ import { resolveObjectiveSteps } from '../../lib/objectives/deferredObjectives/o
 import { resolvePlanningSpeedKw } from '../../lib/objectives/deferredObjectives/planningSpeed';
 import type { DecoratedDeviceSnapshot, SteppedLoadProfile } from '../../packages/contracts/src/types';
 
+// `toPlanDevice` is the per-device half of a two-stage producer: ranking needs
+// the SET, so `buildHomePlanDevices` stamps `priority` right after. These specs
+// exercise the first half alone, so they stand in for the second.
+const ranked = <T extends object>(device: T): T & { priority: number } => ({ ...device, priority: 1 });
+
+
 const USABLE_LADDER: SteppedLoadProfile = {
   steps: [
     { id: 'off', planningPowerW: 0 },
@@ -54,9 +60,9 @@ describe('toPlanDevice step-ladder gap', () => {
   it('flags a stepped-configured device whose live ladder is absent', () => {
     // The restart shape: the configured intent survives in settings, the
     // flow-registered ladder does not.
-    const planDevice = toPlanDevice(createAppContextMock(), buildSnapshot({
+    const planDevice = ranked(toPlanDevice(createAppContextMock(), buildSnapshot({
       controlModel: 'stepped_load',
-    }));
+    })));
 
     expect(isSteppedLoadDevice(planDevice)).toBe(false);
     expect(planDevice.steppedLadderMissing).toBe(true);
@@ -66,10 +72,10 @@ describe('toPlanDevice step-ladder gap', () => {
     // The other way the cluster comes up empty: a ladder IS in hand, but no rung
     // of it yields a finite planning power, so `resolveSteppedClusterFields`
     // refuses the pair. Same gap — the planner has no stepped answer either way.
-    const planDevice = toPlanDevice(createAppContextMock(), buildSnapshot({
+    const planDevice = ranked(toPlanDevice(createAppContextMock(), buildSnapshot({
       controlModel: 'stepped_load',
       steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }] },
-    }));
+    })));
 
     expect(isSteppedLoadDevice(planDevice)).toBe(false);
     expect(planDevice.steppedLadderMissing).toBe(true);
@@ -82,24 +88,24 @@ describe('toPlanDevice step-ladder gap', () => {
     // refuses the whole cluster rather than shipping a stepped device with a
     // hole where its step should be, and the ladder-gap bit records why the
     // stepped answer is missing.
-    const planDevice = toPlanDevice(createAppContextMock(), buildSnapshot({
+    const planDevice = ranked(toPlanDevice(createAppContextMock(), buildSnapshot({
       controlModel: 'stepped_load',
       steppedLoadProfile: USABLE_LADDER,
       // No `selectedStepId` — the violating shape under test.
-    }));
+    })));
 
     expect(isSteppedLoadDevice(planDevice)).toBe(false);
     expect(planDevice.steppedLadderMissing).toBe(true);
   });
 
   it('leaves the bit off when the ladder resolves', () => {
-    const planDevice = toPlanDevice(createAppContextMock(), buildSnapshot({
+    const planDevice = ranked(toPlanDevice(createAppContextMock(), buildSnapshot({
       controlModel: 'stepped_load',
       steppedLoadProfile: USABLE_LADDER,
       // The decorator resolves the effective step for every usable ladder; a
       // snapshot without one has its cluster refused (producer contract).
       selectedStepId: 'low',
-    }));
+    })));
 
     expect(isSteppedLoadDevice(planDevice)).toBe(true);
     // Absent, not `false` — one spelling for "no gap", like `surplusOnly`.
@@ -110,9 +116,9 @@ describe('toPlanDevice step-ladder gap', () => {
     // The distinction the whole bit exists for: a plain binary device also
     // reaches the planner with no profile, and it is NOT in a gap — the
     // smart-task stack may synthesise a charge rate for it.
-    const planDevice = toPlanDevice(createAppContextMock(), buildSnapshot({
+    const planDevice = ranked(toPlanDevice(createAppContextMock(), buildSnapshot({
       controlModel: 'binary_power',
-    }));
+    })));
 
     expect('steppedLadderMissing' in planDevice).toBe(false);
   });
@@ -122,12 +128,12 @@ describe('toPlanDevice step-ladder gap', () => {
     // not the step axis. `projectEffectiveControlDevice` used to re-project this
     // device to plain binary power for the whole cycle, which cost a stepped
     // water heater its ladder — PELS could only switch it off, never trim it.
-    const planDevice = toPlanDevice(createAppContextMock(), buildSnapshot({
+    const planDevice = ranked(toPlanDevice(createAppContextMock(), buildSnapshot({
       controlModel: 'stepped_load',
       steppedLoadProfile: USABLE_LADDER,
       selectedStepId: 'low',
       temperatureControlDisabled: true,
-    }));
+    })));
 
     expect(isSteppedLoadDevice(planDevice)).toBe(true);
     expect('steppedLadderMissing' in planDevice).toBe(false);
@@ -152,11 +158,11 @@ describe('toPlanDevice step-ladder gap', () => {
  */
 describe('step-ladder gap: producer output through the consumers', () => {
   it('makes both consumers withhold for the restart shape', () => {
-    const planDevice = toPlanDevice(createAppContextMock(), buildSnapshot({
+    const planDevice = ranked(toPlanDevice(createAppContextMock(), buildSnapshot({
       controlModel: 'stepped_load',
       targets: [{ id: 'target_temperature', value: 70, unit: 'C', min: 0, max: 95, step: 0.5 }],
       deviceType: 'temperature',
-    }));
+    })));
 
     // Not asserted as a precondition — read back so a failure here names the
     // producer rather than blaming the consumers for its omission.
@@ -169,13 +175,13 @@ describe('step-ladder gap: producer output through the consumers', () => {
     // The negative control. Same device, ladder present: the gap is not stamped
     // and neither consumer withholds — so the case above is proving the gap, not
     // some unrelated reason these two return empty.
-    const planDevice = toPlanDevice(createAppContextMock(), buildSnapshot({
+    const planDevice = ranked(toPlanDevice(createAppContextMock(), buildSnapshot({
       controlModel: 'stepped_load',
       steppedLoadProfile: USABLE_LADDER,
       selectedStepId: 'low',
       targets: [{ id: 'target_temperature', value: 70, unit: 'C', min: 0, max: 95, step: 0.5 }],
       deviceType: 'temperature',
-    }));
+    })));
 
     expect('steppedLadderMissing' in planDevice).toBe(false);
     expect(resolveObjectiveSteps(planDevice).length).toBeGreaterThan(0);

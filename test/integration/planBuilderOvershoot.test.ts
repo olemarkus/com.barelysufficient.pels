@@ -59,7 +59,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
       getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
       getDailyBudgetSnapshot: () => null,
-      getPriorityForDevice: () => 100,
       getDynamicSoftLimitOverride: () => 2.1,
       getShedBehavior: (deviceId: string) => (
         deviceId === 'at-temp'
@@ -133,7 +132,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => ({ lastTimestamp: now , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.81,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -208,7 +206,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.7,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -295,7 +292,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         // though the current total is null.
         getPowerTracker: () => ({ lastTimestamp: now - (11 * 60_000) }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 2.0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -358,7 +354,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         // the PREVIOUS total is missing, which is what must drive power_sample_unavailable.
         getPowerTracker: () => ({ lastTimestamp: now , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.7,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -410,7 +405,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
       getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
       getDailyBudgetSnapshot: () => null,
-      getPriorityForDevice: () => 100,
       getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
       structuredLog: structuredLog as any,
       log: vi.fn(),
@@ -469,7 +463,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
       getPowerTracker: () => ({ lastTimestamp: 500 , lastPowerW }),
       getDailyBudgetSnapshot: () => null,
-      getPriorityForDevice: () => 100,
       getDynamicSoftLimitOverride: () => 2.1,
       getShedBehavior: () => ({ action: 'turn_off' }),
       structuredLog: structuredLog as any,
@@ -531,7 +524,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
       getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
       getDailyBudgetSnapshot: () => null,
-      getPriorityForDevice: () => 100,
       getDynamicSoftLimitOverride: () => 2.1,
       getShedBehavior: () => ({ action: 'turn_off' }),
       structuredLog: structuredLog as any,
@@ -585,7 +577,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: vi.fn()
           .mockReturnValueOnce(1.3)
           .mockReturnValueOnce(0.9),
@@ -653,7 +644,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.7,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -719,7 +709,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.7,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -791,7 +780,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.7,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -876,7 +864,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         // which forces an actionable overshoot off the OLD cached total of 0.8.
         getPowerTracker: () => ({ lastTimestamp: now - (11 * 60_000) , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 0.7,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -937,7 +924,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 1.0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -1015,7 +1001,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 1.0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -1096,7 +1081,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 1.0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -1203,7 +1187,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 1.0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -1315,7 +1298,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => ({ lastTimestamp , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 1.0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -1426,7 +1408,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: () => 100,
         getDynamicSoftLimitOverride: () => 1.0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: structuredLog as any,
@@ -1510,7 +1491,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
         getPowerTracker: () => powerTracker,
         getDailyBudgetSnapshot: () => null,
-        getPriorityForDevice: (deviceId: string) => priorities[deviceId] ?? 100,
         getDynamicSoftLimitOverride: () => 2.538,
         getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: { info: vi.fn() } as any,
@@ -1519,9 +1499,13 @@ describe('PlanBuilder overshoot diagnostics', () => {
         pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
+      // The rank rides on the device: the producer ranks the whole planned set
+      // before the build starts, so a spec that cares about order stamps it.
       const devices = (heaterOn: boolean) => [
-        buildDevice({ id: 'protected', name: 'Protected', currentDrawKw: 0.53 }),
-        buildDevice({ id: 'mid', name: 'Mid', currentDrawKw: 1.3 }),
+        buildDevice({
+          id: 'protected', name: 'Protected', currentDrawKw: 0.53, priority: priorities.protected,
+        }),
+        buildDevice({ id: 'mid', name: 'Mid', currentDrawKw: 1.3, priority: priorities.mid }),
         // Metered water heater: drawing 2 kW while on, its own honest 0 when off.
         buildDevice({
           id: 'heater',
@@ -1529,6 +1513,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           expectedPowerKw: 2,
           binaryControl: { on: heaterOn },
           currentDrawKw: heaterOn ? 2 : 0,
+          priority: priorities.heater,
         }),
       ];
 

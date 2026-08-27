@@ -129,7 +129,6 @@ const buildBuilder = (params: {
   getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => (params.dailyBudget ? buildDailyBudgetSnapshot() : null),
-  getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off' }),
   log: vi.fn(),
   logDebug: vi.fn(),

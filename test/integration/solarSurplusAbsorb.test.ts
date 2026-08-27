@@ -54,7 +54,7 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanContext => (
       targets: [{ id: 'target_temperature', value: MODE_C, unit: 'C', min: 0, max: 95, step: 0.5 }],
     }),
   ],
-  desiredForMode: { [DEVICE_ID]: MODE_C },
+  modeTargetCFor: (d) => (({ [DEVICE_ID]: MODE_C })[d.id] ?? d.currentTarget),
   ...planContextPower(signedNetKw),
   softLimit: 10,
   capacitySoftLimit: 10,
@@ -76,7 +76,6 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanContext => (
 });
 
 const deps = (surplusWilling: boolean, surplusDelta = SURPLUS_DELTA_C): PlanDevicesDeps => ({
-  getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({
@@ -105,7 +104,6 @@ const buildDevices = (params: {
     state: params.state,
     signedNetKw: params.context.measuredDrawKw,
     getConfig: (deviceId) => params.deps.getPriceOptimizationSettings()[deviceId],
-    getPriority: params.deps.getPriorityForDevice,
   });
   return buildInitialPlanDevices({
     context: params.context,
@@ -356,7 +354,6 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
         signedNetKw: context.measuredDrawKw,
         inferredSurplusKw,
         getConfig: (deviceId) => deps(true).getPriceOptimizationSettings()[deviceId],
-        getPriority: deps(true).getPriorityForDevice,
         debugStructured: options.debugStructured,
       });
       const device = buildInitialPlanDevices({
@@ -439,13 +436,12 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
     const multiDeps: PlanDevicesDeps = {
       ...deps(true),
       // PELS priority `1` is top, so HI (1) outranks LO (100).
-      getPriorityForDevice: (id) => (id === HI ? 1 : 100),
       getPriceOptimizationSettings: () => ({ [HI]: surplusConfig, [LO]: surplusConfig }),
     };
     const ctx = (): PlanContext => ({
       ...buildContext(-1.5),
       devices: [makeDevice(HI), makeDevice(LO)],
-      desiredForMode: { [HI]: MODE_C, [LO]: MODE_C },
+      modeTargetCFor: (d) => (({ [HI]: MODE_C, [LO]: MODE_C })[d.id] ?? d.currentTarget),
     });
     const state = createPlanEngineState();
     const run = () => {

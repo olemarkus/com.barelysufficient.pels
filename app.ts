@@ -46,9 +46,9 @@ import { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore'
 import { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
 import {
-  disableUnsupportedDevices as disableUnsupportedDevicesHelper,
-  seedMissingModeTargets as seedMissingModeTargetsHelper,
-} from './setup/appDeviceSupport';
+  createModeTargetPersistence,
+  createUnsupportedDeviceDemotion,
+} from './setup/appInit/createSnapshotSettingsPasses';
 import * as homeMode from './setup/homeRuntime/homeOperatingMode';
 import type { Logger as PinoLogger } from './lib/logging/logger';
 import { normalizeError } from './lib/utils/errorUtils';
@@ -64,7 +64,6 @@ import { getAppPlanRebuildNowMs, PlanRebuildIntentPolicy } from './setup/planReb
 import { AppNativeWiring } from './setup/appNativeWiring';
 import { AppServiceWiring } from './setup/appServiceWiring';
 import { AppPowerTracker } from './setup/appPowerTracker';
-import { createPreShedAnchorStore } from './setup/preShedAnchorStoreAdapter';
 import { TimerRegistry } from './lib/utils/timerRegistry';
 import type { FlowReportedCapabilitiesByDevice } from './lib/device/transport/flowReportedCapabilities';
 import { withAppApi } from './setup/appRuntimeApi';
@@ -256,13 +255,6 @@ class PelsApp extends PelsAppBase implements AppContext {
   protected structuredLogger?: PinoLogger;
   public readonly timers = new TimerRegistry();
 
-  // Persisted pre-shed setpoint anchors (`lib/plan/preShedAnchor.ts`): one
-  // app-wide store shared by every home's planner and by mode-target seeding.
-  // Lazy settings access, so constructing it as a field needs no boot ordering.
-  public readonly preShedAnchors = createPreShedAnchorStore(
-    () => this.homey.settings,
-    () => Date.now(),
-  );
   private readonly targetPowerReachabilityWiring = createTargetPowerReachabilityAppWiring(this);
   public readonly snapshotHelpers: AppSnapshotHelpers = new AppSnapshotHelpers({
     getPowerSource: () => this.getPowerSource(),
@@ -277,21 +269,10 @@ class PelsApp extends PelsAppBase implements AppContext {
     getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
     getNow: () => this.getNow(),
     logPeriodicStatus: (options) => this.logPeriodicStatus(options),
-    disableUnsupportedDevices: (snapshot, operatingModeResolver) => disableUnsupportedDevicesHelper({
-      snapshot, settings: this.homey.settings,
-      // Overshoot defaults follow the OWNING home's effective mode.
-      resolveOperatingModeForDevice: operatingModeResolver
-        ?? ((deviceId) => homeMode.resolveOperatingModeForDevice(this.ctx, deviceId)),
-      debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
-    }),
-    seedMissingModeTargets: (snapshot) => seedMissingModeTargetsHelper({
-      snapshot, settings: this.homey.settings,
-      preShedAnchors: this.preShedAnchors,
-      getShedBehavior: (deviceId) => this.getShedBehavior(deviceId),
-      resolveHomeIdForDevice: (deviceId) => homeMode.resolveHomeIdForModeCatalogSeed(this.ctx, deviceId),
-      structuredLog: (event) => this.getStructuredLogger('devices')?.info(event),
-      debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
-    }),
+    disableUnsupportedDevices: (snapshot, operatingModeResolver) => (
+      createUnsupportedDeviceDemotion(this.ctx)(snapshot, operatingModeResolver)
+    ),
+    persistFilledModeTargets: (snapshot) => createModeTargetPersistence(this.ctx)(snapshot),
     getFlowReportedDeviceIds: () => this.getFlowReportedDeviceIds(),
     emitFlowBackedRefreshRequests: async (deviceIds) => this.emitFlowBackedRefreshRequests(deviceIds),
     emitSettingsUiDevicesUpdated: () => emitSettingsUiDevicesUpdatedForApp(

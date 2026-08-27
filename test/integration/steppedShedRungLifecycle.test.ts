@@ -38,7 +38,7 @@ const buildContext = (overrides: Partial<PlanContext> & { total?: number | null 
   const total = overrides.total ?? null;
   return {
     devices: [],
-    desiredForMode: {},
+    modeTargetCFor: (d) => d.currentTarget,
     softLimit: 0,
     capacitySoftLimit: 0,
     dailySoftLimit: null,
@@ -106,7 +106,6 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       getShedBehavior,
-      getPriorityForDevice: () => 100,
       log: vi.fn(),
     });
 
@@ -120,7 +119,6 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       shedStepTargets: sheddingPlan.shedStepTargets,
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),

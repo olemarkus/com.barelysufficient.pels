@@ -103,6 +103,7 @@ const buildHeater = (params: { on: boolean; exempt: boolean }): PlanInputDevice 
   currentDrawKw: params.on ? 1.25 : 0,
   expectedPowerKw: 1.25, expectedPowerSource: 'default',
   budgetExempt: params.exempt,
+  priority: 100,
   lastFreshDataMs: Date.now(),
 })) as PlanInputDevice;
 
@@ -110,6 +111,9 @@ const buildThermostat = (on: boolean): PlanInputDevice => withBinaryDiscriminant
   available: true,
   id: THERMOSTAT_ID,
   name: 'Thermostat',
+  // Top of the order: the rank rides on the device now, because the producer
+  // ranks the whole planned set before the build starts.
+  priority: 1,
   targets: [],
   commandableNow: true,
   objectiveSessionInactive: false,
@@ -145,7 +149,6 @@ const buildBuilder = (params: {
   // the theft assertion needs the non-exempt candidate rejected on its own
   // axis before the exempt candidate admits (mirrors prod, where the
   // non-exempt device was admitted out of the reservation first).
-  getPriorityForDevice: (deviceId: string) => (deviceId === THERMOSTAT_ID ? 1 : 100),
   getShedBehavior: () => ({ action: 'turn_off' }),
   log: vi.fn(),
   logDebug: vi.fn(),

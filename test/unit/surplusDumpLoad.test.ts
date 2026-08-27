@@ -223,12 +223,16 @@ const allocatorPass = (params: {
   configs?: Record<string, { surplusWilling?: boolean; surplusDelta?: number }>;
   excludeIds?: ReadonlySet<string>;
 }) => resolveSurplusEligibility({
-  devices: params.devices,
+  // The rank rides on the device: the producer ranks the whole planned set
+  // before the allocator sees it, so a spec that cares about order stamps the
+  // devices rather than stubbing a lookup.
+  devices: params.devices.map((device) => (
+    { ...device, priority: params.priorities?.[device.id] ?? device.priority }
+  )),
   state: params.state,
   signedNetKw: (params.powerKnown ?? true) ? params.signedNetKw : null,
   excludeIds: params.excludeIds,
   getConfig: (deviceId) => params.configs?.[deviceId],
-  getPriority: (deviceId) => params.priorities?.[deviceId] ?? 100,
   nowTs: params.nowTs,
 });
 

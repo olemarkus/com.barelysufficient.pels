@@ -3,10 +3,6 @@ import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
-import {
-  MISSING_MODE_TARGET_EMIT_INTERVAL_MS,
-  cleanupMissingModeTargetDevices,
-} from '../../lib/plan/planModeTargetGuard';
 import { createPlanEngineState, type PlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { PlanContext } from '../../lib/plan/planContext';
@@ -78,7 +74,7 @@ const boostActiveOf = (device: DevicePlanDevice): boolean => device.boostActive;
 
 const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   devices,
-  desiredForMode: {},
+  modeTargetCFor: (d) => d.currentTarget,
   ...planContextPower(FIXTURE_TOTAL_KW),
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
@@ -107,7 +103,6 @@ const pendingStoreFor = (state: PlanEngineState) =>
   createPendingBinaryCommandStore(state.pendingBinaryCommands);
 
 const defaultDeps: PlanDevicesDeps = {
-  getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
@@ -343,7 +338,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 55 }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -388,7 +382,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -435,7 +428,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -483,7 +475,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -521,7 +512,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -568,7 +558,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map([['dev-1', 'mid']]),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -611,7 +600,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -643,7 +631,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -676,7 +663,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -702,7 +688,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -724,7 +709,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -754,7 +738,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -787,7 +770,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -821,7 +803,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: true, // Shortfall!
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -856,7 +837,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -887,7 +867,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: true,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -923,7 +902,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -958,7 +936,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -992,7 +969,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -1022,7 +998,6 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
-        getPriorityForDevice: () => 100,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -1042,7 +1017,6 @@ describe('buildInitialPlanDevices', () => {
 // ---------------------------------------------------------------------------
 
 const buildTurnOffDeps = (overrides: Partial<PlanDevicesDeps> = {}): PlanDevicesDeps => ({
-  getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
@@ -1333,7 +1307,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: {
           ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]),
-          desiredForMode: { tank: 50 },
+          modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget),
           currentHourPriceLevel: { cheap: true, expensive: false },
         },
         state: createPlanEngineState(),
@@ -1349,7 +1323,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('keeps the mode target when it already exceeds the deadline target', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]), desiredForMode: { tank: 65 } },
+        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]), modeTargetCFor: (d) => (({ tank: 65 })[d.id] ?? d.currentTarget) },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1363,7 +1337,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('does not double-apply the cheap-hour delta on top of the deadline target', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]), desiredForMode: { tank: 50 } },
+        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]), modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget) },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1384,7 +1358,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: {
           ...buildContext([tempInputDevice({ deadlineFloorTargetC: 56 })]),
-          desiredForMode: { tank: 55 },
+          modeTargetCFor: (d) => (({ tank: 55 })[d.id] ?? d.currentTarget),
           currentHourPriceLevel: { cheap: true, expensive: false },
         },
         state: createPlanEngineState(),
@@ -1405,7 +1379,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('seeds plannedTarget from the deadline target when no mode target is configured', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 58 })]), desiredForMode: {} },
+        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 58 })]), modeTargetCFor: (d) => d.currentTarget },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1419,7 +1393,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('clips the deadline target to the device capability max', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 95 })]), desiredForMode: { tank: 50 } },
+        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 95 })]), modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget) },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1434,7 +1408,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('does not override when the device has no deadline floor stamped', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 50 } },
+        context: { ...buildContext([tempInputDevice()]), modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget) },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1449,7 +1423,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     it('shed temperature still wins over the deadline override when shedding via set_temperature', () => {
       const device = tempInputDevice({ binaryControl: { on: true }, deadlineFloorTargetC: 60 });
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([device]), desiredForMode: { tank: 50 } },
+        context: { ...buildContext([device]), modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget) },
         state: createPlanEngineState(),
         shedSet: new Set(['tank']),
         shedReasons: shedReasonMap([['tank', 'shed due to capacity']]),
@@ -1466,7 +1440,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     });
   });
 
-  describe('mode target fallback', () => {
+  describe('mode target', () => {
     const tempInputDevice = (
       overrides: Partial<PlanInputDevice>
         & BinaryControlDiscriminantProbe
@@ -1488,7 +1462,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     it('uses the mode target when present', () => {
       const debugStructured = vi.fn();
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 55 } },
+        context: { ...buildContext([tempInputDevice()]), modeTargetCFor: (d) => (({ tank: 55 })[d.id] ?? d.currentTarget) },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1503,30 +1477,12 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       );
     });
 
-    it('falls back to the current target capability and emits missing_mode_target', () => {
-      const debugStructured = vi.fn();
+    it('combines a filled target with an active deferred objective', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), desiredForMode: {} },
-        state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
-        guardInShortfall: false,
-        deps: { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' },
-      });
-
-      expect(plannedTargetOf(planDevice)).toBe(50);
-      expect(debugStructured).toHaveBeenCalledWith({
-        event: 'missing_mode_target',
-        deviceId: 'tank',
-        deviceName: 'Water tank',
-        operatingMode: 'home',
-      });
-    });
-
-    it('combines the current-target fallback with an active deferred objective', () => {
-      const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 58 })]), desiredForMode: {} },
+        context: {
+          ...buildContext([tempInputDevice({ deadlineFloorTargetC: 58 })]),
+          modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget),
+        },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
@@ -1535,15 +1491,21 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         deps: defaultDeps,
       });
 
-      // currentTarget = 50, deferred = 58 — max wins.
+      // resolved target = 50, deferred = 58 — max wins.
       expect(plannedTargetOf(planDevice)).toBe(58);
     });
 
-    it('does not apply price-opt delta when the seed comes from the current-target fallback', () => {
+    it('applies the price-opt delta to a target filled from the device setpoint', () => {
+      // The resolver fills an unstored entry from the device's own setpoint, and
+      // that value is PELS's target like any other — price optimization is
+      // per-device opt-in, so a device with it enabled asked for exactly this.
+      // The old split (modulate a stored target, hold a filled one unmodulated)
+      // silently disabled price optimization for every device with no stored
+      // entry, price-only thermostats included.
       const [planDevice] = buildInitialPlanDevices({
         context: {
           ...buildContext([tempInputDevice()]),
-          desiredForMode: {},
+          modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget),
           currentHourPriceLevel: { cheap: true, expensive: false },
         },
         state: createPlanEngineState(),
@@ -1559,189 +1521,9 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         },
       });
 
-      // currentTarget = 50; no mode target → fallback path. Cheap-hour delta of +2 must NOT
-      // apply, so PELS remains a no-op against the existing setpoint.
-      expect(plannedTargetOf(planDevice)).toBe(50);
+      expect(plannedTargetOf(planDevice)).toBe(52);
     });
 
-  });
-
-  // Per-device emit-on-first-occurrence + 15-minute heartbeat so a stuck
-  // misconfigured device (mode target unset) does not flood the log buffer when
-  // the `plan` debug topic is enabled. The old abandon-grace window for
-  // transient capability reads is gone: the observer's atomic temperature facet
-  // guarantees a finite current target for every temperature device, so the
-  // capability-value fallback is total and the only miss left is user config
-  // absence.
-  describe('missing-mode-target emit throttle', () => {
-    const tempDeviceWithValue = (value: number) => inputDevice({
-      id: 'tank',
-      name: 'Water tank',
-      deviceType: 'temperature',
-      currentTemperature: 45,
-      currentTarget: value,
-      targets: [{ id: 'target_temperature', value, unit: '°C', min: 30, max: 70 }],
-    });
-
-    it('bounds emit count for 100 consecutive missing-mode cycles via 15-minute heartbeat', () => {
-      const state = createPlanEngineState();
-      const debugStructured = vi.fn();
-      const deps = { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' };
-
-      // Drive 100 cycles spaced 1 minute apart so the heartbeat (15 min) emits
-      // a bounded number of times.
-      const cycleSpacingMs = 60 * 1000;
-      const baseMs = Date.now();
-      const dateNowSpy = vi.spyOn(Date, 'now');
-      try {
-        for (let cycle = 0; cycle < 100; cycle += 1) {
-          dateNowSpy.mockReturnValue(baseMs + cycle * cycleSpacingMs);
-          buildInitialPlanDevices({
-            context: { ...buildContext([tempDeviceWithValue(50)]), desiredForMode: {} },
-            state,
-            shedSet: new Set(),
-            shedReasons: new Map(),
-            shedStepTargets: new Map(),
-            guardInShortfall: false,
-            deps,
-          });
-        }
-      } finally {
-        dateNowSpy.mockRestore();
-      }
-
-      const emits = debugStructured.mock.calls.filter(([entry]) => (
-        (entry as { event?: string }).event === 'missing_mode_target'
-      ));
-      // 100 minutes at a 15-minute heartbeat = first emit + 6 heartbeat re-emits = 7.
-      expect(emits.length).toBeLessThanOrEqual(7);
-      expect(emits.length).toBeGreaterThanOrEqual(6);
-    });
-
-    it('clears the throttle when the mode target returns, so the next miss re-emits immediately', () => {
-      const state = createPlanEngineState();
-      const debugStructured = vi.fn();
-      const deps = { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' };
-
-      // Phase 1: mode target missing → fallback to the device's own setpoint,
-      // emit `missing_mode_target` once.
-      buildInitialPlanDevices({
-        context: { ...buildContext([tempDeviceWithValue(50)]), desiredForMode: {} },
-        state,
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
-        guardInShortfall: false,
-        deps,
-      });
-      expect(debugStructured).toHaveBeenCalledWith(
-        expect.objectContaining({ event: 'missing_mode_target' }),
-      );
-
-      // Phase 2: mode target configured again → no emit, throttle entry cleared.
-      debugStructured.mockClear();
-      buildInitialPlanDevices({
-        context: { ...buildContext([tempDeviceWithValue(50)]), desiredForMode: { tank: 55 } },
-        state,
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
-        guardInShortfall: false,
-        deps,
-      });
-      expect(debugStructured).not.toHaveBeenCalled();
-      expect(state.modeTargetMissingByDevice.tank).toBeUndefined();
-
-      // Phase 3: mode target disappears again → re-emit immediately because
-      // the per-device throttle was cleared on the transition back to fresh.
-      buildInitialPlanDevices({
-        context: { ...buildContext([tempDeviceWithValue(50)]), desiredForMode: {} },
-        state,
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
-        guardInShortfall: false,
-        deps,
-      });
-      expect(debugStructured).toHaveBeenCalledWith(
-        expect.objectContaining({ event: 'missing_mode_target' }),
-      );
-    });
-
-    it('suppresses re-emits inside the throttle window while the mode target stays missing', () => {
-      const state = createPlanEngineState();
-      const debugStructured = vi.fn();
-      const deps = { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' };
-      const baseMs = Date.now();
-      const dateNowSpy = vi.spyOn(Date, 'now');
-
-      try {
-        dateNowSpy.mockReturnValue(baseMs);
-        buildInitialPlanDevices({
-          context: { ...buildContext([tempDeviceWithValue(50)]), desiredForMode: {} },
-          state,
-          shedSet: new Set(),
-          shedReasons: new Map(),
-          shedStepTargets: new Map(),
-          guardInShortfall: false,
-          deps,
-        });
-        expect(debugStructured).toHaveBeenCalledTimes(1);
-
-        // A cycle 1 s later, still missing → throttled, no new emit.
-        debugStructured.mockClear();
-        dateNowSpy.mockReturnValue(baseMs + 1000);
-        buildInitialPlanDevices({
-          context: { ...buildContext([tempDeviceWithValue(50)]), desiredForMode: {} },
-          state,
-          shedSet: new Set(),
-          shedReasons: new Map(),
-          shedStepTargets: new Map(),
-          guardInShortfall: false,
-          deps,
-        });
-        expect(debugStructured).not.toHaveBeenCalled();
-
-        // Past the heartbeat interval → one re-emit.
-        dateNowSpy.mockReturnValue(baseMs + MISSING_MODE_TARGET_EMIT_INTERVAL_MS + 1000);
-        buildInitialPlanDevices({
-          context: { ...buildContext([tempDeviceWithValue(50)]), desiredForMode: {} },
-          state,
-          shedSet: new Set(),
-          shedReasons: new Map(),
-          shedStepTargets: new Map(),
-          guardInShortfall: false,
-          deps,
-        });
-        expect(debugStructured).toHaveBeenCalledTimes(1);
-      } finally {
-        dateNowSpy.mockRestore();
-      }
-    });
-  });
-
-  describe('cleanupMissingModeTargetDevices', () => {
-    it('deletes tracking entries for devices no longer in the snapshot', () => {
-      const state = createPlanEngineState();
-      state.modeTargetMissingByDevice['tank'] = { lastEmitAtMs: 1000 };
-      state.modeTargetMissingByDevice['ev'] = { lastEmitAtMs: 2000 };
-
-      const removed = cleanupMissingModeTargetDevices(state, new Set(['ev']));
-
-      expect(removed).toBe(true);
-      expect(state.modeTargetMissingByDevice.tank).toBeUndefined();
-      expect(state.modeTargetMissingByDevice.ev).toBeDefined();
-    });
-
-    it('returns false and leaves state untouched when no entries are stale', () => {
-      const state = createPlanEngineState();
-      state.modeTargetMissingByDevice['tank'] = { lastEmitAtMs: 1000 };
-
-      const removed = cleanupMissingModeTargetDevices(state, ['tank']);
-
-      expect(removed).toBe(false);
-      expect(state.modeTargetMissingByDevice.tank).toBeDefined();
-    });
   });
 
   // docs/technical.md:222 — while any other managed device is limited, a stepped device on

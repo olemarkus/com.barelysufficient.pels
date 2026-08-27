@@ -13,7 +13,6 @@ import { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
 import { normalizePowerSource } from '../../lib/power/powerSource';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
-import { createInMemoryPreShedAnchorStore } from '../../lib/plan/preShedAnchor';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
@@ -178,7 +177,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   const context: AppContext = {
     startupBootstrap: undefined,
     homey,
-    preShedAnchors: createInMemoryPreShedAnchorStore(),
     combinedPricesReader: createCombinedPricesReader({ homey, requestRefetch: () => undefined }),
     log: vi.fn(),
     error: vi.fn(),
@@ -214,7 +212,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     reportFlowBackedCapability: vi.fn(() => defaultFlowBackedCapabilityReportOutcome),
     getHomeyDevicesForFlow: vi.fn(async () => []),
     emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
-    getPriorityForDevice: vi.fn(() => 0),
     resolveModeName: vi.fn((name: string) => name),
     getAllModes: vi.fn(() => new Set<string>()),
     resolveManagedState: vi.fn(() => false),

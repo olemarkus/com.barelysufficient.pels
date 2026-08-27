@@ -30,7 +30,7 @@ const currentTargetOf = (device: DevicePlanDevice): number | null | undefined =>
 
 const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   devices,
-  desiredForMode: {},
+  modeTargetCFor: (d) => d.currentTarget,
   ...planContextPower(FIXTURE_TOTAL_KW),
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
@@ -52,7 +52,6 @@ const buildContext = (devices: PlanContext['devices']): PlanContext => ({
 });
 
 const defaultDeps: PlanDevicesDeps = {
-  getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
@@ -88,7 +87,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
     buildInitialPlanDevices({
       context: {
         ...buildContext([heater(params.targetValue)]),
-        desiredForMode: { tank: params.modeTarget },
+        modeTargetCFor: (d) => (({ tank: params.modeTarget })[d.id] ?? d.currentTarget),
         powerIsMeasured: params.powerKnown,
         // The two readings `powerKnown === false` is derived from; kept
         // consistent so the fixture cannot pass on a contradictory context.
@@ -155,7 +154,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           currentTarget: 18.6,
           targets: [{ id: 'target_temperature', value: 18.6, unit: '°C', min: 5, max: 35, step: 1 }],
         })]),
-        desiredForMode: { tank: 22 },
+        modeTargetCFor: (d) => (({ tank: 22 })[d.id] ?? d.currentTarget),
         ...planContextPower(null),
       },
       state: createPlanEngineState(),
@@ -186,7 +185,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           currentTarget: 24,
           targets: [{ id: 'target_temperature', value: 24, unit: '°C', min: 5, max: 35 }],
         })]),
-        desiredForMode: { tank: 20 },
+        modeTargetCFor: (d) => (({ tank: 20 })[d.id] ?? d.currentTarget),
         ...(powerKnown ? {} : {
           total: null,
           // The field the hold actually reads. Before 2026-08-07 this fixture set
@@ -225,7 +224,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           currentTarget: 24,
           targets: [{ id: 'target_temperature', value: 24, unit: '°C', min: 5, max: 35 }],
         })]),
-        desiredForMode: { tank: 20 },
+        modeTargetCFor: (d) => (({ tank: 20 })[d.id] ?? d.currentTarget),
         ...planContextPower(null),
       },
       state: createPlanEngineState(),
@@ -251,7 +250,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           targets: [{ id: 'target_temperature', value: 50, unit: '°C', min: 30, max: 70 }],
           deadlineFloorTargetC: 60,
         })]),
-        desiredForMode: { tank: 55 },
+        modeTargetCFor: (d) => (({ tank: 55 })[d.id] ?? d.currentTarget),
         ...planContextPower(null),
       },
       state: createPlanEngineState(),

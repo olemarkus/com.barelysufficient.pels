@@ -28,7 +28,8 @@ import { resolveManagedState, state } from './state.ts';
 import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
 import { DEFAULT_MODE_NAME, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
-import { normalizeModePriorities, rankActiveDevicePriorities } from '../../../shared-domain/src/modePriorities.ts';
+import { normalizeModePriorities } from '../../../shared-domain/src/modePriorities.ts';
+import { rankModeDevices } from '../../../shared-domain/src/modeCatalogResolution.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { debouncedSetSetting } from './utils.ts';
 import { getHomeIdForUiDevice, getHomeScope } from './homeScope.ts';
@@ -254,14 +255,16 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
   }
   priorityEmpty.hidden = true;
 
-  const activePriorities = rankActiveDevicePriorities(
-    managedDevices.map((device) => device.id),
-    (deviceId) => state.capacityPriorities[state.editingMode || DEFAULT_MODE_NAME]?.[deviceId],
+  // Ranked through the same owner the runtime asks, so the order shown here is
+  // the order PELS plans by — including for devices nobody has ranked yet, which
+  // the strict 1..N resolution orders deterministically rather than tying.
+  const editingMode = state.editingMode || DEFAULT_MODE_NAME;
+  const ranks = rankModeDevices(
+    managedDevices.map(({ id }) => id),
+    (id) => state.capacityPriorities[editingMode]?.[id],
   );
-  const sorted = [...managedDevices].sort((a, b) => activePriorities[a.id] - activePriorities[b.id]);
-  sorted.forEach((device) => {
-    priorityList.appendChild(buildPriorityRow(device));
-  });
+  [...managedDevices].sort((a, b) => (ranks[a.id] ?? 0) - (ranks[b.id] ?? 0))
+    .forEach((d) => priorityList.appendChild(buildPriorityRow(d)));
 
   initSortable();
   refreshPriorityBadges();

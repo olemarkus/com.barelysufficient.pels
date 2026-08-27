@@ -12,7 +12,6 @@ import type {
 import {
   getAllModes as getAllModesHelper,
   getShedBehavior as getShedBehaviorHelper,
-  resolveDevicePriority as resolveDevicePriorityHelper,
   resolveModeName as resolveModeNameHelper,
 } from '../lib/utils/capacityHelpers';
 import { OPERATING_MODE_SETTING } from '../lib/utils/settingsKeys';
@@ -182,9 +181,6 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     await this.requirePriceCoordinator().applyPriceOptimization();
   }
 
-  public getPriorityForDevice = (deviceId: string): number => (
-    resolveDevicePriorityHelper(this.context.capacityPriorities, this.context.operatingMode, deviceId)
-  );
   public resolveModeName = (name: string): string => resolveModeNameHelper(
     name,
     this.context.modeAliases,

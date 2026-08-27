@@ -47,6 +47,7 @@ import {
   type PowerMeasurementEvidence,
   getAssociatedCarForUiFromApp,
   getLatestDevicesForUiFromApp,
+  getModeCatalogForUiFromApp,
   getObservedStateForUiFromApp,
   getPlanSnapshotForUiFromHomey,
   getCurtailmentCanContributeForUiFromApp,
@@ -57,6 +58,7 @@ import {
   refreshSettingsUiPricesForApp,
   resetSettingsUiPowerStatsForApp,
 } from './settingsUiAppRuntime';
+import { rankModeDevices } from '../packages/shared-domain/src/modeCatalogResolution';
 
 type SettingsUiApiApp = Homey.App & {
   capacityDryRun?: unknown;
@@ -132,7 +134,33 @@ const asDailyBudgetModelSettings = (value: unknown): Partial<DailyBudgetModelSet
 const getRawSettingsUiDeviceCandidates = ({ homey }: ApiContext): DecoratedDeviceSnapshot[] => {
   const managed = getLatestDevicesForUiFromApp(homey) ?? [];
   const unmanagedEligible = getUiPickerDevicesFromApp(homey);
-  return withLiveObservedState(homey, withAssociatedCars(homey, [...managed, ...unmanagedEligible]));
+  return withResolvedPriorities(
+    homey,
+    withLiveObservedState(homey, withAssociatedCars(homey, [...managed, ...unmanagedEligible])),
+  );
+};
+
+/**
+ * Stamp each device's rank through the mode catalog owner.
+ *
+ * Priority is a property of a SET, not of a device: it is meaningful only
+ * relative to the other devices being ranked. The transport used to stamp it
+ * per device while parsing, where no set exists, so its only possible answer for
+ * a device nobody had ranked was a shared default — and with nothing configured
+ * every device carried the same number, leaving the Overview's order to fall out
+ * of the snapshot array. Resolving here, over the set this payload is about,
+ * gives the strict 1..N the owner guarantees.
+ */
+const withResolvedPriorities = (
+  homey: Homey.App['homey'],
+  devices: DecoratedDeviceSnapshot[],
+): DecoratedDeviceSnapshot[] => {
+  const catalog = getModeCatalogForUiFromApp(homey);
+  const ranks = rankModeDevices(
+    devices.map((device) => device.id),
+    (deviceId) => catalog.priorities[catalog.operatingMode]?.[deviceId],
+  );
+  return devices.map((device) => ({ ...device, priority: ranks[device.id] as number }));
 };
 
 /**

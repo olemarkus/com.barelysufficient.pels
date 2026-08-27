@@ -16,6 +16,7 @@ import {
   isTemperatureControlDevice,
 } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
+import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
 
 const TARGET_DEFICIT_EPSILON_C = 0.5;
 const STARVATION_LOW_TEMP_STEP_C = 0.5;
@@ -51,7 +52,7 @@ export const buildDeviceDiagnosticsObservations = (
 ): DeviceDiagnosticsPlanObservation[] => {
   const inputDeviceById = new Map(params.context.devices.map((device) => [device.id, device]));
   return params.planDevices.map((device) => buildDiagnosticsObservation({
-    desiredForMode: params.context.desiredForMode,
+    modeTargetCFor: params.context.modeTargetCFor,
     inputDevice: inputDeviceById.get(device.id),
     device,
     restoreResult: params.restoreResult,
@@ -91,14 +92,13 @@ const resolveCurrentTemperatureC = (
 );
 
 const resolveIntendedNormalTemperatureTarget = (params: {
-  desiredForMode: Record<string, number>;
+  modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
   inputDevice?: PlanInputDevice;
 }): number | null => {
-  const { desiredForMode, inputDevice } = params;
-  if (!inputDevice || !isTemperatureInputDevice(inputDevice)) return null;
+  const { modeTargetCFor, inputDevice } = params;
+  if (!inputDevice || !isTemperaturePlanDevice(inputDevice)) return null;
   if (!Array.isArray(inputDevice.targets) || inputDevice.targets.length === 0) return null;
-  const desired = desiredForMode[inputDevice.id];
-  return Number.isFinite(desired) ? Number(desired) : null;
+  return modeTargetCFor(inputDevice);
 };
 
 // The effective target PELS is currently COMMANDING the device toward: the
@@ -318,7 +318,7 @@ const resolveUnmetDemand = (
 };
 
 const buildDiagnosticsObservation = (params: {
-  desiredForMode: Record<string, number>;
+  modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
   inputDevice?: PlanInputDevice;
   device: DevicePlanDevice;
   restoreResult: RestorePlanResult;
@@ -329,7 +329,7 @@ const buildDiagnosticsObservation = (params: {
   observationFresh: boolean;
 }): DeviceDiagnosticsPlanObservation => {
   const {
-    desiredForMode,
+    modeTargetCFor,
     inputDevice,
     device,
     restoreResult,
@@ -346,7 +346,7 @@ const buildDiagnosticsObservation = (params: {
   const { hasStandingDemand } = device;
   const includeDemandMetrics = hasStandingDemand && device.controllable && device.available;
   const desiredTarget = resolveDesiredTemperatureTarget({
-    desiredForMode,
+    modeTargetCFor,
     inputDevice,
     priceOptimizationEnabled,
     priceOptimizationSettings,
@@ -354,7 +354,7 @@ const buildDiagnosticsObservation = (params: {
   });
   const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
   const intendedNormalTargetC = resolveIntendedNormalTemperatureTarget({
-    desiredForMode,
+    modeTargetCFor,
     inputDevice,
   });
   const currentTemperatureC = resolveCurrentTemperatureC(device);
@@ -425,14 +425,14 @@ const buildDiagnosticsObservation = (params: {
 };
 
 const resolveDesiredTemperatureTarget = (params: {
-  desiredForMode: Record<string, number>;
+  modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
   inputDevice?: PlanInputDevice;
   priceOptimizationEnabled: boolean;
   priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   currentHourPriceLevel: CurrentHourPriceLevel;
 }): number | null => {
   const {
-    desiredForMode,
+    modeTargetCFor,
     inputDevice,
     priceOptimizationEnabled,
     priceOptimizationSettings,
@@ -444,13 +444,9 @@ const resolveDesiredTemperatureTarget = (params: {
   // Bail only when the device declares a non-temperature modality; an unset
   // deviceType is left to the downstream target check (behaviour preserved —
   // matches the prior `deviceType && deviceType !== 'temperature'` truthiness).
-  if (inputDevice.deviceType && !isTemperatureControlDevice(inputDevice)) {
-    return null;
-  }
-  const desired = desiredForMode[inputDevice.id];
-  if (!Number.isFinite(desired)) return null;
+  if (!isTemperaturePlanDevice(inputDevice)) return null;
 
-  let desiredTarget = Number(desired);
+  let desiredTarget = modeTargetCFor(inputDevice);
   const priceOptConfig = priceOptimizationSettings[inputDevice.id];
   if (priceOptimizationEnabled && priceOptConfig?.enabled) {
     if (currentHourPriceLevel.cheap && priceOptConfig.cheapDelta) {

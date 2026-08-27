@@ -479,7 +479,9 @@ type DevicePlanDeviceBase = {
   // configured shedBehavior (turn_off / set_temperature / set_step) exactly once, gated by
   // observed-state idempotency.
   deferredReleaseIntent?: 'binary_restore' | 'binary_release' | 'shed_release';
-  priority?: number;
+  /** Rank in the active mode: unique, gap-free `1..N`, lower wins. REQUIRED —
+   * see the twin docblock on `PlanInputDevice`. */
+  priority: number;
   /** Draw when running, in kW. REQUIRED — see the twin docblock on `PlanInputDevice`. */
   expectedPowerKw: number;
   // `planningPowerKw` is NOT here: it is a stepped-ladder fact and lives on

@@ -32,6 +32,10 @@ const buildInputDevice = (
     controllable: true,
     managed: true,
     commandableNow: true,
+    // The producer's default ordering for this fixture set, stamped on the
+    // device: the planner reads the rank off the device now, because the whole
+    // planned set is ranked before the build starts.
+    priority: loose.id === 'heater' ? 1 : 10,
     ...loose,
   };
   return withBinaryDiscriminant({
@@ -44,7 +48,6 @@ const buildInputDevice = (
 const makeBuilder = (params: {
   limitKw: number;
   totalKw: number;
-  priorities?: Record<string, number>;
   softLimitKw?: number;
   shedBehaviors?: Record<string, ShedBehavior>;
 }): {
@@ -73,7 +76,6 @@ const makeBuilder = (params: {
     getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now(), lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     // heater is priority 1 (top); everything else lower (higher number sheds first).
-    getPriorityForDevice: (deviceId: string) => params.priorities?.[deviceId] ?? (deviceId === 'heater' ? 1 : 10),
     getShedBehavior: (deviceId: string) => params.shedBehaviors?.[deviceId]
       ?? { action: 'turn_off' },
     getDynamicSoftLimitOverride: () => softLimitKw,
@@ -131,10 +133,15 @@ describe('PlanBuilder startup power reservation', () => {
     priorities?: Record<string, number>;
   }) => {
     // 3.0 kW drawn against a 2.6 kW soft limit: over by 0.4, so the 0.6 kW thermostat is shed.
-    const harness = makeBuilder({
-      limitKw: 10, totalKw: 3.0, softLimitKw: 2.6, priorities: params.priorities,
-    });
-    const pressured = await harness.builder.buildDevicePlanSnapshot([params.heater, lowerPriorityThermostat()]);
+    const harness = makeBuilder({ limitKw: 10, totalKw: 3.0, softLimitKw: 2.6 });
+    // Ranks ride on the devices: the producer ranks the whole planned set before
+    // the build starts, so a spec that varies the order stamps them here.
+    const rank = (device: PlanInputDevice): PlanInputDevice => (
+      { ...device, priority: params.priorities?.[device.id] ?? device.priority }
+    );
+    const pressured = await harness.builder.buildDevicePlanSnapshot(
+      [params.heater, lowerPriorityThermostat()].map(rank),
+    );
     // Premise check: without this shed the later assertions would pass vacuously.
     expect(stateOf(pressured, 'thermostat')).toBe('shed');
 
@@ -145,7 +152,7 @@ describe('PlanBuilder startup power reservation', () => {
     const settled = [
       params.heater,
       lowerPriorityThermostat({ binaryControl: { on: false }, currentDrawKw: 0 }),
-    ];
+    ].map(rank);
     // Recovering re-arms the 60 s shed cooldown (`getShedCooldownState` restarts it from
     // `lastRecoveryMs`), so burn one build on the recovery and let that clock run out — otherwise
     // every case would just read back "waiting before resuming" and never reach admission.

@@ -336,7 +336,9 @@ describe('settingsUiApi', () => {
     const result = await refreshSettingsUiDevices({ homey: homey as never });
 
     expect(homey.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
-    expect(result.devices).toEqual([{ id: 'dev-2', name: 'Pump' }]);
+    // `priority` is resolved over the payload's own device set — see
+    // `withResolvedPriorities`.
+    expect(result.devices).toEqual([{ id: 'dev-2', name: 'Pump', priority: 1 }]);
   });
 
   it('returns refreshed prices from the app wrapper', async () => {
@@ -422,10 +424,20 @@ describe('settingsUiApi', () => {
 
     expect(getSettingsUiDevicesPayload({ homey: homey as never })).toEqual({
       devices: [
-        { id: 'dev-1', name: 'Heater', deviceType: 'temperature', currentTemperature: 18.5, measuredPowerKw: 1.2 },
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          deviceType: 'temperature',
+          currentTemperature: 18.5,
+          measuredPowerKw: 1.2,
+          // Ranked over this payload's own device set, strictly: with nothing
+          // stored the owner breaks the tie by device id.
+          priority: 1,
+        },
         {
           id: 'ev-1',
           name: 'Charger',
+          priority: 2,
           deviceClass: 'evcharger',
           evChargingState: 'plugged_in_charging',
           stateOfCharge: stateOfChargeFixture({ percent: 80 }),
@@ -612,6 +624,7 @@ describe('settingsUiApi', () => {
       available: false,
       measuredPowerKw: 2.7,
       binaryControl: { on: false },
+      priority: 1,
     }]);
   });
 
@@ -664,7 +677,7 @@ describe('settingsUiApi', () => {
     });
 
     expect(getSettingsUiDevicesPayload({ homey: homey as never }).devices).toEqual([
-      { id: 'pump-9', name: 'Pump', available: true },
+      { id: 'pump-9', name: 'Pump', available: true, priority: 1 },
     ]);
   });
 
@@ -689,6 +702,7 @@ describe('settingsUiApi', () => {
       available: true,
       measuredPowerKw: 0.4,
       binaryControl: { on: true },
+      priority: 1,
     }]);
   });
 

@@ -134,26 +134,17 @@ export function resolveHomeOperatingMode(params: {
 }
 
 /**
- * The single definition of "a device's priority under a mode": the mode's
- * priority record (empty mode falls into the historical 'Home' bucket), with
- * 100 (lowest importance tier) for a device the mode does not rank. The main
- * home resolves this against the global mode (`PelsApp.getPriorityForDevice`);
- * a sub-home scope resolves it against its OWN effective mode.
- */
-export function resolveDevicePriority(
-  capacityPriorities: Record<string, Record<string, number>>,
-  operatingMode: string,
-  deviceId: string,
-): number {
-  return resolveConfiguredDevicePriority(capacityPriorities, operatingMode, deviceId) ?? 100;
-}
-
-/**
- * Read the stored priority without applying the legacy default tier.
+ * Read the stored priority for a device under a mode (empty mode falls into the
+ * historical 'Home' bucket). `undefined` means the owner has never ranked it —
+ * NOT a low rank.
  *
- * Active-set rankers need to distinguish an explicitly saved rank `100` from
- * a device that has no catalog entry at all. Concrete planner-policy reads keep
- * using `resolveDevicePriority`, which preserves the historical `100` fallback.
+ * This is a stored-state read, not an answer: priority is a property of a SET,
+ * so the rank a consumer acts on comes from the mode catalog owner
+ * (`packages/shared-domain/src/modeCatalogResolution.ts`), which ranks the whole
+ * set strictly. There used to be a `resolveDevicePriority` here that applied a
+ * `?? 100` default tier so a caller could ask about one device in isolation;
+ * every device nobody had ranked then shared rank 100, which is the tie the
+ * owner exists to make impossible.
  */
 export function resolveConfiguredDevicePriority(
   capacityPriorities: Record<string, Record<string, number>>,

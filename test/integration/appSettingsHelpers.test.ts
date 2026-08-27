@@ -97,7 +97,6 @@ const buildContext = (): AppContext => {
     loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),
     requestFlowPlanRebuild: vi.fn(),
-    getPriorityForDevice: vi.fn(() => 0),
     resolveModeName: vi.fn((name: string) => name),
     getAllModes: vi.fn(() => new Set<string>()),
     resolveManagedState: vi.fn(() => false),

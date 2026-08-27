@@ -115,7 +115,7 @@ export class AppSnapshotHelpers {
       snapshot: TargetDeviceSnapshot[],
       resolveOperatingModeForDevice?: ResolveOperatingModeForDevice,
     ) => void;
-    seedMissingModeTargets: (snapshot: TargetDeviceSnapshot[]) => void;
+    persistFilledModeTargets: (snapshot: TargetDeviceSnapshot[]) => void;
     getFlowReportedDeviceIds: () => string[];
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
     emitSettingsUiDevicesUpdated: () => void;
@@ -450,7 +450,7 @@ export class AppSnapshotHelpers {
 
     const snapshot = this.deps.getLatestTargetSnapshot();
     this.deps.disableUnsupportedDevices(snapshot);
-    this.deps.seedMissingModeTargets(snapshot);
+    this.deps.persistFilledModeTargets(snapshot);
     const enforcedSnapshot = snapshot.map((device) => ({
       // `withHeadroomCurrentOn` stamps the on/off truth the headroom/activation
       // path now reads (a raw snapshot carries no `currentOn`).

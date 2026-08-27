@@ -4,6 +4,7 @@ import type { PowerCycleReading } from '../power/powerCycleReading';
 import { getCurrentHourContext } from './planHourContext';
 import { sumBudgetExemptMeasuredUsageKw } from './planUsage';
 import type { PlanInputDevice } from './planTypes';
+import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
 
 // "The house is drawing nothing." Small enough that a real idle home clears it
 // and any running load does not.
@@ -61,7 +62,7 @@ export type CurrentHourPriceLevel = {
 
 export type PlanContext = {
   devices: PlanInputDevice[];
-  desiredForMode: Record<string, number>;
+  modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
   /**
    * The planner's entire power vocabulary: ask for a limit, get the headroom
    * against it. Always a number.
@@ -195,7 +196,19 @@ export function buildPlanContext(params: {
   budgetPaceKw?: number | null;
   projectedExemptKw?: number | null;
   softLimitSource: SoftLimitSource;
-  desiredForMode: Record<string, number>;
+  /**
+   * The setpoint this home's active mode holds a temperature device at.
+   *
+   * A TOTAL function of the device, not a map: "does this mode have a target for
+   * this device" is not a question any planner stage can ask, because there is
+   * no absent case to observe. The producer resolves it once — the stored
+   * per-mode entry, else the device's own setpoint, which commands nothing new.
+   *
+   * It was `Record<string, number>`, which typed every lookup as a `number` the
+   * map could not guarantee; the seed then carried a `Number.isFinite` fallback
+   * for a case the type called impossible.
+   */
+  modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
   hourlyBudgetExhausted: boolean;
   // Already resolved by the caller (see `CurrentHourPriceLevel`) — this builder
   // stays free of price dependencies.
@@ -213,7 +226,7 @@ export function buildPlanContext(params: {
     budgetPaceKw,
     projectedExemptKw,
     softLimitSource,
-    desiredForMode,
+    modeTargetCFor,
     hourlyBudgetExhausted,
     currentHourPriceLevel,
     dailyBudget,
@@ -257,7 +270,7 @@ export function buildPlanContext(params: {
 
   return {
     devices,
-    desiredForMode,
+    modeTargetCFor,
     headroomForLimitKw: power.headroomKw,
     powerIsMeasured: power.isMeasured,
     powerMeasuredAtOrBelowKw: power.measuredAtOrBelowKw,
