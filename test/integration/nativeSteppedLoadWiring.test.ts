@@ -16,6 +16,7 @@ import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerR
 import { setObservedNativeSteppedLoadStep } from '../../lib/device/managerNativeSteppedCommand';
 import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../../lib/executor/steppedLoadExecutor';
 import { createSteppedCommandClaim } from '../../lib/executor/steppedCommandClaim';
+import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { buildExecutableObservedDeviceStateFromSnapshot } from '../../lib/executor/executablePlanProjection';
 import {
   buildExecutableSteppedLoadDevice,
@@ -989,6 +990,259 @@ describe('native stepped-load wiring', () => {
     }));
   });
 
+  it('treats a timed-out stepped write as issued-awaiting-confirmation, not as a failure', async () => {
+    const requestSteppedLoadStep = vi.fn(async () => {
+      throw new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/hoiax-1/capability/max_power_3000');
+    });
+    const markSteppedLoadDesiredStepIssued = vi.fn();
+    const recordShedActuation = vi.fn();
+    const recordRestoreActuation = vi.fn();
+    const ctx = {
+      steppedCommandClaim: createSteppedCommandClaim(),
+      steppedCommandOwner: 'ordinary',
+      state: {},
+      buildBinaryControlTransport: () => ({}),
+      markSteppedLoadDesiredStepIssued,
+      recordShedActuation,
+      recordRestoreActuation,
+      getRestoreLogSource: () => 'current_plan',
+      requestSteppedLoadStep,
+    } as unknown as PlanExecutorSteppedContext;
+    const action = buildSteppedAction({
+      id: 'hoiax-1',
+      name: 'Connected 300',
+      binaryControl: { on: true },
+      currentState: 'on',
+      plannedState: 'shed',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'max',
+      desiredStepId: 'medium',
+      plannedShedStepId: 'medium',
+      reason: { code: 'capacity' },
+    });
+
+    expect(action).not.toBeNull();
+    // Resolved like a slow success: the abandoned socket says nothing about
+    // whether the hub applied the step.
+    expect(await applySteppedLoadCommand(ctx, action!)).toBe(true);
+    // Arms no reachability probe — an abandoned socket must not be allowed to
+    // conclude the device cannot reach the rung.
+    expect(markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith(expect.objectContaining({
+      unacknowledged: true,
+    }));
+    // Never stamps the home-wide restore clock on an unconfirmed write.
+    expect(recordRestoreActuation).not.toHaveBeenCalled();
+    // The shed direction DOES stamp: assuming an unconfirmed step-down happened
+    // only ever delays the next resume, which errs toward the cap.
+    expect(recordShedActuation).toHaveBeenCalledWith('hoiax-1', 'Connected 300', expect.any(Number));
+    // Still pending — confirmation stays REQUIRED, so the device is not settled
+    // and observed truth has to arrive through telemetry.
+    expect(markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: 'hoiax-1',
+      desiredStepId: 'medium',
+      previousStepId: 'max',
+    }));
+    expect(markSteppedLoadDesiredStepIssued).not.toHaveBeenCalledWith(expect.objectContaining({
+      confirmationPolicy: 'assume_applied',
+    }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_outcome_unknown',
+      reasonCode: 'command_request_timed_out',
+      deviceId: 'hoiax-1',
+      desiredStepId: 'medium',
+    }));
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_failed',
+    }));
+  });
+
+  it('treats an unacknowledged flow trigger as the same unknown outcome as a native timeout', async () => {
+    const requestSteppedLoadStep = vi.fn(async () => ({
+      requested: false as const,
+      reason: 'flow_trigger_timeout' as const,
+    }));
+    const markSteppedLoadDesiredStepIssued = vi.fn();
+    const ctx = {
+      steppedCommandClaim: createSteppedCommandClaim(),
+      steppedCommandOwner: 'ordinary',
+      state: {},
+      buildBinaryControlTransport: () => ({}),
+      markSteppedLoadDesiredStepIssued,
+      recordShedActuation: vi.fn(),
+      recordRestoreActuation: vi.fn(),
+      getRestoreLogSource: () => 'current_plan',
+      requestSteppedLoadStep,
+    } as unknown as PlanExecutorSteppedContext;
+    const action = buildSteppedAction({
+      id: 'hoiax-1',
+      name: 'Connected 300',
+      binaryControl: { on: true },
+      currentState: 'on',
+      plannedState: 'shed',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'max',
+      desiredStepId: 'medium',
+      plannedShedStepId: 'medium',
+      reason: { code: 'capacity' },
+    });
+
+    expect(action).not.toBeNull();
+    expect(await applySteppedLoadCommand(ctx, action!)).toBe(true);
+    expect(markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: 'hoiax-1',
+      desiredStepId: 'medium',
+    }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_outcome_unknown',
+      reasonCode: 'flow_trigger_timeout',
+      commandTransport: 'flow',
+      deviceId: 'hoiax-1',
+    }));
+    // Not the "there is no transport" skip — a trigger did go out.
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      reasonCode: 'command_unavailable',
+    }));
+  });
+
+  it('does not log a superseded unacknowledged stepped write as a definite failure', async () => {
+    const requestSteppedLoadStep = vi.fn(async () => {
+      throw new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/hoiax-1/capability/max_power_3000');
+    });
+    const markSteppedLoadDesiredStepIssued = vi.fn();
+    const ctx = {
+      steppedCommandClaim: createSteppedCommandClaim(),
+      steppedCommandOwner: 'ordinary',
+      state: {},
+      buildBinaryControlTransport: () => ({}),
+      markSteppedLoadDesiredStepIssued,
+      recordShedActuation: vi.fn(),
+      recordRestoreActuation: vi.fn(),
+      getRestoreLogSource: () => 'current_plan',
+      requestSteppedLoadStep,
+      // The write lost its claim while in flight; the successor owns the
+      // bookkeeping now.
+      isSteppedCommandAuthorityCurrent: () => false,
+    } as unknown as PlanExecutorSteppedContext;
+    const action = buildSteppedAction({
+      id: 'hoiax-1',
+      name: 'Connected 300',
+      binaryControl: { on: true },
+      currentState: 'on',
+      plannedState: 'shed',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'max',
+      desiredStepId: 'medium',
+      plannedShedStepId: 'medium',
+      reason: { code: 'capacity' },
+    });
+
+    expect(action).not.toBeNull();
+    expect(await applySteppedLoadCommand(ctx, action!)).toBe(false);
+    // Superseded: it stamps nothing the successor owns...
+    expect(markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+    // ...and it is still an UNKNOWN outcome, so it is not logged as a failure.
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_failed',
+    }));
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'executor_stepped_error',
+    }));
+  });
+
+  it('keeps an unacknowledged post-activation reassertion retryable, not settled', async () => {
+    // The reassertion after a binary activation exists because the device may
+    // have reset its own step limit to a HIGHER rung, so the pre-activation
+    // observation cannot be trusted. If that write goes unacknowledged and
+    // nothing is recorded, the stale evidence reads as settled and no cycle
+    // retries — leaving the device above the planned limit.
+    const requestSteppedLoadStep = vi.fn(async () => {
+      throw new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/hoiax-1/capability/max_power_3000');
+    });
+    const markSteppedLoadDesiredStepIssued = vi.fn();
+    const ctx = {
+      steppedCommandClaim: createSteppedCommandClaim(),
+      steppedCommandOwner: 'ordinary',
+      state: {},
+      buildBinaryControlTransport: () => ({}),
+      markSteppedLoadDesiredStepIssued,
+      recordShedActuation: vi.fn(),
+      recordRestoreActuation: vi.fn(),
+      getRestoreLogSource: () => 'current_plan',
+      requestSteppedLoadStep,
+    } as unknown as PlanExecutorSteppedContext;
+    const action = buildSteppedAction({
+      id: 'hoiax-1',
+      name: 'Connected 300',
+      binaryControl: { on: true },
+      currentState: 'on',
+      plannedState: 'shed',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'max',
+      desiredStepId: 'medium',
+      plannedShedStepId: 'medium',
+      reason: { code: 'capacity' },
+    });
+
+    expect(action).not.toBeNull();
+    expect(await applySteppedLoadCommand(ctx, action!, undefined, {
+      force: true,
+      recordPlanActuation: false,
+      preserveMaterializedConfirmation: true,
+      commandPurpose: 'post_activation_step',
+    })).toBe(true);
+
+    // Records the pending state despite `preserveMaterializedConfirmation`:
+    // that guard is for writes that succeeded, not for ones nobody answered.
+    expect(markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith(expect.objectContaining({
+      desiredStepId: 'medium',
+      unacknowledged: true,
+    }));
+  });
+
+  it('still treats a definite stepped write rejection as a failure', async () => {
+    const requestSteppedLoadStep = vi.fn(async () => {
+      throw new Error('HTTP 500: Failed to change the settings.');
+    });
+    const markSteppedLoadDesiredStepIssued = vi.fn();
+    const ctx = {
+      steppedCommandClaim: createSteppedCommandClaim(),
+      steppedCommandOwner: 'ordinary',
+      state: {},
+      buildBinaryControlTransport: () => ({}),
+      markSteppedLoadDesiredStepIssued,
+      recordShedActuation: vi.fn(),
+      recordRestoreActuation: vi.fn(),
+      getRestoreLogSource: () => 'current_plan',
+      requestSteppedLoadStep,
+    } as unknown as PlanExecutorSteppedContext;
+    const action = buildSteppedAction({
+      id: 'hoiax-1',
+      name: 'Connected 300',
+      binaryControl: { on: true },
+      currentState: 'on',
+      plannedState: 'shed',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'max',
+      desiredStepId: 'medium',
+      plannedShedStepId: 'medium',
+      reason: { code: 'capacity' },
+    });
+
+    expect(action).not.toBeNull();
+    expect(await applySteppedLoadCommand(ctx, action!)).toBe(false);
+    expect(markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_failed',
+      reasonCode: 'command_failed',
+      deviceId: 'hoiax-1',
+    }));
+  });
+
   it('does not apply a stale stepped command while an outside-off hold is active', async () => {
     const requestSteppedLoadStep = vi.fn(async () => ({
       requested: true,
@@ -1577,8 +1831,10 @@ describe('native stepped-load wiring', () => {
         requested: false,
         reason: 'flow_trigger_timeout',
       });
-      expect(logger.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
-        event: 'stepped_load_command_failed',
+      // Unacknowledged, not failed — the executor waits for telemetry rather
+      // than treating this as a definite rejection.
+      expect(logger.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'stepped_load_flow_trigger_unacknowledged',
         reasonCode: 'flow_trigger_timeout',
         deviceId: 'flow-step-1',
         deviceName: 'Flow backed charger',
@@ -1586,6 +1842,9 @@ describe('native stepped-load wiring', () => {
         planningPowerW: 1750,
         commandTransport: 'flow',
         timeoutMs: 10_000,
+      }));
+      expect(logger.structuredLog.error).not.toHaveBeenCalledWith(expect.objectContaining({
+        event: 'stepped_load_command_failed',
       }));
     } finally {
       vi.useRealTimers();

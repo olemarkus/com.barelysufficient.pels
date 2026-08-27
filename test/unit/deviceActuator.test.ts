@@ -63,4 +63,21 @@ describe('createDeviceActuator — intent → transport mapping', () => {
     });
     expect(outcome).toEqual({ requested: false });
   });
+
+  it('carries an unacknowledged Flow trigger reason across the seam', async () => {
+    // Not the same outcome as "no stepped surface": flattening both to a bare
+    // `{ requested: false }` here left the executor unable to tell an abandoned
+    // trigger from a device it cannot command at all.
+    const actuator = createDeviceActuator(buildTransport({
+      requestSteppedLoadStep: vi.fn(async () => ({
+        requested: false as const,
+        reason: 'flow_trigger_timeout' as const,
+      })),
+    }));
+    const outcome = await actuator.apply({
+      kind: 'step', deviceId: 's1', profile: { steps: [{ id: 'low', planningPowerW: 1000 }] },
+      desiredStepId: 'low', planningPowerW: 1000, planningCurrentA: 0,
+    });
+    expect(outcome).toEqual({ requested: false, reason: 'flow_trigger_timeout' });
+  });
 });

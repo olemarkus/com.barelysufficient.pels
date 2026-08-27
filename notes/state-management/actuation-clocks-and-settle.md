@@ -98,6 +98,44 @@ read is stamped by `recordShedActuation`, which runs on confirmation, on a succe
 shed-temperature write, or on a step-down — never on a failed dispatch. So a device whose
 writes keep failing was already retried at rebuild cadence, throttle or no throttle.
 
+### A third outcome: the write nobody answered
+
+"Failed" and "succeeded" are not the whole set. A write PELS abandons — the transport's own
+timeout on the native channel, the trigger-acceptance timeout on the Flow one — is **unknown**:
+the command may still be on its way. `binaryControlDispatch.ts` resolves that case exactly like
+a slow success and lets the settle window decide, and `executeSteppedLoadCommand` does the same
+for the stepped axis. The pending record is written with confirmation still `required`, so the
+device is not settled and observed truth keeps coming only from telemetry.
+
+The cooldown clocks are stamped as if the command landed, in **both** directions. Every clock
+here is restrictive with respect to future actuation — `recordShedActuation` writes
+`lastInstabilityMs`, which drives the exponential restore back-off, and `recordRestoreActuation`
+writes `lastRestoreMs`, the restore cooldown itself — so assuming an unconfirmed write happened
+delays the next resume whichever way it went, and a resume is the direction that adds load.
+
+Skipping a stamp is the aggressive choice, not the cautious one. If an unacknowledged step-up
+did land (the common case for a socket abandoned on a slow-but-alive hub) and nothing stamps the
+clock, the next rebuild may resume another device with no cooldown at all, stacking load onto a
+meter that has not yet seen the first increase. Both clocks are home-wide, so neither direction
+is the safe one to skip on blast-radius grounds; the tie is broken by which way the error points.
+
+What an unacknowledged write must not do is conclude something about the **device**. It opens no
+starvation activation attempt — that is a claim the device began drawing, on evidence that never
+arrived.
+
+Abandoning the wait is not the same as closing the socket. The request stays open
+purely so its answer can be recorded — a cloud device's owning app can take 22-60 s
+to reply, and that reply is the only place its real error is ever visible
+(`homey_request_late_response`). A late 2xx there is worth reading: it says the
+write LANDED after PELS stopped waiting, which is the one fact an unknown outcome
+cannot learn on its own.
+
+For the same reason an unacknowledged write arms no target-power reachability probe: a probe
+that settles unobserved records a failure and backs off 15-60 minutes, which would let an
+abandoned socket conclude the charger cannot reach a rung it was never seen to refuse. The
+pacing that used to be credited to the cooldown comes from the pending record's own retry ladder
+(`STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS`, 30 s → 2 m → 5 m → 15 m).
+
 Meanwhile it could veto a real decision. `lastDeviceShedMs` is stamped by a stepped step-down
 (`steppedLoadExecutorCommand.ts`) and by a shed-temperature write (`targetExecutor.ts`), not
 only by a binary off. So a stepped device that stepped down, whose next plan escalated it to

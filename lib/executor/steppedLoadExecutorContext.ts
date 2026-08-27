@@ -37,6 +37,8 @@ export type PlanExecutorSteppedContext = {
     issuedAtMs?: number;
     pendingWindowMs?: number;
     confirmationPolicy?: 'required' | 'assume_applied';
+    /** See `MarkSteppedLoadDesiredStepIssuedParams`: no probe on an unanswered write. */
+    unacknowledged?: boolean;
   }) => void;
   recordShedActuation: (deviceId: string, name: string, now: number) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;

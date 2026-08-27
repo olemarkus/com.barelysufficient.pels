@@ -46,7 +46,12 @@ const applyStep = async (
     planningCurrentA: command.planningCurrentA,
     previousStepId: command.previousStepId,
   });
-  if (!result.requested) return { requested: false };
+  // Carry the transport's reason across: an unacknowledged Flow trigger is not
+  // the same outcome as "no stepped surface", and flattening both to a bare
+  // `{ requested: false }` here is what made the distinction unreachable.
+  if (!result.requested) {
+    return { requested: false, ...(result.reason ? { reason: result.reason } : {}) };
+  }
   return { requested: true, kind: 'step', steppedResult: result };
 };
 

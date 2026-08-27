@@ -91,6 +91,8 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & {
     issuedAtMs?: number;
     pendingWindowMs?: number;
     confirmationPolicy?: 'required' | 'assume_applied';
+    /** See `MarkSteppedLoadDesiredStepIssuedParams`: no probe on an unanswered write. */
+    unacknowledged?: boolean;
   }) => void;
   getSteppedLoadCommandSession: (deviceId: string) => {
     initializationAssumedStepId?: string;
@@ -140,6 +142,8 @@ export class PlanExecutor {
     issuedAtMs?: number;
     pendingWindowMs?: number;
     confirmationPolicy?: 'required' | 'assume_applied';
+    /** See `MarkSteppedLoadDesiredStepIssuedParams`: no probe on an unanswered write. */
+    unacknowledged?: boolean;
   }): void => this.markSteppedLoadDesiredStepIssued(params);
   private readonly boundRecordShedActuation = (
     deviceId: string,
@@ -240,6 +244,8 @@ export class PlanExecutor {
     issuedAtMs?: number;
     pendingWindowMs?: number;
     confirmationPolicy?: 'required' | 'assume_applied';
+    /** See `MarkSteppedLoadDesiredStepIssuedParams`: no probe on an unanswered write. */
+    unacknowledged?: boolean;
   }): void {
     this.deps.markSteppedLoadDesiredStepIssued(params);
   }
@@ -374,14 +380,15 @@ export class PlanExecutor {
         recordShedActuation: this.boundRecordShedActuation,
         recordRestoreActuation: this.boundRecordRestoreActuation,
         getRestoreLogSource: this.boundGetRestoreLogSource,
-        // Route step writes through the single actuator seam; the `{ requested: false }`
-        // fallback matches the absent-stepped-surface arm of SteppedLoadStepRequestResult.
+        // Route step writes through the single actuator seam. The not-requested
+        // arm keeps the outcome's `reason` — dropping it collapsed an
+        // unacknowledged Flow trigger into an ordinary "no transport" skip.
         requestSteppedLoadStep: (params) => this.deps.actuator.apply({ kind: 'step', ...params })
-          .then((outcome) => (
-            outcome.requested && outcome.kind === 'step'
-              ? outcome.steppedResult
-              : { requested: false as const }
-          )),
+          .then((outcome) => {
+            if (outcome.requested && outcome.kind === 'step') return outcome.steppedResult;
+            const reason = outcome.requested ? undefined : outcome.reason;
+            return { requested: false as const, ...(reason ? { reason } : {}) };
+          }),
         deviceDiagnostics: this.deps.deviceDiagnostics,
       };
     }
