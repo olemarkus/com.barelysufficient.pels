@@ -10,7 +10,7 @@ import {
   resolveSteppedKeepDesiredStepId,
   resolveSteppedLoadTransition,
 } from '../plan/planSteppedLoad';
-import { resolveSteppedRestoreAttemptState } from '../plan/planSteppedRestorePending';
+import { resolveSteppedCommandAttempt } from './steppedCommandAttempt';
 import { resolveEffectiveCurrentOn } from '../plan/planCurrentState';
 import {
   allowsSteppedLoadKeepInvariantRestore,
@@ -59,12 +59,19 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
   const transition = desiredMatchesTransition(desired, desiredOn, plannedTransition)
     ? plannedTransition
     : null;
-  const matchingRestoreAttempt = desired.stepId !== undefined
-    ? resolveSteppedRestoreAttemptState(dev, desired.stepId)
-    : null;
-  const matchingCommandAttempt = desired.stepId !== undefined
-    ? resolveSteppedRestoreAttemptState(dev, desired.stepId)
-    : null;
+  // One resolution, two consumers. These were two byte-identical calls into the
+  // planner; the restore lane and the command lane ask the same question of the
+  // same step, so they get the same answer rather than computing it twice.
+  const matchingCommandAttempt = resolveSteppedCommandAttempt({
+    requestedStepId: desired.stepId,
+    lastDesiredStepId: dev.lastDesiredStepId,
+    steppedLoadProfile: dev.steppedLoadProfile,
+    stepCommandPending: dev.stepCommandPending,
+    stepCommandStatus: dev.stepCommandStatus,
+    nextStepCommandRetryAtMs: dev.nextStepCommandRetryAtMs,
+    nowMs: Date.now(),
+  });
+  const matchingRestoreAttempt = matchingCommandAttempt;
   const intent: ExecutableSteppedLoadIntent = {
     id: dev.id,
     name: dev.name,

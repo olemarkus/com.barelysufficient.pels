@@ -8,9 +8,9 @@ Read [`observer-transport-split.md`](./observer-transport-split.md) and
 [`actuator-write-seam.md`](./actuator-write-seam.md) first — this note assumes the four-box
 model and the `planned / commanded / observed / pending` vocabulary.
 
-> Status: **in progress** — PR 1 (executor stops enforcing planner pacing) is the PR that adds
-> this note. PR 2 (settle moves into `lib/executor`) and PR 3 (one direction-free actuation
-> clock) are outstanding.
+> Status: **in progress** — PR 1 (executor stops enforcing planner pacing) and PR 2 (executor
+> stops round-tripping through the planner for its own command state) are shipped. PR 3 (one
+> direction-free actuation clock) is outstanding.
 
 ---
 
@@ -33,13 +33,41 @@ commands and handles pending/materialization**."*
 
 Before this arc, each layer implemented the other's question.
 
-- **Settle lived in the planner.** `lib/plan/planSteppedRestorePending.ts` asks whether a write
-  materialized — so `stepCommandStatus` is projected onto `DevicePlanDevice` purely so the
-  planner can read `=== 'success'`. (PR 2.)
+- **The executor asked the planner about its own commands.** `executableSteppedLoadProjection.ts`
+  called `lib/plan/planSteppedRestorePending.ts:resolveSteppedRestoreAttemptState` — twice, with
+  identical arguments — to learn whether one of its own step commands was awaiting confirmation
+  or in retry backoff. It discarded every planner number that came back (requested/baseline/delta
+  kW, the countdowns) and read only `status`. It also called without a write clock, so the
+  meter-settle branch could not fire; `awaiting_power_settle` was an unreachable variant in the
+  executor-facing type. Closed in PR 2 by `lib/executor/steppedCommandAttempt.ts`.
+
+  Note what this was **not**: `stepCommandStatus` arriving on `DevicePlanDevice` is producer-
+  stamped by `setup/appDeviceControlHelpers.ts` from the runtime command store — the clean/
+  trusted pattern working as intended, not a layering breach. An earlier draft of this note
+  called the planner's whole restore-attempt composition a crossing; that was too broad. The
+  planner composing ITS reservation with command state it was handed is its own business.
 - **Cooldown was stamped, and enforced, by the executor.** `recordRestoreActuation` writes
   `state.lastRestoreMs` / `lastDeviceRestoreMs` (PR 3) — and `shouldSkipShedding` ran a 5 s
   per-device throttle **inside the write path**, vetoing a shed the planner had already
   decided (PR 1).
+
+The meter-settle question (`measurementTs` vs the write clock) is still in the planner —
+`restore/support.ts:computePendingRestorePowerKw`, `restore/accounting.ts`, and the power-settle
+branch of `planSteppedRestorePending.ts`. That is a crossing and it moves in PR 3. An earlier
+draft of this note argued it rightly stayed because it sits next to the restore reservation it
+qualifies; **OWNER RULING (2026-08-27) overrides that**: *"if they are related to settlement, then
+planner has no business with them. if they are related to cooldowns, they belong in planner
+only."* The reservation is the planner's; the evidence that the write has been measured is not.
+
+That rule is also the sizing test for PR 3, and it makes it much smaller than a clock-by-clock
+migration would suggest. Classified by the question each READ serves rather than by which field
+it touches, nearly every planner read of `lastDeviceRestoreMs` / `lastDeviceShedMs` /
+`lastInstabilityMs` is cooldown and is already in the right layer:
+`planHeadroomState.ts` (per-device countdowns), `planDevices.ts:isRecentlyRestored` and
+`shedding/overshoot.ts` (re-shed grace), `planShedRecovery.ts` (restored-since-shed ordering),
+`planBuilderOvershoot.ts` (attribution, whose purpose is to block that device's restore), and
+`restore/timing.ts` (the cooldown and its backoff ladder). Those stay. Only the settlement
+cluster above moves.
 
 That last one is the mirror of `inc_26449fb9`. The incident was *apply-without-decide*: the
 executor acting on a decision it had not been handed. The throttle was

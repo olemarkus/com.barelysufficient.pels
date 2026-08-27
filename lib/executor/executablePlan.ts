@@ -326,8 +326,15 @@ export type ExecutableSteppedLoadTransition = {
   transitionPhase: 'step_preparation' | 'binary_transition' | 'settled';
 };
 
+/**
+ * An outstanding step command of this layer's own — see
+ * `resolveSteppedCommandAttempt`. `awaiting_power_settle` used to be in this union
+ * and was structurally unreachable: the executor built this by calling the planner
+ * helper WITHOUT a write clock, so the meter-settle branch could never fire. The
+ * meter question is not the executor's, so the variant is gone rather than wired up.
+ */
 export type ExecutableSteppedLoadRestoreAttempt = {
-  status: 'awaiting_confirmation' | 'awaiting_power_settle' | 'retry_backoff';
+  status: 'awaiting_confirmation' | 'retry_backoff';
   requestedStepId: string;
 } | null;
 
