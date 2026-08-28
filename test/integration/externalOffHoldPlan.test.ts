@@ -40,6 +40,7 @@ import { buildInitialPlanDevices, type PlanDevicesDeps } from '../../lib/plan/pl
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { PlanContext } from '../../lib/plan/planContext';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -157,7 +158,7 @@ describe('external-off hold — plan-device propagation', () => {
     headroomRaw: 5,
     headroom: 5,
     restoreMarginPlanning: 0.2,
-    currentHourPriceLevel: { cheap: false, expensive: false },
+    currentHourPriceLevel: PriceLevel.UNKNOWN,
   });
 
   const deps: PlanDevicesDeps = {

@@ -31,6 +31,7 @@ import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import type { SplitControlledUsage, SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -102,7 +103,7 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext
   headroomRaw: -1,
   headroom: -1,
   restoreMarginPlanning: 0.2,
-  currentHourPriceLevel: { cheap: false, expensive: false },
+  currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
 });
 

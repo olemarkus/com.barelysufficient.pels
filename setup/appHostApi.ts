@@ -165,7 +165,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public getNow = (): Date => new Date();
   public findCheapestHours = (count: number): string[] => this.requirePriceCoordinator().findCheapestHours(count);
   public isCurrentHourCheap = (): boolean => this.requirePriceCoordinator().isCurrentHourCheap();
-  public getCurrentHourPriceLevel = (): { cheap: boolean; expensive: boolean } => (
+  public getCurrentHourPriceLevel = (): PriceLevel => (
     this.requirePriceCoordinator().getCurrentHourPriceLevel()
   );
   public isCurrentHourExpensive = (): boolean => this.requirePriceCoordinator().isCurrentHourExpensive();

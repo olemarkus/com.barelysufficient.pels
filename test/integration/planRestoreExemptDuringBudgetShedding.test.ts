@@ -26,6 +26,7 @@ import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -45,7 +46,7 @@ const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext =
   headroomRaw: -0.8,
   headroom: -0.8,
   restoreMarginPlanning: 0.2,
-  currentHourPriceLevel: { cheap: false, expensive: false },
+  currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...planContextPower(FIXTURE_TOTAL_KW),
   ...overrides,
 } as PlanContext);
@@ -360,7 +361,7 @@ const buildBuilder = (params: {
   getModeDeviceTargets: () => ({}),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
-  getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+  getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
   getShedBehavior: () => ({ action: 'turn_off' }),

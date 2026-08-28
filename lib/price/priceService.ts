@@ -62,6 +62,7 @@ import {
   resolveCurrentHourPriceLevel,
 } from './priceLevelUtils';
 import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatters';
+import { PriceLevel } from './priceLevels';
 import type { CombinedHourlyPrice, PriceScheme } from './priceTypes';
 import type { PriceDataStore } from './priceDataStore';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
@@ -460,14 +461,17 @@ export default class PriceService {
   }
 
   /**
-   * Both current-hour classifications from a SINGLE combined-series build.
+   * The current hour's RESOLVED price level, from a SINGLE combined-series build.
    *
    * `getCombinedHourlyPrices()` is uncached — every call re-reads ~12 settings,
    * runs one `Intl.DateTimeFormat.formatToParts` per spot hour, and walks the
-   * whole grid-tariff table (~25 ms on a Homey Pro). Callers that need both
-   * flags — the plan builder's per-cycle price level and the status writer —
-   * were paying that twice for one question. Use this instead of calling
+   * whole grid-tariff table (~25 ms on a Homey Pro). Callers that need the level
+   * — the plan builder's per-cycle price delta and the status writer — were
+   * paying that twice for one question. Use this instead of calling
    * `isCurrentHourCheap()` and `isCurrentHourExpensive()` back to back.
+   *
+   * It answers `UNKNOWN` when the series has no entry for the current hour, so
+   * no caller has to sniff a price blob to decide whether a level exists.
    *
    * A cache inside `getCombinedHourlyPrices` would be the bigger win, but it is
    * not currently safe: `price_area` and the `nettleie_*` keys are written by
@@ -475,7 +479,7 @@ export default class PriceService {
    * path (see `lib/utils/settingsHandlers.ts`), so the live rebuild is what
    * keeps a price-area or grid-operator change visible. See `TODO.md`.
    */
-  getCurrentHourPriceLevel(): { cheap: boolean; expensive: boolean } {
+  getCurrentHourPriceLevel(): PriceLevel {
     return resolveCurrentHourPriceLevel({
       prices: this.getCombinedHourlyPrices(),
       thresholdPercent: this.getNumberSetting('price_threshold_percent', 25),

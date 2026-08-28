@@ -78,17 +78,10 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
       structuredLog: ctx.getStructuredLogger('plan'),
       debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
     },
-    // Policy closures from the scope (main: live ctx reads, byte-identical;
-    // sub-home bundles: constant false — capacity-only status, no price levels
-    // driving plan behavior).
+    // Policy closure from the scope (main: the live ctx read; sub-home bundles:
+    // constant UNKNOWN — capacity-only status, no price level driving plan
+    // behavior and no `price_level_changed` fired against MAIN's level).
     getCurrentHourPriceLevel: scope.getCurrentHourPriceLevel,
-    // Scope-owned combined-price read: main reads via the combined-prices reader
-    // (so a legacy V1 payload is migrated to V2 on first read; otherwise
-    // hasPrices()/hasCombinedPrices() would return false during the post-upgrade
-    // window and price_level would resolve to UNKNOWN). A sub-home binds null so
-    // its capacity-only status resolves price level UNKNOWN and never fires the
-    // shared `price_level_changed` trigger card against MAIN's price level.
-    getCombinedPrices: scope.getCombinedPrices,
     getLastPowerUpdate: () => scope.getPowerTracker().lastTimestamp ?? null,
     schedulePostActuationRefresh: () => ctx.snapshotHelpers.schedulePostActuationRefresh(),
     overviewDebugStructured: ctx.getStructuredDebugEmitter('overview', 'overview'),

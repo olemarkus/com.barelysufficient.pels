@@ -7,6 +7,7 @@ import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingB
 import type { PlanBuilderDeps } from '../../lib/plan/planBuilder';
 import type { PendingTargetObservationSource, ShedBehavior } from '../../lib/plan/planTypes';
 import type CapacityGuard from '../../lib/power/capacityGuard';
+import type { PriceLevel } from '../../lib/price/priceLevels';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 
 /**
@@ -34,7 +35,7 @@ export type PlanEngineWiring = {
     cheapDelta: number;
     expensiveDelta: number;
   }>;
-  getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
+  getCurrentHourPriceLevel: () => PriceLevel;
   getInferredSurplusKw?: () => number | null;
   isExternalOffHeld?: (deviceId: string) => boolean;
   /** Pre-shed setpoint anchor store — the persisted adapter, shared across

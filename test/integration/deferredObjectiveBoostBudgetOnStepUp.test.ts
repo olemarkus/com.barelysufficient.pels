@@ -34,6 +34,7 @@ import {
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_START_UTC = Date.UTC(2026, 4, 10, 0, 0, 0);
@@ -276,7 +277,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     getModeDeviceTargets: () => ({}),
     getPriceOptimizationEnabled: () => true,
     getPriceOptimizationSettings: () => ({}),
-    getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getPowerTracker: () => powerTracker,
     // Daily budget ON: the per-hour budget slice is the binding soft limit.
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(nowMs),

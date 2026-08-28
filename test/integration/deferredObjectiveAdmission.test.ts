@@ -14,6 +14,7 @@ import {
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -215,7 +216,7 @@ const buildBuilder = (
     getModeDeviceTargets: () => ({}),
     getPriceOptimizationEnabled: () => true,
     getPriceOptimizationSettings: () => ({}),
-    getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getPowerTracker: () => powerTrackerRef.current,
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
@@ -354,7 +355,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getModeDeviceTargets: () => ({ [modeRef.current]: { [DEVICE_ID]: TARGET_C - 3 } }),
       getPriceOptimizationEnabled: () => true,
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => powerTrackerRef.current,
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
       decorateDeferredObjectives: (input) => deferredController.decorate(input),
@@ -608,7 +609,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => true,
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => powerTracker,
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
       decorateDeferredObjectives: (input) => deferredController.decorate(input),

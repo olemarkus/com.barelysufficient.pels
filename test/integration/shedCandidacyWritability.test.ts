@@ -8,6 +8,7 @@ import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildSheddingPlan } from '../../lib/plan/shedding';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -43,7 +44,7 @@ const buildContext = (devices: PlanInputDevice[], headroom: number): PlanContext
   headroomRaw: headroom,
   headroom,
   restoreMarginPlanning: 0.2,
-  currentHourPriceLevel: { cheap: false, expensive: false },
+  currentHourPriceLevel: PriceLevel.UNKNOWN,
 });
 
 const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuard: CapacityGuard) => ({

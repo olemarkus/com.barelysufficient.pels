@@ -18,6 +18,7 @@ import {
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import { createDeviceDiagnosticsStateStore } from '../../setup/deviceDiagnosticsStateAdapter';
 import { getDateKeyInTimeZone, getDateKeyStartMs } from '../../lib/utils/dateUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const r = (reason: string) => fixtureDeviceReason(reason)!;
 
@@ -28,7 +29,7 @@ const buildContext = (
   // What the meter read, or `null` for a cycle with no measurement. The power
   // answers follow from it (`planContextPower`), as they do in production.
   fixtureTotalKw: number | null = 4,
-  currentHourPriceLevel: PlanContext['currentHourPriceLevel'] = { cheap: false, expensive: false },
+  currentHourPriceLevel: PlanContext['currentHourPriceLevel'] = PriceLevel.UNKNOWN,
 ): PlanContext => ({
   devices: [device],
   modeTargetCFor: (d) => modeTargets[d.id] ?? d.currentTarget,
@@ -543,7 +544,7 @@ describe('plan diagnostics observations', () => {
       modeTargets: { 'heater-1': 20 },
       priceOptimizationEnabled: true,
       priceOptimizationSettings: { 'heater-1': { enabled: true, cheapDelta: 4, expensiveDelta: -4 } },
-      currentHourPriceLevel: { cheap: true, expensive: false },
+      currentHourPriceLevel: PriceLevel.CHEAP,
     });
 
     expect(observation.desiredStateSummary).toBe('24.0C');

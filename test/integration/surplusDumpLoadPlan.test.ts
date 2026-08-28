@@ -43,6 +43,7 @@ import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const PUMP = 'pool-pump';
 const PUMP_DRAW_KW = 1;
@@ -109,7 +110,7 @@ const makeHarness = (params: {
     getModeDeviceTargets: () => ({}),
     getPriceOptimizationEnabled: () => false,
     getPriceOptimizationSettings: () => params.priceOptSettings ?? {},
-    getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now() - (params.powerSampleAgeMs ?? 0), lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     getShedBehavior: () => ({ action: 'turn_off' }),

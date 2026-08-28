@@ -60,11 +60,9 @@ describe('pels status limit reason', () => {
       reason: 'cooldown (shedding, 45s remaining)',
     });
 
-    const { status } = buildPelsStatus({
+    const status = buildPelsStatus({
       plan,
-      isCheap: false,
-      isExpensive: false,
-      combinedPrices: { version: 2, days: { '2026-05-10': { hours: [{ startsAt: '2026-05-10T00:00:00.000Z', total: 1.2, isCheap: false, isExpensive: false }] } } },
+      priceLevel: PriceLevel.NORMAL,
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
     });
 
@@ -86,11 +84,9 @@ describe('pels status limit reason', () => {
       reason,
     });
 
-    const { status } = buildPelsStatus({
+    const status = buildPelsStatus({
       plan,
-      isCheap: false,
-      isExpensive: false,
-      combinedPrices: { version: 2, days: { '2026-05-10': { hours: [{ startsAt: '2026-05-10T00:00:00.000Z', total: 1.2, isCheap: false, isExpensive: false }] } } },
+      priceLevel: PriceLevel.NORMAL,
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
     });
 
@@ -112,11 +108,9 @@ describe('pels status limit reason', () => {
       powerNowKw: null,
     });
 
-    const { status } = buildPelsStatus({
+    const status = buildPelsStatus({
       plan,
-      isCheap: false,
-      isExpensive: false,
-      combinedPrices: { version: 2, days: { '2026-05-10': { hours: [{ startsAt: '2026-05-10T00:00:00.000Z', total: 1.2, isCheap: false, isExpensive: false }] } } },
+      priceLevel: PriceLevel.NORMAL,
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
     });
 
@@ -151,11 +145,9 @@ describe('pels status limit reason', () => {
       ],
     };
 
-    const { status } = buildPelsStatus({
+    const status = buildPelsStatus({
       plan,
-      isCheap: false,
-      isExpensive: false,
-      combinedPrices: { version: 2, days: { '2026-05-10': { hours: [{ startsAt: '2026-05-10T00:00:00.000Z', total: 1.2, isCheap: false, isExpensive: false }] } } },
+      priceLevel: PriceLevel.NORMAL,
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
     });
 
@@ -178,11 +170,9 @@ describe('pels status limit reason', () => {
       devices: [],
     };
 
-    const { status } = buildPelsStatus({
+    const status = buildPelsStatus({
       plan,
-      isCheap: false,
-      isExpensive: false,
-      combinedPrices: { version: 2, days: { '2026-05-10': { hours: [{ startsAt: '2026-05-10T00:00:00.000Z', total: 1.2, isCheap: false, isExpensive: false }] } } },
+      priceLevel: PriceLevel.NORMAL,
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
     });
 
@@ -192,38 +182,26 @@ describe('pels status limit reason', () => {
     expect(status.hardCapHeadroomKw).toBe(-1.2);
   });
 
-  // Regression for #646 review: combined_prices is V2 (date-keyed `days`), not
-  // a flat `prices[]` array. Without V2 awareness in `hasPrices`, the price
-  // level would resolve to UNKNOWN and the price_level_changed flow trigger
-  // would fire spuriously.
+  // The status carries the level the PRICE SERVICE resolved; it no longer
+  // re-derives one from the two raw flags plus a shape check of the combined
+  // price blob (the #646 regression this used to pin — a V2 payload the check
+  // did not understand collapsed the level to UNKNOWN and fired
+  // `price_level_changed` spuriously — is gone with that check). Whether the
+  // producer answers UNKNOWN is pinned at the producer, in
+  // `test/integration/priceLevelSingleSeriesBuild.test.ts`.
   it.each([
-    [{ isCheap: true, isExpensive: false }, PriceLevel.CHEAP],
-    [{ isCheap: false, isExpensive: true }, PriceLevel.EXPENSIVE],
-    [{ isCheap: false, isExpensive: false }, PriceLevel.NORMAL],
-  ] as const)('resolves price level from V2 combined_prices payload', (flags, expected) => {
+    PriceLevel.CHEAP,
+    PriceLevel.EXPENSIVE,
+    PriceLevel.NORMAL,
+    PriceLevel.UNKNOWN,
+  ] as const)('carries the producer-resolved price level through to the status', (priceLevel) => {
     const plan = buildPlan({ softLimitSource: 'capacity', reason: 'keep' });
-    const { status } = buildPelsStatus({
+    const status = buildPelsStatus({
       plan,
-      isCheap: flags.isCheap,
-      isExpensive: flags.isExpensive,
-      combinedPrices: { version: 2, days: { '2026-05-10': { hours: [
-        { startsAt: '2026-05-10T00:00:00.000Z', total: 1.2, isCheap: false, isExpensive: false },
-      ] } } },
+      priceLevel,
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
     });
-    expect(status.priceLevel).toBe(expected);
-  });
-
-  it('resolves price level to UNKNOWN when V2 store has no hours', () => {
-    const plan = buildPlan({ softLimitSource: 'capacity', reason: 'keep' });
-    const { status } = buildPelsStatus({
-      plan,
-      isCheap: true,
-      isExpensive: false,
-      combinedPrices: { version: 2, days: {} },
-      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
-    });
-    expect(status.priceLevel).toBe(PriceLevel.UNKNOWN);
+    expect(status.priceLevel).toBe(priceLevel);
   });
 });
 
@@ -238,11 +216,9 @@ describe('pels status projected-over-hard-cap flag', () => {
   // numbers, not about spelling a full meta.
   const statusFor = (meta: Partial<DevicePlan['meta']>) => buildPelsStatus({
     plan: buildPlanWithMeta(buildPlanMeta(meta)),
-    isCheap: false,
-    isExpensive: false,
-    combinedPrices: null,
+    priceLevel: PriceLevel.NORMAL,
     lastPowerUpdate: Date.UTC(2026, 6, 5, 12, 0, 0),
-  }).status;
+  });
 
   it('flags the trajectory when projected hour energy lands past the cap', () => {
     // projected = 1.9 + 6.0 × 28/60 = 4.7 kWh > 4.5 kWh cap.
@@ -302,12 +278,10 @@ describe('pels status effective dry-run posture (R7b, per-home Limits card)', ()
   };
   const statusWith = (dryRunEffective?: boolean) => buildPelsStatus({
     plan: emptyPlan,
-    isCheap: false,
-    isExpensive: false,
-    combinedPrices: null,
+    priceLevel: PriceLevel.NORMAL,
     lastPowerUpdate: null,
     dryRunEffective,
-  }).status;
+  });
 
   it('emits the effective dry-run when a sub-home bundle supplies it', () => {
     expect(statusWith(true).dryRunEffective).toBe(true);
@@ -329,12 +303,10 @@ describe('pels status whole-area total (per-home Limits "Power now")', () => {
   };
   const statusWith = (dryRunEffective?: boolean) => buildPelsStatus({
     plan: drawPlan,
-    isCheap: false,
-    isExpensive: false,
-    combinedPrices: null,
+    priceLevel: PriceLevel.NORMAL,
     lastPowerUpdate: null,
     dryRunEffective,
-  }).status;
+  });
 
   it('emits the meter total for a sub-home so the card renders Power now without per-device attribution', () => {
     expect(statusWith(true).totalKw).toBe(5.2);

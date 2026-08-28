@@ -9,6 +9,7 @@ import {
 } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { resolveFixtureCurrentOn, withFixtureResidualKw } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -134,7 +135,7 @@ describe('PlanBuilder budget exemption handling', () => {
       getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => ({
         buckets: {
           [currentHourIso]: 3,
@@ -203,7 +204,7 @@ describe('PlanBuilder budget exemption handling', () => {
       getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => ({
         buckets: {
           [currentHourIso]: 1.8,
@@ -251,7 +252,7 @@ describe('PlanBuilder budget exemption handling', () => {
       getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => ({
         buckets: {
           [lastSampleHourIso]: 9,

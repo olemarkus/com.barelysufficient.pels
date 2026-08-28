@@ -13,6 +13,7 @@ import {
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -127,7 +128,7 @@ const buildBuilder = (params: {
   getModeDeviceTargets: () => ({}),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
-  getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+  getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => (params.dailyBudget ? buildDailyBudgetSnapshot() : null),
   getShedBehavior: () => ({ action: 'turn_off' }),

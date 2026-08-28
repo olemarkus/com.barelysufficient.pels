@@ -89,11 +89,9 @@ describe('buildMainHomeScope', () => {
     ctx.deviceDiagnosticsService = diagnostics;
     const scope = buildMainHomeScope(ctx);
 
-    // Main emits realtime, carries the shared recorder, and reads combined prices.
+    // Main emits realtime and carries the shared recorder.
     expect(scope.emitsUiRealtime).toBe(true);
     expect(scope.getDeviceDiagnostics()).toBe(diagnostics);
-    expect(scope.getCombinedPrices())
-      .toEqual(ctx.combinedPricesReader.readStore(ctx.getNow(), ctx.getTimeZone()));
   });
 
   // R7b P1-3 (regression fix): `buildMainHomeScope` runs in the `AppServiceWiring`

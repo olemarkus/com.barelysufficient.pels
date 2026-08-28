@@ -4,7 +4,8 @@ import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/
 import type { DeviceOverviewLogRecorder } from './deviceOverviewLog';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import type { ObservedTemperatureRead } from '../observer/observedDeviceStateProjection';
-import type { buildPelsStatus } from './pelsStatus';
+import type { PelsStatus } from './pelsStatus';
+import type { PriceLevel } from '../price/priceLevels';
 import type { PlanEngine } from './planEngine';
 import type { PlanInputDevice } from './planTypes';
 import type {
@@ -57,7 +58,7 @@ export type PlanServiceDeps = {
    */
   homeId: HomeId;
   homey: { settings: SettingsPort; flow: FlowPort; api: ApiPort };
-  writePelsStatus: (status: ReturnType<typeof buildPelsStatus>['status']) => void;
+  writePelsStatus: (status: PelsStatus) => void;
   planEngine: PlanServicePlanEngine;
   getPlanDevices: () => PlanInputDevice[];
   // Minimal observer projection for binary confirmation; never raw transport
@@ -99,10 +100,9 @@ export type PlanServiceDeps = {
    * `pels_status` blob stays byte-identical.
    */
   getStatusEffectiveDryRun?: () => boolean;
-  // Both current-hour price flags from ONE combined-series build; see
-  // `PriceService.getCurrentHourPriceLevel`.
-  getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
-  getCombinedPrices: () => unknown;
+  // The current hour's RESOLVED price level from ONE combined-series build;
+  // see `PriceService.getCurrentHourPriceLevel`.
+  getCurrentHourPriceLevel: () => PriceLevel;
   getLastPowerUpdate: () => number | null;
   schedulePostActuationRefresh?: () => void;
   loggers?: Loggers;

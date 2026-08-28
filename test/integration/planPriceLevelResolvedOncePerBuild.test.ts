@@ -9,6 +9,7 @@ import type {
   DeviceDiagnosticsRecorder,
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // The tracker is the single power latch; tests drive the whole-home total here.
 let lastPowerW = 0;
@@ -65,7 +66,7 @@ const buildDiagnosticsRecorder = (): DeviceDiagnosticsRecorder & {
 
 const buildBuilder = (params: {
   priceOptimizationEnabled: boolean;
-  getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
+  getCurrentHourPriceLevel: () => PriceLevel;
   deviceIds: string[];
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   /** Omit to configure every device; `{}` reproduces an unconfigured install. */
@@ -109,7 +110,7 @@ describe('current-hour price level is resolved once per plan build', () => {
   });
 
   it('asks the price service at most once per build, not once per device', async () => {
-    const getCurrentHourPriceLevel = vi.fn(() => ({ cheap: true, expensive: false }));
+    const getCurrentHourPriceLevel = vi.fn(() => PriceLevel.CHEAP);
     const deviceIds = Array.from({ length: DEVICE_COUNT }, (_, i) => `heater-${i}`);
     const deviceDiagnostics = buildDiagnosticsRecorder();
 
@@ -132,7 +133,7 @@ describe('current-hour price level is resolved once per plan build', () => {
   });
 
   it('shares the one resolution with the diagnostics loop (desired target carries the delta)', async () => {
-    const getCurrentHourPriceLevel = vi.fn(() => ({ cheap: true, expensive: false }));
+    const getCurrentHourPriceLevel = vi.fn(() => PriceLevel.CHEAP);
     const deviceIds = Array.from({ length: DEVICE_COUNT }, (_, i) => `heater-${i}`);
     const deviceDiagnostics = buildDiagnosticsRecorder();
 
@@ -155,7 +156,7 @@ describe('current-hour price level is resolved once per plan build', () => {
     const deviceIds = Array.from({ length: DEVICE_COUNT }, (_, i) => `heater-${i}`);
     const builder = buildBuilder({
       priceOptimizationEnabled: true,
-      getCurrentHourPriceLevel: () => ({ cheap: true, expensive: false }),
+      getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
       deviceIds,
     });
 
@@ -168,7 +169,7 @@ describe('current-hour price level is resolved once per plan build', () => {
 
   it('applies the expensive-hour delta from the same single resolution', async () => {
     const deviceIds = ['heater-0', 'heater-1'];
-    const getCurrentHourPriceLevel = vi.fn(() => ({ cheap: false, expensive: true }));
+    const getCurrentHourPriceLevel = vi.fn(() => PriceLevel.EXPENSIVE);
     const builder = buildBuilder({
       priceOptimizationEnabled: true,
       getCurrentHourPriceLevel,
@@ -187,7 +188,7 @@ describe('current-hour price level is resolved once per plan build', () => {
     // per-device map is still empty. Both consumers guard on `config?.enabled`, so
     // this home never spends a price level — resolving one would charge it two full
     // price-series rebuilds on every power-triggered plan rebuild for nothing.
-    const getCurrentHourPriceLevel = vi.fn(() => ({ cheap: true, expensive: false }));
+    const getCurrentHourPriceLevel = vi.fn(() => PriceLevel.CHEAP);
     const deviceIds = Array.from({ length: DEVICE_COUNT }, (_, i) => `heater-${i}`);
 
     const builder = buildBuilder({
@@ -204,7 +205,7 @@ describe('current-hour price level is resolved once per plan build', () => {
   });
 
   it('still resolves when only one of many devices is configured', async () => {
-    const getCurrentHourPriceLevel = vi.fn(() => ({ cheap: true, expensive: false }));
+    const getCurrentHourPriceLevel = vi.fn(() => PriceLevel.CHEAP);
     const deviceIds = Array.from({ length: DEVICE_COUNT }, (_, i) => `heater-${i}`);
 
     const builder = buildBuilder({
@@ -223,7 +224,7 @@ describe('current-hour price level is resolved once per plan build', () => {
   });
 
   it('makes no price call at all when price optimization is switched off', async () => {
-    const getCurrentHourPriceLevel = vi.fn(() => ({ cheap: true, expensive: false }));
+    const getCurrentHourPriceLevel = vi.fn(() => PriceLevel.CHEAP);
     const deviceIds = Array.from({ length: DEVICE_COUNT }, (_, i) => `heater-${i}`);
 
     const builder = buildBuilder({

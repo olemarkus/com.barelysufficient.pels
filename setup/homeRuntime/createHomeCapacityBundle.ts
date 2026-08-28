@@ -91,6 +91,7 @@ import {
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import { createBundleCapacityGuard } from './createBundleCapacityGuard';
 import type { PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A sub-home's OWN fallback seed for its capacity store. Mirrors the app-boot
 // defaults (`PelsApp.capacitySettings` / `capacityDryRun`) but is deliberately
@@ -368,11 +369,12 @@ function buildSubHomeScope(params: {
     setCapacityInShortfall: (inShortfall) => writeSuffixed(CAPACITY_IN_SHORTFALL, inShortfall),
     persistLastControlledMs: (lastControlledMs) => writeSuffixed(DEVICE_LAST_CONTROLLED_MS, lastControlledMs),
     writePelsStatus: (status) => writeSuffixed(PELS_STATUS, status),
-    // Capacity-only policy: no price optimization, no cheap/expensive hours,
+    // Capacity-only policy: no price optimization, no price level (so its status
+    // reads UNKNOWN and `price_level_changed` never fires against MAIN's level),
     // no surplus term, no smart-task decoration (absent = identity), no
     // dynamic-soft-limit override.
     getPriceOptimizationEnabled: () => false,
-    getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getInferredSurplusKw: () => null,
     getPriceOptimizationSettings: () => ({}),
     getDynamicSoftLimitOverride: () => null,
@@ -401,11 +403,9 @@ function buildSubHomeScope(params: {
     // to escalate. Held one-directionally: a mode change that LOWERS a setpoint
     // removes draw, so it still applies (see `applyModeSeedModulation`).
     holdsModeTargetRaisesWhilePowerUnknown: () => true,
-    // Capacity-only UI/side-effect posture: no combined prices (→ price level
-    // UNKNOWN, `price_level_changed` never fires), no shared `plan_updated`
-    // emit (the settings UI reads only MAIN's plan stream), and no shared
-    // diagnostics recorder (a sub-home plan pollutes main's per-boot epoch).
-    getCombinedPrices: () => null,
+    // Capacity-only UI/side-effect posture: no shared `plan_updated` emit (the
+    // settings UI reads only MAIN's plan stream), and no shared diagnostics
+    // recorder (a sub-home plan pollutes main's per-boot epoch).
     emitsUiRealtime: false,
     getDeviceDiagnostics: () => undefined,
     // THIS home's post-actuation live-state sync — syncing main's service

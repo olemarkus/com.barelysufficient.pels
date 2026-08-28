@@ -6,6 +6,7 @@ import type { DevicePlan, PlanInputDevice, BinaryControlDiscriminantProbe } from
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -89,7 +90,7 @@ describe('shed grace', () => {
       getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 5.4 * 1000 }),
       getDailyBudgetSnapshot: () => null,
       // The binding pace, well under the 6 kW hard cap — the deficit is real and

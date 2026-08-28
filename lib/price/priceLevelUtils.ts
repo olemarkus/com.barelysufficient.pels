@@ -5,6 +5,7 @@ import {
   isPriceAtLevel,
 } from './priceMath';
 import { resolvePlanningPrice } from './budgetPrice';
+import { PriceLevel } from './priceLevels';
 
 type PriceEntry = {
   startsAt: string;
@@ -61,7 +62,7 @@ export const isCurrentHourAtLevel = (params: {
 };
 
 /**
- * Both classifications of the current hour from ONE pass over the series.
+ * The RESOLVED price level of the current hour, from ONE pass over the series.
  *
  * `getPriceLevelFlags` already computes `isCheap` and `isExpensive` together, so
  * asking `isCurrentHourAtLevel` twice re-derives the current hour, the average,
@@ -71,19 +72,23 @@ export const isCurrentHourAtLevel = (params: {
  * whole series from settings (~25 ms on a Homey Pro). Two predicate calls meant
  * two rebuilds. See `PriceService.getCurrentHourPriceLevel`.
  *
- * Not mutually exclusive by construction: the flags are `price <= low` and
- * `price >= high`, so at `thresholdPercent` 0 a price exactly on the average is
- * both. Callers that need one winner apply their own precedence.
+ * One `PriceLevel`, not the two raw flags. The flags are not mutually exclusive
+ * — `price <= low` and `price >= high`, so at `thresholdPercent` 0 a price
+ * exactly on the average is both — and every consumer resolved that the same
+ * way, cheap-first. Resolving it here means no consumer re-derives a precedence
+ * or a "do we even have prices?" shape check: no current-hour entry is
+ * `UNKNOWN`, and that is the producer's answer rather than something a caller
+ * infers from a price blob it had to read for the purpose.
  */
 export const resolveCurrentHourPriceLevel = (params: {
   prices: PriceEntry[];
   thresholdPercent: number;
   minDiff: number;
   nowMs?: number;
-}): { cheap: boolean; expensive: boolean } => {
+}): PriceLevel => {
   const { prices, thresholdPercent, minDiff, nowMs } = params;
   const currentPrice = getCurrentHourPrice(prices, nowMs);
-  if (!currentPrice) return { cheap: false, expensive: false };
+  if (!currentPrice) return PriceLevel.UNKNOWN;
   const avgPrice = calculateAveragePrice(
     prices,
     (entry) => resolvePlanningPrice(entry.budgetPrice, entry.totalPrice),
@@ -94,5 +99,7 @@ export const resolveCurrentHourPriceLevel = (params: {
     thresholds: calculateThresholds(avgPrice, thresholdPercent),
     minDiff,
   });
-  return { cheap: flags.isCheap, expensive: flags.isExpensive };
+  if (flags.isCheap) return PriceLevel.CHEAP;
+  if (flags.isExpensive) return PriceLevel.EXPENSIVE;
+  return PriceLevel.NORMAL;
 };

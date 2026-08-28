@@ -31,6 +31,7 @@ import type { PlanContext } from '../../lib/plan/planContext';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -97,7 +98,7 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext
   headroomRaw: -1, // overshooting, so shedding WOULD fire for an eligible device
   headroom: -1,
   restoreMarginPlanning: 0.2,
-  currentHourPriceLevel: { cheap: false, expensive: false },
+  currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
 });
 
@@ -175,9 +176,9 @@ describe('home battery as managed observe-only — control-path exclusion lock',
         [BATTERY_ID]: { enabled: true, cheapDelta: 3, expensiveDelta: 3 },
       }),
     };
-    for (const [cheap, expensive] of [[true, false], [false, true]] as const) {
+    for (const currentHourPriceLevel of [PriceLevel.CHEAP, PriceLevel.EXPENSIVE] as const) {
       const [battery] = buildInitialPlanDevices({
-        context: buildContext([batteryInputDevice()], { currentHourPriceLevel: { cheap, expensive } }),
+        context: buildContext([batteryInputDevice()], { currentHourPriceLevel }),
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),

@@ -3,6 +3,7 @@ import { startAppServices } from '../../setup/appLifecycleHelpers';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { createInitializedAppContextMock } from '../helpers/appContextTestHelpers';
 import { openPlanBuildGate } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -204,8 +205,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
       snapshotWarmupGate: warmupGate,
     });
@@ -254,8 +254,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
       snapshotWarmupGate: warmupGate,
     });
@@ -295,8 +294,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
       snapshotWarmupGate: warmupGate,
     });

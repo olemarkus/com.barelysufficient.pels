@@ -25,13 +25,13 @@
 import CapacityGuard from '../power/capacityGuard';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import type { PowerTrackerState } from '../power/tracker';
+import { PriceLevel } from '../price/priceLevels';
 import { PowerFreshnessMonitor, type PowerCycleDisplay } from '../power/powerCycleReading';
 import type { DevicePlan, PlanInputDevice, ShedBehavior } from './planTypes';
 import type { PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import {
   buildPlanContext,
-  type CurrentHourPriceLevel,
   type PlanContext,
   type SoftLimitSource,
 } from './planContext';
@@ -76,7 +76,7 @@ export type PlanBuilderDeps = {
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
   // Producer-resolved: both current-hour flags from ONE combined-series build.
-  getCurrentHourPriceLevel: () => CurrentHourPriceLevel;
+  getCurrentHourPriceLevel: () => PriceLevel;
   // Producer-resolved inferred curtailed-surplus term for the surplus allocator
   // (zero-export homes); forwarded untouched to the per-device prep pass.
   getInferredSurplusKw?: () => number | null;
@@ -112,9 +112,10 @@ export type PlanBuilderDeps = {
 };
 const SOFT_LIMIT_EPSILON = 1e-3;
 
-// Neither cheap nor expensive: what `resolveCurrentHourPriceLevel` answers when
-// nothing in this build can spend a price delta, so no price call is made.
-const NO_CURRENT_HOUR_PRICE_LEVEL: CurrentHourPriceLevel = { cheap: false, expensive: false };
+// No price call was made this build — nothing in it can spend a price delta —
+// so there is no level to report. `applyPriceOptimizationDelta` adds nothing for
+// it, exactly as for a genuinely unpriced hour.
+const NO_CURRENT_HOUR_PRICE_LEVEL = PriceLevel.UNKNOWN;
 
 type DailySoftLimitResolution = {
   dailySoftLimitKw: number;
@@ -371,7 +372,7 @@ export class PlanBuilder {
 
   /**
    * The one place this build asks the price service what kind of hour it is.
-   * See `CurrentHourPriceLevel` for why it is resolved here rather than in the
+   * See `PlanContext.currentHourPriceLevel` for why it is resolved here rather than in the
    * per-device loops that read it.
    *
    * Resolves ONLY when some admitted device could actually spend the answer —
@@ -387,11 +388,11 @@ export class PlanBuilder {
    * the mode seed), which is the safe direction: never fewer resolutions than a
    * consumer will read.
    */
-  private resolveCurrentHourPriceLevel(devices: PlanInputDevice[]): CurrentHourPriceLevel {
+  private resolveCurrentHourPriceLevel(devices: PlanInputDevice[]): PriceLevel {
     if (!this.deps.getPriceOptimizationEnabled()) return NO_CURRENT_HOUR_PRICE_LEVEL;
     const settings = this.priceOptimizationSettings;
     if (!devices.some((dev) => settings[dev.id]?.enabled === true)) return NO_CURRENT_HOUR_PRICE_LEVEL;
-    // One combined-series build for both flags — see
+    // One combined-series build for the resolved level — see
     // `PriceService.getCurrentHourPriceLevel`. Asking the two predicates
     // separately rebuilt the whole series twice for one question.
     return this.deps.getCurrentHourPriceLevel();
