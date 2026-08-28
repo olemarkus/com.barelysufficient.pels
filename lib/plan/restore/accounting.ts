@@ -1,18 +1,10 @@
 import type { DevicePlanDevice } from '../planTypes';
-import { isBinaryPlanDevice } from '../planBinaryDevice';
-import { isSteppedLoadDevice } from '../planSteppedLoad';
 import {
-  PENDING_RESTORE_CONFIRMED_FRACTION,
-  PENDING_RESTORE_WINDOW_MS,
   RECENT_SHED_EXTRA_BUFFER_KW,
   RECENT_SHED_RESTORE_BACKOFF_MS,
   RECENT_SHED_RESTORE_MULTIPLIER,
 } from '../planConstants';
 import { buildRestoreHeadroomReason } from '../planReasonStrings';
-import {
-  resolveActiveSteppedRestoreReservation,
-  resolveSteppedRestoreObservedGapKw,
-} from '../planSteppedRestorePending';
 import type { RestorePowerSource } from '../../../packages/contracts/src/types';
 
 // Re-exported for plan-layer consumers (planReasons, restore/index, tests)
@@ -62,83 +54,6 @@ function resolveRestorePower(
   // shared fixture builders started resolving both halves through the producer
   // itself.
   return dev.residualKw.restore;
-}
-
-/**
- * Returns the total power (kW) to reserve for active restore attempts whose latent draw has not
- * yet shown up in observations. Stepped-load devices reserve from their active stepped restore
- * attempt, including off-path restores targeting the low step. Recent restore timestamps alone do
- * not create stepped reservation.
- */
-export function computePendingRestorePowerKw(
-  planDevices: DevicePlanDevice[],
-  lastDeviceRestoreMs: Record<string, number>,
-  nowTs: number,
-  measurementTs: number | null = null,
-): { pendingKw: number; deviceIds: string[] } {
-  let pendingKw = 0;
-  const deviceIds: string[] = [];
-  for (const dev of planDevices) {
-    const gap = resolvePendingRestoreGapKwForDevice(dev, lastDeviceRestoreMs, nowTs, measurementTs);
-    if (gap > 0) {
-      pendingKw += gap;
-      deviceIds.push(dev.id);
-    }
-  }
-  return { pendingKw, deviceIds };
-}
-
-function resolvePendingRestoreGapKwForDevice(
-  dev: DevicePlanDevice,
-  lastDeviceRestoreMs: Record<string, number>,
-  nowTs: number,
-  measurementTs: number | null,
-): number {
-  if (dev.plannedState === 'shed') return 0;
-
-  const steppedReservation = resolveSteppedPendingReservationGapKw(dev, lastDeviceRestoreMs, nowTs, measurementTs);
-  if (steppedReservation !== null) return steppedReservation;
-
-  if (isSteppedLoadDevice(dev)) return 0;
-
-  const restoreMs = lastDeviceRestoreMs[dev.id];
-  if (!restoreMs || nowTs - restoreMs > PENDING_RESTORE_WINDOW_MS) return 0;
-  // This branch is non-stepped (stepped exits earlier). The producer-resolved
-  // `currentOn` is authoritative for binary-only devices, and matches the rest of
-  // the binary pending-restore-gap math below. A non-binary device (no control
-  // capability this cycle) is never "observed off" here — same as the prior
-  // absent-field default.
-  if (isBinaryPlanDevice(dev) && dev.currentOn === false) return 0;
-  const expectedKw = estimateRestorePower(dev);
-  const actualKw = dev.currentDrawKw;
-  if (actualKw >= expectedKw * PENDING_RESTORE_CONFIRMED_FRACTION) return 0;
-  return expectedKw - actualKw;
-}
-
-function resolveSteppedPendingReservationGapKw(
-  dev: DevicePlanDevice,
-  lastDeviceRestoreMs: Record<string, number>,
-  nowTs: number,
-  measurementTs: number | null,
-): number | null {
-  if (!isSteppedLoadDevice(dev)) return null;
-  const requestedStepId = dev.lastDesiredStepId ?? dev.desiredStepId;
-  if (!requestedStepId) return null;
-  const reservation = resolveActiveSteppedRestoreReservation(
-    dev,
-    requestedStepId,
-    nowTs,
-    {
-      lastRestoreMs: lastDeviceRestoreMs[dev.id],
-      measurementTs,
-      powerSettleWindowMs: PENDING_RESTORE_WINDOW_MS,
-    },
-  );
-  if (!reservation) return null;
-  if (reservation.status === 'awaiting_power_settle') return reservation.deltaKw > 0 ? reservation.deltaKw : null;
-  const gap = resolveSteppedRestoreObservedGapKw(dev, reservation);
-  if (gap <= reservation.deltaKw * (1 - PENDING_RESTORE_CONFIRMED_FRACTION)) return null;
-  return gap > 0 ? gap : null;
 }
 
 export function computeBaseRestoreNeed(

@@ -228,9 +228,12 @@ failure would have. Note this means the early-echo gate refuses settlement only
 for a *rejected* dispatch, never for an unanswered one: a rejection makes the
 echo untrustworthy, a timeout leaves it the best evidence available.
 
-**What this window does not answer.** Whether the device then draws belongs to
-the pending-restore reservation, with its own deadline. The settle window must
-not duplicate it — that duplication was the bug.
+**What this window does not answer.** Whether the device then draws. Nothing answers
+that any more, and nothing should try from here: the pending-restore reservation that
+used to own the question was removed on 2026-08-28, because the whole-home meter is a
+sum and cannot attribute a load to the device that was commanded — a heater switching
+off while a charger starts nets to nothing. Pacing after a restore is the planner's
+restore cooldown (`notes/state-management/actuation-clocks-and-settle.md`).
 
 ### Plan→device write inversion: killed in the same effort
 

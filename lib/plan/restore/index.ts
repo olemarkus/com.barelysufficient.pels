@@ -30,7 +30,6 @@ import {
 } from './timing';
 import { applyBudgetExemptRestorePass } from './exemptRestoreLane';
 import { resolveHeadroomReserves, type HeadroomReserve } from '../admission';
-import { reserveHeadroomForPendingRestores } from './support';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
 import { buildRestoreBatchState } from './batch';
 import { markOffDevicesMeterSettling, markRestoreCandidatesStayShedForShortfall } from './marking';
@@ -163,21 +162,18 @@ function buildCycleHeadroomLedger(params: {
   deps: RestoreDeps;
   guardInShortfall: boolean;
 }): RestoreHeadroomLedger {
-  const { context, planDevices, state, deps, guardInShortfall } = params;
-  const reservedBindingHeadroom = guardInShortfall
-    ? context.headroomRaw
-    : reserveHeadroomForPendingRestores({
-      rawHeadroom: context.headroomRaw,
-      planDevices,
-      lastDeviceRestoreMs: state.lastDeviceRestoreMs,
-      measurementTs: deps.powerTracker.lastTimestamp ?? null,
-      debugStructured: deps.debugStructured,
-      deviceNameById: deps.deviceNameById,
-    });
-  const pendingReserveKw = Math.max(0, context.headroomRaw - reservedBindingHeadroom);
+  const { context } = params;
+  // No pending-restore reservation. It existed to hold back headroom for a restore
+  // the meter had not seen yet — but a rebuild is TRIGGERED by a reading
+  // (`planRebuildTrigger.ts`), and the reservation was released by
+  // `measurementTs > lastRestoreMs`. The same event that lets the planner decide
+  // again is the one that retires the hold, so it could never bind across builds;
+  // within a build, admitted need is already capped by the batch ledger's
+  // `maxNeedKw`. OWNER RULING 2026-08-28: assume new plan = new power sample and
+  // drop it (`notes/state-management/actuation-clocks-and-settle.md`).
   return buildRestoreHeadroomLedger({
-    capacityAvailableKw: context.capacityHeadroomKw - pendingReserveKw,
-    budgetAvailableKw: context.budgetHeadroomKw === null ? null : context.budgetHeadroomKw - pendingReserveKw,
+    capacityAvailableKw: context.capacityHeadroomKw,
+    budgetAvailableKw: context.budgetHeadroomKw,
   });
 }
 

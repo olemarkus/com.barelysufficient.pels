@@ -1,5 +1,3 @@
-import type { StructuredDebugEmitter } from '../../logging/logger';
-import { getLogger } from '../../logging/logger';
 import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
 import type { DevicePlanDevice } from '../planTypes';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
@@ -11,52 +9,8 @@ import {
 import {
   applyRecentShedInflation,
   computeBaseRestoreNeed,
-  computePendingRestorePowerKw,
 } from './accounting';
 
-const logger = getLogger('plan/restore-support');
-
-export function reserveHeadroomForPendingRestores(params: {
-  rawHeadroom: number;
-  planDevices: DevicePlanDevice[];
-  lastDeviceRestoreMs: Record<string, number>;
-  measurementTs: number | null;
-  debugStructured: StructuredDebugEmitter | undefined;
-  deviceNameById: ReadonlyMap<string, string> | undefined;
-}): number {
-  const {
-    rawHeadroom,
-    planDevices,
-    lastDeviceRestoreMs,
-    measurementTs,
-    debugStructured,
-    deviceNameById,
-  } = params;
-  const pending = computePendingRestorePowerKw(planDevices, lastDeviceRestoreMs, Date.now(), measurementTs);
-  if (pending.pendingKw <= 0) return rawHeadroom;
-  const adjusted = rawHeadroom - pending.pendingKw;
-  const devices: Array<{ deviceId: string; deviceName?: string }> = [];
-  const deviceNames: string[] = [];
-  for (const deviceId of pending.deviceIds) {
-    const deviceName = deviceNameById?.get(deviceId);
-    if (typeof deviceName === 'string' && deviceName.length > 0) {
-      devices.push({ deviceId, deviceName });
-      deviceNames.push(deviceName);
-      continue;
-    }
-    devices.push({ deviceId });
-  }
-  const emit = debugStructured ?? ((payload) => logger.debug(payload));
-  emit({
-    event: 'restore_headroom_reserved',
-    pendingKw: pending.pendingKw,
-    deviceIds: pending.deviceIds,
-    ...(deviceNames.length > 0 ? { deviceNames } : {}),
-    devices,
-    headroomAfterKw: adjusted,
-  });
-  return adjusted;
-}
 
 export function getRestoreNeed(
   dev: DevicePlanDevice,

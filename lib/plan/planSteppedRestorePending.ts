@@ -69,21 +69,6 @@ export function resolveSteppedRestoreAttemptState(
   return null;
 }
 
-export function resolveActiveSteppedRestoreReservation(
-  dev: DevicePlanDevice,
-  requestedStepId: string,
-  nowMs: number = Date.now(),
-  options: SteppedRestoreAttemptOptions = {},
-): SteppedRestoreAttemptState | null {
-  const attempt = resolveSteppedRestoreAttemptState(
-    dev,
-    requestedStepId,
-    nowMs,
-    options,
-  );
-  return attempt && attempt.status !== 'retry_backoff' && attempt.deltaKw > 0 ? attempt : null;
-}
-
 export function buildPendingSteppedRestoreHold(
   attempt: SteppedRestoreAttemptState | null,
 ): PendingSteppedRestoreHold | null {

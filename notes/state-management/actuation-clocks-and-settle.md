@@ -1,16 +1,17 @@
 # Actuation clocks and settle
 
 Design-of-record for the ownership split between **settle** (has my write landed?) and
-**cooldown** (may I decide another change yet?). The arc spans three PRs; this note is the
-constraint they are all held against.
+**cooldown** (may I decide another change yet?). This note is the constraint the whole arc is
+held against.
 
 Read [`observer-transport-split.md`](./observer-transport-split.md) and
 [`actuator-write-seam.md`](./actuator-write-seam.md) first — this note assumes the four-box
 model and the `planned / commanded / observed / pending` vocabulary.
 
-> Status: **in progress** — PR 1 (executor stops enforcing planner pacing) and PR 2 (executor
-> stops round-tripping through the planner for its own command state) are shipped. PR 3 (one
-> direction-free actuation clock) is outstanding.
+> Status: PR 1 (executor stops enforcing planner pacing) and PR 2 (executor stops round-tripping
+> through the planner for its own command state) are shipped. The pending-restore reservation is
+> removed (below). The remaining open item is not in this note — it is the cooldown-sizing question
+> in `TODO.md`.
 
 ---
 
@@ -148,6 +149,52 @@ No test ever covered the throttle. The one that claimed to
 (`lifecycleEndReleaseNonEv.integration.test.ts`) documented in its own comments that
 `lastDeviceShedMs` was never set on that path and that the real gate was the pending record;
 its title and comments were corrected in the same PR.
+
+## The pending-restore reservation, and why it was removed
+
+Removed 2026-08-28, with nothing put in its place. `reserveHeadroomForPendingRestores`
+(`lib/plan/restore/support.ts`), `computePendingRestorePowerKw` (`restore/accounting.ts`) and the
+stepped power-settle branch of `planSteppedRestorePending.ts` all held headroom back for a device
+that had been restored but had not yet drawn.
+
+**The reason is not tuning.** It is that the release condition cannot be evidenced.
+
+- **The whole-home meter is a sum, so it cannot attribute.** A heater switching off while a
+  charger starts nets to roughly nothing on the main meter — indistinguishable from the charger
+  never starting. No window length fixes that; the signal is absent, not attenuated. Any
+  settle rule keyed on the whole-home reading is unsound *in principle*.
+- **The stepped branch was inert anyway.** It released on `measurementTs > lastRestoreMs` — the
+  next sample. Samples arrive every 3–4 s; an EV charger takes 14–30 s just to apply the step. The
+  reserve was gone before the device had begun.
+- **The binary branch's confirm-on-draw was sound but was not the protection.**
+  `actualKw >= expectedKw * PENDING_RESTORE_CONFIRMED_FRACTION` reads the DEVICE's own
+  `measure_power`, which is attributable. But it only ever released *early*; what actually held
+  the line was `PENDING_RESTORE_WINDOW_MS = 3 min`. Strip the confirm check and protection is
+  unchanged. Strip the window and there is none. It was a timer with an early exit.
+
+So the mechanism was a second pacing timer competing with the restore cooldown, sized against one
+fixed window for a 20 s-to-never distribution. Two timers for one question is what produced the
+both-ends-wrong behaviour the P1 recorded: under-hold at the tail, over-hold for a car that never
+draws.
+
+**What protects now:** the planner's restore cooldown, alone. That is the correct owner under the
+settlement/cooldown split above — pacing is planner admission — and it is the only mechanism whose
+ceiling can bracket the tail, since its backoff ladder reaches 5 minutes where the reservation's
+window stopped at 3.
+
+**Accepted, and open:** the cooldown's base 60 s does not reach the measured p90 of 129.7 s, and it
+extends only via a backoff keyed on instability rather than on restore latency. Removing the
+reservation therefore keeps the protection that was actually load-bearing and loses none that was —
+but whether that protection is *enough* is a separate question, carried in `TODO.md` with the
+measurements attached.
+
+### The rule this leaves behind
+
+**`lib/power` answers "how much room is there". It cannot answer "did my write land".** The first
+is a capacity question about a sum; the second is attribution, and a sum cannot attribute. Anything
+that needs to know whether a specific device responded must read that device — never the
+whole-home meter. This note previously proposed a `lib/power`-owned reservation released on the
+main meter's sample clock; that design was wrong on both counts and was never merged.
 
 ## The rule going forward
 

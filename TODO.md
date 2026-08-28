@@ -89,24 +89,22 @@ the observation revision the plan was built from; and `observedBinaryState` spli
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
-- [ ] **The pending-restore reservation runs on one fixed clock against a 20 s-to-never distribution.**
-      `PENDING_RESTORE_WINDOW_MS = 3 min` (`lib/plan/planConstants.ts`) reserves headroom for a
-      device that has been restored but has not yet drawn. Its own comment gives a thermostat
-      rationale ("Elements typically fire within 1-2 minutes"). Measured against 62 EV-charger
-      turn-ons in the 2026-08-11→13 production log, the load appears in whole-home draw at p50
-      19.7 s, p90 129.7 s, **max 250.0 s**, and never at all in 2 cases. One fixed window is wrong
-      at both ends:
-      **(a) under-hold** — 250 s exceeds the 180 s window, so on the slowest starts the reserve
-      expires before the load lands and PELS can admit another device into headroom that is about
-      to be consumed;
-      **(b) over-hold** — the reserve re-arms per restore attempt, so a car that will never draw
-      compounds: 5 charger-only reservation episodes ran past 180 s, the longest 689 s, each
-      holding 1.38 kW back from other devices.
-      The confirm half is already measurement-driven and works (`PENDING_RESTORE_CONFIRMED_FRACTION
-      = 0.5` releases at p50 ~20 s); the gap is the negative case — nothing releases the reserve
-      when measurement shows the device is not going to draw, and nothing stops the re-arm. Wants
-      its own design and its own SDK-boundary e2e because it changes admission behaviour. Note the
-      two failure modes need different fixes. Found 2026-08-13. [P1]
+- [ ] **The restore cooldown's base window does not reach the measured restore-latency tail.**
+      With the pending-restore reservation removed (2026-08-28), `RESTORE_COOLDOWN_MS = 60 s`
+      (`lib/plan/planConstants.ts`) is the only thing pacing a second restore behind a first.
+      Measured against 62 EV-charger turn-ons in the 2026-08-11→13 production log, the load appears
+      in whole-home draw at p50 19.7 s, **p90 129.7 s, max 250.0 s**, and never at all in 2 cases.
+      So the base window covers the median and not the tail: on a slow start PELS can admit a
+      second device against a reading that does not yet contain the first one's load. The backoff
+      ladder reaches 5 min and would bracket the whole distribution, but it is keyed on instability,
+      not on restore latency, so it does not arm for this.
+      Note what is NOT the fix: reserving headroom until the load is seen. That was the removed
+      mechanism, and it cannot work — the whole-home meter is a sum, so a heater switching off as a
+      charger starts hides the load completely (`notes/state-management/actuation-clocks-and-settle.md`
+      § "The rule this leaves behind"). Any evidence-based release must read the DEVICE, never the
+      main meter. Done when the cooldown that gates a second restore is sized from this
+      distribution, with the sizing argument written down and an SDK-boundary e2e that fails at the
+      old window. Measurements from 2026-08-13; re-scoped onto the cooldown 2026-08-28. [P1]
 - [ ] **A restored EV charger draws at its reset limit until the step command lands.**
       On restore the executor writes the binary on and the step ~0.1 s later, but the charger
       applies the step 14-30 s later (`stepped_load_command_requested` →

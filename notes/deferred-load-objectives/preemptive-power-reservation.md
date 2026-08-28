@@ -121,9 +121,13 @@ What is actually different is the mechanism, and it is checkable:
   executor builds no intent for it at all (pinned by `test/unit/planDecisionSemantics.test.ts`);
 - the affected device's cooldown and backoff state machines are never disturbed — `lastDeviceShedMs`
   is written by the executor on actuation only, and no actuation occurs;
-- there is exact shipped precedent — `reserveHeadroomForPendingRestores`
-  (`lib/plan/restore/support.ts`) already lets one device's in-flight restore shrink every other
-  device's available power.
+- there was exact shipped precedent — `reserveHeadroomForPendingRestores` let one device's
+  in-flight restore shrink every other device's available power. **It was removed on 2026-08-28**
+  (`notes/state-management/actuation-clocks-and-settle.md`), so cite it as prior art for the
+  SHAPE only, not as a live mechanism. Note why it went, because the reasoning applies here too:
+  its release depended on seeing the load on the whole-home meter, and that meter is a sum which
+  cannot attribute. A reservation whose release cannot be evidenced becomes a second, worse-sized
+  pacing timer beside the cooldown.
 
 The stand-down does set `plannedState: 'shed'` on the device, through the shared
 `rejectBinaryRestore` path every restore reject uses. That records "not resumed" for a device that
