@@ -1,5 +1,5 @@
-import { buildPelsStatus } from './pelsStatus';
-import { PriceLevel } from '../price/priceLevels';
+import type { PelsStatus } from './pelsStatus';
+import type { PriceLevel } from '../price/priceLevels';
 import type { DevicePlan } from './planTypes';
 
 const PLAN_META_KW_STEP = 0.1;
@@ -92,9 +92,9 @@ export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] 
 };
 
 export const normalizePelsStatus = (
-  status: ReturnType<typeof buildPelsStatus>['status'],
+  status: PelsStatus,
   powerBucketMs: number,
-): ReturnType<typeof buildPelsStatus>['status'] => {
+): PelsStatus => {
   const safeBucketMs = Math.max(1, powerBucketMs);
   const lastPowerUpdate = typeof status.lastPowerUpdate === 'number' && Number.isFinite(status.lastPowerUpdate)
     ? Math.floor(status.lastPowerUpdate / safeBucketMs) * safeBucketMs
@@ -125,30 +125,6 @@ export const normalizeLastPowerUpdate = (
   return Math.floor(lastPowerUpdate / safeBucketMs) * safeBucketMs;
 };
 
-const hasCombinedPrices = (value: unknown): boolean => {
-  if (!value || typeof value !== 'object') return false;
-  const record = value as { days?: unknown };
-  if (!record.days || typeof record.days !== 'object' || Array.isArray(record.days)) return false;
-  for (const day of Object.values(record.days as Record<string, unknown>)) {
-    if (day && typeof day === 'object'
-      && Array.isArray((day as { hours?: unknown }).hours)
-      && ((day as { hours: unknown[] }).hours.length > 0)) return true;
-  }
-  return false;
-};
-
-const resolveStatusPriceKey = (params: {
-  isCheap: boolean;
-  isExpensive: boolean;
-  combinedPrices: unknown;
-}): PriceLevel => {
-  const { isCheap, isExpensive, combinedPrices } = params;
-  if (!hasCombinedPrices(combinedPrices)) return PriceLevel.UNKNOWN;
-  if (isCheap) return PriceLevel.CHEAP;
-  if (isExpensive) return PriceLevel.EXPENSIVE;
-  return PriceLevel.NORMAL;
-};
-
 const resolveDryRunKey = (dryRunEffective: boolean | undefined): string => {
   if (dryRunEffective === undefined) return 'na';
   return dryRunEffective ? 'sim' : 'live';
@@ -156,21 +132,21 @@ const resolveDryRunKey = (dryRunEffective: boolean | undefined): string => {
 
 export const buildPelsStatusInputKey = (params: {
   changes?: PlanStatusInputChanges;
-  isCheap: boolean;
-  isExpensive: boolean;
-  combinedPrices: unknown;
+  // The RESOLVED level, which is what the status actually depends on. Keying on
+  // the two raw flags plus a shape check of the price blob re-derived it here,
+  // in a second copy of the precedence the status itself applied.
+  priceLevel: PriceLevel;
   lastPowerUpdate: number | null;
   powerFreshnessState?: DevicePlan['meta']['powerFreshnessState'];
   powerNowKw?: number | null;
   dryRunEffective?: boolean;
 }): string => {
   const {
-    changes, isCheap, isExpensive, combinedPrices, lastPowerUpdate, powerFreshnessState, powerNowKw, dryRunEffective,
+    changes, priceLevel, lastPowerUpdate, powerFreshnessState, powerNowKw, dryRunEffective,
   } = params;
   const actionSignature = changes?.actionSignature ?? '';
   const detailSignature = changes?.detailSignature ?? '';
   const metaSignature = changes?.metaSignature ?? '';
-  const priceKey = resolveStatusPriceKey({ isCheap, isExpensive, combinedPrices });
   const lastPowerUpdateKey = lastPowerUpdate === null ? 'null' : String(lastPowerUpdate);
   const freshnessKey = powerFreshnessState ?? 'none';
   // PRESENCE only, not the value: the figure moves every sample and would bust
@@ -185,7 +161,7 @@ export const buildPelsStatusInputKey = (params: {
     actionSignature,
     detailSignature,
     metaSignature,
-    priceKey,
+    priceLevel,
     lastPowerUpdateKey,
     freshnessKey,
     powerNowKey,

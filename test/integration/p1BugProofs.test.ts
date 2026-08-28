@@ -26,6 +26,7 @@ import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import type { SplitControlledUsage, SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
 import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
 // snapshots go through `withHeadroomCurrentOn` — the producer boundary that
@@ -59,7 +60,7 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
   headroomRaw: 1,
   headroom: 1,
   restoreMarginPlanning: 0.2,
-  currentHourPriceLevel: { cheap: false, expensive: false },
+  currentHourPriceLevel: PriceLevel.UNKNOWN,
 });
 
 const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {

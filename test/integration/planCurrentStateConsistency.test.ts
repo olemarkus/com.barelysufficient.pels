@@ -16,6 +16,7 @@ import type {
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -74,7 +75,7 @@ const buildContext = (device: PlanInputDevice): PlanContext => ({
   headroomRaw: -1,
   headroom: -1,
   restoreMarginPlanning: 0.2,
-  currentHourPriceLevel: { cheap: false, expensive: false },
+  currentHourPriceLevel: PriceLevel.UNKNOWN,
 });
 
 // The merge asks the pending-command store whether a turn-ON is in flight;

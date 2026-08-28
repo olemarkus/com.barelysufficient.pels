@@ -12,6 +12,7 @@ import {
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // Drives the REAL PlanBuilder to prove the startup reservation: a device flagged
 // `reservesStartupPower` holds its lowest-active-step power back from LOWER-PRIORITY devices'
@@ -72,7 +73,7 @@ const makeBuilder = (params: {
     getModeDeviceTargets: () => ({}),
     getPriceOptimizationEnabled: () => false,
     getPriceOptimizationSettings: () => ({}),
-    getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now(), lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     // heater is priority 1 (top); everything else lower (higher number sheds first).

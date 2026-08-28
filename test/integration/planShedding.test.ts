@@ -21,6 +21,7 @@ import {
   type FixtureShedBehavior,
   resolveFixtureCurrentOn,
 } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // Shared empty pending-binary-command store for deps blocks that build their
 // engine state inline (or declare it after the deps object) and never seed
@@ -84,7 +85,7 @@ const buildContext = (
     headroomRaw: 0,
     headroom: 0,
     restoreMarginPlanning: 0.2,
-    currentHourPriceLevel: { cheap: false, expensive: false },
+    currentHourPriceLevel: PriceLevel.UNKNOWN,
     // Power answers derived from the fixture's reading FIRST, so a case that
     // wants a cached-but-unmeasured total can still say so explicitly.
     ...planContextPower(total),

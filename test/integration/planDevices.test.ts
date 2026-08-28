@@ -20,6 +20,7 @@ import {
   steppedInputDevice,
 } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -88,7 +89,7 @@ const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   headroomRaw: -1,
   headroom: -1,
   restoreMarginPlanning: 0.2,
-  currentHourPriceLevel: { cheap: false, expensive: false },
+  currentHourPriceLevel: PriceLevel.UNKNOWN,
 });
 
 // Shared empty pending-binary-command store for the many cases that do not
@@ -1294,7 +1295,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         context: {
           ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]),
           modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget),
-          currentHourPriceLevel: { cheap: true, expensive: false },
+          currentHourPriceLevel: PriceLevel.CHEAP,
         },
         state: createPlanEngineState(),
         shedSet: new Set(),
@@ -1345,7 +1346,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         context: {
           ...buildContext([tempInputDevice({ deadlineFloorTargetC: 56 })]),
           modeTargetCFor: (d) => (({ tank: 55 })[d.id] ?? d.currentTarget),
-          currentHourPriceLevel: { cheap: true, expensive: false },
+          currentHourPriceLevel: PriceLevel.CHEAP,
         },
         state: createPlanEngineState(),
         shedSet: new Set(),
@@ -1492,7 +1493,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         context: {
           ...buildContext([tempInputDevice()]),
           modeTargetCFor: (d) => (({ tank: 50 })[d.id] ?? d.currentTarget),
-          currentHourPriceLevel: { cheap: true, expensive: false },
+          currentHourPriceLevel: PriceLevel.CHEAP,
         },
         state: createPlanEngineState(),
         shedSet: new Set(),

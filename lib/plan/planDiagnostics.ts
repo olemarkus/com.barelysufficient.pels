@@ -7,7 +7,8 @@ import type {
 } from '../diagnostics/deviceDiagnosticsService';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveStarvationSuppressionSemantics } from '../planContract/planDecisionSemantics';
-import type { CurrentHourPriceLevel, PlanContext } from './planContext';
+import type { PlanContext } from './planContext';
+import { PriceLevel } from '../price/priceLevels';
 import type { RestorePlanResult } from './restore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
@@ -61,8 +62,8 @@ export const buildDeviceDiagnosticsObservations = (
     budgetReleasableHeadroomHold: params.context.budgetReleasableHeadroomHold,
     priceOptimizationEnabled: params.priceOptimizationEnabled,
     priceOptimizationSettings: params.priceOptimizationSettings,
-    // Producer-resolved once per build (see `CurrentHourPriceLevel`) — this loop
-    // must not ask the price service per device.
+    // Producer-resolved once per build (see `PlanContext.currentHourPriceLevel`)
+    // — this loop must not ask the price service per device.
     currentHourPriceLevel: params.context.currentHourPriceLevel,
   }));
 };
@@ -317,7 +318,7 @@ const buildDiagnosticsObservation = (params: {
   budgetReleasableHeadroomHold: boolean;
   priceOptimizationEnabled: boolean;
   priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-  currentHourPriceLevel: CurrentHourPriceLevel;
+  currentHourPriceLevel: PriceLevel;
 }): DeviceDiagnosticsPlanObservation => {
   const {
     modeTargetCFor,
@@ -418,7 +419,7 @@ const resolveDesiredTemperatureTarget = (params: {
   inputDevice?: PlanInputDevice;
   priceOptimizationEnabled: boolean;
   priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-  currentHourPriceLevel: CurrentHourPriceLevel;
+  currentHourPriceLevel: PriceLevel;
 }): number | null => {
   const {
     modeTargetCFor,
@@ -438,9 +439,9 @@ const resolveDesiredTemperatureTarget = (params: {
   let desiredTarget = modeTargetCFor(inputDevice);
   const priceOptConfig = priceOptimizationSettings[inputDevice.id];
   if (priceOptimizationEnabled && priceOptConfig?.enabled) {
-    if (currentHourPriceLevel.cheap && priceOptConfig.cheapDelta) {
+    if (currentHourPriceLevel === PriceLevel.CHEAP && priceOptConfig.cheapDelta) {
       desiredTarget += priceOptConfig.cheapDelta;
-    } else if (currentHourPriceLevel.expensive && priceOptConfig.expensiveDelta) {
+    } else if (currentHourPriceLevel === PriceLevel.EXPENSIVE && priceOptConfig.expensiveDelta) {
       desiredTarget += priceOptConfig.expensiveDelta;
     }
   }

@@ -19,6 +19,7 @@ import {
 } from '../../lib/objectives/deferredObjectives';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // The tracker is the single power latch; tests drive the whole-home total here.
 const LATCHED_TOTAL_W = 1.5 * 1000;
@@ -211,7 +212,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getModeDeviceTargets: () => ({}),
     getPriceOptimizationEnabled: () => true,
     getPriceOptimizationSettings: () => ({}),
-    getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(hoursInDay),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),

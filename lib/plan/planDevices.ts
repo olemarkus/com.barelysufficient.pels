@@ -1,7 +1,8 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedBehavior } from './planTypes';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { resolveSurplusCeilingStepId, type PlanEngineState } from './planState';
-import type { CurrentHourPriceLevel, PlanContext } from './planContext';
+import type { PlanContext } from './planContext';
+import { PriceLevel } from '../price/priceLevels';
 import { buildEffectiveShedPosture, isAnyOtherDeviceLimited } from './keepInvariantPosture';
 import {
   resolveSteppedShedCurrentDesiredStepId,
@@ -189,7 +190,7 @@ function resolvePlannedTarget(params: {
   /** Producer-resolved: did this cycle have a measurement at all. */
   powerIsMeasured: boolean;
   /** `context.currentHourPriceLevel`: producer-resolved once for this build. */
-  currentHourPriceLevel: CurrentHourPriceLevel;
+  currentHourPriceLevel: PriceLevel;
   state: PlanEngineState;
   deps: PlanDevicesDeps;
 }): ResolvedPlannedTarget {
@@ -318,7 +319,7 @@ function applyModeSeedModulation(params: {
    */
   observedTarget: number;
   powerIsMeasured: boolean;
-  currentHourPriceLevel: CurrentHourPriceLevel;
+  currentHourPriceLevel: PriceLevel;
   state: PlanEngineState;
   deps: PlanDevicesDeps;
 }): ModeSeedModulation {
@@ -345,12 +346,12 @@ function applyModeSeedModulation(params: {
 function applyPriceOptimizationDelta(
   target: number,
   config: { cheapDelta: number; expensiveDelta: number },
-  priceLevel: CurrentHourPriceLevel,
+  priceLevel: PriceLevel,
 ): number {
-  if (priceLevel.cheap && config.cheapDelta) {
+  if (priceLevel === PriceLevel.CHEAP && config.cheapDelta) {
     return target + config.cheapDelta;
   }
-  if (priceLevel.expensive && config.expensiveDelta) {
+  if (priceLevel === PriceLevel.EXPENSIVE && config.expensiveDelta) {
     return target + config.expensiveDelta;
   }
   return target;

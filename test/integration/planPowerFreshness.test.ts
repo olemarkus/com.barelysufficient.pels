@@ -13,6 +13,7 @@ import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -87,7 +88,7 @@ describe('power sample freshness policy', () => {
     softLimitSource: params.softLimitSource ?? 'capacity',
     modeTargetCFor: (d) => d.currentTarget,
     hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,
-    currentHourPriceLevel: { cheap: false, expensive: false },
+    currentHourPriceLevel: PriceLevel.UNKNOWN,
   });
 
   it('uses real computed headroom for fresh samples', () => {
@@ -245,7 +246,7 @@ describe('planner behavior under stale power freshness states', () => {
       getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => params.tracker,
       getDailyBudgetSnapshot: () => null,
       getShedBehavior: () => ({ action: 'turn_off' }),

@@ -122,7 +122,7 @@ export type AppContext = {
    * uncached series once each. The single-flag accessors still exist on
    * `PriceCoordinator`/`PriceService` for callers that genuinely need one.
    */
-  getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
+  getCurrentHourPriceLevel: () => PriceLevel;
   areFlowBackedCardsAvailable: () => boolean;
   setExpectedOverride: (deviceId: string, kw: number) => boolean;
   /**

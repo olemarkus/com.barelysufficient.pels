@@ -8,11 +8,43 @@ import type { DevicePlan } from './planTypes';
 import type { DevicePlanDevice } from './planTypes';
 import { NEUTRAL_STARTUP_HOLD_REASON } from './restore/devices';
 
+/** The persisted `pels_status` payload. External Flow automations read it. */
+export type PelsStatus = {
+  headroomKw: number;
+  hourlyLimitKw?: number;
+  hourlyUsageKwh: number;
+  dailyBudgetRemainingKwh?: number;
+  dailyBudgetExceeded?: boolean;
+  limitReason?: 'none' | 'hourly' | 'daily' | 'both';
+  capacityShortfall?: boolean;
+  shortfallBudgetThresholdKw?: number;
+  shortfallBudgetHeadroomKw?: number | null;
+  hardCapHeadroomKw?: number | null;
+  projectedOverHardCap?: boolean;
+  totalKw?: number;
+  controlledKw?: number;
+  uncontrolledKw?: number;
+  powerNowKw?: number | null;
+  powerKnown?: boolean;
+  hasLivePowerSample?: boolean;
+  powerFreshnessState?: DevicePlan['meta']['powerFreshnessState'];
+  priceLevel: PriceLevel;
+  devicesOn: number;
+  devicesOff: number;
+  lastPowerUpdate: number | null;
+  dryRunEffective?: boolean;
+};
+
 export function buildPelsStatus(params: {
   plan: DevicePlan;
-  isCheap: boolean;
-  isExpensive: boolean;
-  combinedPrices: unknown;
+  /**
+   * Producer-resolved (`PriceService.getCurrentHourPriceLevel`), including the
+   * `UNKNOWN` case. This used to arrive as two raw flags plus the combined-price
+   * blob, which the status then shape-checked to decide whether a level existed
+   * at all — a consumer re-deriving what the price service already knew, and the
+   * reason the status had to read the (uncached) price store to build at all.
+   */
+  priceLevel: PriceLevel;
   lastPowerUpdate: number | null;
   /**
    * The EFFECTIVE (membership-gated) dry-run this home actuates on —
@@ -23,35 +55,8 @@ export function buildPelsStatus(params: {
    * `pels_status` blob stays byte-identical.
    */
   dryRunEffective?: boolean;
-}): {
-  status: {
-    headroomKw: number;
-    hourlyLimitKw?: number;
-    hourlyUsageKwh: number;
-    dailyBudgetRemainingKwh?: number;
-    dailyBudgetExceeded?: boolean;
-    limitReason?: 'none' | 'hourly' | 'daily' | 'both';
-    capacityShortfall?: boolean;
-    shortfallBudgetThresholdKw?: number;
-    shortfallBudgetHeadroomKw?: number | null;
-    hardCapHeadroomKw?: number | null;
-    projectedOverHardCap?: boolean;
-    totalKw?: number;
-    controlledKw?: number;
-    uncontrolledKw?: number;
-    powerNowKw?: number | null;
-    powerKnown?: boolean;
-    hasLivePowerSample?: boolean;
-    powerFreshnessState?: DevicePlan['meta']['powerFreshnessState'];
-    priceLevel: PriceLevel;
-    devicesOn: number;
-    devicesOff: number;
-    lastPowerUpdate: number | null;
-    dryRunEffective?: boolean;
-  }; priceLevel: PriceLevel
-} {
-  const { plan, isCheap, isExpensive, combinedPrices, lastPowerUpdate, dryRunEffective } = params;
-  const priceLevel = resolvePriceLevel({ isCheap, isExpensive, combinedPrices });
+}): PelsStatus {
+  const { plan, priceLevel, lastPowerUpdate, dryRunEffective } = params;
   const summary = summarizePlanForStatus(plan);
   const limitReason = resolveLimitReason(plan, summary);
   // Sub-home status blobs (the only ones with a defined `dryRunEffective`) also
@@ -72,46 +77,43 @@ export function buildPelsStatus(params: {
     : undefined;
 
   return {
-    status: {
-      headroomKw: plan.meta.headroomKw,
-      hourlyLimitKw: plan.meta.softLimitKw,
-      hourlyUsageKwh: plan.meta.usedKWh ?? 0,
-      dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh ?? 0,
-      dailyBudgetExceeded: plan.meta.dailyBudgetExceeded ?? false,
-      limitReason,
-      capacityShortfall: plan.meta.capacityShortfall ?? false,
-      shortfallBudgetThresholdKw: plan.meta.shortfallBudgetThresholdKw,
-      shortfallBudgetHeadroomKw: plan.meta.shortfallBudgetHeadroomKw,
-      // No PELS surface consumes this any more (the headroom widget moved to
-      // `projectedOverHardCap`); kept because `pels_status` is a persisted
-      // payload external automations may read.
-      hardCapHeadroomKw: plan.meta.hardCapHeadroomKw,
-      projectedOverHardCap: resolveProjectedOverHardCap(plan),
-      totalKw: areaTotalKw,
-      controlledKw: plan.meta.controlledKw,
-      // `?? undefined` is an ENCODING translation, not a hedge. The domain
-      // spells "no whole-home reading this cycle" as `null`; `pels_status` is a
-      // persisted blob external automations read, and it spells absence by JSON
-      // omission. Keeping `null` here would change the persisted shape, which
-      // the backward-compatibility rule above forbids.
-      uncontrolledKw: plan.meta.uncontrolledKw ?? undefined,
-      powerNowKw: plan.meta.powerNowKw,
-      // Kept for BACKWARD COMPATIBILITY only. `pels_status` is a persisted
-      // payload external automations may read, and removing a field from it
-      // breaks them — the repo rule is to ADD rather than rename or remove.
-      // Derived from `powerNowKw` so it cannot drift from the resolved value;
-      // nothing inside PELS reads it any more.
-      powerKnown: plan.meta.powerNowKw !== null && plan.meta.powerNowKw !== undefined,
-      hasLivePowerSample: plan.meta.hasLivePowerSample,
-      powerFreshnessState: plan.meta.powerFreshnessState,
-      priceLevel,
-      devicesOn: summary.devicesOn,
-      devicesOff: summary.devicesOff,
-      lastPowerUpdate,
-      // Undefined for the main home ⇒ JSON-omitted ⇒ its blob is byte-identical.
-      dryRunEffective,
-    },
+    headroomKw: plan.meta.headroomKw,
+    hourlyLimitKw: plan.meta.softLimitKw,
+    hourlyUsageKwh: plan.meta.usedKWh ?? 0,
+    dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh ?? 0,
+    dailyBudgetExceeded: plan.meta.dailyBudgetExceeded ?? false,
+    limitReason,
+    capacityShortfall: plan.meta.capacityShortfall ?? false,
+    shortfallBudgetThresholdKw: plan.meta.shortfallBudgetThresholdKw,
+    shortfallBudgetHeadroomKw: plan.meta.shortfallBudgetHeadroomKw,
+    // No PELS surface consumes this any more (the headroom widget moved to
+    // `projectedOverHardCap`); kept because `pels_status` is a persisted
+    // payload external automations may read.
+    hardCapHeadroomKw: plan.meta.hardCapHeadroomKw,
+    projectedOverHardCap: resolveProjectedOverHardCap(plan),
+    totalKw: areaTotalKw,
+    controlledKw: plan.meta.controlledKw,
+    // `?? undefined` is an ENCODING translation, not a hedge. The domain
+    // spells "no whole-home reading this cycle" as `null`; `pels_status` is a
+    // persisted blob external automations read, and it spells absence by JSON
+    // omission. Keeping `null` here would change the persisted shape, which
+    // the backward-compatibility rule above forbids.
+    uncontrolledKw: plan.meta.uncontrolledKw ?? undefined,
+    powerNowKw: plan.meta.powerNowKw,
+    // Kept for BACKWARD COMPATIBILITY only. `pels_status` is a persisted
+    // payload external automations may read, and removing a field from it
+    // breaks them — the repo rule is to ADD rather than rename or remove.
+    // Derived from `powerNowKw` so it cannot drift from the resolved value;
+    // nothing inside PELS reads it any more.
+    powerKnown: plan.meta.powerNowKw !== null && plan.meta.powerNowKw !== undefined,
+    hasLivePowerSample: plan.meta.hasLivePowerSample,
+    powerFreshnessState: plan.meta.powerFreshnessState,
     priceLevel,
+    devicesOn: summary.devicesOn,
+    devicesOff: summary.devicesOff,
+    lastPowerUpdate,
+    // Undefined for the main home ⇒ JSON-omitted ⇒ its blob is byte-identical.
+    dryRunEffective,
   };
 }
 
@@ -137,30 +139,6 @@ function resolveProjectedOverHardCap(plan: DevicePlan): boolean {
     minutesRemainingInHour: minutesRemaining,
   });
   return isProjectedOverHardCap({ projectedKWh, hardCapKWh: hardCapLimitKw });
-}
-
-function resolvePriceLevel(params: {
-  isCheap: boolean;
-  isExpensive: boolean;
-  combinedPrices: unknown;
-}): PriceLevel {
-  const { isCheap, isExpensive, combinedPrices } = params;
-  if (!hasPrices(combinedPrices)) return PriceLevel.UNKNOWN;
-  if (isCheap) return PriceLevel.CHEAP;
-  if (isExpensive) return PriceLevel.EXPENSIVE;
-  return PriceLevel.NORMAL;
-}
-
-function hasPrices(value: unknown): boolean {
-  if (!value || typeof value !== 'object') return false;
-  const record = value as { days?: unknown };
-  if (!record.days || typeof record.days !== 'object' || Array.isArray(record.days)) return false;
-  for (const day of Object.values(record.days as Record<string, unknown>)) {
-    if (day && typeof day === 'object'
-      && Array.isArray((day as { hours?: unknown }).hours)
-      && ((day as { hours: unknown[] }).hours.length > 0)) return true;
-  }
-  return false;
 }
 
 type LimitSource = DevicePlan['meta']['softLimitSource'];

@@ -12,6 +12,7 @@ import {
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
@@ -93,7 +94,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => ({ cheap: true, expensive: false });
+    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     // Clear events from initialization
     mockHomeyInstance.api.clearRealtimeEvents();
@@ -131,7 +132,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => ({ cheap: true, expensive: false });
+    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     // Deterministic soft limit for the test.
     (app as any).computeDynamicSoftLimit = () => 9;
@@ -2109,7 +2110,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => ({ cheap: true, expensive: false });
+    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     (app as any).deviceManager.setSnapshotForTests([
       {
@@ -3317,7 +3318,7 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => ({ cheap: true, expensive: false });
+    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     // Temperature should NOT have been changed in dry run mode
     // (would be 65 if price optimization was applied: 55 + 10)
@@ -3350,13 +3351,13 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => ({ cheap: true, expensive: false });
+    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     // Verify dry run is enabled by default
     expect((app as any).capacityDryRun).toBe(true);
 
     // Mock the cheap/expensive detection to return cheap
-    (app as any).getCurrentHourPriceLevel = () => ({ cheap: true, expensive: false });
+    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     // Ensure the device is in snapshot with correct structure
     (app as any).deviceManager.setSnapshotForTests([
@@ -3414,7 +3415,7 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => ({ cheap: true, expensive: false });
+    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
     (app as any).computeDynamicSoftLimit = () => 3;
     (app as any).computeDynamicSoftLimit = () => 3;
     (app as any).planEngine.state.lastInstabilityMs = null;
@@ -3467,7 +3468,7 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => ({ cheap: true, expensive: false });
+    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     (app as any).deviceManager.setSnapshotForTests([
       {
@@ -3526,7 +3527,7 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => ({ cheap: true, expensive: false });
+    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     (app as any).deviceManager.setSnapshotForTests([
       {

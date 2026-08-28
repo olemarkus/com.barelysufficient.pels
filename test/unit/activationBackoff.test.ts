@@ -35,6 +35,7 @@ import { emitActivationTransitions } from '../../lib/plan/planHeadroomState';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import { buildDeviceDiagnosticsRecorderStub } from '../mocks/deviceDiagnosticsRecorder';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -60,7 +61,7 @@ const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext =
   headroomRaw: 1,
   headroom: 1,
   restoreMarginPlanning: 0.2,
-  currentHourPriceLevel: { cheap: false, expensive: false },
+  currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
 });
 

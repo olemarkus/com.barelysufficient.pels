@@ -5,10 +5,6 @@ import {
 } from '../../lib/price/priceStore';
 import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
-import { buildPelsStatus } from '../../lib/plan/pelsStatus';
-import { PriceLevel } from '../../lib/price/priceLevels';
-import type { DevicePlan } from '../../lib/plan/planTypes';
-import { buildPlanMeta } from '../utils/planTestUtils';
 
 const TZ = 'Europe/Oslo';
 
@@ -175,43 +171,5 @@ describe('flatten helpers', () => {
     expect(data?.lastFetched).toBe('2026-05-10T00:00:00.000Z');
     expect(data?.priceUnit).toBe('NOK/kWh');
     expect(data?.prices).toHaveLength(3);
-  });
-});
-
-describe('readPriceStore + buildPelsStatus integration', () => {
-  // Bug Unit 3 regression: if readPriceStore returns null on legacy V1, the
-  // status writer's `hasPrices` check (which only knows V2 `.days`) returns
-  // false and price level falls back to UNKNOWN -- causing a spurious
-  // `price_level_changed` flow trigger in the post-upgrade window.
-  test('legacy V1 payload resolves price level immediately on first read', () => {
-    const homey = buildHomey({
-      prices: [
-        { startsAt: '2026-05-10T10:00:00.000Z', total: 1.2, isCheap: true, isExpensive: false },
-      ],
-      avgPrice: 1.2,
-      lowThreshold: 1,
-      highThreshold: 2,
-      priceScheme: 'norway',
-      priceUnit: 'NOK/kWh',
-    });
-    const requestRefetch = vi.fn();
-    const migrated = readStore(homey, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
-
-    const plan: DevicePlan = {
-      meta: buildPlanMeta({
-        totalKw: 0,
-        softLimitKw: 5,
-        softLimitSource: 'capacity',
-        headroomKw: 5}),
-      devices: [],
-    };
-    const { status } = buildPelsStatus({
-      plan,
-      isCheap: true,
-      isExpensive: false,
-      combinedPrices: migrated,
-      lastPowerUpdate: Date.UTC(2026, 4, 10, 12, 0, 0),
-    });
-    expect(status.priceLevel).toBe(PriceLevel.CHEAP);
   });
 });

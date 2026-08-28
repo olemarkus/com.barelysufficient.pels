@@ -31,6 +31,7 @@ import type { FlowCard, FlowHomeyLike } from '../../lib/utils/types';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
 import type { DeviceTargetPowerConfigsWithReachability } from '../../lib/device/targetPowerReachability';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 type MockHomey = FlowHomeyLike & {
   settings: FlowHomeyLike['settings'] & {
@@ -201,7 +202,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     handleOperatingModeChange: vi.fn(async () => undefined),
     getFlowSnapshot: vi.fn(async () => []),
     getCurrentPriceLevel: vi.fn(),
-    getCurrentHourPriceLevel: vi.fn(() => ({ cheap: false, expensive: false })),
+    getCurrentHourPriceLevel: vi.fn(() => PriceLevel.UNKNOWN),
     areFlowBackedCardsAvailable: vi.fn(() => false),
     setExpectedOverride: vi.fn(() => false),
     reloadExpectedPowerOverrides: vi.fn(),
@@ -330,7 +331,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
       refreshGridTariffData: vi.fn(async () => undefined),
       startPriceRefresh: vi.fn(),
       startPriceOptimization: vi.fn(async () => undefined),
-      getCurrentHourPriceLevel: vi.fn(() => ({ cheap: false, expensive: false })),
+      getCurrentHourPriceLevel: vi.fn(() => PriceLevel.UNKNOWN),
     } as never,
     planService: {
       rebuildPlanFromCache: vi.fn(async () => undefined),

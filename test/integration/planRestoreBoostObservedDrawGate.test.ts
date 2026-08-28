@@ -23,6 +23,7 @@ import {
   steppedPlanDevice,
 } from '../utils/planTestUtils';
 import { createPlanEngineState } from '../../lib/plan/planState';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
@@ -38,7 +39,7 @@ const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext =
   headroomRaw: 1,
   headroom: 1,
   restoreMarginPlanning: 0.2,
-  currentHourPriceLevel: { cheap: false, expensive: false },
+  currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
 } as PlanContext);
 

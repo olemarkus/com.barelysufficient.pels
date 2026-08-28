@@ -121,7 +121,6 @@ export class PlanService {
     this.planStatusWriter = new PlanStatusWriter({
       homey: deps.homey,
       writePelsStatus: deps.writePelsStatus,
-      getCombinedPrices: deps.getCombinedPrices,
       getCurrentHourPriceLevel: deps.getCurrentHourPriceLevel,
       getLastPowerUpdate: deps.getLastPowerUpdate,
       getEffectiveDryRun: deps.getStatusEffectiveDryRun,

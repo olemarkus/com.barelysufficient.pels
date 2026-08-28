@@ -28,7 +28,8 @@ import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
-import type { buildPelsStatus } from '../../lib/plan/pelsStatus';
+import type { PriceLevel } from '../../lib/price/priceLevels';
+import type { PelsStatus } from '../../lib/plan/pelsStatus';
 import type { PlanEngineWiring } from '../appInit/planEngineWiring';
 import type { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../../lib/app/appContext';
@@ -85,14 +86,14 @@ export type HomeScope = {
   // (`homeScopedSettingsKey(base, homeId)` — the bare key for the main home).
   setCapacityInShortfall: (inShortfall: boolean) => void;
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
-  writePelsStatus: (status: ReturnType<typeof buildPelsStatus>['status']) => void;
+  writePelsStatus: (status: PelsStatus) => void;
   // ---- Policy block (R7b) ----
   // Main binds live ctx reads; sub-home scopes bind disabled constants so
   // their engines collapse to pure capacity control.
   getPriceOptimizationEnabled: () => boolean;
   // Both current-hour price flags from ONE combined-series build; see
   // `PriceService.getCurrentHourPriceLevel`.
-  getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
+  getCurrentHourPriceLevel: () => PriceLevel;
   /** Inferred curtailed-surplus term for the surplus allocator; null disables. */
   getInferredSurplusKw: () => number | null;
   // Policy stragglers lifted onto the scope so a sub-home's capacity-only engine
@@ -143,8 +144,6 @@ export type HomeScope = {
   // Three surfaces `createPlanService` used to bind straight to `ctx` for every
   // home. Main binds the live read (byte-identical); a sub-home neutralizes so
   // its capacity-only plan never drives MAIN's user-facing channels.
-  /** V2-migrating combined-price read for the status writer. Sub-homes bind `null` (price UNKNOWN, card silent). */
-  getCombinedPrices: () => unknown;
   /** Whether this home drives the shared settings-UI realtime channel (`plan_updated`). Main true; sub-homes false. */
   emitsUiRealtime: boolean;
   /**
@@ -293,9 +292,6 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation?.(source),
     // UI / side-effect singletons — the EXACT ctx reads `createPlanService`
     // hardwired. Byte-identical for the main home.
-    // Read via the combined-prices reader so a legacy V1 payload is migrated to
-    // V2 on first read (see the closure in `createPlanService`).
-    getCombinedPrices: () => ctx.combinedPricesReader.readStore(ctx.getNow(), ctx.getTimeZone()),
     emitsUiRealtime: true,
     getDeviceDiagnostics: () => ctx.deviceDiagnosticsService,
   };

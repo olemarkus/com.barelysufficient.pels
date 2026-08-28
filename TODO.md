@@ -3504,19 +3504,6 @@ non-blocking follow-ups.*
       `setup/curtailmentHoldStateAdapter.ts`, `lib/solar/curtailmentSurplus.ts`. *P3 (release-review
       adversarial verify, 2026-07-03).*
 
-- [ ] **Electricity-prices "Right now" can read "Normal" when the current hour has no price.**
-      `resolvePriceLevel` (`lib/plan/pelsStatus.ts`) returns `NORMAL` whenever `hasPrices(combinedPrices)` is
-      true and the hour is neither cheap nor expensive — but `hasPrices` only checks that SOME day has hours,
-      not that the CURRENT hour is covered. So at a day boundary (yesterday's/tomorrow's hours cached but
-      today's not yet fetched) the summary can show the calm "Normal" all-clear instead of "Awaiting prices".
-      (The originally-reported inverse — "Awaiting prices" while current prices ARE present — does NOT
-      reproduce: the view renders the producer's own `powerPayload.status.priceLevel`, and UNKNOWN ⟺ no prices
-      at all.) *Persona:* price-watcher glancing the Electricity prices panel around midnight. *Hypothesis:*
-      narrow, cosmetic — a false calm rather than a wrong control decision. *Why:* the "Right now" tier should
-      never claim an all-clear it can't back with a current-hour price. Fix: tier `NORMAL` only when a price
-      actually covers the current hour. Files: `lib/plan/pelsStatus.ts`. *P3 (release-review adversarial
-      verify, 2026-07-03).*
-
 - [ ] **A smart task and "match solar surplus" cannot combine on one device — the task wins outright.**
       `runSurplusPass` (`lib/plan/planBuilderSurplus.ts:72-77`) drops every device in
       `admittedDeviceIds` from BOTH the allocator and the hold, so a charger with a soft deadline
@@ -3822,7 +3809,7 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       *Update (2026-08-07), second pass:* the two remaining hot callers each built the series **twice** —
       `isCurrentHourCheap()` and `isCurrentHourExpensive()` are separate predicates, and `getPriceLevelFlags`
       already computes both from one pass. `PriceService.getCurrentHourPriceLevel()` now answers both from a
-      single build, used by `PlanBuilder.resolveCurrentHourPriceLevel` and `PlanStatusWriter.compute`, so a
+      single build, used by `PlanBuilder.resolveCurrentHourPriceLevel` and `PlanStatusWriter.update`, so a
       rebuild went from 4 series builds to 2 (~50 ms). Pinned by
       `test/integration/priceLevelSingleSeriesBuild.test.ts`.
       *Memoizing `getCombinedHourlyPrices` is DECIDED AGAINST for now — do not attempt it as specified.* An

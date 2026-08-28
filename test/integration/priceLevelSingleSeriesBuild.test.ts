@@ -4,6 +4,7 @@ import { createPriceDataStore } from '../../setup/priceDataAdapter';
 import { mockHomeyInstance } from '../mocks/homey';
 import { PRICE_SCHEME } from '../../lib/utils/settingsKeys';
 import { getDateKeyInTimeZone, getZonedParts } from '../../lib/utils/dateUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 /**
  * `getCombinedHourlyPrices()` has no cache: every call re-reads ~12 settings,
@@ -13,9 +14,9 @@ import { getDateKeyInTimeZone, getZonedParts } from '../../lib/utils/dateUtils';
  * series twice to answer one question, on both hot paths (the plan builder's
  * per-cycle price level and the status writer's compute).
  *
- * `getCurrentHourPriceLevel()` answers both from a single build. This suite pins
- * the build count, because nothing else would notice it regressing — the flags
- * are identical either way.
+ * `getCurrentHourPriceLevel()` answers the resolved level from a single build.
+ * This suite pins the build count, because nothing else would notice it
+ * regressing — the level is identical either way.
  */
 const TZ = 'Europe/Oslo';
 const NOW = new Date('2026-03-11T10:30:00.000Z');
@@ -31,7 +32,7 @@ const createService = (): PriceService => new PriceService(
 /**
  * A 24-hour series whose current hour sits far below the average, so the hour
  * classifies cheap and the two flags differ — a run that silently answered
- * `{cheap: false, expensive: false}` would not pass.
+ * `PriceLevel.UNKNOWN` would not pass.
  */
 const seedCheapCurrentHour = (): void => {
   const dayStart = Date.UTC(2026, 2, 11, 0, 0, 0);
@@ -76,19 +77,22 @@ describe('current-hour price level resolves from a single series build', () => {
 
     const level = service.getCurrentHourPriceLevel();
 
-    expect(level).toEqual({ cheap: true, expensive: false });
+    expect(level).toEqual(PriceLevel.CHEAP);
     expect(buildSpy).toHaveBeenCalledTimes(1);
   });
 
   it('agrees with the two single-flag predicates it replaces', () => {
     const service = createService();
 
-    // The predicates are the pre-existing behaviour; the combined resolver must
-    // not change any answer, only the number of builds it takes to get there.
-    expect(service.getCurrentHourPriceLevel()).toEqual({
-      cheap: service.isCurrentHourCheap(),
-      expensive: service.isCurrentHourExpensive(),
-    });
+    // The predicates are the pre-existing behaviour; the resolved level must not
+    // change any answer, only the number of builds it takes to get there — and
+    // it applies the cheap-first precedence every caller used to apply itself.
+    const resolveExpected = (): PriceLevel => {
+      if (service.isCurrentHourCheap()) return PriceLevel.CHEAP;
+      if (service.isCurrentHourExpensive()) return PriceLevel.EXPENSIVE;
+      return PriceLevel.NORMAL;
+    };
+    expect(service.getCurrentHourPriceLevel()).toEqual(resolveExpected());
   });
 
   it('costs two builds when the single-flag predicates are used back to back', () => {
@@ -104,10 +108,10 @@ describe('current-hour price level resolves from a single series build', () => {
     expect(buildSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('reports neither flag when the current hour has no price', () => {
+  it('answers UNKNOWN when the current hour has no price', () => {
     mockHomeyInstance.settings.set('electricity_prices', []);
     const service = createService();
 
-    expect(service.getCurrentHourPriceLevel()).toEqual({ cheap: false, expensive: false });
+    expect(service.getCurrentHourPriceLevel()).toEqual(PriceLevel.UNKNOWN);
   });
 });

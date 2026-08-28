@@ -21,6 +21,7 @@ import {
   POWER_TRACKER_STATE,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
 } from '../../lib/utils/settingsKeys';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const buildCapacitySnapshot = (
   overrides: Partial<CapacitySettingsSnapshot> = {},
@@ -91,7 +92,7 @@ const buildContext = (): AppContext => {
     handleOperatingModeChange: vi.fn(async () => undefined),
     getFlowSnapshot: vi.fn(async () => []),
     getCurrentPriceLevel: vi.fn(),
-    getCurrentHourPriceLevel: vi.fn(() => ({ cheap: false, expensive: false })),
+    getCurrentHourPriceLevel: vi.fn(() => PriceLevel.UNKNOWN),
     setExpectedOverride: vi.fn(() => false),
     storeFlowPriceData: vi.fn(),
     loadDailyBudgetSettings: vi.fn(),

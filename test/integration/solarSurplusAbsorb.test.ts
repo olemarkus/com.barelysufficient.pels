@@ -31,6 +31,7 @@ import {
   SURPLUS_ABSORB_SETTLE_MS,
 } from '../../lib/plan/admission/surplusAbsorb';
 import type { PlanContext } from '../../lib/plan/planContext';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const DEVICE_ID = 'tank';
 const MODE_C = 20;
@@ -72,7 +73,7 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanContext => (
   headroomRaw: 12,
   headroom: 12,
   restoreMarginPlanning: 0.2,
-  currentHourPriceLevel: { cheap: false, expensive: false },
+  currentHourPriceLevel: PriceLevel.UNKNOWN,
 });
 
 const deps = (surplusWilling: boolean, surplusDelta = SURPLUS_DELTA_C): PlanDevicesDeps => ({

@@ -18,6 +18,7 @@ import { getHourBucketKey } from '../../lib/utils/dateUtils';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 /** 5 kWh of hourly allowance, so a 6 kWh bucket is a spent hour and 1 kWh is not. */
 const buildPaceBuilder = (params: {
@@ -33,7 +34,7 @@ const buildPaceBuilder = (params: {
   getModeDeviceTargets: () => ({}),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
-  getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+  getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
   getPowerTracker: params.getPowerTracker,
   getDailyBudgetSnapshot: () => null,
   getDynamicSoftLimitOverride: params.getDynamicSoftLimitOverride,

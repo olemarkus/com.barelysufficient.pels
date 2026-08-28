@@ -1,6 +1,6 @@
 import type { FlowPort } from '../ports/homeyRuntime';
 import type { Logger as PinoLogger } from '../logging/logger';
-import { buildPelsStatus } from './pelsStatus';
+import { buildPelsStatus, type PelsStatus } from './pelsStatus';
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';
@@ -19,7 +19,7 @@ import type {
 } from './planTypes';
 
 type PelsStatusComputation = {
-  result: ReturnType<typeof buildPelsStatus>;
+  status: PelsStatus;
   statusJson: string;
   /** The effective (membership-gated) dry-run this write reflects; undefined for the main home. */
   dryRunEffective: boolean | undefined;
@@ -27,11 +27,14 @@ type PelsStatusComputation = {
 
 type PlanStatusWriterDeps = {
   homey: { flow: FlowPort };
-  writePelsStatus: (status: ReturnType<typeof buildPelsStatus>['status']) => void;
-  getCombinedPrices: () => unknown;
-  // Both current-hour flags from ONE combined-series build; asking the two
-  // predicates separately rebuilt the uncached series twice per status compute.
-  getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
+  writePelsStatus: (status: PelsStatus) => void;
+  /**
+   * The current hour's RESOLVED level, `UNKNOWN` included — one combined-series
+   * build, and the ONLY price read this writer makes. It used to also read the
+   * combined-price store just to shape-check whether a level existed; the price
+   * service already knew, so the store read is gone.
+   */
+  getCurrentHourPriceLevel: () => PriceLevel;
   getLastPowerUpdate: () => number | null;
   /**
    * When set, the effective (membership-gated) dry-run this bundle actuates on,
@@ -46,7 +49,7 @@ type PlanStatusWriterDeps = {
 export class PlanStatusWriter {
   private lastPelsStatusWrittenJson = '';
   private lastPelsStatusInputKey = '';
-  private lastPelsStatusResult: ReturnType<typeof buildPelsStatus> | null = null;
+  private lastPelsStatusResult: PelsStatus | null = null;
   private lastPelsStatusWriteMs = 0;
   /**
    * The effective dry-run captured at the last persist. A change vs the current
@@ -67,49 +70,86 @@ export class PlanStatusWriter {
 
   update(plan: DevicePlan, changes?: StatusPlanChanges): number {
     const now = Date.now();
-    const computation = this.compute(plan, changes);
+    // Resolved on EVERY call, before the dead-work gate. The `price_level_changed`
+    // trigger is a fact about the hour, not about the status blob: a skipped
+    // compute must not swallow it. Under `power_source = flow` the next rebuild
+    // is not on a clock at all, so "the throttle bounds the latency" would have
+    // been false — a whole cheap hour can begin and end between two rebuilds.
+    const priceLevel = this.deps.getCurrentHourPriceLevel();
+    this.notifyPriceLevelChanged(priceLevel);
+    this.lastNotifiedPriceLevel = priceLevel;
 
-    const writeMs = this.maybeWriteStatus(
-      computation.result.status,
+    if (this.computationIsDeadWork(changes?.actionChanged === true, now)) {
+      incPerfCounter('settings_set.pels_status_skipped_throttle_total');
+      incPerfCounter('settings_set.pels_status_compute_skipped_total');
+      return 0;
+    }
+    const computation = this.compute(plan, priceLevel, changes);
+
+    return this.maybeWriteStatus(
+      computation.status,
       computation.statusJson,
       changes?.actionChanged === true,
       computation.dryRunEffective,
       now,
     );
-
-    this.notifyPriceLevelChanged(computation.result.priceLevel);
-    this.lastNotifiedPriceLevel = computation.result.priceLevel;
-    return writeMs;
   }
 
-  private compute(plan: DevicePlan, changes?: StatusPlanChanges): PelsStatusComputation {
-    const combinedPrices = this.deps.getCombinedPrices();
-    const { cheap: isCheap, expensive: isExpensive } = this.deps.getCurrentHourPriceLevel();
+  /**
+   * Can this call still produce a write? When it cannot, building the status is
+   * pure waste — and it is not cheap waste: `compute` summarizes the whole plan,
+   * builds the payload and JSON-serializes it, only for `resolveWriteReason` to
+   * discard the result.
+   *
+   * Prod, 13.5 h: 1501 computations produced 736 writes, so 765 — a little over
+   * half — paid that cost for nothing. `planRebuildStatus` is 170 ms of a 311 ms
+   * rebuild, and the write itself only accounts for 100 ms of it.
+   *
+   * The three reasons that can force a write inside the throttle window are all
+   * knowable without the status: the first-ever write, an action-signature
+   * change, and a dry-run posture flip. Mirror exactly those, so this stays a
+   * fast path in front of `resolveWriteReason` rather than a second policy —
+   * every case it lets through is still decided there.
+   *
+   * No behaviour changes on this path. In particular `price_level_changed` is
+   * NOT gated by it: `update` resolves the level and fires the trigger before
+   * asking this question, because the level is a fact about the hour rather than
+   * a property of the status blob, and nothing guarantees another rebuild inside
+   * the hour that could carry a deferred one.
+   */
+  private computationIsDeadWork(actionChanged: boolean, now: number): boolean {
+    if (this.lastPelsStatusWriteMs === 0) return false;
+    if (actionChanged) return false;
+    if (this.deps.getEffectiveDryRun?.() !== this.lastPelsStatusWrittenDryRunEffective) return false;
+    return now - this.lastPelsStatusWriteMs <= VOLATILE_WRITE_THROTTLE_MS;
+  }
+
+  private compute(
+    plan: DevicePlan,
+    priceLevel: PriceLevel,
+    changes?: StatusPlanChanges,
+  ): PelsStatusComputation {
     const lastPowerUpdate = normalizeLastPowerUpdate(this.deps.getLastPowerUpdate(), STATUS_POWER_BUCKET_MS);
     const dryRunEffective = this.deps.getEffectiveDryRun?.();
     const inputKey = buildPelsStatusInputKey({
       changes,
-      isCheap,
-      isExpensive,
-      combinedPrices,
+      priceLevel,
       lastPowerUpdate,
       powerFreshnessState: plan.meta.powerFreshnessState,
       powerNowKw: plan.meta.powerNowKw,
       dryRunEffective,
     });
-    const result = this.resolveStatusResult({
+    const status = this.resolveStatusResult({
       inputKey,
       plan,
-      isCheap,
-      isExpensive,
-      combinedPrices,
+      priceLevel,
       lastPowerUpdate,
       dryRunEffective,
     });
 
     return {
-      result,
-      statusJson: JSON.stringify(normalizePelsStatus(result.status, STATUS_POWER_BUCKET_MS)),
+      status,
+      statusJson: JSON.stringify(normalizePelsStatus(status, STATUS_POWER_BUCKET_MS)),
       dryRunEffective,
     };
   }
@@ -117,22 +157,18 @@ export class PlanStatusWriter {
   private resolveStatusResult(params: {
     inputKey: string;
     plan: DevicePlan;
-    isCheap: boolean;
-    isExpensive: boolean;
-    combinedPrices: unknown;
+    priceLevel: PriceLevel;
     lastPowerUpdate: number | null;
     dryRunEffective?: boolean;
-  }): ReturnType<typeof buildPelsStatus> {
-    const { inputKey, plan, isCheap, isExpensive, combinedPrices, lastPowerUpdate, dryRunEffective } = params;
+  }): PelsStatus {
+    const { inputKey, plan, priceLevel, lastPowerUpdate, dryRunEffective } = params;
     if (this.lastPelsStatusInputKey === inputKey && this.lastPelsStatusResult) {
       return this.lastPelsStatusResult;
     }
 
     const result = buildPelsStatus({
       plan,
-      isCheap,
-      isExpensive,
-      combinedPrices,
+      priceLevel,
       lastPowerUpdate,
       dryRunEffective,
     });
@@ -142,7 +178,7 @@ export class PlanStatusWriter {
   }
 
   private maybeWriteStatus(
-    status: ReturnType<typeof buildPelsStatus>['status'],
+    status: PelsStatus,
     statusJson: string,
     actionChanged: boolean,
     dryRunEffective: boolean | undefined,
@@ -174,7 +210,7 @@ export class PlanStatusWriter {
   }
 
   private writeStatus(
-    status: ReturnType<typeof buildPelsStatus>['status'],
+    status: PelsStatus,
     statusJson: string,
     dryRunEffective: boolean | undefined,
     reason: PelsStatusWriteReason,

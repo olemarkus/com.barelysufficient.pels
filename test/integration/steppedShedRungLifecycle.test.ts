@@ -21,6 +21,7 @@ import { steppedInputDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PlanContext } from '../../lib/plan/planContext';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const chargerProfile = {
   steps: [
@@ -55,7 +56,7 @@ const buildContext = (overrides: Partial<PlanContext> & { total?: number | null 
     headroomRaw: 0,
     headroom: 0,
     restoreMarginPlanning: 0.2,
-    currentHourPriceLevel: { cheap: false, expensive: false },
+    currentHourPriceLevel: PriceLevel.UNKNOWN,
     ...planContextPower(total),
     ...overrides,
   } as PlanContext;

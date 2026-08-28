@@ -33,6 +33,7 @@ import {
   setRootLogger,
 } from '../../lib/logging/logger';
 import type { PendingBinaryLiveDevice } from '../../lib/observer/pendingBinaryCommands';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const LEGACY_PLAN_SNAPSHOT_SETTING = ['device', 'plan', 'snapshot'].join('_');
 
@@ -118,8 +119,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     getPlanDevices: () => [],
     getSettleDevices: () => [],
     getCapacityDryRun: () => false,
-    getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-    getCombinedPrices: () => null,
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getLastPowerUpdate: () => null,
     loggers: {
       ...loggerOverrides,
@@ -182,8 +182,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -242,8 +241,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
             overviewDebugStructured,
       isOverviewDebugEnabled: () => true,
@@ -791,8 +789,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
             overviewDebugStructured,
       isOverviewDebugEnabled: () => true,
@@ -968,8 +965,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
             overviewDebugStructured,
       isOverviewDebugEnabled: () => true,
@@ -1021,8 +1017,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -1068,8 +1063,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
       loggers: { structuredLog: structuredLog as any },
           });
@@ -1114,8 +1108,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -1172,8 +1165,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -1262,8 +1254,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
     });
 
@@ -1354,8 +1345,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -1459,8 +1449,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -1529,8 +1518,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -1614,8 +1602,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -1756,8 +1743,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -1852,8 +1838,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -1991,8 +1976,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -2140,8 +2124,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -2234,8 +2217,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -2293,8 +2275,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -2372,8 +2353,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -2445,8 +2425,7 @@ describe('PlanService', () => {
       // the `getPlanDevices` spy.
       getSettleDevices: () => unavailableBinaryConfirmations(firstLiveDevices),
       getCapacityDryRun: () => true,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -2536,8 +2515,7 @@ describe('PlanService', () => {
       getPlanDevices: () => liveDevices,
       getSettleDevices: () => settleDevices,
       getCapacityDryRun: () => true,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -2604,8 +2582,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -2712,8 +2689,7 @@ describe('PlanService', () => {
       getPlanDevices: () => liveDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveDevices),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
     });
 
@@ -2798,8 +2774,7 @@ describe('PlanService', () => {
       getPlanDevices: () => liveDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveDevices),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -2846,8 +2821,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => true,
-      getCurrentHourPriceLevel: () => ({ cheap: true, expensive: false }),
-      getCombinedPrices: () => ({ prices: [{ total: 10 }] }),
+      getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
       getLastPowerUpdate: () => 123456,
           });
 
@@ -2907,8 +2881,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -2961,8 +2934,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
       loggers: { structuredLog: structuredLog as any },
           });
@@ -3360,8 +3332,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
           });
@@ -3421,8 +3392,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
           });
@@ -3499,8 +3469,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
           });
 
@@ -3567,8 +3536,7 @@ describe('PlanService', () => {
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
           });
@@ -3605,8 +3573,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
           });
@@ -3643,8 +3610,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
-      getCombinedPrices: () => null,
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
           });

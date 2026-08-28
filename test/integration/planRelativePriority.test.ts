@@ -5,6 +5,7 @@ import { buildIdentityDecorationBundle } from '../../lib/plan/planBuilderDecorat
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 const buildDevice = (id: string, priority: number): PlanInputDevice => withBinaryDiscriminant({
   ...buildPlanInputDevice({
@@ -42,7 +43,7 @@ describe('PlanBuilder relative priority constraint', () => {
       getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
-      getCurrentHourPriceLevel: () => ({ cheap: false, expensive: false }),
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
       getDailyBudgetSnapshot: () => null,
       // The live dependency is intentionally stale: every consumer in this
