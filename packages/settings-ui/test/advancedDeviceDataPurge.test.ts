@@ -98,6 +98,32 @@ describe('advanced device data purge', () => {
     expect(homey.__settingsStore[TEMPERATURE_CONTROL_DISABLED_DEVICES]).toEqual({ [KEEP_ID]: true });
   });
 
+  it('purges a catalog the store already holds with a malformed mode', async () => {
+    // Regression: the write guard refuses a malformed catalog, so a stored
+    // `Away: null` used to abort "Clear device data" — after sibling purge
+    // writes had already landed. The raw catalog goes through the key's owner
+    // on the way in, so the guard sees a repaired one on the way out.
+    const homey = createHomeyMock({ settings: {
+      [CAPACITY_PRIORITIES]: { Home: { [DEVICE_ID]: 1, [KEEP_ID]: 2 } },
+      [MODE_DEVICE_TARGETS]: { Home: { [DEVICE_ID]: 20, [KEEP_ID]: 21 }, Away: null },
+    } });
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
+    const { state } = await import('../src/ui/state.ts');
+    setHomeyClient(homey);
+    state.capacityPriorities = { Home: { [DEVICE_ID]: 1, [KEEP_ID]: 2 } };
+    state.modeTargets = { Home: { [DEVICE_ID]: 20, [KEEP_ID]: 21 } };
+    state.loadedModeHomeId = 'main';
+    const { clearMultipleDeviceSettings } = await import('../src/ui/advancedDeviceDataPurge.ts');
+
+    await expect(clearMultipleDeviceSettings([DEVICE_ID])).resolves.toBeUndefined();
+    // The purged device is gone, the kept one survives, and the malformed mode
+    // is retained as an empty one rather than dropped.
+    expect(homey.__settingsStore[MODE_DEVICE_TARGETS]).toEqual({
+      Home: { [KEEP_ID]: 21 },
+      Away: {},
+    });
+  });
+
   it('blocks later purge writes until a failed reconciliation succeeds', async () => {
     const homey = createHomeyMock({ settings: {
       [TEMPERATURE_CONTROL_DISABLED_DEVICES]: perDeviceMap(true),

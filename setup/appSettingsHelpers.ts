@@ -22,7 +22,6 @@ import {
   isDeviceControlProfiles,
   isBooleanMap,
   isCommunicationModelMap,
-  isModeDeviceTargets,
   isPrioritySettings,
   isStringMap,
   normalizeEvBoostSettings,
@@ -66,6 +65,7 @@ import type { SettingsHandler } from '../lib/utils/settingsHandlers';
 import type { AppContext } from '../lib/app/appContext';
 import { resolveTemperatureControlDisabled } from './appDeviceControlHelpers';
 import { requirePlanService } from './appInit/contextGuards';
+import { sanitizeModeDeviceTargets } from '../packages/shared-domain/src/settings/modeDeviceTargets';
 
 export type CapacitySettingsSnapshot = {
   capacitySettings: { limitKw: number; marginKw: number };
@@ -214,7 +214,10 @@ export function buildCapacitySettingsSnapshot(params: {
   const nextPriorities = normalizeModePriorities(
     isPrioritySettings(priorities) ? priorities : current.capacityPriorities,
   );
-  const nextTargets = isModeDeviceTargets(modeTargets) ? modeTargets : current.modeDeviceTargets;
+  // Sanitize-and-keep, per the key's owner: a catalog carrying one malformed
+  // mode is adopted with that mode emptied, not discarded in favour of the last
+  // good snapshot. Only a blob that is not a catalog at all falls back.
+  const nextTargets = sanitizeModeDeviceTargets(modeTargets) ?? current.modeDeviceTargets;
   const nextMode = (typeof modeRaw === 'string' && modeRaw.length > 0)
     ? resolveModeNameHelper(
       modeRaw,

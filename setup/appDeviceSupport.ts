@@ -1,6 +1,6 @@
 import type Homey from 'homey';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import { isBooleanMap, isModeDeviceTargets } from '../lib/utils/appTypeGuards';
+import { isBooleanMap } from '../lib/utils/appTypeGuards';
 import {
   MODE_DEVICE_TARGETS,
   MAIN_HOME_ID,
@@ -22,6 +22,11 @@ import {
 
 export type { ResolveOperatingModeForDevice };
 import { DEFAULT_MODE_NAME } from '../packages/shared-domain/src/modeLabels';
+import {
+  isWritableModeDeviceTargets,
+  sanitizeModeDeviceTargets,
+  type ModeDeviceTargets,
+} from '../packages/shared-domain/src/settings/modeDeviceTargets';
 import {
   resolveModeTargets,
   type ModeTargetDevice,
@@ -325,7 +330,7 @@ export function persistFilledModeTargets(params: {
         .map(([deviceId, targetC]) => ({ mode, deviceId, targetC }));
     });
     if (filled.length === 0) return [];
-    const next: ModeTargetsBlob = Object.fromEntries([
+    const next: ModeDeviceTargets = Object.fromEntries([
       ...Object.entries(read.catalog),
       ...modes.map((mode) => [mode, {
         ...(read.catalog[mode] ?? {}),
@@ -335,7 +340,7 @@ export function persistFilledModeTargets(params: {
     return [{ homeId, key, next, filled }];
   });
   if (writes.length === 0) return;
-  if (writes.some((write) => !isModeDeviceTargets(write.next))) return;
+  if (writes.some((write) => !isWritableModeDeviceTargets(write.next))) return;
 
   writes.forEach((write) => {
     settings.set(write.key, write.next);
@@ -385,7 +390,7 @@ function buildModeTargetProbe(device: UnrankedPlanInputDevice): ModeTargetDevice
   return [{ id: device.id, heldSetpointC: normalized }];
 }
 
-type ModeTargetsBlob = Record<string, Record<string, number>>;
+
 
 // Per-process record of (home, mode, device) entries this process has already
 // filled. Once filled, never re-fill in this process even if the entry goes
@@ -404,7 +409,7 @@ export function __resetModeTargetFillDedupeForTests(): void {
 }
 
 type ModeTargetsCatalogRead =
-  | { state: 'resolved'; catalog: ModeTargetsBlob }
+  | { state: 'resolved'; catalog: ModeDeviceTargets }
   | { state: 'unavailable' };
 
 /**
@@ -430,7 +435,7 @@ function readModeTargetsCatalog(
   } catch {
     return { state: 'unavailable' };
   }
-  const parsed = parseModeDeviceTargets(raw);
+  const parsed = sanitizeModeDeviceTargets(raw);
   if (parsed !== null) return { state: 'resolved', catalog: parsed };
   if (raw !== undefined && raw !== null) return { state: 'unavailable' };
   let keys: unknown;
@@ -446,22 +451,3 @@ function readModeTargetsCatalog(
   return keys.includes(key) ? { state: 'unavailable' } : { state: 'resolved', catalog: {} };
 }
 
-function parseModeDeviceTargets(value: unknown): ModeTargetsBlob | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([mode, entries]) => {
-      // Preserve the mode key even when its value is missing/null/primitive —
-      // dropping it would silently delete a user-configured mode from the blob
-      // on the next write. Coerce to an empty entry instead so the mode
-      // survives and this pass can still populate it.
-      if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
-        return [mode, {} as Record<string, number>] as const;
-      }
-      const cleaned = Object.fromEntries(
-        Object.entries(entries as Record<string, unknown>)
-          .filter(([, raw]) => typeof raw === 'number' && Number.isFinite(raw)),
-      ) as Record<string, number>;
-      return [mode, cleaned] as const;
-    }),
-  );
-}

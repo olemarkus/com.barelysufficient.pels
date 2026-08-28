@@ -7,6 +7,7 @@ import {
 import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
+  OPERATING_MODE_SETTING,
   PRICE_OPTIMIZATION_SETTINGS,
 } from '../../lib/utils/settingsKeys';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -62,6 +63,40 @@ describe('disableUnsupportedDevices', () => {
 
     expect(settings.set).not.toHaveBeenCalled();
     expect(debugStructured).not.toHaveBeenCalled();
+  });
+
+  it('seeds the shed floor when the active mode is stored malformed', () => {
+    // Regression: this path parsed `mode_device_targets` itself and read a
+    // malformed mode as `unavailable`, so the seed was skipped — a third policy
+    // for one key. Through the key's owner a malformed mode is an EMPTY mode,
+    // so the target reads as absent and the default is derived as usual.
+    const settings = makeSettings({
+      [MANAGED_DEVICES]: { 'panel-1': true },
+      [CONTROLLABLE_DEVICES]: { 'panel-1': true },
+      [OPERATING_MODE_SETTING]: 'Home',
+      mode_device_targets: { Home: null },
+    });
+
+    disableUnsupportedDevices({
+      snapshot: [{
+        available: true,
+        expectedPowerKw: 1,
+        expectedPowerSource: 'default',
+        id: 'panel-1',
+        name: 'Panel heater',
+        deviceType: 'temperature',
+        deviceClass: 'heater',
+        powerCapable: true,
+        capabilities: ['target_temperature'],
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C', min: 5, max: 35, step: 0.5 }],
+      }] as any,
+      settings: settings as any,
+      debugStructured: vi.fn(),
+    });
+
+    expect(settings.set).toHaveBeenCalledWith('overshoot_behaviors', expect.objectContaining({
+      'panel-1': expect.objectContaining({ action: 'set_temperature' }),
+    }));
   });
 
   it('emits price-only log when unsupported settings are adjusted', () => {

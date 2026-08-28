@@ -43,7 +43,7 @@ import {
   withModeMutationLock,
 } from './modeRename.ts';
 import { applyCurrentModeRename } from './currentModes.ts';
-import { parseModeNumberMap, parseRequiredModeMaps } from './modeCatalogMaps.ts';
+import { assertWritableModeDeviceTargets, readModeCatalogPair } from './modeCatalogMaps.ts';
 import {
   readBooleanSettingMap, readModeAliases, readModeSettings,
   readStrictBooleanSettingMap, type ModeSettingsRead,
@@ -99,10 +99,7 @@ const selectedModeSettingKey = (baseKey: string, homeId = getHomeScope().selecte
 );
 
 const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
-  const allowAbsent = homeId === MAIN_HOME_ID;
-  const priorities = parseModeNumberMap(read.priorities, allowAbsent);
-  const targets = parseModeNumberMap(read.targets, allowAbsent);
-  if (priorities === null || targets === null) throw new Error('Mode catalog unavailable');
+  const [priorities, targets] = readModeCatalogPair(read.priorities, read.targets, homeId === MAIN_HOME_ID);
   state.loadedModeHomeId = homeId;
   if (modeSelect) modeSelect.disabled = false;
   state.activeMode = typeof read.mode === 'string' && read.mode.trim()
@@ -432,7 +429,7 @@ const ensureModeTemplates = async (
       selectedModeSettingKey(MODE_DEVICE_TARGETS, homeId),
     ),
   ]);
-  const [storedPriorities, storedTargets] = parseRequiredModeMaps(prioritiesRaw, targetsRaw, homeId === MAIN_HOME_ID);
+  const [storedPriorities, storedTargets] = readModeCatalogPair(prioritiesRaw, targetsRaw, homeId === MAIN_HOME_ID);
   const priorities = {
     ...storedPriorities,
     ...captured.priorities,
@@ -468,7 +465,8 @@ const handleAddMode = async () => {
       if (!mode) return;
       const catalog = await ensureModeTemplates(mode, homeId, captureModeCatalog());
       await setSetting(selectedModeSettingKey(CAPACITY_PRIORITIES, homeId), catalog.priorities);
-      await setSetting(selectedModeSettingKey(MODE_DEVICE_TARGETS, homeId), catalog.targets);
+      await setSetting(selectedModeSettingKey(MODE_DEVICE_TARGETS, homeId),
+        assertWritableModeDeviceTargets(catalog.targets));
       if (state.loadedModeHomeId !== homeId) return;
       applyModeCatalog(catalog);
       renderModeOptions();
@@ -508,7 +506,8 @@ const handleDeleteMode = async () => {
       }
       catalog.editingMode = catalog.activeMode;
       await setSetting(selectedModeSettingKey(CAPACITY_PRIORITIES, homeId), catalog.priorities);
-      await setSetting(selectedModeSettingKey(MODE_DEVICE_TARGETS, homeId), catalog.targets);
+      await setSetting(selectedModeSettingKey(MODE_DEVICE_TARGETS, homeId),
+        assertWritableModeDeviceTargets(catalog.targets));
       if (state.loadedModeHomeId !== homeId) return;
       applyModeCatalog(catalog);
       renderModeOptions();

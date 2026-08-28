@@ -55,10 +55,6 @@ export function isPrioritySettings(value: unknown): value is Record<string, Reco
   });
 }
 
-export function isModeDeviceTargets(value: unknown): value is Record<string, Record<string, number>> {
-  return isPrioritySettings(value);
-}
-
 export function isDeviceControlProfiles(value: unknown): value is DeviceControlProfiles {
   if (!value || typeof value !== 'object') return false;
   const normalized = normalizeDeviceControlProfiles(value);
