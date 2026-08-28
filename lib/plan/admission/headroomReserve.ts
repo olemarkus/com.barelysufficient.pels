@@ -19,8 +19,11 @@ import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from './re
  * loads cannot nibble away the contiguous block it needs to start.
  *
  * This is an ADMISSION term, not a selection decision — it only lowers the available-power figure
- * that restore admission already consumes, exactly as `reserveHeadroomForPendingRestores`
- * (`lib/plan/restore/support.ts`) already does for a device whose restore is in flight.
+ * that restore admission already consumes. `reserveHeadroomForPendingRestores` used to do the same
+ * for a device whose restore was in flight; it was removed on 2026-08-28 because its release
+ * depended on seeing the load on the whole-home meter, which is a sum and cannot attribute
+ * (`notes/state-management/actuation-clocks-and-settle.md`). This reserve does not share that
+ * flaw: it is released by the holder reaching its own step, not by watching the main meter.
  *
  * A lower-priority device IS affected: it is not resumed, it classifies as a hold, and it ACCRUES
  * held-back time — `reservedForStart` counts on the starvation clock (it paused it until

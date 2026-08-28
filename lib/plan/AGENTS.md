@@ -60,7 +60,14 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   exactly as `lib/plan/shedding/pauseHold.ts` was waved through — it passed every import check and
   still put a smart-task-shaped shed lane in the planner.
 
-  Reference: `headroomReserve.ts`, and the shipped `reserveHeadroomForPendingRestores`. The
+  Reference: `headroomReserve.ts` — the one shipped example. `reserveHeadroomForPendingRestores`
+  was the other until 2026-08-28, when it was removed; cite it as historical precedent only, and
+  note why it went, because the reasoning constrains this lane too. Its release depended on seeing
+  the load appear on the whole-home meter, and that meter is a sum which cannot attribute — a
+  heater switching off as a charger starts hides the load completely. A reserve whose release
+  cannot be evidenced degenerates into a second pacing timer beside the restore cooldown
+  (`notes/state-management/actuation-clocks-and-settle.md`). `headroomReserve.ts` does not share
+  the flaw: it is released by the holder reaching its own step, not by watching the meter. The
   no-actuation half is enforced by membership in `RESTORE_ADMISSION_HOLD_REASON_CODES` and pinned
   by `test/unit/planDecisionSemantics.test.ts` — if you add a reason here, pin it there. If your
   design needs an exemption clause written into an AGENTS.md or a note, that is evidence to

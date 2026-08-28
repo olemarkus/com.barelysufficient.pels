@@ -7,7 +7,11 @@ fixes landed.
 
 These earlier issues have already been addressed and should not be re-triaged as live unknowns:
 
-- pending-restore power is now reserved for recently restored devices
+- ~~pending-restore power is reserved for recently restored devices~~ — **removed 2026-08-28.**
+  The reservation was a second pacing timer competing with the restore cooldown, and the
+  measurement that would have released it early is not available: the whole-home meter is a sum,
+  so a heater switching off while a charger starts hides the load entirely. Protection is the
+  restore cooldown alone (`notes/state-management/actuation-clocks-and-settle.md`)
 - target-based restores go through the same restore admission gate as normal restores
 - near-zero post-reserve restores are blocked by a hard admission floor
 - stepped keep-invariant restores are blocked above the lowest non-zero step while any device is
@@ -102,5 +106,5 @@ After a batch, the normal meter-settling / restore-cooldown behavior still block
 - delayed-ramp restore sequences where the first restored device does not show full draw
   immediately
 - back-to-back restore attempts with slightly stale headroom data
-- cases where the pending-restore reservation is accurate enough to block the second restore
-- cases where a larger reserve or confirmation threshold would have changed the decision
+- back-to-back restores where the restore cooldown is the only thing pacing them, since the
+  pending-restore reservation is gone

@@ -44,11 +44,6 @@ export const SHED_GRACE_HEADROOM_FRACTION = 0.02;
 // sustained-shortfall alert's threshold is per-Flow user configuration, not a
 // fixed deadline. There is no precedent here to match, only evidence to fit.
 export const SHED_GRACE_MAX_MS = 60 * 1000;
-// Reserve headroom for recently restored devices whose elements have not yet fired.
-// Elements typically fire within 1-2 minutes; 3 minutes covers slower thermal responses.
-export const PENDING_RESTORE_WINDOW_MS = 3 * 60 * 1000;
-// A device is considered to have confirmed its draw once it reaches this fraction of expected power.
-export const PENDING_RESTORE_CONFIRMED_FRACTION = 0.5;
 export const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
 export const RESTORE_ADMISSION_RESERVE_KW = 0.25; // Final slack required after restore admission
 export const RESTORE_ADMISSION_FLOOR_KW = 0.25; // Minimum postReserveMarginKw for any restore to be admitted
