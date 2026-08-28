@@ -18,6 +18,7 @@ import {
 import { getHomeScope } from './homeScope.ts';
 import { normalizeEvCarAssociations } from '../../../contracts/src/evCarAssociations.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
+import { assertWritableModeDeviceTargets, readModeDeviceTargetsSetting } from './modeCatalogMaps.ts';
 
 /**
  * "Clear device data" on the Advanced page: which device ids the settings store
@@ -193,24 +194,30 @@ const purgeModeCatalogDeviceIds = async (
       getSetting(prioritiesKey),
       getSetting(targetsKey),
     ]);
+    // Through the key's owner, so a catalog the store already holds in a
+    // malformed shape is repaired on the way IN rather than tripping the write
+    // guard on the way out — which would abort the purge, possibly after its
+    // sibling writes had already landed.
+    const targets = readModeDeviceTargetsSetting(targetsRaw, false);
     if (
       !prioritiesRaw
       || typeof prioritiesRaw !== 'object'
       || Array.isArray(prioritiesRaw)
-      || !targetsRaw
-      || typeof targetsRaw !== 'object'
-      || Array.isArray(targetsRaw)
+      || targets === null
     ) return null;
     return {
       prioritiesKey,
       targetsKey,
       priorities: prioritiesRaw as Record<string, Record<string, number>>,
-      targets: targetsRaw as Record<string, Record<string, number>>,
+      targets,
     };
   }));
   const writes = catalogs.flatMap((catalog) => (catalog === null ? [] : [
     setSetting(catalog.prioritiesKey, removeDeviceIdsFromModeMap(catalog.priorities, deviceIds)),
-    setSetting(catalog.targetsKey, removeDeviceIdsFromModeMap(catalog.targets, deviceIds)),
+    setSetting(
+      catalog.targetsKey,
+      assertWritableModeDeviceTargets(removeDeviceIdsFromModeMap(catalog.targets, deviceIds)),
+    ),
   ]));
   const results = await Promise.allSettled(writes);
   const failure = results.find((result) => result.status === 'rejected');

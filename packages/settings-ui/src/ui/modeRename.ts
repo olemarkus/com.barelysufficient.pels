@@ -8,6 +8,7 @@ import {
 import { setSetting } from './homey.ts';
 import { setModeEditorPending } from './modeEditor.ts';
 import { state } from './state.ts';
+import { assertWritableModeDeviceTargets } from './modeCatalogMaps.ts';
 
 export type ModeRenameResult = 'duplicate' | 'noop' | 'renamed';
 export type ModeCatalogDraft = {
@@ -131,7 +132,7 @@ export const persistModeRename = async (params: {
     : { ...catalog.targets, [oldKey]: oldTargets };
   const key = (base: string): string => homeScopedSettingsKey(base, params.homeId);
   await setSetting(key(CAPACITY_PRIORITIES), transitionPriorities);
-  await setSetting(key(MODE_DEVICE_TARGETS), transitionTargets);
+  await setSetting(key(MODE_DEVICE_TARGETS), assertWritableModeDeviceTargets(transitionTargets));
   if (catalog.activeMode === oldKey) {
     catalog.activeMode = newKey;
     await setSetting(key(OPERATING_MODE_SETTING), catalog.activeMode);
@@ -139,6 +140,6 @@ export const persistModeRename = async (params: {
   await setSetting(key(MODE_ALIASES), catalog.aliases);
   if (catalog.editingMode === oldKey) catalog.editingMode = newKey;
   await setSetting(key(CAPACITY_PRIORITIES), catalog.priorities);
-  await setSetting(key(MODE_DEVICE_TARGETS), catalog.targets);
+  await setSetting(key(MODE_DEVICE_TARGETS), assertWritableModeDeviceTargets(catalog.targets));
   return { result: 'renamed', catalog };
 };

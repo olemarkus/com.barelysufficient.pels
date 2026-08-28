@@ -24,11 +24,11 @@ import {
   resolveModeName,
 } from '../../lib/utils/capacityHelpers';
 import {
-  isModeDeviceTargets,
   isPrioritySettings,
   isStringMap,
 } from '../../lib/utils/appTypeGuards';
 import { normalizeModePriorities } from '../../packages/shared-domain/src/modePriorities';
+import { sanitizeModeDeviceTargets } from '../../packages/shared-domain/src/settings/modeDeviceTargets';
 
 export type HomeModeCatalogSnapshot = {
   operatingMode: string;
@@ -170,13 +170,15 @@ const readCatalog = (
     homeScopedSettingsKey(OPERATING_MODE_SETTING, homeId),
   );
   if (modeRead.state === 'unavailable') return null;
-  if (!isStringMap(aliasesRaw) || !isPrioritySettings(prioritiesRaw) || !isModeDeviceTargets(targetsRaw)) {
+  const targets = sanitizeModeDeviceTargets(targetsRaw);
+  if (!isStringMap(aliasesRaw) || !isPrioritySettings(prioritiesRaw) || targets === null) {
     return null;
   }
   const catalog = {
     aliases: normalizeAliases(aliasesRaw),
     priorities: normalizeModePriorities(prioritiesRaw),
-    targets: cloneNestedNumberMap(targetsRaw),
+    // Already sanitized by the owner of this key, so the clone copies rather than repairs.
+    targets: cloneNestedNumberMap(targets),
   };
   return {
     ...catalog,

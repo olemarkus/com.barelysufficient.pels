@@ -12,7 +12,7 @@ import { getSetting, setSetting } from './homey.ts';
 import { getHomeScope, refreshHomeScope, subscribeToHomeScope } from './homeScope.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
-import { parseModeNumberMap } from './modeCatalogMaps.ts';
+import { parseModeNumberMap, readModeDeviceTargetsSetting } from './modeCatalogMaps.ts';
 import {
   renderCurrentModesView,
   type CurrentModeRow,
@@ -80,7 +80,7 @@ const readRow = async (homeId: string, homeName: string): Promise<CurrentModeRow
       : parseModeNumberMap(prioritiesRaw, homeId === MAIN_HOME_ID);
     const targets = catalogUnwritten
       ? { [DEFAULT_MODE_NAME]: {} }
-      : parseModeNumberMap(targetsRaw, homeId === MAIN_HOME_ID);
+      : readModeDeviceTargetsSetting(targetsRaw, homeId === MAIN_HOME_ID);
     if (priorities === null || targets === null) throw new Error('Mode catalog unavailable');
     const modes = new Set([...Object.keys(priorities), ...Object.keys(targets)]);
     const active = typeof activeRaw === 'string' && activeRaw.trim()

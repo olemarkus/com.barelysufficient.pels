@@ -206,6 +206,7 @@ Key timing:
 | Capacity model internals | `docs/technical.md` |
 | Safe pace (cap vs daily budget), budget exemption | `notes/safe-pace-two-constraints.md` |
 | **Who owns a thermostat's setpoint, and what it restores to** | `notes/temperature-ownership.md` |
+| **Reading or writing a persisted settings key** | `notes/settings-key-ownership.md` |
 | Daily budget logic | `docs/daily-budget.md` |
 | Flow card design | `docs/flow-cards.md` |
 | EV car ↔ charger link probe | `notes/ev-car-link/README.md` |

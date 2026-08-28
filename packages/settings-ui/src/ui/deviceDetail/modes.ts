@@ -23,7 +23,11 @@ import {
 } from '../../../../contracts/src/settingsKeys.ts';
 import { getSetting } from '../homey.ts';
 import { getHomeIdForUiDevice } from '../homeScope.ts';
-import { parseModeNumberMap } from '../modeCatalogMaps.ts';
+import {
+  assertWritableModeDeviceTargets,
+  parseModeNumberMap,
+  readModeDeviceTargetsSetting,
+} from '../modeCatalogMaps.ts';
 import { serializeModeCatalogWrite } from '../modeRename.ts';
 
 const modesHelpEl = document.querySelector<HTMLElement>('#device-detail-modes-help');
@@ -69,7 +73,7 @@ const persistTargetPatchBatch = async (homeId: string): Promise<void> => {
   await serializeModeCatalogWrite(homeId, async () => {
     if ((pendingTargetPatches.get(homeId)?.length ?? 0) === 0) return;
     const key = homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId);
-    const stored = parseModeNumberMap(
+    const stored = readModeDeviceTargetsSetting(
       await getSetting(key),
       homeId === MAIN_HOME_ID,
     );
@@ -83,7 +87,7 @@ const persistTargetPatchBatch = async (homeId: string): Promise<void> => {
           ? patches[patches.length - 1]!.revision
           : 0;
         flushedPatches = [...patches];
-        return mergeTargetPatches(stored, patches);
+        return assertWritableModeDeviceTargets(mergeTargetPatches(stored, patches));
       });
       if (state.loadedModeHomeId === homeId) {
         state.modeTargets = mergeTargetPatches(state.modeTargets, flushedPatches);
@@ -287,7 +291,7 @@ const loadDetailCatalog = async (homeId: string): Promise<DetailModeCatalog> => 
   ]);
   const allowAbsent = homeId === MAIN_HOME_ID;
   const priorities = parseModeNumberMap(prioritiesRaw, allowAbsent);
-  const targets = parseModeNumberMap(targetsRaw, allowAbsent);
+  const targets = readModeDeviceTargetsSetting(targetsRaw, allowAbsent);
   if (priorities === null || targets === null) throw new Error('Mode catalog unavailable');
   return {
     activeMode: typeof activeRaw === 'string' && activeRaw.trim() ? activeRaw : 'Home',

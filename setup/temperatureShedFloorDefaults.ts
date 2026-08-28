@@ -24,6 +24,7 @@ import {
   normalizeShedTemperature,
 } from '../lib/utils/airtreatmentShedTemperature';
 import { getPrimaryTargetCapability } from '../lib/utils/targetCapabilities';
+import { sanitizeModeDeviceTargets } from '../packages/shared-domain/src/settings/modeDeviceTargets';
 
 /**
  * Per-device active-mode resolution, carrying the producer's read-outcome
@@ -99,18 +100,15 @@ function readModeTarget(params: {
   } catch {
     return { state: 'unavailable' };
   }
-  if (!modeTargetsRaw || typeof modeTargetsRaw !== 'object' || Array.isArray(modeTargetsRaw)) {
-    return { state: 'unavailable' };
-  }
-
-  const modeTargets = modeTargetsRaw as Record<string, Record<string, unknown>>;
-  const modeMap = modeTargets[operatingMode.mode];
-  if (modeMap === undefined) return { state: 'resolved', modeTarget: null };
-  if (!modeMap || typeof modeMap !== 'object' || Array.isArray(modeMap)) {
-    return { state: 'unavailable' };
-  }
-  const value = modeMap[params.deviceId];
-  return { state: 'resolved', modeTarget: Number.isFinite(value) ? Number(value) : null };
+  // Through the key's owner: this used to parse the same bytes itself and read
+  // a malformed mode as `unavailable`, where the owner reads it as an empty
+  // mode. That is the third policy for one key this PR exists to remove — it
+  // made a device skip its overshoot seed instead of treating the target as
+  // absent (`notes/settings-key-ownership.md`).
+  const modeTargets = sanitizeModeDeviceTargets(modeTargetsRaw);
+  if (modeTargets === null) return { state: 'unavailable' };
+  const value = modeTargets[operatingMode.mode]?.[params.deviceId];
+  return { state: 'resolved', modeTarget: value === undefined ? null : value };
 }
 
 function resolveTemperatureWithoutOnOffOvershootUpdate(params: {
