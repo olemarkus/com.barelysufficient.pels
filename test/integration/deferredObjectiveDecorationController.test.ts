@@ -13,7 +13,6 @@ const buildDevice = (): PlanInputDevice => withBinaryDiscriminant(withFixtureRes
   boostRequested: false,
   hasStandingDemand: true,
   surplusTracking: false,
-  surplusFloor: 'off' as const,
   confirmedNotDrawing: false,
   targets: [],
   binaryCapabilityId: 'onoff',

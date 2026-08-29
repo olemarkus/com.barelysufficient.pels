@@ -10,9 +10,9 @@
 // writes back through the SDK: `api.put` of `target_power` in watts.
 //
 // The ladder is the real EV 1-phase preset, so its rungs are the real ones —
-// 6 A = 1380 W is the floor, and there is nothing between that and off. That is
-// the whole reason the floor policy exists, and both branches of it are covered
-// here.
+// 6 A = 1380 W is the floor, and there is nothing between that and off. When the
+// export cannot fund that floor the charger STOPS, and where it parks is the
+// configured shed action's answer, not this feature's.
 //
 // Counterparts: test/integration/surplusTrackingCeiling.test.ts (planner layer,
 // which clamp wins) and test/unit/surplusTracking.test.ts (the allocator).
@@ -73,10 +73,7 @@ const wireHomePower = () => {
   });
 };
 
-const seedSettings = (params: {
-  surplusWilling: boolean;
-  surplusFloor?: 'off' | 'minimum';
-}) => {
+const seedSettings = (params: { surplusWilling: boolean }) => {
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
   // Cap far above any draw here — capacity pressure never sheds in these tests,
   // so the only thing that can move the charger is the surplus ceiling.
@@ -98,7 +95,6 @@ const seedSettings = (params: {
       cheapDelta: 0,
       expensiveDelta: 0,
       surplusWilling: params.surplusWilling,
-      ...(params.surplusFloor ? { surplusFloor: params.surplusFloor } : {}),
     },
   });
   // A home that has exported before — the persisted evidence that makes the
@@ -120,6 +116,11 @@ const targetPowerPuts = (putSpy: { mock: { calls: unknown[][] } }): number[] => 
   .filter(([path]) => path === cap(CHARGER, 'target_power'))
   .map(([, body]) => (body as { value?: number } | undefined)?.value)
   .filter((value): value is number => typeof value === 'number');
+
+const chargingPuts = (putSpy: { mock: { calls: unknown[][] } }): boolean[] => putSpy.mock.calls
+  .filter(([path]) => path === cap(CHARGER, 'evcharger_charging'))
+  .map(([, body]) => (body as { value?: boolean } | undefined)?.value)
+  .filter((value): value is boolean => typeof value === 'boolean');
 
 describe('Solar surplus tracking (SDK-boundary e2e)', () => {
   beforeEach(() => {
@@ -168,13 +169,18 @@ describe('Solar surplus tracking (SDK-boundary e2e)', () => {
     expect(commanded.every((watts) => watts <= 1840)).toBe(true);
   });
 
-  it('holds the charger at off under the "stop" floor when export cannot reach 6 A', async () => {
-    // 0.8 kW of export: below the 1380 W ladder floor, so no rung fits. The
-    // default floor policy stops rather than importing the difference.
-    const charger = await buildCharger(0);
+  it('stops the charger when export cannot reach 6 A', async () => {
+    // 0.8 kW of export: below the 1380 W ladder floor, so nothing funds a rung
+    // and the charger stops rather than importing the difference.
+    // Built at a running rung so a command IS required to stop it — asserting
+    // `every(w => w < 1380)` on an empty list would pass without PELS acting.
+    const charger = await buildCharger(2760);
     setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
-    seedSettings({ surplusWilling: true, surplusFloor: 'off' });
-    homePowerW = -800;
+    seedSettings({ surplusWilling: true });
+    // The charger is already pulling 2760 W, so a home with only 0.8 kW of TRUE
+    // surplus reads +1960 W at the meter. The pool reconstructs to 0.8 kW once
+    // its own draw is added back — under the 1380 W ladder floor either way.
+    homePowerW = 1960;
     wireHomePower();
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
@@ -183,7 +189,17 @@ describe('Solar surplus tracking (SDK-boundary e2e)', () => {
     await advancePolls(40);
     await drainPending();
 
-    expect(targetPowerPuts(putSpy).every((watts) => watts < 1380)).toBe(true);
+    // WHERE it stops is the configured shed action's answer, not this feature's.
+    // No shed behaviour is seeded, so the default `turn_off` applies — and for
+    // this charger that is its BINARY handle. The EV preset ladder deliberately
+    // carries no 0 W rung (its lowest is the 6 A step), so the current axis
+    // parks there and is inert while the charger is off.
+    //
+    // This is the whole point of routing the stop through the shed action: the
+    // solar path asks only THAT the device stop, and a device with an off
+    // handle gets turned off, exactly as a capacity shed would do it.
+    expect(chargingPuts(putSpy)).toContain(false);
+    expect(targetPowerPuts(putSpy).every((watts) => watts <= 1380)).toBe(true);
   });
 
   it('leaves a charger that never opted in free to use the whole cap', async () => {
@@ -202,9 +218,11 @@ describe('Solar surplus tracking (SDK-boundary e2e)', () => {
     await advancePolls(40);
     await drainPending();
 
+    // Not constrained to the 0.8 kW of export: with a 20 kW cap and no ceiling
+    // the charger climbs its ladder. Asserted as a positive — an empty command
+    // list used to satisfy this too, so a total failure to act read as a pass.
     const commanded = targetPowerPuts(putSpy);
-    // Whatever it did, it was not constrained to the 0.8 kW of export: with a
-    // 20 kW cap and no ceiling the charger is free to climb its ladder.
-    expect(commanded.some((watts) => watts >= 1380) || commanded.length === 0).toBe(true);
+    expect(commanded).not.toHaveLength(0);
+    expect(commanded.some((watts) => watts >= 1380)).toBe(true);
   });
 });

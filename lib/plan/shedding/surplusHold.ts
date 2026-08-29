@@ -1,9 +1,8 @@
 import type { PlanInputDevice } from '../planTypes';
-import type { PlanEngineState } from '../planState';
+import type { PlanEngineState, SurplusTrackingDecision } from '../planState';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { resolveBoostActive } from '../planBoost';
-import { isSteppedLoadOffStep } from '../../utils/deviceControlProfiles';
 import {
   PLAN_REASON_CODES,
   type DeviceReason,
@@ -53,42 +52,24 @@ import {
 export type SurplusHoldResult = {
   holdIds: Set<string>;
   reasonById: Map<string, DeviceReason>;
-  /**
-   * The rung a surplus-held TRACKING device is decided at — always one of its
-   * off steps. Merged into the shedding plan's `shedStepTargets`, because shed
-   * materialization reads the DECIDED rung and falls back to the device's
-   * configured shed floor only when no rung was decided.
-   *
-   * Without it a `set_step` tracker is commanded to its lowest ACTIVE rung —
-   * 6 A on a charger — while its card reads "Waiting for solar surplus". A
-   * binary dump load never needed this (its shed is off either way); a stepped
-   * one does, and getting it wrong means importing from the grid under a label
-   * saying the opposite.
-   */
-  stepTargetById: Map<string, string>;
 };
 
 export function resolveSurplusHold(params: {
   devices: readonly PlanInputDevice[];
   // Read-only: consulted for `surplusEligibilityByDevice` only; this module
   // never writes engine state (the allocator owns the eligibility lifecycle).
-  state: Pick<PlanEngineState, 'surplusEligibilityByDevice' | 'surplusTrackingStepByDevice'>;
+  state: Pick<PlanEngineState, 'surplusEligibilityByDevice' | 'surplusTrackingByDevice'>;
   excludeIds: ReadonlySet<string>;
 }): SurplusHoldResult {
   const holdIds = new Set<string>();
   const reasonById = new Map<string, DeviceReason>();
-  const stepTargetById = new Map<string, string>();
   for (const device of params.devices) {
     if (params.excludeIds.has(device.id)) continue;
     if (!isSurplusHeldDevice(device, params.state)) continue;
     holdIds.add(device.id);
     reasonById.set(device.id, { code: PLAN_REASON_CODES.awaitingSolarSurplus });
-    const ceilingStepId = params.state.surplusTrackingStepByDevice[device.id];
-    if (device.surplusTracking && ceilingStepId !== undefined) {
-      stepTargetById.set(device.id, ceilingStepId);
-    }
   }
-  return { holdIds, reasonById, stepTargetById };
+  return { holdIds, reasonById };
 }
 
 /**
@@ -110,35 +91,34 @@ export function resolveSurplusHold(params: {
  */
 export const isSurplusHeldDevice = (
   device: PlanInputDevice,
-  state: Pick<PlanEngineState, 'surplusEligibilityByDevice' | 'surplusTrackingStepByDevice'>,
+  state: Pick<PlanEngineState, 'surplusEligibilityByDevice' | 'surplusTrackingByDevice'>,
 ): boolean => {
   if (device.surplusOnly === true) {
     return !isEligibleAndRunnable(device, state.surplusEligibilityByDevice[device.id]);
   }
   if (device.surplusTracking) {
-    return isTrackingClampedToOff(device, state.surplusTrackingStepByDevice[device.id]);
+    return isTrackingStopped(device, state.surplusTrackingByDevice[device.id]);
   }
   return false;
 };
 
 /**
- * A surplus-TRACKING device is held exactly when its allocated ceiling is an off
- * rung — the `'off'` floor policy's answer to "there is not enough sun". Under
- * the `'minimum'` policy the ceiling is the ladder floor instead, so the device
- * keeps running and is never held: it is limited, not waiting, and the card must
- * not tell the owner otherwise.
+ * A surplus-TRACKING device is held exactly when the allocator decided it stops.
  *
- * Note this asks the CEILING, not eligibility. A tracking device's eligibility
- * governs whether it may climb above its floor; the hold is about whether it
- * runs at all, and the allocator has already folded the floor policy into the
- * one answer. Reading eligibility here instead would hold a `'minimum'` device
- * that is deliberately still drawing.
+ * It asks the DECISION, never a step id, and an ABSENT decision is not a stop —
+ * absence means the allocator had no answer (not a stepped load, not
+ * commandable, no runnable rung), and reading it as a stop would shed an
+ * unplugged charger for want of sun it was never going to draw.
+ *
+ * The hold says only THAT the device stops. Where it parks is the configured
+ * shed action's answer, resolved on the ordinary shed path, so a solar stop and
+ * a capacity stop land in the same place.
  */
-const isTrackingClampedToOff = (
+const isTrackingStopped = (
   device: PlanInputDevice,
-  ceilingStepId: string | undefined,
+  decision: SurplusTrackingDecision | undefined,
 ): boolean => {
-  if (ceilingStepId === undefined) return false;
+  if (decision?.kind !== 'stopped') return false;
   if (!isSteppedLoadDevice(device)) return false;
   // A boost outranks the surplus posture, and THIS is where that has to be
   // honoured — not only in the keep and restore ceiling paths. Those run after
@@ -147,8 +127,7 @@ const isTrackingClampedToOff = (
   // leaving their boost bypasses unreachable. Without this a low-battery
   // charger sits off until the sun returns, which is the opposite of what a
   // boost is for.
-  if (resolveBoostActive(device)) return false;
-  return isSteppedLoadOffStep(device.steppedLoadProfile, ceilingStepId);
+  return !resolveBoostActive(device);
 };
 
 // Suppress the hold ONLY when the device is eligible AND safe to run on the

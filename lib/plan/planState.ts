@@ -61,6 +61,48 @@ export type SurplusEligibilityState = {
   hardOffReleased?: boolean;
 };
 
+/**
+ * The surplus allocator's answer for a tracking device this build: the rung its
+ * surplus bought, or STOPPED.
+ *
+ * Absence is a THIRD state and must never be read as stopped. It means the
+ * allocator had no answer to give — the device is not a stepped load, is not
+ * commandable (an unplugged charger), or has no runnable rung — and reading that
+ * as "stop" would shed a device for want of sun it was never going to draw.
+ *
+ * `stopped` says only THAT the device stops, never how. What stopping means is
+ * the configured shed action's answer (`ShedBehavior`), reached through the
+ * ordinary shed path like any other shed.
+ */
+export type SurplusTrackingDecision =
+  | {
+    kind: 'rung';
+    stepId: string;
+    /**
+     * Did the surplus actually pay for this rung? False while the release
+     * settle/dwell runs: the gate still says the device may run, but the pool
+     * no longer covers even the ladder floor, so the device holds its cheapest
+     * rung and the grid covers the difference — the same window every surplus
+     * modality has, bounded by the release timing rules rather than by this
+     * flag. The card must not claim "running on solar" through it.
+     */
+    funded: boolean;
+  }
+  | { kind: 'stopped' };
+
+/**
+ * The rung a tracking device is clamped to, or undefined when it holds no rung
+ * (stopped, or no answer). The one place the decision is narrowed to a step id,
+ * so the three ceiling lanes cannot each invent their own reading of it.
+ */
+export const resolveSurplusCeilingStepId = (
+  state: Pick<PlanEngineState, 'surplusTrackingByDevice'>,
+  deviceId: string,
+): string | undefined => {
+  const decision = state.surplusTrackingByDevice[deviceId];
+  return decision?.kind === 'rung' ? decision.stepId : undefined;
+};
+
 export type HeadroomCardState = {
   lastUsageKw?: number;
   lastUsageFreshnessMs?: number;
@@ -359,17 +401,16 @@ export class PlanEngineState {
   // floor overrode it). Drives the device card's "Raised to use your solar power" reason.
   surplusAbsorbActiveByDevice: Record<string, boolean> = {};
 
-  // Per-device: the ladder rung this cycle's surplus allocation bought a
-  // surplus-TRACKING device. Absent means the device is not tracking, or that no
-  // rung fit and the `'off'` floor applies. Read as a CEILING on the desired
-  // step — never as an instruction to actuate — so capacity shedding stays the
-  // ceiling above it. In-memory like its siblings: a restart drops it, and the
-  // next build re-allocates from a fresh meter reading.
-  surplusTrackingStepByDevice: Record<string, string> = {};
+  // Per-device: this cycle's surplus allocation for a surplus-TRACKING device.
+  // A rung is read as a CEILING on the desired step — never as an instruction to
+  // actuate — so capacity shedding stays the ceiling above it. In-memory like its
+  // siblings: a restart drops it, and the next build re-allocates from a fresh
+  // meter reading.
+  surplusTrackingByDevice: Record<string, SurplusTrackingDecision> = {};
 
   // Per-device: when the tracking ceiling above last MOVED UP. Paces climbs only
   // — see `SURPLUS_TRACK_STEP_MIN_INTERVAL_MS`. In-memory, pruned in lockstep
-  // with the ceiling itself.
+  // with the decision itself.
   surplusTrackingRaisedMs: Record<string, number> = {};
 
   lastOvershootSummarySignature: string | null = null;

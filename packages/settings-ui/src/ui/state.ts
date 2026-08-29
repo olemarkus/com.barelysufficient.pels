@@ -1,7 +1,3 @@
-import {
-  DEFAULT_SURPLUS_FLOOR,
-  type SurplusFloorPolicy,
-} from '../../../shared-domain/src/settings/surplusFloor.ts';
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlProfiles,
@@ -28,8 +24,6 @@ export type ShedBehavior = {
   stepId?: string;
 };
 
-export type { SurplusFloorPolicy };
-
 export type PriceOptimizationConfig = {
   enabled: boolean;
   cheapDelta: number;
@@ -39,7 +33,6 @@ export type PriceOptimizationConfig = {
   // byte-identical.
   surplusWilling?: boolean;
   surplusDelta?: number;
-  surplusFloor?: SurplusFloorPolicy;
 };
 
 /**
@@ -151,7 +144,6 @@ export const defaultPriceOptimizationConfig: PriceOptimizationConfig = {
   expensiveDelta: -5,
   surplusWilling: false,
   surplusDelta: 2,
-  surplusFloor: DEFAULT_SURPLUS_FLOOR,
 };
 
 

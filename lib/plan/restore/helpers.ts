@@ -1,6 +1,6 @@
 import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
 import type { RestoreTiming } from './timing';
-import type { PlanEngineState } from '../planState';
+import { resolveSurplusCeilingStepId, type PlanEngineState } from '../planState';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import {
   buildComparableDeviceReason,
@@ -189,7 +189,7 @@ function admitStepUnderSurplusCeiling<T extends { id: string; planningPowerW: nu
   if (!nextStep) return null;
   if (!dev.surplusTracking) return nextStep;
   if (dev.boostActive === true) return nextStep;
-  const ceilingStepId = state.surplusTrackingStepByDevice[dev.id];
+  const ceilingStepId = resolveSurplusCeilingStepId(state, dev.id);
   if (ceilingStepId === undefined) return nextStep;
   const ceilingStep = getSteppedLoadStep(dev.steppedLoadProfile, ceilingStepId);
   if (!ceilingStep) return nextStep;

@@ -1,15 +1,14 @@
 // The "Charge on solar surplus" tracking toggle in the device detail panel:
 // the gate matrix on the rendered surface (a stepped charger offers it, a plain
-// binary device gets the dump-load toggle instead), the kind-specific label, the
-// floor selector's honesty requirement (the real kW in visible text), and the
-// persisted blob round-trip. Runs across the mobile-width (480 px) and
-// narrow-width (320 px) projects.
+// binary device gets the dump-load toggle instead), the kind-specific label, and
+// the persisted blob round-trip. One toggle is the whole control — what the
+// device does when the surplus runs out is the Power limiting section's answer,
+// not this one's. Runs across the mobile-width (480 px) and narrow-width
+// (320 px) projects.
 import { expect, test, type Page } from './fixtures/test';
 import {
   readMdSwitchSelected,
-  readMdValue,
   setMdSwitch,
-  setMdValue,
 } from './fixtures/materialWeb';
 
 const CHARGER = 'dev_zaptec';
@@ -76,50 +75,29 @@ test.describe('Charge on solar surplus (tracking toggle)', () => {
     await expect(page.locator('#device-detail-surplus-opt-row')).toBeVisible();
   });
 
-  test('opting in reveals the floor choice and names the real kW in visible text', async ({ page }) => {
+  test('the toggle row carries its own copy and no internal vocabulary', async ({ page }) => {
     await openDeviceDetail(page, CHARGER);
-    // Hidden until opted in — an owner who has not turned the feature on has no
-    // decision to make here.
-    await expect(page.locator('#device-detail-surplus-track-section')).toBeHidden();
-
-    await setMdSwitch(page, '#device-detail-surplus-track-opt', true);
-    const section = page.locator('#device-detail-surplus-track-section');
-    await section.scrollIntoViewIfNeeded();
-    await expect(section).toBeVisible();
-    await expect(section).toContainText('When surplus runs out');
-
-    // The honesty requirement: "keep going at the lowest level" means grid
-    // import, and how much must be stated on the surface rather than in a
-    // tooltip — a hover tooltip is unreachable in the touch WebView. This
-    // charger's ladder floor is 1380 W.
-    await expect(page.locator('#device-detail-surplus-floor-hint')).toContainText('1.4 kW');
+    const row = page.locator('#device-detail-surplus-track-row');
+    await row.scrollIntoViewIfNeeded();
+    await expect(row).toBeVisible();
 
     // Jargon guard: the internal vocabulary never leaks to the owner.
-    await expect(section).not.toContainText('ceiling');
-    await expect(section).not.toContainText('surplusTracking');
+    await expect(row).not.toContainText('ceiling');
+    await expect(row).not.toContainText('surplusTracking');
+    await expect(row).not.toContainText('shed');
   });
 
-  test('the floor choice persists and survives reopening the panel', async ({ page }) => {
+  test('the opt-in persists and survives reopening the panel', async ({ page }) => {
     await openDeviceDetail(page, CHARGER);
     expect(await readMdSwitchSelected(page, '#device-detail-surplus-track-opt')).toBe(false);
     await setMdSwitch(page, '#device-detail-surplus-track-opt', true);
 
     await expect.poll(async () => {
       const settings = await readHomeySetting<Record<string, {
-        surplusWilling?: boolean; surplusFloor?: string;
+        surplusWilling?: boolean;
       }> | null>(page, 'price_optimization_settings');
       return settings?.[CHARGER]?.surplusWilling;
     }).toBe(true);
-
-    // `md-filled-select` is a web component, not a native <select>.
-    await setMdValue(page, '#device-detail-surplus-floor', 'minimum');
-    await expect.poll(async () => {
-      const settings = await readHomeySetting<Record<string, { surplusFloor?: string }> | null>(
-        page,
-        'price_optimization_settings',
-      );
-      return settings?.[CHARGER]?.surplusFloor;
-    }).toBe('minimum');
 
     await page.locator('#device-detail-close').click();
     await expect(page.locator('#device-detail-overlay')).toBeHidden();
@@ -127,6 +105,5 @@ test.describe('Charge on solar surplus (tracking toggle)', () => {
     await row.locator('.pels-device-card__detail-button').click();
     await expect(page.locator('#device-detail-overlay')).toBeVisible();
     expect(await readMdSwitchSelected(page, '#device-detail-surplus-track-opt')).toBe(true);
-    expect(await readMdValue(page, '#device-detail-surplus-floor')).toBe('minimum');
   });
 });

@@ -189,7 +189,6 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
     boostRequested: false,
     hasStandingDemand: true,
     surplusTracking: false,
-    surplusFloor: 'off' as const,
     // Drawing at its current step, so the boost is not released.
     confirmedNotDrawing: false,
     controllable: true,
@@ -218,7 +217,6 @@ const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryD
   boostRequested: false,
   hasStandingDemand: true,
   surplusTracking: false,
-  surplusFloor: 'off' as const,
   confirmedNotDrawing: false,
     controllable: true,
     binaryCapabilityId: 'onoff' as const,

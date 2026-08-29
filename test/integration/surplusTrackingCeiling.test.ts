@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolveSteppedKeepDesiredStepId } from '../../lib/plan/planSteppedLoad';
 import { resolveSurplusHold } from '../../lib/plan/shedding/surplusHold';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState, type SurplusTrackingDecision } from '../../lib/plan/planState';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanInputDevice, steppedProfile } from '../utils/planTestUtils';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
@@ -74,42 +74,37 @@ describe('surplus tracking ceiling — keep path', () => {
 });
 
 describe('surplus tracking ceiling — the hold', () => {
-  const hold = (device: PlanInputDevice, ceilingStepId: string | undefined) => {
+  const hold = (device: PlanInputDevice, decision: SurplusTrackingDecision | undefined) => {
     const state = createPlanEngineState();
-    if (ceilingStepId !== undefined) state.surplusTrackingStepByDevice[device.id] = ceilingStepId;
+    if (decision !== undefined) state.surplusTrackingByDevice[device.id] = decision;
     return resolveSurplusHold({ devices: [device], state, excludeIds: new Set() });
   };
 
-  it('holds a device whose allocation clamped it to an off rung, and says why', () => {
-    const result = hold(buildTracker(), 'off');
+  it('holds a device the allocator stopped, and says why', () => {
+    const result = hold(buildTracker(), { kind: 'stopped' });
     expect(result.holdIds.has(CHARGER)).toBe(true);
     expect(result.reasonById.get(CHARGER)).toEqual({
       code: PLAN_REASON_CODES.awaitingSolarSurplus,
     });
   });
 
-  it('does NOT hold a device parked on an active rung — it is limited, not waiting', () => {
-    // This is the `'minimum'` floor policy's device: still drawing, topped up
-    // from the grid. Telling its owner it is "waiting for solar surplus" would
-    // be false.
-    expect(hold(buildTracker(), 'low').holdIds.has(CHARGER)).toBe(false);
+  it('does NOT hold a device holding a rung — it is limited, not waiting', () => {
+    expect(hold(buildTracker(), { kind: 'rung', stepId: 'low', funded: true }).holdIds.has(CHARGER)).toBe(false);
   });
 
-  it('does not hold a device with no allocation at all', () => {
+  it('does not hold a device with NO decision — absence is not a stop', () => {
+    // Absence means the allocator had no answer: not a stepped load, not
+    // commandable (an unplugged charger), or no runnable rung. Shedding on that
+    // would stop a device for want of sun it was never going to draw.
     expect(hold(buildTracker(), undefined).holdIds.has(CHARGER)).toBe(false);
   });
 
-  it('carries the off rung as the DECIDED step target, not just a shed-set entry', () => {
-    // The regression: shed materialization falls back to the device's CONFIGURED
-    // shed floor when no rung was decided, and for a `set_step` device that
-    // floor is its lowest ACTIVE rung — 6 A on a charger. The device would keep
-    // drawing from the grid while its card read "Waiting for solar surplus".
-    const result = hold(buildTracker(), 'off');
-    expect(result.stepTargetById.get(CHARGER)).toBe('off');
-  });
-
-  it('does not claim a step target for a device it is not holding', () => {
-    expect(hold(buildTracker(), 'low').stepTargetById.has(CHARGER)).toBe(false);
+  it('leaves WHERE a stopped device parks to the shed action, claiming no rung itself', () => {
+    // The hold says only THAT the device stops. It deliberately hands the
+    // shedding plan no step target, so materialization reaches the configured
+    // shed behaviour and a solar stop lands exactly where a capacity stop does.
+    const result = hold(buildTracker(), { kind: 'stopped' });
+    expect(result).not.toHaveProperty('stepTargetById');
   });
 
   it('does not hold a boosted device — a boost outranks the surplus posture', () => {
@@ -119,14 +114,14 @@ describe('surplus tracking ceiling — the hold', () => {
     // bypasses never execute. The hold itself has to honour the boost, or a
     // low-battery charger stays off until the sun comes back.
     const boosted = buildTracker({ boostRequested: true } as Partial<PlanInputDevice>);
-    const result = hold(boosted, 'off');
+    const result = hold(boosted, { kind: 'stopped' });
     expect(result.holdIds.has(CHARGER)).toBe(false);
   });
 
   it('never holds a device an active smart task governs', () => {
     const device = buildTracker();
     const state = createPlanEngineState();
-    state.surplusTrackingStepByDevice[device.id] = 'off';
+    state.surplusTrackingByDevice[device.id] = { kind: 'stopped' };
     const result = resolveSurplusHold({
       devices: [device],
       state,

@@ -81,12 +81,7 @@ When the reported value is amps, add `A` after the tag in the **matching** field
 
 If you have solar and PELS can see your export, you can have the charger follow the sun instead of running to your hard cap. In the charger's device page, turn on **Charge on solar surplus**.
 
-PELS then picks the charging current your export covers and adjusts it as the sun changes. Because a charger cannot go below **6 A** — about 1.4 kW on one phase, 4.1 kW on three — you also choose what happens when your surplus falls short, under **When surplus runs out**:
-
-| Setting | What happens |
-| --- | --- |
-| **Stop** (default) | Charging stops. Nothing is drawn from the grid for charging. |
-| **Keep going at the lowest level** | Charging continues at 6 A and the grid covers the rest. On a three-phase charger that is over 4 kW of import. |
+PELS then picks the charging current your export covers and adjusts it as the sun changes. A charger cannot go below **6 A** — about 1.4 kW on one phase, 4.1 kW on three — so when your surplus cannot cover even that, PELS falls back to the same **Power limiting** choice it uses for your hard cap: charging is turned off, or lowered to the step you picked and topped up from the grid.
 
 Your hard cap and daily budget still come first, and a smart task with a deadline overrides this while it is running. See [Solar and Self-Consumption](/solar) for the full picture.
 

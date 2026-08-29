@@ -869,19 +869,32 @@ program) remain deferred.*
       while they leak, but a device that returns after a long absence is judged against a posture decided
       before it left. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
-- [ ] **A smart-task-governed `surplusOnly` device is excluded from the hold but stays in the allocator
-      willing set, so it can reserve export a lower-priority dump load never gets (allocation skew).**
-      `resolveSurplusHold` excludes a device with an admitted smart task (`admittedDeviceIds`), but
-      `resolveSurplusEligibility` still includes it in the willing set and reserves its `getRestoreDrawKw`
-      from the priority-ordered pool. So a high-priority dump load being run by its smart task consumes
-      surplus budget that a lower-priority surplus-held dump load would otherwise engage on — the lower
-      device stays held even though real export exists. Candidate fix: exclude the same `excludeIds` set
-      from the allocator willing set (or credit the smart-task device's own draw as add-back so it does
-      not double-reserve). *Persona:* prosumer with two dump loads, one on a smart task. *Hypothesis:*
-      rare (needs two surplus dump loads + an active task on the higher one) and only under-uses surplus
-      (never over-draws), so low-stakes. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
-
 ## P2 Product, Observability, and Maintainability
+
+- [ ] **The "Charge on solar surplus" toggle disappears when a charger is switched to an EV
+      target-power preset, and stays hidden until the next device refetch.** The settings-UI gate
+      reads a snapshot field the mode switch has just deleted, so it hides a control the runtime
+      would still honour — the runtime/UI mirror drift the gate's own docblock exists to prevent.
+
+      **Where:** `isSurplusTrackingDeviceShape`
+      (`packages/settings-ui/src/ui/deviceDetail/solarSurplusTracking.ts`) gates on
+      `hasUsableSteppedLoadLadder(device.steppedLoadProfile)`. Switching to a preset routes through
+      `applyLocalDeviceControlProfile(deviceId, null)`
+      (`packages/settings-ui/src/ui/deviceControlProfiles.ts`), which deletes the local
+      `steppedLoadProfile`; the target-power write that follows does not repopulate it, and the
+      re-render (`refreshSharedDeviceViews` / `refreshOpenDeviceDetail`) reads that same local
+      object. The runtime meanwhile derives the ladder from the target-power capability
+      (`buildTargetPowerLadderSteps`), so it still stamps the posture.
+
+      **What changes:** gate on the effective control model rather than the raw snapshot field.
+      `getEffectiveControlModel` (`deviceControlProfiles.ts`) already answers `stepped_load` for a
+      stored target-power config with `enabled !== false`. Rule on whether the usable-ladder check
+      still has to run against the preset's derived ladder, or whether
+      `getEffectiveControlModel(device) === 'stepped_load'` is the whole gate.
+
+      **Done when:** switching a managed charger to an EV target-power preset leaves **Charge on
+      solar surplus** visible without reopening the page, pinned in
+      `packages/settings-ui/test/deviceDetailSurplusTrackingGate.test.ts`.
 
 - [ ] **The executor classifies a transport exception to decide whether a write was unacknowledged
       — the actuator seam should hand it that answer already resolved.** Both dispatch paths catch
