@@ -359,6 +359,14 @@ export class PlanEngineState {
   // floor overrode it). Drives the device card's "Raised to use your solar power" reason.
   surplusAbsorbActiveByDevice: Record<string, boolean> = {};
 
+  // Per-device: the ladder rung this cycle's surplus allocation bought a
+  // surplus-TRACKING device. Absent means the device is not tracking, or that no
+  // rung fit and the `'off'` floor applies. Read as a CEILING on the desired
+  // step — never as an instruction to actuate — so capacity shedding stays the
+  // ceiling above it. In-memory like its siblings: a restart drops it, and the
+  // next build re-allocates from a fresh meter reading.
+  surplusTrackingStepByDevice: Record<string, string> = {};
+
   lastOvershootSummarySignature: string | null = null;
 
   steppedRestoreRejectedByDevice: Record<string, {

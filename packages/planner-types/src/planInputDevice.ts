@@ -411,6 +411,22 @@ export type PlanInputDeviceBase = {
    */
   surplusOnly?: true;
   /**
+   * Producer-resolved "Match solar surplus" tracking posture. `true` when the
+   * device opted in via `surplusWilling` in the per-device price-opt blob AND
+   * carries a usable step ladder (a stepped load, which is what an EV charger
+   * under a current-control preset is). The modulating sibling of
+   * {@link surplusOnly}: rather than a baseline-off hold, the allocator parks
+   * the device on the highest rung its allocated surplus covers.
+   *
+   * Deliberately NOT gated on `hasStandingDemand`. That bit exists because a
+   * binary dump load being off means going without, and because a charger with
+   * no car would reserve surplus it never draws. The second concern is real and
+   * is answered by `commandableNow` at the allocator instead — an unplugged
+   * charger cannot claim the pool — so the planner still never asks whether a
+   * device is an EV.
+   */
+  surplusTracking?: true;
+  /**
    * Producer-resolved "Leave off until turned on again" posture. `true` when the
    * device is opted in, PELS observed an outside OFF action, and it is STILL
    * observed off. The outside action is independent of the current plan.
