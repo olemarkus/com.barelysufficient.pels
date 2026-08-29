@@ -83,7 +83,10 @@ Everything above is written about the **lift** — a raise-only setpoint delta o
 temperature device — and about the binary dump load that shares its fit-test. The
 third, *modulating* modality (`surplusTracking`, added for stepped loads and used
 first by EV chargers) does not inherit the argument unchanged, because it is not
-raise-only and, under one of its two floor policies, not net-neutral either.
+raise-only. The `surplusFloor` setting that once let an owner choose to keep
+drawing at the ladder floor indefinitely — a standing, unbounded exception to
+leg 1 — is gone. What remains is the ordinary release window every modality has,
+bounded below.
 
 ### Half 1 — the tracked device is not "starved"
 
@@ -101,10 +104,12 @@ to be unified is which devices earn the code: `resolveSurplusHold` and the
 plan-side `isSurplusOnlyHoldShed` were hand-mirrored predicates (and had drifted
 once), so both now delegate to a single `isSurplusHeldDevice`.
 
-Note the hold is narrower than the posture: a device is only *held* when its
-allocation clamped it to an off rung. Under the `'minimum'` floor it keeps
-running at the ladder floor, so it is limited rather than waiting, and it never
-carries the hold or the reason.
+Note the hold is narrower than the posture: a device is only *held* when the
+allocator decided it stops. Holding a rung — any rung, including the ladder floor
+— means it is limited rather than waiting, and it carries neither the hold nor
+the reason. An ABSENT decision is a third state again and is also not a hold: it
+means the allocator had no answer (not commandable, no runnable rung), and
+reading it as a stop would shed an unplugged charger.
 
 ### Half 2 — the fit-test, restated for a chosen rung
 
@@ -125,31 +130,66 @@ Given that, legs 2 and 4 carry over unchanged: net grid import is unaltered by a
 engaged tracking device, so it is structurally sub-cap and budget-neutral, and
 capacity shedding remains the ceiling above the surplus ceiling.
 
-### Where this argument is knowingly broken: the `'minimum'` floor
+### Where the shortfall goes: the ordinary shed path
 
 There is no rung between `off` and the ladder floor — 6 A on an EV preset, so
-1.38 kW single-phase and 4.14 kW three-phase. A shortfall therefore has exactly
-two honest answers, and `surplusFloor` lets the owner choose:
+1.38 kW single-phase and 4.14 kW three-phase. When the surplus cannot fund that
+floor, the allocator's answer is simply `{ kind: 'stopped' }`, and the device
+joins the shed set carrying `awaiting_solar_surplus`.
 
-- **`'off'`** (the default, and the absent-value reading): the device stops. The
-  argument above holds by construction.
-- **`'minimum'`**: the device keeps drawing its floor rung and the grid covers
-  the gap. **Leg 1 fails on purpose here.** Net grid import is *not* unchanged,
-  and the sub-cap / budget-neutral corollaries do not follow from this argument.
+It deliberately does not say WHERE the device stops. That is the configured shed
+action's answer (`ShedBehavior`, resolved by `resolveSteppedLoadDirectShedStepId`),
+so a solar stop parks the device exactly where a capacity stop would — `turn_off`
+for a device with an off handle, the configured lowest step for a `set_step` one.
+The allocator inventing its own "off" out of the ladder's rungs was a second
+answer to a question that already had an owner.
 
-What bounds it: the import is at most one ladder floor, it is the owner's
-explicit choice, and the hard cap and daily budget still shed the device by the
-ordinary rules — the surplus ceiling only ever *lowers* a step, so nothing here
-can raise a device past a capacity decision. `claimForTrackingDevice` also
-subtracts that floor from the pool even though the pool does not cover it,
-driving it negative, so a lower-priority device is never offered surplus this one
-is already importing against.
+Where a shed still leaves the device drawing (a `set_step` floor, or `turn_off`
+on a step-only stepper with no off rung), that draw is added back into the pool
+and reserved by the same device — `addsBackOwnDraw` and `claimForTrackingDevice`
+respectively — so it is counted exactly once and a lower-priority device is never
+offered power this one is consuming.
+
+### Where leg 1 is still bounded rather than absolute
+
+Leg 1 holds in steady state, and the hard cap and daily budget shed the device by
+the ordinary rules regardless. It does NOT hold through a release window. While
+the gate is releasing — the pool has fallen below the ladder floor but the 90 s
+settle and 5 min dwell have not both elapsed — an eligible device keeps running,
+so the grid covers what the sun no longer does. Three things bound it, and they
+are the reason this is acceptable where the old `'minimum'` policy was not:
+
+- **It is at most one ladder floor**, because the device is dropped to its
+  CHEAPEST rung for the duration rather than held where it was
+  (`resolveTrackingRung`'s final fallback).
+- **It is time-bounded** by the release rules — ≤ 90 s when the hard-off
+  condition (`poolKw <= 0`) is sustained, ≤ the 5 min dwell otherwise — where
+  `'minimum'` was a standing posture with no end.
+- **It is not claimed as solar.** The allocator records the rung as
+  `funded: false`, and `surplusAbsorbActive` gates on that, so no card says
+  "On to use your solar power" while the grid is paying for it.
+
+This is the same window the lift and the dump load already have: both keep
+drawing through their own release settle. What is new is only that a modulating
+device can shrink its draw while it waits.
 
 ### Release safety, restated
 
-A tracking device's release is a step DOWN its own ladder, so it carries no
-starvation risk for the same reason the lift's does not. One thing differs and it
-matters: the shared hard-off test (`isHardOffCondition`, raw net import above
+A tracking device's release is a step DOWN its own ladder, or a stop through the
+ordinary shed path, so it carries no starvation risk for the same reason the
+lift's does not. Two things differ and both matter.
+
+**Eligibility alone owns the on/off flip.** While the gate says the device may
+run it always holds some rung — the ladder floor if nothing better is funded —
+and it stops only when the gate releases, with the 90 s settle, the 5 min dwell
+and the hard-off bypass all applying. This was briefly split in two: the rung was
+priced against `pool − reserve` while the gate released at a bare `pool <
+floorKw`, so anywhere in the reserve band between them the device was eligible
+but "nothing fit", and was stopped on a SINGLE build with no settle at all. A
+rung already held is therefore kept on the bare pool; only a NEW or HIGHER one
+must clear the reserve.
+
+**The hard-off test is this modality's own.** The shared one (`isHardOffCondition`, raw net import above
 `SURPLUS_ABSORB_HARD_OFF_IMPORT_KW`) is **not** used for this modality. For a
 fixed-draw absorber, positive net is honest evidence that surplus is gone; for a
 modulating one it is not, because the device's own draw is what pushed net

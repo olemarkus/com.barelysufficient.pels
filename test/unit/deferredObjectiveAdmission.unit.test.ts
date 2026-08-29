@@ -186,7 +186,6 @@ describe('applyDeferredObjectiveAdmission', () => {
       boostRequested: false,
       hasStandingDemand: true,
       surplusTracking: false,
-      surplusFloor: 'off' as const,
       confirmedNotDrawing: false,
     });
     const idleHorizon = {

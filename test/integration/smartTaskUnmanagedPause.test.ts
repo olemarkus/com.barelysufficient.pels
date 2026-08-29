@@ -64,7 +64,6 @@ const buildHeaterDevice = (id: string): PlanInputDevice => withTemperatureDiscri
     boostRequested: false,
     hasStandingDemand: true,
     surplusTracking: false,
-    surplusFloor: 'off' as const,
     confirmedNotDrawing: false,
     targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
     binaryControl: { on: false },

@@ -1,15 +1,10 @@
 import {
-  deviceDetailSurplusFloor,
-  deviceDetailSurplusFloorHint,
   deviceDetailSurplusTrackDisabledHint,
-  deviceDetailSurplusTrackGateHint,
   deviceDetailSurplusTrackHint,
   deviceDetailSurplusTrackLabel,
-  deviceDetailSurplusTrackLead,
   deviceDetailSurplusTrackOpt,
   deviceDetailSurplusTrackPowerLimitHint,
   deviceDetailSurplusTrackRow,
-  deviceDetailSurplusTrackSection,
 } from '../dom.ts';
 import {
   supportsTemperatureDevice,
@@ -22,23 +17,14 @@ import {
   resolveSurplusControlAvailable,
   state,
   type PriceOptimizationConfig,
-  type SurplusFloorPolicy,
 } from '../state.ts';
 import { showToastError } from '../toast.ts';
 import { resolveDeviceDetailKind } from '../deviceKind.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
+import { hasUsableSteppedLoadLadder } from '../../../../contracts/src/deviceControlProfiles.ts';
 import {
-  getSteppedLoadLowestActiveStep,
-  hasUsableSteppedLoadLadder,
-} from '../../../../contracts/src/deviceControlProfiles.ts';
-import { resolveTargetPowerFloorW } from '../../../../shared-domain/src/targetPowerLadder.ts';
-import { getStoredTargetPowerConfig } from '../deviceControlProfiles.ts';
-import { readSurplusFloorPolicy } from '../../../../shared-domain/src/settings/surplusFloor.ts';
-import {
-  resolveSurplusFloorHint,
   SURPLUS_TRACKING_HINTS,
   SURPLUS_TRACKING_LABELS,
-  SURPLUS_TRACKING_LEADS,
   SURPLUS_TRACKING_SMART_TASK_NOTE,
   type SurplusTrackingCopyKind,
 } from '../../../../shared-domain/src/solarSurplusTrackingCopy.ts';
@@ -62,35 +48,7 @@ const isSurplusTrackingDeviceShape = (
   if (!device) return false;
   if (!controlState.canManageDevice || !controlState.isManaged) return false;
   if (supportsTemperatureDevice(device)) return false;
-  return resolveLadderFloorKw(device) !== undefined;
-};
-
-/**
- * The device's own lowest running level, in kW.
- *
- * Read from the EFFECTIVE target-power config — the stored draft first, exactly
- * as `resolveDeviceDetailControlMode` and the rest of this panel read it. That
- * matters here more than anywhere: an owner switching the control mode from EV
- * 1-phase to 3-phase must see the floor hint change from about 1.4 kW to about
- * 4.1 kW as they do it. Reading the saved snapshot instead would show them the
- * old number at the exact moment they are deciding, and the number is the whole
- * point of the setting.
- *
- * Falls back to the device's own ladder for a hand-configured stepped load with
- * no target-power config. `resolveTargetPowerFloorW` is the same derivation the
- * real ladder is built from, so the two cannot drift.
- */
-const resolveLadderFloorKw = (device: SettingsUiDeviceDetailItem): number | undefined => {
-  const config = getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig;
-  if (config && config.enabled !== false) {
-    const floorW = resolveTargetPowerFloorW(config);
-    if (floorW !== undefined && floorW > 0) return floorW / 1000;
-  }
-  const profile = device.steppedLoadProfile;
-  if (!hasUsableSteppedLoadLadder(profile)) return undefined;
-  const floor = getSteppedLoadLowestActiveStep(profile as NonNullable<typeof profile>);
-  if (!floor || !Number.isFinite(floor.planningPowerW) || floor.planningPowerW <= 0) return undefined;
-  return floor.planningPowerW / 1000;
+  return hasUsableSteppedLoadLadder(device.steppedLoadProfile);
 };
 
 const resolveCopyKind = (device: SettingsUiDeviceDetailItem): SurplusTrackingCopyKind => (
@@ -126,10 +84,14 @@ const hideTrackingRow = (): void => {
 };
 
 /**
- * Sync the "match solar surplus" toggle row and its floor section for the open
- * device. Shown when the device is a fresh candidate (shape-valid AND the home
- * has solar) OR is ALREADY opted in — the same escape hatch the dump load has,
- * so an opt-OUT stays reachable if the solar device later disappears.
+ * Sync the "match solar surplus" toggle row for the open device. Shown when the
+ * device is a fresh candidate (shape-valid AND the home has solar) OR is ALREADY
+ * opted in — the same escape hatch the dump load has, so an opt-OUT stays
+ * reachable if the solar device later disappears.
+ *
+ * One toggle is the whole control. What the device does when the surplus runs
+ * out is not asked here: it stops, and where it parks is the answer the Power
+ * limiting section already gives for every other kind of stop.
  */
 export const setDeviceDetailSurplusTrackingControl = (params: {
   deviceId: string | null;
@@ -145,13 +107,11 @@ export const setDeviceDetailSurplusTrackingControl = (params: {
   deviceDetailSurplusTrackRow.hidden = !showRow;
   if (!showRow || !params.deviceId || !device) {
     hideTrackingRow();
-    if (deviceDetailSurplusTrackSection) deviceDetailSurplusTrackSection.hidden = true;
     return;
   }
   applyTrackingCopy(device);
   deviceDetailSurplusTrackOpt.selected = optedIn;
   applyTrackingDisabledState(params.deviceId);
-  applyFloorSection(params.deviceId, device, optedIn);
 };
 
 const applyTrackingCopy = (device: SettingsUiDeviceDetailItem): void => {
@@ -163,41 +123,6 @@ const applyTrackingCopy = (device: SettingsUiDeviceDetailItem): void => {
     deviceDetailSurplusTrackHint.textContent
       = `${SURPLUS_TRACKING_HINTS[kind]} ${SURPLUS_TRACKING_SMART_TASK_NOTE}`;
   }
-  if (deviceDetailSurplusTrackLead) {
-    deviceDetailSurplusTrackLead.textContent = SURPLUS_TRACKING_LEADS[kind];
-  }
-};
-
-/**
- * The floor section only means anything once the device is opted in, so it is
- * hidden until then rather than shown greyed out — an owner who has not turned
- * the feature on has no decision to make here.
- */
-const applyFloorSection = (
-  deviceId: string,
-  device: SettingsUiDeviceDetailItem,
-  optedIn: boolean,
-): void => {
-  if (deviceDetailSurplusTrackSection) deviceDetailSurplusTrackSection.hidden = !optedIn;
-  if (!optedIn) return;
-  if (deviceDetailSurplusFloor) {
-    deviceDetailSurplusFloor.value = readSurplusFloorPolicy(
-      state.priceOptimizationSettings[deviceId]?.surplusFloor,
-    );
-  }
-  if (deviceDetailSurplusFloorHint) {
-    deviceDetailSurplusFloorHint.textContent = resolveSurplusFloorHint(
-      resolveCopyKind(device),
-      resolveLadderFloorKw(device),
-    );
-  }
-  const powerLimitOff = !isPowerLimitControlOn(deviceId);
-  if (deviceDetailSurplusTrackGateHint) {
-    deviceDetailSurplusTrackGateHint.textContent = powerLimitOff
-      ? 'Turn on Power-limit control in Setup — PELS needs it to set this device\'s level.'
-      : '';
-    deviceDetailSurplusTrackGateHint.hidden = !powerLimitOff;
-  }
 };
 
 // A fresh opt-in writes a full valid blob entry: price-response off and zero
@@ -205,20 +130,18 @@ const applyFloorSection = (
 // carrying meaning. An existing entry keeps its other fields.
 const buildTrackingConfig = (
   existing: PriceOptimizationConfig | undefined,
-  fields: { surplusWilling?: boolean; surplusFloor?: SurplusFloorPolicy },
+  surplusWilling: boolean,
 ): PriceOptimizationConfig => (
   existing
-    ? { ...existing, ...fields }
-    : { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: false, ...fields }
+    ? { ...existing, surplusWilling }
+    : { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling }
 );
 
 export const initDeviceDetailSurplusTrackingHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
   getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
 }): void => {
-  const save = async (
-    fields: { surplusWilling?: boolean; surplusFloor?: SurplusFloorPolicy },
-  ): Promise<void> => {
+  const save = async (surplusWilling: boolean): Promise<void> => {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;
     const device = params.getDeviceById(deviceId);
@@ -229,7 +152,7 @@ export const initDeviceDetailSurplusTrackingHandlers = (params: {
     if (!isSurplusTrackingDeviceShape(device, controlState)) return;
 
     const previous = state.priceOptimizationSettings[deviceId];
-    state.priceOptimizationSettings[deviceId] = buildTrackingConfig(previous, fields);
+    state.priceOptimizationSettings[deviceId] = buildTrackingConfig(previous, surplusWilling);
 
     try {
       await savePriceOptimizationSettings();
@@ -239,10 +162,7 @@ export const initDeviceDetailSurplusTrackingHandlers = (params: {
     } catch (error) {
       // Roll back only if no newer edit landed while the save was in flight.
       const current = state.priceOptimizationSettings[deviceId];
-      const unchanged = current
-        && (fields.surplusWilling === undefined || current.surplusWilling === fields.surplusWilling)
-        && (fields.surplusFloor === undefined || current.surplusFloor === fields.surplusFloor);
-      if (unchanged) {
+      if (current && current.surplusWilling === surplusWilling) {
         if (previous) {
           state.priceOptimizationSettings[deviceId] = previous;
         } else {
@@ -258,9 +178,6 @@ export const initDeviceDetailSurplusTrackingHandlers = (params: {
   };
 
   deviceDetailSurplusTrackOpt?.addEventListener('change', () => {
-    void save({ surplusWilling: deviceDetailSurplusTrackOpt.selected });
-  });
-  deviceDetailSurplusFloor?.addEventListener('change', () => {
-    void save({ surplusFloor: readSurplusFloorPolicy(deviceDetailSurplusFloor.value) });
+    void save(deviceDetailSurplusTrackOpt.selected);
   });
 };

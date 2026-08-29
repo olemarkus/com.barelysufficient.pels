@@ -270,7 +270,7 @@ export const resolveSteppedKeepDesiredStepId = (
     boostActive?: boolean;
     /**
      * The rung this cycle's surplus allocation bought a surplus-TRACKING device
-     * (`PlanEngineState.surplusTrackingStepByDevice`), resolved by the producer
+     * (`PlanEngineState.surplusTrackingByDevice`), resolved by the producer
      * and passed flat. A CEILING, never a target: it can only lower the answer
      * this function would otherwise give, so capacity shedding stays the ceiling
      * above it and the ordinary keep logic still owns everything below.

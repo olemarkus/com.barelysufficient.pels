@@ -103,7 +103,6 @@ const buildDevice = (on: boolean): PlanInputDevice => withBinaryDiscriminant(wit
   boostRequested: false,
   hasStandingDemand: true,
   surplusTracking: false,
-  surplusFloor: 'off' as const,
   confirmedNotDrawing: false,
   controllable: true,
   binaryCapabilityId: 'onoff',

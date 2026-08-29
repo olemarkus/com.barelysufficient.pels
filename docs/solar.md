@@ -78,19 +78,14 @@ On a managed device with **levels** — an EV charger set to an EV control mode,
 
 For an EV charger this is the "leave it plugged in all week" setting: the car charges on the sun, and stops when the sun stops.
 
-::: warning There is no level between off and 6 A
-A charger's lowest usable current is **6 A** — about **1.4 kW** on one phase, about **4.1 kW** on three. Below that there is nothing to select, so PELS asks you what to do when your surplus falls short, under **"When surplus runs out"**:
-
-- **Stop** (the default) — charging stops. Nothing is ever drawn from the grid on this setting's account.
-- **Keep going at the lowest level** — charging continues at that lowest current and the grid covers whatever the sun does not. On a three-phase charger that can be over 4 kW of grid import, so pick it deliberately.
-:::
+There is a floor to this: a charger's lowest usable current is **6 A** — about **1.4 kW** on one phase, about **4.1 kW** on three — and below that there is nothing to select. When your surplus cannot cover even that, PELS stops the device, exactly as it would if it needed the power back for your capacity. Where it stops is whatever you chose under **Power limiting** on that device, so the answer is the same one PELS already uses everywhere else.
 
 Some things to know:
 
 - **Your hard cap and daily budget still come first.** The surplus setting can only ever lower the level PELS would otherwise pick, never raise it past a capacity decision.
 - **A smart task wins.** If the device has a [smart task](./smart-tasks.md) with a deadline, the task's schedule decides while it is running — a deadline you asked for is not something "use only your own sun" should quietly miss.
 - **It moves in steps, not smoothly**, and it waits a couple of minutes between increases so a passing cloud does not change your charging current every few seconds. Decreases are immediate.
-- The card reads **"Waiting for solar surplus"** while a device on the **Stop** setting is held off.
+- The card reads **"Waiting for solar surplus"** while PELS is holding the device back.
 
 ### Big flexible loads use the freed-up power
 

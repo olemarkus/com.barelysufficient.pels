@@ -314,7 +314,6 @@ export const withMaterializedEvPlugState = <T extends {
     // off. A fixture may still say otherwise explicitly.
     hasStandingDemand: (overrides as { hasStandingDemand?: boolean }).hasStandingDemand ?? !isEv,
     surplusTracking: (overrides as { surplusTracking?: boolean }).surplusTracking ?? false,
-    surplusFloor: (overrides as { surplusFloor?: 'off' | 'minimum' }).surplusFloor ?? 'off',
     // Required two-state producer bit; `false` is "no calibration opinion".
     confirmedNotDrawing: (overrides as { confirmedNotDrawing?: boolean }).confirmedNotDrawing ?? false,
     ...(isEv ? { objectiveKind: 'ev_soc' as const } : {}),
@@ -924,7 +923,6 @@ export const buildPlanInputDevice = (
     boostRequested: overrides.boostRequested ?? resolveBoostRequested(fixtureBoostInput(overrides)),
     hasStandingDemand: fixtureHasStandingDemand(overrides),
     surplusTracking: overrides.surplusTracking ?? false,
-    surplusFloor: overrides.surplusFloor ?? 'off',
     // Producer-required two-state bit. Default `false` — "the calibration store
     // has no opinion", which is what an unseeded fixture genuinely means and the
     // arm that leaves boost untouched.

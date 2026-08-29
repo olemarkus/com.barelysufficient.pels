@@ -2,15 +2,15 @@
 // `resolveSurplusTrackingPosture` candidacy, the ladder helper
 // `resolveHighestStepWithinKw`, and the variable-claimant branch of
 // `resolveSurplusEligibility` — rung choice, the `commandableNow` zero-claim, the
-// two floor policies, and the remainder a fixed claimant would have discarded.
+// stop decision, and the remainder a fixed claimant would have discarded.
 // Pure over (state, params) — `nowTs` is passed explicitly, so no clock is faked.
 import { describe, expect, it } from 'vitest';
 import {
   resolveSurplusEligibility,
   resolveSurplusTrackingPosture,
-  type SurplusFloorPolicy,
 } from '../../lib/plan/planSurplusAbsorb';
 import { resolveHighestStepWithinKw } from '../../lib/plan/planSteppedLoad';
+import { applyPostSheddingHolds } from '../../lib/plan/planBuilderSurplus';
 import {
   SURPLUS_ABSORB_SETTLE_MS,
   SURPLUS_TRACK_STEP_MIN_INTERVAL_MS,
@@ -52,17 +52,30 @@ const resolve = (params: {
   signedNetKw: number | null;
   nowTs: number;
   devices: PlanInputDevice[];
-  floor?: SurplusFloorPolicy;
+  debugStructured?: (payload: Record<string, unknown>) => void;
 }): void => {
   resolveSurplusEligibility({
-    devices: params.floor
-      ? params.devices.map((dev) => ({ ...dev, surplusFloor: params.floor } as PlanInputDevice))
-      : params.devices,
+    devices: params.devices,
     state: params.state,
     signedNetKw: params.signedNetKw,
     getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
+    debugStructured: params.debugStructured,
     nowTs: params.nowTs,
   });
+};
+
+/** The `surplus_pool` composition record the allocator emits once per pass. */
+const poolRecord = (params: {
+  state: PlanEngineState;
+  signedNetKw: number;
+  nowTs: number;
+  devices: PlanInputDevice[];
+}): Record<string, unknown> => {
+  const records: Record<string, unknown>[] = [];
+  resolve({ ...params, debugStructured: (payload) => records.push(payload) });
+  const pool = records.find((record) => record.event === 'surplus_pool');
+  if (!pool) throw new Error('no surplus_pool record emitted');
+  return pool;
 };
 
 /** Drive the settle window so the engage flip actually lands. */
@@ -70,14 +83,18 @@ const engage = (params: {
   state: PlanEngineState;
   signedNetKw: number;
   devices: PlanInputDevice[];
-  floor?: SurplusFloorPolicy;
 }): void => {
   resolve({ ...params, nowTs: 0 });
   resolve({ ...params, nowTs: SURPLUS_ABSORB_SETTLE_MS + 1 });
 };
 
-const ceiling = (state: PlanEngineState, id: string = CHARGER_ID): string | undefined => (
-  state.surplusTrackingStepByDevice[id]
+const ceiling = (state: PlanEngineState, id: string = CHARGER_ID): string | undefined => {
+  const decision = state.surplusTrackingByDevice[id];
+  return decision?.kind === 'rung' ? decision.stepId : undefined;
+};
+
+const stopped = (state: PlanEngineState, id: string = CHARGER_ID): boolean => (
+  state.surplusTrackingByDevice[id]?.kind === 'stopped'
 );
 
 describe('resolveSurplusTrackingPosture — candidacy', () => {
@@ -195,42 +212,142 @@ describe('surplus tracking — the variable claimant', () => {
     expect(state.surplusEligibilityByDevice.tank?.eligible).toBe(true);
   });
 
-  describe('floor policy', () => {
-    it("'off' parks the device on its off rung when nothing fits", () => {
-      const state = createPlanEngineState();
-      resolve({ state, signedNetKw: -0.5, nowTs: 0, devices: [buildTracker()], floor: 'off' });
-      expect(ceiling(state)).toBe('off');
-    });
-
-    it("'minimum' holds the floor rung when nothing fits", () => {
-      const state = createPlanEngineState();
-      resolve({ state, signedNetKw: -0.5, nowTs: 0, devices: [buildTracker()], floor: 'minimum' });
-      expect(ceiling(state)).toBe('low');
-    });
-
-    it("'minimum' reserves the floor it is importing against, so a lower-priority device is not offered it", () => {
-      const state = createPlanEngineState();
-      const tank = buildPlanInputDevice({
-        id: 'tank',
-        name: 'tank',
-        deviceType: 'temperature',
-        currentTemperature: 50,
-        expectedPowerKw: 0.2,
-        targets: [{ id: 'target_temperature', value: 20, unit: 'C', min: 0, max: 95, step: 0.5 }],
-      });
-      // 0.5 kW export: nothing covers the charger's 1.25 kW floor, but under
-      // `'minimum'` it keeps drawing it — so the pool goes negative and the tank,
-      // which would otherwise have cleared its 0.2 + 0.25 bar, must not engage.
-      engage({ state, signedNetKw: -0.5, devices: [buildTracker(), tank], floor: 'minimum' });
-      expect(ceiling(state)).toBe('low');
-      expect(state.surplusEligibilityByDevice.tank?.eligible).not.toBe(true);
-    });
-
-    it('defaults to the conservative off policy when the setting is absent', () => {
+  describe('stopping', () => {
+    it('stops the device when the surplus cannot fund even the ladder floor', () => {
       const state = createPlanEngineState();
       resolve({ state, signedNetKw: -0.5, nowTs: 0, devices: [buildTracker()] });
-      expect(ceiling(state)).toBe('off');
+      expect(stopped(state)).toBe(true);
+      expect(ceiling(state)).toBeUndefined();
     });
+
+    it('says only THAT it stops — never which rung to park on', () => {
+      // Where a stopped device parks is the configured shed action's answer,
+      // resolved on the ordinary shed path. This module inventing a rung is the
+      // bug that made a solar stop land somewhere a capacity stop never would.
+      const state = createPlanEngineState();
+      resolve({ state, signedNetKw: -0.5, nowTs: 0, devices: [buildTracker()] });
+      expect(state.surplusTrackingByDevice[CHARGER_ID]).toEqual({ kind: 'stopped' });
+    });
+
+    it('keeps a rung it already holds on the bare pool — the reserve only buys a HIGHER one', () => {
+      const state = createPlanEngineState();
+      engage({ state, signedNetKw: -3.3, devices: [buildTracker({ currentDrawKw: 0 })] });
+      expect(ceiling(state)).toBe('max');
+
+      // Pool = 0.05 measured + 3.0 added back = 3.05 kW. That covers `max`
+      // (3.0 kW) bare but NOT with the 0.25 reserve, so a fresh purchase would
+      // only reach `medium`. Re-pricing a rung the device already holds is what
+      // turned a passing cloud into a charger current change.
+      const drawing = [buildTracker({ currentDrawKw: 3.0, selectedStepId: 'max' })];
+      resolve({ state, signedNetKw: -0.05, nowTs: SURPLUS_ABSORB_SETTLE_MS + 2, devices: drawing });
+      expect(ceiling(state)).toBe('max');
+    });
+
+    it('marks a rung the pool did not pay for as UNFUNDED, so no card claims solar', () => {
+      // While the release settle/dwell runs the gate still says the device may
+      // run, so it holds its cheapest rung on grid power. That is the same
+      // window every surplus modality has — but calling it "running on solar"
+      // would be false, so the allocator records which it is.
+      const state = createPlanEngineState();
+      engage({ state, signedNetKw: -1.6, devices: [buildTracker({ currentDrawKw: 0 })] });
+      expect(state.surplusTrackingByDevice[CHARGER_ID]).toEqual({
+        kind: 'rung', stepId: 'low', funded: true,
+      });
+
+      // Pool collapses to 0.3 kW — under the 1.25 kW floor, but still positive,
+      // so the hard-off bypass does not arm and the dwell has to run.
+      resolve({
+        state,
+        signedNetKw: -0.3,
+        nowTs: SURPLUS_ABSORB_SETTLE_MS + 2,
+        devices: [buildTracker({ currentDrawKw: 0 })],
+      });
+      expect(state.surplusTrackingByDevice[CHARGER_ID]).toEqual({
+        kind: 'rung', stepId: 'low', funded: false,
+      });
+    });
+
+    it('keeps its rung across the whole reserve band, so the settle owns the stop', () => {
+      // The regression. The engage bar is floor + reserve (1.5 kW) and the gate
+      // releases at a bare floor (1.25 kW). A pool inside that band used to fund
+      // no rung at all, stopping the device on ONE build with no settle and no
+      // dwell — a passing cloud ending a charging session outright.
+      const state = createPlanEngineState();
+      engage({ state, signedNetKw: -1.6, devices: [buildTracker()] });
+      expect(ceiling(state)).toBe('low');
+
+      for (const [index, poolKw] of [1.45, 1.35, 1.3, 1.26].entries()) {
+        resolve({
+          state,
+          signedNetKw: -poolKw,
+          nowTs: SURPLUS_ABSORB_SETTLE_MS + 2 + index,
+          devices: [buildTracker({ currentDrawKw: 0 })],
+        });
+        expect(stopped(state)).toBe(false);
+        expect(ceiling(state)).toBe('low');
+      }
+    });
+  });
+
+  it('adds back the draw of a stopped device that is still drawing', () => {
+    // A stop is a shed, and a shed parks the device wherever its configured shed
+    // action says — `set_step`, or `turn_off` on a step-only stepper, both still
+    // draw. That draw depresses measured export exactly as an engaged one does,
+    // so without the add-back the pool reads low by the device's own consumption
+    // and it can never earn its way back up: re-engaging took roughly twice the
+    // true surplus it should have.
+    const state = createPlanEngineState();
+    resolve({ state, signedNetKw: -0.2, nowTs: 0, devices: [buildTracker()] });
+    expect(stopped(state)).toBe(true);
+
+    // True surplus is now 1.8 kW, comfortably over the 1.5 kW engage bar — but
+    // the device is drawing its 1.25 kW shed floor, so the meter shows only
+    // 0.55 kW of export. The pool must reconstruct to 1.8 kW, not read 0.55.
+    const drawing = [buildTracker({ currentDrawKw: 1.25, selectedStepId: 'low' })];
+    resolve({ state, signedNetKw: -0.55, nowTs: 1, devices: drawing });
+    resolve({ state, signedNetKw: -0.55, nowTs: SURPLUS_ABSORB_SETTLE_MS + 2, devices: drawing });
+    expect(stopped(state)).toBe(false);
+    expect(ceiling(state)).toBe('low');
+  });
+
+  it('does not credit the draw of a device it can no longer command', () => {
+    // The claim path already returns 0 for a non-commandable device and clears
+    // its decision. Crediting its draw as well would hand lower-priority devices
+    // export that nothing is going to free — the device keeps consuming it, and
+    // PELS has no way to ask it to stop.
+    const state = createPlanEngineState();
+    engage({ state, signedNetKw: -3.3, devices: [buildTracker()] });
+    expect(ceiling(state)).toBe('max');
+
+    const record = poolRecord({
+      state,
+      signedNetKw: -0.2,
+      nowTs: SURPLUS_ABSORB_SETTLE_MS + 2,
+      devices: [buildTracker({
+        commandableNow: false, currentDrawKw: 3.0, selectedStepId: 'max',
+      })],
+    });
+    expect(record.addBackKw).toBe(0);
+  });
+
+  it('leaves a boosted tracker to the boost — no add-back, and no decision', () => {
+    // A boost outranks the surplus posture, so this module cannot end the draw.
+    // It is ordinary household load from here: already in the meter, and not the
+    // allocator's to hand to a higher-priority absorber as if it were export.
+    const state = createPlanEngineState();
+    engage({ state, signedNetKw: -3.3, devices: [buildTracker()] });
+    expect(ceiling(state)).toBe('max');
+
+    const record = poolRecord({
+      state,
+      signedNetKw: -0.2,
+      nowTs: SURPLUS_ABSORB_SETTLE_MS + 2,
+      devices: [buildTracker({
+        boostRequested: true, currentDrawKw: 3.0, selectedStepId: 'max',
+      })],
+    });
+    expect(record.addBackKw).toBe(0);
+    expect(state.surplusTrackingByDevice[CHARGER_ID]).toBeUndefined();
   });
 
   it('drops the ceiling when the device stops being a candidate', () => {
@@ -339,13 +456,57 @@ describe('surplus tracking — the variable claimant', () => {
   it('gates on the ladder FLOOR — the cost of running at all', () => {
     // The engage bar is the floor rung plus the reserve (1.25 + 0.25 = 1.5 kW),
     // not the rung finally chosen. 1.4 kW of export cannot buy the device onto
-    // its ladder at all.
+    // its ladder at all — from a cold start it never engages, so it stops.
+    // (Once engaged the band is asymmetric: see the reserve-band case above,
+    // where the same 1.4 kW keeps a rung the device already holds.)
     const below = createPlanEngineState();
     engage({ state: below, signedNetKw: -1.4, devices: [buildTracker()] });
-    expect(ceiling(below)).toBe('off');
+    expect(stopped(below)).toBe(true);
 
     const above = createPlanEngineState();
     engage({ state: above, signedNetKw: -1.6, devices: [buildTracker()] });
     expect(ceiling(above)).toBe('low');
+  });
+});
+
+describe('a solar stop that lands on a device capacity already priced', () => {
+  it("clears the shedding planner's rung so the configured shed action decides", () => {
+    // Both lanes can pick the same device in one build: `selectShedDevices` runs
+    // first and may price a capacity shed at a gentle rung, and the solar hold is
+    // merged afterwards. Materialization delivers the DECIDED rung and consults
+    // the configured shed action only when none was decided, so leaving the
+    // capacity rung in place parks the charger at that rung — importing from the
+    // grid under a card reading "Waiting for solar surplus".
+    const state = createPlanEngineState();
+    const shedSet = new Set<string>([CHARGER_ID]);
+    const shedStepTargets = new Map<string, string>([[CHARGER_ID, 'medium']]);
+
+    applyPostSheddingHolds({
+      shedSet,
+      shedStepTargets,
+      forceShedSet: [],
+      surplusHoldIds: [CHARGER_ID],
+      admittedDevices: [buildTracker()],
+      state,
+    });
+
+    expect(shedSet.has(CHARGER_ID)).toBe(true);
+    expect(shedStepTargets.has(CHARGER_ID)).toBe(false);
+  });
+
+  it('leaves the rung of a device the solar posture is not holding', () => {
+    const state = createPlanEngineState();
+    const shedStepTargets = new Map<string, string>([[CHARGER_ID, 'medium']]);
+
+    applyPostSheddingHolds({
+      shedSet: new Set<string>([CHARGER_ID]),
+      shedStepTargets,
+      forceShedSet: [],
+      surplusHoldIds: [],
+      admittedDevices: [buildTracker()],
+      state,
+    });
+
+    expect(shedStepTargets.get(CHARGER_ID)).toBe('medium');
   });
 });

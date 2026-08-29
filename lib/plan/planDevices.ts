@@ -1,7 +1,6 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedBehavior } from './planTypes';
 import { isBinaryPlanDevice } from './planBinaryDevice';
-import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
-import type { PlanEngineState } from './planState';
+import { resolveSurplusCeilingStepId, type PlanEngineState } from './planState';
 import type { CurrentHourPriceLevel, PlanContext } from './planContext';
 import { buildEffectiveShedPosture, isAnyOtherDeviceLimited } from './keepInvariantPosture';
 import {
@@ -123,16 +122,20 @@ export function buildInitialPlanDevices(params: {
     // The tracking modality's counterpart. `surplusCeilingStepId` is the rung the
     // allocator bought this device; it is passed FLAT to the base builder rather
     // than the builder reading engine state, matching how `surplusAbsorbActive`
-    // and `boostActive` already cross that seam. A ceiling that names an off rung
-    // is not "running on solar" — the device is waiting for sun, and the hold
-    // below is what says so on the card.
+    // and `boostActive` already cross that seam.
     const surplusCeilingStepId = dev.surplusTracking
-      ? state.surplusTrackingStepByDevice[dev.id]
+      ? resolveSurplusCeilingStepId(state, dev.id)
       : undefined;
     if (dev.surplusTracking && isSteppedLoadDevice(dev)) {
-      state.surplusAbsorbActiveByDevice[dev.id] = surplusCeilingStepId !== undefined
-        && !isSteppedLoadOffStep(dev.steppedLoadProfile, surplusCeilingStepId)
-        && !shedSet.has(dev.id);
+      // "PELS is running this device on solar right now" — so the rung has to
+      // have been PAID for, not merely held. While the release settle runs, an
+      // eligible device keeps its cheapest rung on grid power; saying it is
+      // running on solar there would be exactly the dishonesty the whole
+      // surplus vocabulary is written to avoid.
+      const decision = state.surplusTrackingByDevice[dev.id];
+      state.surplusAbsorbActiveByDevice[dev.id] = !shedSet.has(dev.id)
+        && decision?.kind === 'rung'
+        && decision.funded;
     }
     const currentState = resolveCurrentState(dev);
     const controllable = dev.controllable;

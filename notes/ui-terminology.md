@@ -547,7 +547,6 @@ THREE per-device surplus controls share the `surplusWilling` opt-in; the label n
 | Binary dump-load posture (toggle) | `Run on solar surplus` |
 | Stepped-load tracking posture, EV charger (toggle) | `Charge on solar surplus` |
 | Stepped-load tracking posture, other stepped device (toggle) | `Match solar surplus` |
-| Tracking floor setting (select) | `When surplus runs out` → `Stop` / `Keep going at the lowest level` |
 | Temperature card reason while lifted | `Raised to use your solar power` |
 | Dump-load or tracking card reason while running on surplus | `On to use your solar power` |
 | Dump-load or tracking card reason while held off | `Waiting for solar surplus` |
@@ -556,9 +555,9 @@ Sources: `packages/shared-domain/src/planTemperatureCardText.ts` (the two card r
 
 The tracking toggle is the one place the label varies by device kind, and it varies because *what happens* varies: a charger's level is a charging current, a generic stepped load's is a level. Both are resolved from `resolveDeviceDetailKind`, never hardcoded per screen.
 
-**The floor hint must always name the real kilowatts.** A charger's lowest usable current is 6 A — about 1.4 kW on one phase and about 4.1 kW on three — so "keep going at the lowest level" can mean over four kilowatts of grid import on a three-phase charger. `resolveSurplusFloorHint` states that number whichever way the owner leans, read from the device's own configured levels rather than assumed. Do not soften this or move it to a tooltip: a toggle that quietly imports 4.1 kW while its section is titled "Solar surplus" would be dishonest, and the hover tooltip is unreachable in the touch WebView.
+**A stopped tracking device can still be drawing, and the card does not yet say so.** `Waiting for solar surplus` is honest for the default `turn_off` shed action — the device really is off. For a device whose Power limiting is set to a level, the solar stop parks it on that level, so the card reads "waiting" while it draws. That is a known gap, accepted deliberately when the floor selector was removed rather than overlooked: the alternative was a second per-device setting duplicating Power limiting. The fix belongs with the stepped card's reason line, which does not render the surplus vocabulary at all yet.
 
-A tracking device only carries `Waiting for solar surplus` when its allocation clamped it fully off — the `Stop` floor. Under `Keep going at the lowest level` it is still running, so it is limited rather than waiting, and saying otherwise on the card would be false.
+**One toggle is the whole control, and that is deliberate.** There is no per-device "what happens when the surplus runs out" setting: when the surplus cannot fund a device's lowest level, PELS stops it, and *where* it stops is the answer the **Power limiting** section already gives for every other kind of stop. A second selector would be the same question asked twice, in two vocabularies and two units, on one panel — and the Power limiting one is the better of the two, because it lets the owner name the level.
 
 ### Leave off until turned on again
 

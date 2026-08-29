@@ -6,9 +6,8 @@
 // plan-side `admittedDeviceIds` exclusion) or while Power-limit control is off
 // (the posture would be inert at runtime).
 //
-// Also covers the two things that make this control honest rather than just
-// present: the label follows the device kind, and the floor hint names the real
-// kilowatts read off the device's own ladder.
+// Also covers the thing that makes this control honest rather than just
+// present: the label follows the device kind, because what happens differs.
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
@@ -35,15 +34,6 @@ const buildDom = () => {
           <small id="device-detail-surplus-track-disabled-hint" hidden></small>
           <small id="device-detail-surplus-track-power-limit-hint" hidden></small>
         </div>
-        <section id="device-detail-surplus-track-section" hidden>
-          <p id="device-detail-surplus-track-lead"></p>
-          <p id="device-detail-surplus-track-gate-hint" hidden></p>
-          <select id="device-detail-surplus-floor">
-            <option value="off">Stop</option>
-            <option value="minimum">Keep going at the lowest level</option>
-          </select>
-          <small id="device-detail-surplus-floor-hint"></small>
-        </section>
         <md-switch id="device-detail-budget-exempt"></md-switch>
         <div id="device-detail-control-model-row">
           <select id="device-detail-control-model"></select>
@@ -143,7 +133,6 @@ type OpenPanelParams = {
   managed?: boolean;
   controllable?: boolean;
   surplusWilling?: boolean;
-  surplusFloor?: 'off' | 'minimum';
   activeSmartTask?: boolean;
   /** An unsaved control-mode draft, as the panel's own store would hold it. */
   storedTargetPowerConfig?: Record<string, unknown>;
@@ -167,7 +156,6 @@ const openPanel = async (params: OpenPanelParams) => {
         cheapDelta: 0,
         expensiveDelta: 0,
         surplusWilling: true,
-        ...(params.surplusFloor ? { surplusFloor: params.surplusFloor } : {}),
       },
     }
     : {};
@@ -211,8 +199,6 @@ type MdSwitchLike = HTMLElement & { selected?: boolean; disabled?: boolean };
 const trackRow = () => document.querySelector('#device-detail-surplus-track-row') as HTMLElement | null;
 const trackSwitch = () => document.querySelector('#device-detail-surplus-track-opt') as MdSwitchLike | null;
 const trackLabel = () => document.querySelector('#device-detail-surplus-track-label') as HTMLElement | null;
-const trackSection = () => document.querySelector('#device-detail-surplus-track-section') as HTMLElement | null;
-const floorHint = () => document.querySelector('#device-detail-surplus-floor-hint') as HTMLElement | null;
 const powerLimitHint = () => document.querySelector('#device-detail-surplus-track-power-limit-hint') as HTMLElement | null;
 const smartTaskHint = () => document.querySelector('#device-detail-surplus-track-disabled-hint') as HTMLElement | null;
 
@@ -282,37 +268,5 @@ describe('device detail solar-surplus tracking gating', () => {
       expect(trackLabel()?.textContent).toBe('Match solar surplus');
     });
 
-    it('names the real floor in kW, read from the device\'s own ladder', async () => {
-      // 1380 W is the 6 A rung. An owner choosing "keep going" is choosing
-      // roughly this much grid import, and must be told so in visible text —
-      // the hover tooltip is unreachable in the touch WebView.
-      await openPanel({ device: buildCharger(), surplusWilling: true });
-      expect(floorHint()?.textContent).toContain('1.4 kW');
-    });
-
-    it('reads the floor from the STORED control-mode draft, not the saved snapshot', async () => {
-      // The regression: every other control on this panel reads
-      // `getStoredTargetPowerConfig(id) ?? device.targetPowerConfig`, so an
-      // owner switching to 3-phase sees the rest of the panel update while the
-      // floor hint — read off the saved snapshot — still claimed about 1.4 kW.
-      // That is the one number this setting exists to state, wrong at the exact
-      // moment they are deciding.
-      await openPanel({
-        device: buildCharger(),
-        surplusWilling: true,
-        storedTargetPowerConfig: {
-          enabled: true, preset: 'ev_charger_3_phase', min: 0, max: 22080,
-          step: 1380, excludeMin: 1, excludeMax: 4140,
-        },
-      });
-      expect(floorHint()?.textContent).toContain('4.1 kW');
-    });
-
-    it('hides the floor section until the device is opted in', async () => {
-      await openPanel({ device: buildCharger() });
-      expect(trackSection()?.hidden).toBe(true);
-      await openPanel({ device: buildCharger(), surplusWilling: true });
-      expect(trackSection()?.hidden).toBe(false);
-    });
   });
 });

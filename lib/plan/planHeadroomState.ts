@@ -4,7 +4,7 @@ import { incPerfCounter } from '../utils/perfCounters';
 import {
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   clearSurplusEligibility,
-  clearSurplusTrackingStep,
+  clearSurplusTracking,
   closeActivationAttemptForDevice,
   isActivationObservationActiveNow,
   syncActivationPenaltyState,
@@ -47,7 +47,7 @@ const collectTrackedDeviceIds = (state: PlanEngineState): Set<string> => (
   new Set([
     ...Object.keys(state.headroomCardByDevice),
     ...Object.keys(state.surplusEligibilityByDevice),
-    ...Object.keys(state.surplusTrackingStepByDevice),
+    ...Object.keys(state.surplusTrackingByDevice),
   ])
 );
 
@@ -65,10 +65,10 @@ const cleanupMissingHeadroomDevices = (
     // lockstep with the other per-device plan maps (it self-cleans while a device
     // keeps cycling, but an unpaired-while-eligible device would otherwise leak).
     clearSurplusEligibility(state, deviceId);
-    // Same lockstep for the tracking ceiling: a rung left behind by a departed
+    // Same lockstep for the tracking decision: a rung left behind by a departed
     // device would clamp it the moment it reappeared, before the allocator had
     // seen a single reading for it.
-    clearSurplusTrackingStep(state, deviceId);
+    clearSurplusTracking(state, deviceId);
     // A missing snapshot should close any open attempt, but it must not forgive prior failed activations.
     stateChanged = closeActivationAttemptForDevice(state, deviceId) || true;
   }

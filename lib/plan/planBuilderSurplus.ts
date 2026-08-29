@@ -48,7 +48,7 @@ export function runSurplusPass(params: {
   state: PlanEngineState;
   admittedDevices: PlanInputDevice[];
   shedSet: Set<string>;
-  /** The shedding plan's decided rungs; the surplus hold adds its own. */
+  /** The shedding plan's decided rungs; a solar stop clears its own. */
   shedStepTargets: Map<string, string>;
   decoration: Pick<
     DeferredDecorationBundle,
@@ -91,19 +91,38 @@ export function runSurplusPass(params: {
   const surplusHold = resolveSurplusHold({ devices: admittedDevices, state, excludeIds });
   applyPostSheddingHolds({
     shedSet: params.shedSet,
+    shedStepTargets: params.shedStepTargets,
     forceShedSet: decoration.forceShedSet,
     surplusHoldIds: surplusHold.holdIds,
     admittedDevices,
     state,
   });
-  // Carry the hold's DECIDED rung into the shedding plan. Materialization reads
-  // the decided rung and only falls back to the device's configured shed floor
-  // when none was decided — which for a `set_step` tracker would mean its lowest
-  // ACTIVE rung, i.e. still drawing, while the card says it is waiting for sun.
-  for (const [deviceId, stepId] of surplusHold.stepTargetById) {
-    params.shedStepTargets.set(deviceId, stepId);
-  }
   return surplusHold.reasonById;
+}
+
+/**
+ * Drop the shedding planner's decided rung for a device the solar posture stops.
+ *
+ * Both lanes can pick the same device in one build: `selectShedDevices` runs
+ * first and may price a capacity shed at a gentle rung, and the surplus hold is
+ * merged afterwards. Materialization delivers the decided rung and reads the
+ * configured shed action only when none was decided
+ * (`resolveSteppedLoadDirectShedStepId`), so leaving the capacity rung in place
+ * would dilute the stop to whatever capacity happened to need — a charger parked
+ * at 10 A, importing from the grid, under a card reading "Waiting for solar
+ * surplus". Clearing it hands the question back to the configured shed action,
+ * which is this PR's whole point: a solar stop parks where a capacity stop
+ * parks. The action's floor is the deepest the cycle may go and a priced rung
+ * never sits below it, so this can only ever deepen the shed, never soften it.
+ *
+ * Only a stepped device can carry an entry, so the binary dump loads in the same
+ * id-set delete nothing.
+ */
+function clearShedStepTargets(
+  shedStepTargets: Map<string, string>,
+  surplusHoldIds: Iterable<string>,
+): void {
+  for (const id of surplusHoldIds) shedStepTargets.delete(id);
 }
 
 /**
@@ -120,12 +139,14 @@ export function runSurplusPass(params: {
  */
 export function applyPostSheddingHolds(params: {
   shedSet: Set<string>;
+  shedStepTargets: Map<string, string>;
   forceShedSet: Iterable<string>;
   surplusHoldIds: Iterable<string>;
   admittedDevices: PlanInputDevice[];
   state: Pick<PlanEngineState, 'surplusOnlyShedByDevice' | 'clearShedDecision'>;
 }): void {
   mergeHoldsIntoShedSet(params.shedSet, [params.forceShedSet, params.surplusHoldIds]);
+  clearShedStepTargets(params.shedStepTargets, params.surplusHoldIds);
   releaseAbandonedSurplusPosture({
     state: params.state, admittedDevices: params.admittedDevices, shedSet: params.shedSet,
   });

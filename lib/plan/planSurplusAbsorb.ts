@@ -1,4 +1,4 @@
-import type { PlanEngineState } from './planState';
+import { resolveSurplusCeilingStepId, type PlanEngineState } from './planState';
 import type { PlanInputDevice } from './planTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type {
@@ -10,17 +10,16 @@ import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedL
 import { getHighestKnownPowerKw } from '../observer/observedPower';
 import {
   clearSurplusEligibility,
-  clearSurplusTrackingStep,
+  clearSurplusTracking,
   SURPLUS_ABSORB_HARD_OFF_IMPORT_KW,
   SURPLUS_ABSORB_RESERVE_KW,
   SURPLUS_TRACK_STEP_MIN_INTERVAL_MS,
   syncSurplusEligibilityState,
 } from './admission';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
-import type { SurplusFloorPolicy } from '../../packages/shared-domain/src/settings/surplusFloor';
+import { resolveBoostActive } from './planBoost';
 import {
   getSteppedLoadLowestActiveStep,
-  getSteppedLoadOffStep,
   getSteppedLoadStep,
 } from '../utils/deviceControlProfiles';
 import {
@@ -49,8 +48,6 @@ export type PriceOptDeviceConfig = {
   surplusWilling?: boolean;
   surplusDelta?: number;
 };
-
-export type { SurplusFloorPolicy };
 
 type SurplusConfig = {
   surplusWilling?: boolean;
@@ -203,6 +200,36 @@ const isHardOffCondition = (powerOk: boolean, signedNetKw: number | null): boole
 // surplus (max(0, term)). Emits the `surplus_pool` composition record once per
 // pass — the only place the inferred term is distinguishable from measured
 // export (downstream sees only the flat pool).
+/**
+ * Does this device's own draw belong back in the pool?
+ *
+ * A FIXED claimant (temperature lift, binary dump load) only draws on the
+ * surplus while eligible — off that, its draw is its ordinary baseline and is
+ * genuinely part of household load, so the eligibility gate is the right
+ * question.
+ *
+ * A TRACKING device is different, and the difference is the whole reason this
+ * predicate exists. Stopping it is a shed, and a shed parks it wherever the
+ * configured shed action says — which for `set_step`, or for `turn_off` on a
+ * step-only stepper, is a rung that still draws. That draw depresses measured
+ * export exactly as an engaged one does, so gating the add-back on eligibility
+ * left the pool reading low by the device's own consumption and the device
+ * unable to earn its way back up: re-engaging took roughly twice the true
+ * surplus it should have. `claimForTrackingDevice` reserves the same draw, so it
+ * is subtracted once and lower-priority devices are still never offered it.
+ */
+const addsBackOwnDraw = (state: PlanEngineState, dev: PlanInputDevice): boolean => {
+  if (!dev.surplusTracking) return state.surplusEligibilityByDevice[dev.id]?.eligible === true;
+  // ...but only the draw this posture actually governs. A device PELS cannot
+  // command, and one a boost has taken over, both keep drawing whatever the pool
+  // says: their consumption is ordinary household load, subtracted once by the
+  // meter and freed by no decision made here. Crediting it would hand a
+  // higher-priority absorber export that is already spoken for, and report the
+  // result as solar. Both cases claim 0 below, so each draw still counts once.
+  if (dev.commandableNow !== true || resolveBoostActive(dev)) return false;
+  return state.surplusTrackingByDevice[dev.id] !== undefined;
+};
+
 function composeSurplusPool(params: {
   willing: PlanInputDevice[];
   state: PlanEngineState;
@@ -212,9 +239,7 @@ function composeSurplusPool(params: {
 }): number {
   let addBackKw = 0;
   for (const dev of params.willing) {
-    if (params.state.surplusEligibilityByDevice[dev.id]?.eligible === true) {
-      addBackKw += positiveOrZero(dev.currentDrawKw);
-    }
+    if (addsBackOwnDraw(params.state, dev)) addBackKw += positiveOrZero(dev.currentDrawKw);
   }
   const measuredExportKw = -params.signedNetKw;
   const inferredContributionKw = positiveOrZero(params.inferredSurplusKw);
@@ -246,7 +271,7 @@ function composeSurplusPool(params: {
  * the device returns to the candidate set, lifting the setpoint until the
  * release settle expires; a stale `surplusAbsorbActiveByDevice` keeps the
  * curtailment estimator's `Object.values(...).some()` reporting an engaged lift
- * forever, so its `lastLiftEngaged` never clears; and a stale tracking ceiling
+ * forever, so its `lastLiftEngaged` never clears; and a stale tracking decision
  * clamps a device the posture has left to a rung nothing is maintaining.
  */
 function pruneNonCandidateSurplusState(
@@ -260,8 +285,8 @@ function pruneNonCandidateSurplusState(
   for (const deviceId of Object.keys(liftActive)) {
     if (!willingIds.has(deviceId)) delete liftActive[deviceId];
   }
-  for (const deviceId of Object.keys(state.surplusTrackingStepByDevice)) {
-    if (!willingIds.has(deviceId)) clearSurplusTrackingStep(state, deviceId);
+  for (const deviceId of Object.keys(state.surplusTrackingByDevice)) {
+    if (!willingIds.has(deviceId)) clearSurplusTracking(state, deviceId);
   }
 }
 
@@ -282,7 +307,7 @@ function paceCeilingClimb(params: {
   nowTs: number;
 }): SteppedLoadStep {
   const { dev, state, target, nowTs } = params;
-  const currentId = state.surplusTrackingStepByDevice[dev.id];
+  const currentId = resolveSurplusCeilingStepId(state, dev.id);
   if (currentId === undefined || currentId === target.id) {
     state.surplusTrackingRaisedMs[dev.id] = nowTs;
     return target;
@@ -323,25 +348,33 @@ function paceCeilingClimb(params: {
  *    finally chosen. The floor is what it costs to run at all, so it is the
  *    right `expectedDrawKw` for a settle/dwell/hard-off decision that is about
  *    whether to run — the rung is a separate, cheaper question asked below.
- * 3. **The ceiling is chosen against `pool − reserve`**, matching the gate's own
- *    engage bar, so a rung is never bought on surplus the gate would not have
- *    engaged on.
+ * 3. **Eligibility alone owns the on↔off flip.** While the gate says the device
+ *    may run it always holds SOME rung — {@link resolveTrackingRung} falls back
+ *    to the ladder floor — and it stops only when the gate releases, with the
+ *    90 s settle, the 5 min dwell and the hard-off bypass all applying exactly
+ *    as they do to the other two modalities.
  *
- * Returns the kW to subtract from the pool. Under the `'minimum'` floor that can
- * exceed the pool and drive it negative — deliberately: the device is drawing
- * that power whether or not solar covers it, and a lower-priority device must
- * not be offered surplus this one is already importing against. This is the one
- * place the net-neutrality argument in `notes/starvation/surplus-absorb-safety.md`
- * is knowingly broken, bounded by the ladder floor.
+ *    This used to be split in two. The rung was chosen against `pool − reserve`
+ *    while the gate released at a bare `pool < floorKw`, so anywhere in the
+ *    0.25 kW band between them the device was eligible but "nothing fit" — and
+ *    was stopped on a SINGLE build, with no settle and no dwell. On a
+ *    three-phase charger (floor 4.14 kW) every dip below 4.39 kW ended the
+ *    charging session, which is precisely the passing-cloud chatter the settle
+ *    exists to absorb.
+ *
+ * Returns the kW to subtract from the pool: the chosen rung while running, and
+ * the device's MEASURED draw while stopped. A stop is a shed, and a shed parks
+ * the device wherever its configured shed action says — which may still draw.
+ * Reserving that keeps the pool honest for lower-priority devices, and pairs
+ * with the add-back in {@link addsBackOwnDraw} so the draw is counted once.
  */
 function claimForTrackingDevice(params: {
   dev: PlanInputDevice;
   state: PlanEngineState;
   poolKw: number;
   nowTs: number;
-  floor: SurplusFloorPolicy;
 }): number {
-  const { dev, state, poolKw, nowTs, floor } = params;
+  const { dev, state, poolKw, nowTs } = params;
   // A tracking device gets its OWN hard-off test, and it must: the shared one
   // (`isHardOffCondition`) reads raw net import, which for a fixed-draw absorber
   // is honest evidence that surplus is gone. For a modulating one it is not —
@@ -355,7 +388,7 @@ function claimForTrackingDevice(params: {
   // device reaching here without one is a producer bug rather than a state to
   // model. Leave it unclamped.
   if (!isSteppedLoadDevice(dev)) {
-    delete state.surplusTrackingStepByDevice[dev.id];
+    clearSurplusTracking(state, dev.id);
     return 0;
   }
   if (dev.commandableNow !== true) {
@@ -363,15 +396,28 @@ function claimForTrackingDevice(params: {
       state, deviceId: dev.id, willing: false, availableSurplusKw: null,
       expectedDrawKw: 0, hardOff, nowTs,
     });
-    delete state.surplusTrackingStepByDevice[dev.id];
+    clearSurplusTracking(state, dev.id);
+    return 0;
+  }
+  // A boost outranks the surplus posture — `isSurplusHeldDevice` deliberately
+  // lets a boosted tracker keep running — so its draw is a live demand this
+  // module cannot end. Decide nothing for it: no rung, because the sun is not
+  // what is holding it up; and no claim, because its draw was never added back
+  // (`addsBackOwnDraw`) and the meter already carries it as ordinary load.
+  if (resolveBoostActive(dev)) {
+    syncSurplusEligibilityState({
+      state, deviceId: dev.id, willing: false, availableSurplusKw: null,
+      expectedDrawKw: 0, hardOff, nowTs,
+    });
+    clearSurplusTracking(state, dev.id);
     return 0;
   }
 
   const floorStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
   if (!floorStep) {
     // No runnable rung: the ladder cannot express the posture. Leave the device
-    // unclamped rather than inventing a ceiling out of an unusable profile.
-    delete state.surplusTrackingStepByDevice[dev.id];
+    // unclamped rather than inventing a decision out of an unusable profile.
+    clearSurplusTracking(state, dev.id);
     return 0;
   }
   const floorKw = resolveStepAdmissionKw(dev, floorStep.id);
@@ -386,27 +432,70 @@ function claimForTrackingDevice(params: {
     nowTs,
   });
 
-  const fitting = eligible
-    ? resolveHighestStepWithinKw(dev, poolKw - SURPLUS_ABSORB_RESERVE_KW)
-    : null;
-  if (fitting) {
-    const paced = paceCeilingClimb({ dev, state, target: fitting, nowTs });
-    state.surplusTrackingStepByDevice[dev.id] = paced.id;
-    return resolveStepAdmissionKw(dev, paced.id);
+  if (eligible) {
+    const paced = paceCeilingClimb({
+      dev, state, target: resolveTrackingRung({ dev, state, poolKw, floorStep }), nowTs,
+    });
+    const rungKw = resolveStepAdmissionKw(dev, paced.id);
+    state.surplusTrackingByDevice[dev.id] = {
+      kind: 'rung', stepId: paced.id, funded: rungKw <= poolKw,
+    };
+    return rungKw;
   }
 
-  // Nothing fits (or the gate has not engaged). The floor policy is the owner's
-  // standing answer to "there is not enough sun right now".
-  if (floor === 'minimum') {
-    state.surplusTrackingStepByDevice[dev.id] = floorStep.id;
-    return floorKw;
-  }
-  // `'off'` on a step-only stepper (no off rung) can only mean the floor — the
-  // ladder has nowhere lower to go (`feedback_step_only_stepper_valid`).
-  const offStep = getSteppedLoadOffStep(dev.steppedLoadProfile);
-  state.surplusTrackingStepByDevice[dev.id] = offStep?.id ?? floorStep.id;
-  return offStep ? 0 : floorKw;
+  // The gate has released: the device stops. THAT is all this module decides —
+  // what stopping means belongs to the configured shed action, reached through
+  // the ordinary shed path (`resolveSteppedLoadDirectShedStepId`), so a solar
+  // stop and a capacity stop park the device in the same place instead of this
+  // module inventing a second answer out of the ladder's rungs.
+  state.surplusTrackingByDevice[dev.id] = { kind: 'stopped' };
+  return positiveOrZero(dev.currentDrawKw);
 }
+
+/**
+ * The rung an ELIGIBLE tracking device holds this build. Never null: eligibility
+ * has already said the device may run, and the ladder floor is the cheapest way
+ * to do that, so "may run but no rung" is not a state worth representing.
+ *
+ * Asymmetric, and deliberately the same band the eligibility gate itself uses:
+ * buying a NEW or HIGHER rung must clear `pool − reserve`, while a rung already
+ * held costs only its bare admission power to keep. The reserve is the
+ * hysteresis, exactly as it is for the engage/release decision — without the
+ * keep arm, a pool wandering across the reserve band would re-price the device
+ * every build.
+ */
+function resolveTrackingRung(params: {
+  dev: PlanInputDevice;
+  state: PlanEngineState;
+  poolKw: number;
+  floorStep: SteppedLoadStep;
+}): SteppedLoadStep {
+  const { dev, state, poolKw, floorStep } = params;
+  // What the pool would buy from scratch, reserve included.
+  const affordable = resolveHighestStepWithinKw(dev, poolKw - SURPLUS_ABSORB_RESERVE_KW);
+  const held = resolveHeldStep(dev, state);
+  if (held && resolveStepAdmissionKw(dev, held.id) <= poolKw) {
+    // The held rung is still covered on the bare pool, so keep it — and move
+    // only for something strictly HIGHER. Answering `affordable` here instead
+    // would step the device DOWN the moment the pool dipped inside the reserve,
+    // which is the re-pricing this band exists to stop.
+    return affordable && affordable.planningPowerW > held.planningPowerW ? affordable : held;
+  }
+  // Nothing the pool covers, but the gate has not released yet. Hold the
+  // CHEAPEST rung rather than the one it had: still running, as the settle and
+  // dwell require, but importing as little as the ladder allows while they run.
+  // Recorded as unfunded, so nothing downstream calls this "running on solar".
+  return affordable ?? floorStep;
+}
+
+const resolveHeldStep = (
+  dev: PlanInputDevice,
+  state: PlanEngineState,
+): SteppedLoadStep | undefined => {
+  const heldId = resolveSurplusCeilingStepId(state, dev.id);
+  if (heldId === undefined || !isSteppedLoadDevice(dev)) return undefined;
+  return getSteppedLoadStep(dev.steppedLoadProfile, heldId) ?? undefined;
+};
 
 /**
  * Priority-greedy surplus allocator — the *producer* of surplus-absorb
@@ -515,9 +604,7 @@ export function resolveSurplusEligibility(params: {
   const ordered = [...willing].sort((a, b) => a.priority - b.priority);
   for (const dev of ordered) {
     if (dev.surplusTracking) {
-      poolKw -= claimForTrackingDevice({
-        dev, state, poolKw, nowTs, floor: dev.surplusFloor,
-      });
+      poolKw -= claimForTrackingDevice({ dev, state, poolKw, nowTs });
       continue;
     }
     const expectedDrawKw = getHighestKnownPowerKw(dev).kw;

@@ -43,7 +43,6 @@ describe('buildPlanInputDevice', () => {
       // producer's `!isEvObserved(device)`.
       hasStandingDemand: true,
       surplusTracking: false,
-      surplusFloor: 'off',
       // Producer-required two-state bit; `false` is "no calibration opinion".
       confirmedNotDrawing: false,
       // Required since #2182: the producer answers "is there a creditable
