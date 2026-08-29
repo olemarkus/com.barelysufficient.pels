@@ -695,17 +695,23 @@ describe('DailyBudgetService', () => {
     const skippedBefore = perfCount('settings_set.daily_budget_state_skipped_throttle_total');
     const service = buildService();
     const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
-    const updateSpy = vi.fn(() => ({
-      snapshot: buildDayPayload({
-        dateKey: '2025-03-15',
-        confidence: 0.72,
-        confidenceDebug: buildConfidenceDebug(),
-      }),
-      persistReason: 'runtime',
-    }));
-    let exportIndex = 0;
+    // `exportState` reads the current state, so the revision advances with each
+    // update rather than with each export — the persisted value must not depend
+    // on how many times the service chose to export.
+    let revision = 0;
+    const updateSpy = vi.fn(() => {
+      revision += 1;
+      return {
+        snapshot: buildDayPayload({
+          dateKey: '2025-03-15',
+          confidence: 0.72,
+          confidenceDebug: buildConfidenceDebug(),
+        }),
+        persistReason: 'runtime',
+      };
+    });
     (service as any).manager.update = updateSpy;
-    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: exportIndex++ }));
+    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: revision }));
 
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 60_000 });
@@ -713,9 +719,63 @@ describe('DailyBudgetService', () => {
     service.updateState({ nowMs: NOW_MS + 10 * 60_000 });
 
     expect(dailyBudgetStateSetCount(set)).toBe(2);
-    expect(set).toHaveBeenNthCalledWith(1, 'daily_budget_state', { lastUsedNowKWh: 0 });
-    expect(set).toHaveBeenLastCalledWith('daily_budget_state', { lastUsedNowKWh: 3 });
+    expect(set).toHaveBeenNthCalledWith(1, 'daily_budget_state', { lastUsedNowKWh: 1 });
+    expect(set).toHaveBeenLastCalledWith('daily_budget_state', { lastUsedNowKWh: 4 });
     expect(perfCount('settings_set.daily_budget_state_skipped_throttle_total')).toBe(skippedBefore + 2);
+  });
+
+  it('does not export or serialize a state the low-priority throttle will discard', () => {
+    const service = buildService();
+    let revision = 0;
+    (service as any).manager.update = vi.fn(() => {
+      revision += 1;
+      return {
+        snapshot: buildDayPayload({
+          dateKey: '2025-03-15',
+          confidence: 0.72,
+          confidenceDebug: buildConfidenceDebug(),
+        }),
+        persistReason: 'runtime',
+      };
+    });
+    const exportState = vi.fn(() => ({ lastUsedNowKWh: revision }));
+    (service as any).manager.exportState = exportState;
+
+    service.updateState({ nowMs: NOW_MS });
+    expect(exportState).toHaveBeenCalledTimes(1); // the write exported once
+
+    service.updateState({ nowMs: NOW_MS + 60_000 });
+    service.updateState({ nowMs: NOW_MS + 2 * 60_000 });
+
+    // The throttle is a pure clock check, so the two throttled updates must not
+    // have built the state whose serialization they would only have thrown away.
+    expect(exportState).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts a throttled low-priority skip as throttled even when the state is unchanged', () => {
+    // Deliberate: asking the throttle first means a call that is both throttled and
+    // unchanged is attributed to the throttle. Telling the two apart would need the
+    // serialization this ordering exists to avoid. Neither case writes.
+    const throttledBefore = perfCount('settings_set.daily_budget_state_skipped_throttle_total');
+    const unchangedBefore = perfCount('settings_set.daily_budget_state_skipped_unchanged_total');
+    const service = buildService();
+    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    (service as any).manager.update = vi.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      persistReason: 'runtime',
+    }));
+    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: 7 }));
+
+    service.updateState({ nowMs: NOW_MS });
+    service.updateState({ nowMs: NOW_MS + 60_000 }); // inside the window, same state
+
+    expect(dailyBudgetStateSetCount(set)).toBe(1);
+    expect(perfCount('settings_set.daily_budget_state_skipped_throttle_total')).toBe(throttledBefore + 1);
+    expect(perfCount('settings_set.daily_budget_state_skipped_unchanged_total')).toBe(unchangedBefore);
   });
 
   it('skips daily budget state writes when exported state is unchanged', () => {
@@ -801,16 +861,19 @@ describe('DailyBudgetService', () => {
   it('persistState flushes a throttled low-priority write on shutdown', () => {
     const service = buildService();
     const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
-    let exportIndex = 0;
-    (service as any).manager.update = vi.fn(() => ({
-      snapshot: buildDayPayload({
-        dateKey: '2025-03-15',
-        confidence: 0.72,
-        confidenceDebug: buildConfidenceDebug(),
-      }),
-      persistReason: 'runtime',
-    }));
-    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: exportIndex++ }));
+    let revision = 0;
+    (service as any).manager.update = vi.fn(() => {
+      revision += 1;
+      return {
+        snapshot: buildDayPayload({
+          dateKey: '2025-03-15',
+          confidence: 0.72,
+          confidenceDebug: buildConfidenceDebug(),
+        }),
+        persistReason: 'runtime',
+      };
+    });
+    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: revision }));
 
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 60_000 });
@@ -919,16 +982,19 @@ describe('DailyBudgetService', () => {
     // which matches how the daily budget reconstructs (in hour buckets).
     const service = buildService();
     const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
-    let exportIndex = 0;
-    (service as any).manager.update = vi.fn(() => ({
-      snapshot: buildDayPayload({
-        dateKey: '2025-03-15',
-        confidence: 0.72,
-        confidenceDebug: buildConfidenceDebug(),
-      }),
-      persistReason: 'runtime',
-    }));
-    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: exportIndex++ }));
+    let revision = 0;
+    (service as any).manager.update = vi.fn(() => {
+      revision += 1;
+      return {
+        snapshot: buildDayPayload({
+          dateKey: '2025-03-15',
+          confidence: 0.72,
+          confidenceDebug: buildConfidenceDebug(),
+        }),
+        persistReason: 'runtime',
+      };
+    });
+    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: revision }));
 
     // First persist happens at 10:55. Subsequent samples land within the 10-min
     // throttle window but cross the 11:00 hour boundary.
@@ -939,6 +1005,6 @@ describe('DailyBudgetService', () => {
     service.updateState({ nowMs: firstPersistMs + 8 * 60_000 }); // 11:03, throttled (same new hour)
 
     expect(dailyBudgetStateSetCount(set)).toBe(2);
-    expect(set).toHaveBeenLastCalledWith('daily_budget_state', { lastUsedNowKWh: 2 });
+    expect(set).toHaveBeenLastCalledWith('daily_budget_state', { lastUsedNowKWh: 3 });
   });
 });

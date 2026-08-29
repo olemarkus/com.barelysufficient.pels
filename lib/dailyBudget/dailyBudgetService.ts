@@ -28,6 +28,7 @@ import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetSettings,
   DailyBudgetSettingsInput,
+  DailyBudgetState,
   DailyBudgetStatePersistReason,
   DailyBudgetUiPayload,
 } from './dailyBudgetTypes';
@@ -222,10 +223,15 @@ export class DailyBudgetService {
     }
   }
 
+  // Hoisted for the same reason as `adjacentDayDeps` below: this runs on every power
+  // sample, and the throttle rejects the large majority of them. It reads `this.manager`
+  // at call time, so a manager swap is still picked up.
+  private readonly exportStateForPersist = (): DailyBudgetState => this.manager.exportState();
+
   private maybePersistState(reason: DailyBudgetStatePersistReason, nowMs: number): void {
     maybePersistDailyBudgetState({
       stateStore: this.deps.dailyBudgetStateStore, policy: this.persistencePolicy,
-      state: this.manager.exportState(), reason, nowMs,
+      state: this.exportStateForPersist, reason, nowMs,
     });
   }
 

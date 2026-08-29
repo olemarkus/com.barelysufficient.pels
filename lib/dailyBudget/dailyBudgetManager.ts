@@ -87,6 +87,12 @@ export class DailyBudgetManager {
     const p50 = this.state.profileObservedP50GrossUncontrolledKWh?.[hourOfDay];
     return typeof p50 === 'number' && Number.isFinite(p50) ? p50 : undefined;
   }
+  /**
+   * Pure read: it copies, and never mutates `this.state`. `maybePersistDailyBudgetState`
+   * calls this behind a throttle and skips it entirely when the throttle rejects the
+   * write, so an export that memoized, bumped a revision, or lazily materialized an
+   * array would silently break that skip path.
+   */
   exportState(): DailyBudgetState {
     const state = { ...this.state };
     if (typeof state.profileSampleCount === 'number' && state.profile) state.profile = {
