@@ -11,6 +11,7 @@ import {
   isSteppedDeviceAtOffStep,
   isSteppedLoadOffStep,
   resolveSteppedLoadPlanningPowerKw,
+  sortSteppedLoadSteps,
 } from '../utils/deviceControlProfiles';
 import type {
   SteppedLoadProfile,
@@ -341,6 +342,37 @@ const clampToLowestActiveWhenOtherDevicesLimited = (params: {
   const step = getSteppedLoadStep(profile, stepId);
   if (!step || step.planningPowerW <= lowestActiveStep.planningPowerW) return stepId;
   return lowestActiveStep.id;
+};
+
+/**
+ * The highest ACTIVE rung whose calibrated admission power fits inside
+ * `budgetKw`, or `null` when even the ladder floor does not fit. Off steps are
+ * never answered — "no rung fits" is the caller's decision to make, and for the
+ * surplus allocator it is exactly the question the floor policy settles.
+ *
+ * Admission power, not nameplate: `resolveStepAdmissionKw` prefers the
+ * calibrated draw the device actually pulls at that rung and falls back to the
+ * profile's planning watts only where the calibration view has no entry. A
+ * ladder is not monotonic in calibrated terms — a mis-sampled rung can price
+ * above the one above it — so this walks every rung rather than binary-searching
+ * from the top, and answers the highest FITTING one rather than the one below
+ * the first miss.
+ */
+export const resolveHighestStepWithinKw = (
+  device: Pick<StepCapableDevice, 'steppedLoadProfile' | 'stepPowerCalibration'>,
+  budgetKw: number,
+): SteppedLoadStep | null => {
+  const profile = getSteppedLoadProfileForDevice(device);
+  if (!profile) return null;
+  if (!Number.isFinite(budgetKw)) return null;
+  let best: SteppedLoadStep | null = null;
+  for (const step of sortSteppedLoadSteps(profile.steps)) {
+    if (isSteppedLoadOffStep(profile, step.id)) continue;
+    if (step.planningPowerW <= 0) continue;
+    if (resolveStepAdmissionKw(device, step.id) > budgetKw) continue;
+    if (best === null || step.planningPowerW > best.planningPowerW) best = step;
+  }
+  return best;
 };
 
 export const getSteppedLoadNextRestoreStep = (

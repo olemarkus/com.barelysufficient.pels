@@ -3,6 +3,7 @@ import type {
   PriceOptimizationDeviceSettings,
   PriceOptimizationSettingsStore,
 } from '../lib/price/priceOptimizationSettingsStore';
+import { isSurplusFloorPolicy } from '../packages/shared-domain/src/settings/surplusFloor';
 import {
   PRICE_MIN_DIFF_ORE,
   PRICE_OPTIMIZATION_ENABLED,
@@ -21,7 +22,7 @@ const isPriceOptimizationDeviceSettings = (
     if (!entry || typeof entry !== 'object') return false;
     const record = entry as {
       enabled?: unknown; cheapDelta?: unknown; expensiveDelta?: unknown;
-      surplusWilling?: unknown; surplusDelta?: unknown;
+      surplusWilling?: unknown; surplusDelta?: unknown; surplusFloor?: unknown;
     };
     // Require FINITE deltas: typeof NaN/Infinity === 'number', and a NaN delta
     // poisons the planned setpoint (NaN <= 0 is false, so it survives the apply
@@ -31,7 +32,8 @@ const isPriceOptimizationDeviceSettings = (
       && Number.isFinite(record.expensiveDelta)
       // Surplus-absorb fields are optional (older blobs / non-solar homes omit them).
       && (record.surplusWilling === undefined || typeof record.surplusWilling === 'boolean')
-      && (record.surplusDelta === undefined || Number.isFinite(record.surplusDelta));
+      && (record.surplusDelta === undefined || Number.isFinite(record.surplusDelta))
+      && (record.surplusFloor === undefined || isSurplusFloorPolicy(record.surplusFloor));
   });
 };
 

@@ -277,3 +277,15 @@ export function clearSurplusEligibility(state: PlanEngineState, deviceId: string
   const map = state.surplusEligibilityByDevice;
   delete map[deviceId];
 }
+
+/**
+ * Prune a device's surplus-TRACKING ceiling. Separate from
+ * {@link clearSurplusEligibility} because the two answer different questions —
+ * eligibility is "may this device absorb", the ceiling is "how far up its ladder"
+ * — and a device can legitimately hold a ceiling (its floor rung, under the
+ * `'minimum'` policy) while not being eligible.
+ */
+export function clearSurplusTrackingStep(state: PlanEngineState, deviceId: string): void {
+  const map = state.surplusTrackingStepByDevice;
+  delete map[deviceId];
+}

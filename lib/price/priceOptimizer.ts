@@ -7,6 +7,8 @@ import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 
+import type { SurplusFloorPolicy } from '../../packages/shared-domain/src/settings/surplusFloor';
+
 const moduleLogger = getLogger('price/optimizer');
 
 export type PriceOptimizationSettings = {
@@ -19,6 +21,13 @@ export type PriceOptimizationSettings = {
   // persisted blobs and non-solar homes stay byte-identical.
   surplusWilling?: boolean;
   surplusDelta?: number;
+  // What a surplus-TRACKING device does when the allocated pool no longer covers
+  // its lowest active rung. There is no rung between off and the ladder floor
+  // (6 A on an EV preset), so a shortfall has exactly two honest answers:
+  // `'off'` stops the device; `'minimum'` keeps it on the lowest rung and lets
+  // the grid cover the gap. Absent means `'off'` — the conservative reading, and
+  // the only one that never imports on the feature's account.
+  surplusFloor?: SurplusFloorPolicy;
 };
 
 export type PriceOptimizerDeps = {

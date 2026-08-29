@@ -43,7 +43,10 @@ import {
   resolveSteppedLoadPlanningPowerKw,
 } from '../../lib/utils/deviceControlProfiles';
 import { projectTemperatureDeniedDevice } from '../temperatureControlDenial';
-import { resolveSurplusOnlyPosture } from '../../lib/plan/planSurplusAbsorb';
+import {
+  resolveSurplusOnlyPosture,
+  resolveSurplusTrackingPosture,
+} from '../../lib/plan/planSurplusAbsorb';
 import { resolveSurplusPoolReachable } from '../../packages/shared-domain/src/solar/surplusPoolReachable';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import {
@@ -76,7 +79,10 @@ const isPlainBinaryControlDevice = (
  * removed pair used to sit, for why.
  */
 export type ToPlanDeviceOptions = {
-  /** When false, skip the surplus-absorb posture entirely — never stamp `surplusOnly`. Default true. */
+  /**
+   * When false, skip the surplus-absorb postures entirely — never stamp
+   * `surplusOnly` or `surplusTracking`. Default true.
+   */
   surplusPostureEnabled?: boolean;
   /** Owning-home PELS-OFF provenance cleanup for pull-observed ON. */
   clearRecentBinaryOffCommand?: (
@@ -138,12 +144,18 @@ export function isExternalOffHeldForDevice(ctx: AppContext, deviceId: string): b
 }
 
 /**
- * "Run on solar surplus" dump-load posture (the flat `surplusOnly` bit),
- * resolved ONCE from the per-device price-opt blob + the raw snapshot's modality
- * (binary, not temperature/stepped/EV) and the resolved managed/controllable
- * bits. The planner's allocator/hold and the executor's carve-out stamp consume
- * it; nothing downstream re-reads the blob. `surplusOnly` is a per-cycle derived
- * posture, not persisted state.
+ * Both non-temperature surplus postures — the "Run on solar surplus" dump-load
+ * bit (`surplusOnly`) and the "Match solar surplus" tracking bit
+ * (`surplusTracking`) — resolved ONCE from the per-device price-opt blob + the
+ * raw snapshot's modality and the resolved managed/controllable bits. The
+ * planner's allocator/hold and the executor's carve-out stamp consume them;
+ * nothing downstream re-reads the blob. Both are per-cycle derived postures, not
+ * persisted state.
+ *
+ * The two are mutually exclusive by construction rather than by precedence: the
+ * dump-load bit requires a plain binary control model and a non-stepped
+ * snapshot, the tracking bit requires a step ladder. One `surplusWilling`
+ * opt-in, three modalities, and the device's own shape picks which one it gets.
  *
  * Gated on whether the home's surplus pool can EVER open
  * (`resolveSurplusPoolReachable`), not on the power source. The source-name gate
@@ -182,31 +194,47 @@ function resolveSurplusPostureForDevice(params: {
   // both readers take that answer. Two spellings of the one question this
   // refactor exists to centralise is exactly the fork it removed elsewhere.
   hasStandingDemand: boolean;
-}): boolean {
+}): { surplusOnly: boolean; surplusTracking: boolean } {
   const {
     ctx, device, opts, plainBinaryControlModel, controllable, managed, hasStandingDemand,
   } = params;
-  if (device.temperatureControlDisabled === true) return false;
-  if (opts?.surplusPostureEnabled === false) return false;
-  return resolveSurplusOnlyPosture({
-    surplusWilling: ctx.priceOptimizationSettings[device.id]?.surplusWilling,
-    hasBinaryControl: device.binaryControl !== undefined,
-    hasStandingDemand,
-    targets: device.targets,
-    steppedLoadProfile: device.steppedLoadProfile,
-    plainBinaryControlModel,
-    controllable,
-    managed,
-    surplusPoolReachable: resolveSurplusPoolReachable({
-      tracker: ctx.powerTracker,
-      // Absent only until the post-startup wiring runs. False is the better
-      // default (a wrongly-stamped device is held off indefinitely, while an
-      // unstamped one is merely turned on from grid headroom by the generic
-      // restore lane) — but it is not free, so the underlying evidence is
-      // persisted rather than re-earned each boot.
-      curtailmentCanContribute: ctx.canContributeCurtailmentSurplus?.() === true,
-    }),
+  const none = { surplusOnly: false, surplusTracking: false };
+  if (device.temperatureControlDisabled === true) return none;
+  if (opts?.surplusPostureEnabled === false) return none;
+  const surplusWilling = ctx.priceOptimizationSettings[device.id]?.surplusWilling;
+  const surplusPoolReachable = resolveSurplusPoolReachable({
+    tracker: ctx.powerTracker,
+    // Absent only until the post-startup wiring runs. False is the better
+    // default (a wrongly-stamped device is held off indefinitely, while an
+    // unstamped one is merely turned on from grid headroom by the generic
+    // restore lane) — but it is not free, so the underlying evidence is
+    // persisted rather than re-earned each boot.
+    curtailmentCanContribute: ctx.canContributeCurtailmentSurplus?.() === true,
   });
+  // The two postures are mutually exclusive by construction — the binary one
+  // requires `plainBinaryControlModel` and a non-stepped snapshot, the tracking
+  // one requires a step ladder — so this is a modality split, not a precedence.
+  return {
+    surplusOnly: resolveSurplusOnlyPosture({
+      surplusWilling,
+      hasBinaryControl: device.binaryControl !== undefined,
+      hasStandingDemand,
+      targets: device.targets,
+      steppedLoadProfile: device.steppedLoadProfile,
+      plainBinaryControlModel,
+      controllable,
+      managed,
+      surplusPoolReachable,
+    }),
+    surplusTracking: resolveSurplusTrackingPosture({
+      surplusWilling,
+      targets: device.targets,
+      steppedLoadProfile: device.steppedLoadProfile,
+      controllable,
+      managed,
+      surplusPoolReachable,
+    }),
+  };
 }
 
 /**
@@ -539,7 +567,7 @@ export function toPlanDevice(
   // with the setpoint. The one place this is decided; the surplus posture below
   // and the plan device's own bit are both readers of this single answer.
   const hasStandingDemand = !isEvObserved(device);
-  const surplusOnly = resolveSurplusPostureForDevice({
+  const { surplusOnly, surplusTracking } = resolveSurplusPostureForDevice({
     ctx,
     device,
     opts,
@@ -633,6 +661,7 @@ export function toPlanDevice(
     controllable,
     available: device.available,
     ...(surplusOnly ? { surplusOnly: true as const } : {}),
+    ...(surplusTracking ? { surplusTracking: true as const } : {}),
     ...(externalOffHoldActive ? { externalOffHoldActive: true as const } : {}),
     // Flat producer-resolved step-ladder gap — see `steppedLadderMissing` above.
     // Stamped only when true, so the absent case has one spelling.
