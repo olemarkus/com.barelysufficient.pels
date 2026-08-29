@@ -145,6 +145,8 @@ type OpenPanelParams = {
   surplusWilling?: boolean;
   surplusFloor?: 'off' | 'minimum';
   activeSmartTask?: boolean;
+  /** An unsaved control-mode draft, as the panel's own store would hold it. */
+  storedTargetPowerConfig?: Record<string, unknown>;
 };
 
 const openPanel = async (params: OpenPanelParams) => {
@@ -168,6 +170,9 @@ const openPanel = async (params: OpenPanelParams) => {
         ...(params.surplusFloor ? { surplusFloor: params.surplusFloor } : {}),
       },
     }
+    : {};
+  state.deviceTargetPowerConfigs = params.storedTargetPowerConfig
+    ? { [deviceId]: params.storedTargetPowerConfig }
     : {};
   state.hasManagedSolarDevice = true;
   state.hasExhibitedExport = true;
@@ -283,6 +288,24 @@ describe('device detail solar-surplus tracking gating', () => {
       // the hover tooltip is unreachable in the touch WebView.
       await openPanel({ device: buildCharger(), surplusWilling: true });
       expect(floorHint()?.textContent).toContain('1.4 kW');
+    });
+
+    it('reads the floor from the STORED control-mode draft, not the saved snapshot', async () => {
+      // The regression: every other control on this panel reads
+      // `getStoredTargetPowerConfig(id) ?? device.targetPowerConfig`, so an
+      // owner switching to 3-phase sees the rest of the panel update while the
+      // floor hint — read off the saved snapshot — still claimed about 1.4 kW.
+      // That is the one number this setting exists to state, wrong at the exact
+      // moment they are deciding.
+      await openPanel({
+        device: buildCharger(),
+        surplusWilling: true,
+        storedTargetPowerConfig: {
+          enabled: true, preset: 'ev_charger_3_phase', min: 0, max: 22080,
+          step: 1380, excludeMin: 1, excludeMax: 4140,
+        },
+      });
+      expect(floorHint()?.textContent).toContain('4.1 kW');
     });
 
     it('hides the floor section until the device is opted in', async () => {

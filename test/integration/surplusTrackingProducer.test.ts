@@ -80,14 +80,14 @@ describe('toPlanDevice surplusTracking producer stamp', () => {
 
     const socket = toPlanDevice(willingCtx(SOCKET), buildSocketSnapshot());
     expect(socket.surplusOnly).toBe(true);
-    expect(socket.surplusTracking).toBeUndefined();
+    expect(socket.surplusTracking).toBe(false);
   });
 
   it('does not stamp a charger that never opted in', () => {
     const ctx = createAppContextMock({ powerTracker: exportedBefore });
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
     (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
-    expect(toPlanDevice(ctx, buildChargerSnapshot()).surplusTracking).toBeUndefined();
+    expect(toPlanDevice(ctx, buildChargerSnapshot()).surplusTracking).toBe(false);
   });
 
   it('does not stamp when the home has never exported and cannot infer curtailment', () => {
@@ -101,13 +101,13 @@ describe('toPlanDevice surplusTracking producer stamp', () => {
     });
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
     (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
-    expect(toPlanDevice(ctx, buildChargerSnapshot()).surplusTracking).toBeUndefined();
+    expect(toPlanDevice(ctx, buildChargerSnapshot()).surplusTracking).toBe(false);
   });
 
   it('does not stamp an unmanaged charger', () => {
     const ctx = willingCtx(CHARGER);
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => false;
-    expect(toPlanDevice(ctx, buildChargerSnapshot()).surplusTracking).toBeUndefined();
+    expect(toPlanDevice(ctx, buildChargerSnapshot()).surplusTracking).toBe(false);
   });
 
   it('stamps regardless of plug state — the unplugged case is the allocator\'s to answer', () => {

@@ -55,10 +55,12 @@ const resolve = (params: {
   floor?: SurplusFloorPolicy;
 }): void => {
   resolveSurplusEligibility({
-    devices: params.devices,
+    devices: params.floor
+      ? params.devices.map((dev) => ({ ...dev, surplusFloor: params.floor } as PlanInputDevice))
+      : params.devices,
     state: params.state,
     signedNetKw: params.signedNetKw,
-    getConfig: () => ({ surplusWilling: true, surplusDelta: 2, surplusFloor: params.floor }),
+    getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
     nowTs: params.nowTs,
   });
 };

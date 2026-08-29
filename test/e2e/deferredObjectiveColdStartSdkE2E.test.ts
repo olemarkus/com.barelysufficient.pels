@@ -68,6 +68,8 @@ const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinar
   boostSupported: false,
   boostRequested: false,
   hasStandingDemand: true,
+  surplusTracking: false,
+  surplusFloor: 'off' as const,
   confirmedNotDrawing: false,
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: 'C', min: 0, max: 95, step: 0.5 }],
   // `binaryControl` moved onto the binary cluster; `binaryCapabilityId` makes

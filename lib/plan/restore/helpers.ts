@@ -187,7 +187,7 @@ function admitStepUnderSurplusCeiling<T extends { id: string; planningPowerW: nu
   nextStep: T | null,
 ): T | null {
   if (!nextStep) return null;
-  if (dev.surplusTracking !== true) return nextStep;
+  if (!dev.surplusTracking) return nextStep;
   if (dev.boostActive === true) return nextStep;
   const ceilingStepId = state.surplusTrackingStepByDevice[dev.id];
   if (ceilingStepId === undefined) return nextStep;

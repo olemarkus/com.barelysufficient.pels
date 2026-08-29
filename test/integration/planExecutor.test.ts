@@ -130,6 +130,7 @@ const buildPlan = (): DevicePlan => ({
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
+      surplusTracking: false,
       confirmedNotDrawing: false,
       deviceType: 'temperature' as const,
       currentState: 'off',
@@ -162,6 +163,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
+      surplusTracking: false,
       confirmedNotDrawing: false,
       deviceType: 'temperature' as const,
       currentState: 'on',
@@ -1710,6 +1712,7 @@ describe('PlanExecutor stepped loads', () => {
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
+      surplusTracking: false,
       confirmedNotDrawing: false,
       steppedLoadProfile: steppedProfile,
       reportedStepId: 'low',
@@ -2274,6 +2277,7 @@ describe('PlanExecutor stepped loads', () => {
       boostSupported: false,
       boostRequested: false,
       hasStandingDemand: true,
+      surplusTracking: false,
       confirmedNotDrawing: false,
     });
     const evPlan: DevicePlan = { ...plan, devices: [plan.devices[0]!] };
@@ -4159,6 +4163,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       controllable: true, available: true, reason: CAPACITY_REASON, boostActive: false,
       hasStandingDemand: true,
+      surplusTracking: false,
       confirmedNotDrawing: false,
       binaryCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
       currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
@@ -4173,6 +4178,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       binaryCapabilityId: 'onoff' as const, currentOn: false,
       steppedLoadProfile: multiStepProfile,
       selectedStepId: 'off',
+      surplusTracking: false,
       desiredStepId,
     }));
 

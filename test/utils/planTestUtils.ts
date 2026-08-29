@@ -313,6 +313,8 @@ export const withMaterializedEvPlugState = <T extends {
     // Mirrors the producer: everything but a charger is going without when it is
     // off. A fixture may still say otherwise explicitly.
     hasStandingDemand: (overrides as { hasStandingDemand?: boolean }).hasStandingDemand ?? !isEv,
+    surplusTracking: (overrides as { surplusTracking?: boolean }).surplusTracking ?? false,
+    surplusFloor: (overrides as { surplusFloor?: 'off' | 'minimum' }).surplusFloor ?? 'off',
     // Required two-state producer bit; `false` is "no calibration opinion".
     confirmedNotDrawing: (overrides as { confirmedNotDrawing?: boolean }).confirmedNotDrawing ?? false,
     ...(isEv ? { objectiveKind: 'ev_soc' as const } : {}),
@@ -739,6 +741,7 @@ DevicePlanDevice => {
     // a consumer read absence as "not boosting" — which is a decision, not a gap.
     boostActive: overrides.boostActive ?? false,
     hasStandingDemand: fixtureHasStandingDemand(overrides),
+    surplusTracking: overrides.surplusTracking ?? false,
     // Mirrors production's ONE stamp site (`finalizePlanDevices`), through the
     // same resolver: the plan's shed END STATE, derived from the device's final
     // `plannedState` + shed triple. Without it every fixture would reach the
@@ -920,6 +923,8 @@ export const buildPlanInputDevice = (
     boostSupported: overrides.boostSupported ?? resolveBoostSupported(fixtureBoostInput(overrides)),
     boostRequested: overrides.boostRequested ?? resolveBoostRequested(fixtureBoostInput(overrides)),
     hasStandingDemand: fixtureHasStandingDemand(overrides),
+    surplusTracking: overrides.surplusTracking ?? false,
+    surplusFloor: overrides.surplusFloor ?? 'off',
     // Producer-required two-state bit. Default `false` — "the calibration store
     // has no opinion", which is what an unseeded fixture genuinely means and the
     // arm that leaves boost untouched.

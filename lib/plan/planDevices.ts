@@ -126,10 +126,10 @@ export function buildInitialPlanDevices(params: {
     // and `boostActive` already cross that seam. A ceiling that names an off rung
     // is not "running on solar" — the device is waiting for sun, and the hold
     // below is what says so on the card.
-    const surplusCeilingStepId = dev.surplusTracking === true
+    const surplusCeilingStepId = dev.surplusTracking
       ? state.surplusTrackingStepByDevice[dev.id]
       : undefined;
-    if (dev.surplusTracking === true && isSteppedLoadDevice(dev)) {
+    if (dev.surplusTracking && isSteppedLoadDevice(dev)) {
       state.surplusAbsorbActiveByDevice[dev.id] = surplusCeilingStepId !== undefined
         && !isSteppedLoadOffStep(dev.steppedLoadProfile, surplusCeilingStepId)
         && !shedSet.has(dev.id);

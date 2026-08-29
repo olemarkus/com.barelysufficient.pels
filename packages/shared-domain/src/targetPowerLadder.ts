@@ -132,6 +132,25 @@ const assessNumericFields = (
   return undefined;
 };
 
+/**
+ * The lowest RUNNING level a target-power config yields, in watts — the first
+ * rung above off. `excludeMax` is the floor when set (an EV preset carries the
+ * 6 A rung there: 1380 W on one phase, 4140 W on three), otherwise the range's
+ * own minimum, otherwise one step.
+ *
+ * Exported because it is the number the solar-surplus floor setting is about,
+ * and the settings UI has to state it in visible text. Deriving it there from a
+ * built ladder would be a second definition of "the lowest level" that could
+ * drift from the one the ladder actually uses.
+ */
+export const resolveTargetPowerFloorW = (
+  options: TargetPowerLadderOptions | undefined,
+): number | undefined => {
+  const stepW = finitePositiveNumber(options?.step);
+  if (stepW === undefined) return undefined;
+  return resolveActiveMinW(options, stepW);
+};
+
 const resolveActiveMinW = (
   options: TargetPowerLadderOptions | undefined,
   stepW: number,
