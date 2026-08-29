@@ -17,10 +17,7 @@ import {
   syncSurplusEligibilityState,
 } from './admission';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
-import {
-  readSurplusFloorPolicy,
-  type SurplusFloorPolicy,
-} from '../../packages/shared-domain/src/settings/surplusFloor';
+import type { SurplusFloorPolicy } from '../../packages/shared-domain/src/settings/surplusFloor';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadOffStep,
@@ -51,7 +48,6 @@ export type PriceOptDeviceConfig = {
   expensiveDelta: number;
   surplusWilling?: boolean;
   surplusDelta?: number;
-  surplusFloor?: SurplusFloorPolicy;
 };
 
 export type { SurplusFloorPolicy };
@@ -59,7 +55,6 @@ export type { SurplusFloorPolicy };
 type SurplusConfig = {
   surplusWilling?: boolean;
   surplusDelta?: number;
-  surplusFloor?: SurplusFloorPolicy;
 };
 
 // Local guard — kept off lib/utils so this new plan module stays self-contained
@@ -309,10 +304,6 @@ function paceCeilingClimb(params: {
   return target;
 }
 
-const resolveFloorPolicy = (config: SurplusConfig | undefined): SurplusFloorPolicy => (
-  readSurplusFloorPolicy(config?.surplusFloor)
-);
-
 /**
  * The VARIABLE claimant. A fixed claimant (temperature lift, binary dump load)
  * reserves one number it cannot change — `getHighestKnownPowerKw` — and the
@@ -484,7 +475,7 @@ export function resolveSurplusEligibility(params: {
   const willing = params.devices.filter(
     (dev) => (excludeIds === undefined || !excludeIds.has(dev.id))
       && (dev.surplusOnly === true
-        || dev.surplusTracking === true
+        || dev.surplusTracking
         || (willingWithLift(getConfig(dev.id)) && supportsTemperatureLift(dev))),
   );
 
@@ -523,9 +514,9 @@ export function resolveSurplusEligibility(params: {
   // Top priority first (PELS priority `1` is highest — ascending order).
   const ordered = [...willing].sort((a, b) => a.priority - b.priority);
   for (const dev of ordered) {
-    if (dev.surplusTracking === true) {
+    if (dev.surplusTracking) {
       poolKw -= claimForTrackingDevice({
-        dev, state, poolKw, nowTs, floor: resolveFloorPolicy(getConfig(dev.id)),
+        dev, state, poolKw, nowTs, floor: dev.surplusFloor,
       });
       continue;
     }

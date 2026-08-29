@@ -27,7 +27,12 @@ import {
 import { showToastError } from '../toast.ts';
 import { resolveDeviceDetailKind } from '../deviceKind.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
-import { getSteppedLoadLowestActiveStep } from '../../../../contracts/src/deviceControlProfiles.ts';
+import {
+  getSteppedLoadLowestActiveStep,
+  hasUsableSteppedLoadLadder,
+} from '../../../../contracts/src/deviceControlProfiles.ts';
+import { resolveTargetPowerFloorW } from '../../../../shared-domain/src/targetPowerLadder.ts';
+import { getStoredTargetPowerConfig } from '../deviceControlProfiles.ts';
 import { readSurplusFloorPolicy } from '../../../../shared-domain/src/settings/surplusFloor.ts';
 import {
   resolveSurplusFloorHint,
@@ -57,22 +62,33 @@ const isSurplusTrackingDeviceShape = (
   if (!device) return false;
   if (!controlState.canManageDevice || !controlState.isManaged) return false;
   if (supportsTemperatureDevice(device)) return false;
-  return hasUsableLadder(device);
+  return resolveLadderFloorKw(device) !== undefined;
 };
 
-const hasUsableLadder = (device: SettingsUiDeviceDetailItem): boolean => (
-  resolveLadderFloorKw(device) !== undefined
-);
-
 /**
- * The device's own lowest running level, in kW — read off its configured levels
- * rather than assumed, so a hand-configured ladder reports its real floor and an
- * EV preset reports the 6 A rung the ladder actually carries.
+ * The device's own lowest running level, in kW.
+ *
+ * Read from the EFFECTIVE target-power config — the stored draft first, exactly
+ * as `resolveDeviceDetailControlMode` and the rest of this panel read it. That
+ * matters here more than anywhere: an owner switching the control mode from EV
+ * 1-phase to 3-phase must see the floor hint change from about 1.4 kW to about
+ * 4.1 kW as they do it. Reading the saved snapshot instead would show them the
+ * old number at the exact moment they are deciding, and the number is the whole
+ * point of the setting.
+ *
+ * Falls back to the device's own ladder for a hand-configured stepped load with
+ * no target-power config. `resolveTargetPowerFloorW` is the same derivation the
+ * real ladder is built from, so the two cannot drift.
  */
 const resolveLadderFloorKw = (device: SettingsUiDeviceDetailItem): number | undefined => {
+  const config = getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig;
+  if (config && config.enabled !== false) {
+    const floorW = resolveTargetPowerFloorW(config);
+    if (floorW !== undefined && floorW > 0) return floorW / 1000;
+  }
   const profile = device.steppedLoadProfile;
-  if (!profile) return undefined;
-  const floor = getSteppedLoadLowestActiveStep(profile);
+  if (!hasUsableSteppedLoadLadder(profile)) return undefined;
+  const floor = getSteppedLoadLowestActiveStep(profile as NonNullable<typeof profile>);
   if (!floor || !Number.isFinite(floor.planningPowerW) || floor.planningPowerW <= 0) return undefined;
   return floor.planningPowerW / 1000;
 };
@@ -85,10 +101,6 @@ const resolveCopyKind = (device: SettingsUiDeviceDetailItem): SurplusTrackingCop
 // `isCapacityControlEnabled` (managed AND power-limit-controllable), so mirror
 // the controllable half here or the toggle silently does nothing.
 const isPowerLimitControlOn = (deviceId: string): boolean => state.controllableMap[deviceId] === true;
-
-const resolveFloorPolicy = (deviceId: string): SurplusFloorPolicy => (
-  readSurplusFloorPolicy(state.priceOptimizationSettings[deviceId]?.surplusFloor)
-);
 
 const applyTrackingDisabledState = (deviceId: string): void => {
   const powerLimitOff = !isPowerLimitControlOn(deviceId);
@@ -168,7 +180,11 @@ const applyFloorSection = (
 ): void => {
   if (deviceDetailSurplusTrackSection) deviceDetailSurplusTrackSection.hidden = !optedIn;
   if (!optedIn) return;
-  if (deviceDetailSurplusFloor) deviceDetailSurplusFloor.value = resolveFloorPolicy(deviceId);
+  if (deviceDetailSurplusFloor) {
+    deviceDetailSurplusFloor.value = readSurplusFloorPolicy(
+      state.priceOptimizationSettings[deviceId]?.surplusFloor,
+    );
+  }
   if (deviceDetailSurplusFloorHint) {
     deviceDetailSurplusFloorHint.textContent = resolveSurplusFloorHint(
       resolveCopyKind(device),

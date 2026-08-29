@@ -1,3 +1,4 @@
+import type { SurplusFloorPolicy } from '../../shared-domain/src/settings/surplusFloor.js';
 import type {
   DeviceControlAdapterSnapshot,
   DeviceControlModel,
@@ -411,7 +412,9 @@ export type PlanInputDeviceBase = {
    */
   surplusOnly?: true;
   /**
-   * Producer-resolved "Match solar surplus" tracking posture. `true` when the
+   * Producer-resolved "Match solar surplus" tracking posture. Always present:
+ * the producer answers this for every device, so an absent value would mean a
+ * producer that forgot rather than a device without an answer. `true` when the
    * device opted in via `surplusWilling` in the per-device price-opt blob AND
    * carries a usable step ladder (a stepped load, which is what an EV charger
    * under a current-control preset is). The modulating sibling of
@@ -425,7 +428,19 @@ export type PlanInputDeviceBase = {
    * charger cannot claim the pool — so the planner still never asks whether a
    * device is an EV.
    */
-  surplusTracking?: true;
+  surplusTracking: boolean;
+  /**
+   * Producer-resolved answer to "what does this device do when its allocation
+   * no longer covers its lowest running level" — `'off'` stops it, `'minimum'`
+   * holds the floor and lets the grid cover the gap.
+   *
+   * Required, and resolved through the settings key's owner
+   * (`readSurplusFloorPolicy`), so the planner never sees the raw persisted
+   * bytes and never re-derives the default. Present on every device: for one
+   * that is not tracking it is simply unread, which is cheaper than an optional
+   * every consumer would have to defend against.
+   */
+  surplusFloor: SurplusFloorPolicy;
   /**
    * Producer-resolved "Leave off until turned on again" posture. `true` when the
    * device is opted in, PELS observed an outside OFF action, and it is STILL

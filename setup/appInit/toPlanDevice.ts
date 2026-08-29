@@ -48,6 +48,7 @@ import {
   resolveSurplusTrackingPosture,
 } from '../../lib/plan/planSurplusAbsorb';
 import { resolveSurplusPoolReachable } from '../../packages/shared-domain/src/solar/surplusPoolReachable';
+import { readSurplusFloorPolicy } from '../../packages/shared-domain/src/settings/surplusFloor';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import {
   resolveEvTargetPowerPlannerProfile,
@@ -661,7 +662,8 @@ export function toPlanDevice(
     controllable,
     available: device.available,
     ...(surplusOnly ? { surplusOnly: true as const } : {}),
-    ...(surplusTracking ? { surplusTracking: true as const } : {}),
+    surplusTracking,
+    surplusFloor: readSurplusFloorPolicy(ctx.priceOptimizationSettings[device.id]?.surplusFloor),
     ...(externalOffHoldActive ? { externalOffHoldActive: true as const } : {}),
     // Flat producer-resolved step-ladder gap — see `steppedLadderMissing` above.
     // Stamped only when true, so the absent case has one spelling.

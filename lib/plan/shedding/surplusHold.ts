@@ -84,7 +84,7 @@ export function resolveSurplusHold(params: {
     holdIds.add(device.id);
     reasonById.set(device.id, { code: PLAN_REASON_CODES.awaitingSolarSurplus });
     const ceilingStepId = params.state.surplusTrackingStepByDevice[device.id];
-    if (device.surplusTracking === true && ceilingStepId !== undefined) {
+    if (device.surplusTracking && ceilingStepId !== undefined) {
       stepTargetById.set(device.id, ceilingStepId);
     }
   }
@@ -115,7 +115,7 @@ export const isSurplusHeldDevice = (
   if (device.surplusOnly === true) {
     return !isEligibleAndRunnable(device, state.surplusEligibilityByDevice[device.id]);
   }
-  if (device.surplusTracking === true) {
+  if (device.surplusTracking) {
     return isTrackingClampedToOff(device, state.surplusTrackingStepByDevice[device.id]);
   }
   return false;
