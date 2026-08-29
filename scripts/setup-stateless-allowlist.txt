@@ -1,0 +1,49 @@
+# Files under setup/ that hold state and predate the "setup does not remember"
+# rule (setup/AGENTS.md § "No state", enforced by scripts/check-setup-stateless.mjs).
+#
+# Format: "<path> <declaration count>". The count is the budget, and it may only
+# SHRINK. A count that goes up fails the guard (new state landed in a file that
+# is supposed to be shedding it); a count that no longer matches after a
+# migration fails too, so the line must be lowered or deleted deliberately. The
+# list cannot rot into a permanent exemption. When the last line goes, DELETE
+# THIS FILE — the guard then requires its absence.
+#
+# Each line is grouped under the lane that will take it. The lane comments name
+# the destination, not a promise about when: see TODO.md for the entries.
+# Declaration counts are as of the guard's introduction (21 files, 104 declarations).
+
+# --- Executor command state (→ lib/executor) -------------------------------
+# The stepped-command store, whose confirm/expire/prune lifecycle is also driven
+# from setup, inside the plan-input producer. The reason this guard exists.
+setup/appDeviceControlHelpers.ts 1
+
+# --- Power lane (→ lib/power) ----------------------------------------------
+setup/powerMeasurementGate.ts 3
+setup/powerSamplePipeline.ts 5
+setup/flowPowerSampleFreshnessClock.ts 4
+setup/homeRuntime/suffixedTrackerPersistence.ts 4
+setup/homeRuntime/powerSourceEpochFence.ts 5
+
+# --- Device/snapshot lane (→ lib/device) -----------------------------------
+setup/appSnapshotHelpers.ts 11
+setup/targetPowerProbeScheduler.ts 4
+setup/appNativeWiring.ts 1
+setup/appFlowBacked.ts 7
+setup/appDeviceSupport.ts 1
+
+# --- Home lane (→ lib/home; the meter-provenance pair may need lib/power) ---
+setup/homeMembership.ts 16
+setup/homeMainMeterAuthority.ts 7
+setup/homeSampledMeterIdentity.ts 3
+setup/homeRuntime/homeModeOwnershipTransfer.ts 2
+setup/homeRuntime/homeRuntimeRegistry.ts 8
+
+# --- Solar lane (→ lib/solar) ----------------------------------------------
+setup/appInit/createPvForecastService.ts 7
+
+# --- Composition root and leftovers ----------------------------------------
+# Service handles belong to app.ts/AppContext; the rest to their domain module.
+setup/appServiceWiring.ts 7
+setup/backgroundTasksController.ts 6
+setup/schedulerTelemetryObserver.ts 1
+setup/appDebugHelpers.ts 1

@@ -16,7 +16,7 @@ This page is the public contributor reference. Use it when you are deciding wher
 │ Entry points                                                │
 │   app.ts · drivers/** · packages/settings-ui/src/script.ts  │
 ├─────────────────────────────────────────────────────────────┤
-│ App wiring and adapters                                     │
+│ App wiring — stateless                                      │
 │   setup/** · lib/app/** (sunsetting) · flowCards/**         │
 ├─────────────────────────────────────────────────────────────┤
 │ Domain modules                                              │
@@ -36,7 +36,7 @@ This page is the public contributor reference. Use it when you are deciding wher
 | Layer | Purpose | Examples |
 | --- | --- | --- |
 | **Entry points** | Boot the runtime or render the settings UI. Wire dependencies but contain no domain logic. | `app.ts` (Homey app entry), `drivers/pels_insights/` (virtual device), `script.ts` (settings UI bootstrap) |
-| **App wiring** | Adapt the Homey SDK and Flow cards onto the domain modules. This is where dependency injection happens. New wiring lives in `setup/`; `lib/app/` is sunsetting. | `setup/schedulerTelemetryObserver.ts`, `setup/settingsRepository.ts`, `flowCards/registerFlowCards.ts` |
+| **App wiring** | Adapt the Homey SDK and Flow cards onto the domain modules, and hold nothing afterwards. This is where dependency injection happens. New wiring lives in `setup/`; `lib/app/` is sunsetting. | `setup/schedulerTelemetryObserver.ts`, `setup/settingsRepository.ts`, `flowCards/registerFlowCards.ts` |
 | **Domain** | Pure planning, capacity, price, budget, and observation logic. No Homey SDK calls; no UI imports. | `lib/plan/planEngine.ts`, `lib/device/deviceTransport.ts`, `lib/power/tracker.ts`, `lib/objectives/profiles.ts`, `lib/observer/idleClassifier.ts` |
 | **Shared utilities** | Pure helpers usable from anywhere — including the browser-side settings UI. Must remain Homey-SDK-free. | `lib/utils/*`, `packages/shared-domain/src/deadlineLabels.ts` |
 | **Test code** | Specs and mocks. Runtime cannot import it. | `test/`, `packages/settings-ui/test/` |
@@ -61,6 +61,10 @@ If any of these break, CI fails before tests run. Local check: `npm run arch:che
 
 `setup/` at the repo root is the honest home for app-wiring classes — factories, observers, registrars that construct and connect services. These have no reuse value outside this app, so they live at the entry layer rather than masquerading as library code in `lib/app/`.
 
+**It constructs and connects; it does not run, and it does not remember.** No mutable field, no module-level `let` or `var`, no field holding a mutable container — `readonly` pins a reference, not its contents. Anything that changes as the app runs is a component owned by the `lib/` module that owns the concept, and setup builds it and hands it its collaborators. The composition root is `app.ts`, which holds the constructed services as readonly fields.
+
+State in the wiring layer is state with no owner: it sits *above* the boundaries the dependency graph enforces, so anything wired can reach it, and it becomes a channel between modules the rules forbid to talk — with no import edge for `arch:check` to see. An adapter is no exception: it translates between `homey.settings` and a typed port and returns, while the port's cache, dirty flag, and grace window live with the port in `lib/`. `npm run setup:stateless` enforces this; files predating the rule sit in a shrinking allowlist.
+
 **Direction is enforced.** The [`no-lib-to-setup`](https://github.com/olemarkus/com.barelysufficient.pels/blob/main/.dependency-cruiser.cjs) rule blocks any import from `lib/**` or `packages/**` into `setup/**`. Wiring imports the libraries it wires; never the reverse.
 
 **Conventions (reviewed at PR time, not cruiser-enforced):**
@@ -79,8 +83,9 @@ If any of these break, CI fails before tests run. Local check: `npm run arch:che
 | New UI on the settings page | `packages/settings-ui/src/ui/` — read state from contracts; emit changes through the API surface |
 | A user-facing string also written to logs | `packages/shared-domain/src/` — both the UI and the runtime logger must import it from there |
 | A type used on both sides | `packages/contracts/src/` |
-| App-wiring code (factory, observer, registrar that constructs/connects services) | `setup/` — one purpose per file, exposes a class or single `register*`/`init*` function. See [App wiring lives in `setup/`](#app-wiring-lives-in-setup). |
-| A Homey-SDK adapter | `setup/` for new wiring (preferred); `lib/app/` is sunsetting. Keep the adapter thin and forward to a domain module. |
+| App-wiring code (factory, observer, registrar that constructs/connects services) | `setup/` — one purpose per file, exposes a class or single `register*`/`init*` function, and holds no state. See [App wiring lives in `setup/`](#app-wiring-lives-in-setup). |
+| Something that must be remembered between calls (a cache, latch, counter, ledger, in-flight marker) | The `lib/` module that owns the concept, as a component `setup/` constructs. Never a field in `setup/` — see [App wiring lives in `setup/`](#app-wiring-lives-in-setup). |
+| A Homey-SDK adapter | `setup/` for new wiring (preferred); `lib/app/` is sunsetting. Keep the adapter thin, stateless, and forwarding to a domain module — the port's remembered state lives with the port in `lib/`. |
 
 ## When duplication is the right call
 

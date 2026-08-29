@@ -1,6 +1,14 @@
 # Setup (App Wiring) Layer
 
-- This folder is the wiring/adapter layer between the `app.ts` entry point and the `lib/` domain modules: factories, observers, registrars, and Homey-settings adapters that construct and connect services. Nothing here has reuse value outside this app; it lives at the entry layer on purpose.
+- This folder **constructs and connects**. It does not run, and it does not remember. Factories, observers, registrars, and the Homey-settings readers/writers that bind the `lib/` domain modules to the SDK live here; a file here builds something and hands it over. Nothing here has reuse value outside this app; it lives at the entry layer on purpose.
+
+## No state (authoritative)
+
+- **`setup/` holds nothing.** No mutable field, no module-level `let` or `var`, and no field holding a mutable container (`new Map()`, `new Set()`, an array or object literal, a `create*Store()` result — `readonly` pins the reference, not the contents, and a bare declaration filled in the constructor is caught at the assignment). Anything that changes as the app runs is a **component**: it belongs to the domain module that owns the concept, and setup builds it and hands it the collaborators it needs.
+  - **Why.** State in the wiring layer is state with no owner. It sits ABOVE the layer boundaries `.dependency-cruiser.cjs` enforces, so anything wired can reach it, and it becomes a channel between modules that are forbidden to talk — with no import edge to show for it, so `arch:check` cannot see it. `appDeviceControlHelpers.ts` is the worked example: it holds the EXECUTOR's stepped-command state, and confirm/expire/prune run from setup inside `decorateSnapshotWithDeviceControl` — the plan-input producer. So a step command settles because the planner asked for its devices, not because the executor observed materialization, and the commanded axis reaches the planner while `no-plan-to-executor` (error severity, incident inc_26449fb9 attached) sees nothing.
+  - **Allowed:** `private readonly deps` and readonly constructor parameter properties — a reference to something someone else owns; a class property initialized with an arrow function (a method bound to its receiver, as the `homey.app` façades need); `abstract` property declarations on `appRuntimeApi.ts` / `appHostApi.ts`, which declare storage `PelsApp` provides rather than holding it; module consts typed `ReadonlySet`/`ReadonlyMap` or SCREAMING_SNAKE constant tables; and locals inside a function, which die with the call frame.
+  - **The composition root is `app.ts`**, not `setup/`. Handles to constructed services are held there (or on `AppContext`) as readonly fields — it already holds roughly two dozen.
+  - Enforced by `npm run setup:stateless` (`scripts/check-setup-stateless.mjs`, in `ci:checks`). Files predating the rule are in `scripts/setup-stateless-allowlist.txt`, which budgets each one a declaration count. The budget may only shrink: adding state to a listed file fails the guard just as a new stateful file does, and a count left stale after a migration fails too. **Do not add a line to it, and do not raise a count.**
 
 ## Conventions (authoritative)
 
@@ -80,7 +88,9 @@
 ## Adapter naming
 
 - `*Adapter.ts` files (e.g. `priceDataAdapter.ts`, `dailyBudgetSettingsAdapter.ts`, `deviceDiagnosticsStateAdapter.ts`) implement typed store ports declared in `lib/` domain modules on top of `homey.settings`. The port type lives in the domain; only the adapter here knows about Homey.
+- **An adapter here is I/O only.** It translates between `homey.settings` and the typed port and returns; it remembers nothing between calls. A port's stateful half — a cache, a `dirty` flag, a load-phase classification, an abandon-grace window — lives WITH the port in `lib/`, because that state is the domain's and the grace policy is a domain rule (`notes/persisted-settings-state.md`). "Adapter" is not a licence to hold state; see § "No state".
 
 ## What does not belong here
 
 - Domain logic, planning/price math, UI strings, or anything a `lib/` module could own. If logic is reusable, push it down into `lib/` or `packages/` and keep only the wiring here.
+- **State.** See § "No state" above — the rule, the reason, and what is allowed instead.
