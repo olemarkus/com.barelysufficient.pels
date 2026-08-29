@@ -36,17 +36,6 @@ export class DailyBudgetStatePersistencePolicy {
     this.lastPersistedStateJson = JSON.stringify(state);
   }
 
-  shouldPersist(params: {
-    reason: DailyBudgetStatePersistReason;
-    stateJson: string;
-    nowMs: number;
-  }): 'persist' | 'unchanged' | 'throttled' {
-    const { reason, stateJson, nowMs } = params;
-    if (this.hasPersistedJson(stateJson)) return 'unchanged';
-    if (this.shouldThrottle(reason, nowMs)) return 'throttled';
-    return 'persist';
-  }
-
   hasPersistedJson(stateJson: string): boolean {
     return stateJson === this.lastPersistedStateJson;
   }
@@ -60,7 +49,19 @@ export class DailyBudgetStatePersistencePolicy {
     this.lastPersistMs = params.nowMs;
   }
 
-  private shouldThrottle(reason: DailyBudgetStatePersistReason, nowMs: number): boolean {
+  /**
+   * Pure clock-and-reason check: it reads `reason`, `nowMs` and the last persist
+   * time, and nothing about the state itself. That is what lets
+   * `maybePersistDailyBudgetState` ask it before building or serializing the state
+   * it would otherwise discard.
+   *
+   * `maybePersistDailyBudgetState` is its only permitted caller. It is public
+   * because that caller is a free function rather than a method, not because the
+   * throttle is open for general use: a module that branches on it directly —
+   * `if (!policy.isThrottled(...))` in the service, say — has moved the write
+   * policy out of this file, which is the whole thing this file owns.
+   */
+  isThrottled(reason: DailyBudgetStatePersistReason, nowMs: number): boolean {
     if (!isLowPriorityDailyBudgetPersistReason(reason)) return false;
     if (this.lastPersistMs === 0) return false;
     if (nowMs - this.lastPersistMs >= LOW_PRIORITY_PERSIST_INTERVAL_MS) return false;
@@ -82,24 +83,40 @@ type PersistDailyBudgetStateParams = {
   nowMs: number;
 };
 
-export function maybePersistDailyBudgetState(params: PersistDailyBudgetStateParams): void {
-  const stateJson = JSON.stringify(params.state);
-  const decision = params.policy.shouldPersist({ reason: params.reason, stateJson, nowMs: params.nowMs });
-  if (decision === 'unchanged') {
-    incPerfCounter('settings_set.daily_budget_state_skipped_unchanged_total');
-    return;
-  }
-  if (decision === 'throttled') {
+/** As above, but the state is deferred so a throttled call never builds it. */
+type MaybePersistDailyBudgetStateParams =
+  Omit<PersistDailyBudgetStateParams, 'state'> & { state: () => DailyBudgetState };
+
+/**
+ * Ask the throttle first, then build the state.
+ *
+ * The throttle rejects the large majority of these calls — 7,636 of 7,781 in one
+ * production sample — and it is a pure clock check. Everything the discarded
+ * calls used to pay for is now behind it: `state` is a thunk so a throttled call
+ * never exports the state, and the ~11.5 KB of JSON that the identity check needs
+ * is only produced once the clock has already said a write is allowed.
+ *
+ * The thunk makes "safe to skip entirely" a requirement on whatever produces the
+ * state: `DailyBudgetManager.exportState` is a pure read, so a call that never
+ * happens costs nothing and changes nothing.
+ *
+ * The reordering moves one counter attribution: a low-priority call that is both
+ * throttled and unchanged now counts as `skipped_throttle` rather than
+ * `skipped_unchanged`. Neither wrote before and neither writes now. Read the two
+ * counters as "the clock refused" and "the clock allowed it, but nothing had
+ * changed" — deciding between them for the overlap is exactly the serialization
+ * this function exists to avoid.
+ */
+export function maybePersistDailyBudgetState(params: MaybePersistDailyBudgetStateParams): void {
+  if (params.policy.isThrottled(params.reason, params.nowMs)) {
     incPerfCounter('settings_set.daily_budget_state_skipped_throttle_total');
     return;
   }
-  persistDailyBudgetState({ ...params, stateJson });
+  persistDailyBudgetState({ ...params, state: params.state() });
 }
 
-export function persistDailyBudgetState(
-  params: PersistDailyBudgetStateParams & { stateJson?: string },
-): void {
-  const stateJson = params.stateJson ?? JSON.stringify(params.state);
+export function persistDailyBudgetState(params: PersistDailyBudgetStateParams): void {
+  const stateJson = JSON.stringify(params.state);
   if (params.policy.hasPersistedJson(stateJson)) {
     incPerfCounter('settings_set.daily_budget_state_skipped_unchanged_total');
     return;

@@ -2750,6 +2750,23 @@ split follow-ups from this batch are fixed by the solar-accounting follow-up; re
       the per-fit cost is ~ms so the burn is small but pure waste; fix opportunistically with the next
       estimator change rather than shipping a dedicated PR.
 
+- [ ] **Give the `daily_budget_state` boot read an abandon-grace window.**
+      `setup/dailyBudgetStateAdapter.ts` is a bare `settings.get`/`settings.set` pair — no
+      abandon-grace, no persist guard, unlike the calibration and EV car-link stores that
+      `notes/persisted-settings-state.md` documents. One transient junk or `undefined` boot read
+      fails the guard in `DailyBudgetManager.loadState`, leaving the manager at `{}`;
+      `DailyBudgetService.loadState` then records that empty-derived export as the policy's
+      `lastPersistedStateJson`, and the first `updateState` writes it over a day of learned
+      profile and plan state — unthrottled, because `lastPersistMs === 0` short-circuits the
+      throttle on the first call. Same family as the `pv_forecast_state` entry above, and the
+      same fix: treat an empty or malformed boot read as suspect for a grace window (or require a
+      confirming read) before the first destructive persist. *Done when* a boot whose
+      `daily_budget_state` read returns junk or `undefined` leaves the persisted key intact
+      until a confirming read, proven by an adapter-boundary test. *Persona:* any owner on a
+      Homey Pro that restarts under memory pressure. *Hypothesis:* the SDK read failures that
+      motivated the other stores' grace windows hit this key too; the loss is a day of budget
+      learning rather than 90 days of history, which is why it has gone unnoticed.
+
 - [ ] **Give the `pv_forecast_state` boot read an abandon-grace window.** `createPvForecastStore.read()`
       runs once in the PvForecastController constructor; a single transient-failed/empty settings read
       starts the service empty and the 5-minute persist timer then overwrites up to 90 days of recorded
