@@ -126,7 +126,7 @@ const appendNowReading = (
   currentValue: number | null,
 ): DeferredPlanHistoryChartPoint[] => (
   nowMs !== undefined && Number.isFinite(nowMs) && currentValue !== null
-    && (samples.length === 0 || samples[samples.length - 1]!.atMs < nowMs)
+    && (samples.length === 0 || samples[samples.length - 1].atMs < nowMs)
     ? [...samples, { atMs: nowMs, value: currentValue }]
     : samples
 );

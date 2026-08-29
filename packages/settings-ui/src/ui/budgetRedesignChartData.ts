@@ -116,7 +116,7 @@ export const buildProjectionCumulative = (params: {
   if (!Number.isFinite(previousActualTotal)) return projection;
   const currentActual = Math.max(0, (startValue as number) - (previousActualTotal as number));
   const currentPlanned = Number.isFinite(planned[actualUpToIndex]) ? planned[actualUpToIndex] : 0;
-  let total = (startValue as number) + Math.max(0, (currentPlanned as number) - currentActual);
+  let total = (startValue as number) + Math.max(0, (currentPlanned) - currentActual);
   projection[actualUpToIndex] = Number(total.toFixed(3));
   for (let index = actualUpToIndex + 1; index < planned.length; index += 1) {
     total += Number.isFinite(planned[index]) ? planned[index] : 0;

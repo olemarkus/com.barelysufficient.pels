@@ -14,7 +14,7 @@ const asDeviceId = (value: unknown): string | undefined => {
  * written — by the Settings UI master switch/pickers, or via `homey api`.
  */
 export function buildWeatherAdvisorSettings(params: { settings: SettingsPort }): WeatherAdvisorSettings {
-  const raw = params.settings.get(WEATHER_ADVISOR_SETTINGS) as unknown;
+  const raw = params.settings.get(WEATHER_ADVISOR_SETTINGS);
   if (typeof raw !== 'object' || raw === null) {
     return { enabled: false };
   }

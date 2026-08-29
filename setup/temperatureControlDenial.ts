@@ -63,5 +63,5 @@ export const projectTemperatureDeniedDevice = <T extends {
     temperature: undefined,
     deviceType: 'onoff',
     controlModel: resolveTemperatureDeniedControlModel(device.controlModel),
-  } as T;
+  };
 };

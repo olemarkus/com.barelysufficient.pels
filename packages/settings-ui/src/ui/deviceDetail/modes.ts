@@ -84,7 +84,7 @@ const persistTargetPatchBatch = async (homeId: string): Promise<void> => {
       await debouncedSetSetting(key, () => {
         const patches = pendingTargetPatches.get(homeId) ?? [];
         flushedThroughRevision = patches.length > 0
-          ? patches[patches.length - 1]!.revision
+          ? patches[patches.length - 1].revision
           : 0;
         flushedPatches = [...patches];
         return assertWritableModeDeviceTargets(mergeTargetPatches(stored, patches));

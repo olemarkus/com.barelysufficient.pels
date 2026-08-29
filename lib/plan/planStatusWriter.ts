@@ -8,7 +8,6 @@ import {
   buildPelsStatusInputKey,
   normalizeLastPowerUpdate,
   normalizePelsStatus,
-  type PlanStatusInputChanges,
 } from './planStatusHelpers';
 import {
   STATUS_POWER_BUCKET_MS,
@@ -89,7 +88,7 @@ export class PlanStatusWriter {
     const lastPowerUpdate = normalizeLastPowerUpdate(this.deps.getLastPowerUpdate(), STATUS_POWER_BUCKET_MS);
     const dryRunEffective = this.deps.getEffectiveDryRun?.();
     const inputKey = buildPelsStatusInputKey({
-      changes: changes as PlanStatusInputChanges | undefined,
+      changes: changes,
       isCheap,
       isExpensive,
       combinedPrices,

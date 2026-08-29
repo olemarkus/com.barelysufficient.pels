@@ -160,7 +160,7 @@ export const compactHomeyDevice = (device: HomeyDeviceLike): HomeyDeviceSummary 
   const record = device as unknown as UnknownRecord;
   const zone = typeof device.zone === 'string'
     ? device.zone
-    : asString((device.zone as UnknownRecord | undefined)?.name) ?? asString(record.zoneName);
+    : asString((device.zone)?.name) ?? asString(record.zoneName);
   const capabilityValues = Object.fromEntries(
     Object.entries(device.capabilitiesObj || {}).map(([capabilityId, capabilityValue]) => [
       capabilityId,

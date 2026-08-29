@@ -71,8 +71,6 @@ import {
   type PowerStatsSummary,
 } from './powerStats.ts';
 
-export type PowerTracker = PowerTrackerState;
-
 type PowerUsageEntry = UsageDayEntry;
 type UsagePowerRead = Awaited<ReturnType<typeof readUsagePower>>;
 type ServedUsagePowerRead = Extract<UsagePowerRead, { state: 'served' }>;
@@ -353,7 +351,7 @@ const computePowerStats = (
   const usageBuckets = normalizeUsageBuckets(tracker.buckets);
   const usageDailyTotals = normalizeUsageBuckets(tracker.dailyTotals);
   const usageHourlyAverages = normalizeUsageHourlyAverages(
-    tracker.hourlyAverages as Record<string, { sum: number; count: number }> | null | undefined,
+    tracker.hourlyAverages,
   );
   const dayContext = buildDayContext({
     nowMs: now.getTime(),
@@ -399,7 +397,7 @@ const computePowerStats = (
 };
 
 export const getPowerUsageFromRead = (read: ServedUsagePowerRead): PowerUsageEntry[] => {
-  const tracker = read.payload.tracker as PowerTracker | null;
+  const tracker = read.payload.tracker;
   if (!tracker || typeof tracker !== 'object' || !tracker.buckets) return [];
 
   const unreliablePeriods = tracker.unreliablePeriods || [];

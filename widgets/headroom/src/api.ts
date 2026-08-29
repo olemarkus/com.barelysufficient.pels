@@ -31,7 +31,7 @@ const toLatchEvidence = (app: unknown): PowerMeasurementEvidence => {
   if (tracker === null || tracker === undefined || typeof tracker !== 'object') {
     return { state: 'none' };
   }
-  return hasPowerMeasurement(tracker as { lastPowerW?: number })
+  return hasPowerMeasurement(tracker)
     ? { state: 'latched' }
     : { state: 'none' };
 };

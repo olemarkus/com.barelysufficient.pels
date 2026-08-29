@@ -90,7 +90,7 @@ const createDebouncedSettingSaver = (): DebouncedSettingSaver => {
       promise,
       resolve: resolve!,
       reject: reject!,
-      getValue: getValue as () => unknown,
+      getValue: getValue,
     };
 
     schedulePendingSave(key, entry);

@@ -10,7 +10,7 @@ type MigrateManagedDevicesParams = {
 };
 
 const buildTrueMap = (deviceIds: Iterable<string>): Record<string, boolean> => (
-  Object.fromEntries(Array.from(deviceIds, (deviceId) => [deviceId, true])) as Record<string, boolean>
+  Object.fromEntries(Array.from(deviceIds, (deviceId) => [deviceId, true]))
 );
 
 export const migrateManagedDevices = (params: MigrateManagedDevicesParams): void => {

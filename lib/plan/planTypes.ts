@@ -357,7 +357,7 @@ export function withTemperatureDiscriminant<TBase extends object>(
   | (Omit<TBase, keyof TemperatureDiscriminantProbe> & TemperatureKind)
   | Omit<TBase, keyof TemperatureDiscriminantProbe> {
   const { currentTarget, currentTemperature, plannedTarget, ...base } = loose;
-  if (isTemperatureControlDevice(loose as { deviceType?: string })) {
+  if (isTemperatureControlDevice(loose)) {
     return {
       ...base,
       currentTarget: currentTarget as number,

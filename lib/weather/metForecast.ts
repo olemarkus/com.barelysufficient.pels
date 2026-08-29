@@ -257,7 +257,7 @@ export async function fetchMetForecast(deps: MetForecastFetchDeps): Promise<MetF
       },
       signal: controller.signal,
     });
-    return await interpretMetResponse(response as MetResponseLike, deps);
+    return await interpretMetResponse(response, deps);
   } catch (error) {
     // An AbortError (timeout) lands here too — treated as a transient failure so
     // the caller keeps the prior cache and never clears it.

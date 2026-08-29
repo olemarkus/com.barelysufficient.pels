@@ -265,7 +265,7 @@ const diagnosticProgressAtTarget = (diag: DeferredObjectiveDiagnostic): boolean 
 export const lastObservedAtMs = (record: InProgressRecord): number => {
   const { observedIntervals } = record;
   if (observedIntervals.length === 0) return record.startedAtMs;
-  return observedIntervals[observedIntervals.length - 1]!.toMs;
+  return observedIntervals[observedIntervals.length - 1].toMs;
 };
 
 const extendIntervals = (
@@ -273,7 +273,7 @@ const extendIntervals = (
   nowMs: number,
 ): ObservedInterval[] => {
   if (intervals.length === 0) return [{ fromMs: nowMs, toMs: nowMs }];
-  const last = intervals[intervals.length - 1]!;
+  const last = intervals[intervals.length - 1];
   if (nowMs <= last.toMs) return intervals.slice();
   if (nowMs - last.toMs <= INTERVAL_MERGE_GAP_MS) {
     return [...intervals.slice(0, -1), { fromMs: last.fromMs, toMs: nowMs }];

@@ -162,7 +162,7 @@ export class SettingsUiHomeScopeAdapter {
       return { state: 'unavailable' };
     }
     return status !== null && typeof status === 'object' && !Array.isArray(status)
-      ? { state: 'resolved', status: status as SettingsUiPowerStatus }
+      ? { state: 'resolved', status: status }
       : { state: 'absent' };
   }
 
@@ -194,6 +194,6 @@ export class SettingsUiHomeScopeAdapter {
     // `homey.app` is undefined during the boot/uninit window; honour the
     // declared null so a future non-optional-chained caller cannot type-check
     // against a value that is actually undefined.
-    return (this.homey.app as HomeScopeApp | undefined) ?? null;
+    return (this.homey.app) ?? null;
   }
 }

@@ -54,7 +54,7 @@ type RescueApiApp = Homey.App & SettingsUiStarvationRescueScope & {
 
 const getApp = (homey: Homey.App['homey']): RescueApiApp | null => {
   if (!homey || typeof homey !== 'object') return null;
-  return homey.app as RescueApiApp;
+  return homey.app;
 };
 
 const previewRescueReject = (

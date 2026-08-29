@@ -84,7 +84,7 @@ export const initEcharts = (
   opts?: EChartsInitOpts,
 ): EChartsType => {
   ensureRegistry();
-  return init(dom, theme, opts) as EChartsType;
+  return init(dom, theme, opts);
 };
 
 export const encodeHtml = (value: string): string => format.encodeHTML(value);

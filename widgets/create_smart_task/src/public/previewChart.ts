@@ -30,7 +30,7 @@ const createSvg = <K extends keyof SVGElementTagNameMap>(
   attrs: SvgAttrs,
   text?: string,
 ): SVGElementTagNameMap[K] => {
-  const el = doc.createElementNS(SVG_NS, tag) as SVGElementTagNameMap[K];
+  const el = doc.createElementNS(SVG_NS, tag);
   for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
   if (text !== undefined) el.textContent = text;
   return el;

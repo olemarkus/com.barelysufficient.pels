@@ -529,7 +529,7 @@ const splitPolicyBucketsAtReservationBoundaries = (
   if (ordered.length === 2) return [bucket];
   const originalDurationMs = bucket.endMs - bucket.startMs;
   return ordered.slice(0, -1).map((startMs, index) => {
-    const endMs = ordered[index + 1]!;
+    const endMs = ordered[index + 1];
     const fraction = (endMs - startMs) / originalDurationMs;
     return {
       ...bucket,

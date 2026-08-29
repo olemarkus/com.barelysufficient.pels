@@ -102,7 +102,7 @@ const computeEstimatedCost = (params: {
   for (let index = 0; index < plannedKWh.length; index += 1) {
     let kwh = plannedKWh[index] ?? 0;
     if (index < currentBucketIndex && Number.isFinite(actual[index])) {
-      kwh = actual[index] as number;
+      kwh = actual[index];
     }
     totalCost += kwh * (prices[index] as number);
   }

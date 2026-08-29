@@ -266,7 +266,7 @@ export const groupPlanHistoryByIsoWeek = (
         entries: [entry],
       });
     } else {
-      groups[existingIndex]!.entries.push(entry);
+      groups[existingIndex].entries.push(entry);
     }
   }
   // Second pass — finalise the heading copy now that each group's entries
@@ -274,7 +274,7 @@ export const groupPlanHistoryByIsoWeek = (
   // recompute the heading on every push. The cost roll-up reads each entry's
   // own recorded display inside `formatWeekHeading`.
   return groups.map((group) => {
-    const weekStartMs = computeWeekStart(group.entries[0]!.deadlineAtMs, timeZone);
+    const weekStartMs = computeWeekStart(group.entries[0].deadlineAtMs, timeZone);
     const heading = weekStartMs === null
       ? formatReceiptOtherTasksHeading(group.entries.length)
       : formatWeekHeading(weekStartMs, nowMs, timeZone, group.entries);

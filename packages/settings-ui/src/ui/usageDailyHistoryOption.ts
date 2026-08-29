@@ -103,9 +103,9 @@ export const buildDailyHistoryOption = (params: {
   // the budget line would sit above every bar, include it in the axis ceiling
   // so the reference still renders inside the chart frame.
   const showBudgetLine = budgetKWh !== null && Number.isFinite(budgetKWh) && budgetKWh > 0;
-  const maxValue = Math.max(1, Math.max(...values, 0) * 1.15, showBudgetLine ? (budgetKWh as number) : 0);
+  const maxValue = Math.max(1, Math.max(...values, 0) * 1.15, showBudgetLine ? (budgetKWh) : 0);
   const yAxis = roundedAxisMaxToInterval(maxValue, Y_AXIS_SPLIT_NUMBER);
-  const { base, over } = resolveDailyHistorySegments(values, showBudgetLine ? (budgetKWh as number) : null);
+  const { base, over } = resolveDailyHistorySegments(values, showBudgetLine ? (budgetKWh) : null);
   const hasOver = over.some((value) => value > 0);
 
   return {
@@ -182,7 +182,7 @@ export const buildDailyHistoryOption = (params: {
         blur: { disabled: true },
         selectedMode: 'single',
         select: { itemStyle: { borderColor: palette.text, borderWidth: 2 } },
-        ...(showBudgetLine ? { markLine: buildBudgetMarkLine(budgetKWh as number, palette) } : {}),
+        ...(showBudgetLine ? { markLine: buildBudgetMarkLine(budgetKWh, palette) } : {}),
       },
       // Amber remainder: ONLY the portion above the budget line — the honest
       // over-budget encoding. Days at or under budget carry a null datum (no

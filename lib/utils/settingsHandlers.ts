@@ -257,7 +257,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
   );
 
   const { shouldSkipNoopWrite, markProcessedWrite } = createNoopWriteSkipper(
-    (key) => deps.homey.settings.get(key) as unknown,
+    (key) => deps.homey.settings.get(key),
   );
 
   let queue = Promise.resolve();
@@ -565,7 +565,7 @@ const settingsUiLogLevelMethod = (level: SettingsUiLogEntry['level']): 'error' |
 };
 
 const handleSettingsUiLog = async (deps: SettingsHandlerDeps): Promise<void> => {
-  const raw = deps.homey.settings.get('settings_ui_log') as unknown;
+  const raw = deps.homey.settings.get('settings_ui_log');
   if (!raw || typeof raw !== 'object') return;
   const entry = raw as SettingsUiLogEntry;
   if (!entry.level || !entry.message) return;

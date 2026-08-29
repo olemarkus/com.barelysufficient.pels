@@ -448,7 +448,7 @@ function normalizeStepCalibration(value: unknown): StepCalibration | null {
  */
 export function isPersistedStepShape(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  const v = value as Record<string, unknown>;
+  const v = value;
   if (!isFiniteNumber(v.observedKw) || v.observedKw < 0) return false;
   if (!isFiniteNumber(v.nameplateAtSampleKw) || v.nameplateAtSampleKw <= 0) return false;
   if (!isFiniteNumber(v.samples) || v.samples < 0) return false;

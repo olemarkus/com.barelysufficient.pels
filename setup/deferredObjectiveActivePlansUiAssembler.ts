@@ -1,6 +1,5 @@
 import type {
   DeferredObjectiveActivePlansV1,
-  ResolvedDeferredObjectiveActivePlanV1,
   ResolvedDeferredObjectiveActivePlansV1,
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import {
@@ -35,7 +34,7 @@ export const assembleActivePlansWithTrajectory = (
       // spreading it) would synthesize a bogus partial object. The contract
       // types plans as non-null, but the consuming widget already guards for
       // null, so mirror it.
-      if (!plan) return [deviceId, plan as unknown as ResolvedDeferredObjectiveActivePlanV1] as const;
+      if (!plan) return [deviceId, plan] as const;
       const trajectory = historyRecorder.getInProgressTrajectory(deviceId);
       const stitched = trajectory === null ? plan : {
         ...plan,

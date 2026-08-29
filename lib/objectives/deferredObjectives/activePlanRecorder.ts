@@ -363,7 +363,7 @@ export class DeferredObjectiveActivePlanRecorder {
     if (current.diagnosticReasonCode === code) return current;
     this.plans[current.deviceId] = withDiagnosticReasonCode(current, code);
     this.dirty = true;
-    return this.plans[current.deviceId]!;
+    return this.plans[current.deviceId];
   }
 
   private ensurePendingRecord(
@@ -396,7 +396,7 @@ export class DeferredObjectiveActivePlanRecorder {
       event: 'active_plan_revision_pending',
       deviceId: diag.deviceId,
       reason: 'awaiting_horizon_plan',
-      ...buildActivePlanLifecycleFields(diag, this.plans[diag.deviceId]!.startedAtMs),
+      ...buildActivePlanLifecycleFields(diag, this.plans[diag.deviceId].startedAtMs),
     });
   }
 
@@ -463,7 +463,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // that false status until the next cycle, and that cycle would then fire a
     // second transition to At risk.
     this.plans[diag.deviceId] = withDiagnosticReasonCode(
-      this.plans[diag.deviceId]!,
+      this.plans[diag.deviceId],
       firstDiagnosticReasonCode,
     );
     this.dirty = true;

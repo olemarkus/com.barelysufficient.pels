@@ -33,12 +33,12 @@ export function buildBucketUsageSplit(params: {
     let nextControlled = 0;
 
     if (hasTotal) {
-      const safeTotal = Math.max(0, total as number);
+      const safeTotal = Math.max(0, total);
       if (hasControlled) {
         const boundedExempt = typeof exempt === 'number' && Number.isFinite(exempt)
-          ? Math.max(0, Math.min(exempt as number, safeTotal))
+          ? Math.max(0, Math.min(exempt, safeTotal))
           : 0;
-        const boundedControlled = Math.max(0, Math.min((controlled as number) - boundedExempt, safeTotal));
+        const boundedControlled = Math.max(0, Math.min((controlled) - boundedExempt, safeTotal));
         nextUncontrolled = Math.max(0, safeTotal - boundedControlled);
         nextControlled = boundedControlled;
       } else {

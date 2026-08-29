@@ -345,7 +345,7 @@ function stripCycleAnnotations(reason: DeviceReason): DeviceReason {
     shortfallKw?: number;
     reserveHolderName?: string;
   };
-  return rest as DeviceReason;
+  return rest;
 }
 
 // The hourly-exhausted fold and its inverse. Forward: while the hour's kWh is

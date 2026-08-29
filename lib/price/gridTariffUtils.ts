@@ -80,7 +80,7 @@ export const fetchGridTariffData = async (
     if (!response.ok) {
       throw new Error(`NVE API returned ${response.status}: ${response.statusText}`);
     }
-    const data = await response.json() as unknown;
+    const data = await response.json();
     if (!Array.isArray(data)) {
       errorLog?.('Grid tariff: Unexpected response format from NVE API');
       return null;
