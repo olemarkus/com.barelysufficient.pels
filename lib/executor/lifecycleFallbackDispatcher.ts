@@ -1,7 +1,7 @@
 import type { PendingTargetCommandState } from '../plan/planState';
 import type { ShedBehavior } from '../plan/planTypes';
 import type { DesiredBinaryKind } from './executableDesiredState';
-import { getPendingTargetCommandDecision } from '../plan/planTargetControl';
+import { getPendingTargetCommandDecision } from './targetCommandRetry';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { getLogger } from '../logging/logger';
 import type {

@@ -3,7 +3,7 @@ import {
   getPendingTargetCommandDecision,
   recordFailedPendingTargetCommandAttempt,
   recordPendingTargetCommandAttempt,
-} from '../plan/planTargetControl';
+} from './targetCommandRetry';
 import type { PendingTargetCommandStatus } from '../plan/planTypes';
 import { getLogger } from '../logging/logger';
 import type { PlanExecutorTargetContext } from './targetExecutorContext';

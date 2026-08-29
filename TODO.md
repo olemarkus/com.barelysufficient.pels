@@ -1428,14 +1428,38 @@ program) remain deferred.*
       *Source: the drift/reconcile layering train (2026-08-06); noted while closing the three
       inversions behind `inc_26449fb9`.*
 
-- [ ] **Move target-command retry state out of the planner namespace.** The retry decision and
-      attempt bookkeeping are executor materialization concepts, but `targetExecutor.ts`,
-      `targetExecutorContext.ts`, and `lifecycleFallbackDispatcher.ts` still import their state and
-      helpers from `lib/plan/planTargetControl.ts` / `lib/plan/planState.ts`. Extract the flat
-      `PendingTargetCommandState` contract to a neutral lower-layer module and move send/retry/skip
-      plus attempt recording into `lib/executor/`; leave only plan decoration, pruning, and observed
-      synchronization in `planTargetControl.ts`. Do not solve this by adding a plan→executor edge or
-      by duplicating retry timing. *Source: pels-layering-guardian review of #2083. [P2]*
+- [ ] **The executor re-derives the planner's shed policy at five sites, and the documented guard
+      against it is case-blind to its own violation.** `lib/executor/AGENTS.md` asserts the shed
+      policy does not reach that folder and offers `grep -rn shedAction lib/executor/` as proof; the
+      actual import is `import type { ShedAction, ShedBehavior }` in `shedReleaseActuation.ts`, so
+      the lowercase grep has never matched it. Policy is read at `shedReleaseActuation.ts` (three
+      `behavior.action` branches — its own module comment says "the executor resolves the concrete
+      actuation primitive at apply time from getShedBehavior()"), `lifecycleFallbackDispatcher.ts`,
+      and `planExecutorDispatch.ts` (`applySheddingToDeviceImpl`, which decides its own end state
+      outside any plan — and the ordinary plan-driven binary shed routes through it via
+      `applyBinaryShedIntent`). The consequence is real, not stylistic: config that changes between
+      decide and apply changes the actuation, and a `set_temperature`-configured device can be
+      written a setpoint the plan did not decide. *What closes it:* the planner stamps the shed end
+      state on the release path as it already does for the plan path (`plannedShedTargetKind`),
+      `getShedBehavior` leaves `PlanExecutorDeps`, and `applySheddingToDeviceImpl` takes a resolved
+      end state instead of resolving one. *Done when:* a `check-shed-policy-seam` AST guard replaces
+      the grep and reports zero references to `ShedAction`/`ShedBehavior`/`getShedBehavior` in
+      `lib/executor/**`. A case-sensitive grep in a doc is not an enforcement mechanism. *Source:
+      planner/executor seam train, PR1 review (2026-08-29). [P1]*
+
+- [ ] **Extract the `PendingTargetCommandState` contract to a neutral module.** The behavioural half
+      of this item is done — send/retry/skip and attempt recording now live in
+      `lib/executor/targetCommandRetry.ts`, and `planTargetControl.ts` keeps only plan decoration,
+      pruning, and observed synchronization; no file imports both halves. What remains is the
+      *storage*: the records still live on `PlanEngineState.pendingTargetCommands`, so
+      `targetCommandRetry.ts`, `targetExecutorContext.ts`, and `lifecycleFallbackDispatcher.ts` still
+      type themselves against `lib/plan/planState.ts`. Move the flat record type to a neutral
+      lower-layer module and give the executor its own store. `targetCommandRetry.ts` is deliberately
+      written against `Pick<PlanEngineState, 'pendingTargetCommands'>` so this is a type change there
+      rather than a rewrite. Done when `executor:plan-edge` no longer allowlists any
+      `-> planState` entry for these three files. Do not solve it by adding a plan→executor edge or by
+      duplicating retry timing. *Source: pels-layering-guardian review of #2083; behavioural half
+      landed with the planner/executor seam ratchet. [P2]*
 
 - [ ] **`remainingActionableControlledLoadW` in the shortfall record disagrees with what shed
       selection can act on.** The capacity summary sources it from `residualKw.shed` (= current

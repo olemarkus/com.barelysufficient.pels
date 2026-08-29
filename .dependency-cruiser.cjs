@@ -368,6 +368,53 @@ module.exports = {
       to: { path: '^lib/(plan|observer)/' },
     },
     {
+      name: 'todo-tighten-executor-to-plan',
+      comment:
+        'RATCHET, not a ban (yet). The plan -> executor direction has been enforced for a while '
+        + '(no-plan-to-executor + scripts/check-plan-objectives-edge.mjs); the REVERSE direction had '
+        + 'no rule at all, and that is where the coupling accumulated — at the baseline this rule was '
+        + 'written against (cede8d98a): 45 edges across 23 files, 14 lib/plan modules, including '
+        + 'planner decisions the executor then re-derives. '
+        + 'The target state is ZERO edges: the planner emits a total action contract and the executor '
+        + 'consumes only that. This rule is warn while the seam train shrinks the set, and flips to '
+        + 'error as its definition-of-done. HONESTY CAVEAT, and it is the important part: '
+        + 'tsPreCompilationDeps is unset, so this cruise sees only VALUE imports — and MOST of the '
+        + "executor's plan edges are type-only, so this rule alone would wave through the majority of "
+        + 'them. The enforceable half is scripts/check-executor-plan-edge.mjs (npm run '
+        + 'executor:plan-edge), which carries the per-edge allowlist and fails on a NEW edge or a '
+        + 'STALE allowlist entry. Shrink the list there; this rule states the intent.',
+      severity: 'warn',
+      from: { path: '^lib/executor/' },
+      to: { path: '^lib/plan/' },
+    },
+    {
+      name: 'no-plancontract-to-layers',
+      comment:
+        'lib/planContract/** is the neutral boundary contract shared by planner, executor, '
+        + 'diagnostics and logging (no-plan-to-executor names it as the sanctioned shared home). It '
+        + 'must stay a leaf: importing a layer from here would make the contract depend on one of its '
+        + 'own consumers and create a plan <-> planContract cycle. This costs nothing today '
+        + '(planContract imports only packages/shared-domain) and is added BEFORE the seam train '
+        + 'starts moving contract types into this directory, because the first shortcut taken under '
+        + 'deadline is exactly the one a rule has to already be in place to stop. HONESTY CAVEAT, '
+        + 'same as the sibling rule: tsPreCompilationDeps is unset, so this cruise sees only VALUE '
+        + 'imports — and the tempting shortcut here is `import type { DevicePlanDevice } from '
+        + "'../plan/planTypes'`, which is erased before the cruiser sees it. So this rule does NOT, "
+        + 'on its own, prevent the plan <-> planContract cycle its first draft claimed it did (and '
+        + 'no-circular would have caught that cycle anyway). What it uniquely holds is the ACYCLIC '
+        + 'case — planContract -> device/power/observer — for value imports. Closing the type half '
+        + 'needs a companion AST guard; scripts/check-executor-plan-edge.mjs is already a from-dir/'
+        + 'to-dir scan and generalizes to it.',
+      severity: 'error',
+      from: { path: '^lib/planContract/' },
+      // Every peer, by exclusion rather than enumeration. An enumerated list was
+      // the first draft and it silently omitted lib/app — the legacy wiring
+      // layer, and the worst edge on the list — along with lib/diagnostics and
+      // lib/flowApi, which are CONSUMERS of this contract. planContract itself
+      // and the shared-utility tier (logging/utils) are the deliberate carve-outs.
+      to: { path: '^lib/', pathNot: '^lib/(planContract|logging|utils)/' },
+    },
+    {
       name: 'no-executor-to-device-internals',
       comment: 'Executor consumes the DeviceObservation interface only; it must not have a runtime dependency on the DeviceTransport class or other device internals. PR #1b of the observer/transport split (see notes/state-management/observer-transport-split.md). PR #2 moved synthetic-capability IDs and SteppedLoadStepRequest types into packages/shared-domain/src/ (where they survive the Homey .homeybuild prune), so the previous synthetic-capability exception is no longer needed, and the remaining type-only DeviceManager references in lib/executor/ have been replaced with PlanExecutorDeviceTransport (local interface). PR #3 renamed the concrete class from DeviceManager to DeviceTransport.',
       severity: 'error',
