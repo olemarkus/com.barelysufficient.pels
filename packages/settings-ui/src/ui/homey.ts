@@ -356,7 +356,7 @@ export const callApi = async <T>(
       const message = error instanceof Error ? error.message : String(error);
       if (isAppNotReadyErrorMessage(message)
           && appNotReadyAttempt < APP_NOT_READY_RETRY_DELAYS_MS.length) {
-        await sleep(APP_NOT_READY_RETRY_DELAYS_MS[appNotReadyAttempt]!);
+        await sleep(APP_NOT_READY_RETRY_DELAYS_MS[appNotReadyAttempt]);
         appNotReadyAttempt += 1;
         continue;
       }
@@ -364,7 +364,7 @@ export const callApi = async <T>(
         && attempt < CALL_API_RETRY_DELAYS_MS.length
         && isRetryableHomeyTransportErrorMessage(message);
       if (!canRetry) throw error;
-      await sleep(CALL_API_RETRY_DELAYS_MS[attempt]!);
+      await sleep(CALL_API_RETRY_DELAYS_MS[attempt]);
       attempt += 1;
     }
   }

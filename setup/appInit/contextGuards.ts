@@ -87,5 +87,5 @@ export function requireFlowHomey(ctx: AppContext): FlowHomeyLike {
   ) {
     throw new Error('Flow card registration requires Homey flow and settings APIs.');
   }
-  return homey as unknown as FlowHomeyLike;
+  return homey;
 }

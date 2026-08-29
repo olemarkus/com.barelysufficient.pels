@@ -463,7 +463,7 @@ export class AppSmartTaskApi {
     // is implicitly an enabled objective. This rejects malformed deadlines and
     // the generic target envelope exactly as the Flow-card / settings paths do.
     const entry = normalizeDeferredObjectiveSettingsEntry(
-      { ...gatedCandidate, enabled: true } as DeferredObjectiveSettingsEntry,
+      { ...gatedCandidate, enabled: true },
     );
     if (!entry) return { ok: false, reason: 'invalid_candidate' };
     return { ok: true, device, entry };

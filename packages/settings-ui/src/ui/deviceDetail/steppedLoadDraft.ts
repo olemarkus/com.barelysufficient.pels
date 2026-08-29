@@ -98,7 +98,7 @@ const collectSteppedLoadDraftFromDom = (): SteppedLoadProfile | null => {
   const rows = Array.from(deviceDetailSteppedSteps.querySelectorAll<HTMLElement>('[data-step-row="true"]'));
   const steps = rows.map((row) => {
     const readValue = (field: string) => {
-      const el = row.querySelector(`[data-step-field="${field}"]`) as (HTMLElement & { value?: string }) | null;
+      const el = row.querySelector<HTMLElement & { value?: string }>(`[data-step-field="${field}"]`);
       return el?.value?.trim() ?? '';
     };
     return {

@@ -22,7 +22,6 @@ import {
   renderPlan,
   updatePlanPower,
   updatePlanPrices,
-  type PlanSnapshot,
 } from './plan.ts';
 import { state } from './state.ts';
 import { logSettingsWarn } from './logging.ts';
@@ -88,13 +87,13 @@ const handlePlanUpdated = (plan: unknown) => {
   // `renderPlan` below always paints the freshest plan immediately.
   runLoggedTask(
     repaintOverviewWithRescueGate(
-      parsedPlan as PlanSnapshot | null,
+      parsedPlan,
       () => isPanelVisible('#overview-panel'),
     ),
     'Failed to refresh rescuable devices',
     'plan_updated',
   );
-  renderPlan(parsedPlan as PlanSnapshot | null);
+  renderPlan(parsedPlan);
 };
 
 const handlePricesUpdated = () => {

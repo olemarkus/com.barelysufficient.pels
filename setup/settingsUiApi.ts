@@ -87,7 +87,7 @@ type HomeScopedApiContext = ApiContext & { query?: unknown };
 
 const getApp = (homey: Homey.App['homey']): SettingsUiApiApp | null => {
   if (!homey || typeof homey !== 'object') return null;
-  return homey.app as SettingsUiApiApp;
+  return homey.app;
 };
 
 const pickSettings = (
@@ -160,7 +160,7 @@ const withResolvedPriorities = (
     devices.map((device) => device.id),
     (deviceId) => catalog.priorities[catalog.operatingMode]?.[deviceId],
   );
-  return devices.map((device) => ({ ...device, priority: ranks[device.id] as number }));
+  return devices.map((device) => ({ ...device, priority: ranks[device.id] }));
 };
 
 /**

@@ -191,7 +191,7 @@ const handleMeterSelectionChange = async (): Promise<void> => {
       { op: 'set_main_meter', meterDeviceId: next },
     );
     if (!response.ok) {
-      const refusal = response as SettingsUiHomesSaveRefusal;
+      const refusal = response;
       // The write is over, so release the picker BEFORE the dwell: the refusal
       // tells the owner to pick another meter, but the select disables while
       // busy, so holding the lock through the five-second toast would bar the

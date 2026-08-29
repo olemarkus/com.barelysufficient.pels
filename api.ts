@@ -60,7 +60,7 @@ const hasDeviceId = (device: HomeyDeviceLike): device is HomeyDeviceLike & { id:
 
 const getApp = (homey: Homey.App['homey']): DailyBudgetApp | null => {
   if (!homey || typeof homey !== 'object') return null;
-  return homey.app as DailyBudgetApp;
+  return homey.app;
 };
 
 // Wrap an async API handler so any thrown error is logged through the runtime's

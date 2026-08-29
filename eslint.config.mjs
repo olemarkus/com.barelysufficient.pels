@@ -22,6 +22,7 @@ const sharedTypeScriptRules = {
   }],
   '@typescript-eslint/explicit-function-return-type': 'off',
   '@typescript-eslint/no-floating-promises': 'error',
+  '@typescript-eslint/no-unnecessary-type-assertion': 'error',
   '@typescript-eslint/no-require-imports': 'off',
 };
 
@@ -333,6 +334,7 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
@@ -461,6 +463,7 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/ban-ts-comment': testTsCommentRule,
       '@typescript-eslint/no-unsafe-assignment': 'off',
@@ -610,6 +613,7 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/ban-ts-comment': testTsCommentRule,
       '@typescript-eslint/no-unsafe-assignment': 'off',

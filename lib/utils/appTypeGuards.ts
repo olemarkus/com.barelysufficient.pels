@@ -59,7 +59,7 @@ export function isDeviceControlProfiles(value: unknown): value is DeviceControlP
   if (!value || typeof value !== 'object') return false;
   const normalized = normalizeDeviceControlProfiles(value);
   if (!normalized) return false;
-  return Object.keys(normalized).length === Object.keys(value as Record<string, unknown>).length;
+  return Object.keys(normalized).length === Object.keys(value).length;
 }
 
 export function normalizeTemperatureBoostSettings(value: unknown): TemperatureBoostSettings {

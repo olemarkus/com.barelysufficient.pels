@@ -111,7 +111,7 @@ export const bindSegmentedToSelect = (params: {
     };
 
     const createButton = (option: SegmentedOptionElement): SegmentedButtonElement => {
-        const button = document.createElement('button') as SegmentedButtonElement;
+        const button = document.createElement('button');
         button.type = 'button';
         button.className = 'segmented__option hy-nostyle';
         button.setAttribute('role', 'radio');
@@ -164,6 +164,6 @@ export const bindSegmentedToSelect = (params: {
 
     render();
     select.addEventListener('change', render);
-    select.addEventListener('pels:segmented-refresh', render as EventListener);
+    select.addEventListener('pels:segmented-refresh', render);
     return { refresh: render };
 };

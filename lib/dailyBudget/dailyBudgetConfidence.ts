@@ -288,8 +288,8 @@ function computeRegularityScore(days: DayData[]): {
   for (let i = 0; i < n; i++) {
     let dist = 0;
     for (let h = 0; h < HOURS; h++) {
-      const looValue = (totalProfile[h]! - days[i].totalProfile[h]!) / (n - 1);
-      dist += Math.abs(days[i].totalProfile[h]! - looValue);
+      const looValue = (totalProfile[h] - days[i].totalProfile[h]) / (n - 1);
+      dist += Math.abs(days[i].totalProfile[h] - looValue);
     }
     dayScores.push(clamp(1 - dist / 2, 0, 1));
   }
@@ -393,7 +393,7 @@ export function sampleDayIndex(randomValue: number, dayCount: number): number {
 function sampleDays(days: DayData[], nextRandom: () => number): DayData[] {
   return days.map(() => {
     const idx = sampleDayIndex(nextRandom(), days.length);
-    return days[idx]!;
+    return days[idx];
   });
 }
 
@@ -440,7 +440,7 @@ function appendRecordFingerprint(
     .sort();
   for (const key of relevantKeys) {
     next = appendHashString(next, key);
-    next = appendHashNumber(next, record[key]!);
+    next = appendHashNumber(next, record[key]);
   }
   return next;
 }

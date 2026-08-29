@@ -27,9 +27,9 @@ export class TimerRegistry {
 
     this.timers.delete(name);
     if (entry.kind === 'interval') {
-      clearInterval(entry.handle as ReturnType<typeof setInterval>);
+      clearInterval(entry.handle);
     } else {
-      clearTimeout(entry.handle as ReturnType<typeof setTimeout>);
+      clearTimeout(entry.handle);
     }
     return true;
   }

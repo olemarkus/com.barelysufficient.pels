@@ -55,7 +55,7 @@ import { createTargetCommandClaim } from './targetCommandClaim';
 import { createSteppedCommandClaim } from './steppedCommandClaim';
 import { createBinaryCommandClaim } from './binaryCommandClaim';
 import { buildExecutableObservedDeviceStateFromSnapshot } from './executablePlanProjection';
-import type { DriftObservationDeps, ObserverDeviceRead } from './driftObservedDevice';
+import type { DriftObservationDeps } from './driftObservedDevice';
 
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 
@@ -489,7 +489,7 @@ export class PlanExecutor {
 
   public driftObservationDeps(): DriftObservationDeps {
     return {
-      getObservedState: (deviceId) => this.deps.getObservedState(deviceId) as ObserverDeviceRead | undefined,
+      getObservedState: (deviceId) => this.deps.getObservedState(deviceId),
       getCommandState: (deviceId) => {
         const pendingBinary = this.deps.pendingBinaryCommandStore.get(deviceId);
         return {

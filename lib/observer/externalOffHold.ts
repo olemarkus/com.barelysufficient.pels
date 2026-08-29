@@ -160,7 +160,7 @@ const parsePersistedHolds = (raw: unknown): PersistedExternalOffHolds | null => 
       deviceId.length > 0 && isFinitePositive((entry as ExternalOffHoldEntry | undefined)?.sinceMs)
     ))
     .map(([deviceId, entry]): [string, ExternalOffHoldEntry] => (
-      [deviceId, { sinceMs: (entry as ExternalOffHoldEntry).sinceMs }]
+      [deviceId, { sinceMs: entry.sinceMs }]
     ));
   return {
     version: EXTERNAL_OFF_HOLD_VERSION,

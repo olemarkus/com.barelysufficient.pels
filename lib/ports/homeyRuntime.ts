@@ -13,8 +13,10 @@
  *   ManagerSettings.unset(key: string): void
  *
  * `get` deliberately narrows the SDK's `any` to `unknown`: settings are
- * untrusted persisted data, so callers must validate before use (matching the
- * existing `homey.settings.get(KEY) as unknown` pattern at every read site).
+ * untrusted persisted data, so callers must validate before use. This port is
+ * the single place that narrowing happens — read sites used to repeat it as
+ * `homey.settings.get(KEY) as unknown`, and those casts are gone because the
+ * port already hands them `unknown`.
  *
  * `unset` is a standard `ManagerSettings` method and is already consumed in the
  * domain by `lib/objectives/deferredObjectives/objectiveStore.ts` (which hand-

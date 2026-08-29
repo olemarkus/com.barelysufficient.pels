@@ -17,7 +17,7 @@ export const resolveFdCount = (): number | null => {
     return entries.length;
   } catch (error) {
     const code = typeof error === 'object' && error !== null && 'code' in error
-      ? String((error as { code: unknown }).code)
+      ? String(error.code)
       : '';
     // Only treat platform-level "not supported" as permanently unsupported.
     // Transient pressure (EMFILE, EAGAIN, EIO) is exactly when this metric

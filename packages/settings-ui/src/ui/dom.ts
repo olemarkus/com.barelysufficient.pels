@@ -43,7 +43,7 @@ export type MdTabListEntry = {
 };
 
 export const toastEl = qs('#toast');
-export const deviceCardList = document.querySelector('#device-card-list') as HTMLElement | null;
+export const deviceCardList = document.querySelector<HTMLElement>('#device-card-list');
 export const emptyState = qs('#empty-state');
 export const refreshButton = document.querySelector('#refresh-button') as MdButtonElement;
 export const powerList = qs('#power-list');
@@ -51,10 +51,10 @@ export const powerEmpty = qs('#power-empty');
 export const powerWeekPrev = document.querySelector('#power-week-prev') as MdButtonElement;
 export const powerWeekNext = document.querySelector('#power-week-next') as MdButtonElement;
 export const powerWeekLabel = qs('#power-week-label');
-export const powerWeekReadout = document.getElementById('power-week-readout') as HTMLElement | null;
+export const powerWeekReadout = document.getElementById('power-week-readout');
 export const dailyList = qs('#daily-list');
 export const dailyEmpty = qs('#daily-empty');
-export const dailyHistoryReadout = document.getElementById('daily-history-readout') as HTMLElement | null;
+export const dailyHistoryReadout = document.getElementById('daily-history-readout');
 export const usageToday = qs('#usage-today');
 export const usageWeek = qs('#usage-week');
 export const usageMonth = qs('#usage-month');
@@ -62,7 +62,7 @@ export const usageWeekdayAvg = qs('#usage-weekday-avg');
 export const usageWeekendAvg = qs('#usage-weekend-avg');
 export const hourlyPattern = qs('#hourly-pattern');
 export const hourlyPatternMeta = qs('#hourly-pattern-meta');
-export const hourlyPatternReadout = document.getElementById('hourly-pattern-readout') as HTMLElement | null;
+export const hourlyPatternReadout = document.getElementById('hourly-pattern-readout');
 export const usageDayTitle = qs('#usage-day-title');
 export const usageDayLabel = qs('#usage-day-label');
 export const usageDayStatusPill = qs('#usage-day-status-pill');
@@ -74,13 +74,13 @@ export const usageDayBars = qs('#usage-day-bars');
 export const usageDayLabels = qs('#usage-day-labels');
 export const usageDayEmpty = qs('#usage-day-empty');
 export const usageDayMeta = qs('#usage-day-meta');
-export const usageDayReadout = document.getElementById('usage-day-readout') as HTMLElement | null;
-export const usageHero = document.getElementById('usage-hero') as HTMLElement | null;
-export const usageHeroHeadline = document.getElementById('usage-hero-headline') as HTMLElement | null;
-export const usageHeroComparison = document.getElementById('usage-hero-comparison') as HTMLElement | null;
-export const usageHeroSolar = document.getElementById('usage-hero-solar') as HTMLElement | null;
-export const usageHeroDelta = document.getElementById('usage-hero-delta') as HTMLElement | null;
-export const usageHeroProjection = document.getElementById('usage-hero-projection') as HTMLElement | null;
+export const usageDayReadout = document.getElementById('usage-day-readout');
+export const usageHero = document.getElementById('usage-hero');
+export const usageHeroHeadline = document.getElementById('usage-hero-headline');
+export const usageHeroComparison = document.getElementById('usage-hero-comparison');
+export const usageHeroSolar = document.getElementById('usage-hero-solar');
+export const usageHeroDelta = document.getElementById('usage-hero-delta');
+export const usageHeroProjection = document.getElementById('usage-hero-projection');
 export const tabs = Array.from(document.querySelectorAll<HTMLElement>('.tab'));
 export const tabListEntries: MdTabListEntry[] = Array
   .from(document.querySelectorAll<MdTabsElement>('md-tabs.tabs'))
@@ -89,51 +89,51 @@ export const tabListEntries: MdTabListEntry[] = Array
     tabs: Array.from(tabList.querySelectorAll<HTMLElement>('.tab')),
   }));
 export const panels = Array.from(document.querySelectorAll<HTMLElement>('.panel'));
-export const settingsLimitsForm = document.querySelector('#settings-limits-form') as HTMLFormElement | null;
-export const settingsCapacityLimitInput = document.querySelector(
+export const settingsLimitsForm = document.querySelector<HTMLFormElement>('#settings-limits-form');
+export const settingsCapacityLimitInput = document.querySelector<MdFilledTextFieldElement>(
   '#settings-capacity-limit',
-) as MdFilledTextFieldElement | null;
-export const settingsCapacityMarginInput = document.querySelector(
+);
+export const settingsCapacityMarginInput = document.querySelector<MdFilledTextFieldElement>(
   '#settings-capacity-margin',
-) as MdFilledTextFieldElement | null;
-export const settingsCapacityReactionHint = document.querySelector(
+);
+export const settingsCapacityReactionHint = document.querySelector<HTMLElement>(
   '#settings-capacity-reaction',
-) as HTMLElement | null;
-export const settingsCapacityMarginAlert = document.querySelector(
+);
+export const settingsCapacityMarginAlert = document.querySelector<HTMLElement>(
   '#settings-capacity-margin-alert',
-) as HTMLElement | null;
-export const settingsPowerSourceSelect = document.querySelector(
+);
+export const settingsPowerSourceSelect = document.querySelector<MdFilledSelectElement>(
   '#settings-power-source',
-) as MdFilledSelectElement | null;
-export const settingsHomeyEnergyMeterField = document.querySelector(
+);
+export const settingsHomeyEnergyMeterField = document.querySelector<HTMLElement>(
   '#settings-homey-energy-meter-field',
-) as HTMLElement | null;
-export const settingsHomeyEnergyMeterSelect = document.querySelector(
+);
+export const settingsHomeyEnergyMeterSelect = document.querySelector<MdFilledSelectElement>(
   '#settings-homey-energy-meter',
-) as MdFilledSelectElement | null;
-export const settingsSimulationModeInput = document.querySelector(
+);
+export const settingsSimulationModeInput = document.querySelector<MdSwitchElement>(
   '#settings-simulation-mode',
-) as MdSwitchElement | null;
+);
 export const dryRunBanner = qs('#dry-run-banner');
-export const dryRunBannerText = document.querySelector('#dry-run-banner-text') as HTMLElement | null;
-export const simulationDisableButton = document.querySelector('#simulation-disable-button') as MdButtonElement | null;
-export const simulationHomeScopeNote = document.querySelector('#simulation-home-scope-note') as HTMLElement | null;
+export const dryRunBannerText = document.querySelector<HTMLElement>('#dry-run-banner-text');
+export const simulationDisableButton = document.querySelector<MdButtonElement>('#simulation-disable-button');
+export const simulationHomeScopeNote = document.querySelector<HTMLElement>('#simulation-home-scope-note');
 export const staleDataBanner = qs('#stale-data-banner');
 export const staleDataBannerText = qs('#stale-data-text');
-export const staleDataBannerAction = document.querySelector('#stale-data-action') as MdButtonElement | null;
+export const staleDataBannerAction = document.querySelector<MdButtonElement>('#stale-data-action');
 export const resetStatsButton = document.querySelector('#reset-stats-button') as MdButtonElement;
 export const modeSelect = document.querySelector('#mode-select') as MdFilledSelectElement;
 export const modeNewInput = document.querySelector('#mode-new') as MdFilledTextFieldElement;
 export const addModeButton = document.querySelector('#add-mode-button') as MdButtonElement;
 export const deleteModeButton = document.querySelector('#delete-mode-button') as MdButtonElement;
 export const renameModeButton = document.querySelector('#rename-mode-button') as MdButtonElement;
-export const modeNameEditor = document.querySelector('#mode-name-editor') as HTMLElement | null;
-export const modeNameConfirm = document.querySelector('#mode-name-confirm') as MdButtonElement | null;
-export const modeNameCancel = document.querySelector('#mode-name-cancel') as MdButtonElement | null;
-export const modeDeleteDialog = document.querySelector('#mode-delete-dialog') as (
+export const modeNameEditor = document.querySelector<HTMLElement>('#mode-name-editor');
+export const modeNameConfirm = document.querySelector<MdButtonElement>('#mode-name-confirm');
+export const modeNameCancel = document.querySelector<MdButtonElement>('#mode-name-cancel');
+export const modeDeleteDialog = document.querySelector<
   HTMLElement & { open: boolean; returnValue: string; show: () => void; close: (value?: string) => void }
-) | null;
-export const modeDeleteMessage = document.querySelector('#mode-delete-message') as HTMLElement | null;
+>('#mode-delete-dialog');
+export const modeDeleteMessage = document.querySelector<HTMLElement>('#mode-delete-message');
 export const priorityForm = document.querySelector('#priority-form') as HTMLFormElement;
 export const priorityList = qs('#priority-list');
 export const priorityEmpty = qs('#priority-empty');
@@ -161,9 +161,9 @@ export const deviceDetailNativeWiringConfirmRow = qs('#device-detail-native-wiri
 export const deviceDetailNativeWiringConfirm = document.querySelector(
   '#device-detail-native-wiring-confirm',
 ) as MdSwitchElement;
-export const deviceDetailSetupDisclosure = document.querySelector(
+export const deviceDetailSetupDisclosure = document.querySelector<HTMLDetailsElement>(
   '#device-detail-setup-disclosure',
-) as HTMLDetailsElement | null;
+);
 export const deviceDetailNativeWiringNotice = qs('#device-detail-native-wiring-notice');
 export const deviceDetailFlowConflictNotice = qs('#device-detail-flow-conflict-notice');
 export const deviceDetailFlowConflictTitle = qs('#device-detail-flow-conflict-title');
@@ -230,9 +230,9 @@ export const deviceDetailShedStep = document.querySelector(
 export const deviceDetailChargingSection = qs('#device-detail-charging-section');
 export const deviceDetailChargingControlRow = qs('#device-detail-charging-control-row');
 export const deviceDetailChargingControlValue = qs('#device-detail-charging-control-value');
-export const deviceDetailChargingControlChange = document.querySelector(
+export const deviceDetailChargingControlChange = document.querySelector<MdButtonElement>(
   '#device-detail-charging-control-change',
-) as MdButtonElement | null;
+);
 export const deviceDetailSteppedSection = qs('#device-detail-stepped-section');
 export const deviceDetailSteppedIntro = qs('#device-detail-stepped-intro');
 export const deviceDetailSteppedLockedNote = qs('#device-detail-stepped-locked-note');
@@ -291,12 +291,12 @@ export const deviceDetailSteppedSave = document.querySelector(
 export const deviceDetailSteppedReset = document.querySelector(
   '#device-detail-stepped-reset',
 ) as MdButtonElement;
-export const deviceDetailDiagnosticsDisclosure = document.querySelector(
+export const deviceDetailDiagnosticsDisclosure = document.querySelector<HTMLDetailsElement>(
   '#device-detail-diagnostics-disclosure',
-) as HTMLDetailsElement | null;
+);
 export const deviceDetailDiagnosticsStatus = qs('#device-detail-diagnostics-status');
 export const deviceDetailDiagnosticsCards = qs('#device-detail-diagnostics-cards');
-export const deviceDetailActivityLogDisclosure = document.querySelector(
+export const deviceDetailActivityLogDisclosure = document.querySelector<HTMLDetailsElement>(
   '#device-detail-activity-log-disclosure',
-) as HTMLDetailsElement | null;
+);
 export const deviceDetailActivityLogBody = qs('#device-detail-activity-log-body');

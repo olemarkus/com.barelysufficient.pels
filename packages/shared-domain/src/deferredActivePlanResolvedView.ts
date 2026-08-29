@@ -60,7 +60,7 @@ export const toResolvedActivePlans = (
     // yield a null plan (the consuming widget guards for it), so mirror that.
     plansByDeviceId[deviceId] = plan
       ? toResolvedActivePlan(plan)
-      : (plan as unknown as ResolvedDeferredObjectiveActivePlanV1);
+      : plan;
   }
   return { version: 1, plansByDeviceId };
 };

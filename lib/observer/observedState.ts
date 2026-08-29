@@ -115,7 +115,7 @@ export function resolveObservedCurrentStateValue(device: CurrentStateInput): str
   // non-binary device defaulted to the fabricated `true`), so this always
   // resolved through `resolveObservedCurrentState`. With `binaryControl` absent
   // for non-binary devices, the fabricated default is applied inside the helper.
-  return resolveObservedCurrentState(device as ObservedCurrentStateInput);
+  return resolveObservedCurrentState(device);
 }
 
 export function resolveObservedCurrentState(

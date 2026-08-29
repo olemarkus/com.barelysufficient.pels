@@ -168,7 +168,7 @@ const initTabHandlers = () => {
   });
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
-      const tabId = (tab as HTMLElement).dataset.tab || 'devices';
+      const tabId = tab.dataset.tab || 'devices';
       // A real Budget-tab tap must leave any settings-referred Daily-budget
       // editor (opened via the budget-adjust deep-link, which keeps the
       // Settings indicator lit) and land on the normal Budget overview.

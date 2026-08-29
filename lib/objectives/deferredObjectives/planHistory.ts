@@ -678,7 +678,7 @@ const mergeRecoveredEntries = (
       merged.push(entry);
       continue;
     }
-    const existing = merged[existingIndex]!;
+    const existing = merged[existingIndex];
     if (existing.discoveredFrom === 'backfill' && entry.discoveredFrom === 'observation') {
       merged[existingIndex] = entry;
       continue;

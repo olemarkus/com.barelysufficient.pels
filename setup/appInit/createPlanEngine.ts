@@ -9,7 +9,6 @@ import type { PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
-import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { AppContext } from '../../lib/app/appContext';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
@@ -217,7 +216,7 @@ export function createPlanEngineComposition(
     // Scope-owned diagnostics recorder, resolved LIVE at engine construction
     // (after `initDeviceDiagnosticsService`): main binds the shared app recorder;
     // a sub-home resolves undefined so its plans never pollute main's per-boot epoch.
-    deviceDiagnostics: scope.getDeviceDiagnostics() as DeviceDiagnosticsRecorder | undefined,
+    deviceDiagnostics: scope.getDeviceDiagnostics(),
     structuredLog: ctx.getStructuredLogger('plan'),
     debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
     log: (...args: unknown[]) => ctx.log(...args),

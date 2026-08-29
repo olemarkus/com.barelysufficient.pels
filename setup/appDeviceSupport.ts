@@ -440,7 +440,7 @@ function readModeTargetsCatalog(
   if (raw !== undefined && raw !== null) return { state: 'unavailable' };
   let keys: unknown;
   try {
-    keys = settings.getKeys() as unknown;
+    keys = settings.getKeys();
   } catch {
     return { state: 'unavailable' };
   }

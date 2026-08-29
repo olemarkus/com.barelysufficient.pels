@@ -40,7 +40,7 @@ export const buildHomeyStateComparisonSource = (
   return {
     ...(asBinaryState(onoff?.value) ? { sourceState: asBinaryState(onoff?.value) } : {}),
     ...(Object.prototype.hasOwnProperty.call(target ?? {}, 'value') ? { target: target?.value } : {}),
-    ...(typeof power?.value === 'number' && Number.isFinite(power.value) ? { powerW: power.value as number } : {}),
+    ...(typeof power?.value === 'number' && Number.isFinite(power.value) ? { powerW: power.value } : {}),
     ...(asTimestampString(record.lastSeenAt) ? { lastSeenAt: asTimestampString(record.lastSeenAt) } : {}),
     ...(asTimestampString(onoff?.lastUpdated) ? { onoffLastUpdated: asTimestampString(onoff?.lastUpdated) } : {}),
     ...(asTimestampString(target?.lastUpdated) ? { targetLastUpdated: asTimestampString(target?.lastUpdated) } : {}),
