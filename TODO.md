@@ -869,6 +869,31 @@ program) remain deferred.*
       while they leak, but a device that returns after a long absence is judged against a posture decided
       before it left. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
+- [ ] **The executor's stepped-command state lives in `setup/`, and setup advances its lifecycle
+      from inside the plan-input producer.** `DeviceControlRuntimeState` is defined in
+      `lib/executor/steppedCommandState.ts` but instantiated and held at
+      `setup/appDeviceControlHelpers.ts:271`, and three of its four lifecycle transitions run from
+      setup, not from the executor: `pruneStaleSteppedLoadCommandStates`,
+      `expireConfirmedDesiredStepOnBinaryOff` and `confirmSteppedLoadDesiredStep` are called inside
+      `decorateSnapshotWithDeviceControl` (plus one more confirm in
+      `setup/appTargetPowerReachability.ts:119`). The executor calls only
+      `markSteppedLoadDesiredStepIssued`. So a step command settles because the planner asked for
+      its input devices, not because the executor observed materialization — and the commanded axis
+      (`desiredStepId`, `targetStepId`, `stepCommandPending`) reaches the planner through the
+      decorated snapshot while `no-plan-to-executor` sees no import to object to. It also
+      contradicts `lib/executor/AGENTS.md` ("the in-flight command state comes from this layer's own
+      stores"), which is true for `pendingBinaryCommandStore` and false for the stepped axis.
+      Change: give the executor a `SteppedCommandStore` owned the way
+      `lib/observer/pendingBinaryCommands.ts` is — constructed in
+      `setup/appInit/createPlanEngine.ts`, injected into the executor as writer and lifecycle owner
+      and into the plan-input producer read-only; move confirm/expire/prune onto the executor's
+      settle path; land the commanded fields on `PlanInputDevice` as a named commanded cluster
+      rather than blended into the observation spread (`setup/appInit/toPlanDevice.ts:639`). Done
+      when `grep -rn "confirmSteppedLoadDesiredStep\|expireConfirmedDesiredStep\|pruneStaleSteppedLoad" setup/`
+      is empty, `setup/appDeviceControlHelpers.ts` is gone from
+      `scripts/setup-stateless-allowlist.txt`, and a regression test pins that a step command
+      settles on the executor's observation rather than on a plan-device read. Found 2026-08-29.
+
 ## P2 Product, Observability, and Maintainability
 
 - [ ] **The "Charge on solar surplus" toggle disappears when a charger is switched to an EV
@@ -3260,6 +3285,37 @@ non-blocking follow-ups.*
       boot's heap snapshot shows module-source strings at or under ~8 MB, `check:homeybuild` still
       walks the packaged require graph cleanly, and prod insights RSS steps down after deploy.
       Found 2026-08-20. [P2]
+
+- [ ] **Twenty setup files still hold runtime state, above the boundaries `arch:check` enforces.**
+      `setup/` constructs and connects and holds nothing (`setup/AGENTS.md` § "No state"), enforced
+      by `scripts/check-setup-stateless.mjs`. Twenty files predate the rule and sit in
+      `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (103 at the
+      guard's introduction, once the executor store above is excluded). Each is a component in the wrong directory, and each
+      migration is the same shape: move the state **and the rules that read it** into the domain
+      module that owns the concept, as a leaf that takes flat injected getters for anything outside
+      its own module (the `no-weather-to-peer` pattern — "a leaf collector fed flat getters from
+      setup wiring"); setup keeps only the construction that binds them. The peer DAG is the
+      constraint that decides each destination: `lib/home` is a declared pure leaf, yet
+      `setup/homeMembership.ts` imports `lib/device/transport/managerFetch` and
+      `lib/observer/observedStateEvents` today, so those inputs must arrive injected or move to
+      `packages/contracts`. Lanes, in the order they should land:
+      (a) power — `powerMeasurementGate.ts`, `powerSamplePipeline.ts`,
+      `flowPowerSampleFreshnessClock.ts`, `homeRuntime/suffixedTrackerPersistence.ts` (it holds
+      `PowerTrackerState` itself), `homeRuntime/powerSourceEpochFence.ts` → `lib/power/`;
+      (b) solar — `appInit/createPvForecastService.ts` → `lib/solar/`;
+      (c) device — `appSnapshotHelpers.ts`, `targetPowerProbeScheduler.ts`, `appNativeWiring.ts`,
+      `appFlowBacked.ts`, `appDeviceSupport.ts` (two module-level `Set`s) → `lib/device/`;
+      (d) home — `homeMembership.ts` (832 lines), `homeMainMeterAuthority.ts`,
+      `homeSampledMeterIdentity.ts`, `homeRuntime/homeModeOwnershipTransfer.ts`,
+      `homeRuntime/homeRuntimeRegistry.ts` → `lib/home/` (the meter-provenance pair may have to go
+      to `lib/power/` instead, since `no-home-to-peer` forbids reading the tracker);
+      (e) composition root and leftovers — `appServiceWiring.ts`'s late-bound service handles and
+      `backgroundTasksController.ts`'s teardown handles onto `app.ts`/`AppContext`,
+      `schedulerTelemetryObserver.ts` → `lib/logging/`, `appDebugHelpers.ts`'s dump counter →
+      `lib/diagnostics/`. Each lane is behaviour-preserving: a move plus an injection change, with
+      `npm run arch:check` as the gate on the destination. Done when
+      `scripts/setup-stateless-allowlist.txt` no longer exists and `npm run setup:stateless` passes
+      without it. Found 2026-08-29. [P2]
 
 ## P3 Future and Exploratory Work
 

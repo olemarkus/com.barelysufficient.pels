@@ -40,7 +40,7 @@ The codebase is strictly layered. `dependency-cruiser` enforces the rules at `np
 ```
 Entry Points          app.ts, drivers/**, packages/settings-ui/src/script.ts
       ↓
-App Wiring/Adapters   setup/**, lib/app/** (sunsetting), flowCards/**
+App Wiring (stateless) setup/**, lib/app/** (sunsetting), flowCards/**
       ↓
 Domain Modules        lib/plan/**, lib/device/**, lib/observer/**, lib/executor/**, lib/objectives/**, lib/power/**, lib/price/**, lib/dailyBudget/**
       ↓
@@ -56,6 +56,7 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 - Settings UI must only consume shared contracts and shared-domain — never import runtime backend directly.
 - Domain modules (`lib/device`, `lib/power`, `lib/objectives`, `lib/plan`, `lib/price`, `lib/dailyBudget`, `lib/observer`, `lib/executor`, `lib/actuator`) must not import `lib/app/**` (`no-domain-to-app-layer`).
 - `setup/**` may import `lib/**` and `packages/**`; the reverse is forbidden by the `no-lib-to-setup` dep-cruiser rule.
+- **The wiring layer holds no state.** `setup/**` gets no mutable field, no module-level `let` or `var`, no field holding a mutable container. It constructs and connects; anything that changes as the app runs is a component owned by a `lib/` module. State in the wiring layer sits above these boundaries, so it becomes a back-channel between modules forbidden to talk with no import edge for `arch:check` to see. Enforced by `npm run setup:stateless`; the shrinking allowlist of files predating the rule is `scripts/setup-stateless-allowlist.txt`. Full rule: `setup/AGENTS.md` § "No state".
 - `flowCards/**` must not import `packages/settings-ui/**` or `drivers/**`.
 - Accept code duplication if consolidation would violate an architectural boundary. Add a comment explaining the constraint.
 
@@ -97,7 +98,7 @@ Runtime code conventions (TypeScript, structured logging, Homey SDK mocking) liv
 
 ### App wiring (`setup/`)
 
-`setup/` at the repo root is the honest home for app-wiring classes — factories, observers, registrars that construct and connect services. Conventions and the boot-path map live in `setup/AGENTS.md`. As remaining wiring migrates out of `lib/app/`, that directory sunsets; `lib/app/appContext.ts` (the shared `AppContext` type) stays.
+`setup/` at the repo root is the honest home for app-wiring classes — factories, observers, registrars that construct and connect services, and then hold nothing. Conventions and the boot-path map live in `setup/AGENTS.md`. As remaining wiring migrates out of `lib/app/`, that directory sunsets; `lib/app/appContext.ts` (the shared `AppContext` type) stays.
 
 ### Packages (shared)
 
