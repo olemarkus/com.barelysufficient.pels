@@ -2,8 +2,9 @@
 
 - This folder owns runtime actuation concepts: what PELS is trying to command, whether that command has materialized, and whether execution should issue, retry, wait, or skip.
 - Do not add planner decision logic here. Planner modules decide desired state; executor modules consume those decisions and runtime observations.
-- **The planner's shed policy does not reach this folder.** `grep -rn shedAction lib/executor/`
-  must stay empty. The planner decides where a shed leaves a device and hands over the END STATE as
+- **The planner's shed policy does not reach this folder.** *(ASPIRATION, not current state — see
+  the CORRECTION closing this bullet.)* The planner decides where a shed leaves a device and
+  hands over the END STATE as
   `DevicePlanDevice.plannedShedTargetKind` — `binary_off`, a `step`, or the `target_value` the plan
   already carries as `plannedTarget`, absent when the device is not shed this cycle. Executor code
   reads that kind (pairing it with its own resolved step via `ExecutableShedTarget`) and converges
@@ -20,6 +21,20 @@
   Same rule for plan devices: project them onto a narrow executor-facing view first
   (`ExecutableConvergenceDevice`, `ExecutableSteppedLoadIntent`, …), never pass the whole plan
   device in.
+  **CORRECTION (2026-08-29): the shed-policy rule above is currently VIOLATED, and its own proof was
+  blind to it.** The stated check was `grep -rn shedAction lib/executor/` — lowercase, so it never
+  saw `import type { ShedAction, ShedBehavior }` in `shedReleaseActuation.ts`. Policy is read at five
+  sites today: `shedReleaseActuation.ts` (three `behavior.action` branches, plus the module comment
+  that says outright "the executor resolves the concrete actuation primitive at apply time from
+  getShedBehavior()"), `lifecycleFallbackDispatcher.ts`, and `planExecutorDispatch.ts`
+  (`applySheddingToDeviceImpl`, which decides its own end state outside any plan — and the ordinary
+  plan-driven binary shed routes through it). `getShedBehavior` is a `PlanExecutorDeps` member.
+
+  Closing this is a stage of the planner/executor seam train: the planner stamps the shed end state
+  for the release path as it already does for the plan path (`plannedShedTargetKind`),
+  `getShedBehavior` leaves `PlanExecutorDeps`, and a `check-shed-policy-seam` guard replaces the
+  grep — a case-sensitive grep is not an enforcement mechanism. Do not add a sixth site meanwhile.
+
 - **Converging observed state onto desired state is this layer's charter, and it is unconditional.**
   `executorConvergence.ts` answers "does the executor still have work to do?" (and the settle
   question "has what I dispatched materialized?"); `planExecutionDrift.ts` answers it per device.
@@ -80,6 +95,7 @@
 
   The test is what justifies the exemption: a fact about the device (activation resets its step)
   is fine; a fact about the caller (this write came from the reconcile lane) is not.
+
 - **One field, one meaning — on every construction path.** `ExecutableObservedDeviceState` carries
   `observedBinaryAxis` (the raw on/off handle) and `observedEffectiveOn` (the producer fold: off when
   the binary axis reads off OR the stepped axis is parked at its off step). They were a single
@@ -88,5 +104,16 @@
   axis (is the handle already where I would write it?); convergence asks the fold (is this device
   effectively off?). A reader that cannot say which question it is asking is the thing to fix; do not
   merge the fields again.
+- **This folder's imports from `lib/plan` are a shrinking allowlist, not an open door.**
+  `scripts/check-executor-plan-edge.mjs` (`npm run executor:plan-edge`, in `ci:checks`) carries every
+  `lib/executor -> lib/plan` edge that exists, and fails on a NEW edge *or* a STALE allowlist entry —
+  so deleting an edge includes deleting its line, and a removed edge cannot quietly come back. The
+  companion cruiser rule `todo-tighten-executor-to-plan` is `warn` and states the intent; it sees only
+  VALUE imports (`tsPreCompilationDeps` is unset) and most of these edges are type-only, so the AST
+  guard is the half that enforces. Target state: the planner emits a total action contract, this list
+  is empty, and the rule flips to error.
+
+  Prefer shrinking the list to arguing an exception. If you genuinely need a new edge, say why in the
+  PR description — an unexplained addition is the thing the ratchet exists to make visible.
 - Compatibility reads from legacy plan/snapshot fields are allowed only in small adapter helpers that return executor-facing concepts.
 - Keep UI wording, snapshot serialization, and settings contracts out of this layer.

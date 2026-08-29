@@ -18,5 +18,6 @@ await runParallel([
   { label: 'binary:seam', command: 'npm', args: ['run', 'binary:seam'] },
   { label: 'executor:settle-seam', command: 'npm', args: ['run', 'executor:settle-seam'] },
   { label: 'setup:stateless', command: 'npm', args: ['run', 'setup:stateless'] },
+  { label: 'executor:plan-edge', command: 'npm', args: ['run', 'executor:plan-edge'] },
   { label: 'deadcode', command: 'npm', args: ['run', 'deadcode:check'] },
 ]);

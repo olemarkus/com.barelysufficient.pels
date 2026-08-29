@@ -6,10 +6,8 @@ import {
   type LifecycleFallbackRequest,
 } from '../../lib/executor/lifecycleFallbackDispatcher';
 import { createPlanEngineState } from '../../lib/plan/planState';
-import {
-  prunePendingTargetCommandsForPlan,
-  recordPendingTargetCommandAttempt,
-} from '../../lib/plan/planTargetControl';
+import { prunePendingTargetCommandsForPlan } from '../../lib/plan/planTargetControl';
+import { recordPendingTargetCommandAttempt } from '../../lib/executor/targetCommandRetry';
 import {
   applyDeferredBinaryCommand,
   type PlanExecutorBinaryContext,

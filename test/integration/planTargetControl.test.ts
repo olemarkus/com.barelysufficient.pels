@@ -1,8 +1,6 @@
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
   prunePendingTargetCommandsForPlan,
-  recordFailedPendingTargetCommandAttempt,
-  recordPendingTargetCommandAttempt,
   syncPendingTargetCommands,
 } from '../../lib/plan/planTargetControl';
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
@@ -392,62 +390,5 @@ describe('prunePendingTargetCommandsForPlan', () => {
       deviceName: 'Heater',
       desired: 23,
     }));
-  });
-});
-
-describe('recordPendingTargetCommandAttempt', () => {
-  it('does not carry stale observed metadata into a fresh non-retry pending command', () => {
-    const state = createPlanEngineState();
-    state.pendingTargetCommands['dev-1'] = {
-      target: 'temperature',
-      desired: 23,
-      startedMs: Date.now() - 10_000,
-      pendingMs: 90_000,
-      lastAttemptMs: Date.now() - 10_000,
-      retryCount: 1,
-      nextRetryAtMs: Date.now() + 20_000,
-      status: 'waiting_confirmation',
-      lastObservedValue: 27,
-      lastObservedSource: 'realtime_capability',
-      lastObservedAtMs: Date.now() - 1_000,
-    };
-
-    const pending = recordPendingTargetCommandAttempt({
-      state,
-      deviceId: 'dev-1',
-      target: 'temperature',
-      desired: 18,
-      nowMs: Date.now(),
-    });
-
-    expect(pending).toMatchObject({
-      target: 'temperature',
-      desired: 18,
-      retryCount: 0,
-    });
-    expect(pending.lastObservedValue).toBeUndefined();
-    expect(pending.lastObservedSource).toBeUndefined();
-    expect(pending.lastObservedAtMs).toBeUndefined();
-  });
-
-  it('records failed target commands as temporarily unavailable with retry backoff', () => {
-    const state = createPlanEngineState();
-
-    const pending = recordFailedPendingTargetCommandAttempt({
-      state,
-      deviceId: 'dev-1',
-      target: 'temperature',
-      desired: 18,
-      nowMs: Date.now(),
-      observedValue: 21,
-    });
-
-    expect(pending).toMatchObject({
-      target: 'temperature',
-      desired: 18,
-      retryCount: 0,
-      status: 'temporary_unavailable',
-      lastObservedValue: 21,
-    });
   });
 });
