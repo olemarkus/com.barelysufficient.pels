@@ -90,7 +90,7 @@ export const resolveHomeyEnergyDocument = (
       ? response[0] as HomeyEnergyPriceDocument
       : null;
   }
-  return response as HomeyEnergyPriceDocument;
+  return response;
 };
 
 export const normalizeHomeyEnergyPrices = (params: {

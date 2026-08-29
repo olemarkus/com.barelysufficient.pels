@@ -52,16 +52,16 @@ export const projectTemperatureDeniedDevice = <T extends {
   controlModel?: DeviceControlModel;
 }>(device: T): T => {
   if (device.temperatureControlDisabled !== true) return device;
-  // The assertion is sound and cannot be expressed without one: the result has
-  // every key of `T`, and the four it overrides are narrowed to values the
-  // caller's own type already admits (`targets: []`, `temperature: undefined`,
-  // `deviceType: 'onoff'`). Spelling that as a mapped return type would force a
-  // union on every caller for no gain.
+  // The spread yields `T & { targets: []; temperature: undefined; deviceType:
+  // 'onoff'; ... }`, which the `: T` return annotation clamps back to `T`. The
+  // four overridden keys are narrowed to values the caller's own type already
+  // admits, so no caller loses information; spelling that as a mapped return
+  // type would force a union on every caller for no gain.
   return {
     ...device,
     targets: [],
     temperature: undefined,
     deviceType: 'onoff',
     controlModel: resolveTemperatureDeniedControlModel(device.controlModel),
-  } as T;
+  };
 };

@@ -70,8 +70,8 @@ const resolvePowerText = (dev: PlanDeviceSnapshot, intentHeld: boolean): string 
     // temperature/stepped cards render plain measured kW even while held.
     const reportedConflict = intentHeld && !isMeasuredOnlyCard(dev);
     return reportedConflict
-      ? `Reported ${formatKw(dev.currentDrawKw as number)}`
-      : formatKw(dev.currentDrawKw as number);
+      ? `Reported ${formatKw(dev.currentDrawKw)}`
+      : formatKw(dev.currentDrawKw);
   }
   if (!isMeasuredOnlyCard(dev)) {
     // Off the stepped cluster: a non-stepped device has no selected step and
@@ -113,7 +113,7 @@ const getRow = (): {
 // chargers, whose battery and charging state fold in) show the level fact.
 const resolveFactText = (dev: PlanDeviceSnapshot): string => {
   if (dev.temperature !== undefined) {
-    return resolveTemperatureLine(dev as Parameters<typeof resolveTemperatureLine>[0]) ?? '';
+    return resolveTemperatureLine(dev) ?? '';
   }
   if (dev.steppedLoad !== undefined) {
     const exception = resolveSteppedEvExceptionLabel(dev);
@@ -165,7 +165,7 @@ export const renderDeviceDetailLiveStatus = async (deviceId: string): Promise<vo
     dev,
     nowMs,
     nowMs,
-  ) as PlanDeviceSnapshot;
+  );
   const grammarParams = {
     kind: resolveRawPlanStateKind(dev),
     reasonCode: (dev.reason as { code?: string } | undefined)?.code,

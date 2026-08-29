@@ -14,10 +14,10 @@ export function buildDebugLoggingTopics(params: {
   logChange?: boolean;
 }): Set<DebugLoggingTopic> {
   const { settings, logChange } = params;
-  const rawTopics = settings.get(DEBUG_LOGGING_TOPICS) as unknown;
+  const rawTopics = settings.get(DEBUG_LOGGING_TOPICS);
   let enabledTopics = normalizeDebugLoggingTopics(rawTopics);
   if (enabledTopics.length === 0) {
-    const legacyEnabled = settings.get('debug_logging_enabled') as unknown;
+    const legacyEnabled = settings.get('debug_logging_enabled');
     if (legacyEnabled === true) {
       enabledTopics = [...ALL_DEBUG_LOGGING_TOPICS];
     }

@@ -231,7 +231,7 @@ export function buildCapacitySettingsSnapshot(params: {
   // (getPriorityForDevice → planSort/shedding) reads this resolved snapshot, so
   // they all inherit the strict order without branching on stored shape.
   const nextDryRun = capacityScalars.dryRun;
-  const nextBehaviors = normalizeShedBehaviorsHelper(rawShedBehaviors as Record<string, ShedBehavior> | undefined);
+  const nextBehaviors = normalizeShedBehaviorsHelper(rawShedBehaviors);
 
   return {
     capacitySettings: nextCapacity,

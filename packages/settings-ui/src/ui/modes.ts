@@ -357,7 +357,7 @@ export const savePriorities = async () => {
     await showToast(`Priorities saved for ${mode}.`, 'ok');
   } catch (error) {
     await logSettingsError('Failed to save priorities', error, 'savePriorities');
-    await showToastError(error as Error, 'Failed to save priorities.');
+    await showToastError(error, 'Failed to save priorities.');
   }
 };
 
@@ -384,7 +384,7 @@ export const applyTargetChange = async (deviceId: string, rawValue: string) => {
     ));
   } catch (error) {
     await logSettingsError('Failed to update mode target', error, 'applyTargetChange');
-    await showToastError(error as Error, 'Failed to update mode target.');
+    await showToastError(error, 'Failed to update mode target.');
   }
 };
 
@@ -475,7 +475,7 @@ const handleAddMode = async () => {
       void showToast(`Added mode ${mode}`, 'ok');
     } catch (error) {
       await logSettingsError('Failed to add mode', error, 'handleAddMode');
-      await showToastError(error as Error, 'Failed to add mode.');
+      await showToastError(error, 'Failed to add mode.');
     }
   });
 };
@@ -515,7 +515,7 @@ const handleDeleteMode = async () => {
       void showToast(`Deleted mode ${mode}`, 'warn');
     } catch (error) {
       await logSettingsError('Failed to delete mode', error, 'handleDeleteMode');
-      await showToastError(error as Error, 'Failed to delete mode.');
+      await showToastError(error, 'Failed to delete mode.');
     }
   });
 };
@@ -529,7 +529,7 @@ const handleRenameMode = async () => {
     modeNewInput.value = '';
   } catch (error) {
     await logSettingsError('Failed to rename mode', error, 'handleRenameMode');
-    await showToastError(error as Error, 'Failed to rename mode.');
+    await showToastError(error, 'Failed to rename mode.');
   }
 };
 

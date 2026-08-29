@@ -11,7 +11,7 @@
  * "not present". Helpers do not throw — callers are responsible for
  * surfacing semantic errors with appropriate flow-card messages.
  */
-import { getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
+import { getDeviceIdFromFlowArg } from './deviceArgs';
 
 export type FlowAutocompleteOption = { id?: unknown; name?: unknown };
 
@@ -54,7 +54,7 @@ export function readFlowNumberArg(args: unknown, key: string): number | null {
 export function readFlowDeviceArg(args: unknown, key = 'device'): string {
   const value = readPayloadProperty(args, key);
   if (value === undefined || value === null) return '';
-  return getDeviceIdFromFlowArg(value as RawFlowDeviceArg);
+  return getDeviceIdFromFlowArg(value);
 }
 
 /**

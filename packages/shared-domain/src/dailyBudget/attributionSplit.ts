@@ -41,9 +41,9 @@ export const resolveAttributionSplit = (params: {
     // Exempt load (budget-exempt managed draw) is reserved on the uncontrolled/background
     // side of the budget breakdown — matching the legacy net split — so it is removed from
     // controlled and folded into uncontrolled rather than dropped.
-    const uncontrolled = Math.max(0, uncontrolledGross as number) + exempt;
+    const uncontrolled = Math.max(0, uncontrolledGross) + exempt;
     const controlled = hasControlled
-      ? Math.max(0, (controlledGross as number) - exempt)
+      ? Math.max(0, controlledGross - exempt)
       : Math.max(0, total - uncontrolled);
     return { controlled, uncontrolled };
   }

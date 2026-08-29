@@ -40,7 +40,7 @@ export function resolveDeviceCompatibilityTargetPowerConfig(
 
 function getSettings(device: HomeyDeviceLike): UnknownRecord | undefined {
   return device.settings && typeof device.settings === 'object'
-    ? device.settings as UnknownRecord
+    ? device.settings
     : undefined;
 }
 

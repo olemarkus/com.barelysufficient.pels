@@ -232,7 +232,7 @@ const observeDiagnostic = (params: {
   // `previousHoursRemaining` it would have seen pre-restart and suppresses the
   // re-fire.
   const armedForSameDeadline = latch?.deadlineAtMs === deadlineAtMs;
-  const previousHoursRemaining = armedForSameDeadline ? latch!.lastEmittedHoursRemaining : null;
+  const previousHoursRemaining = armedForSameDeadline ? latch.lastEmittedHoursRemaining : null;
 
   // Only the *downward* edge across an integer-hour boundary is a crossing.
   // First observation (no prior for this deadline) counts as a crossing so a

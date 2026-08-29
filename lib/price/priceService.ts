@@ -90,7 +90,7 @@ export default class PriceService {
   // for non-prosumers ⇒ budgetPrice is never produced and behaviour is unchanged.
   private budgetPriceInputs?: BudgetPriceInputs;
   setBudgetPriceInputs(inputs: BudgetPriceInputs | undefined): void { this.budgetPriceInputs = inputs; }
-  private getSettingValue(key: string): unknown { return this.homey.settings.get(key) as unknown; }
+  private getSettingValue(key: string): unknown { return this.homey.settings.get(key); }
   private getNumberSetting(key: string, fallback: number): number {
     const value = this.getSettingValue(key);
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;

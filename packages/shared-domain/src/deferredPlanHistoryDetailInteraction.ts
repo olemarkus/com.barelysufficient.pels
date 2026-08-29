@@ -396,10 +396,10 @@ const resolveSkipReason = (
     && snapshotHasHour(entry.originalPlan, atMs)
     && !snapshotHasHour(entry.finalPlan, atMs);
   const revisions = Array.isArray(entry.revisions) ? entry.revisions : [];
-  if (droppedFromFinal && revisions.length === 1 && Number.isFinite(revisions[0]!.atMs)) {
-    const row = formatPlanHistoryRevisionEntry(revisions[0]!, timeZone, entry.objectiveKind);
+  if (droppedFromFinal && revisions.length === 1 && Number.isFinite(revisions[0].atMs)) {
+    const row = formatPlanHistoryRevisionEntry(revisions[0], timeZone, entry.objectiveKind);
     const stem = `Skipped at the ${row.timeLabel} plan change`;
-    return row.isFallback || isBareScheduleRevised(revisions[0]!)
+    return row.isFallback || isBareScheduleRevised(revisions[0])
       ? stem
       : `${stem} — ${lowercaseLabelMidSentence(row.reason)}`;
   }

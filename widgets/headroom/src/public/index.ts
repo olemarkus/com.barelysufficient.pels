@@ -1,3 +1,3 @@
-import { installWidget, type WidgetController, type WidgetWindow } from './widgetApp';
+import { installWidget, type WidgetController } from './widgetApp';
 
-export const widgetController: WidgetController | null = installWidget(window as WidgetWindow, document);
+export const widgetController: WidgetController | null = installWidget(window, document);

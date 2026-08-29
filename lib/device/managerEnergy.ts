@@ -319,7 +319,7 @@ const aggregateAllOrNull = (
   reduce: (present: readonly number[]) => number,
 ): number | null => (
   values.length > 0 && values.every((value) => value !== null)
-    ? reduce(values as readonly number[])
+    ? reduce(values)
     : null
 );
 

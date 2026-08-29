@@ -444,7 +444,7 @@ function readPersistedSnapshot(homey: HomeyRuntime): SettingsReadResult<unknown>
   // and a subsequent recovery read can rebuild the prior history (per the
   // "Homey SDK reads can transiently fail" rule).
   try {
-    return { value: homey.settings.get(POWER_CALIBRATION) as unknown, threw: false };
+    return { value: homey.settings.get(POWER_CALIBRATION), threw: false };
   } catch {
     return { value: undefined, threw: true };
   }

@@ -132,12 +132,11 @@ const hasInvalidEvState = (device: PlanDeviceSnapshot, key: typeof EV_STATE_KEYS
 // the temperature facet alone and stayed in step by luck; with four fields to
 // check, a second copy is a drift waiting to happen.
 const resolveDropKeys = (device: PlanDeviceSnapshot): readonly string[] => {
-  const loose = device as PlanDeviceSnapshot & Record<string, unknown>;
   const dropKeys: string[] = [];
-  if (loose.temperature !== undefined && !hasValidTemperatureFacet(loose.temperature)) {
+  if (device.temperature !== undefined && !hasValidTemperatureFacet(device.temperature)) {
     dropKeys.push('temperature');
   }
-  if (loose.steppedLoad !== undefined && !hasValidSteppedLoad(loose.steppedLoad)) {
+  if (device.steppedLoad !== undefined && !hasValidSteppedLoad(device.steppedLoad)) {
     dropKeys.push('steppedLoad');
   }
   for (const key of EV_STATE_KEYS) {
@@ -218,14 +217,14 @@ export const parsePlanSnapshot = (value: unknown): PlanSnapshot | null => {
   const meta = (value as { meta?: unknown }).meta;
   if (meta !== undefined && !isValidPlanMeta(meta)) return null;
   const devices = (value as { devices?: unknown }).devices;
-  if (devices === undefined) return value as PlanSnapshot;
+  if (devices === undefined) return value;
   if (!Array.isArray(devices) || !devices.every(isPlanDeviceSnapshot)) {
     return null;
   }
   // Identity-preserving on the clean path: consumers (and the byte-identical
   // Main-scope read) rely on an untouched payload passing through as-is; a
   // copy exists only to carry a sanitized device list.
-  if (!devices.some(needsFacetSanitizing)) return value as PlanSnapshot;
+  if (!devices.some(needsFacetSanitizing)) return value;
   return {
     ...(value as PlanSnapshot),
     devices: devices.map(withValidatedFacets),

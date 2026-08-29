@@ -90,13 +90,22 @@ type HomeScopeApp = Homey.App & {
 };
 
 /**
+ * The SDK types `homey.app` as always present. It is not: during the boot and
+ * uninit windows the handle exists and `app` is undefined. The seam states
+ * that here rather than carrying it in a cast at the read, so `app()`'s
+ * `?? null` stays a branch the compiler can see instead of a line that only
+ * a comment claims is load-bearing.
+ */
+type HomeScopeHomey = Omit<Homey.App['homey'], 'app'> & { app?: HomeScopeApp };
+
+/**
  * The one wiring surface of this module (setup convention: a file exposes a
  * class or a single factory, never a bag of standalone utilities). Constructed
  * per request by the `settingsUiApi` composers; holds no state beyond the
  * Homey handle, so construction is free and nothing can go stale.
  */
 export class SettingsUiHomeScopeAdapter {
-  public constructor(private readonly homey: Homey.App['homey']) {}
+  public constructor(private readonly homey: HomeScopeHomey) {}
 
   /**
    * Classify the untrusted `query` bag of an inbound settings-UI GET. Static:
@@ -162,7 +171,7 @@ export class SettingsUiHomeScopeAdapter {
       return { state: 'unavailable' };
     }
     return status !== null && typeof status === 'object' && !Array.isArray(status)
-      ? { state: 'resolved', status: status as SettingsUiPowerStatus }
+      ? { state: 'resolved', status }
       : { state: 'absent' };
   }
 
@@ -191,9 +200,9 @@ export class SettingsUiHomeScopeAdapter {
 
   private app(): HomeScopeApp | null {
     if (!this.homey || typeof this.homey !== 'object') return null;
-    // `homey.app` is undefined during the boot/uninit window; honour the
-    // declared null so a future non-optional-chained caller cannot type-check
-    // against a value that is actually undefined.
-    return (this.homey.app as HomeScopeApp | undefined) ?? null;
+    // `homey.app` is undefined during the boot/uninit window (see
+    // `HomeScopeHomey`); collapse that to the declared `null` so a caller
+    // cannot type-check against a value that is actually undefined.
+    return this.homey.app ?? null;
   }
 }

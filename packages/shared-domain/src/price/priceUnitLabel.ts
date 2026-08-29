@@ -31,6 +31,6 @@ const PER_KWH_RATE_SUFFIX = /^(.*?)\s*\/\s*kwh\s*$/i;
 export const priceRateLabelToAmountUnit = (rateLabel: string): string => {
   const match = PER_KWH_RATE_SUFFIX.exec(rateLabel);
   if (!match) return rateLabel.trim();
-  const moneyUnit = match[1]!.trim();
+  const moneyUnit = match[1].trim();
   return moneyUnit.length > 0 ? moneyUnit : rateLabel.trim();
 };

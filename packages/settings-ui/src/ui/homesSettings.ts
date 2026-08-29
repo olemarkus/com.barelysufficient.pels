@@ -9,7 +9,6 @@ import {
   SETTINGS_UI_HOMES_PATH,
   SETTINGS_UI_HOMES_SAVE_PATH,
   type SettingsUiHomesPayload,
-  type SettingsUiHomesSaveRefusal,
   type SettingsUiHomesSaveRequest,
   type SettingsUiHomesSaveResponse,
 } from '../../../contracts/src/settingsUiHomes.ts';
@@ -515,7 +514,7 @@ const postHomesSaveOp = async (op: SettingsUiHomesSaveRequest): Promise<HomesWri
     releaseWriteLock();
     renderSection();
     await showToast(
-      composeHomeAreaSaveRefusalLine(response as SettingsUiHomesSaveRefusal),
+      composeHomeAreaSaveRefusalLine(response),
       'warn',
       { durationMs: ERROR_DURATION_MS },
     );

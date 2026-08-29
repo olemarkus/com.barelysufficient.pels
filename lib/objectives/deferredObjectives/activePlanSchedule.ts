@@ -370,7 +370,7 @@ export const sameHourSchedule = (
 ): boolean => {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) {
-    if (a[i]!.startsAtMs !== b[i]!.startsAtMs) return false;
+    if (a[i].startsAtMs !== b[i].startsAtMs) return false;
   }
   return true;
 };
@@ -385,8 +385,8 @@ export const samePriorityAllocation = (
 ): boolean => {
   if (!sameHourSchedule(a, b)) return false;
   for (let i = 0; i < a.length; i += 1) {
-    if (a[i]!.plannedKWh !== b[i]!.plannedKWh) return false;
-    if ((a[i]!.plannedAdmissionPowerKw ?? 0) !== (b[i]!.plannedAdmissionPowerKw ?? 0)) return false;
+    if (a[i].plannedKWh !== b[i].plannedKWh) return false;
+    if ((a[i].plannedAdmissionPowerKw ?? 0) !== (b[i].plannedAdmissionPowerKw ?? 0)) return false;
   }
   return true;
 };
@@ -397,7 +397,7 @@ const sameAdmissionAllocation = (
 ): boolean => {
   if (!sameHourSchedule(a, b)) return false;
   for (let i = 0; i < a.length; i += 1) {
-    if ((a[i]!.plannedAdmissionPowerKw ?? 0) !== (b[i]!.plannedAdmissionPowerKw ?? 0)) return false;
+    if ((a[i].plannedAdmissionPowerKw ?? 0) !== (b[i].plannedAdmissionPowerKw ?? 0)) return false;
   }
   return true;
 };

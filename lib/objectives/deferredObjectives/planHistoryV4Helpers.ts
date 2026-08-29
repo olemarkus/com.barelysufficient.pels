@@ -615,7 +615,7 @@ export const appendHourlyContribution = (
   }
   const merged: DeferredObjectivePlanHistoryHourlyContribution = {
     atMs: next.atMs,
-    deliveredKWh: list[existingIndex]!.deliveredKWh + next.deliveredKWh,
+    deliveredKWh: list[existingIndex].deliveredKWh + next.deliveredKWh,
     priceValue: next.priceValue,
     tone: next.tone,
   };

@@ -404,8 +404,8 @@ const staircasesDiffer = (
 ): boolean => {
   if (a.length !== b.length) return true;
   for (let i = 0; i < a.length; i += 1) {
-    if (a[i]!.atMs !== b[i]!.atMs) return true;
-    if (Math.abs(a[i]!.value - b[i]!.value) > 0.001) return true;
+    if (a[i].atMs !== b[i].atMs) return true;
+    if (Math.abs(a[i].value - b[i].value) > 0.001) return true;
   }
   return false;
 };
@@ -442,7 +442,7 @@ export const anchorObservedAtStart = (
   startProgress: number | null,
 ): DeferredPlanHistoryChartPoint[] => {
   if (startProgress === null) return [...observed];
-  if (observed.length > 0 && observed[0]!.atMs <= windowStartMs) return [...observed];
+  if (observed.length > 0 && observed[0].atMs <= windowStartMs) return [...observed];
   return [{ atMs: windowStartMs, value: startProgress }, ...observed];
 };
 

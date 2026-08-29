@@ -46,7 +46,7 @@ const createSvg = <K extends keyof SVGElementTagNameMap>(
   attrs: SvgAttrs,
   text?: string,
 ): SVGElementTagNameMap[K] => {
-  const el = doc.createElementNS(SVG_NS, tag) as SVGElementTagNameMap[K];
+  const el = doc.createElementNS(SVG_NS, tag);
   for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
   if (text !== undefined) el.textContent = text;
   return el;
@@ -100,32 +100,32 @@ const buildSmoothPath = (
   const dx: number[] = [];
   const slope: number[] = [];
   for (let i = 0; i < n - 1; i += 1) {
-    dx[i] = pts[i + 1]!.x - pts[i]!.x;
-    slope[i] = dx[i]! > 0 ? (pts[i + 1]!.y - pts[i]!.y) / dx[i]! : 0;
+    dx[i] = pts[i + 1].x - pts[i].x;
+    slope[i] = dx[i] > 0 ? (pts[i + 1].y - pts[i].y) / dx[i] : 0;
   }
   // Fritsch–Carlson tangents: zero at local extrema (sign change) so each
   // segment stays within its endpoints' y-range.
-  const tangents: number[] = [slope[0]!];
+  const tangents: number[] = [slope[0]];
   for (let i = 1; i < n - 1; i += 1) {
-    const prev = slope[i - 1]!;
-    const next = slope[i]!;
+    const prev = slope[i - 1];
+    const next = slope[i];
     if (prev * next <= 0) {
       tangents[i] = 0;
       continue;
     }
-    const w1 = 2 * dx[i]! + dx[i - 1]!;
-    const w2 = dx[i]! + 2 * dx[i - 1]!;
+    const w1 = 2 * dx[i] + dx[i - 1];
+    const w2 = dx[i] + 2 * dx[i - 1];
     tangents[i] = (w1 + w2) / (w1 / prev + w2 / next);
   }
   tangents[n - 1] = slope[n - 2]!;
-  let path = `M${pts[0]!.x.toFixed(1)} ${pts[0]!.y.toFixed(1)}`;
+  let path = `M${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
   for (let i = 0; i < n - 1; i += 1) {
-    const third = dx[i]! / 3;
-    const c1y = pts[i]!.y + tangents[i]! * third;
-    const c2y = pts[i + 1]!.y - tangents[i + 1]! * third;
-    path += ` C${(pts[i]!.x + third).toFixed(1)} ${c1y.toFixed(1)}`
-      + ` ${(pts[i + 1]!.x - third).toFixed(1)} ${c2y.toFixed(1)}`
-      + ` ${pts[i + 1]!.x.toFixed(1)} ${pts[i + 1]!.y.toFixed(1)}`;
+    const third = dx[i] / 3;
+    const c1y = pts[i].y + tangents[i] * third;
+    const c2y = pts[i + 1].y - tangents[i + 1] * third;
+    path += ` C${(pts[i].x + third).toFixed(1)} ${c1y.toFixed(1)}`
+      + ` ${(pts[i + 1].x - third).toFixed(1)} ${c2y.toFixed(1)}`
+      + ` ${pts[i + 1].x.toFixed(1)} ${pts[i + 1].y.toFixed(1)}`;
   }
   return path;
 };
@@ -142,10 +142,10 @@ const buildStepPath = (
 ): string => {
   if (points.length === 0) return '';
   const xy = points.map((p) => ({ x: xScale(p.atMs), y: yScale(p.value) }));
-  let path = `M${xy[0]!.x.toFixed(1)} ${xy[0]!.y.toFixed(1)}`;
+  let path = `M${xy[0].x.toFixed(1)} ${xy[0].y.toFixed(1)}`;
   for (let i = 1; i < xy.length; i += 1) {
     // Horizontal to the new x at the previous y, then vertical to the new y.
-    path += ` L${xy[i]!.x.toFixed(1)} ${xy[i - 1]!.y.toFixed(1)} L${xy[i]!.x.toFixed(1)} ${xy[i]!.y.toFixed(1)}`;
+    path += ` L${xy[i].x.toFixed(1)} ${xy[i - 1].y.toFixed(1)} L${xy[i].x.toFixed(1)} ${xy[i].y.toFixed(1)}`;
   }
   return path;
 };
@@ -331,7 +331,7 @@ export const renderTrajectoryChart = (
   } else if (hasObserved) {
     // No met marker → dot the latest observed reading: the "you are here" anchor
     // on an active task, and "where it ended up" on a missed/abandoned run.
-    const last = data.observed[data.observed.length - 1]!;
+    const last = data.observed[data.observed.length - 1];
     svg.appendChild(createSvg(doc, 'circle', {
       class: 'tchart__now', cx: xScale(last.atMs), cy: yScale(last.value), r: 4,
     }));

@@ -260,7 +260,7 @@ export class PriceCoordinator {
    */
   catchUpCombinedPricesRotation(): void {
     if (this.priceService.getPriceScheme() !== 'flow') return;
-    const existingPayload = this.deps.homey.settings.get(COMBINED_PRICES) as unknown;
+    const existingPayload = this.deps.homey.settings.get(COMBINED_PRICES);
     // A persisted V1 shape must run through the combined-prices reader's
     // migration first; rebuilding it here would clobber that path. Leave it.
     if (isCombinedPricesV1(existingPayload)) {

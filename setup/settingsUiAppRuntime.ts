@@ -53,7 +53,7 @@ export type PowerStatusBlobRead =
 
 export const asPowerStatusBlobRead = (value: unknown): PowerStatusBlobRead => (
   value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? { state: 'resolved', status: value as SettingsUiPowerStatus }
+    ? { state: 'resolved', status: value }
     : { state: 'absent' }
 );
 
@@ -127,7 +127,7 @@ const resolveRealtimePowerStatus = (
 
 const getRuntimeApp = (homey: Homey.App['homey']): SettingsUiRuntimeApp | null => {
   if (!homey || typeof homey !== 'object') return null;
-  return homey.app as SettingsUiRuntimeApp;
+  return homey.app;
 };
 
 /**

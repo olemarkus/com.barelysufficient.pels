@@ -174,7 +174,7 @@ export const normalizeTargetPowerConfig = (value: unknown): TargetPowerSteppedLo
     : undefined;
   const pickNumber = (key: string) => (
     typeof record[key] === 'number' && Number.isFinite(record[key])
-      ? record[key] as number
+      ? record[key]
       : undefined
   );
   const config: TargetPowerSteppedLoadConfig = {

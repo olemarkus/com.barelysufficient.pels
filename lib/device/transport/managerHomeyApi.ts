@@ -134,7 +134,7 @@ export function resolveHomeyInstance(homey: Homey.App): Homey.App['homey'] {
   if (isHomeyAppWrapper(homey)) {
     return homey.homey;
   }
-  return homey as unknown as Homey.App['homey'];
+  return homey;
 }
 
 /**

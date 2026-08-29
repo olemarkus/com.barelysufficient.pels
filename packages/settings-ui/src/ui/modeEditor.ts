@@ -95,7 +95,7 @@ export const initModeEditor = (handlers: ModeEditorHandlers) => {
   modeNameConfirm?.addEventListener('click', () => void confirmModeNameEditor());
   modeNameCancel?.addEventListener('click', closeModeNameEditor);
   modeNewInput?.addEventListener('keydown', (event) => {
-    if ((event as KeyboardEvent).key === 'Enter') {
+    if (event.key === 'Enter') {
       event.preventDefault();
       void confirmModeNameEditor();
     }

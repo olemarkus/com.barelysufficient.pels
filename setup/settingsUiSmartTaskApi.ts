@@ -60,7 +60,7 @@ type ApiContext = {
 
 const getApp = (homey: Homey.App['homey']): SmartTaskEditApp | null => {
   if (!homey || typeof homey !== 'object') return null;
-  return homey.app as SmartTaskEditApp;
+  return homey.app;
 };
 
 const previewReject = (reason: SettingsUiSmartTaskRejectReason): SettingsUiSmartTaskPreviewResponse => ({

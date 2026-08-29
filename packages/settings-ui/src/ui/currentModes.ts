@@ -128,7 +128,7 @@ const renderRows = (rows: readonly CurrentModeRow[]): void => {
               : row
           )));
           await logSettingsError('Failed to set active mode', error, 'currentModes');
-          void showToastError(error as Error, 'Failed to set active mode.');
+          void showToastError(error, 'Failed to set active mode.');
           return;
         }
         persistedModes.set(homeId, mode);
