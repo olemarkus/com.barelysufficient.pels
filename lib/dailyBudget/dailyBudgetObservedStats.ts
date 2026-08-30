@@ -165,9 +165,15 @@ export const buildObservedHourlyStatsFromWindow = (params: {
       windowEndUtcMs,
     });
     if (!usage) continue;
-    hourlyUncontrolled[usage.hour].push(usage.uncontrolled);
-    hourlyControlled[usage.hour].push(usage.controlled);
-    hourlyGrossUncontrolled[usage.hour].push(usage.grossUncontrolled);
+    // `usage.hour` is 0-23 by construction, so all three slots exist; naming
+    // them is what lets the compiler see it without a per-push default.
+    const uncontrolledSamples = hourlyUncontrolled[usage.hour];
+    const controlledSamples = hourlyControlled[usage.hour];
+    const grossUncontrolledSamples = hourlyGrossUncontrolled[usage.hour];
+    if (!uncontrolledSamples || !controlledSamples || !grossUncontrolledSamples) continue;
+    uncontrolledSamples.push(usage.uncontrolled);
+    controlledSamples.push(usage.controlled);
+    grossUncontrolledSamples.push(usage.grossUncontrolled);
     windowBucketCount += 1;
   }
 

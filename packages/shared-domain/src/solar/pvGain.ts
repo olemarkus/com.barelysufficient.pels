@@ -74,14 +74,18 @@ const median = (values: readonly number[]): number => {
   if (values.length === 0) return Number.NaN;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  const upper = sorted[mid];
+  if (upper === undefined) return Number.NaN;
+  if (sorted.length % 2 !== 0) return upper;
+  const lower = sorted[mid - 1];
+  return lower === undefined ? Number.NaN : (lower + upper) / 2;
 };
 
 /** Nearest-rank quantile (no interpolation): the value at rank `ceil(q·n)`. */
 const nearestRankQuantile = (values: readonly number[], q: number): number => {
   if (values.length === 0) return Number.NaN;
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.ceil(q * sorted.length) - 1)];
+  return sorted[Math.min(sorted.length - 1, Math.ceil(q * sorted.length) - 1)] ?? Number.NaN;
 };
 
 const resolveConfidence = (sampleCount: number, relativeScatter: number): PvGainConfidence => {

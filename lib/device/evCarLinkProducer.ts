@@ -174,7 +174,7 @@ export class EvCarLinkProducer {
         if (this.reportedKeys.length > MAX_REPORTED_KEYS) {
             const [evicted, ...rest] = this.reportedKeys;
             this.reportedKeys = rest;
-            this.reportedKeySet.delete(evicted);
+            if (evicted !== undefined) this.reportedKeySet.delete(evicted); // Length-checked above.
         }
         return true;
     }

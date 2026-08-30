@@ -87,7 +87,7 @@ function resolveConflictFlowName(
 
   if (byFlow.size !== 1) return undefined;
   const [flowName] = [...byFlow.values()];
-  return flowName.length > 0 ? flowName : undefined;
+  return flowName !== undefined && flowName.length > 0 ? flowName : undefined;
 }
 
 /**

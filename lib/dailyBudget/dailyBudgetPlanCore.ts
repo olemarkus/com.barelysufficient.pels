@@ -19,6 +19,10 @@ import { buildPlannedSplit } from './dailyBudgetPlanSplit';
 import type { CombinedPriceData } from './dailyBudgetPrices';
 import { buildPriceFactors } from './dailyBudgetPrices';
 
+// A previously planned bucket value only counts when the slot exists and holds
+// a finite number; every caller below supplies its own fallback for the rest.
+const isFiniteNumber = (value: number | undefined): value is number => value !== undefined && Number.isFinite(value);
+
 type SplitShares = ReturnType<typeof resolveSplitShares>;
 
 type PlanBounds = {
@@ -441,7 +445,7 @@ function resolveRemainingBudgetForFuture(params: {
   const remainingBudget = Math.max(0, dailyBudgetKWh - usedNowKWh);
   if (!shouldLockCurrent || !previousPlannedKWh?.length) return remainingBudget;
   const previousCurrent = previousPlannedKWh[currentBucketIndex];
-  const plannedCurrent = Number.isFinite(previousCurrent) ? previousCurrent : 0;
+  const plannedCurrent = isFiniteNumber(previousCurrent) ? previousCurrent : 0;
   const reservedCurrent = Math.max(0, plannedCurrent - usedInCurrent);
   return Math.max(0, remainingBudget - reservedCurrent);
 }
@@ -501,7 +505,7 @@ function buildPlannedKWh(params: {
     if (index < currentBucketIndex) {
       if (previousPlannedKWh?.length) {
         const previousValue = previousPlannedKWh[index];
-        return Number.isFinite(previousValue) ? previousValue : bucketUsage[index] ?? 0;
+        return isFiniteNumber(previousValue) ? previousValue : bucketUsage[index] ?? 0;
       }
       const fallbackWeight = normalizedDayWeights[index] ?? 0;
       return dailyBudgetKWh * fallbackWeight;
@@ -509,7 +513,7 @@ function buildPlannedKWh(params: {
     if (index === currentBucketIndex) {
       if (shouldLockCurrent && previousPlannedKWh?.length) {
         const previousValue = previousPlannedKWh[index];
-        return Number.isFinite(previousValue) ? previousValue : usedInCurrent;
+        return isFiniteNumber(previousValue) ? previousValue : usedInCurrent;
       }
       const allocation = remainingAllocations[0] ?? 0;
       return usedInCurrent + allocation;

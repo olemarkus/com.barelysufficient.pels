@@ -16,8 +16,10 @@ const compareDateKeys = (left: string, right: string): number => {
 };
 
 const parseDateKey = (dateKey: string): { year: number; month: number; day: number } => {
-    const [year, month, day] = dateKey.split('-').map((value) => Number(value));
-    return { year, month, day };
+    // A malformed key yields fewer than three parts; `Number(undefined)` is NaN,
+    // which propagates through the caller's `Date.UTC` exactly as before.
+    const [year, month, day] = dateKey.split('-');
+    return { year: Number(year), month: Number(month), day: Number(day) };
 };
 
 export function truncateToUtcHour(timestamp: number): number {
@@ -78,11 +80,25 @@ export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
     }
 }
 
+/**
+ * Duplicated from `lib/utils/dateUtils.ts`: shared-domain is browser-safe and
+ * must not import from `lib/**`, so the two copies are kept textually identical
+ * rather than consolidated. Only `Hour` is needed here; `HourProfile` and its
+ * constructors live in the runtime copy until a shared-domain caller wants them.
+ *
+ * An hour of the day. The literal union is what makes an hour-indexed profile
+ * checkable: `HourProfile[Hour]` is `number`, while `number[]` indexed by a
+ * plain `number` is `number | undefined` under `noUncheckedIndexedAccess`.
+ */
+export type Hour = 0|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23;
+
+const isHour = (value: number): value is Hour => Number.isInteger(value) && value >= 0 && value <= 23;
+
 export function getZonedParts(date: Date, timeZone: string): {
     year: number;
     month: number;
     day: number;
-    hour: number;
+    hour: Hour;
     minute: number;
     second: number;
 } {
@@ -104,7 +120,17 @@ export function getZonedParts(date: Date, timeZone: string): {
         return acc;
     }, {});
     const rawHour = Number(map.hour);
-    const hour = rawHour === 24 ? 0 : rawHour;
+    // `hourCycle: 'h23'` yields 00-23, and the 24 -> 0 wrap covers the one
+    // legacy formatter that reports midnight as 24. The guard is what lets the
+    // hour leave here typed `Hour`, so every profile read downstream is checked.
+    const wrapped = rawHour === 24 ? 0 : rawHour;
+    if (!isHour(wrapped)) {
+        // Unreachable with `hourCycle: 'h23'`, which always emits an hour part.
+        // Refuse rather than name midnight: this value keys the tracker's
+        // capacity buckets, so guessing would post energy to a real hour.
+        throw new RangeError(`getZonedParts produced a non-hour: ${String(map.hour)}`);
+    }
+    const hour: Hour = wrapped;
     return {
         year: Number(map.year),
         month: Number(map.month),

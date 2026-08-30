@@ -113,9 +113,12 @@ export const buildBudgetProjection = (input: BudgetProjectionInput): BudgetProje
   // Measured buckets 0..cur (cur is the in-progress bucket; its actual is the
   // partial usage so far this hour).
   const cur = clamp(currentBucketIndex, -1, n - 1);
-  const actualInc = paceInc.map((_, index) => (
-    index <= cur && Number.isFinite(actualKWh[index]) ? actualKWh[index] : 0
-  ));
+  const actualInc = paceInc.map((_, index) => {
+    const measured = actualKWh[index];
+    // Past `cur`, or short of a measurement, the bucket contributes nothing —
+    // the same answer the non-finite branch already gave.
+    return index <= cur && measured !== undefined && Number.isFinite(measured) ? measured : 0;
+  });
 
   // Adherence ratio = actuals so far ÷ pace allowance through *now*. "Now" is the
   // fraction of the current bucket that has elapsed — dividing by the FULL
@@ -128,13 +131,15 @@ export const buildBudgetProjection = (input: BudgetProjectionInput): BudgetProje
   // Projection: measured buckets to date; the current bucket adds its REMAINING
   // fraction at the ratio; future buckets at the ratio.
   const projInc = paceInc.map((pace, index) => {
-    if (index < cur) return actualInc[index];
-    if (index === cur) return actualInc[index] + pace * (1 - progress) * ratio;
+    // `actualInc` is built from `paceInc`, so it has a slot for every index here.
+    const measured = actualInc[index] ?? 0;
+    if (index < cur) return measured;
+    if (index === cur) return measured + pace * (1 - progress) * ratio;
     return pace * ratio;
   });
   const projectionCumKWh = cumulative(projInc);
 
-  const endOfDayKWh = projectionCumKWh.length ? projectionCumKWh[projectionCumKWh.length - 1] : 0;
+  const endOfDayKWh = projectionCumKWh.at(-1) ?? 0;
   const status = resolveBudgetStatus(endOfDayKWh, budget);
 
   // Cost arrays (minor unit). Null the whole projected/pace cost if any

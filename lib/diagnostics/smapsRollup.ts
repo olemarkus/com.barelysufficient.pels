@@ -62,8 +62,8 @@ export const resolveSmapsSummary = (): Record<string, number> | null => {
   if (!rollup) return null;
 
   const extract = (key: string): number => {
-    const match = rollup.match(new RegExp(`${key}:\\s+(\\d+)`));
-    return match ? Math.round(parseInt(match[1], 10) / 1024) : -1;
+    const captured = rollup.match(new RegExp(`${key}:\\s+(\\d+)`))?.[1];
+    return captured === undefined ? -1 : Math.round(parseInt(captured, 10) / 1024);
   };
 
   return {
@@ -130,8 +130,8 @@ const parseSmapsDetail = (data: string): SmapsDetail | null => {
         currentRss = 0;
         inMapping = true;
       } else if (line.startsWith('Rss:')) {
-        const match = line.match(/Rss:\s+(\d+)/);
-        if (match) currentRss = parseInt(match[1], 10);
+        const captured = line.match(/Rss:\s+(\d+)/)?.[1];
+        if (captured !== undefined) currentRss = parseInt(captured, 10);
       }
     }
     flush();

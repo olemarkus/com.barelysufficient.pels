@@ -128,7 +128,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
 
   const parsed = parseDevice(device, Date.now());
   const snapshotIndex = latestSnapshot.findIndex((entry) => entry.id === deviceId);
-  const previous = snapshotIndex >= 0 ? latestSnapshot[snapshotIndex] : null;
+  const previous = latestSnapshot[snapshotIndex] ?? null;
   if (!parsed) {
     if (snapshotIndex >= 0) {
       latestSnapshot.splice(snapshotIndex, 1);

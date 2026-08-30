@@ -37,7 +37,11 @@ import {
   getNextLocalDayStartUtcMs,
   getPreviousLocalDayStartUtcMs as resolvePreviousLocalDayStartUtcMs,
   getZonedParts,
+  HOURS_OF_DAY,
+  toHourProfile,
+  zeroHourProfile,
 } from '../utils/dateUtils';
+import type { HourProfile } from '../utils/dateUtils';
 import { clamp } from '../utils/mathUtils';
 import { hasUnreliableOverlap } from './dailyBudgetLearning';
 import type { ConfidenceDebug } from './dailyBudgetTypes';
@@ -49,14 +53,12 @@ const BOOTSTRAP_SEED = 42;
 const HOURS = 24;
 const RECOMPUTE_INTERVAL_MS = 5 * 60 * 1000;
 
-const ZEROS_24 = (): number[] => Array(HOURS).fill(0);
-
-const UNIFORM_24 = (): number[] => Array(HOURS).fill(1 / HOURS);
+const UNIFORM_24 = (): HourProfile => toHourProfile(Array.from(HOURS_OF_DAY, () => 1 / HOURS));
 
 type DayData = {
   dateKey: string;
-  totalProfile: number[];
-  plannedProfile: number[] | null;
+  totalProfile: HourProfile;
+  plannedProfile: HourProfile | null;
   controlledShare: number;
 };
 
@@ -203,10 +205,10 @@ function aggregateHourlyBins(
   bucketStartUtcMs: number[],
   timeZone: string,
   powerTracker: PowerTrackerState,
-): { total: number[]; controlled: number[]; planned: number[]; hasPlanData: boolean } {
-  const total = ZEROS_24();
-  const controlled = ZEROS_24();
-  const planned = ZEROS_24();
+): { total: HourProfile; controlled: HourProfile; planned: HourProfile; hasPlanData: boolean } {
+  const total = zeroHourProfile();
+  const controlled = zeroHourProfile();
+  const planned = zeroHourProfile();
   let planBucketCount = 0;
 
   const totalBuckets = powerTracker.buckets ?? {};
@@ -240,29 +242,29 @@ function getPreviousLocalDayStartUtcMs(dayStartUtcMs: number, timeZone: string):
   return resolvePreviousLocalDayStartUtcMs(dayStartUtcMs, timeZone);
 }
 
-function normalizeProfile(profile: number[]): number[] {
+function normalizeProfile(profile: HourProfile): HourProfile {
   const sum = profile.reduce((s, v) => s + v, 0);
   if (sum <= 0) return UNIFORM_24();
-  return profile.map((v) => v / sum);
+  return toHourProfile(profile.map((v) => v / sum));
 }
 
-function l1Distance(a: number[], b: number[]): number {
+function l1Distance(a: HourProfile, b: HourProfile): number {
   let sum = 0;
-  for (let i = 0; i < a.length; i++) {
-    sum += Math.abs(a[i] - b[i]);
+  for (const h of HOURS_OF_DAY) {
+    sum += Math.abs(a[h] - b[h]);
   }
   return sum;
 }
 
-function computeCentroid(days: DayData[]): number[] {
+function computeCentroid(days: DayData[]): HourProfile {
   const n = days.length;
-  const centroid = ZEROS_24();
+  const centroid = zeroHourProfile();
   for (const day of days) {
-    for (let h = 0; h < HOURS; h++) {
+    for (const h of HOURS_OF_DAY) {
       centroid[h] += day.totalProfile[h];
     }
   }
-  for (let h = 0; h < HOURS; h++) {
+  for (const h of HOURS_OF_DAY) {
     centroid[h] /= n;
   }
   return centroid;
@@ -271,25 +273,26 @@ function computeCentroid(days: DayData[]): number[] {
 function computeRegularityScore(days: DayData[]): {
   score: number;
   dayScores: number[];
-  centroid: number[];
+  centroid: HourProfile;
 } {
   const n = days.length;
-  if (n === 0) return { score: 0, dayScores: [], centroid: UNIFORM_24() };
+  const firstDay = days[0];
+  if (firstDay === undefined) return { score: 0, dayScores: [], centroid: UNIFORM_24() };
 
   if (n === 1) {
     const ramp = clamp(1 / RAMP_DAYS, 0, 1);
-    return { score: ramp, dayScores: [1], centroid: days[0].totalProfile };
+    return { score: ramp, dayScores: [1], centroid: firstDay.totalProfile };
   }
 
   const centroid = computeCentroid(days);
-  const totalProfile = centroid.map((value) => value * n);
+  const totalProfile = toHourProfile(centroid.map((value) => value * n));
 
   const dayScores: number[] = [];
-  for (let i = 0; i < n; i++) {
+  for (const day of days) {
     let dist = 0;
-    for (let h = 0; h < HOURS; h++) {
-      const looValue = (totalProfile[h] - days[i].totalProfile[h]) / (n - 1);
-      dist += Math.abs(days[i].totalProfile[h] - looValue);
+    for (const h of HOURS_OF_DAY) {
+      const looValue = (totalProfile[h] - day.totalProfile[h]) / (n - 1);
+      dist += Math.abs(day.totalProfile[h] - looValue);
     }
     dayScores.push(clamp(1 - dist / 2, 0, 1));
   }
@@ -299,7 +302,7 @@ function computeRegularityScore(days: DayData[]): {
   return { score: meanScore * ramp, dayScores, centroid };
 }
 
-function computeAdaptabilityScore(days: DayData[], centroid: number[]): {
+function computeAdaptabilityScore(days: DayData[], centroid: HourProfile): {
   score: number;
   influence: number;
   weightedControlledShare: number;
@@ -372,9 +375,14 @@ function computeBootstrapInterval(days: DayData[]): { low: number; high: number 
   scores.sort((a, b) => a - b);
   const lowIdx = Math.floor(scores.length * 0.05);
   const highIdx = Math.floor(scores.length * 0.95);
+  const low = scores[lowIdx];
+  const high = scores[highIdx];
+  // One score per bootstrap iteration, so both ranks are in range; an empty
+  // sample is the no-days case already returned above.
+  if (low === undefined || high === undefined) return { low: 0, high: 0 };
   return {
-    low: clamp(scores[lowIdx], 0, 1),
-    high: clamp(scores[highIdx], 0, 1),
+    low: clamp(low, 0, 1),
+    high: clamp(high, 0, 1),
   };
 }
 
@@ -391,10 +399,13 @@ export function sampleDayIndex(randomValue: number, dayCount: number): number {
 }
 
 function sampleDays(days: DayData[], nextRandom: () => number): DayData[] {
-  return days.map(() => {
-    const idx = sampleDayIndex(nextRandom(), days.length);
-    return days[idx];
-  });
+  const sampled: DayData[] = [];
+  for (let draw = 0; draw < days.length; draw += 1) {
+    // `sampleDayIndex` clamps into 0..days.length-1, so the draw always hits a day.
+    const day = days[sampleDayIndex(nextRandom(), days.length)];
+    if (day !== undefined) sampled.push(day);
+  }
+  return sampled;
 }
 
 function getConfidenceWindowBounds(nowMs: number, timeZone: string): {
@@ -439,8 +450,10 @@ function appendRecordFingerprint(
     })
     .sort();
   for (const key of relevantKeys) {
+    // `relevantKeys` comes from `Object.keys(record)`, so every key has a value.
+    const value = record[key];
     next = appendHashString(next, key);
-    next = appendHashNumber(next, record[key]);
+    if (value !== undefined) next = appendHashNumber(next, value);
   }
   return next;
 }

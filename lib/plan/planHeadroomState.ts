@@ -383,13 +383,15 @@ const getPelsCooldown = (
   deviceId: string,
   nowTs: number,
 ): HeadroomCooldownCandidate | null => {
-  const lastShedMs = state.lastDeviceShedMs[deviceId];
-  const lastRestoreMs = state.lastDeviceRestoreMs[deviceId];
-  const shedExpiresAtMs = isFiniteNumber(lastShedMs) ? lastShedMs + SHED_COOLDOWN_MS : null;
-  const restoreExpiresAtMs = isFiniteNumber(lastRestoreMs) ? lastRestoreMs + RESTORE_COOLDOWN_MS : null;
+  const rawLastShedMs = state.lastDeviceShedMs[deviceId];
+  const rawLastRestoreMs = state.lastDeviceRestoreMs[deviceId];
+  const lastShedMs = isFiniteNumber(rawLastShedMs) ? rawLastShedMs : null;
+  const lastRestoreMs = isFiniteNumber(rawLastRestoreMs) ? rawLastRestoreMs : null;
+  const shedExpiresAtMs = lastShedMs === null ? null : lastShedMs + SHED_COOLDOWN_MS;
+  const restoreExpiresAtMs = lastRestoreMs === null ? null : lastRestoreMs + RESTORE_COOLDOWN_MS;
 
   const candidates: HeadroomCooldownCandidate[] = [];
-  if (isFiniteNumber(shedExpiresAtMs) && shedExpiresAtMs > nowTs) {
+  if (lastShedMs !== null && isFiniteNumber(shedExpiresAtMs) && shedExpiresAtMs > nowTs) {
     candidates.push({
       source: 'pels_shed',
       remainingSec: Math.max(0, Math.ceil((shedExpiresAtMs - nowTs) / 1000)),
@@ -400,7 +402,7 @@ const getPelsCooldown = (
       dropToKw: null,
     });
   }
-  if (isFiniteNumber(restoreExpiresAtMs) && restoreExpiresAtMs > nowTs) {
+  if (lastRestoreMs !== null && isFiniteNumber(restoreExpiresAtMs) && restoreExpiresAtMs > nowTs) {
     candidates.push({
       source: 'pels_restore',
       remainingSec: Math.max(0, Math.ceil((restoreExpiresAtMs - nowTs) / 1000)),
@@ -421,7 +423,7 @@ const getPelsCooldown = (
     if (right.source === 'pels_restore') return 1;
     return 0;
   });
-  return candidates[0];
+  return candidates[0] ?? null;
 };
 
 export const syncHeadroomCardState = (params: {

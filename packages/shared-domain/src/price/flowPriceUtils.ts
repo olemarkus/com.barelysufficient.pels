@@ -251,7 +251,7 @@ export const buildFlowEntries = (payload: FlowPricePayload, timeZone: string): F
 
   return daySlots.flatMap((slot) => {
     const price = exactSlotPrices.get(slot.startsAt) ?? payload.pricesByHour[String(slot.hour)];
-    if (!Number.isFinite(price)) return [];
+    if (price === undefined || !Number.isFinite(price)) return [];
     return [{
       startsAt: slot.startsAt,
       totalPrice: price,

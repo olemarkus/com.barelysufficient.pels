@@ -90,21 +90,28 @@ export async function fetchDevicesByIds(params: {
   );
   const devices: HomeyDeviceLike[] = [];
   const failedIds: string[] = [];
-  for (let i = 0; i < results.length; i += 1) {
-    const result = results[i];
+  for (const [index, deviceId] of deviceIds.entries()) {
+    const result = results[index];
+    // `Promise.allSettled` settles one entry per input in order, so a missing
+    // settlement cannot happen; counting it as a failed read keeps the id inside the
+    // per-device retention grace rather than dropping the device from the snapshot.
+    if (result === undefined) {
+      failedIds.push(deviceId);
+      continue;
+    }
     if (result.status === 'fulfilled') {
       if (isHomeyDeviceLike(result.value)) {
         devices.push(result.value);
       } else {
-        failedIds.push(deviceIds[i]);
-        logger.debug({ event: 'targeted_device_fetch_invalid_payload', deviceId: deviceIds[i] });
+        failedIds.push(deviceId);
+        logger.debug({ event: 'targeted_device_fetch_invalid_payload', deviceId });
       }
     } else {
-      failedIds.push(deviceIds[i]);
+      failedIds.push(deviceId);
       const err = result.reason as Error | undefined;
       logger.debug({
         event: 'targeted_device_fetch_failed',
-        deviceId: deviceIds[i],
+        deviceId,
         error: err?.message || 'unknown error',
       });
     }

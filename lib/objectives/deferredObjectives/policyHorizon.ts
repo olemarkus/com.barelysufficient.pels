@@ -221,8 +221,13 @@ export const buildDeferredObjectivePolicyWindowPrices = (
   }
   if (priceByHour.size === 0) return [];
   const hours = [...priceByHour.keys()].sort((left, right) => left - right);
+  const firstHour = hours[0];
+  const lastHour = hours.at(-1);
+  // The map is non-empty above, so both ends exist; without them there is no
+  // window to describe.
+  if (firstHour === undefined || lastHour === undefined) return [];
   const series: DeferredObjectivePolicyWindowPrice[] = [];
-  for (let hour = hours[0]; hour <= hours[hours.length - 1]; hour += PRICE_WINDOW_HOUR_MS) {
+  for (let hour = firstHour; hour <= lastHour; hour += PRICE_WINDOW_HOUR_MS) {
     series.push({ startMs: hour, price: priceByHour.get(hour) ?? null });
   }
   return series;
@@ -395,7 +400,7 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
   const budgetEnabled = day.budget.enabled;
   return starts.flatMap((startIso, index) => {
     const startMs = new Date(startIso).getTime();
-    const endMs = resolveBucketEndMs(starts, index);
+    const endMs = resolveBucketEndMs(starts, index, startIso);
     const price = prices[index];
     if (
       !Number.isFinite(startMs)
@@ -439,12 +444,14 @@ const nonNegativeOrNull = (value: number | undefined): number | null => {
   return finite === null || finite < 0 ? null : finite;
 };
 
-const resolveBucketEndMs = (starts: string[], index: number): number => {
+// `startIso` is the caller's own `starts[index]`, passed in so the last bucket's
+// synthetic hour-long end needs no second read of the array.
+const resolveBucketEndMs = (starts: string[], index: number, startIso: string): number => {
   const nextStart = starts[index + 1];
   if (typeof nextStart === 'string') {
     return new Date(nextStart).getTime();
   }
-  return new Date(starts[index]).getTime() + 60 * 60 * 1000;
+  return new Date(startIso).getTime() + 60 * 60 * 1000;
 };
 
 const coversHorizon = (params: {
@@ -509,6 +516,18 @@ const prorateNullableEnergy = (
 // a lower-priority task can use the genuinely-free remainder instead of seeing
 // the highest step flattened across the whole hour. Energy-valued forecast
 // fields are prorated; price and the stable source identity remain unchanged.
+// Consecutive boundaries pair up into `[start, end)` parts; the final boundary
+// is an end only, so it opens nothing.
+const boundaryParts = (ordered: readonly number[]): Array<{ startMs: number; endMs: number }> => {
+  const parts: Array<{ startMs: number; endMs: number }> = [];
+  for (const [index, startMs] of ordered.entries()) {
+    const endMs = ordered[index + 1];
+    if (endMs === undefined) break;
+    parts.push({ startMs, endMs });
+  }
+  return parts;
+};
+
 const splitPolicyBucketsAtReservationBoundaries = (
   buckets: readonly PolicyBucketSource[],
   reservations: readonly DeferredObjectivePriorityReservation[],
@@ -528,8 +547,7 @@ const splitPolicyBucketsAtReservationBoundaries = (
   const ordered = [...boundaries].sort((left, right) => left - right);
   if (ordered.length === 2) return [bucket];
   const originalDurationMs = bucket.endMs - bucket.startMs;
-  return ordered.slice(0, -1).map((startMs, index) => {
-    const endMs = ordered[index + 1];
+  return boundaryParts(ordered).map(({ startMs, endMs }) => {
     const fraction = (endMs - startMs) / originalDurationMs;
     return {
       ...bucket,

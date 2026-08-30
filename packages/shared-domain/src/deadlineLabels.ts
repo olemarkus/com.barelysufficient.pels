@@ -1898,10 +1898,13 @@ const deviceDataMissingResolver = (kind: {
 // resolver doesn't drift if the wording is tweaked later. The asserted shape
 // is `<headline> — <body-fragment>` (em-dash + space on each side); the
 // constant lives at the top of this file with the same shape.
-const [MISSING_CAPACITY_HEADLINE, MISSING_CAPACITY_BODY_FRAGMENT]
-  = PENDING_REASON_MISSING_CAPACITY_COPY.split(' — ');
-const MISSING_CAPACITY_BODY = `${MISSING_CAPACITY_BODY_FRAGMENT[0].toUpperCase()}`
-  + `${MISSING_CAPACITY_BODY_FRAGMENT.slice(1)}`;
+// A constant that lost its separator would split into a single part: the whole
+// copy is then the headline, and there is no body fragment to re-capitalise.
+const [headlinePart, bodyFragment] = PENDING_REASON_MISSING_CAPACITY_COPY.split(' — ');
+const MISSING_CAPACITY_HEADLINE = headlinePart ?? PENDING_REASON_MISSING_CAPACITY_COPY;
+const MISSING_CAPACITY_BODY = bodyFragment === undefined
+  ? ''
+  : `${bodyFragment.charAt(0).toUpperCase()}${bodyFragment.slice(1)}`;
 
 const HEATER_DEVICE_DATA_MISSING = deviceDataMissingResolver({
   headline: 'Waiting for a reading from the device',
@@ -2143,8 +2146,8 @@ export const resolveEvCardStateLine = (params: {
 }): EvCardStateLine => {
   const { hours, nowMs, isPlugOutPaused, formatTime } = params;
 
-  if (hours.length > 0) {
-    const lastHour = hours[hours.length - 1];
+  const lastHour = hours.at(-1);
+  if (lastHour !== undefined) {
     const lastHourEndMs = lastHour.startsAtMs + EV_CARD_HOUR_MS;
     // Active charging requires `nowMs` to fall inside one of the planned
     // hour buckets, not just between first and last. EV schedules can be

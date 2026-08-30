@@ -51,8 +51,10 @@ const compareDateKeys = (left: string, right: string): number => {
 };
 
 const parseDateKey = (dateKey: string): { year: number; month: number; day: number } => {
-    const [year, month, day] = dateKey.split('-').map((value) => Number(value));
-    return { year, month, day };
+    // A malformed key yields fewer than three parts; `Number(undefined)` is NaN,
+    // which propagates through the caller's `Date.UTC` exactly as before.
+    const [year, month, day] = dateKey.split('-');
+    return { year: Number(year), month: Number(month), day: Number(day) };
 };
 
 export function truncateToUtcHour(timestamp: number): number {
@@ -108,11 +110,76 @@ export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
     }
 }
 
+/**
+ * An hour of the day. The literal union is what makes an hour-indexed profile
+ * checkable: `HourProfile[Hour]` is `number`, while `number[]` indexed by a
+ * plain `number` is `number | undefined` under `noUncheckedIndexedAccess`.
+ */
+export type Hour = 0|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23;
+
+/** Every hour of a day, in order. Iterate this to walk an {@link HourProfile}. */
+export const HOURS_OF_DAY: readonly Hour[] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+    12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+];
+
+/**
+ * A value per hour of the day. Exactly 24 slots, by construction.
+ *
+ * This is an hour-of-day HISTOGRAM, not a day's buckets: a local day has 23-25
+ * of those across a DST change, so size a bucket walk from the bucket array
+ * itself and never from `HOURS_OF_DAY.length`.
+ */
+export type HourProfile = [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+];
+
+const isHour = (value: number): value is Hour => Number.isInteger(value) && value >= 0 && value <= 23;
+
+/**
+ * Build an {@link HourProfile} from a loose array. The length check is the
+ * boundary: past it, every `profile[hour]` read is compiler-checked and needs
+ * no per-site default.
+ */
+export function toHourProfile(values: readonly number[]): HourProfile {
+    if (values.length !== HOURS_OF_DAY.length) {
+        throw new RangeError(`hour profile needs ${HOURS_OF_DAY.length} slots, got ${values.length}`);
+    }
+    return [...values] as unknown as HourProfile;
+}
+
+/** A profile of 24 zeros. */
+export const zeroHourProfile = (): HourProfile =>
+    toHourProfile(Array.from(HOURS_OF_DAY, () => 0));
+
 export function getZonedParts(date: Date, timeZone: string): {
     year: number;
     month: number;
     day: number;
-    hour: number;
+    hour: Hour;
     minute: number;
     second: number;
 } {
@@ -127,7 +194,17 @@ export function getZonedParts(date: Date, timeZone: string): {
         }
     }
     const rawHour = Number(map.hour);
-    const hour = rawHour === 24 ? 0 : rawHour;
+    // `hourCycle: 'h23'` yields 00-23, and the 24 -> 0 wrap covers the one
+    // legacy formatter that reports midnight as 24. The guard is what lets the
+    // hour leave here typed `Hour`, so every profile read downstream is checked.
+    const wrapped = rawHour === 24 ? 0 : rawHour;
+    if (!isHour(wrapped)) {
+        // Unreachable with `hourCycle: 'h23'`, which always emits an hour part.
+        // Refuse rather than name midnight: this value keys the tracker's
+        // capacity buckets, so guessing would post energy to a real hour.
+        throw new RangeError(`getZonedParts produced a non-hour: ${String(map.hour)}`);
+    }
+    const hour: Hour = wrapped;
     return {
         year: Number(map.year),
         month: Number(map.month),

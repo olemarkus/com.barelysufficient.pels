@@ -185,7 +185,7 @@ export function upsertBackfillRecords(
   for (const record of records) {
     merged = upsertRecord(merged, record, { overwriteLive: false });
   }
-  const newestKey = merged.length > 0 ? merged[merged.length - 1].dateKey : undefined;
+  const newestKey = merged.at(-1)?.dateKey;
   return {
     ...state,
     records: newestKey ? pruneRecords(merged, newestKey) : merged,
@@ -636,10 +636,10 @@ function upsertRecord(
   options: { overwriteLive: boolean },
 ): WeatherDailyRecord[] {
   const index = records.findIndex((existing) => existing.dateKey === record.dateKey);
-  if (index === -1) {
+  const existing = index === -1 ? undefined : records[index];
+  if (existing === undefined) {
     return [...records, record].sort(byDateKeyAscending);
   }
-  const existing = records[index];
   if (!existing.quality.backfilled && !options.overwriteLive) return records;
   const merged = mergeKwhLayer(existing, record);
   return records.map((entry, position) => (position === index ? merged : entry));

@@ -1,0 +1,24 @@
+{
+  // shared-domain is browser-safe DOMAIN logic the runtime depends on: price
+  // math, daily-budget helpers, card copy. The root tsconfig excludes
+  // `packages/**`, so before this project existed the only thing type-checking
+  // these files with `noUncheckedIndexedAccess` was whichever ones `lib/**`
+  // happened to import. This project ratchets all of them, so the next
+  // unchecked index here fails CI instead of shipping.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "../contracts/src/**/*.ts"]
+}

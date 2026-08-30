@@ -126,8 +126,8 @@ const resolveCurrentValue = (
 
 const resolvePlannerEtaMs = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null => {
   const hours = plan.latest?.hours;
-  if (!hours || hours.length === 0) return null;
-  const last = hours[hours.length - 1];
+  const last = hours?.[hours.length - 1];
+  if (!last) return null;
   return isFiniteNumber(last.startsAtMs) ? last.startsAtMs + 60 * 60 * 1000 : null;
 };
 
@@ -165,7 +165,10 @@ const calendarDayIndex = (ms: number, timeZone: string | null): number => {
       day: '2-digit',
       timeZone: timeZone ?? undefined,
     }).format(new Date(ms));
-    const [y, m, d] = ymd.split('-').map(Number);
+    const parts = ymd.split('-');
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    const d = Number(parts[2]);
     return Math.round(Date.UTC(y, m - 1, d) / (24 * 60 * 60 * 1000));
   } catch {
     const date = new Date(ms);

@@ -329,9 +329,14 @@ export function dailyKwhFromCounterPoints(
     // would silently degrade to gross import.
     return exportedKwh === undefined ? undefined : importedKwh - exportedKwh;
   };
-  const firstKey = getDateKeyInTimeZone(new Date(importedTs[0]), timeZone);
+  const firstTs = importedTs[0];
+  const lastTs = importedTs.at(-1);
+  // The counter map is non-empty above; with no first/last sample there is no
+  // span to walk, which is the same answer as an empty collection.
+  if (firstTs === undefined || lastTs === undefined) return {};
+  const firstKey = getDateKeyInTimeZone(new Date(firstTs), timeZone);
   const lastBoundaryKey = shiftDateKey(
-    getDateKeyInTimeZone(new Date(importedTs[importedTs.length - 1]), timeZone),
+    getDateKeyInTimeZone(new Date(lastTs), timeZone),
     1,
   );
   const dailyKwh = new Map<string, number>();
@@ -359,8 +364,11 @@ function counterAtBoundary(
   // check NaN, which compares false and would dereference a missing sample.
   if (timestamps.length === 0) return undefined;
   const index = nearestIndex(timestamps, boundaryMs);
-  if (Math.abs(timestamps[index] - boundaryMs) > BOUNDARY_TOLERANCE_MS) return undefined;
-  return samples[index][1];
+  const nearestMs = timestamps[index];
+  const sample = samples[index];
+  if (nearestMs === undefined || sample === undefined) return undefined;
+  if (Math.abs(nearestMs - boundaryMs) > BOUNDARY_TOLERANCE_MS) return undefined;
+  return sample[1];
 }
 
 function nearestIndex(sortedTimestamps: number[], targetMs: number): number {
@@ -368,11 +376,18 @@ function nearestIndex(sortedTimestamps: number[], targetMs: number): number {
   let high = sortedTimestamps.length - 1;
   while (low < high) {
     const mid = (low + high) >> 1;
-    if (sortedTimestamps[mid] < targetMs) low = mid + 1;
+    const midMs = sortedTimestamps[mid];
+    if (midMs === undefined) break;
+    if (midMs < targetMs) low = mid + 1;
     else high = mid;
   }
   if (low === 0) return 0;
-  return targetMs - sortedTimestamps[low - 1] <= sortedTimestamps[low] - targetMs ? low - 1 : low;
+  const beforeMs = sortedTimestamps[low - 1];
+  const atMs = sortedTimestamps[low];
+  // Both sit inside the searched range; with either missing there is no closer
+  // neighbour to prefer, so the landed index stands.
+  if (beforeMs === undefined || atMs === undefined) return low;
+  return targetMs - beforeMs <= atMs - targetMs ? low - 1 : low;
 }
 
 /**
@@ -417,7 +432,12 @@ export function quantileSorted(sorted: number[], p: number): number {
   const position = (sorted.length - 1) * p;
   const lower = Math.floor(position);
   const upper = Math.ceil(position);
-  if (lower === upper) return sorted[lower];
+  const low = sorted[lower];
+  const high = sorted[upper];
+  // Callers only quantile a sample they have already sized; an empty one has no
+  // quantile, and NaN is what the arithmetic below would produce for it anyway.
+  if (low === undefined || high === undefined) return Number.NaN;
+  if (lower === upper) return low;
   const weight = position - lower;
-  return sorted[lower] * (1 - weight) + sorted[upper] * weight;
+  return low * (1 - weight) + high * weight;
 }

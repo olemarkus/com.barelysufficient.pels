@@ -37,7 +37,8 @@ export const resolveCooldownBaseSec = (device: CooldownDisplayDevice): number | 
     return Math.ceil(device.displayCountdownTotalSec);
   }
   const code = readReasonCode(device.reason);
-  if (code !== null && code in COOLDOWN_BASE_SEC) return COOLDOWN_BASE_SEC[code];
+  const baseSec = code === null ? undefined : COOLDOWN_BASE_SEC[code];
+  if (baseSec !== undefined) return baseSec;
   const reasonSec = readRemainingSec(device.reason);
   if (reasonSec !== null) return Math.max(1, reasonSec);
   return null;

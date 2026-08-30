@@ -47,8 +47,10 @@ const resolveDayTokenWeekdays = (token: string): readonly number[] => {
       return [];
     case 'alle':
       return ALL_DAYS;
-    default:
-      return token in DAY_NAME_TO_WEEKDAY ? [DAY_NAME_TO_WEEKDAY[token]] : [];
+    default: {
+      const weekday = DAY_NAME_TO_WEEKDAY[token];
+      return weekday === undefined ? [] : [weekday];
+    }
   }
 };
 
@@ -108,6 +110,9 @@ export const buildStaticGridTariffFallback = (params: {
 
   const dateKey = getDateKeyInTimeZone(date, timeZone);
   const [year, month, day] = dateKey.split('-').map((part) => Number.parseInt(part, 10));
+  // A date key that does not split into three parts names no day, so there is no
+  // fallback tariff to build for it.
+  if (year === undefined || month === undefined || day === undefined) return null;
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 
   return Array.from({ length: 24 }, (_, time) => {

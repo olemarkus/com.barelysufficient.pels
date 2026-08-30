@@ -29,6 +29,13 @@ import type {
 const DEFAULT_EPSILON_KWH = 0.001;
 type NonEmptyObjectiveSteps = [DeferredObjectiveStep, ...DeferredObjectiveStep[]];
 
+// Top rung of a non-empty ladder. The tuple guarantees the head exists but not
+// the tail read, so a single-rung ladder falls back to the head — which IS its
+// top rung.
+const topObjectiveStep = (steps: NonEmptyObjectiveSteps): DeferredObjectiveStep => (
+  steps.at(-1) ?? steps[0]
+);
+
 export const planDeferredObjectiveHorizon = (
   input: DeferredObjectiveHorizonInput,
 ): DeferredObjectiveHorizonPlan => {
@@ -142,7 +149,7 @@ export const planDeferredObjectiveHorizon = (
     objectiveKind: input.objective.kind,
     buckets,
     stepForBucket,
-    climbStep: activeSteps[activeSteps.length - 1],
+    climbStep: topObjectiveStep(activeSteps),
     energyNeededKWh,
     epsilonKWh,
   });
@@ -277,7 +284,7 @@ const resolveClimbedBandFeasibility = (params: {
   stepForBucket: StepForBucket;
 }): boolean => {
   if (params.floorUnplannedKWh <= params.epsilonKWh) return false;
-  const topStep = params.activeSteps[params.activeSteps.length - 1];
+  const topStep = topObjectiveStep(params.activeSteps);
   // Highest rung each bucket's own headroom admits; the top rung when it has no
   // forecast. `resolveBucketStepCapacityKWh` ZEROES a bucket whose step draws more
   // than its headroom, so probing the uniform top rung answered "does not fit" for
@@ -386,7 +393,7 @@ const resolveBudgetBoundFeasibility = (params: {
     stepForBucket: (bucket) => resolveHighestStepWithinHeadroom(
       params.activeSteps,
       bucket.reservedHeadroomKw,
-    ) ?? params.activeSteps[params.activeSteps.length - 1],
+    ) ?? topObjectiveStep(params.activeSteps),
     buckets: uncappedBuckets,
     committed: params.committed,
     committedHours: params.committedHours,

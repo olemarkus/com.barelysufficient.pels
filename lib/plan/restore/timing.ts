@@ -226,17 +226,17 @@ export function getShedCooldownState(params: {
       ? { startedAtMs: params.lastRecoveryMs, elapsedMs: nowTs - params.lastRecoveryMs }
       : null,
   ].filter((value) => value !== null);
-  if (candidates.length === 0) {
+  let activeCandidate: { startedAtMs: number; elapsedMs: number } | undefined;
+  for (const candidate of candidates) {
+    if (!activeCandidate || candidate.elapsedMs < activeCandidate.elapsedMs) activeCandidate = candidate;
+  }
+  if (!activeCandidate) {
     return {
       cooldownRemainingMs: null,
       cooldownStartedAtMs: null,
       cooldownTotalMs: null,
       inCooldown: false,
     };
-  }
-  let activeCandidate = candidates[0];
-  for (const candidate of candidates.slice(1)) {
-    if (candidate.elapsedMs < activeCandidate.elapsedMs) activeCandidate = candidate;
   }
   const cooldownRemainingMs = Math.max(0, cooldownMs - activeCandidate.elapsedMs);
   return {

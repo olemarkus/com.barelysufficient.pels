@@ -86,8 +86,8 @@ export const createWidgetErrorReporter = (params: {
   // Drain the backlog oldest-first; stop at the first failure so order is
   // preserved and the survivors retry next time.
   const drain = async (): Promise<void> => {
-    while (pending.length > 0) {
-      await post(pending[0]);
+    for (let next = pending[0]; next !== undefined; next = pending[0]) {
+      await post(next);
       pending.shift();
     }
   };

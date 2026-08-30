@@ -164,6 +164,9 @@ const evaluateLowestRank = (params: {
   const rankCount = Math.max(1, Math.min(Math.trunc(number), finitePrices.length));
   const sorted = [...finitePrices].sort((a, b) => a - b);
   const cutoff = sorted[rankCount - 1];
+  // `rankCount` is clamped into the sorted range above; with no cutoff there is
+  // no rank to compare the current price against.
+  if (cutoff === undefined) return null;
   return {
     matches: currentPrice <= cutoff + epsilon,
     cutoff,
@@ -207,10 +210,10 @@ const selectWindowSlot = (params: {
   if (hourSlots.length === 0) return null;
   const sorted = [...hourSlots].sort((a, b) => a.startsAtMs - b.startsAtMs);
   if (dayOffset === 0 && localHour === currentHour) return selectCurrentHourSlot(sorted, nowMs);
-  if (dayOffset < 0) return sorted[sorted.length - 1];
-  if (dayOffset > 0) return sorted[0];
-  if (localHour < currentHour) return sorted[sorted.length - 1];
-  return sorted[0];
+  if (dayOffset < 0) return sorted.at(-1) ?? null;
+  if (dayOffset > 0) return sorted[0] ?? null;
+  if (localHour < currentHour) return sorted.at(-1) ?? null;
+  return sorted[0] ?? null;
 };
 const evaluateLowestToday = (
   args: unknown,

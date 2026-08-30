@@ -674,11 +674,11 @@ const mergeRecoveredEntries = (
     const existingIndex = merged.findIndex(
       (candidate) => buildKey(candidate.deviceId, candidate.deadlineAtMs) === key,
     );
-    if (existingIndex < 0) {
+    const existing = existingIndex < 0 ? undefined : merged[existingIndex];
+    if (existing === undefined) {
       merged.push(entry);
       continue;
     }
-    const existing = merged[existingIndex];
     if (existing.discoveredFrom === 'backfill' && entry.discoveredFrom === 'observation') {
       merged[existingIndex] = entry;
       continue;

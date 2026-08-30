@@ -269,8 +269,8 @@ export function mergeRecoveredCalibrationHistory(params: {
 }): PowerCalibrationSnapshot {
   const { inMemory, recovered } = params;
   const overlapping = Object.entries(inMemory.devices).flatMap(([deviceId, inMemoryDevice]) => {
-    if (!(deviceId in recovered.devices)) return [];
     const recoveredDevice = recovered.devices[deviceId];
+    if (recoveredDevice === undefined) return [];
     return [[deviceId, {
       steps: { ...recoveredDevice.steps, ...inMemoryDevice.steps },
       lastTouchedMs: Math.max(recoveredDevice.lastTouchedMs, inMemoryDevice.lastTouchedMs),
@@ -428,13 +428,12 @@ function normalizeDeviceCalibration(value: unknown): DeviceCalibration | null {
 
 function normalizeStepCalibration(value: unknown): StepCalibration | null {
   if (!isPersistedStepShape(value)) return null;
-  const raw = value as Record<string, number>;
   return {
-    observedKw: raw.observedKw,
-    nameplateAtSampleKw: raw.nameplateAtSampleKw,
-    samples: raw.samples,
-    sustainedSeconds: raw.sustainedSeconds,
-    lastSampleMs: raw.lastSampleMs,
+    observedKw: value.observedKw,
+    nameplateAtSampleKw: value.nameplateAtSampleKw,
+    samples: value.samples,
+    sustainedSeconds: value.sustainedSeconds,
+    lastSampleMs: value.lastSampleMs,
   };
 }
 
@@ -446,7 +445,7 @@ function normalizeStepCalibration(value: unknown): StepCalibration | null {
  * — otherwise a payload whose nested records the normaliser silently drops
  * could still bypass the grace window.
  */
-export function isPersistedStepShape(value: unknown): boolean {
+export function isPersistedStepShape(value: unknown): value is StepCalibration {
   if (!isRecord(value)) return false;
   if (!isFiniteNumber(value.observedKw) || value.observedKw < 0) return false;
   if (!isFiniteNumber(value.nameplateAtSampleKw) || value.nameplateAtSampleKw <= 0) return false;

@@ -331,7 +331,8 @@ export const resolveDeadlinesListHero = (params: {
   formatTime: (ms: number) => string;
 }): DeadlinesListHeroCopy | null => {
   const { cards, formatTime } = params;
-  if (cards.length === 0) return null;
+  const soonest = cards[0];
+  if (soonest === undefined) return null;
 
   const atRiskCards = cards.filter(isAtRiskCard);
   const unavailableCards = cards.filter(isBucket('unavailable'));
@@ -340,7 +341,8 @@ export const resolveDeadlinesListHero = (params: {
   const pendingCards = cards.filter(isBucket('pending'));
   const satisfiedCards = cards.filter(isBucket('satisfied'));
 
-  if (atRiskCards.length > 0) {
+  const firstAtRiskCard = atRiskCards[0];
+  if (firstAtRiskCard !== undefined) {
     // Tone escalates to `alert` only when at least one card is `cannot_meet`.
     // When that happens the subline must name a `cannot_meet` card too — naming
     // an `at_risk` card under a red banner reads as a tone/reason mismatch
@@ -349,7 +351,7 @@ export const resolveDeadlinesListHero = (params: {
     // card. `atRiskCards` preserves the input deadline ordering, so picking
     // the first match is the soonest of that severity.
     const soonestCannotMeet = atRiskCards.find((card) => card.statusId === 'cannot_meet');
-    const subjectCard = soonestCannotMeet ?? atRiskCards[0];
+    const subjectCard = soonestCannotMeet ?? firstAtRiskCard;
     // Mixed-cohort framing: "4 of 5 deadlines at risk." reads truer than
     // "4 deadlines at risk." when one sibling is healthy. When every card is
     // at risk we keep the bare "N deadlines at risk." form so the headline
@@ -377,8 +379,9 @@ export const resolveDeadlinesListHero = (params: {
   // No at-risk task, but at least one device is outside the main-home scope.
   // This must outrank planning/healthy/paused rollups: the task is not merely
   // waiting and its cached schedule no longer governs the device.
-  if (unavailableCards.length > 0) {
-    const subjectCard = unavailableCards[0];
+  const firstUnavailableCard = unavailableCards[0];
+  if (firstUnavailableCard !== undefined) {
+    const subjectCard = firstUnavailableCard;
     const headline = unavailableCards.length < cards.length
       ? `${unavailableCards.length} of ${cards.length} ${deadlinesNoun(cards.length)} unavailable`
       : `${unavailableCards.length} ${deadlinesNoun(unavailableCards.length)} unavailable`;
@@ -400,8 +403,9 @@ export const resolveDeadlinesListHero = (params: {
   // a misleading "Planning 3 deadlines." The subline names the soonest
   // paused card with the "due HH:MM — <cause>." framing so it never claims a
   // delivery the device can't make.
-  if (pausedCards.length > 0) {
-    const subjectCard = pausedCards[0];
+  const firstPausedCard = pausedCards[0];
+  if (firstPausedCard !== undefined) {
+    const subjectCard = firstPausedCard;
     const headline = pausedCards.length < cards.length
       ? `${pausedCards.length} of ${cards.length} ${deadlinesNoun(cards.length)} paused`
       : `${pausedCards.length} ${deadlinesNoun(pausedCards.length)} paused`;
@@ -420,7 +424,7 @@ export const resolveDeadlinesListHero = (params: {
   // overall on the subline. Cards arrive sorted ascending by `deadlineAtMs`,
   // so the first card is always the right named subject across pure / mixed
   // branches.
-  const soonest = cards[0];
+
   return {
     eyebrow: 'Smart tasks',
     headline: buildNonAtRiskHeadline({

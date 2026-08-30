@@ -218,6 +218,10 @@ export const matchCoincidentEdges = (params: {
             continue;
         }
         const [carEdge] = candidates;
+        // `withCandidates` keeps only entries with at least one candidate and the
+        // multi-candidate case left above, so a missing edge cannot happen; skipping
+        // it casts no vote, which is what an unattributable edge earns anyway.
+        if (carEdge === undefined) continue;
         coincidences.push({
             carId: carEdge.deviceId,
             chargerId: chargerEdge.deviceId,
@@ -266,8 +270,8 @@ export const resolveLinkForCharger = (params: {
         return { carId: coincidentCarId, source: 'coincidence', votes: votesFor(coincidentCarId) };
     }
     const qualified = candidateCarIds.filter((carId) => votesFor(carId) >= EV_CAR_LINK_MIN_PRIOR_VOTES);
-    if (qualified.length !== 1) return null;
-    const [carId] = qualified;
+    const [carId, ...alsoQualified] = qualified;
+    if (carId === undefined || alsoQualified.length > 0) return null;
     const contested = candidateCarIds.some((other) => other !== carId && votesFor(other) > 0);
     if (contested) return null;
     return { carId, source: 'affinity_prior', votes: votesFor(carId) };

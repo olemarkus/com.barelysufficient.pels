@@ -46,9 +46,13 @@ import { hasPlanDeviceExecutionDrift } from './planExecutionDrift';
 
 export function hasLiveStateDivergedFromSnapshot(previousPlan: DevicePlan, livePlan: DevicePlan): boolean {
   if (previousPlan.devices.length !== livePlan.devices.length) return true;
-  for (let index = 0; index < previousPlan.devices.length; index += 1) {
-    const previous = buildExecutableConvergenceDevice(previousPlan.devices[index]);
-    const live = buildExecutableConvergenceDevice(livePlan.devices[index]);
+  for (const [index, previousDevice] of previousPlan.devices.entries()) {
+    const liveDevice = livePlan.devices[index];
+    // Lengths were compared above, so a missing counterpart is unreachable; if it ever
+    // happened the two plans would not line up, which is exactly divergence.
+    if (liveDevice === undefined) return true;
+    const previous = buildExecutableConvergenceDevice(previousDevice);
+    const live = buildExecutableConvergenceDevice(liveDevice);
     if (previous.id !== live.id) return true;
     if (hasRelevantBinaryExecutionDrift(previous, live)) return true;
     if (hasRelevantTargetExecutionDrift(previous, live)) return true;
@@ -63,10 +67,11 @@ export function canRefreshPlanSnapshotFromLiveState(
   if (!hasLiveStateDivergedFromSnapshot(basePlan, livePlan)) return false;
   if (basePlan.devices.length !== livePlan.devices.length) return false;
 
-  for (let index = 0; index < basePlan.devices.length; index += 1) {
-    const baseDevice = buildExecutableConvergenceDevice(basePlan.devices[index]);
-    const liveDevice = livePlan.devices[index]
-      ? buildExecutableConvergenceDevice(livePlan.devices[index])
+  for (const [index, basePlanDevice] of basePlan.devices.entries()) {
+    const livePlanDevice = livePlan.devices[index];
+    const baseDevice = buildExecutableConvergenceDevice(basePlanDevice);
+    const liveDevice = livePlanDevice
+      ? buildExecutableConvergenceDevice(livePlanDevice)
       : undefined;
     if (!liveDevice || baseDevice.id !== liveDevice.id) return false;
     if (!hasSettledPostActuationState(baseDevice, liveDevice)) return false;

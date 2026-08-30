@@ -23,7 +23,7 @@ export const getSteppedLoadHighestStep = (profile: SteppedLoadProfile): SteppedL
   // ES2020-safe last-element access (no Array#at): this file rides into the
   // settings-ui tsc program (ES2020 lib) via the appTypeGuards import chain.
   const sorted = sortSteppedLoadSteps(profile.steps);
-  return sorted.length > 0 ? sorted[sorted.length - 1] : null;
+  return sorted[sorted.length - 1] ?? null;
 };
 
 export const getSteppedLoadLowestActiveStep = (profile: SteppedLoadProfile): SteppedLoadStep | null => (

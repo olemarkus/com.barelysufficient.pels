@@ -155,10 +155,9 @@ export function hasExecutableShedDevices(
   plan: DevicePlan,
   executablePlan: ExecutablePlan,
 ): boolean {
-  for (let i = 0; i < plan.devices.length; i += 1) {
-    const planDevice = plan.devices[i];
+  for (const [index, planDevice] of plan.devices.entries()) {
     if (planDevice.plannedState !== 'shed') continue;
-    if (isDroppedUnderspecifiedSetStepShed(planDevice, executablePlan.devices[i])) continue;
+    if (isDroppedUnderspecifiedSetStepShed(planDevice, executablePlan.devices[index])) continue;
     if (isSurplusOnlyHoldShed(planDevice)) continue;
     return true;
   }
@@ -196,9 +195,8 @@ export function findDroppedSteppedShedIntents(
   executablePlan: ExecutablePlan,
 ): DroppedSteppedShedIntent[] {
   const result: DroppedSteppedShedIntent[] = [];
-  for (let i = 0; i < plan.devices.length; i += 1) {
-    const planDevice = plan.devices[i];
-    if (!isDroppedUnderspecifiedSetStepShed(planDevice, executablePlan.devices[i])) continue;
+  for (const [index, planDevice] of plan.devices.entries()) {
+    if (!isDroppedUnderspecifiedSetStepShed(planDevice, executablePlan.devices[index])) continue;
     // eslint-disable-next-line functional/immutable-data -- Local accumulator over plan devices.
     result.push({
       deviceId: planDevice.id,

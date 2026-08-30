@@ -131,6 +131,7 @@ const buildPerfDelta = (current: PerfSnapshot, previous?: PerfSnapshot | null): 
   }, {});
   const durationsDelta = Object.keys(current.durations).reduce<Record<string, PerfDeltaDurationEntry>>((acc, key) => {
     const currentEntry = current.durations[key];
+    if (currentEntry === undefined) return acc;
     const previousEntry = previous.durations[key] || { totalMs: 0, count: 0, maxMs: 0 };
     const deltaTotalMs = currentEntry.totalMs - previousEntry.totalMs;
     const deltaCount = currentEntry.count - previousEntry.count;

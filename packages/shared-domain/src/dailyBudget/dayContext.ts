@@ -75,6 +75,9 @@ const resolveBucketProgress = (params: {
 }): number => {
   const { nowMs, bucketStartUtcMs, currentBucketIndex, nextDayStartUtcMs } = params;
   const bucketStart = bucketStartUtcMs[currentBucketIndex];
+  // No bucket at the current index means no elapsed fraction to report; the
+  // day has not started for this bucket rather than being fully elapsed.
+  if (bucketStart === undefined) return 0;
   const bucketEnd = bucketStartUtcMs[currentBucketIndex + 1] ?? nextDayStartUtcMs;
   const duration = Math.max(1, bucketEnd - bucketStart);
   return clamp((nowMs - bucketStart) / duration, 0, 1);
