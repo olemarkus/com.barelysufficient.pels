@@ -52,6 +52,7 @@ export const parseEvCarLinkPairKey = (key: string): { carId: string; chargerId: 
     const parts = key.split('|');
     if (parts.length !== 2) return null;
     const [carId, chargerId] = parts;
+    if (carId === undefined || chargerId === undefined) return null;
     if (carId.length === 0 || chargerId.length === 0) return null;
     return { carId, chargerId };
 };
@@ -278,12 +279,24 @@ export const summarizeEvCarObservedLimit = (
     if (samples.length < 2) return null;
     const sorted = [...samples].sort((a, b) => a - b);
     const middle = Math.floor(sorted.length / 2);
+    // Two samples minimum, so every index below is in range; reading them as locals is
+    // what makes that visible rather than asserted.
+    const lowerMiddle = sorted[middle - 1];
+    const upperMiddle = sorted[middle];
+    const lowest = sorted[0];
+    const highest = sorted[sorted.length - 1];
+    if (
+        lowerMiddle === undefined
+        || upperMiddle === undefined
+        || lowest === undefined
+        || highest === undefined
+    ) return null;
     const medianPct = sorted.length % 2 === 0
-        ? (sorted[middle - 1] + sorted[middle]) / 2
-        : sorted[middle];
+        ? (lowerMiddle + upperMiddle) / 2
+        : upperMiddle;
     return {
         medianPct: Math.round(medianPct * 10) / 10,
-        spreadPct: Math.round((sorted[sorted.length - 1] - sorted[0]) * 10) / 10,
+        spreadPct: Math.round((highest - lowest) * 10) / 10,
         sampleCount: sorted.length,
     };
 };

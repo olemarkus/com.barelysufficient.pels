@@ -117,8 +117,21 @@ export const buildHomePlanDevices = (
       resolveConfiguredDevicePriority(ctx.capacityPriorities, ctx.operatingMode, deviceId)
     )),
   );
-  return devices.map((device): PlanInputDevice => ({
-    ...device,
-    priority: priorityByDeviceId[device.id],
-  }));
+  // A device with no rank is one PELS cannot order against its neighbours, so it
+  // drops out of the planned set and stays background usage. That is a broken
+  // producer contract, not an ordinary state -- but this runs once per meter
+  // reading, so it is logged and survived rather than thrown.
+  return devices.flatMap((device): PlanInputDevice[] => {
+    const priority = priorityByDeviceId[device.id];
+    if (priority === undefined) {
+      ctx.getStructuredLogger('plan')?.error({
+        event: 'plan_device_rank_missing',
+        homeId,
+        deviceId: device.id,
+        detail: 'rankModeDevices omitted the device; excluded from the planned set',
+      });
+      return [];
+    }
+    return [{ ...device, priority }];
+  });
 };

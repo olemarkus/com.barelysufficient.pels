@@ -54,7 +54,9 @@ export function recordDailyBudgetCap(params: {
   if (index < 0 || index >= planned.length || index >= startUtc.length) return powerTracker;
   const plannedKWh = planned[index];
   const bucketKey = startUtc[index];
-  if (!Number.isFinite(plannedKWh) || typeof bucketKey !== 'string') return powerTracker;
+  if (plannedKWh === undefined || !Number.isFinite(plannedKWh) || typeof bucketKey !== 'string') {
+    return powerTracker;
+  }
   const nextCaps = { ...(powerTracker.dailyBudgetCaps || {}), [bucketKey]: plannedKWh };
   return { ...powerTracker, dailyBudgetCaps: nextCaps };
 }

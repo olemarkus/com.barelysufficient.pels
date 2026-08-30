@@ -157,7 +157,10 @@ export function recordFailedPendingTargetCommandAttempt(params: {
 
 function getTargetCommandRetryDelayMs(retryCount: number): number {
   const index = Math.min(retryCount, TARGET_COMMAND_RETRY_DELAYS_MS.length - 1);
-  return TARGET_COMMAND_RETRY_DELAYS_MS[index];
+  // The ladder is a fixed const tuple and the index is clamped to its last rung, so the
+  // lookup can only miss for a negative retry count — which reads as "no retry yet", the
+  // first rung.
+  return TARGET_COMMAND_RETRY_DELAYS_MS[index] ?? TARGET_COMMAND_RETRY_DELAYS_MS[0];
 }
 
 function resolvePendingTargetObservedValue(params: {

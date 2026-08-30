@@ -610,12 +610,13 @@ export const appendHourlyContribution = (
   next: DeferredObjectivePlanHistoryHourlyContribution,
 ): DeferredObjectivePlanHistoryHourlyContribution[] => {
   const existingIndex = list.findIndex((entry) => entry.atMs === next.atMs);
-  if (existingIndex === -1) {
+  const existing = existingIndex === -1 ? undefined : list[existingIndex];
+  if (existing === undefined) {
     return [...list, next];
   }
   const merged: DeferredObjectivePlanHistoryHourlyContribution = {
     atMs: next.atMs,
-    deliveredKWh: list[existingIndex].deliveredKWh + next.deliveredKWh,
+    deliveredKWh: existing.deliveredKWh + next.deliveredKWh,
     priceValue: next.priceValue,
     tone: next.tone,
   };

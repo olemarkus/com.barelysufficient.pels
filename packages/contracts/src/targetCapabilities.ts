@@ -18,7 +18,7 @@ const getDecimalPlaces = (value: number): number => {
 export const getPrimaryTargetCapability = (
   targets?: TargetCapabilitySnapshot[] | null,
 ): TargetCapabilitySnapshot | null => (
-  Array.isArray(targets) && targets.length > 0 ? targets[0] : null
+  Array.isArray(targets) ? targets[0] ?? null : null
 );
 
 const clampTargetCapabilityValue = (

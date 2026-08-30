@@ -122,18 +122,22 @@ function distributeActiveAllocations(params: {
   let overflow = 0;
   const nextActive: number[] = [];
   for (const index of active) {
+    // `active` only ever holds indices into `allocations`, which the caller
+    // creates with one zeroed slot per weight.
+    const allocated = allocations[index];
+    if (allocated === undefined) continue;
     const share = remaining * ((effectiveWeights[index] ?? 0) / weightSum);
-    const capRemaining = Math.max(0, (caps[index] ?? 0) - allocations[index]);
+    const capRemaining = Math.max(0, (caps[index] ?? 0) - allocated);
     if (capRemaining <= CAP_ALLOCATION_EPSILON) {
       overflow += share;
       continue;
     }
     if (share >= capRemaining - CAP_ALLOCATION_EPSILON) {
-      allocations[index] += capRemaining;
+      allocations[index] = allocated + capRemaining;
       overflow += share - capRemaining;
       continue;
     }
-    allocations[index] += share;
+    allocations[index] = allocated + share;
     nextActive.push(index);
   }
   return { overflow, nextActive };
@@ -160,7 +164,7 @@ export function allocateBudgetWithCapsAndFloors(params: {
 
   const remaining = Math.max(0, totalKWh - scaledFloors.reduce((sum, value) => sum + value, 0));
   const remainingCaps = caps.map((cap, index) => (
-    Math.max(0, (cap ?? 0) - scaledFloors[index])
+    Math.max(0, (cap ?? 0) - (scaledFloors[index] ?? 0))
   ));
   const remainderAllocations = remaining > 0
     ? allocateBudgetWithCaps({ weights, totalKWh: remaining, caps: remainingCaps })

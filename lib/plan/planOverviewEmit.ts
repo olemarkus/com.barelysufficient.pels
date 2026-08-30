@@ -87,8 +87,9 @@ function emitOverviewDebugBatch(
   overviewDebugStructured: StructuredDebugEmitter | undefined,
 ): void {
   if (!overviewDebugStructured || !debugEnabled) return;
-  if (changedDevices.length === 1) {
-    overviewDebugStructured(changedDevices[0]);
+  const soleDevice = changedDevices.length === 1 ? changedDevices[0] : undefined;
+  if (soleDevice) {
+    overviewDebugStructured(soleDevice);
   } else if (changedDevices.length > 1) {
     overviewDebugStructured(buildOverviewBatchEvent(changedDevices));
   }

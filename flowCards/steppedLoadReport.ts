@@ -75,8 +75,10 @@ function parseSteppedLoadPowerInput(params: {
 
   const match = normalized.match(/^(-?\d+(?:[.,]\d+)?)\s*([WwAa])?$/);
   if (!match) return null;
+  const magnitude = match[1];
+  if (magnitude === undefined) return null;
 
-  const value = Number.parseFloat(match[1].replace(',', '.'));
+  const value = Number.parseFloat(magnitude.replace(',', '.'));
   if (!Number.isFinite(value)) return null;
 
   const unit = match[2]?.toLowerCase();
@@ -112,8 +114,9 @@ function resolveSteppedLoadStepFromPower(
     roundedPowerW: Math.round(step.planningPowerW),
   }));
   const exactMatches = roundedSteps.filter(({ roundedPowerW }) => roundedPowerW === powerW);
-  if (exactMatches.length === 1) return exactMatches[0].step;
   if (exactMatches.length > 1) return 'ambiguous';
+  const soleExactMatch = exactMatches[0];
+  if (soleExactMatch) return soleExactMatch.step;
 
   const ceilingMatches = roundedSteps
     .filter(({ roundedPowerW }) => {
@@ -123,13 +126,14 @@ function resolveSteppedLoadStepFromPower(
     .sort((left, right) => (
       left.roundedPowerW - right.roundedPowerW || left.step.id.localeCompare(right.step.id)
     ));
-  if (ceilingMatches.length === 0) return null;
+  const nearestCeiling = ceilingMatches[0];
+  if (!nearestCeiling) return null;
 
-  const nearestCeilingPowerW = ceilingMatches[0].roundedPowerW;
+  const nearestCeilingPowerW = nearestCeiling.roundedPowerW;
   const nearestMatches = ceilingMatches.filter(({ roundedPowerW }) => roundedPowerW === nearestCeilingPowerW);
   if (nearestMatches.length > 1) return 'ambiguous';
 
-  return nearestMatches[0].step;
+  return nearestCeiling.step;
 }
 
 function getSteppedLoadPowerCeilingMarginW(stepPowerW: number): number {

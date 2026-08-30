@@ -176,14 +176,14 @@ const buildAdmissionDecoration = (params: {
   budgetExempt: boolean;
   engageBoost: boolean;
   reservesStartupPower: boolean;
-  hasDeadlineFloor: boolean;
-  deadlineFloorTargetC: number;
+  // Absent when this device has no deadline floor this cycle.
+  deadlineFloorTargetC: number | undefined;
 }): Partial<PlanInputDevice> => ({
   ...(params.override ? { controllable: true } : {}),
   ...(params.budgetExempt ? { budgetExempt: true } : {}),
   ...resolveBoostFields(params.engageBoost),
   ...(params.reservesStartupPower ? { reservesStartupPower: true } : {}),
-  ...(params.hasDeadlineFloor ? { deadlineFloorTargetC: params.deadlineFloorTargetC } : {}),
+  ...(typeof params.deadlineFloorTargetC === 'number' ? { deadlineFloorTargetC: params.deadlineFloorTargetC } : {}),
 });
 
 // Translate an active deferred objective into a temporary capacity-control-on signal for the
@@ -233,7 +233,6 @@ export const applyDeferredAdmissionToInput = (
         budgetExempt,
         engageBoost,
         reservesStartupPower,
-        hasDeadlineFloor,
         deadlineFloorTargetC,
       }),
     };

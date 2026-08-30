@@ -59,12 +59,14 @@ export const resolveHighestStepWithinHeadroom = (
   reservedHeadroomKw: number | undefined,
 ): DeferredObjectiveStep | null => {
   if (typeof reservedHeadroomKw !== 'number' || !Number.isFinite(reservedHeadroomKw)) return null;
-  // `activeSteps` is sorted ascending by useful power (`normalizeObjectiveSteps`).
-  let fittingIndex = 0;
-  for (let index = 1; index < activeSteps.length; index += 1) {
-    if (activeSteps[index].admissionPowerKw <= reservedHeadroomKw) fittingIndex = index;
+  // `activeSteps` is sorted ascending by useful power (`normalizeObjectiveSteps`),
+  // so the last rung that fits is the highest one that fits. The lowest rung is
+  // the answer when none fits (see the docblock).
+  let fitting: DeferredObjectiveStep = activeSteps[0];
+  for (const step of activeSteps) {
+    if (step.admissionPowerKw <= reservedHeadroomKw) fitting = step;
   }
-  return activeSteps[fittingIndex];
+  return fitting;
 };
 
 export const getActiveObjectiveSteps = (

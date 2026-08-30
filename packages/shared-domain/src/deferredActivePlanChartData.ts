@@ -124,12 +124,12 @@ const appendNowReading = (
   samples: DeferredPlanHistoryChartPoint[],
   nowMs: number | undefined,
   currentValue: number | null,
-): DeferredPlanHistoryChartPoint[] => (
-  nowMs !== undefined && Number.isFinite(nowMs) && currentValue !== null
-    && (samples.length === 0 || samples[samples.length - 1].atMs < nowMs)
-    ? [...samples, { atMs: nowMs, value: currentValue }]
-    : samples
-);
+): DeferredPlanHistoryChartPoint[] => {
+  if (nowMs === undefined || !Number.isFinite(nowMs) || currentValue === null) return samples;
+  const lastSample = samples.at(-1);
+  if (lastSample !== undefined && lastSample.atMs >= nowMs) return samples;
+  return [...samples, { atMs: nowMs, value: currentValue }];
+};
 
 export const resolveActivePlanChartData = (
   plan: ResolvedDeferredObjectiveActivePlanV1,

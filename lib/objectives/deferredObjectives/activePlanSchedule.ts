@@ -369,8 +369,10 @@ export const sameHourSchedule = (
   b: readonly DeferredObjectiveActivePlanHourV1[],
 ): boolean => {
   if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i].startsAtMs !== b[i].startsAtMs) return false;
+  for (const [i, left] of a.entries()) {
+    const right = b[i];
+    // Lengths match above, so every peer exists; a missing one is not equivalent.
+    if (right === undefined || left.startsAtMs !== right.startsAtMs) return false;
   }
   return true;
 };
@@ -384,9 +386,11 @@ export const samePriorityAllocation = (
   b: readonly DeferredObjectiveActivePlanHourV1[],
 ): boolean => {
   if (!sameHourSchedule(a, b)) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i].plannedKWh !== b[i].plannedKWh) return false;
-    if ((a[i].plannedAdmissionPowerKw ?? 0) !== (b[i].plannedAdmissionPowerKw ?? 0)) return false;
+  for (const [i, left] of a.entries()) {
+    const right = b[i];
+    if (right === undefined) return false;
+    if (left.plannedKWh !== right.plannedKWh) return false;
+    if ((left.plannedAdmissionPowerKw ?? 0) !== (right.plannedAdmissionPowerKw ?? 0)) return false;
   }
   return true;
 };
@@ -396,8 +400,10 @@ const sameAdmissionAllocation = (
   b: readonly DeferredObjectiveActivePlanHourV1[],
 ): boolean => {
   if (!sameHourSchedule(a, b)) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if ((a[i].plannedAdmissionPowerKw ?? 0) !== (b[i].plannedAdmissionPowerKw ?? 0)) return false;
+  for (const [i, left] of a.entries()) {
+    const right = b[i];
+    if (right === undefined) return false;
+    if ((left.plannedAdmissionPowerKw ?? 0) !== (right.plannedAdmissionPowerKw ?? 0)) return false;
   }
   return true;
 };

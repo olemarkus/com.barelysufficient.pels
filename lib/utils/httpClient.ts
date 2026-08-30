@@ -127,6 +127,10 @@ export function httpsGetJson(url: string, options: HttpsJsonOptions = {}): Promi
 
     const attempt = (index: number): void => {
       const strategy = strategies[index];
+      if (!strategy) {
+        reject(new Error('no HTTPS strategy left to try'));
+        return;
+      }
       const req = https.get(
         url,
         {

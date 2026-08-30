@@ -2,6 +2,14 @@
   "extends": "@tsconfig/node22/tsconfig.json",
   "compilerOptions": {
     "allowJs": false,
+    // Scoped to THIS project on purpose. `packages/**` is excluded below and
+    // `widgets/**` contributes only `*/src/api.ts`, so neither is ratcheted by
+    // this flag -- packages/settings-ui/tsconfig.json (375 sites) and
+    // tsconfig.widgets.json (119) each turn it on in their own change. Files
+    // under packages/shared-domain edited here were fixed by hand against the
+    // flag; nothing enforces that yet. tsconfig.tests.json extends this file
+    // and opts out explicitly, with its reasoning there.
+    "noUncheckedIndexedAccess": true,
     "outDir": ".homeybuild/",
     "isolatedModules": true
   },

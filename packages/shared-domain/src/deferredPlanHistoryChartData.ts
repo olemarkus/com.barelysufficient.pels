@@ -404,8 +404,13 @@ const staircasesDiffer = (
 ): boolean => {
   if (a.length !== b.length) return true;
   for (let i = 0; i < a.length; i += 1) {
-    if (a[i].atMs !== b[i].atMs) return true;
-    if (Math.abs(a[i].value - b[i].value) > 0.001) return true;
+    const left = a[i];
+    const right = b[i];
+    // Equal lengths put both in range; a missing slot could only mean the two
+    // staircases are not the same series, which is what this reports.
+    if (left === undefined || right === undefined) return true;
+    if (left.atMs !== right.atMs) return true;
+    if (Math.abs(left.value - right.value) > 0.001) return true;
   }
   return false;
 };
@@ -442,7 +447,8 @@ export const anchorObservedAtStart = (
   startProgress: number | null,
 ): DeferredPlanHistoryChartPoint[] => {
   if (startProgress === null) return [...observed];
-  if (observed.length > 0 && observed[0].atMs <= windowStartMs) return [...observed];
+  const firstObserved = observed[0];
+  if (firstObserved !== undefined && firstObserved.atMs <= windowStartMs) return [...observed];
   return [{ atMs: windowStartMs, value: startProgress }, ...observed];
 };
 

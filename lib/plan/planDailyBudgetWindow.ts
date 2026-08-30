@@ -126,11 +126,12 @@ function resolveDailySoftLimitInput(snapshot: DailyBudgetUiPayload | null): Dail
   if (!Array.isArray(plannedKWh) || !Array.isArray(bucketStartUtc)) return null;
   if (index < 0 || index >= plannedKWh.length || index >= bucketStartUtc.length) return null;
   const planned = plannedKWh[index];
-  if (!Number.isFinite(planned)) return null;
+  const bucketStartIso = bucketStartUtc[index];
+  if (!Number.isFinite(planned) || planned === undefined || bucketStartIso === undefined) return null;
   return {
     plannedKWh: planned,
-    bucketStartIso: bucketStartUtc[index],
-    nextBucketStartIso: index + 1 < bucketStartUtc.length ? bucketStartUtc[index + 1] : undefined,
+    bucketStartIso,
+    nextBucketStartIso: bucketStartUtc[index + 1],
   };
 }
 

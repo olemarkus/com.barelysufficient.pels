@@ -269,7 +269,8 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     );
     const prepared = !this.stopped && bundles.every((bundle, index) => {
       const sample = samples[index];
-      return sample.state === 'stable'
+      return sample !== undefined
+        && sample.state === 'stable'
         && this.bundles.get(bundle.homeId) === bundle
         && bundle.isPreparedOwnershipGenerationCurrent(sample.revision);
     });
@@ -277,7 +278,7 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     if (!prepared) return false;
     for (const [index, bundle] of bundles.entries()) {
       const sample = samples[index];
-      if (sample.state !== 'stable') return false;
+      if (sample === undefined || sample.state !== 'stable') return false;
       this.preparedOwnershipSamples.set(bundle.homeId, {
         bundle,
         sampleRevision: sample.revision,
@@ -479,8 +480,10 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     for (const bundle of this.bundles.values()) {
       if (bundle.isTornDown()) continue;
       const meterDeviceId = bundle.getMeterDeviceId();
-      if (meterDeviceId === null || !Object.hasOwn(readings, meterDeviceId)) continue;
-      bundle.recordMeterSample(readings[meterDeviceId], nowMs);
+      if (meterDeviceId === null) continue;
+      const reading = readings[meterDeviceId];
+      if (reading === undefined) continue;
+      bundle.recordMeterSample(reading, nowMs);
     }
   }
 

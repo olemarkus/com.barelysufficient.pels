@@ -295,6 +295,9 @@ function resolveBucketProgress(params: {
   if (bucketStartUtcMs.length === 0) return 0;
   const clampedIndex = Math.max(0, Math.min(currentBucketIndex, bucketStartUtcMs.length - 1));
   const start = bucketStartUtcMs[clampedIndex];
+  // The clamp keeps the index inside a non-empty bucket list; no start means no
+  // progress to report, the same answer as the empty-day case above.
+  if (start === undefined) return 0;
   const end = bucketStartUtcMs[clampedIndex + 1] ?? nextDayStartUtcMs;
   return clamp((nowMs - start) / Math.max(1, end - start), 0, 1);
 }
@@ -488,7 +491,7 @@ function computeRemainingPlannedBudget(params: {
   let total = 0;
   for (let index = startIndex; index < plannedKWh.length; index += 1) {
     const value = plannedKWh[index];
-    const planned = Number.isFinite(value) ? Math.max(0, value) : 0;
+    const planned = value !== undefined && Number.isFinite(value) ? Math.max(0, value) : 0;
     if (index === startIndex) {
       const usedInCurrent = context.budgetControlBucketUsage[startIndex] ?? 0;
       total += Math.max(0, planned - Math.max(0, usedInCurrent));

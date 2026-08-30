@@ -265,10 +265,14 @@ function fitBestChangepoint(days: FitDay[]): { line: RobustLine; balancePointC: 
 function theilSen(points: Array<{ x: number; y: number }>): RobustLine | null {
   const slopes: number[] = [];
   for (let i = 0; i < points.length; i += 1) {
+    const from = points[i];
+    if (from === undefined) continue;
     for (let j = i + 1; j < points.length; j += 1) {
-      const dx = points[j].x - points[i].x;
+      const to = points[j];
+      if (to === undefined) continue;
+      const dx = to.x - from.x;
       if (dx === 0) continue;
-      slopes.push((points[j].y - points[i].y) / dx);
+      slopes.push((to.y - from.y) / dx);
     }
   }
   if (slopes.length === 0) return null;
@@ -283,7 +287,12 @@ function senSlopeInterval(slopes: number[], n: number): { low: number; high: num
   const halfWidth = SEN_CI_Z * Math.sqrt((n * (n - 1) * (2 * n + 5)) / 18);
   const lowIndex = Math.max(0, Math.floor((sorted.length - halfWidth) / 2));
   const highIndex = Math.min(sorted.length - 1, Math.ceil((sorted.length + halfWidth) / 2));
-  return { low: sorted[lowIndex], high: sorted[highIndex] };
+  const low = sorted[lowIndex];
+  const high = sorted[highIndex];
+  // Both indices are clamped into a sample of at least three; an out-of-range
+  // slot would mean no interval, which is this function's own absent result.
+  if (low === undefined || high === undefined) return null;
+  return { low, high };
 }
 
 function pseudoR2L1(values: number[], residuals: number[]): number {
@@ -389,7 +398,12 @@ export function quantile(values: number[], p: number): number {
   const position = (sorted.length - 1) * p;
   const lower = Math.floor(position);
   const upper = Math.ceil(position);
-  if (lower === upper) return sorted[lower];
+  const lowerValue = sorted[lower];
+  const upperValue = sorted[upper];
+  // `position` is clamped to the sample by construction; the empty-input
+  // result (0, per the doc comment above) is the only honest fallback.
+  if (lowerValue === undefined || upperValue === undefined) return 0;
+  if (lower === upper) return lowerValue;
   const weight = position - lower;
-  return sorted[lower] * (1 - weight) + sorted[upper] * weight;
+  return lowerValue * (1 - weight) + upperValue * weight;
 }

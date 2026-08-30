@@ -361,9 +361,10 @@ export class DeferredObjectiveActivePlanRecorder {
   ): DeferredObjectiveActivePlanV1 {
     const code = resolveDiagnosticReasonCode(diag, current.diagnosticReasonCode);
     if (current.diagnosticReasonCode === code) return current;
-    this.plans[current.deviceId] = withDiagnosticReasonCode(current, code);
+    const refreshed = withDiagnosticReasonCode(current, code);
+    this.plans[current.deviceId] = refreshed;
     this.dirty = true;
-    return this.plans[current.deviceId];
+    return refreshed;
   }
 
   private ensurePendingRecord(
@@ -390,13 +391,14 @@ export class DeferredObjectiveActivePlanRecorder {
       }
       return;
     }
-    this.plans[diag.deviceId] = createPlanFromDiagnostic(diag, signature, nowMs);
+    const created = createPlanFromDiagnostic(diag, signature, nowMs);
+    this.plans[diag.deviceId] = created;
     this.dirty = true;
     this.emit({
       event: 'active_plan_revision_pending',
       deviceId: diag.deviceId,
       reason: 'awaiting_horizon_plan',
-      ...buildActivePlanLifecycleFields(diag, this.plans[diag.deviceId].startedAtMs),
+      ...buildActivePlanLifecycleFields(diag, created.startedAtMs),
     });
   }
 
@@ -422,7 +424,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // Freeze the plan-level total duration here so the hero meta line stays
     // stable across revisions. See `resolvePlanLevelDurationSnapshot` for the
     // preservation/reset rules applied during subsequent revisions.
-    this.plans[diag.deviceId] = {
+    const firstRecord: DeferredObjectiveActivePlanV1 = {
       deviceId: diag.deviceId,
       deviceName: diag.deviceName ?? null,
       objectiveKind: diag.objectiveKind,
@@ -462,10 +464,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // left off — the Flow would report Waiting -> On track, the UI would show
     // that false status until the next cycle, and that cycle would then fire a
     // second transition to At risk.
-    this.plans[diag.deviceId] = withDiagnosticReasonCode(
-      this.plans[diag.deviceId],
-      firstDiagnosticReasonCode,
-    );
+    this.plans[diag.deviceId] = withDiagnosticReasonCode(firstRecord, firstDiagnosticReasonCode);
     this.dirty = true;
     this.emit({
       event: 'active_plan_revision_written',

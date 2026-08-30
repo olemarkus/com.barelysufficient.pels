@@ -333,7 +333,9 @@ export const pruneStaleSteppedLoadCommandStates = (
 
 function resolveSteppedLoadCommandRetryDelayMs(retryCount: number): number {
   const normalizedRetryCount = Number.isFinite(retryCount) ? Math.max(0, Math.trunc(retryCount)) : 0;
+  // The ladder is a fixed const tuple and the index is clamped into it at both ends, so
+  // the first rung is an unreachable rather than a substituted value.
   return STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS[
     Math.min(normalizedRetryCount, STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS.length - 1)
-  ];
+  ] ?? STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS[0];
 }

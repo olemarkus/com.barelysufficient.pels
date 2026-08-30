@@ -284,7 +284,9 @@ const CONFIDENCE_RANK: Record<ObjectiveProfileConfidence, number> = {
 };
 
 const minConfidence = (values: ObjectiveProfileConfidence[]): ObjectiveProfileConfidence => {
-  let lowest: ObjectiveProfileConfidence = values[0];
+  // Callers only reach here with at least one overlapping band; an empty list
+  // has no evidence to lower the verdict below `low`.
+  let lowest: ObjectiveProfileConfidence = values[0] ?? 'low';
   for (const value of values) {
     if (CONFIDENCE_RANK[value] < CONFIDENCE_RANK[lowest]) lowest = value;
   }

@@ -358,8 +358,8 @@ export class HomeMembershipService implements HomeMembershipPort {
   // recompute trigger); the edge re-arms when the zone reappears or the device
   // leaves the snapshot, because only retention users land in `nextLogged`.
   private retainedZoneIdFor(deviceId: string, nextLogged: Set<string>): string | null {
-    if (!Object.hasOwn(this.lastKnownZoneIdByDeviceId, deviceId)) return null;
     const zoneId = this.lastKnownZoneIdByDeviceId[deviceId];
+    if (zoneId === undefined) return null;
     if (!this.retentionLoggedDeviceIds.has(deviceId)) {
       this.deps.getLogger()?.debug({
         event: 'home_membership_zone_retained',
@@ -375,9 +375,7 @@ export class HomeMembershipService implements HomeMembershipPort {
   /** Resolved home for a device; an unknown device belongs to the main home. */
   getHomeIdForDevice(deviceId: string): HomeId {
     if (!this.runtimeActive) return MAIN_HOME_ID;
-    return (Object.hasOwn(this.membershipByDeviceId, deviceId)
-      ? this.membershipByDeviceId[deviceId].homeId
-      : MAIN_HOME_ID);
+    return this.membershipByDeviceId[deviceId]?.homeId ?? MAIN_HOME_ID;
   }
 
   /** Control-path view: `homeId` per device, deliberately without `source`. */

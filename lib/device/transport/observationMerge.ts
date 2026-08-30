@@ -47,6 +47,8 @@ export function mergeFresherCapabilityObservations(params: {
     // `available === false` says a device is actually gone.
     for (let index = nextSnapshot.length - 1; index >= 0; index -= 1) {
         const snapshot = nextSnapshot[index];
+        // The loop walks the array's own live indices, so this cannot miss.
+        if (snapshot === undefined) continue;
         const previous = previousById.get(snapshot.id);
         const sourceDevice = devicesById.get(snapshot.id);
         if (!sourceDevice) continue;

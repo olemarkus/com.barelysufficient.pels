@@ -2,6 +2,11 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
+    // Inherited from ./tsconfig.json, and deliberately off here. Test code
+    // indexes fixtures it just built, so the flag is ~1500 assertions about
+    // arrays the test itself owns -- noise, not safety. Turning it on for
+    // test/** is its own decision, not a side effect of the runtime one.
+    "noUncheckedIndexedAccess": false,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "vitest/globals"],
     "allowImportingTsExtensions": true

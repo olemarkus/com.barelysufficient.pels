@@ -24,8 +24,8 @@ export const addDays = (date: Date, days: number): Date => {
 };
 
 export const getSpotPriceDates = (today: Date): { todayStr: string; tomorrowStr: string } => {
-  const todayStr = today.toISOString().split('T')[0];
-  const tomorrowStr = addDays(today, 1).toISOString().split('T')[0];
+  const todayStr = today.toISOString().slice(0, 10);
+  const tomorrowStr = addDays(today, 1).toISOString().slice(0, 10);
   return { todayStr, tomorrowStr };
 };
 

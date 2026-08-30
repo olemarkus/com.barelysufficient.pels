@@ -121,6 +121,9 @@ function applyNativeSteppedLoadSnapshotUpdate(ctx: TransportContext, params: {
         reportedStepObservedAtMs,
     } = params;
     const currentSnapshot = ctx.latestSnapshot[snapshotIndex];
+    // The index was resolved against this same snapshot array by the caller, so a miss
+    // cannot happen; there is nothing to update if it ever did.
+    if (currentSnapshot === undefined) return;
     const previousReportedStepId = currentSnapshot.reportedStepId;
     const previousReportedStepPowerW = currentSnapshot.reportedStepPowerW;
     const previousReportedStepObservedAtMs = currentSnapshot.reportedStepObservedAtMs;

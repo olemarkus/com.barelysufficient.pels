@@ -82,7 +82,9 @@ export function resolvePlanLockState(params: {
   hasPreviousPlan: boolean;
   shouldLockCurrent: boolean;
   remainingStartIndex: number;
-  currentBucketStartUtcMs: number;
+  // Absent when the day has no buckets (or the current index falls outside
+  // them); the manager mirrors it straight into the nullable state field.
+  currentBucketStartUtcMs: number | undefined;
 } {
   const { context, existingPlan, lastPlanBucketStartUtcMs } = params;
   const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];

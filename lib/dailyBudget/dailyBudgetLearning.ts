@@ -3,6 +3,7 @@ import {
   buildLocalDayBuckets,
   getNextLocalDayStartUtcMs,
   getZonedParts,
+  zeroHourProfile,
 } from '../utils/dateUtils';
 import { OBSERVED_HOURLY_PEAK_WINDOW_DAYS } from './dailyBudgetConstants';
 import { buildObservedHourlyStatsFromWindow } from './dailyBudgetObservedStats';
@@ -179,8 +180,9 @@ const buildHourlyTotals = (params: {
   bucketUsage: ReturnType<typeof buildBucketUsageSplit>;
 }): { hourlyUncontrolled: number[]; hourlyControlled: number[] } => {
   const { bucketStartUtcMs, timeZone, bucketUsage } = params;
-  const hourlyUncontrolled = Array.from({ length: 24 }, () => 0);
-  const hourlyControlled = Array.from({ length: 24 }, () => 0);
+  // 24-slot profiles, so the `Hour` a bucket resolves to indexes them checked.
+  const hourlyUncontrolled = zeroHourProfile();
+  const hourlyControlled = zeroHourProfile();
   for (const [index, ts] of bucketStartUtcMs.entries()) {
     const bucketHour = getZonedParts(new Date(ts), timeZone).hour;
     const uncontrolledIncrement = bucketUsage.bucketUsageUncontrolled[index] ?? 0;
@@ -460,7 +462,9 @@ function buildNextProfile(params: {
   if (dayWeights.length !== 24) return current ?? profile;
   const nextCount = sampleCount + 1;
   const nextWeights = profile.weights.map((value, index) => (
-    (value * sampleCount + dayWeights[index]) / nextCount
+    // `dayWeights` is length-checked to 24 above; a stored profile with more
+    // slots than that has no day weight to blend in, and 0 is a weight's identity.
+    (value * sampleCount + (dayWeights[index] ?? 0)) / nextCount
   ));
   return {
     weights: normalizeWeights(nextWeights),

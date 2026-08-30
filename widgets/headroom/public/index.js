@@ -166,8 +166,8 @@
       await homey.api("POST", WIDGET_CLIENT_LOG_PATH, entry);
     };
     const drain = async () => {
-      while (pending.length > 0) {
-        await post(pending[0]);
+      for (let next = pending[0]; next !== void 0; next = pending[0]) {
+        await post(next);
         pending.shift();
       }
     };

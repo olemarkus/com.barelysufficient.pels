@@ -71,6 +71,9 @@ function applyBinaryCapabilityUpdate(ctx: TransportContext, params: {
         changes,
     } = params;
     const snapshot = ctx.latestSnapshot[snapshotIndex];
+    // The caller resolved this index against the same snapshot array; there is no
+    // binary axis to update without it.
+    if (snapshot === undefined) return false;
     const previousCurrentOn = snapshot.binaryControl?.on;
     const previousBinaryAxisOn = resolveBinaryAxisOn(
         snapshot,
@@ -100,8 +103,11 @@ function handleFreshnessOnlyCapabilityUpdate(
     value: unknown,
 ): void {
     const snapshot = ctx.latestSnapshot[snapshotIndex];
+    // The caller resolved this index against the same snapshot array; without an entry
+    // there is nothing to bump freshness on.
+    if (snapshot === undefined) return;
     const previousPowerKw = capabilityId === 'measure_power'
-        ? snapshot?.measuredPowerKw
+        ? snapshot.measuredPowerKw
         : undefined;
     const result = applyFreshnessOnlyCapabilityUpdate({
         snapshot,
@@ -126,7 +132,7 @@ function handleFreshnessOnlyCapabilityUpdate(
         source: 'realtime_capability',
         countsTowardDeviceFreshness: true,
     });
-    if (capabilityId === 'measure_power' && snapshot) {
+    if (capabilityId === 'measure_power') {
         ctx.onSnapshotMutated?.(snapshot, Date.now());
     }
     const cursor = ctx.nextObservationCursor(deviceId);
@@ -138,11 +144,11 @@ function handleFreshnessOnlyCapabilityUpdate(
         measurePowerBecameSignificantlyPositive: capabilityId === 'measure_power'
             && didMeasurePowerBecomeSignificantlyPositive(
                 previousPowerKw,
-                snapshot?.measuredPowerKw,
+                snapshot.measuredPowerKw,
                 MIN_SIGNIFICANT_POWER_W,
             ),
     });
-    if (reconcileChange && snapshot) {
+    if (reconcileChange) {
         moduleLogger.info({
             event: 'realtime_capability_drift',
             deviceId,
@@ -407,12 +413,13 @@ export function handleRealtimeCapabilityUpdate(
 ): void {
     if (!ctx.shouldTrackRealtimeDevice(deviceId)) return;
     const snapshotIndex = ctx.latestSnapshot.findIndex((entry) => entry.id === deviceId);
-    if (snapshotIndex < 0) {
+    const snapshot = ctx.latestSnapshot[snapshotIndex];
+    // `findIndex` misses read back as an absent entry, so one check covers both.
+    if (snapshot === undefined) {
         recoverMissingTemperatureSnapshot(ctx, deviceId, capabilityId, value);
         return;
     }
 
-    const snapshot = ctx.latestSnapshot[snapshotIndex];
     const normalizedEvents = normalizeNativeEvCapabilityUpdate({
         snapshot,
         capabilityId,

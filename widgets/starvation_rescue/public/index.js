@@ -220,8 +220,8 @@
       await homey.api("POST", WIDGET_CLIENT_LOG_PATH, entry);
     };
     const drain = async () => {
-      while (pending.length > 0) {
-        await post(pending[0]);
+      for (let next = pending[0]; next !== void 0; next = pending[0]) {
+        await post(next);
         pending.shift();
       }
     };
@@ -588,8 +588,9 @@
     headlineReason: `PELS can\u2019t read the ${kind.readingNoun} from ${ctx.deviceName.trim() || kind.fallbackDeviceNoun}.`,
     recourse: overviewDeviceRecourse(ctx.deviceId)
   });
-  var [MISSING_CAPACITY_HEADLINE, MISSING_CAPACITY_BODY_FRAGMENT] = PENDING_REASON_MISSING_CAPACITY_COPY.split(" \u2014 ");
-  var MISSING_CAPACITY_BODY = `${MISSING_CAPACITY_BODY_FRAGMENT[0].toUpperCase()}${MISSING_CAPACITY_BODY_FRAGMENT.slice(1)}`;
+  var [headlinePart, bodyFragment] = PENDING_REASON_MISSING_CAPACITY_COPY.split(" \u2014 ");
+  var MISSING_CAPACITY_HEADLINE = headlinePart ?? PENDING_REASON_MISSING_CAPACITY_COPY;
+  var MISSING_CAPACITY_BODY = bodyFragment === void 0 ? "" : `${bodyFragment.charAt(0).toUpperCase()}${bodyFragment.slice(1)}`;
   var HEATER_DEVICE_DATA_MISSING = deviceDataMissingResolver({
     headline: "Waiting for a reading from the device",
     body: "PELS needs a current temperature, a useful capacity, or a recent observation from this heater before it can plan the smart task.",

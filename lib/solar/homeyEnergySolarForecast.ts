@@ -102,12 +102,17 @@ export class HomeyEnergySolarForecastSource {
   async refresh(nowMs: number): Promise<SolarForecastRefreshOutcome> {
     const todayKey = getDateKeyInTimeZone(new Date(nowMs), this.deps.getTimeZone());
     const dateKeys = [todayKey, shiftDateKey(todayKey, 1)];
-    const reads = await Promise.all(dateKeys.map((key) => this.deps.fetchForecastDay(key)));
+    // Carry each day's key alongside its read rather than pairing two arrays by
+    // index: the key is what the cache is written under, so it travels with the
+    // result it belongs to.
+    const reads = await Promise.all(dateKeys.map(async (dateKey) => ({
+      dateKey,
+      read: await this.deps.fetchForecastDay(dateKey),
+    })));
     const nextCache: Record<string, SolarForecastDay> = {};
     let sawPoints = false;
     let sawFailed = false;
-    for (const [index, read] of reads.entries()) {
-      const dateKey = dateKeys[index];
+    for (const { dateKey, read } of reads) {
       if (read.kind === 'failed') {
         sawFailed = true;
         const previous = this.cacheByDate[dateKey];

@@ -2,7 +2,7 @@ import type {
   TargetPowerReachabilityState,
 } from '../../packages/contracts/src/types';
 
-const PROBE_RETRY_DELAYS_MS = [15, 30, 60].map((minutes) => minutes * 60 * 1000);
+const PROBE_RETRY_DELAYS_MS = [15 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000] as const;
 
 export type TargetPowerProbeCommand = {
   requestedPowerW: number;
@@ -21,7 +21,9 @@ export const resolveTargetPowerProbeRetryAtMs = (
   failureCount: number,
 ): number => {
   const index = Math.min(Math.max(1, Math.trunc(failureCount)) - 1, PROBE_RETRY_DELAYS_MS.length - 1);
-  return nowMs + PROBE_RETRY_DELAYS_MS[index];
+  // The ladder is a fixed const tuple and the index is clamped into it at both ends, so
+  // the first rung is an unreachable rather than a substituted value.
+  return nowMs + (PROBE_RETRY_DELAYS_MS[index] ?? PROBE_RETRY_DELAYS_MS[0]);
 };
 
 const buildReachability = (params: {

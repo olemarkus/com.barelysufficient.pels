@@ -80,6 +80,9 @@ function greedyRefine(
 
 type SplitCandidate = {
   bandIndex: number;
+  // The band being split, carried alongside its index so the applier reads the
+  // bounds it was chosen from rather than re-indexing the array.
+  band: ObjectiveProfileBand;
   splitInputValue: number;
   leftSliceEnd: number;
   parentStart: number;
@@ -92,10 +95,10 @@ function pickBestSplit(
   bands: ObjectiveProfileBand[],
 ): SplitCandidate | null {
   let best: SplitCandidate | null = null;
-  for (let bandIndex = 0; bandIndex < bands.length; bandIndex += 1) {
-    const range = sliceRangeForBand(sorted, bands[bandIndex]);
+  for (const [bandIndex, band] of bands.entries()) {
+    const range = sliceRangeForBand(sorted, band);
     if (range.end - range.start < OBJECTIVE_PROFILE_MIN_BAND_SAMPLES * 2) continue;
-    const candidate = bestSplitWithinRange(sorted, range, bandIndex);
+    const candidate = bestSplitWithinRange(sorted, band, range, bandIndex);
     if (candidate && (!best || candidate.sseReduction > best.sseReduction)) {
       best = candidate;
     }
@@ -105,6 +108,7 @@ function pickBestSplit(
 
 function bestSplitWithinRange(
   sorted: SortedSamples,
+  band: ObjectiveProfileBand,
   range: { start: number; end: number },
   bandIndex: number,
 ): SplitCandidate | null {
@@ -114,9 +118,14 @@ function bestSplitWithinRange(
   const firstSplit = range.start + OBJECTIVE_PROFILE_MIN_BAND_SAMPLES;
   const lastSplit = range.end - OBJECTIVE_PROFILE_MIN_BAND_SAMPLES;
   for (let splitIdx = firstSplit; splitIdx <= lastSplit; splitIdx += 1) {
+    const splitSample = sorted[splitIdx];
+    const previousSample = sorted[splitIdx - 1];
+    // The split window sits strictly inside the range, so both reads are in
+    // bounds; a range shorter than the window simply offers no split here.
+    if (!splitSample || !previousSample) continue;
     // Cluster identical inputValues into the left side so the boundary lands
     // on a value not shared across sides.
-    if (sorted[splitIdx].inputValue === sorted[splitIdx - 1].inputValue) continue;
+    if (splitSample.inputValue === previousSample.inputValue) continue;
     const leftSse = computeSse(sorted, range.start, splitIdx);
     const rightSse = computeSse(sorted, splitIdx, range.end);
     const reduction = parentSse - (leftSse + rightSse);
@@ -124,7 +133,8 @@ function bestSplitWithinRange(
     if (!best || reduction > best.sseReduction) {
       best = {
         bandIndex,
-        splitInputValue: sorted[splitIdx].inputValue,
+        band,
+        splitInputValue: splitSample.inputValue,
         leftSliceEnd: splitIdx,
         parentStart: range.start,
         parentEnd: range.end,
@@ -140,7 +150,7 @@ function applySplit(
   bands: ObjectiveProfileBand[],
   candidate: SplitCandidate,
 ): ObjectiveProfileBand[] {
-  const replaced = bands[candidate.bandIndex];
+  const replaced = candidate.band;
   const leftStats = buildBandFromSlice(sorted, candidate.parentStart, candidate.leftSliceEnd);
   const rightStats = buildBandFromSlice(sorted, candidate.leftSliceEnd, candidate.parentEnd);
   const left: ObjectiveProfileBand = {
@@ -154,13 +164,15 @@ function applySplit(
     upperExclusive: replaced.upperExclusive,
   };
   const next: ObjectiveProfileBand[] = [];
-  for (let i = 0; i < bands.length; i += 1) {
-    if (i === candidate.bandIndex) {
+  let index = 0;
+  for (const band of bands) {
+    if (index === candidate.bandIndex) {
       next.push(left);
       next.push(right);
     } else {
-      next.push(bands[i]);
+      next.push(band);
     }
+    index += 1;
   }
   return next;
 }
@@ -175,7 +187,8 @@ function applyEvAnchorSplit(
   const rightCount = sorted.length - anchorIdx;
   if (leftCount < OBJECTIVE_PROFILE_MIN_BAND_SAMPLES) return initial;
   if (rightCount < OBJECTIVE_PROFILE_MIN_BAND_SAMPLES) return initial;
-  const parent = initial[0];
+  const [parent] = initial;
+  if (!parent) return initial;
   const leftStats = buildBandFromSlice(sorted, 0, anchorIdx);
   const rightStats = buildBandFromSlice(sorted, anchorIdx, sorted.length);
   return [
@@ -185,10 +198,8 @@ function applyEvAnchorSplit(
 }
 
 function findFirstIndexAtOrAbove(sorted: SortedSamples, threshold: number): number | null {
-  for (let i = 0; i < sorted.length; i += 1) {
-    if (sorted[i].inputValue >= threshold) return i;
-  }
-  return null;
+  const index = sorted.findIndex((sample) => sample.inputValue >= threshold);
+  return index < 0 ? null : index;
 }
 
 function sliceRangeForBand(
@@ -197,8 +208,8 @@ function sliceRangeForBand(
 ): { start: number; end: number } {
   let start = -1;
   let end = sorted.length;
-  for (let i = 0; i < sorted.length; i += 1) {
-    const v = sorted[i].inputValue;
+  for (const [i, sample] of sorted.entries()) {
+    const v = sample.inputValue;
     if (start < 0 && v >= band.lowerInclusive) start = i;
     if (v >= band.upperExclusive) {
       end = i;
@@ -214,9 +225,15 @@ function buildBandFromSlice(
   endIdx: number,
 ): ObjectiveProfileBand {
   const { sampleCount, mean, m2 } = welfordKwhPerUnit(sorted, startIdx, endIdx);
-  const lowerInclusive = sorted[startIdx].inputValue;
-  const lastValue = sorted[endIdx - 1].inputValue;
-  const upperExclusive = lastValue + BAND_UPPER_BOUND_EPSILON;
+  const first = sorted[startIdx];
+  const last = sorted[endIdx - 1];
+  // Every caller passes a non-empty in-bounds slice; an empty one has no bounds
+  // to report, and inventing them would fabricate a band out of no samples.
+  if (!first || !last) {
+    throw new RangeError(`band slice [${startIdx}, ${endIdx}) is empty or out of bounds`);
+  }
+  const lowerInclusive = first.inputValue;
+  const upperExclusive = last.inputValue + BAND_UPPER_BOUND_EPSILON;
   return {
     lowerInclusive,
     upperExclusive,
@@ -240,7 +257,10 @@ function welfordKwhPerUnit(
   let mean = 0;
   let m2 = 0;
   for (let i = startIdx; i < endIdx; i += 1) {
-    const value = sorted[i].kwhPerUnit;
+    const sample = sorted[i];
+    // Callers pass in-bounds slices; a short one just ends the accumulation.
+    if (!sample) break;
+    const value = sample.kwhPerUnit;
     const n = i - startIdx + 1;
     const delta = value - mean;
     mean += delta / n;

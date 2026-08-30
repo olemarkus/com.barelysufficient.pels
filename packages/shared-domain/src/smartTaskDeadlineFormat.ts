@@ -40,7 +40,10 @@ const calendarDayIndex = (ms: number, timeZone: string | null): number => {
       day: '2-digit',
       timeZone: timeZone ?? undefined,
     }).format(new Date(ms));
-    const [y, m, d] = ymd.split('-').map(Number);
+    const [yPart, mPart, dPart] = ymd.split('-');
+    const y = Number(yPart);
+    const m = Number(mPart);
+    const d = Number(dPart);
     // Guard against an unexpected `en-CA` separator / partial format in some
     // runtimes: a non-numeric part would make `Date.UTC` return NaN and produce
     // a bogus day index. Fall through to the local-date calc instead.
@@ -93,8 +96,10 @@ export type ScheduledHourLike = { startsAtMs: number };
 // comma-separated start list so a "02:00, 03:00, 14:00" plan isn't misdrawn as
 // "02:00–15:00".
 const hoursAreContiguous = (hours: readonly ScheduledHourLike[]): boolean => {
-  for (let i = 1; i < hours.length; i += 1) {
-    if (hours[i].startsAtMs - hours[i - 1].startsAtMs !== HOUR_MS) return false;
+  let previousStartsAtMs: number | null = null;
+  for (const hour of hours) {
+    if (previousStartsAtMs !== null && hour.startsAtMs - previousStartsAtMs !== HOUR_MS) return false;
+    previousStartsAtMs = hour.startsAtMs;
   }
   return true;
 };
@@ -107,14 +112,16 @@ export const formatScheduledHoursWindow = (
   scheduledHours: readonly ScheduledHourLike[],
   timeZone: string | null,
 ): string | null => {
-  if (scheduledHours.length === 0) return null;
+  const firstHour = scheduledHours[0];
+  const lastHour = scheduledHours.at(-1);
+  // Both are absent only for an empty list — there is no window to name.
+  if (firstHour === undefined || lastHour === undefined) return null;
   if (scheduledHours.length === 1) {
-    return formatLocalHHMM(scheduledHours[0].startsAtMs, timeZone);
+    return formatLocalHHMM(firstHour.startsAtMs, timeZone);
   }
   if (hoursAreContiguous(scheduledHours)) {
-    const first = formatLocalHHMM(scheduledHours[0].startsAtMs, timeZone);
-    const lastStart = scheduledHours[scheduledHours.length - 1].startsAtMs;
-    const end = formatLocalHHMM(lastStart + HOUR_MS, timeZone);
+    const first = formatLocalHHMM(firstHour.startsAtMs, timeZone);
+    const end = formatLocalHHMM(lastHour.startsAtMs + HOUR_MS, timeZone);
     return `${first}–${end}`; // en-dash window
   }
   return scheduledHours.map((hour) => formatLocalHHMM(hour.startsAtMs, timeZone)).join(', ');

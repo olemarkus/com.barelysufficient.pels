@@ -73,14 +73,15 @@ export const resolveAutomaticHomePowerReading = (
     const candidate = resolveCumulativeMeterReading(item, seenDeviceIds);
     if (candidate !== null) candidates.push(candidate);
   }
-  if (candidates.length === 0) return { state: 'unavailable', cumulativeItemCount };
-  if (candidates.length === 1) {
-    return { state: 'resolved', ...candidates[0], cumulativeItemCount };
+  const [soleCandidate, ...furtherCandidates] = candidates;
+  if (soleCandidate === undefined) return { state: 'unavailable', cumulativeItemCount };
+  if (furtherCandidates.length === 0) {
+    return { state: 'resolved', ...soleCandidate, cumulativeItemCount };
   }
   if (preferredDeviceId !== null) {
-    const matches = candidates.filter(({ deviceId }) => deviceId === preferredDeviceId);
-    if (matches.length === 1) {
-      return { state: 'resolved', ...matches[0], cumulativeItemCount };
+    const [match, ...furtherMatches] = candidates.filter(({ deviceId }) => deviceId === preferredDeviceId);
+    if (match !== undefined && furtherMatches.length === 0) {
+      return { state: 'resolved', ...match, cumulativeItemCount };
     }
   }
   return { state: 'ambiguous', cumulativeItemCount };
