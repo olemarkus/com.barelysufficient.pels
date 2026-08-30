@@ -8,6 +8,7 @@ import {
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type { EvObservedProbe, MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isManagedFilterActive } from '../../setup/appDeviceSupport';
 import {
@@ -2232,6 +2233,97 @@ describe('DeviceTransport', () => {
                 retained: expect.objectContaining({ value: false, source: 'realtime_capability' }),
                 consolidated: expect.objectContaining({ value: false, winner: 'retained' }),
             }));
+        });
+
+        it('counts rather than logs a consolidation where both sources already agree', async () => {
+            // Same shape as the test above, except the later pull has caught up to
+            // the retained realtime value instead of contradicting it. Nothing is
+            // reconciled, so there is no decision to log — the merge records the
+            // agreement on a counter instead. This is the case that was 100% of the
+            // event's production volume.
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:00:00.000Z' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-06-03T06:00:00.000Z' },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+            deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
+            debugStructuredMock.mockClear();
+            const agreedBefore = getPerfSnapshot().counts.binary_observation_agreed_total ?? 0;
+
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
+                        onoff: { value: false, id: 'onoff', lastUpdated: '2026-06-03T06:01:00.000Z' },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+
+            expect(debugStructuredMock).not.toHaveBeenCalledWith(expect.objectContaining({
+                event: 'binary_observation_consolidated',
+            }));
+            const agreedAfter = getPerfSnapshot().counts.binary_observation_agreed_total ?? 0;
+            expect(agreedAfter - agreedBefore).toBe(1);
+            // The agreed value is still what the snapshot reports.
+            const dev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+            expect(dev1?.binaryControl?.on).toBe(false);
+        });
+
+        it('logs, and does not count as agreement, an unchanged snapshot the pull disagreed with', async () => {
+            // An unchanged snapshot is not on its own an agreement. Here the older
+            // pull carries a malformed `onoff`, parse keeps the retained boolean,
+            // and applying it changes nothing — the same "unchanged" signal as an
+            // agreement, but the sources plainly disagreed and the retained value
+            // is what stands. The `pull` field is the only place that mismatch is
+            // visible, so it keeps its line and must not inflate the counter.
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:00:00.000Z' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-06-03T06:00:00.000Z' },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+            deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
+            debugStructuredMock.mockClear();
+            const agreedBefore = getPerfSnapshot().counts.binary_observation_agreed_total ?? 0;
+
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
+                        onoff: { value: 'unknown', id: 'onoff', lastUpdated: '2026-06-03T06:01:00.000Z' },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+
+            expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'binary_observation_consolidated',
+                deviceId: 'dev1',
+                capabilityId: 'onoff',
+                pull: expect.objectContaining({ value: 'unknown' }),
+                consolidated: expect.objectContaining({
+                    winner: 'retained',
+                    reason: 'retained_over_disagreeing_pull',
+                }),
+            }));
+            const agreedAfter = getPerfSnapshot().counts.binary_observation_agreed_total ?? 0;
+            expect(agreedAfter - agreedBefore).toBe(0);
         });
 
         it('keeps a realtime-off observation when a later pull reports onoff=true with no timestamp', async () => {
