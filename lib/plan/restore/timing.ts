@@ -249,26 +249,8 @@ export function getShedCooldownState(params: {
 
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 
-export type CapacityRestoreGateTiming = {
-  activeOvershoot: boolean;
-  inCooldown: boolean;
-  inRestoreCooldown: boolean;
-  inStartupStabilization: boolean;
-  measurementTs: number | null;
-  nowTs: number;
-  restoreCooldownSeconds: number;
-  restoreCooldownMs: number;
-  shedCooldownRemainingSec: number | null;
-  shedCooldownStartedAtMs?: number | null;
-  shedCooldownTotalSec?: number | null;
-  restoreCooldownRemainingSec: number | null;
-  restoreCooldownStartedAtMs?: number | null;
-  restoreCooldownTotalSec?: number | null;
-  startupStabilizationRemainingSec: number | null;
-};
-
 export type CapacityRestoreBlockReasonTiming = Pick<
-  CapacityRestoreGateTiming,
+  RestoreTiming,
   | 'activeOvershoot'
   | 'inCooldown'
   | 'inRestoreCooldown'
@@ -277,7 +259,7 @@ export type CapacityRestoreBlockReasonTiming = Pick<
   | 'shedCooldownRemainingSec'
   | 'restoreCooldownRemainingSec'
 > & Partial<Pick<
-  CapacityRestoreGateTiming,
+  RestoreTiming,
   | 'nowTs'
   | 'restoreCooldownMs'
   | 'shedCooldownStartedAtMs'
@@ -295,7 +277,7 @@ const buildCountdownTiming = (
 });
 
 type MeterSettlingTiming = Pick<
-  CapacityRestoreGateTiming,
+  RestoreTiming,
   'activeOvershoot' | 'measurementTs' | 'nowTs'
 >;
 

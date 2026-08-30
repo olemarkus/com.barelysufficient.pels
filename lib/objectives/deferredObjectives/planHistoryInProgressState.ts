@@ -92,9 +92,9 @@ export type InProgressRecord = Omit<
   // (deterministic eviction, full-run coverage preserved) so the in-memory
   // map stays bounded. Drained into the entry at finalization.
   progressSamples: Map<number, DeferredObjectivePlanHistoryProgressSample>;
-  // Total useful kWh delivered to the device across the run. Summed from
-  // `recordHourlyDelivery` contributions; persisted only when at least one
-  // contribution was recorded so empty runs stay byte-stable across upgrades.
+  // Total useful kWh delivered to the device across the run. Summed from the
+  // hour-rollover contributions; persisted only when at least one contribution
+  // was recorded so empty runs stay byte-stable across upgrades.
   deliveredKWh: number;
   // Σ priceValue × deliveredKWh across the run, in the price scheme's raw
   // minor unit at record time (øre for the default Norwegian scheme).
@@ -110,7 +110,7 @@ export type InProgressRecord = Omit<
   // entry omits the field, falling back to the recording-era øre/kr default).
   // See `DeferredObjectivePlanHistoryEntry.costDisplay`.
   costDisplay: DeferredObjectivePlanHistoryCostDisplay | null;
-  // Becomes true on the first `recordHourlyDelivery` contribution so
+  // Becomes true on the first delivery contribution so
   // `deliveredKWh` and `totalCost` are persisted (as `0` if needed) rather
   // than dropped. Without this flag a run with one zero-priced delivered
   // hour would look identical to a run that never received a contribution.
@@ -122,10 +122,10 @@ export type InProgressRecord = Omit<
   // ~5-10 entries at most. No explicit cap; tracked in `TODO.md` as a v2.7.2
   // follow-up if a pathological replan loop ever surfaces.
   revisions: DeferredObjectivePlanHistoryRevisionLogEntry[];
-  // Per-hour delivery contributions appended on every `recordHourlyDelivery`
-  // call. Each entry mirrors one contribution: hour-aligned `atMs`,
-  // delivered kWh, the spot-price the recorder summed into `totalCost`, and
-  // the price tone the caller resolved. The postmortem bar strip
+  // Per-hour delivery contributions appended on every closed hour. Each entry
+  // mirrors one contribution: hour-aligned `atMs`, delivered kWh, the
+  // spot-price the recorder summed into `totalCost`, and the price tone the
+  // hour-price resolver returned. The postmortem bar strip
   // (`DeadlinePlanHistoryDetail`) reads this list to render one bar per
   // hour. Persisted only when at least one contribution was recorded —
   // empty runs stay byte-stable across upgrades, gated by

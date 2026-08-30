@@ -46,10 +46,7 @@ import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { incPerfCounter } from '../utils/perfCounters';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import {
-  buildDailyBudgetContext as buildPlanDailyBudgetContext,
-  resolveDailySoftLimitBucket,
-} from './planDailyBudgetWindow';
+import { resolveDailySoftLimitBucket } from './planDailyBudgetWindow';
 import {
   ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
   syncConfirmedRestoreAttributionState as syncConfirmedRestoreAttributionAttempt,
@@ -449,7 +446,6 @@ export class PlanBuilder {
       modeTargetCFor,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
       currentHourPriceLevel: this.resolveCurrentHourPriceLevel(devices),
-      dailyBudget: buildPlanDailyBudgetContext(dailyBudgetSnapshot),
     }));
     const overshootDecision = resolveSoftOvershootDecision({
       headroomKw: context.headroom,

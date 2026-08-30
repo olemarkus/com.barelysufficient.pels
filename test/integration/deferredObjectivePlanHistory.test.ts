@@ -1656,132 +1656,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.progressSamples![1]!.value).toBe(55);
     });
 
-    it('records `deliveredKWh` and `totalCost` from hourly delivery contributions', () => {
-      const { deps, saved } = buildPersistDeps();
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = 6 * HOUR_MS;
-      // Start the run so an in-progress record exists for the contributions
-      // to land on.
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
-      // Three priced hours: 1.0 kWh @ 0.50 + 1.5 kWh @ 0.80 + 0.5 kWh @ 1.20 = 3.0 kWh, 2.30 cost.
-      recorder.recordHourlyDelivery({
-        deviceId: 'dev', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: 1.0, priceValue: 0.50, tone: 'cheap',
-      });
-      recorder.recordHourlyDelivery({
-        deviceId: 'dev', deadlineAtMs, hourStartMs: 2 * HOUR_MS, deliveredKWh: 1.5, priceValue: 0.80, tone: 'normal',
-      });
-      recorder.recordHourlyDelivery({
-        deviceId: 'dev', deadlineAtMs, hourStartMs: 3 * HOUR_MS, deliveredKWh: 0.5, priceValue: 1.20, tone: 'expensive',
-      });
-      recorder.observe([], deadlineAtMs);
-      recorder.flushIfDirty();
-
-      const entry = saved()!.entries[0]!;
-      expect(entry.deliveredKWh).toBeCloseTo(3.0);
-      expect(entry.totalCost).toBeCloseTo(0.50 + 1.20 + 0.60);
-      // Each contribution lands on its own per-hour bucket so the postmortem
-      // bar strip (v2.7.3) reads one bar per delivered hour. Totals still
-      // match the sum, but the per-hour rows preserve the tone/price the
-      // caller resolved at contribution time.
-      expect(entry.hourlyContributions).toHaveLength(3);
-      expect(entry.hourlyContributions![0]).toEqual({
-        atMs: HOUR_MS, deliveredKWh: 1.0, priceValue: 0.50, tone: 'cheap',
-      });
-      expect(entry.hourlyContributions![1]).toEqual({
-        atMs: 2 * HOUR_MS, deliveredKWh: 1.5, priceValue: 0.80, tone: 'normal',
-      });
-      expect(entry.hourlyContributions![2]).toEqual({
-        atMs: 3 * HOUR_MS, deliveredKWh: 0.5, priceValue: 1.20, tone: 'expensive',
-      });
-    });
-
-    it('merges duplicate hourly contributions onto a single bucket and suppresses the field when no contribution arrived', () => {
-      const { deps, saved } = buildPersistDeps();
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = 6 * HOUR_MS;
-      // Two contributions for the same hour (aggregator replay): kWh summed,
-      // the fresher tone/price wins. Mid-hour `hourStartMs` floors to the
-      // hour boundary so the postmortem reads a stable axis.
-      recorder.observe([makeDiag({ deviceId: 'dev-a', deadlineAtMs, currentTemperatureC: 50 })], 0);
-      recorder.recordHourlyDelivery({
-        deviceId: 'dev-a', deadlineAtMs, hourStartMs: HOUR_MS + 15 * 60_000, deliveredKWh: 0.4, priceValue: 0.30, tone: 'cheap',
-      });
-      recorder.recordHourlyDelivery({
-        deviceId: 'dev-a', deadlineAtMs, hourStartMs: HOUR_MS + 45 * 60_000, deliveredKWh: 0.6, priceValue: 0.40, tone: 'normal',
-      });
-      // Run B never receives a contribution → `hourlyContributions` stays
-      // absent, mirroring the existing `deliveredKWh` suppression contract.
-      recorder.observe([makeDiag({ deviceId: 'dev-b', deadlineAtMs, currentTemperatureC: 45 })], 0);
-      recorder.observe([], deadlineAtMs);
-      recorder.flushIfDirty();
-
-      const entriesByDeviceId = new Map(saved()!.entries.map((e) => [e.deviceId, e]));
-      const merged = entriesByDeviceId.get('dev-a')!;
-      expect(merged.hourlyContributions).toHaveLength(1);
-      expect(merged.hourlyContributions![0]).toEqual({
-        atMs: HOUR_MS, deliveredKWh: 1.0, priceValue: 0.40, tone: 'normal',
-      });
-      expect(entriesByDeviceId.get('dev-b')!.hourlyContributions).toBeUndefined();
-    });
-
-    it('persists `deliveredKWh: 0` on a real-but-zero contribution but suppresses both fields when no contribution arrived', () => {
-      const { deps, saved } = buildPersistDeps();
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = 6 * HOUR_MS;
-
-      // Run A receives a zero-kWh contribution at a negative price.
-      // Both fields persist (the feed ran, the run is "this was free").
-      recorder.observe([makeDiag({ deviceId: 'dev-a', deadlineAtMs, currentTemperatureC: 50 })], 0);
-      recorder.recordHourlyDelivery({
-        deviceId: 'dev-a', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: 0, priceValue: -0.10, tone: 'cheap',
-      });
-      // Run B never receives a contribution. Both fields stay absent.
-      recorder.observe([makeDiag({ deviceId: 'dev-b', deadlineAtMs, currentTemperatureC: 45 })], 0);
-      recorder.observe([], deadlineAtMs);
-      recorder.flushIfDirty();
-
-      const entriesByDeviceId = new Map(saved()!.entries.map((e) => [e.deviceId, e]));
-      expect(entriesByDeviceId.get('dev-a')!.deliveredKWh).toBe(0);
-      expect(entriesByDeviceId.get('dev-a')!.totalCost).toBe(0);
-      expect(entriesByDeviceId.get('dev-b')!.deliveredKWh).toBeUndefined();
-      expect(entriesByDeviceId.get('dev-b')!.totalCost).toBeUndefined();
-    });
-
-    it('ignores hourly delivery contributions for unknown runs (no in-progress record)', () => {
-      const { deps, saved } = buildPersistDeps();
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      // No `observe` call — recorder has no in-progress record for this device.
-      recorder.recordHourlyDelivery({
-        deviceId: 'ghost', deadlineAtMs: HOUR_MS, hourStartMs: 0, deliveredKWh: 1.0, priceValue: 0.50, tone: 'normal',
-      });
-      // No persist should happen — recorder is clean.
-      expect(recorder.isDirty()).toBe(false);
-      expect(recorder.flushIfDirty()).toBe(false);
-      expect(saved()).toBeNull();
-    });
-
-    it('drops negative or non-finite contributions defensively', () => {
-      const { deps, saved } = buildPersistDeps();
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      const deadlineAtMs = 6 * HOUR_MS;
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
-      // Negative kWh — dropped.
-      recorder.recordHourlyDelivery({
-        deviceId: 'dev', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: -1.0, priceValue: 0.50, tone: 'normal',
-      });
-      // NaN price — dropped.
-      recorder.recordHourlyDelivery({
-        deviceId: 'dev', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: 1.0, priceValue: Number.NaN, tone: 'normal',
-      });
-      recorder.observe([], deadlineAtMs);
-      recorder.flushIfDirty();
-
-      const entry = saved()!.entries[0]!;
-      // Both contributions dropped → no delivery contribution recorded → fields absent.
-      expect(entry.deliveredKWh).toBeUndefined();
-      expect(entry.totalCost).toBeUndefined();
-    });
-
     it('captures `kwhPerUnitMean` from the active plan onto the revision snapshots', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
@@ -1975,14 +1849,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
   });
 
   describe('internal hour-rollover delivery wiring', () => {
-    // Regression target: v2.7.2 shipped the recorder API + history v4
-    // schema but no production caller invoked `recordHourlyDelivery`, so
-    // every real entry persisted with `hasDeliveryContribution: false`
-    // and the postmortem strip / cost narrative chip were dark. The
-    // recorder now drives contributions itself from the observe loop
-    // using the diagnostic's progress delta and an injected hourly
-    // price+tone resolver — these tests assert wired entries populate
-    // the v4 delivery fields end-to-end.
+    // Regression target: v2.7.2 shipped the history v4 schema plus a push
+    // API no production caller ever invoked, so every real entry persisted
+    // with `hasDeliveryContribution: false` and the postmortem strip / cost
+    // narrative chip were dark. The recorder drives contributions itself
+    // from the observe loop using the diagnostic's progress delta and an
+    // injected hourly price+tone resolver — these tests assert wired
+    // entries populate the v4 delivery fields end-to-end. The unused push
+    // API is gone; this loop is the only way delivery is recorded.
 
     const buildPersistDepsWithPrice = (
       pricesByHourMs: Record<number, { priceValue: number; tone: 'cheap' | 'normal' | 'expensive' }>,
@@ -3205,6 +3079,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder({
         ...deps,
         debugStructured: (payload) => { events.push(payload); },
+        // Delivery reaches the record the only way production produces it:
+        // the observe loop's hour rollover, priced by this resolver.
+        resolveHourPrice: () => ({ priceValue: 1.0, tone: 'normal', costDisplay: { unit: 'kr', divisor: 100 } }),
       });
       const deadlineAtMs = 6 * HOUR_MS;
       const plans = {
@@ -3275,19 +3152,27 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           // shape this regression is about.
           energyNeededKWh: 5.0,
           energyExpectedKWh: 3.0,
+          kWhPerUnitBanded: 1.6,
           trajectory: { kind: 'resolved', status: 'cannot_meet' },
         })],
         0,
         plans,
       );
-      recorder.recordHourlyDelivery({
-        deviceId: 'dev',
-        deadlineAtMs,
-        hourStartMs: 0,
-        deliveredKWh: 3.2,
-        priceValue: 1.0,
-        tone: 'normal',
-      });
+      // Cycle 2 lands in the next hour, so the rollover closes hour 0 and
+      // attributes its delta: 2 °C × 1.6 kWh/°C = 3.2 kWh delivered.
+      recorder.observe(
+        [makeDiag({
+          deviceId: 'dev',
+          deadlineAtMs,
+          currentTemperatureC: 52,
+          energyNeededKWh: 5.0,
+          energyExpectedKWh: 3.0,
+          kWhPerUnitBanded: 1.6,
+          trajectory: { kind: 'resolved', status: 'cannot_meet' },
+        })],
+        HOUR_MS + 5 * 60_000,
+        plans,
+      );
       // Sweep at the deadline to finalize as `missed`.
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();
@@ -3382,7 +3267,10 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // change removes, reintroduced one layer down. So the commitment is only
       // stated from a point where nothing has been delivered.
       const { deps, saved } = buildPersistDeps();
-      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const recorder = new DeferredObjectivePlanHistoryRecorder({
+        ...deps,
+        resolveHourPrice: () => ({ priceValue: 1.0, tone: 'normal', costDisplay: { unit: 'kr', divisor: 100 } }),
+      });
       const deadlineAtMs = 6 * HOUR_MS;
 
       // Cycle 1: still learning — no requirement to state.
@@ -3396,25 +3284,29 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         })],
         0,
       );
-      // Delivery lands BEFORE the profile resolves.
-      recorder.recordHourlyDelivery({
-        deviceId: 'dev',
-        deadlineAtMs,
-        hourStartMs: 0,
-        deliveredKWh: 2.0,
-        priceValue: 1.0,
-        tone: 'normal',
-      });
-      // Cycle 2: the profile resolves, but its figure is now a remainder.
+      // Cycle 2 crosses the hour boundary while the profile is STILL
+      // unresolved, so the rollover records delivery before any commitment
+      // could be stated.
       recorder.observe(
         [makeDiag({
           deviceId: 'dev',
           deadlineAtMs,
           currentTemperatureC: 56,
+          energyNeededKWh: null,
+          energyExpectedKWh: null,
+        })],
+        HOUR_MS + 5 * 60_000,
+      );
+      // Cycle 3: the profile resolves, but its figure is now a remainder.
+      recorder.observe(
+        [makeDiag({
+          deviceId: 'dev',
+          deadlineAtMs,
+          currentTemperatureC: 58,
           energyNeededKWh: 2.0,
           energyExpectedKWh: 1.5,
         })],
-        HOUR_MS,
+        2 * HOUR_MS + 5 * 60_000,
       );
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();

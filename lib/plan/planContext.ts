@@ -11,15 +11,6 @@ import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/
 // and any running load does not.
 const IDLE_HOUSE_KW = 0.01;
 
-export type DailyBudgetContext = {
-  enabled: boolean;
-  usedNowKWh: number;
-  allowedNowKWh: number;
-  remainingKWh: number;
-  exceeded: boolean;
-  frozen: boolean;
-};
-
 export type SoftLimitSource = 'capacity' | 'daily';
 
 export type PlanContext = {
@@ -169,7 +160,6 @@ export type PlanContext = {
    * consumer carries a copy of it.
    */
   currentHourPriceLevel: PriceLevel;
-  dailyBudget?: DailyBudgetContext;
 };
 
 export function buildPlanContext(params: {
@@ -205,7 +195,6 @@ export function buildPlanContext(params: {
   // Already resolved by the caller (see `PlanContext.currentHourPriceLevel`) —
   // this builder makes no price call of its own.
   currentHourPriceLevel: PriceLevel;
-  dailyBudget?: DailyBudgetContext;
 }): PlanContext {
   const {
     devices,
@@ -221,7 +210,6 @@ export function buildPlanContext(params: {
     modeTargetCFor,
     hourlyBudgetExhausted,
     currentHourPriceLevel,
-    dailyBudget,
   } = params;
 
   const now = Date.now();
@@ -290,6 +278,5 @@ export function buildPlanContext(params: {
     headroom,
     restoreMarginPlanning: Math.max(0.1, capacitySettings.marginKw || 0),
     currentHourPriceLevel,
-    dailyBudget,
   };
 }

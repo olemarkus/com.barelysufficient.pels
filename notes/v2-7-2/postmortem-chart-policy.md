@@ -1,7 +1,7 @@
 # Postmortem chart-visibility policy (active vs historic)
 
-> Status: shipped via the v2.7.2 train; `recordHourlyDelivery` is wired in
-> production as of `ec60f06f` (v2.8.0). Reference doc for the
+> Status: shipped via the v2.7.2 train; per-hour delivery contributions are
+> wired in production as of `ec60f06f` (v2.8.0). Reference doc for the
 > active-vs-historic asymmetry the smart-task pages enforce.
 
 ## TL;DR
