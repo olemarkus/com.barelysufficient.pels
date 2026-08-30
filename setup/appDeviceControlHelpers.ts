@@ -1,6 +1,6 @@
 import {
   getSteppedLoadLowestActiveStep, getSteppedLoadStep,
-  hasUsableSteppedLoadLadder, isSteppedLoadOffStep,
+  hasUsableSteppedLoadLadder,
   normalizeDeviceControlProfiles, resolveSteppedLoadPlanningPowerKw,
 } from '../lib/utils/deviceControlProfiles';
 import { resolveCurrentOn } from '../lib/observer/observedState';
@@ -107,16 +107,6 @@ const resolveSuggestedSteppedLoadProfile = (
     : null
 );
 
-const resolveObservedSteppedOn = (
-  binaryOn: boolean | undefined,
-  profile: SteppedLoadProfile,
-  observedStepId: string | undefined,
-): boolean | undefined => {
-  if (binaryOn === false) return false;
-  if (observedStepId && isSteppedLoadOffStep(profile, observedStepId)) return false;
-  if (binaryOn === true) return true;
-  return observedStepId ? true : undefined;
-};
 
 export const resolveEffectiveSteppedLoadProfile = (params: {
   // Owner-seam read of the producer-fed transport snapshot, which carries
@@ -192,20 +182,22 @@ export const decorateSnapshotWithDeviceControl = (params: {
   }
   const confirmedReportedStepId = nativeReportedStepId ?? snapshotReportedStepId;
   const observedStepId = nativeReportedStepId ?? reported?.stepId ?? snapshotReportedStepId;
-  store.expireConfirmedDesiredOnBinaryOff(
-    snapshot.id,
-    resolveObservedSteppedOn(snapshot.binaryControl?.on, profile, observedStepId),
-  );
+  // One fold, one owner: the same `resolveCurrentOn` the decorated snapshot's
+  // own `binaryControl.on` is built from, below. The setup-local twin this used
+  // to call was that expression written twice — and the twin had drifted, since
+  // it answered "unknown" where the canonical fold answers `true`.
+  store.expireConfirmedDesiredOnBinaryOff(snapshot.id, resolveCurrentOn({
+    binaryControl: snapshot.binaryControl,
+    steppedLoadProfile: profile,
+    selectedStepId: observedStepId,
+  }));
   const desired = store.getDesired(snapshot.id);
   if (confirmedReportedStepId && desired?.stepId === confirmedReportedStepId) {
     store.confirmDesired(snapshot.id, desired);
   }
   const currentDesired = store.getDesired(snapshot.id);
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
-  const initializedStepId = store.getInitializedStepId(snapshot.id);
-  if (initializedStepId && initializedStepId !== fallbackStepId) {
-    store.clearCommandSession(snapshot.id);
-  }
+  store.resolveInitializationLatch(snapshot.id, fallbackStepId);
   const stepFields = buildSteppedLoadSnapshotStepFields({
     profile,
     nowMs,
@@ -326,14 +318,8 @@ export class AppDeviceControlHelpers {
     const lowestStepId = profile
       ? getSteppedLoadLowestActiveStep(profile)?.id
       : undefined;
-    const initializedStepId = this.deps.store.getInitializedStepId(deviceId);
-    if (initializedStepId && initializedStepId !== lowestStepId) {
-      this.deps.store.clearCommandSession(deviceId);
-    }
     return {
-      initializationAssumedStepId: initializedStepId === lowestStepId
-        ? initializedStepId
-        : undefined,
+      initializationAssumedStepId: this.deps.store.resolveInitializationLatch(deviceId, lowestStepId),
       hasPriorStepCommand: this.deps.store.hasPriorStepCommand(deviceId),
       reportedStepId: profile
         ? getSteppedLoadStep(
@@ -344,7 +330,7 @@ export class AppDeviceControlHelpers {
       // Whether a step command is in flight. Read from the commanded axis, not
       // from a decorated snapshot: the decoration is a once-per-cycle copy, and
       // drift asks this between cycles.
-      stepCommandPending: this.deps.store.getDesired(deviceId)?.pending === true,
+      stepCommandPending: this.deps.store.isStepCommandPending(deviceId),
     };
   }
 

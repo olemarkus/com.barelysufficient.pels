@@ -597,6 +597,36 @@ describe('appDeviceControlHelpers', () => {
     dateNow.mockRestore();
   });
 
+  it('reads a stepped device with no binary axis as ON, per the snapshot contract', () => {
+    // `binaryControl` absent means the device HAS no binary axis, not that the
+    // axis failed to read: the contract says to treat its absence exactly like
+    // the old fabricated `currentOn: true`. The setup-local fold this replaced
+    // answered "unknown" here and silently withheld the on-session teardown, so
+    // a later observed off did not expire the command state on its first pass.
+    const store = createSteppedCommandStore();
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
+
+    decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ binaryControl: undefined }),
+      profiles: steppedProfiles,
+      store,
+      nowMs: 2_000,
+    });
+    expect(store.getDesired('dev-1')).toBeDefined();
+
+    // Now the device is observed off. The on-session ended, so its command
+    // state goes with it.
+    decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ binaryControl: { on: false } }),
+      profiles: steppedProfiles,
+      store,
+      nowMs: 3_000,
+    });
+
+    expect(store.getDesired('dev-1')).toBeUndefined();
+    expect(store.hasPriorStepCommand('dev-1')).toBe(false);
+  });
+
   it('tracks optimistic lowest-step initialization without entering the retry lifecycle', () => {
     const store = createSteppedCommandStore();
     const runtimeState = store.getStateForTests();

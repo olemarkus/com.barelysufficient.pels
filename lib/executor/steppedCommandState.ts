@@ -104,13 +104,20 @@ export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => 
 // observed axis now usually shows the drift directly, but only for devices whose
 // flow actually reports while paused. This expiry is the guard for the ones that
 // go quiet, and it costs nothing when the report does arrive.
+/**
+ * `observedOn` is strictly boolean, and the producer resolves it with the ONE
+ * fold that owns the question: `resolveCurrentOn` (`lib/observer/observedState.ts`),
+ * `!(binaryOff || steppedOff)`. There is no third state to model — a device with
+ * no binary axis is not "unknown", it is a device that may always draw, which
+ * the snapshot contract states outright ("consumers must treat its absence
+ * exactly like the old fabricated `currentOn: true`").
+ */
 export const expireConfirmedDesiredStepOnBinaryOff = (params: {
   runtimeState: DeviceControlRuntimeState;
   deviceId: string;
-  observedOn: boolean | undefined;
+  observedOn: boolean;
 }): void => {
   const { runtimeState, deviceId, observedOn } = params;
-  if (typeof observedOn !== 'boolean') return;
   if (!observedOn) {
     runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.delete(deviceId);
     runtimeState.steppedLoadStepCommandIssuedByDeviceId.delete(deviceId);
