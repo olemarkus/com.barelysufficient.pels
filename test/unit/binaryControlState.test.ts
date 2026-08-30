@@ -1,6 +1,7 @@
 import {
   isBinaryOnOrUnknown,
   isBinaryObservedOff,
+  isBinaryObservedOn,
   isBinaryControlled,
   getBinaryOn,
   resolveBinaryCommandCurrentOn,
@@ -20,6 +21,23 @@ describe('binary observed-state predicates', () => {
     it('is true for a null/undefined device (matches `device?.binaryControl?.on ?? true`)', () => {
       expect(isBinaryOnOrUnknown(undefined)).toBe(true);
       expect(isBinaryOnOrUnknown(null)).toBe(true);
+    });
+  });
+
+  describe('isBinaryObservedOn (≡ binaryControl?.on === true)', () => {
+    it('is true only when observed on', () => {
+      expect(isBinaryObservedOn({ binaryControl: { on: true } })).toBe(true);
+      expect(isBinaryObservedOn({ binaryControl: { on: false } })).toBe(false);
+    });
+
+    // The directional difference from isBinaryOnOrUnknown: absence must not
+    // fabricate consent for a release, the way it must not fabricate an off
+    // for a may-draw decision.
+    it('is false when there is no observed binary state', () => {
+      expect(isBinaryObservedOn({})).toBe(false);
+      expect(isBinaryObservedOn(undefined)).toBe(false);
+      expect(isBinaryObservedOn(null)).toBe(false);
+      expect(isBinaryOnOrUnknown({})).toBe(true);
     });
   });
 
