@@ -21,6 +21,13 @@ export type BudgetRedesignDayView = 'today' | 'tomorrow' | 'yesterday';
 // `resolveBudgetCostViewAvailable`).
 export type BudgetChartUnit = 'energy' | 'money';
 
+// A bucket that is absent (short array) or non-finite contributes nothing to a
+// running total — the treatment the bare `Number.isFinite` guards already gave
+// it, now stated where the slot is read.
+const bucketOrZero = (value: number | undefined): number => (
+  value !== undefined && Number.isFinite(value) ? value : 0
+);
+
 const cumulative = (values: number[]): number[] => {
   let total = 0;
   return values.map((value) => {
@@ -115,11 +122,11 @@ export const buildProjectionCumulative = (params: {
   const previousActualTotal = actualUpToIndex > 0 ? actualCumulative[actualUpToIndex - 1] : 0;
   if (!Number.isFinite(previousActualTotal)) return projection;
   const currentActual = Math.max(0, (startValue as number) - (previousActualTotal as number));
-  const currentPlanned = Number.isFinite(planned[actualUpToIndex]) ? planned[actualUpToIndex] : 0;
+  const currentPlanned = bucketOrZero(planned[actualUpToIndex]);
   let total = (startValue as number) + Math.max(0, currentPlanned - currentActual);
   projection[actualUpToIndex] = Number(total.toFixed(3));
   for (let index = actualUpToIndex + 1; index < planned.length; index += 1) {
-    total += Number.isFinite(planned[index]) ? planned[index] : 0;
+    total += bucketOrZero(planned[index]);
     projection[index] = Number(total.toFixed(3));
   }
   return projection;
@@ -216,7 +223,8 @@ const scaleCumulativeToDailyBudget = (
   values: number[],
   dailyBudgetKWh: number,
 ): number[] => {
-  const terminal = values.length ? values[values.length - 1] : 0;
+  // ES2020-safe last-element access (no Array#at): the settings bundle targets es2020.
+  const terminal = values[values.length - 1] ?? 0;
   if (!Number.isFinite(dailyBudgetKWh) || dailyBudgetKWh <= 0 || !Number.isFinite(terminal) || terminal <= 0) {
     return values;
   }
@@ -398,14 +406,23 @@ export const buildBudgetHourlyReadoutBundle = (params: {
     : [];
   const hasPrice = priceValues.length === labels.length;
   const priceUnit = costDisplay.unit.trim() ? resolvePriceUnitLabel(costDisplay) : null;
-  const readouts = labels.map((_label, index) => buildBudgetHourlyReadout({
-    hourRange: resolveBucketHourRange(labels, index),
-    budgetKWh: Number.isFinite(planned[index]) ? planned[index] : 0,
-    managedKWh: hasSplit ? plannedManaged[index] : null,
-    backgroundKWh: hasSplit ? plannedBackground[index] : null,
-    price: hasPrice ? { value: priceValues[index], unitLabel: priceUnit } : null,
-    actualKWh: index <= actualUpToIndex && Number.isFinite(actual[index]) ? actual[index] : null,
-  }));
+  const readouts = labels.map((_label, index) => {
+    // `hasSplit` / `hasPrice` already say the parallel arrays cover every
+    // label, so these slots resolve; a missing one is an absent reading, never
+    // a zero kWh or a free price.
+    const priceValue = priceValues[index];
+    const actualValue = actual[index];
+    return buildBudgetHourlyReadout({
+      hourRange: resolveBucketHourRange(labels, index),
+      budgetKWh: bucketOrZero(planned[index]),
+      managedKWh: hasSplit ? plannedManaged[index] ?? null : null,
+      backgroundKWh: hasSplit ? plannedBackground[index] ?? null : null,
+      price: hasPrice && priceValue !== undefined ? { value: priceValue, unitLabel: priceUnit } : null,
+      actualKWh: index <= actualUpToIndex && actualValue !== undefined && Number.isFinite(actualValue)
+        ? actualValue
+        : null,
+    });
+  });
   return {
     readouts,
     defaultIndex: resolveBudgetDefaultReadoutIndex(payload, view),

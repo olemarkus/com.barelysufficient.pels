@@ -346,8 +346,9 @@ const buildMeasuredData = (params: {
 const buildTooltipFormatter = (readouts: ChartReadoutContent[], warnColor: string) => (
   (rawParams: unknown): string => {
     const index = resolveTooltipDataIndex(rawParams);
-    if (index < 0 || index >= readouts.length) return '';
-    return readoutToTooltipHtml(readouts[index], { warnColor });
+    const readout = readouts[index];
+    if (readout === undefined) return '';
+    return readoutToTooltipHtml(readout, { warnColor });
   }
 );
 
@@ -367,9 +368,12 @@ const buildLegendData = (params: {
   // A "Measured" legend entry is only needed for visible fallback bars
   // alongside a split (warn bars are covered by the "Warning" entry, and
   // zero-value future-hour stubs carry no information worth a legend row).
-  const hasMeasuredFallbackBars = stacks.some((stack, index) => (
-    stack.fallbackKWh !== null && stack.fallbackKWh > 0 && !isWarnBar(bars[index])
-  ));
+  const hasMeasuredFallbackBars = stacks.some((stack, index) => {
+    // `stacks` is built one-per-bar; a stack with no bar beside it has no
+    // visible column, so it earns no legend row either way.
+    const bar = bars[index];
+    return stack.fallbackKWh !== null && stack.fallbackKWh > 0 && bar !== undefined && !isWarnBar(bar);
+  });
   return [
     // Canonical split-pair order is Managed → Background app-wide (reading-
     // priority order, matching the Budget hero split; legends do not mirror
@@ -591,9 +595,7 @@ export const renderUsageDayChartEcharts = (params: UsageDayChartEchartsParams): 
         // stacked column the per-item select style paints the border on the
         // bottom-most segment only (see `buildStackSegmentData`).
         selectSeriesIndexes,
-        resolveContent: (index) => (
-          index >= 0 && index < readouts.length ? readouts[index] : null
-        ),
+        resolveContent: (index) => readouts[index] ?? null,
       });
     }
     labelsEl.hidden = true;

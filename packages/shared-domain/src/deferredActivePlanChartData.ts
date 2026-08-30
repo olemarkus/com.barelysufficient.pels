@@ -126,7 +126,9 @@ const appendNowReading = (
   currentValue: number | null,
 ): DeferredPlanHistoryChartPoint[] => {
   if (nowMs === undefined || !Number.isFinite(nowMs) || currentValue === null) return samples;
-  const lastSample = samples.at(-1);
+  // ES2020-safe last-element access (no Array#at): shared-domain is bundled
+  // into the settings UI, which esbuild targets at es2020.
+  const lastSample = samples[samples.length - 1];
   if (lastSample !== undefined && lastSample.atMs >= nowMs) return samples;
   return [...samples, { atMs: nowMs, value: currentValue }];
 };

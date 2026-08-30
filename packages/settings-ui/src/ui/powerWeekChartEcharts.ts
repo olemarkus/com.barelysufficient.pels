@@ -307,8 +307,9 @@ const buildCellReadouts = (cells: HeatCell[], dayLabels: string[]): ChartReadout
 const buildTooltipFormatter = (readouts: ChartReadoutContent[], warnColor: string) => (
   (rawParams: unknown): string => {
     const index = resolveTooltipDataIndex(rawParams);
-    if (index < 0 || index >= readouts.length) return '';
-    return readoutToTooltipHtml(readouts[index], { warnColor });
+    const readout = readouts[index];
+    if (readout === undefined) return '';
+    return readoutToTooltipHtml(readout, { warnColor });
   }
 );
 
@@ -469,9 +470,7 @@ export const renderPowerWeekChart = (params: {
       plotReadout.update({
         itemCount: data.length,
         defaultIndex: data.length - 1,
-        resolveContent: (index) => (
-          index >= 0 && index < readouts.length ? readouts[index] : null
-        ),
+        resolveContent: (index) => readouts[index] ?? null,
         resolveIndexFromPixel: (x, y) => {
           const cell = resolveGridCellFromPixel(chart, x, y);
           if (!cell) return null;

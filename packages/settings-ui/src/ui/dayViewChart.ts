@@ -100,8 +100,10 @@ const niceStep = (rawStep: number): number => {
   const exponent = Math.floor(Math.log10(rawStep));
   const magnitude = 10 ** exponent;
   const normalised = rawStep / magnitude;
-  const niceMultiplier = NICE_STEP_MULTIPLIERS.find((m) => m >= normalised - 1e-9)
-    ?? NICE_STEP_MULTIPLIERS[NICE_STEP_MULTIPLIERS.length - 1];
+  const niceMultiplier = NICE_STEP_MULTIPLIERS.find((m) => m >= normalised - 1e-9);
+  // `normalised` is in [1, 10), so a rung always matches; a rounding edge past
+  // the top rung closes the decade at the next magnitude (the ladder's own 10).
+  if (niceMultiplier === undefined) return 10 * magnitude;
   return niceMultiplier * magnitude;
 };
 

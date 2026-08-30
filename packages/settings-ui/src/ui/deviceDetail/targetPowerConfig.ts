@@ -70,7 +70,7 @@ export const renderTargetPowerConfig = (device: SettingsUiDeviceDetailItem) => {
   const config = state.deviceTargetPowerConfigs[device.id] ?? device.targetPowerConfig;
   // Same axis rule as the step editor: a power range generates rungs, and
   // "Disable temperature control" denies setpoint writes, not rungs.
-  const showRange = Boolean(config && !config.preset);
+  const showRange = config !== undefined && config !== null && !config.preset;
   deviceDetailTargetPowerConfig.hidden = !showRange;
   if (deviceDetailTargetPowerFields) deviceDetailTargetPowerFields.hidden = !showRange;
   if (!showRange) return;

@@ -117,6 +117,17 @@ const HOMEY_LEAF_ALLOWLIST = [
 // lib/**. Hot-path dirs already set `no-restricted-syntax` (perf selectors), and
 // flat config REPLACES rather than merges, so this selector is added INTO the
 // perf block there and applied via a sibling block to the remaining lib dirs.
+// `packages/shared-domain` and `packages/settings-ui` are bundled into the
+// settings WebView by esbuild with `--target=es2020`, and esbuild does not
+// polyfill runtime methods -- it emits them unchanged. So an ES2022 array
+// method compiles, bundles, passes every test in Node, and then throws on a
+// WebView that predates it. `Array.prototype.at` reached shared-domain once
+// this way; this is the gate that stops it happening again.
+const ES2020_RUNTIME_BAN = {
+  selector: "CallExpression[callee.property.name='at'][arguments.length=1]",
+  message: 'Array#at is ES2022; the settings bundle targets es2020. Use `xs[xs.length - 1]`.',
+};
+
 const HOMEY_DYNAMIC_IMPORT_BAN = {
   selector: "ImportExpression[source.value='homey']",
   message: 'Do not dynamic-import the Homey SDK in lib/** — depend on lib/ports/homeyRuntime '
@@ -512,7 +523,10 @@ export default tseslint.config(
         project: './packages/settings-ui/tsconfig.json',
       },
     },
-    rules: browserTypeScriptRules,
+    rules: {
+      ...browserTypeScriptRules,
+      'no-restricted-syntax': ['error', ES2020_RUNTIME_BAN],
+    },
   },
   {
     // Guard the settings UI against HTML-injection sinks (`innerHTML`, `outerHTML`,

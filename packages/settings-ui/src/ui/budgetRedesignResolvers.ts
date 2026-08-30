@@ -101,9 +101,14 @@ const computeEstimatedCost = (params: {
   const actual = view === 'today' || view === 'yesterday' ? payload.buckets.actualKWh ?? [] : [];
   for (let index = 0; index < plannedKWh.length; index += 1) {
     let kwh = plannedKWh[index] ?? 0;
-    if (index < currentBucketIndex && Number.isFinite(actual[index])) {
-      kwh = actual[index];
+    const actualKWh = actual[index];
+    if (index < currentBucketIndex && actualKWh !== undefined && Number.isFinite(actualKWh)) {
+      kwh = actualKWh;
     }
+    // `isPriceReliable` gated this function: it requires `prices.length >=
+    // plannedKWh.length` and that every price in that range passes
+    // `Number.isFinite` (which rejects `null`), so every index this loop reads
+    // is a finite number.
     totalCost += kwh * (prices[index] as number);
   }
   return totalCost;

@@ -83,9 +83,8 @@ const persistTargetPatchBatch = async (homeId: string): Promise<void> => {
     try {
       await debouncedSetSetting(key, () => {
         const patches = pendingTargetPatches.get(homeId) ?? [];
-        flushedThroughRevision = patches.length > 0
-          ? patches[patches.length - 1].revision
-          : 0;
+        // ES2020-safe last-element access (no Array#at); bundle targets es2020.
+        flushedThroughRevision = patches[patches.length - 1]?.revision ?? 0;
         flushedPatches = [...patches];
         return assertWritableModeDeviceTargets(mergeTargetPatches(stored, patches));
       });

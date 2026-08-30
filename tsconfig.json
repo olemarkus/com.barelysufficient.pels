@@ -3,12 +3,13 @@
   "compilerOptions": {
     "allowJs": false,
     // Scoped to THIS project on purpose. `packages/**` is excluded below and
-    // `widgets/**` contributes only `*/src/api.ts`, so neither is ratcheted by
-    // this flag -- packages/settings-ui/tsconfig.json (375 sites) and
-    // tsconfig.widgets.json (119) each turn it on in their own change. Files
-    // under packages/shared-domain edited here were fixed by hand against the
-    // flag; nothing enforces that yet. tsconfig.tests.json extends this file
-    // and opts out explicitly, with its reasoning there.
+    // `widgets/**` contributes only `*/src/api.ts`, so neither is ratcheted
+    // here. They are ratcheted by their own projects instead:
+    // packages/shared-domain/tsconfig.json and
+    // packages/settings-ui/tsconfig.json (src-only) both set the flag and both
+    // run in ci:checks. tsconfig.widgets.json is the one remaining rung.
+    // tsconfig.tests.json extends this file and opts out explicitly, with its
+    // reasoning there.
     "noUncheckedIndexedAccess": true,
     "outDir": ".homeybuild/",
     "isolatedModules": true

@@ -73,9 +73,10 @@ const collectMeasuredPoints = (params: {
   }
   points.push([params.nowMs, params.currentValue]);
   points.sort((left, right) => left[0] - right[0]);
-  return points.filter((point, index) => (
-    index === points.length - 1 || point[0] < points[index + 1][0]
-  ));
+  return points.filter((point, index) => {
+    const next = points[index + 1];
+    return next === undefined || point[0] < next[0];
+  });
 };
 
 // Display rounding floor for the danger branch: a shortfall smaller than the
@@ -179,18 +180,28 @@ export const buildTrajectory = (params: {
   const staircase = buildPlannedStaircase(params);
   const { projected, readyAtMs } = staircase;
   const xMaxMs = params.deadlineAtMs + 30 * 60 * 1000;
-  const xMinMs = Math.min(measuredPoints[0][0], nowMs - 30 * 60 * 1000);
+  // `collectMeasuredPoints` always ends with the now-point, so the first entry
+  // exists; with none, `nowMs` is the earliest thing measured.
+  const earliestMeasuredMs = measuredPoints[0]?.[0] ?? nowMs;
+  const xMinMs = Math.min(earliestMeasuredMs, nowMs - 30 * 60 * 1000);
   const plannedPoints = [...staircase.points, [xMaxMs, projected] as [number, number]];
   const runBands = collectPlannedRanges(
     params.hours.map((hour) => (
       hour.endMs > xMinMs && (params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0
     )),
     params.runBandLabel,
-  ).map((range) => ({
-    fromMs: Math.max(params.hours[range.from].startsAtMs, xMinMs),
-    toMs: Math.min(params.hours[range.to].endMs, xMaxMs),
-    label: range.label,
-  }));
+  ).flatMap((range) => {
+    const fromHour = params.hours[range.from];
+    const toHour = params.hours[range.to];
+    // Ranges are indexes into `params.hours`, so both ends resolve; a band with
+    // no hour at either end has nothing to draw.
+    if (fromHour === undefined || toHour === undefined) return [];
+    return [{
+      fromMs: Math.max(fromHour.startsAtMs, xMinMs),
+      toMs: Math.min(toHour.endMs, xMaxMs),
+      label: range.label,
+    }];
+  });
   const observedValues = measuredPoints.map((point) => point[1]);
   const minValue = Math.min(...observedValues, params.currentValue);
   const pad = unit === '%' ? 5 : 2;

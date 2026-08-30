@@ -2146,7 +2146,9 @@ export const resolveEvCardStateLine = (params: {
 }): EvCardStateLine => {
   const { hours, nowMs, isPlugOutPaused, formatTime } = params;
 
-  const lastHour = hours.at(-1);
+  // ES2020-safe last-element access (no Array#at): shared-domain is bundled
+  // into the settings UI, which esbuild targets at es2020.
+  const lastHour = hours[hours.length - 1];
   if (lastHour !== undefined) {
     const lastHourEndMs = lastHour.startsAtMs + EV_CARD_HOUR_MS;
     // Active charging requires `nowMs` to fall inside one of the planned

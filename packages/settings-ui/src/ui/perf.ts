@@ -82,6 +82,7 @@ export const measureSettingsUi = (name: string, startMark: string, endMark: stri
   const snapshot = getSettingsUiPerfSnapshot();
   const start = snapshot.marks[startMark];
   const end = snapshot.marks[endMark];
+  if (start === undefined || end === undefined) return;
   if (!Number.isFinite(start) || !Number.isFinite(end)) return;
   snapshot.measures[name] = Math.max(0, end - start);
   if (typeof performance !== 'undefined' && typeof performance.measure === 'function') {

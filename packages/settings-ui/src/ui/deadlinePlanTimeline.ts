@@ -44,7 +44,8 @@ const resolveNowIndex = (hours: HorizonHour[], nowMs: number): number => {
   const exact = hours.findIndex((hour) => nowMs >= hour.startsAtMs && nowMs < hour.endMs);
   if (exact >= 0) return exact;
   for (let i = hours.length - 1; i >= 0; i -= 1) {
-    if (hours[i].startsAtMs <= nowMs) return i;
+    const hour = hours[i];
+    if (hour !== undefined && hour.startsAtMs <= nowMs) return i;
   }
   return 0;
 };
@@ -55,6 +56,9 @@ const resolveNowIndex = (hours: HorizonHour[], nowMs: number): number => {
 // real deadline, not the centre of the last bar).
 const toCategoryAxisX = (hours: HorizonHour[], index: number, atMs: number): number => {
   const hour = hours[index];
+  // No hour at that slot: park at the category's left edge, where the
+  // empty-window branch below already puts its markLines.
+  if (hour === undefined) return index - 0.5;
   const fraction = Math.min(1, Math.max(0, (atMs - hour.startsAtMs) / ONE_HOUR_MS));
   return index - 0.5 + fraction;
 };

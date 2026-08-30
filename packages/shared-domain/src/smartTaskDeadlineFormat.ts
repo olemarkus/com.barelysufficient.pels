@@ -113,7 +113,9 @@ export const formatScheduledHoursWindow = (
   timeZone: string | null,
 ): string | null => {
   const firstHour = scheduledHours[0];
-  const lastHour = scheduledHours.at(-1);
+  // ES2020-safe last-element access (no Array#at): shared-domain is bundled
+  // into the settings UI, which esbuild targets at es2020.
+  const lastHour = scheduledHours[scheduledHours.length - 1];
   // Both are absent only for an empty list — there is no window to name.
   if (firstHour === undefined || lastHour === undefined) return null;
   if (scheduledHours.length === 1) {

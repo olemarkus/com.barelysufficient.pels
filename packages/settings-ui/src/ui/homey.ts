@@ -354,17 +354,20 @@ export const callApi = async <T>(
       return await callApiOnce<T>(method, uri, body);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (isAppNotReadyErrorMessage(message)
-          && appNotReadyAttempt < APP_NOT_READY_RETRY_DELAYS_MS.length) {
-        await sleep(APP_NOT_READY_RETRY_DELAYS_MS[appNotReadyAttempt]);
+      // A ladder that has no next rung is a ladder that is spent: the delay
+      // standing in for the length check keeps the two in step by construction.
+      const appNotReadyDelayMs = APP_NOT_READY_RETRY_DELAYS_MS[appNotReadyAttempt];
+      if (isAppNotReadyErrorMessage(message) && appNotReadyDelayMs !== undefined) {
+        await sleep(appNotReadyDelayMs);
         appNotReadyAttempt += 1;
         continue;
       }
+      const retryDelayMs = CALL_API_RETRY_DELAYS_MS[attempt];
       const canRetry = method === 'GET'
-        && attempt < CALL_API_RETRY_DELAYS_MS.length
+        && retryDelayMs !== undefined
         && isRetryableHomeyTransportErrorMessage(message);
       if (!canRetry) throw error;
-      await sleep(CALL_API_RETRY_DELAYS_MS[attempt]);
+      await sleep(retryDelayMs);
       attempt += 1;
     }
   }

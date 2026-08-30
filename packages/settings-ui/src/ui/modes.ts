@@ -489,7 +489,8 @@ const handleDeleteMode = async () => {
       const catalog = captureModeCatalog();
       if (!mode || !catalog.priorities[mode]) return;
       const remainingModes = Object.keys(catalog.priorities).filter((entry) => entry !== mode);
-      if (remainingModes.length === 0) {
+      const [firstRemainingMode] = [...remainingModes].sort((left, right) => left.localeCompare(right));
+      if (firstRemainingMode === undefined) {
         await showToast('Keep at least one mode.', 'warn');
         return;
       }
@@ -498,7 +499,7 @@ const handleDeleteMode = async () => {
       if (catalog.activeMode === mode) {
         catalog.activeMode = remainingModes.includes(DEFAULT_MODE_NAME)
           ? DEFAULT_MODE_NAME
-          : [...remainingModes].sort((left, right) => left.localeCompare(right))[0];
+          : firstRemainingMode;
         await setSetting(
           selectedModeSettingKey(OPERATING_MODE_SETTING, homeId),
           catalog.activeMode,
