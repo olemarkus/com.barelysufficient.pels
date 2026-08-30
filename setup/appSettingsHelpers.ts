@@ -427,7 +427,7 @@ function requireDailyBudgetService(ctx: AppContext) {
 
 export function initSettingsHandlerForApp(
   ctx: AppContext,
-  options?: {
+  options: {
     /**
      * Receives writes to home-suffixed settings keys (`<base>:<homeId>`,
      * non-main home) instead of the main-home handlers. Wired to the
@@ -448,8 +448,9 @@ export function initSettingsHandlerForApp(
     onHomeRuntimePowerSourceChanged?: () => void;
     /** Invalidate an in-flight poll at the synchronous meter-event edge. */
     onHomeyEnergyMeterObserved?: () => void;
-    /** Kick the Homey solar-forecast probe after a `pv_forecast_source` write. */
-    onPvForecastSourceObserved?: () => void;
+    /** Kick the Homey solar-forecast probe after a `pv_forecast_source` write.
+     *  Required — see `SettingsHandlerDeps.onPvForecastSourceObserved`. */
+    onPvForecastSourceObserved: () => void;
     /** Schedule bounded Main authority repair for the observed selection. */
     onMainMeterSelectionObserved?: () => void;
     /** Close the shared homes/pins ownership generation synchronously. */
@@ -462,23 +463,23 @@ export function initSettingsHandlerForApp(
   const dailyBudgetService = requireDailyBudgetService(ctx);
   const settingsHandler = createSettingsHandler({
     homey: ctx.homey,
-    onHomeScopedSettingChanged: options?.onHomeScopedSettingChanged,
-    reconcileHomeRuntimes: options?.reconcileHomeRuntimes,
-    rebuildHomeRuntimePlansForModeChange: options?.rebuildHomeRuntimePlansForModeChange,
+    onHomeScopedSettingChanged: options.onHomeScopedSettingChanged,
+    reconcileHomeRuntimes: options.reconcileHomeRuntimes,
+    rebuildHomeRuntimePlansForModeChange: options.rebuildHomeRuntimePlansForModeChange,
     rebuildAllHomeRuntimePlansForDeviceControlChange:
-      options?.rebuildAllHomeRuntimePlansForDeviceControlChange,
-    onHomeRuntimePowerSourceObserved: options?.onHomeRuntimePowerSourceObserved,
-    onHomeRuntimePowerSourceChanged: options?.onHomeRuntimePowerSourceChanged,
+      options.rebuildAllHomeRuntimePlansForDeviceControlChange,
+    onHomeRuntimePowerSourceObserved: options.onHomeRuntimePowerSourceObserved,
+    onHomeRuntimePowerSourceChanged: options.onHomeRuntimePowerSourceChanged,
     onTemperatureControlPolicyObserved: ctx.loadTemperatureControlPolicySettings,
-    onHomeyEnergyMeterObserved: options?.onHomeyEnergyMeterObserved,
-    onPvForecastSourceObserved: options?.onPvForecastSourceObserved,
-    onMainMeterSelectionObserved: options?.onMainMeterSelectionObserved,
-    onHomeOwnershipConfigurationObserved: options?.onHomeOwnershipConfigurationObserved,
+    onHomeyEnergyMeterObserved: options.onHomeyEnergyMeterObserved,
+    onPvForecastSourceObserved: options.onPvForecastSourceObserved,
+    onMainMeterSelectionObserved: options.onMainMeterSelectionObserved,
+    onHomeOwnershipConfigurationObserved: options.onHomeOwnershipConfigurationObserved,
     // Lazy read on purpose: the membership service is assigned by a separate
     // wiring step, and the handler must tolerate a context without it.
     recomputeHomeMembership: () => {
       ctx.homeMembership?.recompute();
-      options?.onHomeOwnershipConfigurationRecomputed?.();
+      options.onHomeOwnershipConfigurationRecomputed?.();
     },
     loadCapacitySettings: ctx.loadCapacitySettings,
     // The handlers name the settings SOURCE that moved; naming the trigger is

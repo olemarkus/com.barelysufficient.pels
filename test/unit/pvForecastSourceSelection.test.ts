@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { selectPvForecastSource } from '../../lib/solar/pvForecastSourceSelection';
-import type { PvForecastSourcePort } from '../../lib/solar/pvForecastSource';
+import type { PvForecastConfidence, PvForecastSourcePort } from '../../lib/solar/pvForecastSource';
 
-const port = (kwh: number | undefined, confidence: 'low' | 'high' | null): PvForecastSourcePort => ({
+const port = (kwh: number | undefined, confidence: PvForecastConfidence): PvForecastSourcePort => ({
   forecast: (hourStarts) => (
     kwh === undefined ? [] : hourStarts.map((hourStartMs) => ({ hourStartMs, generationKwh: kwh }))
   ),
@@ -34,12 +34,12 @@ describe('selectPvForecastSource', () => {
   it('keeps an explicit homey_energy selected when unavailable — no silent fallback', () => {
     const selected = selectPvForecastSource({
       setting: 'homey_energy',
-      homey: { hasUsefulForecast: false, port: port(undefined, null) },
+      homey: { hasUsefulForecast: false, port: port(undefined, 'none') },
       learned: port(1, 'low'),
     });
     expect(selected.sourceId).toBe('homey_energy');
     expect(selected.forecast([0])).toEqual([]);
-    expect(selected.getConfidence()).toBeNull();
+    expect(selected.getConfidence()).toBe('none');
   });
 
   it('auto prefers homey while its forecast is useful', () => {
@@ -54,7 +54,7 @@ describe('selectPvForecastSource', () => {
   it('auto falls back to learned when the homey forecast is not useful', () => {
     const selected = selectPvForecastSource({
       setting: 'auto',
-      homey: { hasUsefulForecast: false, port: port(0, null) },
+      homey: { hasUsefulForecast: false, port: port(0, 'none') },
       learned: port(1, 'low'),
     });
     expect(selected.sourceId).toBe('learned');

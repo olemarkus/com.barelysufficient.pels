@@ -1735,7 +1735,10 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
-      buildHomeRuntimeSettingsHooks(() => rig.registry),
+      {
+        ...buildHomeRuntimeSettingsHooks(() => rig.registry),
+        onPvForecastSourceObserved: () => {},
+      },
     );
     try {
       // MockSettings emits synchronously and does not await async listeners:
@@ -1774,7 +1777,10 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     });
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
-      buildHomeRuntimeSettingsHooks(() => rig.registry),
+      {
+        ...buildHomeRuntimeSettingsHooks(() => rig.registry),
+        onPvForecastSourceObserved: () => {},
+      },
     );
     try {
       mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');

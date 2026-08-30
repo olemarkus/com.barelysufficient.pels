@@ -95,8 +95,10 @@ export type SettingsHandlerDeps = {
   /** Synchronous meter-event edge: invalidate any old-selection poll now. */
   onHomeyEnergyMeterObserved?: () => void;
   /** A `pv_forecast_source` write was observed — kick the Homey solar-forecast
-   *  probe so a flip to `homey_energy`/`auto` does not wait out the 3 h tick. */
-  onPvForecastSourceObserved?: () => void;
+   *  probe so a flip to `homey_energy`/`auto` does not wait out the 3 h tick.
+   *  Required: the write has exactly one meaning, and an absent hook would be a
+   *  wiring that forgot to answer, not a home with no answer to give. */
+  onPvForecastSourceObserved: () => void;
   /** Schedule bounded Main authority repair after an explicit-meter event. */
   onMainMeterSelectionObserved?: () => void;
   /**
@@ -494,7 +496,7 @@ function buildPriceSettingsHandlers(
       // Recompute first so the flip takes effect with whatever each source
       // already holds; the kicked probe's own completion hook recomputes again
       // when fresh Homey points land.
-      deps.onPvForecastSourceObserved?.();
+      deps.onPvForecastSourceObserved();
       await refreshPriceDerivedState(deps);
     },
     [FLOW_PRICES_TODAY]: async () => {

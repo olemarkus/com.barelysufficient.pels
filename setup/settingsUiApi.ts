@@ -72,8 +72,23 @@ type SettingsUiApiApp = Homey.App & {
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
   getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV1 | null;
   getWeatherAdvisorReadout?: () => Promise<WeatherAdvisorReadoutPayload | null>;
-  getPvForecastSourceUiStatus?: () => PvForecastSourceUiStatus | null;
 };
+
+/**
+ * The PV-forecast provenance seam the running app exposes (`AppContext`
+ * declares it required, so the real app always has it). `homey.app` is typed as
+ * the SDK's base `App`, so its presence is still a runtime question here — this
+ * is the boundary that shape-guards it once and answers a typed status, rather
+ * than letting an optional method and a nullable return travel inward.
+ */
+type PvForecastSourceSeam = { getPvForecastSourceUiStatus: () => PvForecastSourceUiStatus };
+
+const hasPvForecastSourceSeam = (app: unknown): app is PvForecastSourceSeam => (
+  typeof app === 'object'
+  && app !== null
+  && 'getPvForecastSourceUiStatus' in app
+  && typeof app.getPvForecastSourceUiStatus === 'function'
+);
 
 type ApiContext = {
   homey: Homey.App['homey'];
@@ -381,7 +396,9 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
     homeyCurrency: typeof homeyCurrency === 'string' ? homeyCurrency : null,
     homeyToday: homey.settings.get('homey_prices_today') as unknown ?? null,
     homeyTomorrow: homey.settings.get('homey_prices_tomorrow') as unknown ?? null,
-    pvForecastSource: app?.getPvForecastSourceUiStatus?.() ?? null,
+    pvForecastSource: hasPvForecastSourceSeam(app)
+      ? app.getPvForecastSourceUiStatus()
+      : { kind: 'unknown' },
   };
 };
 

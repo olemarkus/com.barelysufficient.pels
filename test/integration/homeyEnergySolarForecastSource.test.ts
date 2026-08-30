@@ -95,7 +95,7 @@ describe('HomeyEnergySolarForecastSource', () => {
       });
       expect(await source.refresh(NOW_MS)).toBe('ok');
       expect(source.hasUsefulForecast(NOW_MS)).toBe(false);
-      expect(source.getConfidence()).toBeNull();
+      expect(source.getConfidence()).toBe('none');
     });
 
     it('is not useful when past hours are positive but every forward hour is zero', async () => {
@@ -115,7 +115,7 @@ describe('HomeyEnergySolarForecastSource', () => {
       });
       expect(await source.refresh(NOW_MS)).toBe('ok');
       expect(source.hasUsefulForecast(NOW_MS)).toBe(false);
-      expect(source.getConfidence()).toBeNull();
+      expect(source.getConfidence()).toBe('none');
     });
 
     it('is not useful when every cached hour is already in the past', async () => {
@@ -142,11 +142,19 @@ describe('HomeyEnergySolarForecastSource', () => {
       '2026-08-26': { kind: 'resolved', body: dayBody('2026-08-26', 1000) },
     });
     await source.refresh(NOW_MS);
-    const summary = source.summarize(NOW_MS);
-    expect(summary.hourCount).toBe(2);
-    expect(summary.next24hKwh).toBe(2); // tomorrow's point sits exactly 24 h out — outside the window
-    expect(summary.firstHourStartMs).toBe(NOW_MS);
-    expect(summary.lastHourStartMs).toBe(NOW_MS + 24 * HOUR_MS);
-    expect(summary.totalWhReported).toBe(750);
+    expect(source.summarize(NOW_MS)).toEqual({
+      kind: 'summary',
+      hourCount: 2,
+      // tomorrow's point sits exactly 24 h out — outside the window
+      next24hKwh: 2,
+      firstHourStartMs: NOW_MS,
+      lastHourStartMs: NOW_MS + 24 * HOUR_MS,
+      totalWhReported: { kind: 'reported', wh: 750 },
+    });
+  });
+
+  it('answers the EMPTY summary when nothing is cached — not a row of absent fields', () => {
+    const { source } = makeSource({});
+    expect(source.summarize(NOW_MS)).toEqual({ kind: 'empty' });
   });
 });

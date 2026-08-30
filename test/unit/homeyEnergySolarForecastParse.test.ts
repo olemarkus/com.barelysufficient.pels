@@ -20,7 +20,7 @@ describe('parseSolarForecastDay', () => {
     expect(Object.keys(day.kwhByHourStart)).toHaveLength(24);
     expect(day.kwhByHourStart[String(T0)]).toBe(1);
     expect(day.kwhByHourStart[String(T0 + 23 * HOUR_MS)]).toBe(1);
-    expect(day.totalWh).toBe(24_000);
+    expect(day.totalWh).toEqual({ kind: 'reported', wh: 24_000 });
   });
 
   it('averages the points within each hour (mean watts / 1000 = kWh)', () => {
@@ -54,7 +54,7 @@ describe('parseSolarForecastDay', () => {
       totalWh: 'junk',
     });
     expect(day.kwhByHourStart).toEqual({ [String(T0 + HOUR_MS)]: 0.5 });
-    expect(day.totalWh).toBeNull();
+    expect(day.totalWh).toEqual({ kind: 'absent' });
   });
 
   it('yields an empty map (never zeros) for empty or malformed bodies', () => {

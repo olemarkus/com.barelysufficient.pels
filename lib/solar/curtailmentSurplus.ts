@@ -116,6 +116,16 @@ export type CurtailmentPotential = {
   confidence: 'low' | 'medium' | 'high';
 };
 
+/**
+ * The potential read for one hour. `unresolvable` — no fit yet, no forecast
+ * for the hour, or the selected source reporting no confidence — is a named
+ * member rather than a nullable potential, so the term fails closed on a state
+ * the caller has to discriminate instead of a value it has to null-check.
+ */
+export type CurtailmentPotentialRead =
+  | { kind: 'resolved'; potential: CurtailmentPotential }
+  | { kind: 'unresolvable' };
+
 /** Minimal structured-log surface (satisfied by the pino logger). */
 export type CurtailmentSurplusLogger = {
   info: (obj: Record<string, unknown>) => void;
@@ -187,9 +197,9 @@ export type CurtailmentHoldStore = {
 };
 
 export type CurtailmentSurplusDeps = {
-  /** Discounted-potential source for a UTC hour-start; null = unresolvable
+  /** Discounted-potential source for a UTC hour-start; `unresolvable`
    *  (no fit yet / no forecast irradiance for the hour) ⇒ term fail-closed. */
-  getPotential: (hourStartMs: number) => CurtailmentPotential | null;
+  getPotential: (hourStartMs: number) => CurtailmentPotentialRead;
   /** Whether a home battery is currently tracked (v1: full term suppression). */
   hasHomeBattery: () => boolean;
   /** Whether any device currently holds surplus-absorb eligibility (the lift). */
@@ -471,8 +481,9 @@ export class CurtailmentSurplusEstimator {
     if (this.holdUntilMs !== undefined && nowMs < this.holdUntilMs) return null;
     if (this.importLatchUntilMs !== undefined && nowMs < this.importLatchUntilMs) return null;
     const hourStartMs = Math.floor(nowMs / HOUR_MS) * HOUR_MS;
-    const potential = this.deps.getPotential(hourStartMs);
-    if (potential === null || !isFiniteNumber(potential.kw)) return null;
+    const read = this.deps.getPotential(hourStartMs);
+    if (read.kind !== 'resolved' || !isFiniteNumber(read.potential.kw)) return null;
+    const { potential } = read;
     const discount = potential.confidence === 'low'
       ? CURTAIL_POTENTIAL_DISCOUNT_LOW_CONF
       : CURTAIL_POTENTIAL_DISCOUNT;

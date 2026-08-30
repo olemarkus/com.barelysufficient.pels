@@ -136,6 +136,7 @@ const buildHarness = (
   });
   const deps: SettingsHandlerDeps = {
     homey: homeyCast as unknown as SettingsHandlerDeps['homey'],
+    onPvForecastSourceObserved: vi.fn(),
     loadCapacitySettings: vi.fn(),
     reloadExpectedPowerOverrides: vi.fn(),
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),

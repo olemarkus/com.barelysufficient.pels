@@ -392,7 +392,10 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
-      buildHomeRuntimeSettingsHooks(() => rig.registry),
+      {
+        ...buildHomeRuntimeSettingsHooks(() => rig.registry),
+        onPvForecastSourceObserved: () => {},
+      },
     );
     try {
       mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
@@ -437,7 +440,10 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
-      buildHomeRuntimeSettingsHooks(() => rig.registry),
+      {
+        ...buildHomeRuntimeSettingsHooks(() => rig.registry),
+        onPvForecastSourceObserved: () => {},
+      },
     );
     try {
       mockHomeyInstance.settings.unset(`${OPERATING_MODE_SETTING}:h_a`);
@@ -483,7 +489,10 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
-      buildHomeRuntimeSettingsHooks(() => rig.registry),
+      {
+        ...buildHomeRuntimeSettingsHooks(() => rig.registry),
+        onPvForecastSourceObserved: () => {},
+      },
     );
     try {
       mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
@@ -545,7 +554,10 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
     const settingsHandler = initSettingsHandlerForApp(
       rig.ctx,
-      buildHomeRuntimeSettingsHooks(() => rig.registry),
+      {
+        ...buildHomeRuntimeSettingsHooks(() => rig.registry),
+        onPvForecastSourceObserved: () => {},
+      },
     );
     try {
       mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');

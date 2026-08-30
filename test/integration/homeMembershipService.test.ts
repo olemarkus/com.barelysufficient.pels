@@ -454,6 +454,7 @@ describe('settings-change recompute triggers', () => {
   const buildHandlerDeps = (recompute: () => void): SettingsHandlerDeps => ({
     homey: mockHomeyInstance as unknown as SettingsHandlerDeps['homey'],
     recomputeHomeMembership: recompute,
+    onPvForecastSourceObserved: vi.fn(),
     loadCapacitySettings: vi.fn(),
     reloadExpectedPowerOverrides: vi.fn(),
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),

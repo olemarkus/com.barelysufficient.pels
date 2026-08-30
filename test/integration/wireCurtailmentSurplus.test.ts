@@ -108,7 +108,7 @@ describe('wireCurtailmentSurplus — the lift-state predicate that gates verific
         homeyCalls.push(hourStarts.length);
         return [];
       },
-      getConfidence: () => null,
+      getConfidence: () => 'none',
     };
     let selected: SelectedPvForecast = learned;
     const ctx = makeCtx({ surplusAbsorbActiveByDevice: {}, surplusEligibilityByDevice: {} });

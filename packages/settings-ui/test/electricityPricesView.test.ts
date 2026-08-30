@@ -24,7 +24,7 @@ const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): Electr
   showExportSection: false,
   showSolarForecastSection: false,
   pvForecastSource: 'auto',
-  pvForecastStatus: null,
+  pvForecastStatus: { kind: 'unknown' },
   exportPriceEnabled: false,
   exportSpotFactor: 0,
   exportFixed: 0,
@@ -331,13 +331,13 @@ describe('ElectricityPricesView', () => {
     it('says which forecast is in use, from the runtime provenance', () => {
       const homey = mountView({
         showSolarForecastSection: true,
-        pvForecastStatus: { activeSource: 'homey_energy', homeyForecastAvailable: true, learnedForecastAvailable: false },
+        pvForecastStatus: { kind: 'selected', activeSource: 'homey_energy', homeyForecastAvailable: true, learnedForecastAvailable: false },
       });
       expect(homey.textContent).toContain('Using Homey\u2019s solar forecast.');
 
       const learned = mountView({
         showSolarForecastSection: true,
-        pvForecastStatus: { activeSource: 'learned', homeyForecastAvailable: false, learnedForecastAvailable: true },
+        pvForecastStatus: { kind: 'selected', activeSource: 'learned', homeyForecastAvailable: false, learnedForecastAvailable: true },
       });
       expect(learned.textContent).toContain('Using the forecast PELS learns from your solar production.');
     });
@@ -346,7 +346,7 @@ describe('ElectricityPricesView', () => {
       const mount = mountView({
         showSolarForecastSection: true,
         pvForecastSource: 'homey_energy',
-        pvForecastStatus: { activeSource: 'homey_energy', homeyForecastAvailable: false, learnedForecastAvailable: true },
+        pvForecastStatus: { kind: 'selected', activeSource: 'homey_energy', homeyForecastAvailable: false, learnedForecastAvailable: true },
       });
       expect(mount.textContent).toContain('Homey has no solar forecast yet, so planning runs without one.');
       expect(mount.textContent).toContain('Switch to Automatic to use the forecast PELS learns from your solar production.');
@@ -355,7 +355,7 @@ describe('ElectricityPricesView', () => {
     it('says so while the learned model is still learning (no forecast from either source)', () => {
       const mount = mountView({
         showSolarForecastSection: true,
-        pvForecastStatus: { activeSource: 'learned', homeyForecastAvailable: false, learnedForecastAvailable: false },
+        pvForecastStatus: { kind: 'selected', activeSource: 'learned', homeyForecastAvailable: false, learnedForecastAvailable: false },
       });
       expect(mount.textContent).toContain(
         'PELS is still learning your solar production, so planning runs without a forecast yet.',
@@ -363,7 +363,7 @@ describe('ElectricityPricesView', () => {
     });
 
     it('says nothing about the active source before the runtime reports', () => {
-      const mount = mountView({ showSolarForecastSection: true, pvForecastStatus: null });
+      const mount = mountView({ showSolarForecastSection: true, pvForecastStatus: { kind: 'unknown' } });
       expect(mount.textContent).not.toContain('Using ');
       expect(mount.textContent).not.toContain('no solar forecast yet');
     });

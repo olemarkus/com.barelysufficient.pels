@@ -181,6 +181,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
 
   const context: AppContext = {
     startupBootstrap: undefined,
+    getPvForecastSourceUiStatus: () => ({ kind: 'unknown' }),
     homey,
     combinedPricesReader: createCombinedPricesReader({ homey, requestRefetch: () => undefined }),
     log: vi.fn(),

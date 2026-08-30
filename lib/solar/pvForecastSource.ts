@@ -23,14 +23,22 @@ export type { PvForecastSourceSetting };
 export type PvForecastSourceId = Exclude<PvForecastSourceSetting, 'auto'>;
 
 /**
+ * Confidence in a source's forecast, on the learned fit's own scale plus one
+ * named member for "there is no usable forecast to be confident about" — the
+ * same downstream treatment as an empty `forecast()`. A named member, not
+ * `null`: the absent case is a state of the source, and consumers discriminate
+ * it rather than null-check a business value.
+ */
+export type PvForecastConfidence = PvGainFit['confidence'] | 'none';
+
+/**
  * What forecast consumers (planning-price surplus, curtailment potential)
  * read: forward per-hour kWh plus the confidence the curtailment discount
- * keys on. `getConfidence()` answering `null` means "no usable forecast" —
- * the same downstream treatment as an empty `forecast()`.
+ * keys on.
  */
 export type PvForecastSourcePort = {
   forecast(hourStarts: readonly number[]): PvForecastHour[];
-  getConfidence(): PvGainFit['confidence'] | null;
+  getConfidence(): PvForecastConfidence;
 };
 
 /** A selected source; `sourceId` is provenance for logging/UI — consumers never branch on it. */

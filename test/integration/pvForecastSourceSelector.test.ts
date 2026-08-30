@@ -31,20 +31,21 @@ const learnedService = (): PvForecastService => new PvForecastService({
 
 type SelectorSetup = {
   setting?: PvForecastSourceSetting;
-  homey?: HomeyEnergySolarForecastSource;
-  learned?: PvForecastService;
+  homey: HomeyEnergySolarForecastSource;
+  learned: PvForecastService;
 };
 
+// Both controllers are passed by value — the production caller builds this
+// closure in the step that constructs them, so there is no "not wired yet"
+// state for the selector to be in.
 const makeSelector = (setup: SelectorSetup) => {
   const logger = { info: vi.fn(), warn: vi.fn() };
   const state = { setting: setup.setting ?? 'auto' as PvForecastSourceSetting };
   const selector = createPvForecastSourceSelector({
-    getLearned: () => (setup.learned ? { service: setup.learned } : undefined),
+    learned: { service: setup.learned },
     // The controller holds the setting; `state.setting` stands in for the value
     // it resolved at startup and re-resolves on the settings-change event.
-    getHomey: () => (setup.homey
-      ? { source: setup.homey, getSourceSetting: () => state.setting }
-      : undefined),
+    homey: { source: setup.homey, getSourceSetting: () => state.setting },
     getNowMs: () => NOW_MS,
     logger,
   });
@@ -52,20 +53,15 @@ const makeSelector = (setup: SelectorSetup) => {
 };
 
 describe('createPvForecastSourceSelector', () => {
-  it('answers undefined until both controllers exist (fail-closed post-boot precedent)', async () => {
-    const { selector } = makeSelector({ homey: await homeySource(2000) });
-    expect(selector()).toBeUndefined();
-  });
-
   it('selects homey under auto while its forecast is useful and serves its kWh', async () => {
     const { selector } = makeSelector({
       homey: await homeySource(2000),
       learned: learnedService(),
     });
     const selected = selector();
-    expect(selected?.sourceId).toBe('homey_energy');
-    expect(selected?.forecast([NOW_MS])).toEqual([{ hourStartMs: NOW_MS, generationKwh: 2 }]);
-    expect(selected?.getConfidence()).toBe('high');
+    expect(selected.sourceId).toBe('homey_energy');
+    expect(selected.forecast([NOW_MS])).toEqual([{ hourStartMs: NOW_MS, generationKwh: 2 }]);
+    expect(selected.getConfidence()).toBe('high');
   });
 
   it('falls back to learned under auto when the homey forecast is all-zero', async () => {
@@ -74,10 +70,10 @@ describe('createPvForecastSourceSelector', () => {
       learned: learnedService(),
     });
     const selected = selector();
-    expect(selected?.sourceId).toBe('learned');
+    expect(selected.sourceId).toBe('learned');
     // No fit yet ⇒ the learned port honestly answers "no forecast".
-    expect(selected?.forecast([NOW_MS])).toEqual([]);
-    expect(selected?.getConfidence()).toBeNull();
+    expect(selected.forecast([NOW_MS])).toEqual([]);
+    expect(selected.getConfidence()).toBe('none');
   });
 
   it('logs pv_forecast_source_selected on transitions only', async () => {
