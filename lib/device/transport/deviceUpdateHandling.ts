@@ -198,7 +198,7 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
             skipInvalidControlPayload: hadInvalidBinaryControlPayload,
         });
     }
-    if (deviceId && result.hadChanges) {
+    if (deviceId && result.observedControlStateChanged) {
         recordDeviceUpdateObservation({
             state: ctx.observationState,
             latestSnapshot: ctx.latestSnapshot,
