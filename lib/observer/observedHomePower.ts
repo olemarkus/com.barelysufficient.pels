@@ -7,8 +7,8 @@
  * layer (`managerFetch` → `managerHomeyApi` → `managerEnergy`); transport pushes
  * the already-resolved scalar here through the `observedStateDispatcher` callback
  * bag (`setHomePowerW`) at construction time. Observer never imports `lib/device/`
- * or `lib/power/` — it only holds the value transport hands it, and wiring
- * (`lib/app/`) reads it back via `getHomePowerW()`.
+ * or `lib/power/` — it only holds the value transport hands it. `getHomePowerW()`
+ * is the read side of that hold; no production caller uses it today.
  */
 export class ObservedHomePower {
     private homePowerW: number | null = null;

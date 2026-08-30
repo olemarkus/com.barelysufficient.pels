@@ -40,7 +40,7 @@ The codebase is strictly layered. `dependency-cruiser` enforces the rules at `np
 ```
 Entry Points          app.ts, drivers/**, packages/settings-ui/src/script.ts
       ↓
-App Wiring (stateless) setup/**, lib/app/** (sunsetting), flowCards/**
+App Wiring (stateless) setup/**, flowCards/**
       ↓
 Domain Modules        lib/plan/**, lib/device/**, lib/observer/**, lib/executor/**, lib/objectives/**, lib/power/**, lib/price/**, lib/dailyBudget/**
       ↓
@@ -89,7 +89,7 @@ One rule, two faces (`docs/architecture.md` § "Clean and trusted interfaces bet
 | `lib/power/` | Power sampling and capacity tracking |
 | `lib/price/` | Spot price fetching (Norwegian Nordpool), Homey Energy API integration, price levels |
 | `lib/dailyBudget/` | Soft daily kWh budget constraints |
-| `lib/app/` | Legacy wiring layer — sunsetting. New wiring goes in `setup/`; `lib/app/appContext.ts` (type definition) stays as the only long-term inhabitant. |
+| `lib/app/` | Dissolved. Holds only `appContext.ts` (the shared `AppContext` type). Wiring lives in `setup/` (and Flow-card registration in `flowCards/`); nothing new belongs here. |
 | `lib/utils/` | Pure helpers, type guards, math utilities, debug logging, settings keys |
 | `lib/diagnostics/` | Per-device diagnostics recording |
 | `lib/logging/` | Structured logging infrastructure: pino logger, AsyncLocalStorage context, Homey destination |
@@ -98,7 +98,7 @@ Runtime code conventions (TypeScript, structured logging, Homey SDK mocking) liv
 
 ### App wiring (`setup/`)
 
-`setup/` at the repo root is the honest home for app-wiring classes — factories, observers, registrars that construct and connect services, and then hold nothing. Conventions and the boot-path map live in `setup/AGENTS.md`. As remaining wiring migrates out of `lib/app/`, that directory sunsets; `lib/app/appContext.ts` (the shared `AppContext` type) stays.
+`setup/` at the repo root is the honest home for app-wiring classes — factories, observers, registrars that construct and connect services, and then hold nothing. Conventions and the boot-path map live in `setup/AGENTS.md`. The migration out of `lib/app/` is complete: that directory is down to `appContext.ts` (the shared `AppContext` type).
 
 ### Packages (shared)
 

@@ -3,7 +3,7 @@
 // Main's answer to any of these is wrong for a sub-home device in a way that looks
 // plausible, so each has to be asked of the home that OWNS the device:
 //
-//   - the external-off hold (`setup/appExternalOffHoldRuntime.ts`) — main's
+//   - the external-off hold (`setup/appObservedControlStateRuntime.ts`) — main's
 //     pending-command store never saw the device's commands, so it would report
 //     PELS's own write as an outside action and fabricate a hold;
 //   - the rebuild-suppression invalidation — each bundle keeps its own

@@ -24,7 +24,8 @@ This was first written down in commit `18296a370` (2026-07-01) and, until this n
 While a granted task is in a planned hour and its device has not started, the device holds back
 the power it needs to reach its **lowest active step** from the admission of **lower-priority**
 devices. Concretely: at restore admission, a candidate's available power is the raw figure minus
-every reserve held by a strictly more important device (`resolveEffectiveHeadroomKw`).
+every reserve held by a strictly more important device (`resolveReserveAdmission` /
+`resolveClaimedReserveKw`, `lib/plan/admission/headroomReserve.ts`).
 
 It **sheds nobody and issues no writes.** A device that is already off simply is not resumed yet.
 A device that is running keeps running.

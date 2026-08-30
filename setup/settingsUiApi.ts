@@ -188,7 +188,8 @@ const withResolvedPriorities = (
  * outputs rather than raw observations:
  *
  * - `binaryControl` — `decorateSnapshotWithDeviceControl` RESOLVES it from the
- *   selected rung for a STEPPED LOAD (`resolveSteppedLoadCurrentOn`). A stepped
+ *   selected rung for a STEPPED LOAD (`resolveObservedSteppedOn`,
+ *   `setup/appDeviceControlHelpers.ts`). A stepped
  *   device whose raw on/off axis is on while its resolved rung is the off step
  *   is correctly `{ on: false }` after decoration; overlaying the raw value
  *   would put the resolved answer back to the un-resolved one. That is the only

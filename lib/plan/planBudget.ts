@@ -75,7 +75,9 @@ export function computeDynamicSoftLimit(params: {
 /**
  * Returns `budgetPaceKw`: the daily-budget threshold on the **non-exempt** axis,
  * so it is not directly comparable with `capacityPaceKw`. `planBuilder` rebases it
- * onto the import axis (`budgetPaceImportKw`) before the two are compared.
+ * onto the import axis by adding `projectedExemptKw` before the two are compared
+ * (`dailySoftLimitKw` in `computeDailySoftLimit`, canonically `budgetPaceImportKw`
+ * — see `notes/safe-pace-two-constraints.md`).
  *
  * The window is the current bucket of the daily plan, not the whole day, so this
  * paces that bucket's share rather than a whole-day burst rate.

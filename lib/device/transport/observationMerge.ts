@@ -38,8 +38,8 @@ export function mergeFresherCapabilityObservations(params: {
 
     // `lastFreshDataMs` on each snapshot is already set by `parseDevice` from the
     // highest Homey per-capability `lastUpdated` (see `resolveLastFreshDataMs` in
-    // `deviceManagerParseSnapshot.ts`). That is the device's actual liveness
-    // signal — Homey only advances `lastUpdated` when a capability genuinely
+    // `lib/device/transport/managerParseSnapshot.ts`). That is the device's actual
+    // liveness signal — Homey only advances `lastUpdated` when a capability genuinely
     // reported. A successful refresh poll is *not* by itself evidence the device
     // is alive: Homey serves cached capability values even when the device has
     // been silent for hours. Silence is not a fault, though — drivers only

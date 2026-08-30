@@ -175,7 +175,8 @@ export async function updateGuardState(params: {
   overshootActionable: boolean;
   capacitySoftLimit: number;
   /**
-   * The measured whole-home draw (`resolveMeasuredTotalKw`), or `null` when this
+   * The measured whole-home draw (`measuredTotalKw` on the cycle reading,
+   * `lib/power/powerCycleReading.ts`), or `null` when this
    * cycle had none. The deficit is a real quantity in kW, so unlike most planner
    * power questions it cannot be answered with a headroom.
    */

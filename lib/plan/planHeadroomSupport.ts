@@ -11,7 +11,8 @@ export { isFiniteNumber };
 
 type RawHeadroomDevice = {
   // Owner-side optional: this is still a transport snapshot at this seam, and
-  // absence is exactly what `hasMeasuredDraw` goes on to record.
+  // resolving that absence away is exactly what `getCurrentDrawKw`
+  // (`lib/observer/observedPower.ts`) is for.
   measuredPowerKw?: number;
   binaryControl?: { on: boolean };
   currentOn?: boolean;

@@ -42,12 +42,9 @@ This note is for contributors changing runtime logging.
 
 ## Current Structured Events
 
-- `plan_rebuild_started`
 - `plan_rebuild_completed`
 - `plan_rebuild_scheduler_intent_dropped`
 - `plan_rebuild_scheduler_intent_replaced`
-- `plan_snapshot_written`
-- `plan_snapshot_write_throttled`
 - `binary_command_applied`
 - `binary_command_skipped`
 - `binary_command_failed`
@@ -72,11 +69,8 @@ This note is for contributors changing runtime logging.
 - `stepped_load_flow_trigger_unacknowledged` — emitted by the transport for the
   Flow half of the above. Deliberately a distinct name so one occurrence is not
   counted twice; the executor owns the `outcome_unknown` line.
-- `stepped_load_binary_transition_applied`
 - `restore_command_skipped`
 - `device_snapshot_refresh_completed`
-- `target_devices_snapshot_written`
-- `target_devices_snapshot_write_skipped`
 - `periodic_status`
 - `daily_budget_periodic_status`
 - `capacity_overshoot_escalation_blocked`

@@ -76,7 +76,8 @@ export type DeferredObjective = {
   // rescue permissions. Together they guarantee the soft daily budget won't cap
   // this device AND lower-priority devices will yield power up to the hard cap
   // — i.e. the higher steps are as reliable as the min step (within the
-  // reserved-headroom forecast). When `true`, `resolveFloorStep` promotes the
+  // reserved-headroom forecast). When `true`, `resolveStepForBucket`
+  // (`horizonPlanner.ts`) promotes the
   // committed floor from `activeSteps[0]` to the highest step the per-bucket
   // `reservedHeadroomKw` forecast supports. The persisted commitment is still
   // physical — only the step it commits to changes. Optional/backward-compat:

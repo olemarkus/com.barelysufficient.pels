@@ -27,7 +27,7 @@
 //   2. A `readonly` property or a module-level binding that CONSTRUCTS mutable
 //      state: `new Map/Set/WeakMap/WeakSet`, an array or object literal, or a
 //      `create*()` call (the repo's store/state factory convention —
-//      `createDeviceControlRuntimeState`, `createPreShedAnchorStore`). `readonly`
+//      `createDeviceControlRuntimeState`, `createCurtailmentHoldStore`). `readonly`
 //      pins the reference, not the contents. A rebindable module-level binding
 //      (`let` or `var`) is state too.
 //   3. A field ASSIGNED mutable state anywhere in the class — `private readonly

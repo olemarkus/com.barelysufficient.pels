@@ -379,8 +379,8 @@ function buildSubHomeScope(params: {
     getPriceOptimizationSettings: () => ({}),
     getDynamicSoftLimitOverride: () => null,
     // Mode targets are the RESTORE ANCHOR, not a price/budget policy, so they
-    // bind live for every home. Binding them to `{}` made `resolveTemperatureSeed`
-    // fall back to the device's live setpoint (`lib/plan/planDevices.ts`); while
+    // bind live for every home. Binding them to `{}` made `modeTargetCFor`
+    // fall back to the device's live setpoint (`lib/plan/planBuilder.ts`); while
     // shed that reading IS the shed setpoint, so on release `plannedTarget`
     // equalled `currentTarget`, the executor dropped the write, and an area
     // temperature device stayed cold indefinitely. Price-opt and surplus stay
@@ -396,11 +396,11 @@ function buildSubHomeScope(params: {
     // ...but a RAISE to that target is held while this area's own draw is
     // unknown. It adds load, and it is the one load-adding write nothing else
     // fences: a restore is gated on headroom (0 whenever power is unknown),
-    // while an 18→22 raise is an ordinary `target_update`, not an
-    // `isTargetRestore`, so neither `BUNDLE_RESTORE_STABILIZATION_MS` nor the
-    // restore cooldowns see it. An area meter can stay silent indefinitely, and
-    // a never-sampled bundle has no aging timestamp for the freshness heartbeat
-    // to escalate. Held one-directionally: a mode change that LOWERS a setpoint
+    // while an 18→22 raise is an ordinary `target_update` that the producer
+    // never stamps `recordRestoreOnTargetApply`, so neither
+    // `BUNDLE_RESTORE_STABILIZATION_MS` nor the restore cooldowns see it. An area
+    // meter can stay silent indefinitely, and a never-sampled bundle has no aging
+    // timestamp for the freshness heartbeat to escalate. Held one-directionally: a mode change that LOWERS a setpoint
     // removes draw, so it still applies (see `applyModeSeedModulation`).
     holdsModeTargetRaisesWhilePowerUnknown: () => true,
     // Capacity-only UI/side-effect posture: no shared `plan_updated` emit (the

@@ -47,7 +47,10 @@ export type PlanContext = {
    * and shedding read. Calling this with `softLimit` returns a DIFFERENT (and
    * more permissive) number than `headroom` in an exhausted hour, so a consumer
    * that reaches for it to re-derive an axis has silently dropped that force.
-   * Its only caller outside this file is `resolveMeasuredTotalKw`.
+   * Nothing outside this file calls it today — the last such caller went with
+   * `resolveMeasuredTotalKw`, and the shedding guard's `measuredTotalKw` comes
+   * from `measuredDrawKw`, not from here. The warning above is why it should
+   * stay that way.
    */
   headroomForLimitKw: (limitKw: number) => number;
   /**

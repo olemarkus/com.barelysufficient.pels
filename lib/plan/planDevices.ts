@@ -285,9 +285,9 @@ function resolveModulatedSeedTargets(
  * unknown. Every other way the planner adds load is gated on headroom, which is
  * 0 or negative whenever no trustworthy total exists — but a mode target is issued as
  * an ordinary `target_update`, so it consults neither headroom nor the restore
- * cooldowns / startup stabilization (`isTargetRestore` in
- * `lib/executor/executableTargetProjection.ts` only matches an observed value
- * equal to the configured shed setpoint, so an 18→22 raise is not a restore).
+ * cooldowns / startup stabilization (`lib/executor/executableTargetProjection.ts`
+ * advances the restore clocks only for a write the producer stamped
+ * `recordRestoreOnTargetApply`, so an 18→22 raise is not a restore).
  * Holding AT the device's own current setpoint makes the write a no-op rather
  * than dropping the device from the plan. Direction is class-aware:
  *

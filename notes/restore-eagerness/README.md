@@ -89,7 +89,9 @@ After a batch, the normal meter-settling / restore-cooldown behavior still block
 ## Evidence to collect when it happens
 
 - `restore_admitted` fields including `estimatedPowerKw`, `powerSource`, `availableKw`,
-  `pendingRestoreKw`, `reserveKw`, and `postReserveSlackKw`
+  `neededKw`, `reserveKw`, `marginKw`, and `postReserveMarginKw`. (`pendingRestoreKw` and
+  `postReserveSlackKw` went with the pending-restore reservation, removed 2026-08-28 —
+  `notes/state-management/actuation-clocks-and-settle.md`.)
 - the next few whole-home power samples and device-level power observations
 - whether the rebuild that admitted the restore was triggered by `power_delta`, `max_interval`,
   startup/bootstrap, or another non-power reason

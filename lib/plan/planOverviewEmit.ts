@@ -54,8 +54,7 @@ function recordOverviewChange(
   // Restore the device's real control model for the display/log seam from the
   // producer map captured ONCE per pass (`emitDeviceOverviewTransitions`) — a pure
   // by-id lookup, no per-device `deviceManager.getSnapshot()` re-entry inside the
-  // plan/apply cycle (that breaks the SDK-boundary e2es). See
-  // `resolveOverviewControlModel` for the full rationale. This is display, not
+  // plan/apply cycle (that breaks the SDK-boundary e2es). This is display, not
   // planning.
   const temperature = resolveOverviewTemperatureFacet(
     device,

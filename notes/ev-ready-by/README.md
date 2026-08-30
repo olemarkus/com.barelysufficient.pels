@@ -430,7 +430,8 @@ objective for the same device; whether re-plug after a partial session
 re-fires.
 
 Files: new `packages/contracts/src/evChargerDefaults.ts`, new
-`lib/app/evChargerDefaultsWiring.ts`, `lib/device/transport/stateOfCharge.ts`.
+`setup/evChargerDefaultsWiring.ts` (new wiring goes in `setup/`; `lib/app/` has
+dissolved to `appContext.ts`), `lib/device/transport/stateOfCharge.ts`.
 
 #### Immediate intent, pause action, and deadline-imminent urgency
 

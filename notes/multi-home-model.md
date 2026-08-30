@@ -224,7 +224,8 @@ initial snapshot, and retains history across transient snapshot absence.
 **Mode targets apply in EVERY home.** Every home's scope binds
 `getModeDeviceTargets` to its own catalog. This is not a policy choice: the
 mode target is the **restore anchor**. Binding it to `{}` for a sub-home made
-`resolveTemperatureSeed` fall back to the device's live setpoint, which while
+`modeTargetCFor` (`lib/plan/planBuilder.ts`) fall back to the device's live
+setpoint for every device instead of only the boot window, which while
 shed IS the shed setpoint, so on release `plannedTarget === currentTarget`, the
 executor dropped the write, and an area temperature device stayed cold
 indefinitely. Price optimization and surplus absorb stay off for a sub-home independently, via
@@ -244,9 +245,9 @@ the number rather than a boolean beside one that can disagree with it.
 A mode target is the one load-adding thing the planner commands as an ordinary
 `target_update`, so it consults neither headroom — 0 or negative whenever power
 is unknown — nor the restore cooldowns and startup stabilization:
-`isTargetRestore` (`lib/executor/executableTargetProjection.ts`) only matches an
-observed value equal to the configured shed setpoint, so an 18→22 raise is not a
-restore. The hold's shape (rather than blanking `getModeDeviceTargets`) is
+`lib/executor/executableTargetProjection.ts` advances the restore clocks only for
+a write the producer stamped `recordRestoreOnTargetApply`, so an 18→22 raise is
+not a restore. The hold's shape (rather than blanking `getModeDeviceTargets`) is
 load-bearing in these ways:
 
 - **Class-aware direction.** For heat-direction devices a RAISE is held and a

@@ -57,13 +57,15 @@ export const rankModeDevices = (
  * setpoint" member to model: `heldSetpointC` is a plain number because the
  * caller has already established the device has one.
  *
- * The caller resolves it, because deciding it is somebody else's rule: normally
- * the device's own live setpoint, but the PRE-SHED ANCHOR while PELS has the
- * device parked at a shed floor, where the live value IS the shed value
- * (`resolveAnchoredSetpoint`, `lib/plan/preShedAnchor.ts`). Taking the answer
- * rather than the ingredients keeps that rule with its owner instead of
- * restating it here — which is how it ended up spelled two different ways at the
- * two call sites.
+ * The caller resolves it, because deciding it is somebody else's rule: the
+ * device's own live setpoint, normalized to its target capability's bounds
+ * (`buildModeTargetProbe`, `setup/appDeviceSupport.ts`). There is exactly one
+ * source and no second lane — PELS keeps no memory of what a device was set to
+ * before it was lowered, and a persisted pre-shed anchor that recorded one was
+ * built and then removed for that reason (`notes/temperature-ownership.md`).
+ * Taking the answer rather than the ingredients keeps that rule with its owner
+ * instead of restating it here — which is how it ended up spelled two different
+ * ways at the two call sites.
  */
 export type ModeTargetDevice = {
   id: string;
