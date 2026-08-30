@@ -25,7 +25,7 @@ const homeySource = async (watts: number): Promise<HomeyEnergySolarForecastSourc
 
 // A real learned service with no training data: active as a port, empty forecast.
 const learnedService = (): PvForecastService => new PvForecastService({
-  irradiance: { getIrradiance: () => undefined },
+  irradiance: { getIrradiance: () => ({ kind: 'absent' as const }) },
   initialState: emptyPvForecastServiceState(),
 });
 

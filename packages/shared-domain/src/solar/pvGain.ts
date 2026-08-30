@@ -49,6 +49,18 @@ export type PvGainFit = {
   trainingMode: PvGainTrainingMode;
 };
 
+/**
+ * What this home's gain currently IS. `learning` is a named member, not a null:
+ * a new install genuinely has no gain yet, and that state can last for days —
+ * too few hours clear the irradiance floor, or the hours that did showed no
+ * positive generation to divide. It is a state of the home's learning, so
+ * consumers discriminate it (and say "none") instead of null-checking a
+ * business value or, worse, defaulting one.
+ */
+export type LearnedPvGain =
+  | { kind: 'fitted'; fit: PvGainFit }
+  | { kind: 'learning' };
+
 // Below this irradiance the hour is too dim to learn from (dawn/dusk/deep
 // overcast): a tiny denominator amplifies measurement noise into the gain.
 const MIN_IRRADIANCE_WM2 = 50;
@@ -98,31 +110,38 @@ const finalizeFit = (
   gain: number,
   pool: readonly number[],
   trainingMode: PvGainTrainingMode,
-): PvGainFit | null => {
-  if (!Number.isFinite(gain) || gain <= 0) return null;
+): LearnedPvGain => {
+  // A non-finite or non-positive gain means the trained pool showed no
+  // generation to learn from — still learning, never a fit of zero.
+  if (!Number.isFinite(gain) || gain <= 0) return { kind: 'learning' };
   const mad = median(pool.map((g) => Math.abs(g - gain)));
   const relativeScatter = mad / gain;
   return {
-    gainKwhPerWm2: gain,
-    sampleCount: pool.length,
-    relativeScatter,
-    // A quantile over a clamp-suspect pool is a bounded guess, not a tight fit:
-    // confidence is FORCED low regardless of count/scatter — a tight cluster of
-    // clamped hours is exactly the wrong thing to read as high confidence.
-    confidence: trainingMode === 'clamp_aware_quantile' ? 'low' : resolveConfidence(pool.length, relativeScatter),
-    trainingMode,
+    kind: 'fitted',
+    fit: {
+      gainKwhPerWm2: gain,
+      sampleCount: pool.length,
+      relativeScatter,
+      // A quantile over a clamp-suspect pool is a bounded guess, not a tight fit:
+      // confidence is FORCED low regardless of count/scatter — a tight cluster of
+      // clamped hours is exactly the wrong thing to read as high confidence.
+      confidence: trainingMode === 'clamp_aware_quantile'
+        ? 'low'
+        : resolveConfidence(pool.length, relativeScatter),
+      trainingMode,
+    },
   };
 };
 
 /**
- * Fit the device's PV gain from recorded hours, or `null` while still learning
- * (fewer than `MIN_PV_GAIN_SAMPLES` hours clear the irradiance floor). Each usable
+ * Fit the device's PV gain from recorded hours, or the `learning` member while
+ * too few hours (`MIN_PV_GAIN_SAMPLES`) clear the irradiance floor. Each usable
  * hour contributes `generation / irradiance`. Preference order: median over
  * provably-unclamped hours; else, when suspect hours DOMINATE the evidence
  * (zero-export homes), an upper quantile over the evidence-bearing pool with
  * forced-low confidence; else the legacy unsegmented median.
  */
-export const fitPvGain = (points: readonly PvGainTrainingPoint[]): PvGainFit | null => {
+export const fitPvGain = (points: readonly PvGainTrainingPoint[]): LearnedPvGain => {
   const gains: number[] = [];
   const unclampedGains: number[] = [];
   const suspectGains: number[] = [];
@@ -160,6 +179,6 @@ export const fitPvGain = (points: readonly PvGainTrainingPoint[]): PvGainFit | n
     );
   }
   // (3) No (or non-dominant) segmentation evidence: the legacy unsegmented median.
-  if (gains.length < MIN_PV_GAIN_SAMPLES) return null;
+  if (gains.length < MIN_PV_GAIN_SAMPLES) return { kind: 'learning' };
   return finalizeFit(median(gains), gains, 'unsegmented_median');
 };

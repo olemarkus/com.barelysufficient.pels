@@ -64,9 +64,13 @@ export function createPvForecastSourceSelector(
       },
       learned: {
         forecast: (hourStarts) => learned.service.forecast(hourStarts),
-        // The learned fit is absent until enough production has been observed;
-        // the port names that as `'none'` rather than passing a null onward.
-        getConfidence: () => learned.service.getFit()?.confidence ?? 'none',
+        // The learned gain is still `learning` until enough production has been
+        // observed; the port names that as `'none'` — two named members, no null
+        // in between.
+        getConfidence: () => {
+          const gain = learned.service.getFit();
+          return gain.kind === 'fitted' ? gain.fit.confidence : 'none';
+        },
       },
     });
     if (selected.sourceId !== lastLoggedSourceId) {

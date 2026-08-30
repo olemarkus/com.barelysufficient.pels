@@ -264,15 +264,15 @@ export class PvForecastController {
 
   /** Structured signal of what the app learned — the externally-observable forecast seam. */
   private emitLearnedForecast(): void {
-    const fit = this.service.getFit();
-    if (!fit) return;
+    const gain = this.service.getFit();
+    if (gain.kind === 'learning') return;
     this.logger.info({
       event: 'pv_forecast_learned',
-      gainKwhPerWm2: fit.gainKwhPerWm2,
-      confidence: fit.confidence,
-      sampleCount: fit.sampleCount,
+      gainKwhPerWm2: gain.fit.gainKwhPerWm2,
+      confidence: gain.fit.confidence,
+      sampleCount: gain.fit.sampleCount,
       // Observability for tuning the clamp-evidence thresholds — never branched on.
-      trainingMode: fit.trainingMode,
+      trainingMode: gain.fit.trainingMode,
     });
   }
 

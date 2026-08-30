@@ -276,9 +276,15 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
     getCurrentHourPriceLevel: () => ctx.getCurrentHourPriceLevel(),
     // Late-bound closure: the curtailment estimator is wired post-startup
-    // (`wireCurtailmentSurplus`), after the engine exists — until then the
-    // context getter reads null (fail-closed).
-    getInferredSurplusKw: () => ctx.getCurtailedSurplusKw?.() ?? null,
+    // (`wireCurtailmentSurplus`), after the engine exists. This is the seam that
+    // spends the estimator's `suppressed` member on the planner's `null` — a
+    // suppressed term and a not-yet-wired estimator are the same fail-closed
+    // "no inferred surplus" to the planner, and the choice is made HERE rather
+    // than by a producer handing out a number it never measured.
+    getInferredSurplusKw: () => {
+      const read = ctx.getCurtailedSurplusKw?.();
+      return read !== undefined && read.kind === 'term' ? read.kw : null;
+    },
     // Policy stragglers — the EXACT ctx reads `createPlanEngine`/`toPlanDevice`
     // hardwired before this lift. Byte-identical for the main home.
     getPriceOptimizationSettings: () => ctx.priceOptimizationSettings,

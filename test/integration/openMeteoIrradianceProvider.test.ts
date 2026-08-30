@@ -13,15 +13,16 @@ const stubFetch = (impl: () => Promise<FetchResult>): typeof fetch => (impl as u
 const okOnce = (body: unknown): FetchResult => ({ ok: true, json: async () => body });
 
 describe('OpenMeteoIrradianceProvider', () => {
-  it('fetches and exposes hourly radiation, undefined for unknown hours', async () => {
+  it('fetches and exposes hourly radiation, `absent` for unknown hours', async () => {
     const provider = new OpenMeteoIrradianceProvider({
       fetchImpl: stubFetch(async () => okOnce(RESPONSE)),
       userAgent: 'pels-test',
     });
     expect(await provider.refresh(OSLO)).toBe('ok');
-    expect(provider.getIrradiance(H0 - HOUR_MS)).toBe(420); // H0 stamp ⇒ H0−1h interval
-    expect(provider.getIrradiance(H0)).toBe(350); // H1 stamp ⇒ H0 interval
-    expect(provider.getIrradiance(H1)).toBeUndefined();
+    // H0 stamp ⇒ H0−1h interval; H1 stamp ⇒ H0 interval.
+    expect(provider.getIrradiance(H0 - HOUR_MS)).toEqual({ kind: 'reported', irradianceWm2: 420 });
+    expect(provider.getIrradiance(H0)).toEqual({ kind: 'reported', irradianceWm2: 350 });
+    expect(provider.getIrradiance(H1)).toEqual({ kind: 'absent' });
   });
 
   it('keeps the prior cache when a later refresh fails (HTTP not-ok)', async () => {
@@ -33,7 +34,8 @@ describe('OpenMeteoIrradianceProvider', () => {
     await provider.refresh(OSLO);
     ok = false;
     expect(await provider.refresh(OSLO)).toBe('failed');
-    expect(provider.getIrradiance(H0 - HOUR_MS)).toBe(420); // unchanged
+    // unchanged
+    expect(provider.getIrradiance(H0 - HOUR_MS)).toEqual({ kind: 'reported', irradianceWm2: 420 });
   });
 
   it('maps a network error to failed, leaving the cache empty', async () => {
@@ -42,6 +44,6 @@ describe('OpenMeteoIrradianceProvider', () => {
       userAgent: 'pels-test',
     });
     expect(await provider.refresh(OSLO)).toBe('failed');
-    expect(provider.getIrradiance(H0 - HOUR_MS)).toBeUndefined();
+    expect(provider.getIrradiance(H0 - HOUR_MS)).toEqual({ kind: 'absent' });
   });
 });

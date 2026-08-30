@@ -8,10 +8,11 @@
 // Open-Meteo is free, key-less, CC-BY 4.0 (attribution required). The HTTP `fetch`
 // is injected so the parser + provider stay unit-testable. Boundary discipline:
 // only finite, non-negative radiation paired with a finite hour timestamp is kept
-// — a malformed entry is skipped (absence is `undefined`, never a fabricated 0).
+// — a malformed entry is skipped, and an hour with nothing to say answers the
+// read's own `absent` member, never a fabricated 0.
 
 import { isFiniteNumber } from '../utils/appTypeGuards';
-import type { PvIrradianceProvider } from './pvForecastService';
+import type { PvIrradianceProvider, PvIrradianceRead } from './pvForecastService';
 
 const HOUR_MS = 3_600_000;
 
@@ -88,9 +89,14 @@ export class OpenMeteoIrradianceProvider implements PvIrradianceProvider {
     }
   }
 
-  /** Cached radiation (W/m²) for a UTC hour-start, or `undefined` when unknown. */
-  getIrradiance(hourStartMs: number): number | undefined {
+  /** Cached radiation for a UTC hour-start, or `absent` when the cache has no
+   *  usable value for it. The finite, non-negative guarantee the read carries is
+   *  resolved HERE (the cache is only ever filled from `parseOpenMeteoRadiation`,
+   *  which drops both), so no consumer re-checks it. */
+  getIrradiance(hourStartMs: number): PvIrradianceRead {
     const value = this.byHour[String(hourStartMs)];
-    return isFiniteNumber(value) ? value : undefined;
+    return isFiniteNumber(value) && value >= 0
+      ? { kind: 'reported', irradianceWm2: value }
+      : { kind: 'absent' };
   }
 }

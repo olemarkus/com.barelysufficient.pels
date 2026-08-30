@@ -4,6 +4,7 @@ import {
   MIN_PV_GAIN_SAMPLES,
   PV_GAIN_CLAMP_DOMINANCE_RATIO,
   PV_GAIN_CLAMP_QUANTILE,
+  type PvGainFit,
   type PvGainTrainingPoint,
 } from '../../packages/shared-domain/src/solar/pvGain';
 
@@ -17,6 +18,14 @@ const syntheticPoints = (count: number, gain = TRUE_GAIN): PvGainTrainingPoint[]
     return { irradianceWm2, generationKwh: gain * irradianceWm2 };
   })
 );
+
+// The fitted arm, or a failed test. Keeps the assertions reading about the gain
+// rather than about discriminating the answer.
+const fittedGain = (points: readonly PvGainTrainingPoint[]): PvGainFit => {
+  const learned = fitPvGain(points);
+  if (learned.kind !== 'fitted') throw new Error('expected a fitted gain, got: learning');
+  return learned.fit;
+};
 
 const withEvidence = (
   points: PvGainTrainingPoint[],
@@ -51,37 +60,33 @@ const legacyReferenceFit = (points: readonly PvGainTrainingPoint[]) => {
 
 describe('fitPvGain', () => {
   it('recovers the true device gain from clean synthetic hours', () => {
-    const fit = fitPvGain(syntheticPoints(200));
-    expect(fit).not.toBeNull();
-    expect(fit!.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 9);
-    expect(fit!.sampleCount).toBeGreaterThanOrEqual(MIN_PV_GAIN_SAMPLES);
-    expect(fit!.confidence).toBe('high');
+    const fit = fittedGain(syntheticPoints(200));
+    expect(fit.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 9);
+    expect(fit.sampleCount).toBeGreaterThanOrEqual(MIN_PV_GAIN_SAMPLES);
+    expect(fit.confidence).toBe('high');
   });
 
   it('is robust to a minority of bad hours (outage / clipping)', () => {
     const points = syntheticPoints(200);
     for (let i = 0; i < points.length; i += 7) points[i].generationKwh = 0; // inverter offline
     for (let i = 3; i < points.length; i += 11) points[i].generationKwh *= 2.5; // clipping mismeasure
-    const fit = fitPvGain(points);
-    expect(fit).not.toBeNull();
-    expect(fit!.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 5); // median holds
+    const fit = fittedGain(points);
+    expect(fit.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 5); // median holds
   });
 
-  it('returns null while still learning (too few usable hours)', () => {
-    expect(fitPvGain(syntheticPoints(MIN_PV_GAIN_SAMPLES - 1))).toBeNull();
+  it('answers `learning` while still learning (too few usable hours)', () => {
+    expect(fitPvGain(syntheticPoints(MIN_PV_GAIN_SAMPLES - 1))).toEqual({ kind: 'learning' });
   });
 
   it('ignores hours below the irradiance floor (dawn/dusk/overcast)', () => {
     const dim: PvGainTrainingPoint[] = Array.from({ length: 100 }, () => ({
       irradianceWm2: 40, generationKwh: TRUE_GAIN * 40,
     }));
-    expect(fitPvGain(dim)).toBeNull();
+    expect(fitPvGain(dim)).toEqual({ kind: 'learning' });
   });
 
   it('reports a lower confidence tier with fewer samples', () => {
-    const small = fitPvGain(syntheticPoints(30));
-    expect(small).not.toBeNull();
-    expect(small!.confidence).toBe('low');
+    expect(fittedGain(syntheticPoints(30)).confidence).toBe('low');
   });
 
   it('without segmentation evidence the fit is EXACTLY the legacy median (regression pin)', () => {
@@ -92,28 +97,27 @@ describe('fitPvGain', () => {
     }));
     const reference = legacyReferenceFit(points);
     expect(reference).not.toBeNull();
-    expect(fitPvGain(points)).toEqual({ ...reference!, trainingMode: 'unsegmented_median' });
+    expect(fittedGain(points)).toEqual({ ...reference!, trainingMode: 'unsegmented_median' });
   });
 
   it('trains the median on unclamped hours alone once enough exist', () => {
     // Clamped hours read at 40% of the true gain; exactly MIN unclamped hours exist.
     const suspects = withEvidence(syntheticPoints(150, TRUE_GAIN * 0.4), 'suspect');
     const unclamped = withEvidence(syntheticPoints(MIN_PV_GAIN_SAMPLES, TRUE_GAIN), 'unclamped');
-    const fit = fitPvGain([...suspects, ...unclamped]);
-    expect(fit).not.toBeNull();
-    expect(fit!.trainingMode).toBe('unclamped_median');
-    expect(fit!.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 9);
-    expect(fit!.sampleCount).toBe(MIN_PV_GAIN_SAMPLES);
+    const fit = fittedGain([...suspects, ...unclamped]);
+    expect(fit.trainingMode).toBe('unclamped_median');
+    expect(fit.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 9);
+    expect(fit.sampleCount).toBe(MIN_PV_GAIN_SAMPLES);
     // Confidence thresholds apply to the UNCLAMPED pool size, not the total.
-    expect(fit!.confidence).toBe('low');
+    expect(fit.confidence).toBe('low');
   });
 
   it('reaches medium/high confidence from the unclamped pool size', () => {
     const suspects = withEvidence(syntheticPoints(50, TRUE_GAIN * 0.4), 'suspect');
     const unclamped = withEvidence(syntheticPoints(200, TRUE_GAIN), 'unclamped');
-    const fit = fitPvGain([...suspects, ...unclamped]);
-    expect(fit!.trainingMode).toBe('unclamped_median');
-    expect(fit!.confidence).toBe('high');
+    const fit = fittedGain([...suspects, ...unclamped]);
+    expect(fit.trainingMode).toBe('unclamped_median');
+    expect(fit.confidence).toBe('high');
   });
 
   it('zero-export home: falls back to the upper quantile of the EVIDENCE-BEARING gains', () => {
@@ -127,22 +131,21 @@ describe('fitPvGain', () => {
       netEvidence: 'suspect' as const,
     }));
     const unknowns = syntheticPoints(10, TRUE_GAIN * 3);
-    const fit = fitPvGain([...suspects, ...unknowns]);
-    expect(fit).not.toBeNull();
-    expect(fit!.trainingMode).toBe('clamp_aware_quantile');
-    expect(fit!.sampleCount).toBe(200); // pool = evidence-bearing gains, unknowns excluded
+    const fit = fittedGain([...suspects, ...unknowns]);
+    expect(fit.trainingMode).toBe('clamp_aware_quantile');
+    expect(fit.sampleCount).toBe(200); // pool = evidence-bearing gains, unknowns excluded
     // Nearest-rank P90 of the evidence pool, computed independently:
     const evidenceGains = suspects.map((p) => p.generationKwh / p.irradianceWm2).sort((a, b) => a - b);
     const expected = evidenceGains[
       Math.min(evidenceGains.length - 1, Math.ceil(PV_GAIN_CLAMP_QUANTILE * evidenceGains.length) - 1)
     ];
-    expect(fit!.gainKwhPerWm2).toBe(expected);
+    expect(fit.gainKwhPerWm2).toBe(expected);
     // The whole point: the quantile sits well above the clamped median…
     const mid = evidenceGains[Math.floor(evidenceGains.length / 2)];
-    expect(fit!.gainKwhPerWm2).toBeGreaterThan(mid);
+    expect(fit.gainKwhPerWm2).toBeGreaterThan(mid);
     // …but is bounded by the best evidence-bearing hour observed — the 3×-gain
     // legacy hours sit above it and must be unreachable.
-    expect(fit!.gainKwhPerWm2).toBeLessThanOrEqual(evidenceGains.at(-1)!);
+    expect(fit.gainKwhPerWm2).toBeLessThanOrEqual(evidenceGains.at(-1)!);
   });
 
   it('exporting-home warm-up: mixed evidence without suspect dominance stays on the legacy median', () => {
@@ -156,30 +159,28 @@ describe('fitPvGain', () => {
     const unknowns = syntheticPoints(200, TRUE_GAIN);
     const points = [...unclamped, ...suspects, ...unknowns];
     expect(suspects.length).toBeLessThan(PV_GAIN_CLAMP_DOMINANCE_RATIO * unclamped.length);
-    const fit = fitPvGain(points);
-    expect(fit).not.toBeNull();
-    expect(fit!.trainingMode).toBe('unsegmented_median');
-    expect(fit!.sampleCount).toBe(247);
+    const fit = fittedGain(points);
+    expect(fit.trainingMode).toBe('unsegmented_median');
+    expect(fit.sampleCount).toBe(247);
     expect(fit).toEqual({ ...legacyReferenceFit(points)!, trainingMode: 'unsegmented_median' });
   });
 
   it('quantile mode forces LOW confidence even on 200 tight samples (confidence trap pin)', () => {
     // 200 identical clamped gains: scatter 0, count 200 — resolveConfidence would
     // say 'high', which is precisely the wrong read on a clamped pool.
-    const fit = fitPvGain(withEvidence(syntheticPoints(200, TRUE_GAIN * 0.3), 'suspect'));
-    expect(fit).not.toBeNull();
-    expect(fit!.trainingMode).toBe('clamp_aware_quantile');
-    expect(fit!.confidence).toBe('low');
-    expect(fit!.relativeScatter).toBe(0);
+    const fit = fittedGain(withEvidence(syntheticPoints(200, TRUE_GAIN * 0.3), 'suspect'));
+    expect(fit.trainingMode).toBe('clamp_aware_quantile');
+    expect(fit.confidence).toBe('low');
+    expect(fit.relativeScatter).toBe(0);
   });
 
-  it('returns null for a non-positive gain in every mode', () => {
+  it('stays `learning` for a non-positive gain in every mode', () => {
     const dead = (points: PvGainTrainingPoint[]): PvGainTrainingPoint[] => (
       points.map((p) => ({ ...p, generationKwh: 0 }))
     );
-    expect(fitPvGain(dead(syntheticPoints(60)))).toBeNull();
-    expect(fitPvGain(withEvidence(dead(syntheticPoints(60)), 'suspect'))).toBeNull();
-    expect(fitPvGain(withEvidence(dead(syntheticPoints(60)), 'unclamped'))).toBeNull();
+    expect(fitPvGain(dead(syntheticPoints(60)))).toEqual({ kind: 'learning' });
+    expect(fitPvGain(withEvidence(dead(syntheticPoints(60)), 'suspect'))).toEqual({ kind: 'learning' });
+    expect(fitPvGain(withEvidence(dead(syntheticPoints(60)), 'unclamped'))).toEqual({ kind: 'learning' });
   });
 
   it('drops non-finite/negative inputs rather than poisoning the gain', () => {
@@ -188,8 +189,6 @@ describe('fitPvGain', () => {
     points[1].generationKwh = -5;
     points[2].irradianceWm2 = Number.NaN; // NaN < floor is false ⇒ must be filtered explicitly
     (points[3] as { irradianceWm2: number }).irradianceWm2 = undefined as unknown as number;
-    const fit = fitPvGain(points);
-    expect(fit).not.toBeNull();
-    expect(fit!.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 6);
+    expect(fittedGain(points).gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 6);
   });
 });
