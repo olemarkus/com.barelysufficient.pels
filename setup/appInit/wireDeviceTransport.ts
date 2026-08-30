@@ -124,9 +124,6 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
   // it. Assigned onto ctx (the wiring-assigns-ctx-members house pattern).
   // eslint-disable-next-line functional/immutable-data -- shared AppContext write
   ctx.externalOffHold = createExternalOffHoldPolicy(ctx.homey.settings);
-  // Bound here instead of via a constructor dep so the app.ts wiring literal
-  // stays untouched; same resolver instance the transport providers use.
-  ctx.snapshotHelpers.bindHomeyEnergyMeterResolver(() => resolveHomeyEnergyMeterSelection(ctx.homey));
   const observeCalibrationSnapshotMutation = createCalibrationSnapshotMutationHook({
     getStore: () => deps.getPowerCalibrationStore(),
     debugStructured: ctx.getStructuredDebugEmitter('power_calibration', 'power_calibration'),

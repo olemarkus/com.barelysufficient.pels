@@ -149,6 +149,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getFlowReportedDeviceIds: vi.fn(() => []),
     emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
     recordPowerSample: vi.fn(async () => undefined),
+    // Automatic — the fixture has no explicit whole-home meter selection.
+    resolveMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
   } as unknown as ConstructorParameters<typeof AppSnapshotHelpers>[0]);
   const homeyEnergyHelpers = homeyEnergyHelpersOverride ?? new HomeyEnergyPollSource({
     getPowerSource: () => normalizePowerSource(homey.settings.get('power_source')),

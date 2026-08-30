@@ -79,18 +79,6 @@ export class AppSnapshotHelpers {
   // forget queue-and-return behavior to avoid awaiting their own caller.
   private snapshotRefreshInFlight: Promise<void> | null = null;
   private readonly targetPowerProbeScheduler: TargetPowerProbeScheduler;
-  // Resolver for the explicit whole-home meter selection, bound by
-  // appServiceWiring (a constructor dep would grow the app.ts wiring literal).
-  // Used to fence the implicit homey_energy sample: a refresh cycle fetches its
-  // live report near the start and records the sample at the end, so a meter
-  // change mid-cycle would otherwise record the OLD meter's watts seconds
-  // after the user switched (the poll path has the same fence via its
-  // pollGeneration counter).
-  private mainMeterSelectionResolver: (() => MainMeterSelection) | null = null;
-
-  bindHomeyEnergyMeterResolver(resolver: () => MainMeterSelection): void {
-    this.mainMeterSelectionResolver = resolver;
-  }
 
   constructor(private readonly deps: {
     getPowerSource: () => PowerSource;
@@ -114,6 +102,16 @@ export class AppSnapshotHelpers {
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
     emitSettingsUiDevicesUpdated: () => void;
     recordPowerSample: (sample: HomePowerSample) => Promise<PowerSampleAdmission>;
+    // The explicit whole-home meter selection, resolved fresh per call by the
+    // settings adapter that owns the SDK provenance. Required, because there is
+    // no honest default: `resolved/null` would mean Automatic, silently
+    // promoting an unread selection to the one answer `readMainMeterSelection`
+    // exists to never assume. It both directs the fetch and fences the implicit
+    // homey_energy sample — a refresh cycle reads its live report near the start
+    // and records the sample at the end, so a meter change mid-cycle would
+    // otherwise record the OLD meter's watts seconds after the user switched
+    // (the poll path has the same fence via its pollGeneration counter).
+    resolveMainMeterSelection: () => MainMeterSelection;
     reconcileTargetPowerReachability?: (snapshot: TargetDeviceSnapshot[], nowMs: number) => void;
     getNextTargetPowerProbe?: () => DueTargetPowerProbe | undefined;
     hasPendingTargetPowerProbe?: () => boolean;
@@ -344,7 +342,7 @@ export class AppSnapshotHelpers {
     this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
       event: 'target_snapshot_refresh_started',
     });
-    const meterSelectionAtStart = this.resolveMainMeterSelection();
+    const meterSelectionAtStart = this.deps.resolveMainMeterSelection();
     const homePowerSample = await deviceManager.refreshSnapshot({
       includeLivePower: options.fast !== true,
       targetedRefresh: options.targeted,
@@ -430,7 +428,7 @@ export class AppSnapshotHelpers {
     // `implicit_homey_energy_sample_discarded_stale_meter` event for a cycle
     // that never had a recordable sample to discard.
     if (meterSelectionAtStart.state !== 'resolved') return 'selection_unavailable';
-    return sameMainMeterSelection(this.resolveMainMeterSelection(), meterSelectionAtStart)
+    return sameMainMeterSelection(this.deps.resolveMainMeterSelection(), meterSelectionAtStart)
       ? 'admitted'
       : 'stale_meter';
   }
@@ -458,9 +456,5 @@ export class AppSnapshotHelpers {
           ? sample.resolvedHomeMeterDeviceId : null,
       );
     }
-  }
-
-  private resolveMainMeterSelection(): MainMeterSelection {
-    return this.mainMeterSelectionResolver?.() ?? { state: 'resolved', meterDeviceId: null };
   }
 }

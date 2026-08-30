@@ -12,6 +12,11 @@ import type { PowerSampleAdmission } from '../../lib/app/appContext';
 
 const mockPowerSource = () => normalizePowerSource(mockHomeyInstance.settings.get('power_source'));
 
+// Automatic is these fixtures' whole-home meter posture. Stated once here and
+// passed in, because the helper takes the selection as a required dep: there is
+// no in-class default that could quietly stand in for an unread selection.
+const automaticMeterSelection = (): MainMeterSelection => ({ state: 'resolved', meterDeviceId: null });
+
 describe('appSnapshotHelpers', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -48,6 +53,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: automaticMeterSelection,
     });
 
     helper.startPeriodicSnapshotRefresh();
@@ -82,6 +88,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: automaticMeterSelection,
     });
     const refresh = vi.spyOn(helper, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     helper.startPeriodicSnapshotRefresh();
@@ -117,6 +124,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: automaticMeterSelection,
       getNextTargetPowerProbe: () => ({ deviceId: 'sub-home-charger', dueAtMs: 100 }),
       rebuildOwningHomePlanForDevice,
     });
@@ -153,6 +161,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: automaticMeterSelection,
     });
     const refresh = vi.spyOn(helper, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
       new Promise<void>((resolve) => { finishRefresh = resolve; })
@@ -206,6 +215,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: automaticMeterSelection,
     });
     const scheduleTargetPowerProbe = vi.spyOn(helper, 'scheduleTargetPowerProbe');
 
@@ -272,6 +282,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated,
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: automaticMeterSelection,
     });
 
     await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
@@ -335,6 +346,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: automaticMeterSelection,
     });
 
     await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
@@ -397,6 +409,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: automaticMeterSelection,
     });
 
     await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
@@ -437,6 +450,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests,
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: automaticMeterSelection,
     });
     helperRef.current = helper;
     (helper as any).snapshotRefreshStopped = false;
@@ -482,6 +496,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: automaticMeterSelection,
     });
     (helper as any).snapshotRefreshStopped = false;
 
@@ -532,6 +547,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: automaticMeterSelection,
     });
     (helper as any).snapshotRefreshStopped = false;
 
@@ -578,6 +594,7 @@ describe('appSnapshotHelpers', () => {
       refreshSnapshot: ReturnType<typeof vi.fn>,
       recordPowerSample: ReturnType<typeof vi.fn>,
       noteAdmittedAutomaticHomeMeter: ReturnType<typeof vi.fn>,
+      resolveMainMeterSelection: () => MainMeterSelection = automaticMeterSelection,
     ) => new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
@@ -601,24 +618,46 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: recordPowerSample as (sample: { powerW: number }) => Promise<PowerSampleAdmission>,
+      resolveMainMeterSelection,
     });
 
     const AREA_SAMPLE = { powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area' };
 
     const runRefresh = async (
       options: Parameters<AppSnapshotHelpers['refreshTargetDevicesSnapshot']>[0],
-      bindSelection?: () => MainMeterSelection,
+      resolveSelection: () => MainMeterSelection = automaticMeterSelection,
       pipelineAdmission: PowerSampleAdmission = { state: 'admitted', revision: 1 },
     ) => {
       const refreshSnapshot = vi.fn().mockResolvedValue(AREA_SAMPLE);
       const recordPowerSample = vi.fn().mockResolvedValue(pipelineAdmission);
       const noteAdmittedAutomaticHomeMeter = vi.fn();
-      const helper = buildHelper(refreshSnapshot, recordPowerSample, noteAdmittedAutomaticHomeMeter);
-      if (bindSelection) helper.bindHomeyEnergyMeterResolver(bindSelection);
+      const helper = buildHelper(
+        refreshSnapshot,
+        recordPowerSample,
+        noteAdmittedAutomaticHomeMeter,
+        resolveSelection,
+      );
       await helper.refreshTargetDevicesSnapshot(options);
       expect(refreshSnapshot).toHaveBeenCalled();
-      return { noteAdmittedAutomaticHomeMeter, recordPowerSample };
+      return { noteAdmittedAutomaticHomeMeter, recordPowerSample, refreshSnapshot };
     };
+
+    // The reason the selection is a required dep and not an optional with an
+    // Automatic default: `unavailable` has to survive the trip to the fetch.
+    // Defaulted, this cycle would read and record the Automatic meter's watts
+    // for a home whose selection nobody could read.
+    it('an unreadable selection reaches the fetch as unavailable and records nothing', async () => {
+      mockHomeyInstance.settings.set('power_source', 'homey_energy');
+      const { noteAdmittedAutomaticHomeMeter, recordPowerSample, refreshSnapshot } = await runRefresh(
+        {},
+        () => ({ state: 'unavailable' }),
+      );
+      expect(refreshSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({ mainMeterSelection: { state: 'unavailable' } }),
+      );
+      expect(recordPowerSample).not.toHaveBeenCalled();
+      expect(noteAdmittedAutomaticHomeMeter).not.toHaveBeenCalled();
+    });
 
     it('an ordinary Automatic refresh records and retains the sample identity', async () => {
       mockHomeyInstance.settings.set('power_source', 'homey_energy');
@@ -672,7 +711,7 @@ describe('appSnapshotHelpers', () => {
       mockHomeyInstance.settings.set('power_source', 'homey_energy');
       const { noteAdmittedAutomaticHomeMeter, recordPowerSample } = await runRefresh(
         {},
-        undefined,
+        automaticMeterSelection,
         { state: 'superseded', revision: 1, latestRevision: 2 },
       );
       expect(recordPowerSample).toHaveBeenCalledWith(AREA_SAMPLE);

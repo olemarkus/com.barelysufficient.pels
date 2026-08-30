@@ -18,7 +18,9 @@ import {
   type PersistedRecordReadEvidence,
 } from '../lib/device/devicePowerPeak';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
+import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
 import { isPowerTrackerState, sanitizePowerTrackerSolarFields } from '../lib/utils/appTypeGuards';
+import { readMainMeterSelection } from './mainMeterSettings';
 import {
   DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_POWER_PEAKS,
@@ -138,5 +140,16 @@ export class SettingsRepository {
 
   saveExpectedPowerOverrides(overrides: ExpectedPowerOverridesByDeviceId): void {
     this.homey.settings.set(DEVICE_EXPECTED_POWER_OVERRIDES, overrides);
+  }
+
+  /**
+   * Main's optional explicit whole-home meter, read fresh per call so a
+   * changed selection takes effect without a restart. `resolved/null` is
+   * Automatic; `unavailable` is a settings read that cannot say which meter
+   * is authoritative, and the adapter consumes all SDK provenance to keep the
+   * two apart — an unread selection must never arrive as Automatic.
+   */
+  loadMainMeterSelection(): MainMeterSelection {
+    return readMainMeterSelection(this.homey.settings);
   }
 }

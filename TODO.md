@@ -2421,28 +2421,26 @@ What remains open is below.*
       2026-07-22. File: `setup/homeMembership.ts` (`noteSuspectEdge` / `refreshStoreCaches`).
 - [ ] **Two `MainMeterSelection`/power-source seams fabricate `state: 'resolved'` when their resolver is
       absent.** *Persona:* maintainer wiring a new call path into membership or snapshot refresh.
-      *Hypothesis:* three seams fabricate an authoritative selection when their optional resolver is missing.
+      *Hypothesis:* two seams fabricate an authoritative selection when their optional resolver is missing.
       `HomeMembershipService.readActiveMeterPowerSource` falls back to
       `?? { state: 'resolved', value: 'homey_energy' }` when the optional `getConfiguredPowerSource` dep is
-      omitted; `AppSnapshotHelpers.resolveMainMeterSelection` falls back to
-      `?? { state: 'resolved', meterDeviceId: null }` when its resolver is unbound; and
-      `fetchLivePowerReport` ends its `mainMeterSelection ?? getHomeyEnergyMeterSelection?.() ??` chain on the
-      same fabricated `resolved`/Automatic literal. All three claim the STRONGEST authority at seams whose
-      entire purpose is to fence control when authority is unknown; every other path in those modules fails
-      closed on `unavailable`. No live bug is proven (the power-source dep is always passed by
-      `createHomeMembershipService`, and the snapshot resolver is bound at
-      `setup/appInit/wireDeviceTransport.ts` `bindHomeyEnergyMeterResolver`), but the optional-with-fabricated-default shape means a wiring path that
-      omits one silently claims authority instead of fencing, and it is now repeated three times. Note that
+      omitted; `fetchLivePowerReport` ends its `mainMeterSelection ?? getHomeyEnergyMeterSelection?.() ??`
+      chain on the same fabricated `resolved`/Automatic literal. Both claim the STRONGEST authority at seams
+      whose entire purpose is to fence control when authority is unknown; every other path in those modules
+      fails closed on `unavailable`. No live bug is proven (the power-source dep is always passed by
+      `createHomeMembershipService`), but the optional-with-fabricated-default shape means a wiring path that
+      omits one silently claims authority instead of fencing. Precedent to copy: the third seam took the fix —
+      `AppSnapshotHelpers` now takes `resolveMainMeterSelection` as a required constructor dep, read through
+      `SettingsRepository.loadMainMeterSelection`. Note that
       `mainMeterSelection` is optional at EVERY level of the `refreshSnapshot` →
       `resolveLivePowerForRefresh` → `fetchLivePowerReport` chain, so the fabricated literal is reachable by
-      simply not threading it. Make the deps required and let tests pass explicit stubs. Verified NOT a defect
+      simply not threading it. Make both deps required and let tests pass explicit stubs. Verified NOT a defect
       while auditing: an `unavailable` selection forces `homePowerW: null`
       (`snapshotRefresh.ts` `fetchLivePowerReport`), so `updateHomePowerFromReport` returns null and
       `recordImplicitHomeyEnergySample` writes nothing — `sameMainMeterSelection` treating
       `unavailable === unavailable` as equal only suppresses a debug log, and needs no change.
       Source: multi-home boundary-hygiene audit of the GA train, 2026-07-25. Files:
-      `setup/homeMembership.ts`, `setup/appSnapshotHelpers.ts`,
-      `lib/device/transport/snapshotRefresh.ts` (`fetchLivePowerReport`).
+      `setup/homeMembership.ts`, `lib/device/transport/snapshotRefresh.ts` (`fetchLivePowerReport`).
 - [ ] **Hoist `createSelectOption` (and the render-signature guard pattern) out of `advanced.ts` into a
       shared settings-ui primitive module.** *Persona:* maintainer adding the next dynamic device picker.
       *Hypothesis:* three near-copies now exist — `createModeOption` (`modes.ts`), `createSelectOption`
