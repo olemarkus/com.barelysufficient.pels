@@ -2348,7 +2348,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // change, so a perfectly working device steady at setpoint can sit
     // aged-out for hours — the device snapshot carries an aged `lastFreshDataMs`.
     // Smart-task planning must still credit the last-seen temperature in that
-    // case. See `lib/observer/observationFreshness.ts` for the doctrine and
+    // case. See `lib/observer/AGENTS.md` for the doctrine and
     // `lib/objectives/deferredObjectives/diagnosticProgress.ts` for why this gate
     // deliberately does not gate on observation freshness.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
@@ -2393,9 +2393,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   });
 
   it('does not plan a temperature objective when lastFreshDataMs is non-positive', () => {
-    // Mirrors `getLatestDeviceObservationMs` in
-    // `lib/observer/observationFreshness.ts`: an epoch <= 0 is treated as
-    // uninitialized, not a valid observation timestamp.
+    // An epoch <= 0 is treated as uninitialized, not a valid observation
+    // timestamp — the device has never reported, which is the one honest
+    // "we do not know" state (age never produces one).
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',

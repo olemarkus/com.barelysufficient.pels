@@ -116,8 +116,6 @@ export type IdleDetectorInput = {
   targetTemperature?: number;
   /** True when the device is observably on right now (binary or stepped). */
   observedOn: boolean;
-  /** True when the observation is stale and cannot be trusted as authoritative. */
-  observationStale?: boolean;
   /**
    * True when PELS is the reason the device is off / not drawing — e.g. it is
    * currently shed, has a pending shed command, or has been driven to its off
@@ -217,14 +215,13 @@ const computeTemperatureGap = (
 
 // Common shape applies to both the near-target / unresponsive paths and the
 // `capped_idle` cycling path — the device must expose a temperature setpoint,
-// observation must be trustworthy, the device must report itself on,
+// the device must report itself on,
 // and PELS must not be the reason it's not drawing. The narrower
 // "currently idle" gate stays at the `measuredIsIdle` call sites only —
 // `capped_idle` deliberately accepts both on- and off-cycle ticks so the
 // cycling discriminator can see both halves of the device's duty cycle.
 const passesCommonEligibility = (input: IdleDetectorInput): boolean => {
   if (!input.hasTemperatureSetpoint) return false;
-  if (input.observationStale === true) return false;
   if (!input.observedOn) return false;
   if (input.pelsCommandedShed) return false;
   return true;

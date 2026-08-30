@@ -7,10 +7,10 @@
  *    observer projection, which is event-driven (empty until the first
  *    delta/refresh for a device). On the first plan build the seed fills it from
  *    the raw snapshot so the chip shows the device's real plug-state for cycle 1.
- *  - #2 `toPlanDevice` freshness: with the projection seeded, `observationStale`
- *    resolves from the projection for boot-present devices instead of the
- *    snapshot fallback — but the fallback is RETAINED for the picker/hot-plug
- *    window (a device not in the committed snapshot), proven below.
+ *  - #2 `toPlanDevice` observed reads: with the projection seeded, they resolve
+ *    from the projection for boot-present devices instead of the snapshot
+ *    fallback — but the fallback is RETAINED for the picker/hot-plug window
+ *    (a device not in the committed snapshot), proven below.
  *
  * The seed is wired here exactly as app.ts wires it: `seedObservedStateFromSnapshot`
  * projects each raw `deviceManager.getSnapshot()` entry via `projectObservedState`

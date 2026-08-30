@@ -40,11 +40,6 @@ type BuildDeviceDiagnosticsObservationsParams = {
   restoreResult: RestorePlanResult;
   priceOptimizationEnabled: boolean;
   priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-  // Observer-resolved per-device staleness, supplied by the producer/wiring layer
-  // (createPlanEngine wires `isDeviceObservationStale(ctx.getObservedState(id))`).
-  // The starvation freshness gate must source from the observer, NOT a plan-device
-  // field — the plan device carries no staleness.
-  getObservationStale: (deviceId: string) => boolean;
 };
 
 export const buildDeviceDiagnosticsObservations = (
@@ -69,9 +64,6 @@ export const buildDeviceDiagnosticsObservations = (
     // Producer-resolved once per build (see `CurrentHourPriceLevel`) — this loop
     // must not ask the price service per device.
     currentHourPriceLevel: params.context.currentHourPriceLevel,
-    // Freshness is observer-resolved (not read off the plan device); a stale
-    // observation is gated out of starvation counting downstream.
-    observationFresh: !params.getObservationStale(device.id),
   }));
 };
 
@@ -326,7 +318,6 @@ const buildDiagnosticsObservation = (params: {
   priceOptimizationEnabled: boolean;
   priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   currentHourPriceLevel: CurrentHourPriceLevel;
-  observationFresh: boolean;
 }): DeviceDiagnosticsPlanObservation => {
   const {
     modeTargetCFor,
@@ -337,7 +328,6 @@ const buildDiagnosticsObservation = (params: {
     priceOptimizationEnabled,
     priceOptimizationSettings,
     currentHourPriceLevel,
-    observationFresh,
   } = params;
   // Demand metrics and the starvation lanes both ask the same question — does
   // being off mean this device is going without? — and the producer answered it
@@ -420,7 +410,6 @@ const buildDiagnosticsObservation = (params: {
     suppressionState: starvationSuppression.suppressionState,
     countingCause: starvationSuppression.countingCause,
     pauseReason: starvationSuppression.pauseReason,
-    observationFresh,
   };
 };
 

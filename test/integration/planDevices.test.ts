@@ -15,10 +15,6 @@ import type {
 } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import {
-  isDeviceObservationStale,
-  STALE_DEVICE_OBSERVATION_MS,
-} from '../../lib/observer/observationFreshness';
-import {
   buildPlanInputDevice,
   type FixtureBoostFields,
   steppedInputDevice,
@@ -143,23 +139,13 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('enables temperature boost from the producer-resolved temperature (plan does not distrust the observer)', () => {
-    // Behaviour change (trust the observer): the plan device no longer carries
-    // observation staleness, and the plan has no right to distrust observer data.
     // Temperature boost is resolved from the producer-resolved temperature
-    // (finiteness-checked, not gated on staleness at the plan layer), so a device
-    // below its floor boosts on the last-seen temperature. (`getTrustedCurrentTemperatureC`
-    // still drops a non-finite reading — only the staleness gate is gone.)
-    //
-    // The boost decision reads ONLY `currentTemperature` — it has no freshness
-    // input at this layer by design, so the trusted-last-seen behaviour holds
-    // regardless of age. The assertion below documents that the chosen age IS
-    // stale by the real resolver; it is NOT wired into the boost path (a genuine
-    // reintroduction guard isn't constructible here without first re-plumbing
-    // freshness into the boost decision). The real guard is the end-state assertion
-    // (`boostActive === true` from a finite latched reading) below.
-    expect(isDeviceObservationStale({
-      lastFreshDataMs: Date.now() - STALE_DEVICE_OBSERVATION_MS - 60_000,
-    })).toBe(true);
+    // (finiteness-checked only), so a device below its floor boosts on the
+    // last-seen reading no matter how long ago it arrived.
+    // (`getTrustedCurrentTemperatureC` still drops a non-finite reading.)
+    // The boost decision reads ONLY `currentTemperature` — it has no age input
+    // anywhere, and neither does anything else: PELS holds no notion of an
+    // observation timing out.
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedInput({
         id: 'tank',

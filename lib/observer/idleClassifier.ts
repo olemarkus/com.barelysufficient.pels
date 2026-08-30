@@ -45,7 +45,6 @@ export type IdleClassifierDeviceInput = {
   id: string;
   name: string;
   currentState: string;
-  observationStale?: boolean;
   /**
    * Producer-resolved current draw. REQUIRED — this input is built from plan
    * devices, which always carry it. It was `measuredPowerKw?: number` and the
@@ -91,7 +90,6 @@ const toDetectorInput = (
   currentTemperature: device.temperature?.currentTemperature,
   targetTemperature: device.temperature?.currentTarget,
   observedOn: device.currentState === 'on',
-  observationStale: device.observationStale,
   pelsCommandedShed: device.plannedState === 'shed',
   hasTemperatureSetpoint: device.temperature !== undefined,
 });
@@ -208,8 +206,7 @@ const emitPowerEdge = (params: {
 }): void => {
   const { device, lastDrawingById, debugLog } = params;
   if (
-    device.observationStale === true
-    || device.currentState !== 'on'
+    device.currentState !== 'on'
     || device.plannedState === 'shed'
     || device.temperature === undefined
   ) {

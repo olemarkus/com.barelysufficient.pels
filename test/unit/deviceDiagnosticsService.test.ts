@@ -4,10 +4,6 @@ import {
   DeviceDiagnosticsService,
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { DeviceDiagnosticsPlanObservation } from '../../lib/diagnostics/deviceDiagnosticsService';
-import {
-  isDeviceObservationStale,
-  STALE_DEVICE_OBSERVATION_MS,
-} from '../../lib/observer/observationFreshness';
 import { createDeviceDiagnosticsStateStore } from '../../setup/deviceDiagnosticsStateAdapter';
 import { getDateKeyStartMs } from '../../lib/utils/dateUtils';
 
@@ -73,7 +69,6 @@ const buildObservation = (
   countingCause: 'capacity',
   pauseReason: null,
   // Observer-resolved freshness; a fresh observation is eligible to count.
-  observationFresh: true,
   ...overrides,
 });
 
@@ -1061,31 +1056,27 @@ describe('DeviceDiagnosticsService', () => {
     expect(starvation?.starvationPauseReason).toBeNull();
   });
 
-  it('does NOT count starvation while the observation is stale (REAL freshness over aged lastFreshDataMs)', () => {
-    // A stale observation is not "confirmed no progress": even though the device
-    // is eligible and PELS holds it below target (suppressionState 'counting'),
-    // a not-fresh observation gates it out of counting. Drive the REAL freshness
-    // resolver over an aged `lastFreshDataMs` (not a hand-set flag), so removing
-    // the `observationFresh` gate would make this accumulate and fail.
+  it('counts starvation while the device sits silent — no timeout makes an observation untrusted', () => {
+    // Regression for the removal of the 40-minute observation-freshness gate.
+    // A Homey driver republishes a capability only on value CHANGE, so a device
+    // PELS is holding below target is exactly the one that stops reporting. The
+    // old gate read that silence as "not confirmed" and refused to count, which
+    // blinded the starvation model precisely while the starvation ran. Silence
+    // means "unchanged", so the last trusted reading keeps counting.
     const { service } = createDeps();
     const start = Date.now();
-    const observationFresh = !isDeviceObservationStale(
-      { lastFreshDataMs: start - STALE_DEVICE_OBSERVATION_MS - 60_000 },
-      start,
-    );
-    expect(observationFresh).toBe(false);
 
     for (const minute of [0, 9, 16, 30, 45]) {
       service.observePlanSample({
         nowTs: start + (minute * 60 * 1000),
-        observations: [buildObservation({ observationFresh })],
+        observations: [buildObservation()],
       });
     }
 
     const starvation = getStarvationState(service);
-    expect(starvation?.isStarved).toBe(false);
-    expect(starvation?.starvedAccumulatedMs).toBe(0);
-    expect(starvation?.starvationEpisodeStartedAt).toBeUndefined();
+    expect(starvation?.isStarved).toBe(true);
+    expect(starvation?.starvedAccumulatedMs).toBeGreaterThan(0);
+    expect(starvation?.starvationEpisodeStartedAt).toBeDefined();
   });
 
   it('emits structured logs for starvation lifecycle transitions', () => {

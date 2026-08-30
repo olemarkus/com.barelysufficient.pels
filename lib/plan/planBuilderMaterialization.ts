@@ -58,7 +58,6 @@ export type PlanMaterializationDeps = {
   getPowerTracker: () => PowerTrackerState;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  getObservationStale?: (deviceId: string) => boolean;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
   logDebug: (...args: unknown[]) => void;
@@ -303,7 +302,6 @@ export class PlanMaterializationStages {
         priceOptimizationSettings: this.priceOptimizationSettings,
         // No staleness dep wired (e.g. tests) ⇒ treat every device as fresh, so the
         // freshness gate is a no-op and starvation counts as before.
-        getObservationStale: this.deps.getObservationStale ?? (() => false),
       });
       this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs });
     });

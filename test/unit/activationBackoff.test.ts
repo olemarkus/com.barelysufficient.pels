@@ -166,12 +166,11 @@ describe('activation backoff', () => {
   });
 
   it('credits a stale-observation device its last reading rather than zero', () => {
-    // Regression for the TODO P1 stale-observation refresh loop: many Homey
-    // drivers only advance per-capability `lastUpdated` on VALUE CHANGE, so a
-    // thermostat steady at setpoint for 40+ minutes ages past
-    // `STALE_DEVICE_OBSERVATION_MS` while still on and drawing exactly what it
-    // last reported. Returning 0 for that blocked legitimate activations. The
-    // longer a reading is stable, the MORE trustworthy it is, not less.
+    // Many Homey drivers only advance per-capability `lastUpdated` on VALUE
+    // CHANGE, so a thermostat steady at setpoint falls silent for hours while
+    // still on and drawing exactly what it last reported. Returning 0 for that
+    // blocked legitimate activations. The longer a reading is stable, the MORE
+    // trustworthy it is, not less.
     const state = createPlanEngineState();
     const start = Date.now();
     const staleStableDevice = withHeadroomCurrentOn({

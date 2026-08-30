@@ -10,10 +10,9 @@
  * READ-ONLY BY CONSTRUCTION. Every field is either a value the runtime has
  * ALREADY committed — the last committed plan snapshot, the home's live tracker
  * state, the bundle's diagnostics — or PURELY DERIVED from one at read time.
- * Three per-device fields inside the served plan are the derived kind:
- * `observationStale` (folds the observed state against the wall clock),
+ * Two per-device fields inside the served plan are the derived kind:
  * `idleClassification` and `evChargingState` (both look up the observer's last
- * recorded result). All three are side-effect free, which is the bar anything
+ * recorded result). Both are side-effect free, which is the bar anything
  * added here must also clear: reading never rebuilds a plan, never refreshes or
  * decorates a device snapshot, never arms a timer, and never actuates.
  *

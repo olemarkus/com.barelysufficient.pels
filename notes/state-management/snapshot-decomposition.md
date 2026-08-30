@@ -239,7 +239,9 @@ store, because:
    live on both as the join key. Transport keeps producing the full snapshot; `DeviceObservation`
    / `getSnapshot()` unchanged (still the transitional read seam).
    **Reader repointing was deliberately scoped to one seam** — `lib/observer/observationFreshness.ts`
-   now narrows its input to `Pick<ObservedDeviceState, 'lastFreshDataMs' | 'lastLocalWriteMs'>`.
+   narrowed its input to `Pick<ObservedDeviceState, 'lastFreshDataMs' | 'lastLocalWriteMs'>`.
+   *(That module is gone as of 2026-08-29: timeout-based device staleness was removed
+   outright — `lib/observer/AGENTS.md`. The narrowing precedent it set still stands.)*
    The other named seams were inspected and intentionally deferred: `isRuntimePlannedDevice`
    (`setup/appDeviceSupport.ts`) is already structurally narrower than `DeviceDescriptor`
    (takes `{ managed? }`); the executor projection readers
@@ -272,9 +274,10 @@ store, because:
      **Superseded:** `observationStale` was subsequently removed from the plan kinds entirely
      (the plan trusts producer-resolved control state and must not distrust observer data), so
      `toPlanDevice` no longer resolves it. The projection-reader pattern this stage established
-     stands for the remaining observed fields; the staleness-dependent features (idle
-     classification, overview gray-state, starvation freshness) read freshness from the
-     observer via a `getObservationStale` dep (`isDeviceObservationStale` over the projection).
+     stands for the remaining observed fields. **Superseded again (2026-08-29):** the concept
+     itself is gone — no timeout ages a device observation out anywhere, so idle classification,
+     the overview gray-state, and starvation counting read the last trusted value directly
+     (`lib/observer/AGENTS.md`).
      The test seam
      `DeviceTransport.setSnapshotForTests` now mirrors the production refresh funnel
      (`setSnapshot` + `dispatchObservedStateRefresh`) so the whole suite exercises the

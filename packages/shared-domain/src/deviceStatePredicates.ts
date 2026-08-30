@@ -32,12 +32,10 @@ export const isOffLikeState = (value: string | undefined): boolean => (
 export type GrayStateDeviceInput = {
   available?: boolean;
   currentState?: string;
-  observationStale?: boolean;
 };
 
 export const isGrayStateDevice = (device: GrayStateDeviceInput | null | undefined): boolean => {
   if (!device) return false;
   if (device.available === false) return true;
-  if (device.observationStale === true) return true;
   return (GRAY_CURRENT_STATES as readonly string[]).includes(normalizeDeviceState(device.currentState));
 };

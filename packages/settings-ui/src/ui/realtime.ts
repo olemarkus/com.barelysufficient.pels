@@ -209,8 +209,7 @@ export const startStaleDataRefreshInterval = () => {
       // The Overview's cards are device rows, so the device payload is on this
       // surface's critical path and shares its cadence. `/ui_devices` resolves
       // observed state per read, so this is what makes a card's draw and
-      // availability current rather than whatever the last snapshot rebuild
-      // (:25/:55) parsed.
+      // availability current rather than whatever the last device poll parsed.
       loadDevicesForOverview();
     }
   }, 30 * 1000);

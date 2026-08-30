@@ -5,16 +5,10 @@ import type { HomePowerSampleWithIdentity as HomePowerSample } from '../lib/devi
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import type { PlanEngine } from '../lib/plan/planEngine';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../lib/plan/planConstants';
-import {
-  getLatestDeviceObservationMs,
-  isDeviceObservationStale,
-  isDeviceObservationStaleByAge,
-} from '../lib/observer/observationFreshness';
 import type { PlanService } from '../lib/plan/planService';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
-import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
-import { hasObservedMeasuredPower } from '../packages/shared-domain/src/measuredPowerObservedState';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { runWithoutContext } from '../lib/logging/alsContext';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
@@ -27,18 +21,31 @@ import {
 
 export { createTargetPowerReachabilityAppWiring } from './appTargetPowerReachabilityWiring';
 
-const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
+const PERIODIC_STATUS_MINUTE_INTERVALS = [25, 55];
 const TARGET_CONFIRMATION_POLL_INTERVAL_MS = TARGET_CONFIRMATION_STUCK_POLL_MS;
-const STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS = 60 * 1000;
 const POST_ACTUATION_REFRESH_DELAY_MS = 5_000;
-// Per-device backoff for the `stale_device_observation_refresh` info log.
-// The refresh loop itself still runs every minute (drivers that only republish
-// per-capability `lastUpdated` on value change look "stale" indefinitely even
-// when healthy), but we only emit one structured log per device per window.
-// Matches the 15-minute window used by other repeat-event throttles in the
-// planner. In-memory only per `feedback_homey_sdk_unreliable`: on restart the
-// first cycle re-emits as expected.
-const STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS = 15 * 60 * 1000;
+// The app's device poll. A Homey driver pushes a capability only on value
+// CHANGE, so a device that keeps doing the same thing sends nothing — and the
+// EV car-link probe's correlation pass runs over the FETCHED device list
+// (`observeEvCarLinkAndResubscribe`), which is also where a class-`car` device,
+// dropped at parse, becomes visible at all. Something has to ask.
+//
+// This is a poll, not a verdict about any device. It used to be gated on a
+// 40-minute per-device "stale observation" window, which meant the app polled
+// whenever some device happened to have been quiet for a while — an arbitrary
+// trigger dressed up as a health signal, and one that produced a
+// `stale_device_observation_refresh` log line per window per device for the
+// entire uptime. In production that gate was open continuously, so the app in
+// fact fetched every managed device roughly once a minute. The gate is gone and
+// the cadence is now stated outright, at the slowest value nothing needs faster
+// than: the tightest consumer is the EV car-link probe (a car's `measure_battery`
+// only reaches PELS on a fetch), and a charging session tolerates 5 minutes.
+//
+// This is the app's ONLY device fetch loop. The `:25`/`:55` timer below used to
+// fetch too; it now only writes the periodic status log, because a second
+// fetcher on a coarser schedule adds nothing a 5-minute poll has not already
+// done.
+const DEVICE_POLL_INTERVAL_MS = 5 * 60 * 1000;
 
 const sameMainMeterSelection = (
   left: MainMeterSelection,
@@ -59,10 +66,7 @@ export type RefreshTargetDevicesSnapshotOptions = {
 };
 
 export class AppSnapshotHelpers {
-  private snapshotRefreshTimer?: ReturnType<typeof setTimeout>;
-  private staleObservationRefreshTimer?: ReturnType<typeof setTimeout>;
-  private staleObservationRefreshStopped = true;
-  private targetConfirmationPollInterval?: ReturnType<typeof setInterval>;
+  private snapshotRefreshStopped = true;
   private isSnapshotRefreshing = false;
   private snapshotRefreshPending = false;
   // Promise for the currently-running snapshot refresh cycle. Concurrent
@@ -74,17 +78,7 @@ export class AppSnapshotHelpers {
   // this `null`; nested callers in that window keep the legacy fire-and-
   // forget queue-and-return behavior to avoid awaiting their own caller.
   private snapshotRefreshInFlight: Promise<void> | null = null;
-  private postActuationRefreshTimer?: ReturnType<typeof setTimeout>;
   private readonly targetPowerProbeScheduler: TargetPowerProbeScheduler;
-  private deviceObservationStaleById = new Map<string, boolean>();
-  // Last `stale_device_observation_refresh` log emit per device. We suppress
-  // repeat emits within `STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS` so that a
-  // device whose driver only republishes `lastUpdated` on value change does
-  // not produce one log line per 60s cycle for the entire app uptime. Cleared
-  // per device when that device becomes fresh again, so a returning device
-  // re-emits the next time it stalls. Per-device map (not global) so 10 stale
-  // devices still produce 10 distinct log streams.
-  private staleRefreshLogLastEmitMsById = new Map<string, number>();
   // Resolver for the explicit whole-home meter selection, bound by
   // appServiceWiring (a constructor dep would grow the app.ts wiring literal).
   // Used to fence the implicit homey_energy sample: a refresh cycle fetches its
@@ -138,24 +132,23 @@ export class AppSnapshotHelpers {
     });
   }
 
-  getPostActuationRefreshTimer(): ReturnType<typeof setTimeout> | undefined {
-    return this.postActuationRefreshTimer;
+  /**
+   * Whether a post-actuation refresh is already armed. The timer registry owns
+   * the handle, and "is one pending?" is the only question any caller ever asked
+   * of it — so it answers that, rather than handing out a handle for a caller to
+   * null-check.
+   */
+  hasPendingPostActuationRefresh(): boolean {
+    return this.deps.timers.has('postActuationRefresh');
   }
 
   startPeriodicSnapshotRefresh(): void {
+    this.snapshotRefreshStopped = false;
     this.targetPowerProbeScheduler.start();
-    if (this.snapshotRefreshTimer) {
-      this.deps.timers.clear('snapshotRefresh');
-      this.snapshotRefreshTimer = undefined;
-    }
-    this.scheduleNextSnapshotRefresh();
-    this.startStaleObservationRefreshFallback();
+    this.schedulePeriodicStatusLog();
+    this.scheduleNextDevicePoll();
 
-    if (this.targetConfirmationPollInterval) {
-      this.deps.timers.clear('targetConfirmationPoll');
-      this.targetConfirmationPollInterval = undefined;
-    }
-    this.targetConfirmationPollInterval = this.deps.timers.registerInterval(
+    this.deps.timers.registerInterval(
       'targetConfirmationPoll',
       setInterval(() => {
         this.pollStuckTargetConfirmations()
@@ -168,25 +161,13 @@ export class AppSnapshotHelpers {
   }
 
   stop(): void {
-    this.staleObservationRefreshStopped = true;
+    this.snapshotRefreshStopped = true;
     this.targetPowerProbeScheduler.stop();
     this.snapshotRefreshPending = false;
-    if (this.snapshotRefreshTimer) {
-      this.deps.timers.clear('snapshotRefresh');
-      this.snapshotRefreshTimer = undefined;
-    }
-    if (this.staleObservationRefreshTimer) {
-      this.deps.timers.clear('staleObservationRefresh');
-      this.staleObservationRefreshTimer = undefined;
-    }
-    if (this.targetConfirmationPollInterval) {
-      this.deps.timers.clear('targetConfirmationPoll');
-      this.targetConfirmationPollInterval = undefined;
-    }
-    if (this.postActuationRefreshTimer) {
-      this.deps.timers.clear('postActuationRefresh');
-      this.postActuationRefreshTimer = undefined;
-    }
+    this.deps.timers.clear('periodicStatus');
+    this.deps.timers.clear('devicePoll');
+    this.deps.timers.clear('targetConfirmationPoll');
+    this.deps.timers.clear('postActuationRefresh');
   }
 
   async refreshTargetDevicesSnapshot(
@@ -243,130 +224,63 @@ export class AppSnapshotHelpers {
         emitFlowBackedRefresh: shouldEmitFlowBackedRefresh,
       });
       shouldEmitFlowBackedRefresh = false;
-    } while (this.snapshotRefreshPending && !this.staleObservationRefreshStopped);
+    } while (this.snapshotRefreshPending && !this.snapshotRefreshStopped);
   }
 
-  async refreshStaleDeviceObservations(): Promise<void> {
-    if (!this.deps.getDeviceManager() || this.isSnapshotRefreshing) return;
-
-    const nowMs = this.deps.getNow().getTime();
-    const snapshot = this.deps.getLatestTargetSnapshot().filter((device) => this.deps.resolveManagedState(device.id));
-    this.logDeviceFreshnessTransitions(snapshot, 'stale_observation_check', nowMs);
-    // `isDeviceObservationStaleByAge` excludes `'unknown'` (never-observed)
-    // devices on purpose — re-fetching them cannot change `unknown` into
-    // `fresh`, so the refresh loop never runs for them and the log backoff
-    // below is moot. The `unknown` case is handled at the predicate boundary,
-    // not here.
-    const staleDevices = snapshot.filter((device) => isDeviceObservationStaleByAge(device, nowMs));
-    // Always prune backoff entries for devices that are no longer stale (fresh
-    // again, removed, or never-observed) so a device that returns to fresh and
-    // later stalls again will emit a new log on its next still-stale cycle.
-    this.pruneStaleRefreshLogBackoff(snapshot, nowMs);
-    if (staleDevices.length === 0) return;
-
-    this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
-      event: 'stale_observation_refresh_triggered',
-      staleDevices: staleDevices.length,
-      managedDevices: snapshot.length,
-    });
-    const staleDeviceIds = new Set(staleDevices.map((device) => device.id));
-    await this.refreshTargetDevicesSnapshot({ targeted: true });
-
-    const refreshedSnapshot = this.deps
-      .getLatestTargetSnapshot()
-      .filter((device) => this.deps.resolveManagedState(device.id));
-    const refreshedById = new Map(refreshedSnapshot.map((device) => [device.id, device]));
-    let freshAfterRefreshDevices = 0;
-    let stillStaleAfterRefreshDevices = 0;
-    const stillStaleDeviceIds: string[] = [];
-    for (const deviceId of staleDeviceIds) {
-      const refreshedDevice = refreshedById.get(deviceId);
-      if (!refreshedDevice || isDeviceObservationStaleByAge(refreshedDevice, nowMs)) {
-        stillStaleAfterRefreshDevices += 1;
-        stillStaleDeviceIds.push(deviceId);
-      } else {
-        freshAfterRefreshDevices += 1;
-        // Recovered: clear backoff so the next still-stale cycle re-emits.
-        this.staleRefreshLogLastEmitMsById.delete(deviceId);
-      }
-    }
-
-    // Emit only when at least one still-stale device is outside its per-device
-    // backoff window. The tally itself is independent of the emit decision so
-    // the counter remains accurate even when the log line is suppressed.
-    const devicesDueForLog = stillStaleDeviceIds.filter((deviceId) => {
-      const lastEmitMs = this.staleRefreshLogLastEmitMsById.get(deviceId);
-      return lastEmitMs === undefined
-        || (nowMs - lastEmitMs) >= STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS;
-    });
-    if (devicesDueForLog.length === 0) return;
-
-    for (const deviceId of devicesDueForLog) {
-      this.staleRefreshLogLastEmitMsById.set(deviceId, nowMs);
-    }
-
-    this.deps.getStructuredLogger('devices')?.info({
-      event: 'stale_device_observation_refresh',
-      staleDevices: staleDevices.length,
-      devicesTotal: snapshot.length,
-      refreshedDevices: staleDevices.length,
-      freshAfterRefreshDevices,
-      stillStaleAfterRefreshDevices,
-      loggedStillStaleDevices: devicesDueForLog.length,
-    });
-  }
-
-  private pruneStaleRefreshLogBackoff(
-    managedSnapshot: TargetDeviceSnapshot[],
-    nowMs: number,
-  ): void {
-    const staleManagedIds = new Set(
-      managedSnapshot
-        .filter((device) => isDeviceObservationStaleByAge(device, nowMs))
-        .map((device) => device.id),
+  /**
+   * Self-rescheduling rather than an interval so a slow refresh cannot stack
+   * polls on top of itself. `refreshTargetDevicesSnapshot` already coalesces a
+   * concurrent caller, but not queueing in the first place is cheaper.
+   *
+   * The registry owns the handle: `registerTimeout` clears any timer already
+   * under this key, so re-arming needs no local copy to check first.
+   */
+  private scheduleNextDevicePoll(): void {
+    if (this.snapshotRefreshStopped) return;
+    this.deps.timers.registerTimeout(
+      'devicePoll',
+      setTimeout(async () => {
+        this.deps.timers.clear('devicePoll');
+        try {
+          await this.refreshTargetDevicesSnapshot({ targeted: true });
+        } catch (error) {
+          this.deps.getStructuredLogger('snapshot')?.error({
+            event: 'device_poll_failed',
+            err: normalizeError(error),
+          });
+        } finally {
+          this.scheduleNextDevicePoll();
+        }
+      }, DEVICE_POLL_INTERVAL_MS),
     );
-    for (const deviceId of this.staleRefreshLogLastEmitMsById.keys()) {
-      if (!staleManagedIds.has(deviceId)) {
-        this.staleRefreshLogLastEmitMsById.delete(deviceId);
-      }
-    }
   }
 
-  scheduleNextSnapshotRefresh(): void {
+  /**
+   * The twice-hourly status log. It used to fetch every device first and report
+   * device health only if that fetch succeeded; the device poll owns fetching
+   * now, so this reports on the committed snapshot — which is the device health,
+   * never more than `DEVICE_POLL_INTERVAL_MS` old.
+   */
+  schedulePeriodicStatusLog(): void {
     const now = this.deps.getNow();
     const currentMinute = now.getMinutes();
-    const nextMinute = SNAPSHOT_REFRESH_MINUTE_INTERVALS.find((minute) => minute > currentMinute);
+    const nextMinute = PERIODIC_STATUS_MINUTE_INTERVALS.find((minute) => minute > currentMinute);
 
     const next = new Date(now);
     if (nextMinute !== undefined) {
       next.setMinutes(nextMinute, 0, 0);
     } else {
-      next.setHours(now.getHours() + 1, SNAPSHOT_REFRESH_MINUTE_INTERVALS[0], 0, 0);
+      next.setHours(now.getHours() + 1, PERIODIC_STATUS_MINUTE_INTERVALS[0], 0, 0);
     }
 
-    const scheduledTimer = this.deps.timers.registerTimeout('snapshotRefresh', setTimeout(async () => {
-      if (this.snapshotRefreshTimer !== scheduledTimer || this.staleObservationRefreshStopped) return;
-      let refreshed = false;
+    this.deps.timers.registerTimeout('periodicStatus', setTimeout(() => {
+      this.deps.timers.clear('periodicStatus');
       try {
-        await this.refreshTargetDevicesSnapshot({ targeted: true });
-        refreshed = true;
-      } catch (error) {
-        this.deps.getStructuredLogger('snapshot')?.error({
-          event: 'periodic_snapshot_refresh_failed',
-          err: normalizeError(error),
-        });
+        this.deps.logPeriodicStatus({ includeDeviceHealth: true });
       } finally {
-        this.deps.logPeriodicStatus({ includeDeviceHealth: refreshed });
-        if (this.snapshotRefreshTimer === scheduledTimer) {
-          this.deps.timers.clear('snapshotRefresh');
-          this.snapshotRefreshTimer = undefined;
-        }
-        if (!this.staleObservationRefreshStopped) {
-          this.scheduleNextSnapshotRefresh();
-        }
+        if (!this.snapshotRefreshStopped) this.schedulePeriodicStatusLog();
       }
     }, next.getTime() - now.getTime()));
-    this.snapshotRefreshTimer = scheduledTimer;
   }
 
   async pollStuckTargetConfirmations(): Promise<void> {
@@ -382,7 +296,7 @@ export class AppSnapshotHelpers {
   }
 
   schedulePostActuationRefresh(): void {
-    if (this.postActuationRefreshTimer) {
+    if (this.deps.timers.has('postActuationRefresh')) {
       this.deps.getStructuredDebugEmitter('snapshot', 'plan')({
         event: 'post_actuation_refresh_skipped',
         reason: 'already_scheduled',
@@ -394,9 +308,8 @@ export class AppSnapshotHelpers {
       event: 'post_actuation_refresh_scheduled',
       delayMs: POST_ACTUATION_REFRESH_DELAY_MS,
     });
-    this.postActuationRefreshTimer = runWithoutContext(() => (
+    runWithoutContext(() => (
       this.deps.timers.registerTimeout('postActuationRefresh', setTimeout(async () => {
-        this.postActuationRefreshTimer = undefined;
         this.deps.timers.clear('postActuationRefresh');
         this.deps.getStructuredDebugEmitter('snapshot', 'plan')({
           event: 'post_actuation_refresh_running',
@@ -458,10 +371,6 @@ export class AppSnapshotHelpers {
       managed: this.deps.resolveManagedState(device.id),
       controllable: this.deps.isCapacityControlEnabled(device.id),
     }));
-    this.logDeviceFreshnessTransitions(
-      enforcedSnapshot.filter((device) => device.managed !== false),
-      'snapshot_refresh',
-    );
     await this.deps.getPlanService()?.syncLivePlanState('snapshot_refresh');
     this.deps.getPlanService()?.syncHeadroomCardState({
       devices: enforcedSnapshot,
@@ -554,86 +463,4 @@ export class AppSnapshotHelpers {
   private resolveMainMeterSelection(): MainMeterSelection {
     return this.mainMeterSelectionResolver?.() ?? { state: 'resolved', meterDeviceId: null };
   }
-
-  private startStaleObservationRefreshFallback(): void {
-    this.staleObservationRefreshStopped = false;
-    if (this.staleObservationRefreshTimer) {
-      this.deps.timers.clear('staleObservationRefresh');
-      this.staleObservationRefreshTimer = undefined;
-    }
-    this.scheduleStaleObservationRefreshFallback();
-  }
-
-  private scheduleStaleObservationRefreshFallback(): void {
-    if (this.staleObservationRefreshStopped) return;
-
-    this.staleObservationRefreshTimer = this.deps.timers.registerTimeout(
-      'staleObservationRefresh',
-      setTimeout(async () => {
-        this.deps.timers.clear('staleObservationRefresh');
-        this.staleObservationRefreshTimer = undefined;
-        try {
-          await this.refreshStaleDeviceObservations();
-        } catch (error) {
-          this.deps.getStructuredLogger('snapshot')?.error({
-            event: 'stale_device_observation_refresh_failed',
-            err: normalizeError(error),
-          });
-        } finally {
-          if (!this.staleObservationRefreshStopped) {
-            this.scheduleStaleObservationRefreshFallback();
-          }
-        }
-      }, STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS),
-    );
-  }
-
-  private logDeviceFreshnessTransitions(
-    snapshot: TargetDeviceSnapshot[],
-    source: string,
-    nowMs = this.deps.getNow().getTime(),
-  ): void {
-    const activeDeviceIds = new Set(snapshot.map((device) => device.id));
-    for (const deviceId of this.deviceObservationStaleById.keys()) {
-      if (!activeDeviceIds.has(deviceId)) this.deviceObservationStaleById.delete(deviceId);
-    }
-
-    for (const device of snapshot) {
-      const isStale = isDeviceObservationStale(device);
-      const wasStale = this.deviceObservationStaleById.get(device.id);
-      this.deviceObservationStaleById.set(device.id, isStale);
-      if (wasStale === undefined || wasStale === isStale) continue;
-
-      const lastObservationMs = getLatestDeviceObservationMs(device);
-      const ageMs = typeof lastObservationMs === 'number' ? Math.max(0, nowMs - lastObservationMs) : null;
-      const planDevice = this.deps
-        .getPlanService()
-        ?.getLatestPlanSnapshot()
-        ?.devices.find((entry) => entry.id === device.id);
-      this.deps.getStructuredLogger('devices')?.info({
-        event: isStale ? 'device_became_stale' : 'device_became_fresh',
-        deviceId: device.id,
-        deviceName: device.name,
-        ageMs,
-        lastObservationAt: typeof lastObservationMs === 'number' ? new Date(lastObservationMs).toISOString() : null,
-        source,
-        currentPowerW: resolveSnapshotPowerW(device),
-        isControlled: this.deps.isCapacityControlEnabled(device.id),
-        isShed: planDevice ? planDevice.plannedState === 'shed' : null,
-      });
-    }
-  }
-}
-
-// The meter's answer or nothing. The field this feeds is named `currentPowerW`,
-// and it used to fall back to the nameplate `powerKw` — so a device that had
-// never reported a watt logged its rated power as what it was drawing, in the
-// very event that says telemetry went stale. `expectedPowerKw` is NOT the
-// replacement fallback: it is a projection of what the device draws when active,
-// which is the one thing this field must not silently become.
-function resolveSnapshotPowerW(device: TargetDeviceSnapshot & MeasuredPowerObservedProbe): number | null {
-  // `hasObservedMeasuredPower` proves `measuredPowerKw` is PRESENT (a finite value
-  // is the producer invariant the write seams uphold, not something the guard
-  // re-checks).
-  return hasObservedMeasuredPower(device) ? device.measuredPowerKw * 1000 : null;
 }

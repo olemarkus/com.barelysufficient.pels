@@ -29,8 +29,8 @@ prose is `logDebug`/`logger.debug`, gated):
   |---:|---|---|
   | 4335 | `plan_rebuild_completed` | already gated to actioned/failed/slow/startup (`getPlanRebuildLogLevel`). The command record — keep. |
   | 1798 | `device_near_target_idle_started`/`_cleared` | the dominant non-command flood; thermostat flap. **Demoted to debug — see below.** |
-  | 1248 | `stale_device_observation_refresh` | already backoff-throttled. |
-  | 636 | `device_became_stale`/`_fresh` | per-device transitions. |
+  | 1248 | `stale_device_observation_refresh` | **Gone (2026-08-29)** — timeout-based device staleness was removed outright; see `lib/observer/AGENTS.md`. |
+  | 636 | `device_became_stale`/`_fresh` | **Gone (2026-08-29)** — same removal. Together these two were ~19% of default-visible volume. |
   | 148 ×3 | `periodic_status` / `_device_health_summary` / `daily_budget_periodic_status` | twice-hourly (`:25`/`:55`); negligible. |
 
   Notes that corrected the original intuition: `periodic_status` is **not** a 10 s

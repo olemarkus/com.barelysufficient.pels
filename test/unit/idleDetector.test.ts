@@ -19,7 +19,6 @@ const baseInput = (overrides: Partial<IdleDetectorInput> = {}): IdleDetectorInpu
   currentTemperature: 62,
   targetTemperature: 65,
   observedOn: true,
-  observationStale: false,
   pelsCommandedShed: false,
   hasTemperatureSetpoint: true,
   ...overrides,
@@ -31,11 +30,6 @@ describe('classifyIdleState — eligibility gates', () => {
       baseInput({ hasTemperatureSetpoint: false, targetTemperature: undefined }),
       new Map(),
     );
-    expect(result.classification).toBe('active');
-  });
-
-  it('returns active when observation is stale', () => {
-    const result = classifyIdleState(baseInput({ observationStale: true }), new Map());
     expect(result.classification).toBe('active');
   });
 

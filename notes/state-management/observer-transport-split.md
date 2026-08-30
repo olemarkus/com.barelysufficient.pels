@@ -138,7 +138,7 @@ Owns the stored view, not the parse pipeline:
   `observedStateDispatcher.setHomePowerW(w)` callback. Observer holds it without
   importing `lib/device/` or `lib/power/`.
 - Today's pure interpretation helpers (`observedState.ts`,
-  `observationFreshness.ts`, `observationTrust.ts`, `observedPower.ts`,
+  `observationTrust.ts`, `observedPower.ts`,
   `idleDetector.ts`, `devicePowerCalibration.ts`)
 
 Model-agnostic. Never branches on native vs flow.

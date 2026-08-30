@@ -1,9 +1,5 @@
 import { planContextPower } from '../utils/planContextPowerFixture';
 import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnostics';
-import {
-  isDeviceObservationStale,
-  STALE_DEVICE_OBSERVATION_MS,
-} from '../../lib/observer/observationFreshness';
 import type { PlanContext } from '../../lib/plan/planContext';
 import type { RestorePlanResult } from '../../lib/plan/restore';
 import type {
@@ -117,7 +113,6 @@ const buildObservation = (params: {
   currentHourPriceLevel?: PlanContext['currentHourPriceLevel'];
   // Observer-resolved staleness for the device (defaults fresh). Drives the
   // diagnostics freshness gate exactly as the production observer dep does.
-  getObservationStale?: (deviceId: string) => boolean;
 }) => buildDeviceDiagnosticsObservations({
   context: buildContext(
     buildPlanInputDevice(params.inputDevice),
@@ -126,7 +121,6 @@ const buildObservation = (params: {
     params.fixtureTotalKw,
     params.currentHourPriceLevel,
   ),
-  getObservationStale: params.getObservationStale ?? (() => false),
   // Production always stamps the plan device's `deviceType` from the snapshot, so
   // mirror the input device's modality onto the plan device the fixture builds.
   // The temperature-cluster reads (`currentTarget` / `currentTemperature`) on the
@@ -557,17 +551,14 @@ describe('plan diagnostics observations', () => {
     expect(observation.targetStepC).toBe(0.5);
   });
 
-  it('marks a stale observation as not fresh (observer-sourced) so starvation will not count it', () => {
-    // Freshness is sourced from the OBSERVER (the `getObservationStale` dep wired
-    // from `ctx.getObservedState`), NOT off a plan-device field. Drive the REAL
-    // freshness resolver over an aged `lastFreshDataMs` (not a manual flag): a stale
-    // device is still eligible (eligibility ignores freshness) but `observationFresh`
-    // is false, which gates it out of starvation counting downstream
-    // (`isValidStarvationObservation`). A stale sample is not "confirmed no progress".
+  it('counts starvation for a device that has been silent for hours — nothing ages an observation out', () => {
+    // Regression: a Homey driver republishes a capability only on value CHANGE,
+    // so a thermostat held below target is exactly the device that goes quiet.
+    // There used to be a 40-minute freshness gate here that read that silence as
+    // "unconfirmed" and stopped counting — i.e. the starvation model went blind
+    // precisely while the starvation was happening. There is no such gate any
+    // more, and no timeout anywhere turns a quiet device into an untrusted one.
     const observation = buildObservation({
-      getObservationStale: () => isDeviceObservationStale({
-        lastFreshDataMs: Date.now() - STALE_DEVICE_OBSERVATION_MS - 60_000,
-      }),
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
@@ -597,42 +588,6 @@ describe('plan diagnostics observations', () => {
     });
 
     expect(observation.eligibleForStarvation).toBe(true);
-    expect(observation.observationFresh).toBe(false);
-  });
-
-  it('marks a fresh observation as fresh (observer-sourced) — eligible to count', () => {
-    const observation = buildObservation({
-      getObservationStale: () => isDeviceObservationStale({ lastFreshDataMs: Date.now() }),
-      inputDevice: {
-        id: 'heater-1',
-        name: 'Hall Heater',
-        deviceClass: 'thermostat',
-        deviceType: 'temperature',
-        managed: true,
-        controllable: true,
-        available: true,
-        currentTemperature: 18,
-        binaryControl: { on: true },
-        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
-      },
-      planDevice: {
-        id: 'heater-1',
-        name: 'Hall Heater',
-        deviceClass: 'thermostat',
-        currentState: 'on',
-        plannedState: 'shed',
-        currentTarget: 18,
-        plannedTarget: 18,
-        reason: r('shed due to capacity'),
-        controllable: true,
-        available: true,
-        currentTemperature: 18,
-      },
-      modeTargets: { 'heater-1': 21 },
-    });
-
-    expect(observation.eligibleForStarvation).toBe(true);
-    expect(observation.observationFresh).toBe(true);
     expect(observation.suppressionState).toBe('counting');
     expect(observation.countingCause).toBe('capacity');
   });

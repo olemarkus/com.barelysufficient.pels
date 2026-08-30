@@ -4,7 +4,6 @@
 
 ## Map
 
-- `observationFreshness.ts` — the freshness producer: tri-state `fresh | stale | unknown`.
 - `observationTrust.ts` — which observations count as trusted evidence.
 - `observedState.ts` / `observedDeviceStateProjection.ts` / `observedStateEvents.ts` — observed-state model and projections.
 - `idleClassifier.ts` / `idleDetector.ts` — `near_target_idle` / `unresponsive` / `capped_idle` classification (see `notes/idle-classification.md`).
@@ -25,13 +24,46 @@ OFF ours?") belongs to `setup/externalOffHoldDetection.ts`, and the resolved
 
 The full device-state invariants digest lives in `lib/device/AGENTS.md`; read it before changing anything that feeds reconcile/merge.
 
-## Quiescence is a producer concern
+## A device observation never times out
 
-Homey thermostat drivers only push capability updates on value change, so a healthy device steady at setpoint legitimately falls silent for hours. The producer (`observationFreshness.ts`) exposes the tri-state; consumers must not re-derive freshness from `lastFreshDataMs` age and must not collapse `stale` into "broken." In particular:
+Homey drivers push a capability update only on value CHANGE, so a healthy device
+steady at setpoint legitimately falls silent for hours. **Silence therefore means
+"unchanged", never "unknown"** — and PELS has no timeout, anywhere, that turns a
+quiet device into an untrusted one. There is no `stale` device state to read, no
+age threshold to compare against, and nothing that re-fetches a device because it
+has been quiet.
 
-- **Smart-task temperature planning** (`lib/objectives/deferredObjectives/diagnosticProgress.ts`) credits the last-seen temperature for any device that has produced at least one trusted observation — it does not gate on staleness. (The plan device no longer carries an `observationStale` flag at all: it was removed from the plan kinds because the plan must not distrust observer-resolved state. Where a feature genuinely needs freshness it is sourced from the observer producer — see below.) EV SoC stays strictly fresh because charger session validity genuinely requires per-session telemetry (`getTrustedStateOfCharge` keeps its `status === 'fresh'` gate).
-- **Profile learning** (`lib/objectives/samples.ts`) keeps the 30-minute observation-age gate, because rate learning legitimately needs recent value-changed samples.
-- **Shed/restore lanes** read the producer-resolved on/off truth `currentOn` (a strict boolean latched at the last observed value, with **no** staleness gate) — narrow via `isBinaryPlanDevice`, then read `currentOn`. This is consistent with the stale-off = trusted-off invariant below: a stale-off device is trusted off (not shed — an off device cannot be commanded off), a stale-on device trusted on. The retired `isObservedOff`/`isObservedOn` (which collapsed stale to "neither") no longer exist.
-- **Staleness-dependent features** — idle classification, the overview gray-state label, and the starvation freshness gate — source freshness from the **observer producer** (`isDeviceObservationStale` over `ctx.getObservedState(id)`, wired as the `getObservationStale` dep on the plan service / plan engine), never from a plan-device field. `observationStale` was removed from the plan kinds (`DevicePlanDevice` / `PlanInputDevice`): the plan trusts producer-resolved control state, and freshness reporting is the observer's concern.
+This is not a tuning choice; a per-device age threshold cannot be right at any
+value. The only honest distinctions are:
 
-Related invariant: Homey reports capabilities only on CHANGE, so stale-off = trusted-off — do not re-derive trust from staleness. The `currentOn` resolution above honours this by design.
+- **never observed** — `lastFreshDataMs` absent. Re-reading cannot change it, so
+  a consumer that needs a reading suppresses (see `diagnosticProgress.ts`), and
+  the device's `currentState` is `unknown`.
+- **gone** — `available === false`, which the Homey SDK states outright. This is
+  the one signal that grays a device card.
+
+What was removed (2026-08-29) and must not come back: a 40-minute
+`STALE_DEVICE_OBSERVATION_MS` window with a 60 s loop that re-fetched every
+device past it. It recovered a device once in 18 days of production while
+re-polling the whole managed set every minute, because a snapshot fetch returns
+the same per-capability `lastUpdated` Homey already served. It also grayed
+working thermostats in the UI, blocked idle/unresponsive classification on the
+quiet devices that classification exists to catch, and stopped counting
+starvation for a device held below target — which is precisely the device that
+goes quiet. Every consumer now reads the last trusted value directly.
+
+Ages that DO stay, because their feed is not change-driven:
+
+- **Profile learning** (`lib/objectives/samples.ts`) keeps its 30-minute
+  observation-age gate: rate learning needs recent value-CHANGED samples.
+- **EV SoC** (`getTrustedStateOfCharge`) keeps its `status === 'fresh'` gate:
+  charger session validity genuinely requires per-session telemetry.
+- **The whole-home meter** (`generationFreshness.ts`, `POWER_SAMPLE_STALE_THRESHOLD_MS`)
+  pushes on a fixed cadence, so its silence IS a fault.
+
+Related invariant: because Homey reports only on CHANGE, a long-silent `off` is a
+trusted `off` and a long-silent `on` a trusted `on`. **Shed/restore lanes** read
+the producer-resolved `currentOn` (narrow via `isBinaryPlanDevice`) — a strict
+boolean latched at the last observed value, with no age gate. The retired
+`isObservedOff`/`isObservedOn` (which collapsed silence to "neither") no longer
+exist, and neither does the plan-kind `observationStale` field.

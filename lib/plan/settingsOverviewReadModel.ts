@@ -41,7 +41,6 @@ export type SettingsOverviewReadModelDeps = {
   // longer carries it (the plan has no right to distrust observer data). The
   // gray-state UI label is a display concern, so the read model sources staleness
   // from the observer projection here, NOT off the plan device.
-  getObservationStale?: (deviceId: string) => boolean;
   // Observational device kind, for the temperature card. Supplied as a
   // built-once map sourced from the raw, undecorated snapshot so there is no
   // re-decoration side effect. Stepped-ness is NOT resolved from a map: it is
@@ -205,8 +204,6 @@ export function buildSettingsOverviewDeviceReadModel(
     // business, and `level` is the producer's complete answer to whether this
     // charger has a battery level (`notes/ev-soc-layering.md`).
     stateOfCharge: resolveOverviewStateOfCharge(device.id, deps),
-    // Display-only staleness, sourced from the observer (not the plan device).
-    observationStale: deps.getObservationStale?.(device.id) ?? false,
     shedAction: device.shedAction,
     shedTemperature: device.shedTemperature,
     // No flat step ids or planning power: every stepped fact rides the

@@ -6,17 +6,13 @@
  * the bucket allocator, plus the reason code the bridge surfaces when
  * progress is unavailable.
  *
- * Temperature thermostats only push capability updates on value change (see
- * `lib/observer/observationFreshness.ts`), so a perfectly working device
- * steady at setpoint can sit aged-out indefinitely. Smart-task planning
- * therefore credits the last-seen temperature for any device that has ever
- * produced a trusted observation, and only suppresses planning when the
- * device has never reported a value at all (`lastFreshDataMs` absent —
- * mirrors `getDeviceObservationFreshness === 'unknown'`). Note: this gate
- * deliberately does **not** suppress on staleness — a device steady at setpoint
- * legitimately falls silent for hours, and crediting its last trusted reading is
- * correct. (The plan no longer carries an `observationStale` flag at all;
- * observer-resolved freshness is used only where a feature genuinely needs it.)
+ * Temperature thermostats only push capability updates on value change, so a
+ * perfectly working device steady at setpoint falls silent for hours. Smart-task
+ * planning therefore credits the last-seen temperature for any device that has
+ * ever produced a trusted observation, and only suppresses planning when the
+ * device has never reported a value at all (`lastFreshDataMs` absent). It does
+ * not suppress on the reading's AGE, and nothing else in the app does either —
+ * PELS has no timeout that turns a quiet device into an untrusted one.
  *
  * EV SoC stays strictly fresh because charger session validity genuinely
  * requires per-session telemetry.

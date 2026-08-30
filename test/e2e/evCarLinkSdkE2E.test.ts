@@ -281,12 +281,17 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     await pumpMinutes(40);
     await drainUntil(() => of('ev_car_link_resolved').length > 0);
 
-    // A level the car reports DURING the session lands on the charger, without
-    // waiting for the next snapshot refresh.
+    // A level the car reports DURING the session lands on the charger.
     await car.setCapabilityValue('measure_battery', 63);
-    // The reading is queued and drained on the next correlation pass, which the
-    // 30 s heartbeat drives — quiet devices produce no telemetry to ride on.
-    await pumpMinutes(2);
+    // The reading reaches the probe on the next DEVICE POLL: the correlation
+    // pass that ingests a car runs over the fetched device list
+    // (`observeEvCarLinkAndResubscribe`), and a class-`car` device never
+    // survives parse, so it is only visible on a fetch. The 30 s probe tick
+    // re-correlates what the probe already holds; it cannot discover a level the
+    // probe has not been handed. So this is bounded by the 5-minute poll, not by
+    // the tick — which is why the poll cadence is the EV car-link probe's
+    // tightest constraint.
+    await pumpMinutes(6);
     await drainUntil(() => socOf(getLatestTargetSnapshotForTests())?.percent === 63);
 
     expect(socOf(getLatestTargetSnapshotForTests())).toMatchObject({

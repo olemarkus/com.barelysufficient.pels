@@ -211,9 +211,9 @@ const LIVE_OBSERVED_FIELDS = [
  * it.
  *
  * Same read-time treatment, and the same reason, as `withAssociatedCars` below:
- * `latestTargetSnapshot` is rebuilt on `SNAPSHOT_REFRESH_MINUTE_INTERVALS`
- * (:25/:55), so the observed values it carries are up to half an hour old while
- * the settings UI re-reads this payload continuously.
+ * `latestTargetSnapshot` is rebuilt on the device poll
+ * (`DEVICE_POLL_INTERVAL_MS`), so the observed values it carries are up to one
+ * poll interval old while the settings UI re-reads this payload continuously.
  *
  * Two absences are deliberately no-ops rather than writes, because neither is a
  * reading PELS took:
@@ -266,9 +266,9 @@ const pickLiveObservedFields = (
  *
  * Deliberately not a transport snapshot field: the association changes on the
  * realtime feed within seconds of a plug edge, while snapshots are rebuilt only
- * at :25/:55 and are replaced wholesale by every device re-parse — so a stored
- * copy would be absent most of the time and up to half an hour stale after
- * unplugging. `getAssociatedCar` answers `undefined` for every device that is
+ * on the device poll and are replaced wholesale by every device re-parse — so a
+ * stored copy would be absent most of the time and up to one poll interval
+ * behind after unplugging. `getAssociatedCar` answers `undefined` for every device that is
  * not a charger with both an eligibility set and a live session.
  */
 const withAssociatedCars = (

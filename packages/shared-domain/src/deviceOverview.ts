@@ -169,7 +169,6 @@ export type DeviceOverviewSnapshot = {
   // `steppedLoadProfile` in particular was a ghost here — the producer never
   // wrote it, yet `planCardReasonLine` read it with a fallback.
   binaryCommandPending?: boolean;
-  observationStale?: boolean;
   // Drives the "Raised to use your solar power" reason line; included in the overview
   // transition signature so a flip (true→false) re-renders the card even when the
   // normalized plannedTarget is unchanged.
@@ -523,7 +522,6 @@ export const buildDeviceOverviewTransitionSignature = (
     steppedLoad: device.steppedLoad !== undefined,
     controllable: device.controllable === false,
     available: device.available === false,
-    observationStale: device.observationStale === true,
     binaryCommandPending: device.binaryCommandPending === true,
     shedAction: device.shedAction ?? null,
     minTemperatureRestoreActive: isMinTemperatureRestoreActive(device),

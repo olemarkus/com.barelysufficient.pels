@@ -280,7 +280,6 @@ Each eligible plan sample must normalize into:
 - `suppressionState: 'counting' | 'paused' | 'none'`
 - `countingCause`
 - `pauseReason`
-- `observationFresh: boolean`
 
 `countingCause` must be one of:
 
@@ -359,7 +358,7 @@ pelsHoldsBelowTarget = commandedTargetC < intendedNormalTargetC - epsilon
 - physical `currentTemperatureC` is carried for display/telemetry only; it does
   not gate entry, accumulation, or clear
 
-## Observation Freshness And Continuity
+## Observation Validity And Continuity
 
 Starvation is evaluated from the commanded vs. intended target: PELS starves a device
 only when the target it commands sits below the device's intended (mode) target.
@@ -371,12 +370,20 @@ commanding the full target and simply not the reason it was cold.)
 A sample is valid only when all are true:
 
 - device is still eligible
-- `observationFresh === true`
 - `intendedNormalTargetC` is finite
 - `commandedTargetC` is finite
 
 (`currentTemperatureC` finiteness is no longer a validity requirement — physical
 temperature is display/telemetry only.)
+
+**The age of the device's telemetry is not a validity term (2026-08-30).** There used
+to be an `observationFresh` requirement here, which stopped counting once a device had
+not reported for 40 minutes. It contradicted the paragraph above — every term that
+actually decides starvation (`commandedTargetC`, `intendedNormalTargetC`) is a value
+PELS owns, and the device's own readings are display-only — and it inverted the
+feature: a Homey driver republishes a capability only on value CHANGE, so a device
+held below target is exactly the one that falls silent. Silence means "unchanged",
+never "unknown". See `lib/observer/AGENTS.md`.
 
 Continuity rules for v1:
 
@@ -386,6 +393,11 @@ Continuity rules for v1:
 - invalid samples and long gaps do not advance entry timers
 - invalid samples and long gaps do not advance exit timers
 - invalid samples and long gaps do not add counted starvation time
+
+The gap that matters is a gap in **PELS's own plan samples** — PELS not deciding about
+this device — not a gap in the device's telemetry. A quiet device still gets a plan
+sample every cycle, and that sample carries the commanded and intended targets, which is
+everything the starvation model reads.
 
 If a device is already starved when samples become invalid:
 
@@ -399,7 +411,7 @@ Enter starvation only after all of the following are true continuously for `15 m
 across valid contiguous samples:
 
 - eligible managed temperature device
-- fresh valid observation
+- valid observation
 - `suppressionState === 'counting'` with a real counting cause
 - `pelsHoldsBelowTarget` (`commandedTargetC < intendedNormalTargetC`)
 
@@ -549,7 +561,7 @@ Add starvation time only while all are true:
 
 ### Pause accumulation
 
-Pause starvation accumulation while the sample is invalid/stale, OR PELS is not
+Pause starvation accumulation while the sample is invalid, OR PELS is not
 holding the device below target via a real counting cause (a `keep`/`inactive`/
 `restore_need` pause, an owner-set hold, or a still-below device under a
 non-counting suppression). The original counting cause is retained across the pause.
@@ -581,8 +593,8 @@ V1 restart limitation:
 
 Track accumulated starvation time explicitly.
 
-Do not rely on only a single start timestamp, because stale observations and long sample gaps must
-not count.
+Do not rely on only a single start timestamp, because invalid samples and long plan-sample
+gaps must not count.
 
 Entry-qualification time before the starved state begins does not count toward
 `starvedAccumulatedMs`.

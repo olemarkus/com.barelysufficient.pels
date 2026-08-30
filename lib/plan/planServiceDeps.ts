@@ -86,12 +86,6 @@ export type PlanServiceDeps = {
   // device is projected to the planner as binary but still shows the external
   // target and measured temperature through this observer-owned seam.
   getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
-  // Observation staleness for the settings-UI gray-state label AND the idle
-  // classifier's "unresponsive" detection, sourced from the observer (its
-  // canonical owner — `ObservedDeviceState` freshness), not the plan device. The
-  // plan no longer carries `observationStale`: the plan trusts producer-resolved
-  // `currentOn`/`currentState`, and staleness reporting belongs to the observer.
-  getObservationStale?: (deviceId: string) => boolean;
   // Producer `deviceType` map for the settings-UI control-mode card selection
   // (the planner no longer carries `controlModel`). Built once per serialize from
   /** Confirmed producer profile for UI; excludes any planner-only probe rung. */

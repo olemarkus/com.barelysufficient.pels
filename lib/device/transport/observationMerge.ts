@@ -42,8 +42,9 @@ export function mergeFresherCapabilityObservations(params: {
     // signal — Homey only advances `lastUpdated` when a capability genuinely
     // reported. A successful refresh poll is *not* by itself evidence the device
     // is alive: Homey serves cached capability values even when the device has
-    // been silent for hours. The 40-minute `STALE_DEVICE_OBSERVATION_MS` window
-    // (in `lib/observer/observationFreshness.ts`) is the backstop.
+    // been silent for hours. Silence is not a fault, though — drivers only
+    // republish on value change — so nothing ages an observation out. Only
+    // `available === false` says a device is actually gone.
     for (let index = nextSnapshot.length - 1; index >= 0; index -= 1) {
         const snapshot = nextSnapshot[index];
         const previous = previousById.get(snapshot.id);

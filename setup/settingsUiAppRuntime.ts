@@ -160,7 +160,7 @@ export const getLatestDevicesForUiFromApp = (homey: Homey.App['homey']): TargetD
 /**
  * The live car-association read. Resolved per call by the transport (never held
  * on a snapshot), so the settings UI sees a plug-in within the probe's ~90 s
- * settle rather than at the next :25/:55 refresh.
+ * settle rather than at the next device poll.
  */
 export const getAssociatedCarForUiFromApp = (
   homey: Homey.App['homey'],
@@ -173,8 +173,8 @@ export const getAssociatedCarForUiFromApp = (
  * The live observed-state read, from the observer projection that owns it.
  *
  * Same reason as the car association above: the stored device snapshot is
- * rebuilt only at :25/:55, so its observed half is up to half an hour stale by
- * the time the settings UI reads it. The projection is the observer's current
+ * rebuilt on the device poll, so its observed half is up to one poll interval
+ * behind by the time the settings UI reads it. The projection is the observer's current
  * answer, so `/ui_devices` overlays it per read rather than serving the stored
  * copy.
  *
