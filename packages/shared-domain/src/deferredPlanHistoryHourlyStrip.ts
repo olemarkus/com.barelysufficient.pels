@@ -36,8 +36,8 @@ export type HourlyStripBucket = {
   // True when the hour was planned by the original or final schedule
   // (regardless of whether the runtime delivered against it).
   planned: boolean;
-  // True when at least one `recordHourlyDelivery` contribution landed on
-  // the bucket. Bucket gets the solid-fill treatment.
+  // True when at least one delivery contribution landed on the bucket.
+  // Bucket gets the solid-fill treatment.
   delivered: boolean;
   // True when `planned && !delivered`. The view renders a dashed 1 px
   // outline to read as "schedule said yes, machinery did not".

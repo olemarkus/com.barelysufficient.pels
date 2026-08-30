@@ -139,7 +139,7 @@ export type DeferredObjectivePlanHistoryRevisionSnapshot = {
 export type DeferredObjectivePlanHistoryHourlyTone = 'cheap' | 'normal' | 'expensive';
 
 // Per-hour delivery contribution persisted alongside `deliveredKWh` /
-// `totalCost`. Each entry corresponds to one `recordHourlyDelivery` call,
+// `totalCost`. Each entry corresponds to one closed hour of the run,
 // captured at hour-aligned `atMs` with the delivered kWh, the spot price
 // the recorder summed into `totalCost`, and the resolved price tone. The
 // postmortem bar strip on `DeadlinePlanHistoryDetail` reads this list to
@@ -337,7 +337,7 @@ export type DeferredObjectivePlanHistoryEntry = {
   // schema v4.
   revisions?: DeferredObjectivePlanHistoryRevisionLogEntry[];
   // Per-hour delivery contributions captured by the recorder, one entry per
-  // hour the runtime fed a `recordHourlyDelivery` contribution. Optional —
+  // hour the runtime attributed delivery to. Optional —
   // legacy v4 entries (from before this field shipped) and runs that never
   // received a contribution persist without it; the postmortem suppresses
   // the bar strip in that case. Added in schema v4 as an additive optional

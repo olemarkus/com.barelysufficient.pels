@@ -1,6 +1,5 @@
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../power/tracker';
-import type { PlanContext } from './planContext';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { resolveAttributionSplit } from '../../packages/shared-domain/src/dailyBudget/attributionSplit';
 
@@ -95,21 +94,6 @@ export function extractDailyBudgetHourKWh(snapshot: DailyBudgetUiPayload | null)
   if (!Array.isArray(plannedKWh) || index < 0 || index >= plannedKWh.length) return undefined;
   const value = plannedKWh[index];
   return Number.isFinite(value) ? value : undefined;
-}
-
-export function buildDailyBudgetContext(
-  snapshot: DailyBudgetUiPayload | null,
-): PlanContext['dailyBudget'] | undefined {
-  const today = getTodayDailyBudget(snapshot);
-  if (!today) return undefined;
-  return {
-    enabled: today.budget.enabled,
-    usedNowKWh: today.state.usedNowKWh,
-    allowedNowKWh: today.state.allowedNowKWh,
-    remainingKWh: today.state.remainingKWh,
-    exceeded: today.state.exceeded,
-    frozen: today.state.frozen,
-  };
 }
 
 function getTodayDailyBudget(snapshot: DailyBudgetUiPayload | null) {

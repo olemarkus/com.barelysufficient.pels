@@ -3,7 +3,6 @@ import type {
   DeferredObjectivePlanHistoryCostDisplay,
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryHourlyContribution,
-  DeferredObjectivePlanHistoryHourlyTone,
   DeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRecord,
   DeferredObjectivePlanHistoryV5,
@@ -126,8 +125,7 @@ export type PlanHistoryPersistDeps = {
   // version. Returning `null` (no price data yet, hour outside the
   // published horizon) causes that hour's contribution to be skipped
   // rather than fabricated. The dep is optional so the recorder remains
-  // useful in tests and for callers that drive `recordHourlyDelivery`
-  // directly with their own pricing.
+  // useful in tests; without it no priced contribution is ever emitted.
   resolveHourPrice?: HourPriceResolver;
   // Optional structured-debug emitter. The recorder emits one
   // `deferred_objective_history_finalized` event per observation entry as it
@@ -157,38 +155,6 @@ export type PlanHistoryPersistDeps = {
 export type PlanHistoryLoadResult = {
   snapshot: DeferredObjectivePlanHistoryV5;
   persistenceSafe: boolean;
-};
-
-// Per-hour delivery contribution fed into the recorder by the runtime
-// power-tracker / pricing wiring. Both fields are absolute values for the
-// hour: `deliveredKWh` is the device's measured useful kWh during that
-// hour, `priceValue` is the hourly spot price in the user's display unit.
-// The recorder sums `priceValue × deliveredKWh` into `totalCost` on the
-// matching in-progress record. Wiring lives in `setup/appInit.ts`.
-export type DeferredObjectivePlanHistoryHourlyDelivery = {
-  deviceId: string;
-  deadlineAtMs: number;
-  // Hour-aligned start; redundantly carried so the recorder can ignore
-  // contributions whose hour falls outside the run's observed window if a
-  // late-arriving feed reports against a deadline that has already
-  // finalized. Currently informational — duplicate contributions for the
-  // same hour are added (the wiring is responsible for de-duping if needed).
-  hourStartMs: number;
-  deliveredKWh: number;
-  priceValue: number;
-  // Price-tier classification for the hour, resolved by the caller (the
-  // runtime wiring) against the live cheap/normal/expensive thresholds.
-  // Captured at contribution time so the postmortem reads a stable band
-  // even if thresholds shift in a later version. See
-  // `DeferredObjectivePlanHistoryHourlyTone`.
-  tone: DeferredObjectivePlanHistoryHourlyTone;
-  // Optional price-display provenance (`{ unit, divisor }`) the `priceValue`
-  // is denominated in. Captured once onto the run's record (first-write wins)
-  // so the archive formats the persisted `totalCost` in its recorded currency.
-  // Optional because the internal rollover path sources it from the resolver;
-  // an external aggregator push supplies it here. Absent → the run keeps
-  // whatever display it already captured (or falls back to øre/kr at finalize).
-  costDisplay?: DeferredObjectivePlanHistoryCostDisplay;
 };
 
 export class DeferredObjectivePlanHistoryRecorder {
@@ -396,59 +362,13 @@ export class DeferredObjectivePlanHistoryRecorder {
     }
   }
 
-  /**
-   * Sum a per-hour delivery contribution onto the in-progress run that
-   * matches `(deviceId, deadlineAtMs)`. The matching record's running
-   * `deliveredKWh` and `totalCost = Σ priceValue × deliveredKWh` totals are
-   * persisted at finalization. No-op when no matching in-progress run
-   * exists (late contribution after the deadline finalized, or contribution
-   * for a deadline this recorder never tracked).
-   *
-   * Designed as a one-shot push rather than per-cycle bookkeeping so the
-   * caller can drive it from either the power-tracker hourly rollover or
-   * from a plan-cycle aggregator without the recorder needing to know
-   * either data source's cadence. Negative `deliveredKWh` values are
-   * dropped (defensive: only consumption is interesting; production / sign
-   * inversions would corrupt the running total).
-   */
-  recordHourlyDelivery(contribution: DeferredObjectivePlanHistoryHourlyDelivery): void {
-    if (!Number.isFinite(contribution.deliveredKWh) || contribution.deliveredKWh < 0) return;
-    if (!Number.isFinite(contribution.priceValue)) return;
-    const key = buildKey(contribution.deviceId, contribution.deadlineAtMs);
-    const record = this.inProgress.get(key);
-    if (!record) return;
-    // Hour-align the timestamp the postmortem renders against so duplicate
-    // contributions for the same hour land on the same bucket (the strip
-    // sums kWh into the existing entry and keeps the latest tone/price).
-    // Floor against the contribution's `hourStartMs` rather than `nowMs`
-    // because the caller may replay a missed hour from an aggregator
-    // cadence that doesn't match real time.
-    const hourAtMs = hourBucketMs(contribution.hourStartMs);
-    const hourlyContributions = appendHourlyContribution(record.hourlyContributions, {
-      atMs: hourAtMs,
-      deliveredKWh: contribution.deliveredKWh,
-      priceValue: contribution.priceValue,
-      tone: contribution.tone,
-    });
-    this.inProgress.set(key, {
-      ...record,
-      deliveredKWh: record.deliveredKWh + contribution.deliveredKWh,
-      totalCost: record.totalCost + contribution.priceValue * contribution.deliveredKWh,
-      // First-write wins so an unchanging scheme isn't re-stamped each push.
-      costDisplay: record.costDisplay ?? contribution.costDisplay ?? null,
-      hasDeliveryContribution: true,
-      hourlyContributions,
-    });
-  }
-
   // Drive the internal hour-rollover detector after a cycle's progress
   // sample has been recorded. Each closed-hour contribution is folded into
-  // the record exactly the same way `recordHourlyDelivery` does — sharing
-  // the merge helper guarantees the postmortem totals stay consistent
-  // whether the contribution arrived from this runtime wiring or from an
-  // external aggregator. The `currentHourOpening` anchor and cached
-  // `lastKWhPerUnit` are always refreshed so the next cycle's rollover sees
-  // the freshest values, even on cycles that produced no contribution.
+  // the record through the shared merge helper, so the finalize-time flush
+  // and this per-cycle rollover agree on the postmortem totals. The
+  // `currentHourOpening` anchor and cached `lastKWhPerUnit` are always
+  // refreshed so the next cycle's rollover sees the freshest values, even on
+  // cycles that produced no contribution.
   private applyHourlyDeliveryRollover(
     record: InProgressRecord,
     diag: DeferredObjectiveDiagnostic,
@@ -499,9 +419,9 @@ export class DeferredObjectivePlanHistoryRecorder {
   }
 
   // Pure merge of zero-or-more emitted contributions into an in-progress
-  // record. Mirrors the totals math in `recordHourlyDelivery` so external
-  // aggregator pushes and the internal rollover path agree byte-for-byte
-  // on the persisted entry. Always advances `currentHourOpening` and
+  // record. The single place the delivery totals are summed, so the
+  // per-cycle rollover and the finalize-time flush agree byte-for-byte on
+  // the persisted entry. Always advances `currentHourOpening` and
   // `lastKWhPerUnit` so finalize-time flushing has the right anchor even
   // when no contribution fired this cycle. Captures the run's `costDisplay`
   // provenance the first time a priced contribution supplies one (first-write
