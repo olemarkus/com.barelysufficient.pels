@@ -63,17 +63,9 @@ export const HEADROOM_RESERVE_MAX_MS = 15 * 60 * 1000;
 // observer/transport split (see
 // `notes/state-management/observer-transport-split.md`); the constant is no
 // longer surfaced from plan because observer is the only consumer.
-export const TARGET_COMMAND_RETRY_DELAYS_MS = [
-  30 * 1000,
-  2 * 60 * 1000,
-  5 * 60 * 1000,
-  15 * 60 * 1000,
-] as const;
-export const STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS = [
-  30 * 1000,
-  2 * 60 * 1000,
-  5 * 60 * 1000,
-  15 * 60 * 1000,
-] as const;
+// `TARGET_COMMAND_RETRY_DELAYS_MS` and `STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS`
+// moved to `lib/executor/commandRetrySchedule.ts`. Command retry pacing is
+// materialization, and the planner never read either constant — only the
+// executor did, through an import that existed because of where the file sat.
 export const TARGET_CONFIRMATION_STUCK_POLL_MS = 60 * 1000;
 export const TARGET_WAITING_LOG_REPEAT_MS = 60 * 1000;

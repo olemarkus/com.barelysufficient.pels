@@ -1,5 +1,4 @@
 import type CapacityGuard from '../power/capacityGuard';
-import { computeShortfallThreshold } from '../plan/planBudget';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import type { PowerTrackerState } from '../power/tracker';
 import type { PlanEngineState } from '../plan/planState';
@@ -28,6 +27,15 @@ export type ShortfallExecutorDeps = {
   getPowerTracker: () => PowerTrackerState;
   /** `capacityPaceKw` — the planner's live hourly threshold, for the log line. */
   getCapacityPaceKw: () => number;
+  /**
+   * `computeShortfallThreshold` — the hard-cap budget threshold, for the log
+   * line and nothing else. INJECTED rather than recomputed here: it is a
+   * planner-owned number, and this layer importing `lib/plan/planBudget` to
+   * re-derive it was an executor->planner edge bought for one log field. A
+   * getter, not a value, so it is still read at the instant the line is
+   * written — an eagerly captured number would describe a different moment.
+   */
+  getShortfallThresholdKw: () => number;
 };
 
 export class ShortfallExecutor {
@@ -39,11 +47,7 @@ export class ShortfallExecutor {
   public async handleShortfall(deficitKw: number): Promise<void> {
     if (this.stateSideEffectActive) return;
 
-    const capacitySettings = this.deps.getCapacitySettings();
-    const shortfallThreshold = computeShortfallThreshold({
-      capacitySettings,
-      powerTracker: this.deps.getPowerTracker(),
-    });
+    const shortfallThreshold = this.deps.getShortfallThresholdKw();
     const softLimit = this.deps.getCapacityPaceKw();
     const total = resolveLastTotalPowerKw(this.deps.getPowerTracker());
     const totalStr = total === null ? 'unknown' : total.toFixed(2);

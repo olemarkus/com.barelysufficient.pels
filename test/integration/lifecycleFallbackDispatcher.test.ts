@@ -26,7 +26,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import type { DeviceObservation } from '../../lib/device/deviceObservation';
 import { dispatchTargetCommand } from '../../lib/executor/targetExecutor';
 import type { PlanExecutorTargetContext } from '../../lib/executor/targetExecutorContext';
-import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/plan/planConstants';
+import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/executor/commandRetrySchedule';
 import { createTargetCommandClaim } from '../../lib/executor/targetCommandClaim';
 import { createSteppedCommandClaim } from '../../lib/executor/steppedCommandClaim';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';

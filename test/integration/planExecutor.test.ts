@@ -2,7 +2,7 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
-import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/plan/planConstants';
+import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/executor/commandRetrySchedule';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
   createPendingBinaryCommandStore,
@@ -298,6 +298,7 @@ const buildExecutor = (
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
     getPowerTracker: () => ({}),
     getCapacityPaceKw: () => 9.5,
+    getShortfallThresholdKw: () => 0,
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off' as const }),

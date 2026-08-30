@@ -96,6 +96,9 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     getCapacitySettings: deps.getCapacitySettings,
     getPowerTracker: deps.getPowerTracker,
     getCapacityPaceKw: () => builder.computeDynamicSoftLimit(),
+    // Planner-owned number, resolved here so the executor does not import
+    // lib/plan to re-derive it for a log line.
+    getShortfallThresholdKw: () => builder.computeShortfallThreshold(),
     getCapacityDryRun: deps.getCapacityDryRun,
     getOperatingMode: deps.getOperatingMode,
     getShedBehavior: deps.getShedBehavior,
