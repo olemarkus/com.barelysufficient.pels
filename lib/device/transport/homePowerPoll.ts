@@ -16,8 +16,7 @@ export async function pollHomePowerWithMeterFanOut(
   ctx: TransportContext,
   authorizeFanOut?: () => boolean,
 ): Promise<PolledHomePowerSample | null> {
-  const selection = ctx.providers.getHomeyEnergyMeterSelection?.()
-    ?? { state: 'resolved', meterDeviceId: null };
+  const selection = ctx.resolveMainMeterSelection();
   const report = await fetchLivePowerReport(ctx, selection);
   const authorized = authorizeFanOut === undefined || authorizeFanOut();
   const onAdditionalMeterReadings = ctx.providers.onAdditionalMeterReadings;

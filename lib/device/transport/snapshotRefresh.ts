@@ -44,6 +44,7 @@ import {
   type LivePowerReport,
 } from './managerFetch';
 import { fetchLivePowerReport } from './livePowerReport';
+import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 export { fetchLivePowerReport } from './livePowerReport';
 export { pollHomePowerWithMeterFanOut } from './homePowerPoll';
 import { fetchZoneTree } from './managerZones';
@@ -557,13 +558,13 @@ async function refreshZoneTreeCache(ctx: TransportContext): Promise<void> {
 async function resolveLivePowerForRefresh(
     ctx: TransportContext,
     includeLivePower: boolean,
-    options: SnapshotRefreshOptions,
+    mainMeterSelection: MainMeterSelection,
 ): Promise<{
     livePowerReport: LivePowerReport;
     homePowerSample: HomePowerSampleWithIdentity | null;
 }> {
     const livePowerReport = includeLivePower
-        ? await fetchLivePowerReport(ctx, options.mainMeterSelection)
+        ? await fetchLivePowerReport(ctx, mainMeterSelection)
         : buildEmptyLivePowerReport();
     const homePowerSample = includeLivePower ? updateHomePowerFromReport(ctx, livePowerReport) : null;
     return { livePowerReport, homePowerSample };
@@ -584,7 +585,12 @@ export async function refreshSnapshot(
         const { livePowerReport, homePowerSample } = await resolveLivePowerForRefresh(
             ctx,
             options.includeLivePower !== false,
-            options,
+            // Resolved once, here, and required from this line inward. A caller
+            // that captured a selection before its cycle began passes it so the
+            // report cannot land under a meter the owner switched to mid-flight;
+            // a caller with no such capture gets the authority's answer now.
+            // Neither path invents one.
+            options.mainMeterSelection ?? ctx.resolveMainMeterSelection(),
         );
         const effectiveList = observeBatteryStateFromList(
             ctx,

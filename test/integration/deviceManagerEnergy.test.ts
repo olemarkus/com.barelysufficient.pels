@@ -271,10 +271,10 @@ describe('transport Main-meter authority', () => {
     const ctx = {
       logger,
       automaticHomeMeterState: { preferredDeviceId: null },
+      // The live authority has recovered by the time the SDK call starts, but
+      // the refresh cycle must remain bound to its captured start selection.
+      resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
       providers: {
-        // The live provider has recovered by the time the SDK call starts, but
-        // the refresh cycle must remain bound to its captured start selection.
-        getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
         getAdditionalMeterDeviceIds: () => ['sub-meter'],
       },
     } as unknown as TransportContext;
@@ -301,9 +301,8 @@ describe('transport Main-meter authority', () => {
     const ctx = {
       logger,
       automaticHomeMeterState,
-      providers: {
-        getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
-      },
+      resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+      providers: {},
     } as unknown as TransportContext;
 
     const first = await pollHomePowerWithMeterFanOut(ctx, () => true);
@@ -329,9 +328,8 @@ describe('transport Main-meter authority', () => {
     const ctx = {
       logger,
       automaticHomeMeterState,
-      providers: {
-        getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
-      },
+      resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+      providers: {},
     } as unknown as TransportContext;
 
     const sample = await pollHomePowerWithMeterFanOut(ctx, () => false);
@@ -351,8 +349,8 @@ describe('transport Main-meter authority', () => {
     const ctx = {
       logger,
       automaticHomeMeterState: { preferredDeviceId: null },
+      resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
       providers: {
-        getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
         getAdditionalMeterDeviceIds: () => ['meter-area'],
         onAdditionalMeterReadings,
       },
@@ -387,7 +385,7 @@ describe('resolved home meter identity on the sample', () => {
     const transport = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      {},
+      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }) },
     );
 
     const sample = await transport.refreshSnapshot();
@@ -406,7 +404,7 @@ describe('resolved home meter identity on the sample', () => {
     const transport = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      {},
+      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }) },
     );
 
     const sample = await transport.refreshSnapshot();
@@ -424,9 +422,8 @@ describe('resolved home meter identity on the sample', () => {
     const ctx = {
       logger,
       automaticHomeMeterState: { preferredDeviceId: null },
-      providers: {
-        getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
-      },
+      resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+      providers: {},
     } as unknown as TransportContext;
 
     const sample = await pollHomePowerWithMeterFanOut(ctx, () => true);
@@ -441,12 +438,29 @@ describe('resolved home meter identity on the sample', () => {
     });
   });
 
+  // A transport wired without a meter authority is a wiring mistake, and the
+  // only selection it could invent is Automatic — the strongest claim there is.
+  // It fences instead: no authority, no whole-home sample, so nobody records
+  // watts under a meter nobody chose.
+  it('reads no whole-home sample at all when no meter authority is wired', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [{ type: 'cumulative', id: 'm-area', values: { W: 4_200 } }],
+    });
+    const transport = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      logger,
+      {},
+    );
+
+    await expect(transport.refreshSnapshot()).resolves.toBeNull();
+  });
+
   it('does NOT read live power on a fast refresh, so no sample and no identity exist', async () => {
     const getEnergyLiveReport = vi.spyOn(homeyApi, 'getEnergyLiveReport');
     const transport = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      {},
+      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }) },
     );
 
     const sample = await transport.refreshSnapshot({ includeLivePower: false });
@@ -486,7 +500,7 @@ describe('resolved home meter identity on the sample', () => {
     const transport = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      {},
+      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }) },
     );
 
     const sample = await transport.refreshSnapshot();
@@ -504,7 +518,7 @@ describe('resolved home meter identity on the sample', () => {
     const transport = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      {},
+      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }) },
     );
 
     await expect(transport.refreshSnapshot()).resolves.toBeNull();
@@ -515,7 +529,7 @@ describe('resolved home meter identity on the sample', () => {
     const transport = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      {},
+      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }) },
     );
 
     const sample = await transport.refreshSnapshot();

@@ -934,7 +934,9 @@ describe('DeviceTransport', () => {
             // the injected `observedStateDispatcher.setHomePowerW`.
             const setHomePowerW = vi.fn();
             const setGenerationW = vi.fn();
-            const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, undefined, undefined, {
+            const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, {
+                getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+            }, undefined, {
                 observedStateDispatcher: {
                     observedStateChanged: vi.fn(),
                     observedStateRefresh: vi.fn(),
@@ -979,7 +981,9 @@ describe('DeviceTransport', () => {
         it('pushes null home power when no cumulative item exists', async () => {
             const setHomePowerW = vi.fn();
             const setGenerationW = vi.fn();
-            const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, undefined, undefined, {
+            const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, {
+                getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+            }, undefined, {
                 observedStateDispatcher: {
                     observedStateChanged: vi.fn(),
                     observedStateRefresh: vi.fn(),
@@ -1011,7 +1015,9 @@ describe('DeviceTransport', () => {
         it('does not publish empty home power evidence when live power is skipped', async () => {
             const setHomePowerW = vi.fn();
             const setGenerationW = vi.fn();
-            const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, undefined, undefined, {
+            const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, {
+                getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+            }, undefined, {
                 observedStateDispatcher: {
                     observedStateChanged: vi.fn(),
                     observedStateRefresh: vi.fn(),

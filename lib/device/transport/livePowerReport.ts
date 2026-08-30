@@ -2,14 +2,16 @@ import type { MainMeterSelection } from '../../../packages/contracts/src/mainMet
 import { fetchLivePowerReport as fetchLivePowerReportFromSdk, type LivePowerReport } from './managerFetch';
 import type { TransportContext } from './transportContext';
 
-/** Resolve one live report against a producer-clean Main meter selection. */
+/**
+ * Resolve one live report against a producer-clean Main meter selection. The
+ * selection is an argument, never re-read here: the caller owns which authority
+ * this report belongs to (a refresh cycle carries the one it captured at the
+ * start, so a mid-flight switch cannot slip a report in under the new meter).
+ */
 export async function fetchLivePowerReport(
   ctx: TransportContext,
-  mainMeterSelection?: MainMeterSelection,
+  selection: MainMeterSelection,
 ): Promise<LivePowerReport> {
-  const selection: MainMeterSelection = mainMeterSelection
-    ?? ctx.providers.getHomeyEnergyMeterSelection?.()
-    ?? { state: 'resolved', meterDeviceId: null };
   const report = await fetchLivePowerReportFromSdk({
     logger: ctx.logger,
     debugStructured: ctx.debugStructured,

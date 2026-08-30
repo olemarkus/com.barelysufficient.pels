@@ -60,10 +60,12 @@ export type HomeMembershipServiceDeps = {
    */
   getMainMeterSelection: () => MainMeterSelection;
   /**
-   * Semantic active power source. Omitted only by direct service tests, which
-   * model the historical Homey Energy path by default.
+   * Semantic active power source, classified at the settings boundary. Passed
+   * through to the meter authority, which fences on `suspect` — see
+   * {@link MainMeterAuthorityDeps.getConfiguredPowerSource} for why no default
+   * may stand in for it.
    */
-  getConfiguredPowerSource?: () => ConfiguredPowerSourceRead;
+  getConfiguredPowerSource: () => ConfiguredPowerSourceRead;
   /**
    * Ingest stamp of the whole-home sample the MAIN power tracker currently
    * serves. Consulted only until this process admits its first sample, so it
@@ -261,9 +263,7 @@ export class HomeMembershipService implements HomeMembershipPort {
     this.meterAuthority = new MainMeterAuthority({
       getLogger: () => this.deps.getLogger(),
       getMainMeterSelection: () => this.deps.getMainMeterSelection(),
-      ...(this.deps.getConfiguredPowerSource === undefined
-        ? {}
-        : { getConfiguredPowerSource: this.deps.getConfiguredPowerSource }),
+      getConfiguredPowerSource: () => this.deps.getConfiguredPowerSource(),
       ...(this.deps.getRestoredSampleAtMs === undefined
         ? {}
         : { getRestoredSampleAtMs: this.deps.getRestoredSampleAtMs }),

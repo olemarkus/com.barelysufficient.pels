@@ -295,6 +295,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             ),
             refreshSnapshot: (options) => t.refreshSnapshot(options),
             providers: t.providers,
+            resolveMainMeterSelection: () => (
+                t.providers.getHomeyEnergyMeterSelection?.() ?? { state: 'unavailable' }
+            ),
             powerState: t.powerState,
             measuredPowerResolver: t.measuredPowerResolver,
             observedStateDispatcher: t.observedStateDispatcher,
