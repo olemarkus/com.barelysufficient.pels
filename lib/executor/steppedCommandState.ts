@@ -1,6 +1,6 @@
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
-import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from '../plan/planConstants';
-import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../plan/planObservationPolicy';
+import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
+import { LOCAL_CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import {
   buildSteppedLoadReportedState,
@@ -23,7 +23,7 @@ import type {
  * the device attests), not because admission is withheld (`lib/device/AGENTS.md`).
  */
 
-export const STEPPED_LOAD_COMMAND_STALE_MS = LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS;
+export const STEPPED_LOAD_COMMAND_STALE_MS = LOCAL_CONTROL_COMMAND_CONFIRMATION_MS;
 
 export type SteppedLoadDesiredRuntimeState = {
   capabilityId: typeof PELS_TARGET_STEP_CAPABILITY_ID;

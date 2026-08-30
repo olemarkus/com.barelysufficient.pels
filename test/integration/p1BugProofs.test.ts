@@ -93,6 +93,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
     getPowerTracker: () => ({}),
     getCapacityPaceKw: () => 9.5,
+    getShortfallThresholdKw: () => 0,
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
     markSteppedLoadDesiredStepIssued: vi.fn(),

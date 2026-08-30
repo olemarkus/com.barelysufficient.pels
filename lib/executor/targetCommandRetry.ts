@@ -33,7 +33,7 @@
  * `status`-parameterized builder in the same change would have hidden a
  * behaviour question inside a relocation. Collapse them in a follow-up.
  */
-import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../plan/planConstants';
+import { TARGET_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
 import type { PendingTargetCommandState, PlanEngineState } from '../plan/planState';
 import { resolveControlCommandConfirmationMs } from '../observer/controlCommandConfirmation';
 
