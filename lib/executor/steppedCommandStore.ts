@@ -56,14 +56,36 @@ export class SteppedCommandStore {
     return this.state.steppedLoadDesiredByDeviceId.get(deviceId);
   }
 
-  /** The step the lowest-step initialization latched, if it is still latched. */
-  getInitializedStepId(deviceId: string): string | undefined {
-    return this.state.steppedLoadInitializedAtLowestStepByDeviceId.get(deviceId);
+  /**
+   * The lowest-step initialization latch, reconciled against the ladder now in
+   * force and returned only if it still names that ladder's lowest active rung.
+   * A latch that does not is stale — the profile changed under it — so the whole
+   * command session goes with it.
+   *
+   * The verdict lives here because it is one question with one answer. Both
+   * callers used to read the raw latch and re-derive "is it still valid" from
+   * the ladder themselves: the same comparison written twice, one edit away
+   * from two answers.
+   */
+  resolveInitializationLatch(
+    deviceId: string,
+    lowestActiveStepId: string | undefined,
+  ): string | undefined {
+    const latched = this.state.steppedLoadInitializedAtLowestStepByDeviceId.get(deviceId);
+    if (latched === undefined) return undefined;
+    if (latched === lowestActiveStepId) return latched;
+    this.clearCommandSession(deviceId);
+    return undefined;
   }
 
   /** Whether a step command was actually issued during this on-session. */
   hasPriorStepCommand(deviceId: string): boolean {
     return this.state.steppedLoadStepCommandIssuedByDeviceId.has(deviceId);
+  }
+
+  /** Whether a step command is issued and not yet settled. */
+  isStepCommandPending(deviceId: string): boolean {
+    return this.state.steppedLoadDesiredByDeviceId.get(deviceId)?.pending === true;
   }
 
   /**
@@ -140,7 +162,7 @@ export class SteppedCommandStore {
     confirmSteppedLoadDesiredStep({ runtimeState: this.state, deviceId, desired });
   }
 
-  expireConfirmedDesiredOnBinaryOff(deviceId: string, observedOn: boolean | undefined): void {
+  expireConfirmedDesiredOnBinaryOff(deviceId: string, observedOn: boolean): void {
     expireConfirmedDesiredStepOnBinaryOff({ runtimeState: this.state, deviceId, observedOn });
   }
 

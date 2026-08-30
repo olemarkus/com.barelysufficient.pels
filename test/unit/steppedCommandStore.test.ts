@@ -38,11 +38,11 @@ describe('SteppedCommandStore', () => {
       deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: 1_000, confirmationPolicy: 'assume_applied',
     });
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 2_000 });
-    expect(store.getInitializedStepId('dev-1')).toBe('low');
+    expect(store.resolveInitializationLatch('dev-1', 'low')).toBe('low');
 
     store.clearCommandSession('dev-1');
 
-    expect(store.getInitializedStepId('dev-1')).toBeUndefined();
+    expect(store.resolveInitializationLatch('dev-1', 'low')).toBeUndefined();
     expect(store.getDesired('dev-1')).toBeUndefined();
     expect(store.hasPriorStepCommand('dev-1')).toBe(false);
   });
@@ -65,6 +65,20 @@ describe('SteppedCommandStore', () => {
     // Settling the probe ends it: nothing is in flight to settle any more.
     store.deleteDesired('dev-2');
     expect(store.hasPendingTargetPowerProbe()).toBe(false);
+  });
+
+  it('drops a stale initialization latch when the ladder changed under it', () => {
+    const store = createSteppedCommandStore();
+    store.markDesiredStepIssued({
+      deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: 1_000, confirmationPolicy: 'assume_applied',
+    });
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 2_000 });
+
+    // The ladder's lowest active rung is no longer the one the latch named.
+    expect(store.resolveInitializationLatch('dev-1', 'lowest-2')).toBeUndefined();
+
+    expect(store.getDesired('dev-1')).toBeUndefined();
+    expect(store.hasPriorStepCommand('dev-1')).toBe(false);
   });
 
   it('drops a command session when the device is observed turning off', () => {
