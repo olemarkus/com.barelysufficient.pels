@@ -125,8 +125,9 @@ export const buildDailyHistoryOption = (params: {
       show: !prefersCoarsePointer(),
       formatter: (rawParams: unknown) => {
         const index = resolveTooltipDataIndex(rawParams);
-        if (index < 0 || index >= readouts.length) return '';
-        return readoutToTooltipHtml(readouts[index], { warnColor: palette.overBudget });
+        const readout = readouts[index];
+        if (readout === undefined) return '';
+        return readoutToTooltipHtml(readout, { warnColor: palette.overBudget });
       },
     },
     xAxis: {
@@ -169,13 +170,18 @@ export const buildDailyHistoryOption = (params: {
         name: 'Daily total',
         type: 'bar',
         stack: 'day',
-        data: base.map((value, index) => ({
-          value,
-          itemStyle: {
-            color: palette.bar,
-            borderRadius: over[index] > 0 ? ([0, 0, 0, 0] as const) : BAR_RADIUS,
-          },
-        })),
+        data: base.map((value, index) => {
+          // `over` is built alongside `base`, so the slot resolves; with none
+          // there is no over-budget remainder stacked above to square off for.
+          const overKWh = over[index];
+          return {
+            value,
+            itemStyle: {
+              color: palette.bar,
+              borderRadius: overKWh !== undefined && overKWh > 0 ? ([0, 0, 0, 0] as const) : BAR_RADIUS,
+            },
+          };
+        }),
         barMaxWidth: 16,
         barMinHeight: 2,
         emphasis: { disabled: true },

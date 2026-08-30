@@ -212,8 +212,9 @@ const updateReadout = (params: {
 
 const peakIndex = (values: number[]): number => {
   let best = 0;
-  for (let index = 1; index < values.length; index += 1) {
-    if (values[index] > values[best]) best = index;
+  for (const [index, value] of values.entries()) {
+    const bestValue = values[best];
+    if (bestValue === undefined || value > bestValue) best = index;
   }
   return best;
 };
@@ -244,8 +245,9 @@ const buildHourlyPatternOption = (params: {
       show: !prefersCoarsePointer(),
       formatter: (rawParams: unknown) => {
         const index = resolveTooltipDataIndex(rawParams);
-        if (index < 0 || index >= points.length) return '';
-        return readoutToTooltipHtml(buildHourlyPatternReadout(points[index]));
+        const point = points[index];
+        if (point === undefined) return '';
+        return readoutToTooltipHtml(buildHourlyPatternReadout(point));
       },
     },
     xAxis: {
@@ -322,9 +324,10 @@ export const renderHourlyPatternChartEcharts = (params: {
       kind: 'hourly',
       itemCount: points.length,
       defaultIndex: peakIndex(points.map((point) => point.avg)),
-      resolveContent: (index) => (
-        index >= 0 && index < points.length ? buildHourlyPatternReadout(points[index]) : null
-      ),
+      resolveContent: (index) => {
+        const point = points[index];
+        return point === undefined ? null : buildHourlyPatternReadout(point);
+      },
     });
     return true;
   } catch (error) {
@@ -394,9 +397,7 @@ export const renderDailyHistoryChartEcharts = (params: {
       // 14-day-peak default would pin a stale date as the row's anchor.
       defaultIndex: ordered.length - 1,
       selectSeriesIndexes: hasOverSeries ? [0, 1] : [0],
-      resolveContent: (index) => (
-        index >= 0 && index < readouts.length ? readouts[index] : null
-      ),
+      resolveContent: (index) => readouts[index] ?? null,
     });
     return true;
   } catch (error) {

@@ -82,8 +82,8 @@ const pruneRecentNetworkFailures = (now: number) => {
     .sort((a, b) => a[1].lastSeenAt - b[1].lastSeenAt)
     .map(([key]) => key);
 
-  for (let index = 0; index < keysByAge.length - NETWORK_FAILURE_MAX_ENTRIES; index += 1) {
-    recentNetworkFailures.delete(keysByAge[index]);
+  for (const key of keysByAge.slice(0, keysByAge.length - NETWORK_FAILURE_MAX_ENTRIES)) {
+    recentNetworkFailures.delete(key);
   }
 };
 

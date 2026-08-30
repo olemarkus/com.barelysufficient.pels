@@ -127,8 +127,8 @@ const buildUsageDayBuckets = (
 const getCurrentUsageDayBucketIndex = (buckets: UsageDayBucket[], nextDayStartUtcMs: number): number => {
   if (usageDayView !== 'today') return -1;
   const nowMs = Date.now();
-  for (let index = 0; index < buckets.length; index += 1) {
-    const bucketStart = buckets[index].startMs;
+  for (const [index, bucket] of buckets.entries()) {
+    const bucketStart = bucket.startMs;
     const nextStart = buckets[index + 1]?.startMs ?? nextDayStartUtcMs;
     if (nowMs >= bucketStart && nowMs < nextStart) {
       return index;
@@ -211,9 +211,13 @@ const renderUsageDayHasData = (buckets: UsageDayBucket[]) => {
   usageDayChart.hidden = false;
 
   const totalKWh = buckets.reduce((sum, bucket) => sum + bucket.measuredKWh, 0);
+  // The first bucket seeds the peak search, so no buckets means no peak hour to
+  // name and nothing to summarise.
+  const [firstBucket] = buckets;
+  if (firstBucket === undefined) return;
   const peakBucket = buckets.reduce((max, bucket) => (
     bucket.measuredKWh > max.measuredKWh ? bucket : max
-  ), buckets[0]);
+  ), firstBucket);
   const warnHours = buckets.filter((bucket) => bucket.unreliable).length;
 
   setUsageDaySummaryValue(usageDayTotal, `${totalKWh.toFixed(1)} kWh`);
@@ -267,8 +271,9 @@ const getUsageDaySplits = (buckets: UsageDayBucket[]): Array<UsageDaySplit | nul
 const getDefaultReadoutIndex = (buckets: UsageDayBucket[], currentBucketIndex: number): number => {
   if (currentBucketIndex >= 0) return currentBucketIndex;
   let peak = 0;
-  for (let index = 1; index < buckets.length; index += 1) {
-    if (buckets[index].measuredKWh > buckets[peak].measuredKWh) peak = index;
+  for (const [index, bucket] of buckets.entries()) {
+    const peakBucket = buckets[peak];
+    if (peakBucket === undefined || bucket.measuredKWh > peakBucket.measuredKWh) peak = index;
   }
   return peak;
 };

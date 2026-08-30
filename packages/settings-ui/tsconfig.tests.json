@@ -1,0 +1,20 @@
+{
+  // The settings-UI test suites, typechecked but NOT ratcheted. Same reasoning
+  // as the root tsconfig.tests.json: a test indexes fixtures it just built, so
+  // `noUncheckedIndexedAccess` there is ~200 assertions about arrays the test
+  // itself owns. `tsc:settings-ui` covers src/**; this covers the suites, so
+  // splitting them costs no coverage.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    "tests/**/*.ts",
+    "../contracts/src/**/*.ts",
+    "../shared-domain/src/**/*.ts"
+  ]
+}

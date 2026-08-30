@@ -72,8 +72,9 @@ const renderAdvancedDeviceOptions = () => {
   // the memo and close an open menu (the render already sorts by name).
   const signature = JSON.stringify({
     devices: devices
-      .map((device) => [device.id, device.name])
-      .sort((a, b) => a[0].localeCompare(b[0])),
+      .map((device) => ({ id: device.id, name: device.name }))
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map(({ id, name }) => [id, name]),
     unknown: [...unknownIds].sort(),
   });
   if (signature === lastAdvancedDeviceOptionsSignature) return;

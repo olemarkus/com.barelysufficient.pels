@@ -189,9 +189,9 @@ export const resolveHomeBadge = (deviceId: string): HomeBadge | null => {
   // Own-key guard again: a device id colliding with an inherited property must
   // read as Main home, not resolve Object.prototype machinery.
   const homeId = Object.prototype.hasOwnProperty.call(index.areaHomeIdByDeviceId, deviceId)
-    ? index.areaHomeIdByDeviceId[deviceId]
+    ? index.areaHomeIdByDeviceId[deviceId] ?? null
     : null;
-  const areaName = homeId === null ? null : index.areaNameByHomeId[homeId];
+  const areaName = homeId === null ? null : index.areaNameByHomeId[homeId] ?? null;
   return { label: composeHomeBadgeLabel(areaName), tooltip: composeHomeBadgeTooltip(areaName) };
 };
 

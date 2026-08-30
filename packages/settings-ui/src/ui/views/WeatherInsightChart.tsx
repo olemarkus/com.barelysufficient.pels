@@ -167,12 +167,18 @@ export const buildWeatherChartOption = (input: WeatherChartOptionInput): ECharts
       symbolSize: (value: number[]) => binSymbolSize(value[2] ?? 1),
       itemStyle: { color: palette.text, opacity: 0.35 },
       tooltip: {
-        formatter: (params: { data: ScatterDatum }) => encodeHtml(composeBinTooltip({
-          tempBinC: (params.data.value as number[])[0],
-          kwhQ1: params.data.binQ1 as number,
-          kwhQ3: params.data.binQ3 as number,
-          count: (params.data.value as number[])[2],
-        })),
+        formatter: (params: { data: ScatterDatum }) => {
+          // ECharts hands the datum back untyped; a value tuple missing its
+          // temperature or sample count has no honest tooltip to compose.
+          const [tempBinC, , count] = params.data.value as number[];
+          if (tempBinC === undefined || count === undefined) return '';
+          return encodeHtml(composeBinTooltip({
+            tempBinC,
+            kwhQ1: params.data.binQ1 as number,
+            kwhQ3: params.data.binQ3 as number,
+            count,
+          }));
+        },
       },
     },
     {
@@ -180,12 +186,18 @@ export const buildWeatherChartOption = (input: WeatherChartOptionInput): ECharts
       type: 'scatter',
       data: buildRecentDayData(recentDays, input.yesterdayDateKey, palette),
       tooltip: {
-        formatter: (params: { data: ScatterDatum }) => encodeHtml(composeDayDotTooltip({
-          dateKey: params.data.dateKey as string,
-          tempMeanC: (params.data.value as number[])[0],
-          kwhTotal: (params.data.value as number[])[1],
-          partial: params.data.partial as boolean,
-        })),
+        formatter: (params: { data: ScatterDatum }) => {
+          // As above: a day dot without both coordinates is not a day we can
+          // describe.
+          const [tempMeanC, kwhTotal] = params.data.value as number[];
+          if (tempMeanC === undefined || kwhTotal === undefined) return '';
+          return encodeHtml(composeDayDotTooltip({
+            dateKey: params.data.dateKey as string,
+            tempMeanC,
+            kwhTotal,
+            partial: params.data.partial as boolean,
+          }));
+        },
       },
     },
     ...(fitLine.length > 0 ? [{
@@ -329,9 +341,12 @@ export const WeatherCoverageBand = ({
   coverage: WeatherCoverageBin[];
   tomorrowTempC: number | null;
 }) => {
-  if (coverage.length === 0) return null;
-  const minC = coverage[0].fromC;
-  const maxC = coverage[coverage.length - 1].toC;
+  const firstBin = coverage[0];
+  // ES2020-safe last-element access (no Array#at); bundle targets es2020.
+  const lastBin = coverage[coverage.length - 1];
+  if (firstBin === undefined || lastBin === undefined) return null;
+  const minC = firstBin.fromC;
+  const maxC = lastBin.toC;
   const caption = composeCoverageCaption(coverage);
   const dotPct = tomorrowTempC !== null && maxC > minC
     ? Math.min(100, Math.max(0, ((tomorrowTempC - minC) / (maxC - minC)) * 100))

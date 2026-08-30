@@ -80,9 +80,10 @@ const CLASS_TITLE_LOWERCASE = new Set(['and', 'of', 'the']);
 
 const toTitleCase = (value: string): string => (
   value.split('_').map((word, index) => {
-    if (!word) return word;
+    const [first] = word;
+    if (first === undefined) return word;
     if (index > 0 && CLASS_TITLE_LOWERCASE.has(word)) return word;
-    return word[0].toUpperCase() + word.slice(1);
+    return first.toUpperCase() + word.slice(1);
   }).join(' ')
 );
 

@@ -34,12 +34,26 @@ if (matches([
 
 if (matches([
   'packages/settings-ui/src/',
+  'packages/contracts/src/',
+  'packages/shared-domain/src/',
+])) {
+  commands.push({ label: 'tsc:settings-ui', command: 'npx', args: ['tsc', '-p', 'packages/settings-ui/tsconfig.json', '--noEmit'] });
+}
+
+// The src project covers `src/**` only, so a spec-only change needs the tests
+// project or nothing typechecks the file that changed.
+if (matches([
+  'packages/settings-ui/src/',
   'packages/settings-ui/test/',
   'packages/settings-ui/tests/',
   'packages/contracts/src/',
   'packages/shared-domain/src/',
 ])) {
-  commands.push({ label: 'tsc:settings-ui', command: 'npx', args: ['tsc', '-p', 'packages/settings-ui/tsconfig.json', '--noEmit'] });
+  commands.push({
+    label: 'tsc:settings-ui-tests',
+    command: 'npx',
+    args: ['tsc', '-p', 'packages/settings-ui/tsconfig.tests.json', '--noEmit'],
+  });
 }
 
 if (matches(['widgets/'])) {

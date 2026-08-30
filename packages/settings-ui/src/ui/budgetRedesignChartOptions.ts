@@ -139,8 +139,9 @@ const resolvePriceAxisUnit = (display: CostDisplay): string => (
 const buildReadoutTooltipFormatter = (readouts: ChartReadoutContent[]) => (
   (rawParams: unknown): string => {
     const index = resolveTooltipDataIndex(rawParams);
-    if (index < 0 || index >= readouts.length) return '';
-    return readoutToTooltipHtml(readouts[index]);
+    const readout = readouts[index];
+    if (readout === undefined) return '';
+    return readoutToTooltipHtml(readout);
   }
 );
 

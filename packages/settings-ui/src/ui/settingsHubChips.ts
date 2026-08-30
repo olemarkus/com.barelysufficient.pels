@@ -64,7 +64,7 @@ export const syncSettingsHubChips = (): void => {
   syncSequence += 1;
   const sequence = syncSequence;
   void (async () => {
-    const [budgetHidden, pricesHidden]: Array<boolean | null> = await Promise.all([
+    const [budgetHidden, pricesHidden] = await Promise.all([
       readBudgetChipHidden().catch((): null => null),
       // A failed power read is not evidence the price feed is broken — keep
       // the chip as it was rather than flashing a false exception.
