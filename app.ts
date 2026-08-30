@@ -283,6 +283,7 @@ class PelsApp extends PelsAppBase implements AppContext {
       (message, error) => this.error(message, error),
     ),
     recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample),
+    resolveMainMeterSelection: () => this.settingsRepository.loadMainMeterSelection(),
     ...this.targetPowerReachabilityWiring.snapshotDeps,
   });
   public readonly homeyEnergyHelpers = createHomeyEnergyPollSource(this, this.powerSamplePipeline);
