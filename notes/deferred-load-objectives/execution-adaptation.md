@@ -143,9 +143,11 @@ producer-resolved flag + the same per-cycle admission release:
   the committed rate live (the planner sees neither).
 - The horizon planner combines it with a relative raw-price test to set `priceDeferralEligible`
   (`resolvePriceDeferralEligible`, `horizonPlanner.ts`).
-- The decoration controller's admission reads the flag (`isReleasedCurrentHour`, `admission.ts`)
-  and idles the device this cycle (binary_release / shed_release / plain idle by device kind),
-  reusing the existing release posture. No executor change — limiting is "request nothing."
+- The producer folds the flag into `currentHourClaim` (`resolveCurrentHourClaim`,
+  `currentHourClaim.ts`), which answers `released` when it is set. Admission maps that claim 1:1
+  (`admission.ts`) and adds only the release ROUTING, idling the device this cycle
+  (binary_release / shed_release / plain idle by device kind) and reusing the existing release
+  posture. No executor change — limiting is "request nothing."
 
 **Why degrees, not kWh (and not the `avoid` band).** The earlier shipped gate decided in energy
 (routed through the drifting learned rate) and triggered on the absolute `avoid` price band. Both
@@ -186,7 +188,7 @@ the cheaper hours at the next `:58` settle — one honest revision, not churn.
    Each committed hour persists `plannedUnitMilestone` (contract `DeferredObjectiveActivePlanHourV1`)
    — the cumulative target value in the objective's own unit (°C / %) by the END of that hour,
    computed ONCE at the booking revision as `measuredAtRevision + Σ(plannedKWh≤H) ÷ rate` and frozen
-   (`buildHoursFromHorizonPlan` → `withUnitMilestones`). `isAheadOfHourMilestone` then does a
+   (`buildHoursFromHorizonPlan` → `stampUnitMilestones`). `isAheadOfHourMilestone` then does a
    **single-milestone compare**: `ahead ⟺ live measured ≥ THIS hour's frozen milestone` (and there are
    future committed hours to carry the rest). It deliberately does NOT subtract two hours' milestones:
    hours are first-committed at different `:58` revisions, each anchored at the measured value at that
@@ -312,8 +314,8 @@ commitment is sized at, so the floor's "can't fit → run the expensive hour now
 premise** for a climbable device.
 
 **The fix** (`lib/objectives/deferredObjectives/coldStartRelease.ts`, `resolveColdStartReleaseEligible`,
-producer-resolved flag `coldStartReleaseEligible` on the plan, consumed by admission's
-`isReleasedCurrentHour` exactly like `priceDeferralEligible`): for a **`temperature` objective**
+producer-resolved flag `coldStartReleaseEligible` on the plan, folded into `currentHourClaim`
+exactly like `priceDeferralEligible`): for a **`temperature` objective**
 (bang-bang cap-off thermostat — PELS sets only the target, the element runs at full power, so the
 climb step equals the real deliverable rate), release (idle) the current hour when a later hour is
 **meaningfully cheaper** (the shared `isMeaningfullyCheaper` band) AND the **full buffered need fits

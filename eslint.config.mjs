@@ -654,15 +654,6 @@ export default tseslint.config(
       'max-lines': ['warn', { max: 505, skipBlankLines: true, skipComments: true }],
     },
   },
-  // ---------------------------------------------------------------------------
-  // Documented `max-lines` exceptions migrated out of file-level blanket
-  // `/* eslint-disable max-lines */` pragmas (Bucket B in
-  // `notes/complexity-cleanup/god-file-policy.md`). Each carries the structural
-  // reason it is centralized plus a concrete ceiling just above the file's
-  // current effective size, so the file can't grow new bulk under the
-  // allowance. Files that still want to reach <=500 have a named refactor entry
-  // in TODO.md (persona: contributor).
-  // ---------------------------------------------------------------------------
   {
     // The settings UI and dashboard widgets run inside Homey's WebView, whose
     // console is unreachable on the mobile dashboard — a `console.*` there is a

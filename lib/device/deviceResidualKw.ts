@@ -79,9 +79,10 @@ export type ResidualKwShedSteppedDevice = {
   /**
    * True when the caller resolved a known effective step ID for this device
    * via `resolveKnownEffectiveStepId` (any of reported / selected / actual /
-   * assumed). Mirrors the guard inside
-   * `resolveSteppedUnknownCurrentMeasuredShedding`: the unknown-current-
-   * measured fallback only fires when no step state is known at all.
+   * assumed; stamped input-side in `setup/appInit/residualKwForPlanDevice.ts` and
+   * output-side in `lib/plan/planRemainingSheddableLoad.ts`).
+   * The unknown-current-measured fallback below only fires when no step state is
+   * known at all.
    */
   hasKnownEffectiveStep: boolean;
   /** Producer-resolved current draw (see `getCurrentDrawKw`). */
@@ -180,8 +181,7 @@ function canShedFromUnknownCurrentStep(
   steppedLoad: ResidualKwShedSteppedDevice,
   shedAction: 'turn_off' | 'set_step',
 ): boolean {
-  // Mirrors `resolveSteppedUnknownCurrentMeasuredShedding` in
-  // `lib/plan/planSteppedLoad.ts`: when no step state is known at all and
+  // The unknown-step shed-reachability rule: when no step state is known at all and
   // the device is drawing measurable power, treat the shed as reachable iff
   // the configured target step exists and would not be at-or-above the
   // current draw (set_step) / would actually turn off (turn_off).

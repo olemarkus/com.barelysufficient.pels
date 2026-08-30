@@ -17,7 +17,7 @@ This page is the public contributor reference. Use it when you are deciding wher
 │   app.ts · drivers/** · packages/settings-ui/src/script.ts  │
 ├─────────────────────────────────────────────────────────────┤
 │ App wiring — stateless                                      │
-│   setup/** · lib/app/** (sunsetting) · flowCards/**         │
+│   setup/** · flowCards/**                                   │
 ├─────────────────────────────────────────────────────────────┤
 │ Domain modules                                              │
 │   lib/device/** · lib/power/** · lib/objectives/** · lib/plan/**             │
@@ -36,7 +36,7 @@ This page is the public contributor reference. Use it when you are deciding wher
 | Layer | Purpose | Examples |
 | --- | --- | --- |
 | **Entry points** | Boot the runtime or render the settings UI. Wire dependencies but contain no domain logic. | `app.ts` (Homey app entry), `drivers/pels_insights/` (virtual device), `script.ts` (settings UI bootstrap) |
-| **App wiring** | Adapt the Homey SDK and Flow cards onto the domain modules, and hold nothing afterwards. This is where dependency injection happens. New wiring lives in `setup/`; `lib/app/` is sunsetting. | `setup/schedulerTelemetryObserver.ts`, `setup/settingsRepository.ts`, `flowCards/registerFlowCards.ts` |
+| **App wiring** | Adapt the Homey SDK and Flow cards onto the domain modules, and hold nothing afterwards. This is where dependency injection happens. Wiring lives in `setup/` and `flowCards/`; none is left in `lib/app/`. | `setup/schedulerTelemetryObserver.ts`, `setup/settingsRepository.ts`, `flowCards/registerFlowCards.ts` |
 | **Domain** | Pure planning, capacity, price, budget, and observation logic. No Homey SDK calls; no UI imports. | `lib/plan/planEngine.ts`, `lib/device/deviceTransport.ts`, `lib/power/tracker.ts`, `lib/objectives/profiles.ts`, `lib/observer/idleClassifier.ts` |
 | **Shared utilities** | Pure helpers usable from anywhere — including the browser-side settings UI. Must remain Homey-SDK-free. | `lib/utils/*`, `packages/shared-domain/src/deadlineLabels.ts` |
 | **Test code** | Specs and mocks. Runtime cannot import it. | `test/`, `packages/settings-ui/test/` |
@@ -59,7 +59,7 @@ If any of these break, CI fails before tests run. Local check: `npm run arch:che
 
 ## App wiring lives in `setup/`
 
-`setup/` at the repo root is the honest home for app-wiring classes — factories, observers, registrars that construct and connect services. These have no reuse value outside this app, so they live at the entry layer rather than masquerading as library code in `lib/app/`.
+`setup/` at the repo root is the honest home for app-wiring classes — factories, observers, registrars that construct and connect services. These have no reuse value outside this app, so they live at the entry layer rather than masquerading as library code under `lib/`.
 
 **It constructs and connects; it does not run, and it does not remember.** No mutable field, no module-level `let` or `var`, no field holding a mutable container — `readonly` pins a reference, not its contents. Anything that changes as the app runs is a component owned by the `lib/` module that owns the concept, and setup builds it and hands it its collaborators. The composition root is `app.ts`, which holds the constructed services as readonly fields.
 
@@ -72,7 +72,7 @@ State in the wiring layer is state with no owner: it sits *above* the boundaries
 - **One purpose per file**, named for the concrete wiring it does (`schedulerTelemetryObserver.ts`, `settingsRepository.ts`). No grab-bag `setupHelpers.ts`.
 - **Each file exposes a class, or a single `register*` / `init*` / `create*` function.** Not bags of utility functions. The one carve-out is the settings-UI/widget endpoint handler files (`settingsUiApi.ts`, `settingsUiHomesApi.ts`, `settingsUiStarvationRescueApi.ts`, `settingsUiSmartTaskApi.ts`), which each export the handler set for one endpoint family because `api.ts` imports handlers by name. Cohesion still binds: a new endpoint family gets a new file, never an extra export bolted onto an unrelated one.
 
-**`lib/app/` is sunsetting.** As remaining wiring migrates to `setup/`, `lib/app/` shrinks. `lib/app/appContext.ts` (the shared `AppContext` type definition) is the expected long-term inhabitant; everything else moves out.
+**`lib/app/` has dissolved.** The migration finished: the directory now holds only `lib/app/appContext.ts` (the shared `AppContext` type definition), which is its long-term and only inhabitant. Wiring goes in `setup/`; nothing new belongs in `lib/app/`.
 
 ## Where new code goes
 
@@ -85,11 +85,11 @@ State in the wiring layer is state with no owner: it sits *above* the boundaries
 | A type used on both sides | `packages/contracts/src/` |
 | App-wiring code (factory, observer, registrar that constructs/connects services) | `setup/` — one purpose per file, exposes a class or single `register*`/`init*` function, and holds no state. See [App wiring lives in `setup/`](#app-wiring-lives-in-setup). |
 | Something that must be remembered between calls (a cache, latch, counter, ledger, in-flight marker) | The `lib/` module that owns the concept, as a component `setup/` constructs. Never a field in `setup/` — see [App wiring lives in `setup/`](#app-wiring-lives-in-setup). |
-| A Homey-SDK adapter | `setup/` for new wiring (preferred); `lib/app/` is sunsetting. Keep the adapter thin, stateless, and forwarding to a domain module — the port's remembered state lives with the port in `lib/`. |
+| A Homey-SDK adapter | `setup/` — never `lib/app/`, which is down to `appContext.ts`. Keep the adapter thin, stateless, and forwarding to a domain module — the port's remembered state lives with the port in `lib/`. |
 
 ## When duplication is the right call
 
-If consolidating two helpers would require crossing a boundary (e.g. a runtime module reaching into the settings UI, or a domain module pulling something from `lib/app/`), **leave the duplication in place** and add a one-line comment explaining the constraint. The architecture cost of a back-door is higher than three lines of repeated arithmetic.
+If consolidating two helpers would require crossing a boundary (e.g. a runtime module reaching into the settings UI, or a domain module pulling something from `setup/`), **leave the duplication in place** and add a one-line comment explaining the constraint. The architecture cost of a back-door is higher than three lines of repeated arithmetic.
 
 ## Clean and trusted interfaces between layers
 
@@ -120,7 +120,7 @@ device → power    (estimatePower utility)
 power ↔ objectives  (type-only cycle, established)
 ```
 
-The rules behind this DAG (`no-power-to-plan`, `no-power-to-device`, `no-device-to-plan`, `no-observer-to-peer`, `no-price-to-peer`, …) exist as the gate for the ongoing `lib/app` dissolution: any helper currently in `lib/app/` that, if pushed into a peer, would create a forbidden edge identifies itself as cross-peer wiring residue. Wiring residue stays at the composition root (`app.ts` or `setup/**`), not inside a peer.
+The rules behind this DAG (`no-power-to-peer-except-objectives`, `no-device-to-peer-except-power`, `no-plan-to-device`, `no-observer-to-peer`, `no-price-to-peer`, …) were the gate that drove the `lib/app` dissolution to completion: a helper that, if pushed into a peer, would create a forbidden edge is cross-peer wiring residue. They keep doing that job for new code. Wiring residue stays at the composition root (`app.ts` or `setup/**`), not inside a peer.
 
 ### Realtime event flow
 

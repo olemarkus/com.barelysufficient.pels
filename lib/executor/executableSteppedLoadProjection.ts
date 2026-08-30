@@ -434,7 +434,9 @@ const resolveObservedStepForShed = (
   if (intent.plannedShedTarget?.kind !== 'step') return undefined;
   // The producer's number is finite by construction (`getCurrentDrawKw`
   // normalizes or answers 0); only "is it drawing?" is still worth asking —
-  // the same test `resolvePlanStepForShed` applies on the plan-device path.
+  // the same test `buildSteppedCandidate` applies on the plan-device path
+  // (`lib/plan/shedding/steppedCandidates.ts` — it rejects a zero draw before
+  // pricing a rung).
   if (observed === null || observed === undefined || observed.currentDrawKw <= 0) {
     return undefined;
   }

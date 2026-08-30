@@ -238,8 +238,9 @@ describe('resolveResidualKwShed — stepped load with unknown current step', () 
   });
 
   it('still returns 0 when the step is unknown but a known effective step exists (e.g. reportedStepId)', () => {
-    // Mirrors the `resolveSteppedUnknownCurrentMeasuredShedding` guard: it only
-    // fires when no step state is known at all.
+    // Mirrors the unknown-step guard in `resolveResidualKwShed`: the
+    // unknown-current-measured fallback only fires when no step state is known
+    // at all.
     const steppedLoad: ResidualKwShedSteppedDevice = {
       profile: steppedProfile,
       selectedStepId: undefined,

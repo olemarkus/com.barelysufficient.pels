@@ -41,7 +41,8 @@ export type ActiveLinkView = {
  *
  * Age is therefore the consumer's rendering concern and nothing else. Nothing
  * decays a level: when it is adopted as the charger's state-of-charge, the
- * session decides whether PELS has one (`resolveStateOfChargeStatus`), and the
+ * session decides whether PELS has one (`resolveStateOfChargeSnapshot`,
+ * `lib/device/transport/stateOfCharge.ts`), and the
  * car's own plug state is what ends that session — which is why an association
  * is not resolved at all for a car that reports itself disconnected.
  */

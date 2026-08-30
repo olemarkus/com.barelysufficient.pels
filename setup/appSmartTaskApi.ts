@@ -137,7 +137,8 @@ export class AppSmartTaskApi {
 
   // Only stepped-load devices (EV chargers + stepped thermal) can honour the
   // `limitLowerPriorityDevices` rescue permission — it engages the device's boost,
-  // which the boost resolvers gate on `isSteppedLoad`; a binary on/off device has
+  // which the boost resolvers gate on the device's stepped-load profile
+  // (`resolveBoostSupported` → `hasSteppedLoadProfile`); a binary on/off device has
   // no higher step to promote to. The rescue gates the grant on this so it never
   // persists (nor surfaces) a permission the device can't use.
   private deviceSupportsLimitLowerPriority(device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe): boolean {
@@ -344,7 +345,7 @@ export class AppSmartTaskApi {
       });
     }
     // The settings-UI device list spans managed devices AND unmanaged-but-
-    // eligible picker devices (see `getSettingsUiDevices`). A preview is most
+    // eligible picker devices (see `getSettingsUiDevicesPayload`). A preview is most
     // useful precisely for a candidate that is not managed yet, so fall back to
     // the picker snapshot before treating the device as missing — otherwise
     // every new-smart-task preview would come back `unavailable`.

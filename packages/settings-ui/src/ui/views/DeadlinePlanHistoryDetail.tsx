@@ -927,7 +927,7 @@ const HistoryDetailHero = ({
       * Promoted in v2.7.2/PR10 from a muted-supporting paragraph to a
       * display-tier headline, visually equivalent to the live deadline-plan
       * page's hero headline. The producer
-      * (`buildHistoryDetailHero` → `resolvePostmortem` in
+      * (`buildHistoryDetailHero` → `formatPlanHistoryPostmortem` in
       * `packages/shared-domain/src/deferredPlanHistory.ts`) emits the
       * sentence; the `data-variant` hook stays for future variant-specific
       * copy tuning without re-resolving in the view. */}

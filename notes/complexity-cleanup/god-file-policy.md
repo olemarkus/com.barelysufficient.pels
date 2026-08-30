@@ -36,25 +36,28 @@ find lib setup flowCards drivers widgets packages/*/src app.ts api.ts \
   -exec wc -l {} + | awk '$1>500 && $2!="total"' | sort -rn
 ```
 
-As of 2026-05-30 roughly 50 source files exceed the 500-LOC rule. Most are Bucket A (accidental
-growth — shrink when next touched) and need no per-file note. Effective ESLint counts run lower
-than `wc -l` because the rule skips blank lines and comments.
+As of 2026-08-30 the command above reports 103 source files over the 500-LOC rule. Most are
+Bucket A (accidental growth — shrink when next touched) and need no per-file note. Effective
+ESLint counts run lower than `wc -l` because the rule skips blank lines and comments.
 
 The rows worth tracking are the **Bucket B documented exceptions** — files intentionally over the
-limit because the concept is centralized. These are the entries that belong in `eslint.config.mjs`
-with a ceiling and rationale:
+limit because the concept is centralized, which is what earns an entry in `eslint.config.mjs` with
+a ceiling and rationale. There are currently two, and only one of them is over 500 for a
+Bucket B reason:
 
-| File | LOC (2026-05-30) | Why it stays a documented exception |
+| File | LOC (2026-08-30) | Where the exception lives |
 |---|---:|---|
-| `lib/device/deviceTransport.ts` | 2299 | Centralized device transport; only split on a clear subsystem boundary. (Renamed from `lib/device/manager.ts` in the observer/transport split; grew with binarySettle ops + observedStateDispatcher wiring.) |
-| `lib/diagnostics/deviceDiagnosticsService.ts` | 1270 | Holds until starvation flows/insights split out naturally. |
-| `flowCards/registerFlowCards.ts` | 1146 | Flat registration surface; only split if registration gains deeper behavior. |
-| `lib/executor/planExecutor.ts` | 822 | Remaining dispatch is intentionally centralized. |
-| `lib/executor/steppedLoadExecutor.ts` | 788 | Stepped execution sequencing stays local. |
-| `lib/objectives/profiles.ts` | 590 | One cohesive objective-profiling store. |
-| `lib/executor/targetExecutor.ts` | 575 | Target-command sequencing stays local. |
-| `packages/settings-ui/src/ui/components.ts` | 573 | Shared UI primitives unless it keeps growing. |
-| `lib/price/priceService.ts` | 531 | Spot/grid orchestration remains local. |
+| `packages/shared-domain/src/deadlineLabels.ts` | 2868 | The one remaining blanket `/* eslint-disable max-lines */` pragma. Single home for kind-aware smart-task copy, colocated so runtime logs and the UI read the same strings. Per step 3 below it should move to a config-level ceiling. |
+| `packages/settings-ui/src/ui/deviceDetail/index.ts` | 542 raw / ceiling 505 | Config-level ceiling in `eslint.config.mjs`, with a named TODO target of <=500. |
+
+The 2026-05-30 revision of this table listed nine Bucket B files; none of them carries an
+exception today. Five have shrunk under 500 and need none (`deviceDiagnosticsService.ts` 467,
+`registerFlowCards.ts` 185, `steppedLoadExecutor.ts` 273, `targetExecutor.ts` 480,
+`settings-ui/src/ui/components.ts` 245). Four are still over and are therefore Bucket A:
+`deviceTransport.ts` 714 (down from 2299), `planExecutor.ts` 541 (from 822), `profiles.ts` 586
+(from 590, essentially unchanged) and `priceService.ts` 566, which has *grown* from 531 — the one
+row that got worse rather than better. `lib/price/nettleieFallbackData.generated.ts` (1698) is
+generated and eslint-ignored.
 
 Everything else over 500 is Bucket A: shrink and drop the file-level pragma when the file is next
 touched. Use the regen command above rather than maintaining a frozen Bucket A list here.

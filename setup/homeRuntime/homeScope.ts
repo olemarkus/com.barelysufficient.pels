@@ -113,7 +113,8 @@ export type HomeScope = {
    * Mode→device desired-target map. EVERY home binds the live read, because the
    * mode target is the **restore anchor**, not a price/budget policy input.
    * Binding `{}` for a sub-home (as this contract used to require) made
-   * `resolveTemperatureSeed` fall back to the device's live setpoint; while shed
+   * `modeTargetCFor` (`lib/plan/planBuilder.ts`) fall back to the device's live
+   * setpoint for every device instead of only the boot window; while shed
    * that reading IS the shed setpoint, so on release `plannedTarget` equalled
    * `currentTarget`, the executor dropped the write, and an area temperature
    * device stayed cold indefinitely. Price optimization and surplus absorb are gated

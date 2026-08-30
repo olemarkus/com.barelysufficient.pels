@@ -21,7 +21,7 @@ They are different things, and a third and fourth signal sit either side of them
 | 4 | `ev_charging_state` | The associated car | What the **car** says is happening |
 
 Signal 2 is the charger's *control* capability — the one PELS writes
-(`resolveControlCapabilityId`, `lib/device/managerControl.ts`). Its read-back is
+(`getControlCapabilityId`, `lib/device/managerControl.ts`). Its read-back is
 stored as an observation, which makes it easy to mistake for signal 3; it is not.
 It is the command state, and a vendor app, a Homey flow, or the charger's own
 panel can change it under PELS.

@@ -670,8 +670,8 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
   }, 30_000);
 
   // Regression: the sub-home scope used to bind `getModeDeviceTargets: () => ({})`
-  // and a neutral operating-mode sentinel, so `resolveTemperatureSeed` fell through
-  // to the device's LIVE setpoint. While shed that reading IS the shed setpoint, so
+  // and a neutral operating-mode sentinel, so `modeTargetCFor`
+  // (`lib/plan/planBuilder.ts`) fell through to the device's LIVE setpoint. While shed that reading IS the shed setpoint, so
   // on release `plannedTarget === currentTarget`, the executor dropped the write, and
   // the heater stayed at the shed setpoint forever. The mode target is the restore
   // anchor, so it binds live for every home.

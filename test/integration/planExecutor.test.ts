@@ -2767,7 +2767,7 @@ describe('PlanExecutor stepped loads', () => {
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(structuredLog.info).not.toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'stepped_load_binary_transition_applied' }),
+      expect.objectContaining({ event: 'binary_command_applied' }),
     );
   });
 
@@ -3606,7 +3606,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
-      event: 'stepped_load_binary_transition_applied',
+      event: 'binary_command_applied',
       desiredBinaryState: true,
     }));
   });

@@ -5,11 +5,11 @@
 // it spans the planner and admission layers with nothing internal mocked, but it
 // drives them by calling `planDeferredObjectiveHorizon` /
 // `applyDeferredObjectiveAdmission` and asserts on the returned decision, so it is
-// integration, not SDK-in/logs-out. The SDK-boundary companion that drives the real
-// bridge + recorder + frozen dispatch is
-// `test/e2e/smartTaskUnclaimedHourSdkE2E.test.ts`; this spec exists alongside it
-// because it can name the expected hours EXACTLY, which an aggregate energy
-// comparison through the full stack cannot.
+// integration, not SDK-in/logs-out. An SDK-boundary companion driving the real
+// bridge + recorder + frozen dispatch does not exist yet (tracked in `TODO.md`,
+// "Pin that the daily-budget pace still holds an `unclaimed` smart-task device").
+// This spec earns its place either way, because it can name the expected hours
+// EXACTLY, which an aggregate energy comparison through the full stack cannot.
 //
 // An hour books 0 for two unrelated reasons. Either the fill already met the need
 // and the hour is genuinely surplus — the price decision, "don't use an hour we

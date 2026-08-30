@@ -52,14 +52,23 @@ had room → 1.182 placed, ~1.5 abandoned → `cannot_meet`.
 `resolveBucketStepCapacityKWh = min(step.usefulPowerKw × hours, cap)`, so the cap
 bounds **every step equally**.
 
+> **Names since this was written.** `perBucketBudgetKWh` is now `controlledShareKWh`
+> on `BudgetOverlay` (`policyHorizon.ts`), and `isDailyBudgetExhausted` is gone with
+> the classifier described under Prong C — see the resolution note under that prong.
+
 ## Why it is mislabeled and unrescued
 
-- **Mislabel (Prong C):** the daily-budget cause is detected only on *cumulative*
-  exhaustion (`policyHorizon.ts` `isDailyBudgetExhausted`: `perBucketBudgetKWh ≤ ε`
-  AND cumulative ≥ daily cap). The `− backgroundKWh` squeeze leaves
-  `perBucketBudgetKWh > 0`, so `dailyBudgetExhaustedBucketCount: 0` and the
-  surface shows a generic physical "Cannot finish" instead of a budget-attributed
-  state.
+- **Mislabel (Prong C) — since resolved.** At the time, the daily-budget cause was
+  detected only on *cumulative* exhaustion (`policyHorizon.ts` `isDailyBudgetExhausted`:
+  `perBucketBudgetKWh ≤ ε` AND cumulative ≥ daily cap). The `− backgroundKWh` squeeze
+  leaves `perBucketBudgetKWh > 0`, so `dailyBudgetExhaustedBucketCount: 0` and the
+  surface showed a generic physical "Cannot finish" instead of a budget-attributed
+  state. That classifier no longer exists: attribution now runs through
+  `resolveBudgetBoundFeasibility` → `budgetBound` (`horizonPlanner.ts`), which asks
+  whether the soft daily budget is the ONLY binding constraint rather than whether the
+  day total is spent, and `dailyBudgetExhaustedBucketCount` is retired — nothing writes
+  it, and it is accepted on read only for history persisted by an older build
+  (`planHistorySettings.ts`).
 - **Slice-1 can't rescue it:** `resolveClimbedBandFeasibility` re-allocates at the
   top step on the same budget-capped buckets; the cap is step-independent, so
   climbing adds nothing → stays flat `cannot_meet`, never `at_risk`. Slice-1 only
@@ -112,8 +121,8 @@ Fix: `collectDayBudgetOverlays` now contributes **no overlay** for a day whose
 `budget.enabled === false`, so each bucket falls through to `NO_BUDGET_OVERLAY`
 (`perBucketBudgetKWh: null` ⇒ no cap; `backgroundKWh: 0` ⇒ `reservedHeadroomKw`
 falls back to the full hard cap). The enabled-but-exhausted path
-(`isDailyBudgetExhausted`) is untouched. Guarded by the "plain task allocates
-with daily budget OFF" case in the boost e2e.
+(`isDailyBudgetExhausted`, since retired — see Prong C above) was untouched.
+Guarded by the "plain task allocates with daily budget OFF" case in the boost e2e.
 
 ### Terminology aside: `rescue` is a misnomer
 

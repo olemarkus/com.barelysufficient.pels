@@ -2303,9 +2303,9 @@ What remains open is below.*
       packaging guard in the same change that needed it to pass. [P2]
 
 - [ ] **`pels_status` blobs (bare and suffixed) are object-guarded, not field-resolved.** Both
-      `getSettingsUiPower` (`setup/settingsUiApi.ts`, main's unsuffixed read) and `readSubHomeStatus`
-      (`setup/settingsUiHomeScope.ts`, the `pels_status:<id>` read PR 5b added with deliberate precedent
-      parity) check object-ness and then assert the full `SettingsUiPowerStatus` shape — closed unions
+      `getSettingsUiPower` (`setup/settingsUiApi.ts`, main's unsuffixed read) and
+      `SettingsUiHomeScopeAdapter.readStatus` (`setup/settingsUiHomeScope.ts`, the `pels_status:<id>`
+      read PR 5b added with deliberate precedent parity) check object-ness and then assert the full `SettingsUiPowerStatus` shape — closed unions
       (`powerFreshnessState`) and numbers included. *Persona:* contributor debugging a WebView that
       renders nothing for a status field after a partial/corrupt settings write. *Hypothesis:* a
       malformed blob (e.g. `powerFreshnessState: "garbage"`, `headroomKw: "3"`) flows inward typed as
@@ -3922,16 +3922,6 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       Collapse both to a plain call (`membership.hasPendingOwnershipGeneration()`), keeping the genuine
       `membership?.` guard for the optional `ctx.homeMembership` itself. Behaviour-neutral. Source: multi-home
       boundary-hygiene audit of the GA train, 2026-07-25. File: `setup/appInit/smartTaskHomeScope.ts`.
-- [ ] **`lastResolvedMainMeterDeviceId` is a three-state field whose third state is never distinguished.**
-      *Persona:* maintainer extending Main-meter source fencing. *Hypothesis:* the field is typed
-      `string | null | undefined` and documented as "`undefined` means no authoritative Main-meter selection
-      has been observed; `null` is the authoritative Automatic selection", but at its ONLY read
-      (`getKnownConfiguredMeterDeviceIds`) the two collapse into one branch
-      (`=== undefined || === null ? [] : [id]`), so the extra state carries no information today. *Why:* an
-      unused third state on a nullable field is the shape that made `currentOn` hard to reason about; either
-      narrow it to `string | null`, or give the "never observed" case a real consumer and say what that
-      consumer does differently. Behaviour-neutral either way. Source: multi-home boundary-hygiene audit of
-      the GA train, 2026-07-25. File: `setup/homeMembership.ts`.
 - [ ] **The plan-time daily-budget provider still defaults where the new setup rule says assert.**
       *Persona:* maintainer moving wiring out of `app.ts` under the `setup/AGENTS.md` boot-window rule.
       *Hypothesis:* `buildMainHomeScope` builds `getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null`,

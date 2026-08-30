@@ -530,7 +530,7 @@ export class AppServiceWiring {
     }));
   }
 
-  // Body in `setup/appExternalOffHoldRuntime.ts`; kept as a method so the
+  // Body in `setup/appObservedControlStateRuntime.ts`; kept as a method so the
   // emitter subscription and test seams keep their call site.
   syncExternalOffHold(event: ObservedControlStateChangedEvent): void {
     syncExternalOffHoldForObservation({

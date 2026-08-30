@@ -170,89 +170,10 @@ describe('Shed vs Restore Logic', () => {
         const plan = await (app as any).planService.buildDevicePlanSnapshot(devices);
         const devE = plan.devices.find((d: any) => d.id === 'dev-E');
 
-        // Should NOT be 'keep' (which means turn on if desired).
-        // Wait, logical output for 'off' device that stays 'off' depends on logic.
-        // If it wants to be on (default desired is on in tests usually unless mode set?),
-        // Code says: `let plannedState = ... 'keep'`.
-        // But `offDevices` loop might change it?
-        // In `app.ts`:
-        // `const offDevices = planDevices.filter ...`
-        // If it restores, `dev.plannedState` doesn't change from 'keep'?
-        // Wait, let's check `app.ts` logic again.
-        // If restored: `restoredThisCycle.add(dev.id)`.
-        // And `plannedState` logic earlier: `let plannedState = ...`.
-        // The `offDevices` loop does NOT explicitly set `plannedState = 'on'`.
-        // It assumes `plannedState` defaults to 'keep' (which implies "revert to schedule/thermostat" -> ON?).
-        // Ah, if `currentState === 'off'`, `plannedState` being 'keep' usually means "Stay Off" UNLESS the Homey flow turns it on?
-        // Actually, `pels_devices_on` capability logic?
-        // Let's verify what "Restoring" means in `app.ts`.
-        // `restoredThisCycle` is tracked but does it affect `plannedState`?
-        // NO!
-        // `app.ts` logic:
-        // If NOT restored (e.g. not enough headroom), does it set `plannedState = 'shed'`?
-        // No... `offDevices` loop:
-        // If `availableHeadroom >= needed`: restores.
-        // Else: `dev.plannedState = 'shed'` ONLY if swapped?
-        // Wait, if it's off and we DON'T restore it, it stays 'off' because `currentState` is 'off'.
-        // `plannedState` 'keep' means "Do what you want", but PELS only *forces* 'shed'.
-        // However, if PELS wants to *prevent* it from turning on, it must be 'shed'.
-        // Let's check `app.ts` L1043 (in original file, roughly):
-        // "Not enough headroom ... plannedState = 'shed'"?
-        // Actually `app.ts`:1029: `dev.plannedState = 'shed'` if swap pending.
-        // But if just "not enough headroom" and NO swap?
-        // It falls through?
-        // If it falls through, `plannedState` remains 'keep'.
-        // Does 'keep' mean "Allowed to turn on"?
-        // If `currentState` is 'off', and `plannedState` is 'keep', PELS action `turn_on` might fire?
-        // No, PELS mainly acts when state changes or shedding is needed.
-        // If `plannedState` is 'keep', PELS logic usually assumes "No Restriction".
-        // But for "Off" devices, we want them to STAY "Off".
-        // "Secondary guard: if a device is currently off and headroom is still below what it needs ... keep it shed"
-        // Found it! `app.ts` ~900 (logic block before the loop).
-        // Wait, that comment says "Secondary guard". But where is the code?
-        // The code IS the `offDevices` loop.
-        // If `restoredThisCycle.has(dev.id)` is FALSE, then... ?
-        // The code doesn't explicitly set 'shed' if headroom is missing???
-        // Let's re-read `app.ts` carefully.
-
-        // Line 928: `if (headroomRaw ...)` block.
-        // Loop `offDevices`.
-        // ...
-        // If `availableHeadroom >= needed` -> `restoredThisCycle.add`.
-        // Else -> fall through.
-        //
-        // After loop?
-        // There is no "After loop set everything else to shed"???
-        // This implies that if it's OFF, and we don't have headroom, we leave it as 'keep'?
-        // That seems WRONG. If `plannedState` is 'keep', does PELS turn it on?
-        // `deviceManager.ts` or `app.ts` enacts the plan.
-        // If `plannedState` is 'keep', and device is 'off', PELS usually checks `desired` state.
-        // If `desired` (schedule/thermostat) says ON, and PELS says 'keep', it TURNS ON?
-        // If so, we MUST set 'shed' to prevent it.
-
-        // Ah, looking at `app.ts`:
-        // Only if `plannedState === 'shed'` do we enforce OFF.
-        // If we simply run out of headroom in the `restore` loop, we MUST ensure the remaining devices get `plannedState = 'shed'`.
-        // I don't see that logic in the view I had.
-        // I only see `plannedState = 'shed'` inside "Swap" or "Cooldown" blocks.
-
-        // Let's write the test to expect 'shed' (blocked restore) and see if it fails.
-        // If it fails (returns 'keep'), then I found another bug or my understanding is incomplete.
-        // IF it returns 'keep', PELS would let it turn on -> OVERSHOOT.
-        // So distinct restore logic implies "Blocking Restore" must be active.
-
-        // Actually, looking at `plan.ts` (not visible here, logic in `app.ts`):
-        // Line 900 comment: "Secondary guard... keep it shed".
-        // Logic starts at ~928.
-        // Inside `offDevices` loop:
-        // If restored -> Good.
-        // If NOT restored -> ?
-        // I suspect the *default* `plannedState` for off devices might be computed earlier?
-        // No, L861: `let plannedState = ... ? 'shed' : 'keep'`.
-        // So default is 'keep'.
-        // If the loop doesn't change it to 'shed', it remains 'keep'.
-        // This looks like a HUGE BUG in existing code if true.
-        // Unless `app.ts` has a final pass not seen?
+        // A device that is OFF and cannot be afforded must be planned `shed`, not `keep`.
+        // `keep` means "no restriction", so the executor would let the mode target set above
+        // put dev-E back on and overshoot. Restore admission owns this (`lib/plan/restore/`):
+        // a candidate it does not admit is marked shed, it does not fall through.
 
         expect(devE.plannedState).toBe('shed'); // Expectation: Blocked because 3.4kW > 2.0kW
     });

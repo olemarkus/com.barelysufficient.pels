@@ -65,8 +65,10 @@ the cruiser rule promote to error.
 > `managerEnergy`); `updateHomePowerFromReport` now pushes the resolved scalar
 > to observer via a new `setHomePowerW(w)` method on the `observedStateDispatcher`
 > callback bag; transport still does not import observer. Wiring
-> (`lib/app/appSnapshotHelpers.ts`) reads the value back from the observer via a
-> `getHomePowerW` dep wired in `app.ts` (lib/app → observer is an allowed edge).
+> Wiring read the value back through a `getHomePowerW` dep at the time; it no
+> longer does — `recordImplicitHomeyEnergySample` (`setup/appSnapshotHelpers.ts`)
+> takes the sample as a parameter, and `getHomePowerW` has no production caller
+> left.
 > Observer introduces **no** `lib/power/**` import — the correction to the
 > original "fed via event/contract from `lib/power/`" wording below.
 >
@@ -264,7 +266,7 @@ and reapply triggering all in one file. Post-split:
 > itself (a capacity decision must not be triggered by a device event; see
 > `notes/state-management/README.md` § Realtime event flow and root `AGENTS.md`
 > § Control Flow). `appRealtimeDeviceReconcileRuntime.ts` no longer exists; what
-> remains of that lane is `setup/appExternalOffHoldRuntime.ts`. The emitter
+> remains of that lane is `setup/appObservedControlStateRuntime.ts`. The emitter
 > ownership this train shipped is unchanged.
 
 Post-PR #5 reality check: the drift-against-plan-intent code already lived in

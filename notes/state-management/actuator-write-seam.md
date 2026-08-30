@@ -66,12 +66,14 @@ Dirs that don't belong to any loop stage:
   therefore owns no actuation path, and setup owns only projection + wiring.
 - **`lib/planContract/`, `lib/flowApi/`, `lib/diagnostics/`, `lib/logging/`,
   `lib/utils/`** — cross-cutting / infra, orthogonal to the loop.
-- **`lib/app/`** — sunsetting wiring; holds `appSnapshotHelpers`
-  (its home-power read was re-pointed to the observer in PR2a; it still reads
-  the snapshot store from transport, which stays put per PR2b's deferral).
+- **`setup/`** — app wiring; holds `appSnapshotHelpers` (its home-power read was
+  re-pointed to the observer in PR2a; it still reads the snapshot store from
+  transport, which stays put per PR2b's deferral). It lived in `lib/app/` when
+  this note was written; that directory has since dissolved to `appContext.ts`.
 
 **Scope discipline:** this train does **not** re-home the producer seams out of
-`lib/device/`, nor split `lib/objectives/`, nor finish `lib/app/` dissolution.
+`lib/device/`, nor split `lib/objectives/`, nor finish `lib/app/` dissolution
+(that one has since landed on its own — `lib/app/` is down to `appContext.ts`).
 It overlays the *write-path* vocabulary (transport / actuator) and makes three
 bounded moves (actuator box, store→observer, the two leaks). The broader
 dir-vs-loop reconciliation is a separate effort and may not be worth the BC
@@ -380,9 +382,11 @@ risk profiles.
 - `updateHomePowerFromReport` pushes the resolved scalar to the observer via a
   new `setHomePowerW(w)` method on the `observedStateDispatcher` callback bag;
   transport still does not statically import observer.
-- Re-pointed the sole external reader, `lib/app/appSnapshotHelpers.ts`
-  (`recordImplicitHomeyEnergySample`), to a `getHomePowerW` dep wired in `app.ts`
-  to read from the observer (lib/app → observer is an allowed edge). The
+- Re-pointed the sole external reader, `appSnapshotHelpers.ts`
+  (`recordImplicitHomeyEnergySample`, then in `lib/app/`, now `setup/`), to a
+  `getHomePowerW` dep wired in `app.ts` to read from the observer. *(That
+  read-back is since gone: the function takes the sample as a parameter and
+  `getHomePowerW` has no production caller.)* The
   `homey_energy` poll path is unchanged: `pollHomePowerW()` still returns the
   resolved scalar directly to `HomeyEnergyPollSource`.
 - **Source correction:** the value originates from a Homey SDK energy report read

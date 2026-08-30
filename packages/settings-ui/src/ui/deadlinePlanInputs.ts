@@ -36,7 +36,9 @@ export const buildPlanInputs = (params: {
   labels: DeadlineLabels;
   device: ObservedDeviceState;
   provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined;
-  // Pre-resolved by `resolveKwhPerUnitDisplayRate` so this producer never
+  // Pre-resolved by `resolveDisplayRateAndSpeedMode` (`deadlinePlanResolvers.ts`),
+  // which prefers the runtime producer's value (`resolveRateMean`,
+  // `lib/objectives/deferredObjectives/activePlanRevisionBuild.ts`) so this producer never
   // branches on the revision's `kwhPerUnitSource` / `objectiveKind` to pick
   // between the learned profile mean and the EV bootstrap fallback.
   rateMean: number | null;
