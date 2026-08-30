@@ -9,12 +9,12 @@ import {
   reportSteppedLoadActualStep,
   resolveDefaultControlModel,
 } from '../../setup/appDeviceControlHelpers';
-import { createSteppedCommandStore } from '../../lib/executor/steppedCommandStore';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { resolveCurrentOn } from '../../lib/observer/observedState';
+import { steppedStoresForTest } from '../helpers/steppedStores';
 import type {
   DeviceControlProfiles,
   MeasuredPowerObservedProbe,
@@ -87,8 +87,9 @@ describe('appDeviceControlHelpers', () => {
       reportedStepPowerW: 5750,
       reportedStepObservedAtMs: 1500,
     });
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability: (_deviceId, reachability) => {
@@ -146,8 +147,9 @@ describe('appDeviceControlHelpers', () => {
       reportedStepPowerW: 5750,
       reportedStepObservedAtMs: 500,
     });
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability: (_deviceId, reachability) => {
@@ -202,8 +204,9 @@ describe('appDeviceControlHelpers', () => {
       steppedLoadProfile: buildEvTargetPowerCandidateProfile(config),
       targetPowerConfig: config,
     });
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability: (_deviceId, reachability) => {
@@ -265,8 +268,9 @@ describe('appDeviceControlHelpers', () => {
       reportedStepPowerW: 5520,
       reportedStepObservedAtMs: 1500,
     });
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability,
@@ -310,8 +314,9 @@ describe('appDeviceControlHelpers', () => {
       reportedStepPowerW: 1_380,
       reportedStepObservedAtMs: 1_500,
     });
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability,
@@ -357,8 +362,9 @@ describe('appDeviceControlHelpers', () => {
       reportedStepPowerW: 5_750,
       reportedStepObservedAtMs: 500,
     });
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability: (_deviceId, reachability) => {
@@ -409,8 +415,9 @@ describe('appDeviceControlHelpers', () => {
       reportedStepPowerW: 5_750,
       reportedStepObservedAtMs: 500,
     });
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability: vi.fn(() => false),
@@ -451,8 +458,9 @@ describe('appDeviceControlHelpers', () => {
       reportedStepPowerW: 5_750,
       reportedStepObservedAtMs: 500,
     });
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability: (_deviceId, reachability) => {
@@ -507,8 +515,9 @@ describe('appDeviceControlHelpers', () => {
       reportedStepPowerW: 5_750,
       reportedStepObservedAtMs: 500,
     });
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability: (_deviceId, reachability) => {
@@ -571,8 +580,9 @@ describe('appDeviceControlHelpers', () => {
       reportedStepPowerW: 5_520,
       reportedStepObservedAtMs: 500,
     });
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability: (_deviceId, reachability) => {
@@ -603,13 +613,14 @@ describe('appDeviceControlHelpers', () => {
     // the old fabricated `currentOn: true`. The setup-local fold this replaced
     // answered "unknown" here and silently withheld the on-session teardown, so
     // a later observed off did not expire the command state on its first pass.
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
 
     decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({ binaryControl: undefined }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 2_000,
     });
     expect(store.getDesired('dev-1')).toBeDefined();
@@ -620,6 +631,7 @@ describe('appDeviceControlHelpers', () => {
       snapshot: baseSnapshot({ binaryControl: { on: false } }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 3_000,
     });
 
@@ -628,7 +640,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('tracks optimistic lowest-step initialization without entering the retry lifecycle', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
 
     markSteppedLoadDesiredStepIssued({
@@ -647,6 +659,7 @@ describe('appDeviceControlHelpers', () => {
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 2_000,
     });
 
@@ -660,8 +673,9 @@ describe('appDeviceControlHelpers', () => {
 
   it('does not treat preserved planner intent as issued command history', () => {
     let profiles = steppedProfiles;
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => profiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: true } })],
       getLatestPlanSnapshot: () => ({
@@ -697,12 +711,13 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('clears the ended on-session before an unknown-level device turns on again', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
     decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 500,
     });
     markSteppedLoadDesiredStepIssued({
@@ -723,6 +738,7 @@ describe('appDeviceControlHelpers', () => {
       snapshot: baseSnapshot({ binaryControl: { on: false } }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 2_000,
     });
 
@@ -734,6 +750,7 @@ describe('appDeviceControlHelpers', () => {
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 3_000,
     });
 
@@ -746,12 +763,13 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('does not reinsert an ended-session command from a matching report on the off snapshot', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
     decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 500,
     });
     markSteppedLoadDesiredStepIssued({
@@ -768,6 +786,7 @@ describe('appDeviceControlHelpers', () => {
       }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 2_000,
     });
 
@@ -775,12 +794,13 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('ends the session when an off-step report contradicts a binary-on capability', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
     decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 500,
     });
     markSteppedLoadDesiredStepIssued({
@@ -804,6 +824,7 @@ describe('appDeviceControlHelpers', () => {
       }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 2_000,
     });
 
@@ -811,7 +832,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('invalidates optimistic initialization when the configured lowest step changes', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
     markSteppedLoadDesiredStepIssued({
       runtimeState,
@@ -840,6 +861,7 @@ describe('appDeviceControlHelpers', () => {
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: changedProfiles,
       store,
+      reportedStore,
       nowMs: 2_000,
     });
 
@@ -850,7 +872,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('keeps a slow stepped-load step-up pending for 60s before confirmative telemetry arrives', () => {
-    const store = createSteppedCommandStore();
+    const { store } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
 
     markSteppedLoadDesiredStepIssued({
@@ -964,11 +986,12 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('decorates non-stepped devices with their default control model only', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({ id: 'plain-dev', deviceType: 'temperature' }),
       profiles: {},
       store,
+      reportedStore,
       nowMs: 1000,
     });
 
@@ -978,11 +1001,12 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('uses the lowest active configured step as the default selected step for stepped loads', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 1000,
     });
 
@@ -1000,7 +1024,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('preserves existing expectedPowerKw and expectedPowerSource for stepped loads', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({
         binaryControl: { on: true },
@@ -1009,6 +1033,7 @@ describe('appDeviceControlHelpers', () => {
       }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 1000,
     });
 
@@ -1018,11 +1043,12 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('preserves currentOn=false for stepped devices even with non-off step', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({ binaryControl: { on: false } }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 1000,
     });
 
@@ -1033,7 +1059,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('keeps native non-off step reports as observed truth even when currentOn=false', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({
         binaryControl: { on: false },
@@ -1049,6 +1075,7 @@ describe('appDeviceControlHelpers', () => {
       }),
       profiles: {},
       store,
+      reportedStore,
       nowMs: 2_000,
     });
 
@@ -1065,11 +1092,12 @@ describe('appDeviceControlHelpers', () => {
   // 7.36 kW, which produced a false hard-cap shortfall and a resume that breached
   // the cap. Flow reports are now admitted on the same terms as native ones.
   it('turns flow non-off feedback into reported truth while currentOn=false', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
 
     expect(reportSteppedLoadActualStep({
       runtimeState,
+      reportedStore,
       profiles: steppedProfiles,
       deviceId: 'dev-1',
       stepId: 'max',
@@ -1080,6 +1108,7 @@ describe('appDeviceControlHelpers', () => {
       snapshot: baseSnapshot({ binaryControl: { on: false } }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 2_000,
     });
 
@@ -1092,7 +1121,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('uses parsed target-power step observations as reported stepped-load truth', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
     markSteppedLoadDesiredStepIssued({
       runtimeState,
@@ -1113,6 +1142,7 @@ describe('appDeviceControlHelpers', () => {
       }),
       profiles: {},
       store,
+      reportedStore,
       nowMs: 2_000,
     });
 
@@ -1123,7 +1153,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('uses target-power snapshot profiles for reported step decoration even when a stored profile exists', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const snapshotProfile: SteppedLoadProfile = {
       steps: [
         { id: '0w', planningPowerW: 0 },
@@ -1143,6 +1173,7 @@ describe('appDeviceControlHelpers', () => {
       }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 2_000,
     });
 
@@ -1153,7 +1184,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('preserves snapshot power source and currentOn when a stepped profile cannot resolve any step', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const emptyProfiles = {
       'dev-1': { steps: [] },
     } as unknown as DeviceControlProfiles;
@@ -1162,6 +1193,7 @@ describe('appDeviceControlHelpers', () => {
       snapshot: baseSnapshot({ expectedPowerSource: 'manual', binaryControl: { on: false } }),
       profiles: emptyProfiles,
       store,
+      reportedStore,
       nowMs: 1000,
     });
 
@@ -1172,11 +1204,12 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('does not infer a stepped level from measured power', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({ measuredPowerKw: 1.2 }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 1000,
     });
 
@@ -1187,7 +1220,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('ignores persisted selected step when resolving stepped loads without confirmed feedback', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({
         binaryControl: { on: true },
@@ -1195,6 +1228,7 @@ describe('appDeviceControlHelpers', () => {
       }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 1000,
     });
 
@@ -1204,7 +1238,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('tracks desired stepped commands, reports success, and can prune stale pending commands', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
 
     markSteppedLoadDesiredStepIssued({
@@ -1219,6 +1253,7 @@ describe('appDeviceControlHelpers', () => {
       snapshot: baseSnapshot(),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 1500,
     });
     expect(pendingDecorated.desiredStepId).toBe('low');
@@ -1230,12 +1265,13 @@ describe('appDeviceControlHelpers', () => {
 
     expect(reportSteppedLoadActualStep({
       runtimeState,
+      reportedStore,
       profiles: steppedProfiles,
       deviceId: 'dev-1',
       stepId: 'low',
       reportedAtMs: 1600,
     })).toBe('changed');
-    expect(runtimeState.steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+    expect(reportedStore.get('dev-1')).toMatchObject({
       capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       source: 'flow',
       stepId: 'low',
@@ -1245,6 +1281,7 @@ describe('appDeviceControlHelpers', () => {
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 1700,
     });
     expect(reportedDecorated.selectedStepId).toBe('low');
@@ -1265,6 +1302,7 @@ describe('appDeviceControlHelpers', () => {
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 2000 + STEPPED_LOAD_COMMAND_STALE_MS + 1,
     });
     expect(staleDecorated.selectedStepId).toBe('low');
@@ -1276,7 +1314,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('handles default timestamps, off-step reports, repeated reports, and invalid reported steps', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(4242);
 
@@ -1296,12 +1334,14 @@ describe('appDeviceControlHelpers', () => {
 
     expect(reportSteppedLoadActualStep({
       runtimeState,
+      reportedStore,
       profiles: steppedProfiles,
       deviceId: 'dev-1',
       stepId: 'off',
     })).toBe('changed');
     expect(reportSteppedLoadActualStep({
       runtimeState,
+      reportedStore,
       profiles: steppedProfiles,
       deviceId: 'dev-1',
       stepId: 'off',
@@ -1311,6 +1351,7 @@ describe('appDeviceControlHelpers', () => {
       snapshot: baseSnapshot(),
       profiles: steppedProfiles,
       store,
+      reportedStore,
       nowMs: 4300,
     });
     expect(offDecorated.selectedStepId).toBe('off');
@@ -1320,6 +1361,7 @@ describe('appDeviceControlHelpers', () => {
 
     expect(reportSteppedLoadActualStep({
       runtimeState,
+      reportedStore,
       profiles: steppedProfiles,
       deviceId: 'dev-1',
       stepId: 'missing',
@@ -1327,6 +1369,7 @@ describe('appDeviceControlHelpers', () => {
     })).toBe('invalid');
     expect(reportSteppedLoadActualStep({
       runtimeState,
+      reportedStore,
       profiles: steppedProfiles,
       deviceId: 'missing-device',
       stepId: 'low',
@@ -1336,11 +1379,12 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('treats changed exact power as new feedback even when the reported step id is unchanged', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
 
     expect(reportSteppedLoadActualStep({
       runtimeState,
+      reportedStore,
       profiles: steppedProfiles,
       deviceId: 'dev-1',
       stepId: 'low',
@@ -1348,6 +1392,7 @@ describe('appDeviceControlHelpers', () => {
     })).toBe('changed');
     expect(reportSteppedLoadActualStep({
       runtimeState,
+      reportedStore,
       profiles: steppedProfiles,
       deviceId: 'dev-1',
       stepId: 'low',
@@ -1356,7 +1401,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('keeps a desired command pending when a different step is reported back', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
 
     markSteppedLoadDesiredStepIssued({
@@ -1368,6 +1413,7 @@ describe('appDeviceControlHelpers', () => {
 
     expect(reportSteppedLoadActualStep({
       runtimeState,
+      reportedStore,
       profiles: steppedProfiles,
       deviceId: 'dev-1',
       stepId: 'low',
@@ -1385,8 +1431,9 @@ describe('appDeviceControlHelpers', () => {
 
   it('preserves the latest plan target when flow feedback reports stepped-load drift', () => {
     const structuredLogger = { info: vi.fn() };
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: true } })],
       getLatestPlanSnapshot: () => ({
@@ -1403,7 +1450,7 @@ describe('appDeviceControlHelpers', () => {
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
 
     const runtimeState = helpers.getRuntimeStateForTests();
-    expect(runtimeState.steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.reportedStore.get('dev-1')).toMatchObject({
       capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       source: 'flow',
       stepId: 'max',
@@ -1435,8 +1482,9 @@ describe('appDeviceControlHelpers', () => {
 
   it('accepts flow feedback for snapshot-derived stepped-load profiles', () => {
     const structuredLogger = { info: vi.fn() };
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getDeviceSnapshots: () => [baseSnapshot({
         binaryControl: { on: true },
@@ -1448,7 +1496,7 @@ describe('appDeviceControlHelpers', () => {
     });
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.reportedStore.get('dev-1')).toMatchObject({
       capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       source: 'flow',
       stepId: 'max',
@@ -1456,8 +1504,9 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('returns snapshot-defined stepped-load profiles when no stored profile exists', () => {
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getDeviceSnapshots: () => [baseSnapshot({
         controlModel: 'stepped_load',
@@ -1471,8 +1520,9 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('does not treat inactive native suggestions as effective stepped-load profiles', () => {
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getDeviceSnapshots: () => [baseSnapshot({
         controlAdapter: {
@@ -1492,8 +1542,9 @@ describe('appDeviceControlHelpers', () => {
 
   it('preserves latest plan targets for snapshot-only stepped-load feedback', () => {
     const structuredLogger = { info: vi.fn() };
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => ({}),
       getDeviceSnapshots: () => [baseSnapshot({
         binaryControl: { on: true },
@@ -1531,8 +1582,9 @@ describe('appDeviceControlHelpers', () => {
 
   it('replaces a stale desired step with the latest plan target when feedback catches up', () => {
     const structuredLogger = { info: vi.fn() };
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: true } })],
       getLatestPlanSnapshot: () => ({
@@ -1556,7 +1608,7 @@ describe('appDeviceControlHelpers', () => {
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
 
     const runtimeState = helpers.getRuntimeStateForTests();
-    expect(runtimeState.steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.reportedStore.get('dev-1')).toMatchObject({
       capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       source: 'flow',
       stepId: 'low',
@@ -1587,8 +1639,9 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('replaces a stale desired step even when the repeated feedback report is unchanged', () => {
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: true } })],
       getLatestPlanSnapshot: () => ({
@@ -1628,8 +1681,9 @@ describe('appDeviceControlHelpers', () => {
   // waiting_confirmation -> stale -> retry_backoff forever).
   it('admits a matching non-off flow report while off as observed evidence and confirms the command', () => {
     const structuredLogger = { info: vi.fn() };
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
       getStructuredLogger: () => structuredLogger as never,
@@ -1646,7 +1700,7 @@ describe('appDeviceControlHelpers', () => {
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
 
     // Observed axis: real flow evidence, recorded even though the binary axis reads off.
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.reportedStore.get('dev-1')).toMatchObject({
       stepId: 'max',
     });
     // Commanded axis: confirmed.
@@ -1680,8 +1734,9 @@ describe('appDeviceControlHelpers', () => {
     // invisibly once the device is off. It must not fast-track a later
     // restore-from-off past its fresh prepare-and-confirm handshake.
     const snapshotHolder = { current: baseSnapshot({ binaryControl: { on: true } }) };
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [snapshotHolder.current],
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
@@ -1712,8 +1767,9 @@ describe('appDeviceControlHelpers', () => {
     // preservation can be confirmed by a matching non-off report while off —
     // the report attests the device's actual configured step, which is
     // stronger evidence than a command echo.
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
       getLatestPlanSnapshot: () => ({
@@ -1746,8 +1802,9 @@ describe('appDeviceControlHelpers', () => {
     // stale success must drop so the next restore re-handshakes at the real
     // configuration, and the conflicting step becomes the observed truth so the
     // planner stops modelling the commanded step it is no longer at.
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
@@ -1767,7 +1824,7 @@ describe('appDeviceControlHelpers', () => {
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.reportedStore.get('dev-1')).toMatchObject({
       stepId: 'max',
     });
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
@@ -1782,8 +1839,9 @@ describe('appDeviceControlHelpers', () => {
     // reports the off step. The fresher telemetry contradicts the earlier
     // confirmation, which must lose so a stale 'success' cannot fast-track a
     // restore whose preparation was un-applied.
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
       getLatestPlanSnapshot: () => ({
@@ -1814,8 +1872,9 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('lets a matching non-off flow report confirm a STALE desired step (slow charger answered late)', () => {
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
@@ -1837,7 +1896,7 @@ describe('appDeviceControlHelpers', () => {
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.reportedStore.get('dev-1')).toMatchObject({
       stepId: 'max',
     });
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
@@ -1854,8 +1913,9 @@ describe('appDeviceControlHelpers', () => {
   // 'max' command IS obsolete, so dropping it and resetting the retry budget for the
   // new target is correct, not a lost command.
   it('lets a non-off report while off hand an in-flight command over to a newer plan target', () => {
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
       getLatestPlanSnapshot: () => ({
@@ -1885,14 +1945,15 @@ describe('appDeviceControlHelpers', () => {
       retryCount: 0,
     });
     // The report still lands on the observed axis regardless of the handover.
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.reportedStore.get('dev-1')).toMatchObject({
       stepId: 'max',
     });
   });
 
   it('does not let a NON-matching non-off flow report confirm the pending desired step', () => {
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
@@ -1910,7 +1971,7 @@ describe('appDeviceControlHelpers', () => {
     // truth, but it confirms nothing — the command stays pending.
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.reportedStore.get('dev-1')).toMatchObject({
       stepId: 'low',
     });
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
@@ -1923,8 +1984,9 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('returns invalid for unknown flow step reports even when currentOn=false', () => {
+    const stores = steppedStoresForTest();
     const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...stores,
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
@@ -1932,11 +1994,11 @@ describe('appDeviceControlHelpers', () => {
     });
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'missing')).toBe('invalid');
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toBeUndefined();
+    expect(stores.reportedStore.get('dev-1')).toBeUndefined();
   });
 
   it('increments stepped-load retry metadata when the same desired step is re-issued', () => {
-    const store = createSteppedCommandStore();
+    const { store } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
 
     markSteppedLoadDesiredStepIssued({
@@ -1976,7 +2038,7 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('resets retry escalation after a same-step command has already been confirmed', () => {
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
 
     markSteppedLoadDesiredStepIssued({
@@ -1989,6 +2051,7 @@ describe('appDeviceControlHelpers', () => {
     });
     expect(reportSteppedLoadActualStep({
       runtimeState,
+      reportedStore,
       profiles: steppedProfiles,
       deviceId: 'dev-1',
       stepId: 'max',

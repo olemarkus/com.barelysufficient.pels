@@ -33,7 +33,7 @@ import {
 } from './lib/objectives/deferredObjectives';
 import type { DebugLoggingTopic } from './packages/shared-domain/src/utils/debugLogging';
 import { AppDeviceControlHelpers } from './setup/appDeviceControlHelpers';
-import { createSteppedCommandStore, type SteppedCommandStore } from './lib/executor/steppedCommandStore';
+import { createSteppedStores, type SteppedStores } from './setup/appInit/createSteppedStores';
 import { DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, MAIN_HOME_ID } from './lib/utils/settingsKeys';
 import type { PowerSampleRebuildState } from './lib/plan/rebuildScheduler/powerDriven';
 import { BackgroundTasksController } from './setup/backgroundTasksController';
@@ -304,9 +304,14 @@ class PelsApp extends PelsAppBase implements AppContext {
    * all. It is handed to the wiring that drives it and to the plan engine that
    * owns it — `lib/executor/steppedCommandStore.ts`.
    */
-  public readonly steppedCommandStore: SteppedCommandStore = createSteppedCommandStore();
+  private readonly steppedStores: SteppedStores = createSteppedStores();
+
+  public readonly steppedCommandStore = this.steppedStores.commandStore;
+
+  public readonly steppedReportedStore = this.steppedStores.reportedStore;
   public readonly deviceControlHelpers: AppDeviceControlHelpers = new AppDeviceControlHelpers({
     store: this.steppedCommandStore,
+    reportedStore: this.steppedReportedStore,
     getProfiles: () => this.deviceControlProfiles,
     ...this.targetPowerReachabilityWiring.deviceControlDeps,
     isTemperatureControlDisabled: (deviceId) => this.isTemperatureControlDisabled(deviceId),

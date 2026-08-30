@@ -2,11 +2,7 @@ import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
 import { LOCAL_CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import {
-  buildSteppedLoadReportedState,
-  hasSteppedLoadReportChanged,
-  type SteppedLoadReportedRuntimeState,
-} from '../observer/steppedReportedStep';
+import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type {
   DeviceControlProfiles,
   SteppedLoadCommandStatus,
@@ -46,7 +42,6 @@ export type SteppedLoadDesiredRuntimeState = {
 
 export type DeviceControlRuntimeState = {
   steppedLoadDesiredByDeviceId: Map<string, SteppedLoadDesiredRuntimeState>;
-  steppedLoadReportedByDeviceId: Map<string, SteppedLoadReportedRuntimeState>;
   // Command-axis latch: the lowest-step initialization request was handed to
   // the device transport during this on-session. It is an optimistic planning
   // premise only — never reported/materialized evidence and never retry state.
@@ -87,7 +82,6 @@ export type MarkSteppedLoadDesiredStepIssuedParams = {
 
 export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => ({
   steppedLoadDesiredByDeviceId: new Map(),
-  steppedLoadReportedByDeviceId: new Map(),
   steppedLoadInitializedAtLowestStepByDeviceId: new Map(),
   steppedLoadStepCommandIssuedByDeviceId: new Set(),
   steppedLoadLastBinaryOnByDeviceId: new Map(),
@@ -272,6 +266,7 @@ export const preserveSteppedLoadDesiredStep = (params: {
 
 export const reportSteppedLoadActualStep = (params: {
   runtimeState: DeviceControlRuntimeState;
+  reportedStore: SteppedReportedStepStore;
   profiles: DeviceControlProfiles;
   deviceId: string;
   stepId: string;
@@ -280,6 +275,7 @@ export const reportSteppedLoadActualStep = (params: {
 }): ReportSteppedLoadActualStepResult => {
   const {
     runtimeState,
+    reportedStore,
     profiles,
     deviceId,
     stepId,
@@ -291,11 +287,9 @@ export const reportSteppedLoadActualStep = (params: {
     return 'invalid';
   }
 
-  const previousReport = runtimeState.steppedLoadReportedByDeviceId.get(deviceId);
-  // The ladder check above is this layer's to make (it holds the profile); the
-  // record itself is the observer's shape, built by the observer.
-  const report = buildSteppedLoadReportedState({ stepId, reportedAtMs, planningPowerW });
-  runtimeState.steppedLoadReportedByDeviceId.set(deviceId, report);
+  // The ladder check above is this layer's to make (it holds the profile). The
+  // record, and the verdict on whether it is news, belong to the observer.
+  const changed = reportedStore.record({ deviceId, stepId, reportedAtMs, planningPowerW });
 
   const desired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
   if (desired?.stepId === stepId) {
@@ -312,7 +306,7 @@ export const reportSteppedLoadActualStep = (params: {
     });
   }
 
-  return hasSteppedLoadReportChanged(previousReport, report) ? 'changed' : 'unchanged';
+  return changed;
 };
 
 export const pruneStaleSteppedLoadCommandStates = (

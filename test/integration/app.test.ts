@@ -617,11 +617,12 @@ describe('MyApp initialization', () => {
       pending: false,
       status: 'stale',
     });
-    runtimeState.steppedLoadReportedByDeviceId.set('dev-1', {
-      capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+    // The prior report is the observer's to record — it builds the capability
+    // and source itself, so the test states only what the device said and when.
+    (app as any).steppedReportedStore.record({
+      deviceId: 'dev-1',
       stepId: 'low',
-      updatedAtMs: Date.now() - 1000,
-      source: 'flow',
+      reportedAtMs: Date.now() - 1000,
     });
 
     expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');

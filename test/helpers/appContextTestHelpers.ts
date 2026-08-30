@@ -1,4 +1,5 @@
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
+import { steppedStoresForTest } from './steppedStores';
 import { vi } from 'vitest';
 import {
   requireInitializedAppContext,
@@ -7,7 +8,6 @@ import {
   type InitializedAppContext,
 } from '../../lib/app/appContext';
 import { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
-import { createSteppedCommandStore } from '../../lib/executor/steppedCommandStore';
 import { GenerationPollSource } from '../../lib/power/sources/generationPoll';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
@@ -172,7 +172,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     error: vi.fn(),
   });
   const deviceControlHelpers = deviceControlHelpersOverride ?? new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...steppedStoresForTest(),
     getProfiles: () => deviceControlProfiles,
     getDeviceSnapshots: () => latestTargetSnapshot,
     getStructuredLogger: () => undefined,

@@ -36,6 +36,7 @@
  * `shedReleaseActuation`), and this charger has `evcharger_charging`.
  */
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
+import { steppedStoresForTest } from '../helpers/steppedStores';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
@@ -43,7 +44,6 @@ import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
-import { createSteppedCommandStore } from '../../lib/executor/steppedCommandStore';
 import {
   parseDevice,
   isDevicePowerCapable,
@@ -218,7 +218,7 @@ const buildHarness = (
   const snapshotHolder: { current: TransportDeviceSnapshot } = { current: initialSnapshot };
   const structuredLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   const helpers = new AppDeviceControlHelpers({
-    store: createSteppedCommandStore(),
+    ...steppedStoresForTest(),
     getProfiles: () => profiles,
     getDeviceSnapshots: () => [snapshotHolder.current],
     getLatestPlanSnapshot: () => null,

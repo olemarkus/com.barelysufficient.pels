@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { steppedStoresForTest } from '../helpers/steppedStores';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import {
@@ -7,7 +8,6 @@ import {
   reportSteppedLoadActualStep,
   resolveTemperatureControlDisabled,
 } from '../../setup/appDeviceControlHelpers';
-import { createSteppedCommandStore } from '../../lib/executor/steppedCommandStore';
 import { createTemperatureControlFencedActuator } from '../../setup/appInit/buildDeviceActuator';
 import { readTemperatureControlDisabledDevicesSetting } from '../../setup/appSettingsHelpers';
 
@@ -146,7 +146,7 @@ describe('disabled temperature control', () => {
       ],
     };
     const profiles = { [raw.id]: profile };
-    const store = createSteppedCommandStore();
+    const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
     markSteppedLoadDesiredStepIssued({
       runtimeState,
@@ -159,6 +159,7 @@ describe('disabled temperature control', () => {
     runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.set(raw.id, 'high');
     expect(reportSteppedLoadActualStep({
       runtimeState,
+      reportedStore,
       profiles,
       deviceId: raw.id,
       stepId: 'high',
@@ -168,6 +169,7 @@ describe('disabled temperature control', () => {
       snapshot: raw,
       profiles,
       store,
+      reportedStore,
       temperatureControlDisabled: true,
       nowMs: 110,
     });
@@ -185,14 +187,14 @@ describe('disabled temperature control', () => {
     // the lowest-step initialization latch would never latch.
     expect(runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.get(raw.id)).toBe('high');
     expect(runtimeState.steppedLoadStepCommandIssuedByDeviceId.has(raw.id)).toBe(true);
-    expect(runtimeState.steppedLoadReportedByDeviceId.get(raw.id)?.stepId).toBe('high');
+    expect(reportedStore.get(raw.id)?.stepId).toBe('high');
   });
 
   it('falls the temperature model back to binary when there is no ladder to keep', () => {
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: thermostat(),
       profiles: {},
-      store: createSteppedCommandStore(),
+      ...steppedStoresForTest(),
       temperatureControlDisabled: true,
       nowMs: 110,
     });
