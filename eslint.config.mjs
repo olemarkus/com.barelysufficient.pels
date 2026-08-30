@@ -34,7 +34,13 @@ const sharedGeneralRules = {
   'max-lines-per-function': ['warn', { max: 120, skipBlankLines: true, skipComments: true }],
   'max-depth': ['warn', 4],
   'max-nested-callbacks': ['warn', 3],
-  'max-params': ['warn', 5],
+  // 7, not 5. At 5 the cheapest way past a sixth argument was to wrap the
+  // arguments in an object, and the rule cannot tell six honest parameters from
+  // a 48-field god-object — so it manufactured the latter to prevent the former
+  // (`AppContext` reached 91 fields). Bags as parameters are now banned outright
+  // by `scripts/check-param-bundles.mjs`; this limit leaves room for an honest
+  // signature, and anything past it should be a domain object with a name.
+  'max-params': ['warn', 7],
   'max-statements': ['warn', 30],
   'max-classes-per-file': ['warn', 1],
   'complexity': ['warn', 15],

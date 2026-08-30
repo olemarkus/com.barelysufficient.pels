@@ -59,6 +59,17 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 - **The wiring layer holds no state.** `setup/**` gets no mutable field, no module-level `let` or `var`, no field holding a mutable container. It constructs and connects; anything that changes as the app runs is a component owned by a `lib/` module. State in the wiring layer sits above these boundaries, so it becomes a back-channel between modules forbidden to talk with no import edge for `arch:check` to see. Enforced by `npm run setup:stateless`; the shrinking allowlist of files predating the rule is `scripts/setup-stateless-allowlist.txt`. Full rule: `setup/AGENTS.md` § "No state".
 - `flowCards/**` must not import `packages/settings-ui/**` or `drivers/**`.
 - Accept code duplication if consolidation would violate an architectural boundary. Add a comment explaining the constraint.
+- **A parameter object must be a domain object.** If a function takes an object, that object
+  names a concept the model already holds and passes — not a bag assembled to shorten an argument
+  list. An inline object-literal parameter type with 3+ properties is the bag's signature: it has
+  no name, nothing else can hold it, and its first act is to destructure itself back into loose
+  values. Enforced by `npm run params:no-bundles`, which parses the TypeScript AST so no layout
+  evades it; the shrinking allowlist of files predating the rule is
+  `scripts/param-bundle-allowlist.txt` (regenerate with `--seed`, never by hand), and its
+  per-file counts may only go down. The
+  inverse costs as much and no script can see it: taking a domain object you already hold and
+  exploding it into loose scalars downstream, or narrowing it into a per-callee `Pick<>`. When you
+  hold the object, pass the object. Full rule: the header of `scripts/check-param-bundles.mjs`.
 
 **Known transitional allowance:** `lib/utils/**` still has two imports from `lib/power` and `lib/plan` (`todo-tighten-utils-layering`, registered at warn severity in `.dependency-cruiser.cjs` — that rule is the tracking, there is no `TODO.md` entry). Both are type-only: `appTypeGuards.ts` → `PowerTrackerState`, `capacityHelpers.ts` → `ShedAction`/`ShedBehavior`. The `lib/device` edge is gone, and so is the last value import — `settingsHandlers.ts` → `CapacityGuard` went with the guard's settings mirror, since the capacity scalars now have one owner and nothing copies them. Do not expand the set.
 
