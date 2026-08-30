@@ -24,7 +24,7 @@ This file is the canonical agent guide. `CLAUDE.md` files in this repo are one-l
 ├── flowCards/                # Homey Flow card registrations
 ├── drivers/                  # pels_insights virtual device driver
 ├── widgets/                  # plan_budget widget
-├── settings/                 # Generated settings UI bundle (do not edit directly)
+├── settings/                 # Generated settings UI bundle — build output, not in git
 ├── test/                     # vitest test suites and mocks
 ├── docs/                     # VitePress documentation site
 ├── notes/                    # Internal engineering notes (invariants, design constraints)

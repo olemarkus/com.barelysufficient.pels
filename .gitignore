@@ -7,7 +7,23 @@
 /packages/settings-ui/playwright-report/
 /packages/settings-ui/test-results/
 /packages/settings-ui/blob-report/
+# Generated settings-UI output, written by scripts/sync-settings-ui.mjs from
+# packages/settings-ui/{public,dist}. `/settings/script.js` has been ignored
+# since long before its siblings; these two join it because settings/index.html
+# already referenced an untracked script.js, so nothing new depends on them
+# being present in a checkout that has not built.
+#
+# settings/tokens.css is deliberately NOT here: .stylelintrc.cjs reads it as the
+# token vocabulary for `lint:css`, which runs before any build.
+#
+# The widget bundles (widgets/*/public/index.{js,css}) are NOT ignored, and must
+# not be: each widget's index.html is tracked and references ./index.css and
+# ./index.js, and `homey app build`/`publish` preprocess the source tree
+# directly without running our build scripts. Untracking them would silently
+# package five widgets with no styles and no browser code.
+/settings/index.html
 /settings/script.js
+/settings/style.css
 /test/screenshots/*.png
 /packages/settings-ui/test/screenshots/*.png
 /output/
