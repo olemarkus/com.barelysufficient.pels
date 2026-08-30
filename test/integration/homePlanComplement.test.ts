@@ -191,6 +191,7 @@ describe('filterDevicesForHome identity guard', () => {
       meterDeviceId: 'device-sub',
     };
     const service = new HomeMembershipService({
+      getConfiguredPowerSource: () => ({ state: 'resolved', value: 'homey_energy' }),
       homesStore: createHomesStore(homeyLike),
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
       getZoneTree: () => ZONES,

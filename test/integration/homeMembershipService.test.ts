@@ -140,6 +140,7 @@ const makeStaticService = (params: {
   logger?: PinoLogger;
   legacyMultiHomeEnabled?: boolean;
 }): HomeMembershipService => new HomeMembershipService({
+  getConfiguredPowerSource: homeyEnergyPowerSource,
   homesStore: createHomesStore(homeyLike),
   assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
   getZoneTree: params.getZoneTree,
@@ -224,6 +225,11 @@ afterEach(() => {
   mockHomeyInstance.settings.removeAllListeners('set');
   vi.restoreAllMocks();
 });
+
+// The historical Homey Energy home, stated explicitly at every construction:
+// the authority's power-source dep is required now, so an unwired dep can no
+// longer pass itself off as this answer.
+const homeyEnergyPowerSource = (): ConfiguredPowerSourceRead => ({ state: 'resolved', value: 'homey_energy' });
 
 describe('post-refresh recompute through the transport seam', () => {
   // Real transport + observer emitter + wiring, exactly as `initHomeMembership`
@@ -543,6 +549,7 @@ describe('settings-change recompute triggers', () => {
     const onMembershipChanged = vi.fn();
     let devices: readonly HomeMembershipDeviceInput[] = [{ deviceId: 'dev1', zoneId: 'z2' }];
     const service = new HomeMembershipService({
+      getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: createHomesStore(homeyLike),
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
       getZoneTree: () => ZONES,
@@ -654,6 +661,7 @@ describe('last-known zone retention', () => {
     getDevices: () => readonly HomeMembershipDeviceInput[];
     logger?: PinoLogger;
   }): HomeMembershipService => new HomeMembershipService({
+    getConfiguredPowerSource: homeyEnergyPowerSource,
     homesStore: createHomesStore(homeyLike),
     assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
     getZoneTree: () => ZONES,
@@ -2278,6 +2286,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
       meterDeviceId: 'm-shared',
     };
     const service = new HomeMembershipService({
+      getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: createHomesStore(homeyLike),
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
       getZoneTree: () => ZONES,
@@ -2315,6 +2324,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
         subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-area' }],
       });
       const service = new HomeMembershipService({
+        getConfiguredPowerSource: homeyEnergyPowerSource,
         homesStore: createHomesStore(homeyLike),
         assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
         getZoneTree: () => ZONES,
@@ -2609,6 +2619,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
             subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-area' }],
           });
           const service = new HomeMembershipService({
+            getConfiguredPowerSource: homeyEnergyPowerSource,
             homesStore: createHomesStore(homeyLike),
             assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
             getZoneTree: () => ZONES,
@@ -2676,6 +2687,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
         subHomes: [],
       });
       const service = new HomeMembershipService({
+        getConfiguredPowerSource: homeyEnergyPowerSource,
         homesStore: createHomesStore(homeyLike),
         assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
         getZoneTree: () => ZONES,
@@ -2723,9 +2735,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
           getMainMeterSelection: () => (
             overrides.mainMeterSelection ?? { state: 'resolved', meterDeviceId: null }
           ),
-          ...(overrides.getConfiguredPowerSource === undefined
-            ? {}
-            : { getConfiguredPowerSource: overrides.getConfiguredPowerSource }),
+          getConfiguredPowerSource: overrides.getConfiguredPowerSource ?? homeyEnergyPowerSource,
           legacyMultiHomeEnabled: true,
           onMainAuthorityReopened,
         });
@@ -3038,6 +3048,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
             subHomes: [],
           });
           const service = new HomeMembershipService({
+            getConfiguredPowerSource: homeyEnergyPowerSource,
             homesStore: createHomesStore(homeyLike),
             assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
             getZoneTree: () => ZONES,
@@ -3109,6 +3120,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
     });
     let mainMeterDeviceId = 'm-shared';
     const service = new HomeMembershipService({
+      getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: createHomesStore(homeyLike),
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
       getZoneTree: () => ZONES,
@@ -3135,6 +3147,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
       meterDeviceId: 'm-main',
     };
     const service = new HomeMembershipService({
+      getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: createHomesStore(homeyLike),
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
       getZoneTree: () => ZONES,
@@ -3165,6 +3178,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
     });
     let selection: MainMeterSelection = { state: 'unavailable' };
     const service = new HomeMembershipService({
+      getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: createHomesStore(homeyLike),
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
       getZoneTree: () => ZONES,
@@ -3201,6 +3215,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
     const assignmentsStore = createDeviceHomeAssignmentsStore(homeyLike);
     const service = new HomeMembershipService({
+      getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: createHomesStore(homeyLike),
       assignmentsStore,
       getZoneTree: () => ZONES,
@@ -3272,6 +3287,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     };
     const onOwnershipReady = vi.fn();
     const service = new HomeMembershipService({
+      getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore,
       assignmentsStore: unwrittenAssignments,
       getZoneTree: () => ZONES,
@@ -3308,6 +3324,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     };
     const onOwnershipReady = vi.fn();
     const service = new HomeMembershipService({
+      getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: {
         read: () => ({ state: 'present', value: ACTIVE_HOME_CONFIG }),
         write: vi.fn(),
@@ -3345,6 +3362,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     let zoneTree: ZoneTree | null = null;
     const onOwnershipReady = vi.fn();
     const activeService = new HomeMembershipService({
+      getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: {
         read: () => ({ state: 'present', value: ACTIVE_HOME_CONFIG }),
         write: vi.fn(),
@@ -3371,6 +3389,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     expect(onOwnershipReady).toHaveBeenCalledTimes(1);
 
     const singleHomeService = new HomeMembershipService({
+      getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: { read: () => ({ state: 'unwritten' }), write: vi.fn() },
       assignmentsStore: unwrittenAssignments,
       getZoneTree: () => null,
@@ -3398,6 +3417,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     const onRecoveryNeeded = vi.fn();
     const onZoneTreeCommitReady = vi.fn();
     const service = new HomeMembershipService({
+      getConfiguredPowerSource: homeyEnergyPowerSource,
       homesStore: {
         read: () => ({ state: 'present', value: ACTIVE_HOME_CONFIG }),
         write: vi.fn(),
@@ -4055,6 +4075,7 @@ describe('HomeMembershipService — zone-tree-commit readiness edge', () => {
     getZoneTree: () => ZoneTree | null;
     onZoneTreeCommitReady: () => void;
   }): HomeMembershipService => new HomeMembershipService({
+    getConfiguredPowerSource: homeyEnergyPowerSource,
     homesStore: unwrittenStore,
     assignmentsStore: unwrittenStore,
     getZoneTree: params.getZoneTree,

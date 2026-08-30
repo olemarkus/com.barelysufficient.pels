@@ -60,7 +60,14 @@ export type MainMeterAuthorityState = 'ready' | 'retry' | 'blocked';
 export type MainMeterAuthorityDeps = {
   getLogger: () => PinoLogger | undefined;
   getMainMeterSelection: () => MainMeterSelection;
-  getConfiguredPowerSource?: () => ConfiguredPowerSourceRead;
+  /**
+   * The active power source, classified at the settings boundary. Required:
+   * this is one of the two authorities the fence is made of, and the only
+   * default an absent dep could carry is `homey_energy` — the historical
+   * source, asserted as fact for a home nobody asked. `suspect` fences; an
+   * unwired dep must not be able to look like an answer.
+   */
+  getConfiguredPowerSource: () => ConfiguredPowerSourceRead;
   /** See {@link SampledMeterIdentityDeps.getRestoredSampleAtMs}. */
   getRestoredSampleAtMs?: () => number | undefined;
   onMainAuthorityUnresolved?: () => void;
@@ -423,8 +430,7 @@ export class MainMeterAuthority {
   }
 
   private readActiveMeterPowerSource(): 'homey_energy' | 'flow' | 'unavailable' {
-    const read: ConfiguredPowerSourceRead = this.deps.getConfiguredPowerSource?.()
-      ?? { state: 'resolved', value: 'homey_energy' };
+    const read: ConfiguredPowerSourceRead = this.deps.getConfiguredPowerSource();
     if (read.state === 'suspect') {
       if (!this.powerSourceUnavailableLogged) {
         this.deps.getLogger()?.warn({

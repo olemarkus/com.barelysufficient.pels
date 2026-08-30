@@ -76,6 +76,14 @@ export type TransportEvCarLinkProducer = {
 export type SnapshotRefreshOptions = {
   includeLivePower?: boolean;
   targetedRefresh?: boolean;
+  /**
+   * The Main meter authority this cycle belongs to, captured by the caller
+   * BEFORE the cycle started. Callers that fence a sample against a mid-flight
+   * meter change (the app's snapshot refresh) must pass it; callers with no
+   * such capture omit it and `refreshSnapshot` asks the authority itself. The
+   * one thing neither does is fabricate a selection — omitted never means
+   * Automatic.
+   */
   mainMeterSelection?: MainMeterSelection;
 };
 
@@ -103,6 +111,17 @@ export type TransportContext = {
   readonly recentRealtimeCapabilityEventLogByKey: Map<string, number>;
   /** Session-sticky identity used to stabilize Automatic cumulative selection. */
   readonly automaticHomeMeterState: { preferredDeviceId: string | null };
+
+  /**
+   * The transport's Main meter authority: the one place the optional
+   * `providers.getHomeyEnergyMeterSelection` is read, with its absence already
+   * classified as `unavailable`. Every live-power path takes its selection from
+   * here (or from a selection its caller captured first) — none of them may
+   * invent one, because the only inventable answer is Automatic, and claiming
+   * Automatic for an unknown authority is how the wrong meter's watts become
+   * the whole home's.
+   */
+  readonly resolveMainMeterSelection: () => MainMeterSelection;
 
   /** The read-only observation producers, built together in `observationProducers.ts`. */
   readonly observationProducers: {
