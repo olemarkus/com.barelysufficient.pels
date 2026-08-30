@@ -669,7 +669,7 @@ describe('deadline plan page payload', () => {
       name: 'Connected 300',
       binaryControl: { on: false },
       temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      // Stepped profile; the lowest non-zero step is 1.5 kW. resolveUsefulPowerKw
+      // Stepped profile; the lowest non-zero step is 1.5 kW. getSteppedLoadHighestStep
       // (used elsewhere) would return the highest step — we deliberately want the lowest.
       steppedLoadProfile: {
         steps: [

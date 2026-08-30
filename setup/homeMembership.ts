@@ -166,7 +166,7 @@ export type HomeMembershipDiagnostics = {
   runtimeActive: boolean;
   /**
    * The last PROVEN answer to "can the whole-home meter be named?", latched
-   * from the transport's per-read observation (`onHomeMeterArrangement`).
+   * from the transport's per-read observation (`noteHomeMeterArrangement`).
    * `unknown` until a read proves either way (boot, flow source). CONFIG
    * SURFACE ONLY: the save seam uses `idless_aggregate_only` to give an
    * id-less-aggregate home an honest refusal instead of a remedy its picker
@@ -410,7 +410,7 @@ export class HomeMembershipService implements HomeMembershipPort {
   }
 
   /**
-   * Read push seam (`onHomeMeterArrangement`): whether the whole-home meter
+   * Read push seam (`noteHomeMeterArrangement`): whether the whole-home meter
    * can be named. Latches the last PROVEN observation; `unproven` (an SDK miss
    * or an ambiguous multi-cumulative pick) never overwrites it — a transient
    * failure must not select, nor deselect, the unnameable-meter refusal.

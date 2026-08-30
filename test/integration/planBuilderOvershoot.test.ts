@@ -846,7 +846,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       state.lastPlanTotalKw = 0.5;
 
       const structuredLog = { info: vi.fn() };
-      // Guard still holds an old cached total (getLastTotalPower stays finite) even
+      // The tracker still holds an old cached total (`resolveLastTotalPowerKw` stays finite) even
       // though the sample timestamp is now stale.
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
       lastPowerW = (0.8) * 1000;

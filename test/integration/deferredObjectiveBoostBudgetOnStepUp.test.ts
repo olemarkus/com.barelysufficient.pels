@@ -3,7 +3,7 @@
 // limit-lower-priority "boost" permission still lets a priority-1 stepped device
 // escalate past the shed invariant ONLY during its planned hours.
 //
-// Companion to deferredObjectiveBoostNoBudgetStepUp.test.ts (the no-budget case
+// Companion to test/e2e/deferredObjectiveBoostNoBudgetStepUpE2E.test.ts (the no-budget case
 // where the hourly hard cap is the constraint). Here the daily budget supplies the
 // per-bucket budget overlay AND the binding planner soft limit (`softLimitSource:
 // 'daily'`), proving the boost / shed-invariant behavior is identical under the

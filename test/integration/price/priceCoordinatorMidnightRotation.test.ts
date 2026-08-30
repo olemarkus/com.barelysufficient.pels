@@ -286,8 +286,8 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
 
   it('does not bypass the V1→V2 migration for a legacy V1 payload (and does not drop it)', () => {
     // A prior-day legacy V1 payload would, under the old behaviour, be rebuilt into a
-    // fresh V2 here — bypassing readPriceStore's V1→V2 migration. The catch-up must
-    // leave the V1 payload intact so the next readPriceStore caller migrates it.
+    // fresh V2 here — bypassing `readStore`'s V1→V2 migration. The catch-up must
+    // leave the V1 payload intact so the next `readStore` caller migrates it.
     vi.useFakeTimers().setSystemTime(new Date('2026-05-11T06:00:00.000Z'));
     // Seed today's flow prices so a rebuild (if it wrongly happened) would be non-empty.
     const pricesByHour = Object.fromEntries(

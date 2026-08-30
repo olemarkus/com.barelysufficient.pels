@@ -1,7 +1,7 @@
 // SDK-boundary e2e: the SURPLUS-ABSORB temperature lift on the `flow` power source.
 //
 // WHY THIS EXISTS: the lift was never gated on the power source. Its candidacy is
-// `willingWithLift(config) && supportsTemperatureBoostDevice(dev)` plus surplus
+// `willingWithLift(config) && supportsTemperatureLift(dev)` plus surplus
 // eligibility, and the surplus pool is `measuredExportKw = -signedNetKw`
 // (`composeSurplusPool`) — no production reading anywhere in that path. The ONLY
 // thing keeping it off the flow source was the `report_power_usage` card

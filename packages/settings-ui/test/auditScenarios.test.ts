@@ -199,9 +199,7 @@ describe('audit scenarios', () => {
     // ignored an explicit null. Scenarios must be able to render the
     // "no plan yet" / "no power feed" empty states.
     const stub = loadBrowserStub();
-    // Install a custom scenario via setApiHandler isn't ideal — instead use
-    // `setApiHandler` to surface what `buildPlanPayload` returned.
-    // Easier: assert via the resolver indirectly by setting the scenario to
+    // Assert via the resolver indirectly by setting the scenario to
     // pressure (which sets a plan), then verifying applyAuditScenario(null)
     // restores baseline. Direct null-plan test is via the typed surface.
     stub.applyAuditScenario('pressure');

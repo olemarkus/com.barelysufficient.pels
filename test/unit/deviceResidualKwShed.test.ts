@@ -28,7 +28,7 @@ const steppedProfile: SteppedLoadProfile = {
 };
 
 // A profile without an explicit off step: shedding turn_off has to ride the
-// device's binary control (the "canFinishSteppedTurnOffWithBinary" branch).
+// device's binary control (the "canFinishSteppedTurnOffWithBinaryResidual" branch).
 const stepOnlyProfile: SteppedLoadProfile = {
   steps: [
     { id: 'low', planningPowerW: 1250 },
@@ -159,7 +159,7 @@ describe('resolveResidualKwShed — stepped load device', () => {
 
   it('returns the current draw for turn_off via binary when the profile has no off step', () => {
     // No off step in the profile but binary control is available — the
-    // `canFinishSteppedTurnOffWithBinary` branch allows shedding via the
+    // `canFinishSteppedTurnOffWithBinaryResidual` branch allows shedding via the
     // device's onoff capability.
     const steppedLoad: ResidualKwShedSteppedDevice = {
       profile: stepOnlyProfile,

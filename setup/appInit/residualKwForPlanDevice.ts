@@ -70,7 +70,7 @@ export function resolveResidualShedBehavior(
     // routes its release through `shed_release`, which would issue a `target`
     // command the fence refuses, leaving the device shed with no way back.
     // The first disjunct cannot decide anything in production:
-    // `projectEffectiveControlDevice` (`toPlanDevice.ts`) already blanks
+    // `projectTemperatureDeniedDevice` (applied in `toPlanDevice.ts`) already blanks
     // `targets`/`temperature` and stamps `deviceType: 'onoff'` for a
     // temperature-disabled device before this runs. It is kept because fixture
     // callers reach this function directly, without that projection — so the

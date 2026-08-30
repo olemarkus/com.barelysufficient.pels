@@ -149,7 +149,7 @@ export class HomeySolarForecastController {
    *  cache from the reads it started with. Two overlapping passes therefore
    *  race on the write: the later-resolving one wins, so an older pass that
    *  resolves `unavailable` after a newer one stored points would wipe them,
-   *  and its own stale `hadPoints` would skip the completion hook that tells
+   *  and its own stale `hourCountBefore` would skip the completion hook that tells
    *  the price build the data is gone. Queueing costs nothing (the fetch is a
    *  local GET) and removes the interleaving outright. */
   async refresh(): Promise<void> {

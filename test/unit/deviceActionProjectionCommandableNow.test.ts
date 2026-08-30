@@ -77,7 +77,9 @@ describe('resolveCommandableNow — no trusted plug state', () => {
     });
     // Fails OPEN: an unclassifiable vendor value is permanent, shed does not
     // consult commandability, and blocking would leave the charger off with no
-    // way back. PELS probes instead — see `resolveEvPlugBlock`.
+    // way back. A charger reporting outside the enum is dropped at the transport
+    // instead — see `shouldDropForEvPlugStateContract`
+    // (`lib/device/transport/managerParse.ts`).
     expect(commandableNow).toBe(true);
   });
 });

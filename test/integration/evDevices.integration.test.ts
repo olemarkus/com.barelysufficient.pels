@@ -744,7 +744,7 @@ function buildEvDeadlineCombinedPrices(pricesByRelativeHour: number[]): Combined
     isCheap: false,
     isExpensive: false,
   }));
-  // `readPriceStore` prunes day buckets to the [yesterday, today, tomorrow]
+  // `combinedPricesReader.readStore` prunes day buckets to the [yesterday, today, tomorrow]
   // window resolved from the REAL wall clock (`new Date()` in `App.getNow` is
   // not driven by the test's `Date.now` override). Key the day under the real
   // today so pruning keeps it; the horizon builder still selects the correct

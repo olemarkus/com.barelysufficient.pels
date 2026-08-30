@@ -19,13 +19,12 @@ have been removed from this folder when the code they described landed.
 
 `TimerRegistry` and the initializing/live `AppContext` phases are in place. `app.ts` remains the
 Homey composition root while `setup/appRuntimeApi.ts` and `setup/appHostApi.ts` supply its runtime
-and host API behavior without importing the Homey SDK value. `lib/app/appInit.ts` still carries
-plan-service creation plus `resolveHasBinaryControl`.
+and host API behavior without importing the Homey SDK value. The adapter has since moved out of
+`lib/app/` entirely — it is `setup/appInit.ts` plus the `setup/appInit/` directory, and `lib/app/`
+is down to `appContext.ts`. `resolveHasBinaryControl` is gone with it.
 
 Remaining work:
 
-- decide whether the now-thin `appInit.ts` adapter should be deleted
-- move `resolveHasBinaryControl` to a more durable core/device-manager home if it stays shared
 - keep trimming delegates that no longer buy readability or testability
 
 ### Rebuild scheduler

@@ -99,7 +99,7 @@ const VALUE_DURATION_KEYS = new Set([
   'device_refresh_ms',
   'evaluate_deferred_objectives_ms',
   'price_optimizer_apply_ms',
-  // Plan-build sub-stages (recorded by PlanBuilder.trackDuration). Surfaced
+  // Plan-build sub-stages (recorded by `trackPlanStage`, lib/plan/planStageTiming.ts). Surfaced
   // so the perf log shows which sub-stage dominates plan_build_ms when the
   // total regresses.
   'plan_context_ms',
@@ -115,7 +115,7 @@ const VALUE_DURATION_KEYS = new Set([
   'plan_devices_setup_ms',
   'plan_devices_base_ms',
   'plan_devices_offstate_ms',
-  // Inside buildPlanSnapshotWithTimings — the un-trackDuration'd regions.
+  // Inside buildPlanSnapshotWithTimings — regions outside the sub-stage list above.
   'plan_deferred_objective_observe_ms',
   'plan_overshoot_ms',
   'plan_observe_diag_ms',

@@ -2579,7 +2579,7 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'off',
     }));
 
-    // Raw snapshot has currentOn=false, so setBinaryControl skips both shed-off
+    // Raw snapshot has currentOn=false, so decideBinaryControl skips both shed-off
     // and restore — no binary command issued
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
@@ -3045,7 +3045,7 @@ describe('PlanExecutor stepped loads', () => {
   it('sets onoff=false for a shed stepped device at its off-step', async () => {
     // The plan sees currentState='off' (from decorated snapshot), but the raw
     // snapshot still has currentOn=true (the onoff capability hasn't been set
-    // to false yet). setBinaryControl operates on raw snapshots, so it sees
+    // to false yet). decideBinaryControl operates on raw snapshots, so it sees
     // the true value and issues the command.
     const snapshot = [
       {
@@ -3364,7 +3364,7 @@ describe('PlanExecutor stepped loads', () => {
   });
 
   it('skips onoff=false when raw snapshot already shows device off', async () => {
-    // When the raw onoff capability is already false, setBinaryControl detects
+    // When the raw onoff capability is already false, decideBinaryControl detects
     // the device is already in the desired state and skips the command.
     const snapshot = [
       {
@@ -3619,7 +3619,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('re-issues step command when keep device has onoff=true but step is at off', async () => {
     // Raw snapshot has currentOn=true (onoff not violated), but selectedStepId='off'
-    // with desiredStepId='low' — only stepViolated is true.
+    // with desiredStepId='low' — only stepNeedsAdjustment is true.
     // The decorated snapshot derives currentState='off' from the off-step, which
     // lets applySteppedLoadRestore enter.
     const snapshot = buildSnapshot({
@@ -3644,7 +3644,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ step_id: 'low' }),
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
-    // setBinaryControl is called with desired=true, but raw snapshot already
+    // decideBinaryControl is called with desired=true, but raw snapshot already
     // has currentOn=true so it detects "already on" and skips the command.
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
@@ -3786,7 +3786,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('restores binary before reasserting the step when both onoff and step are violated', async () => {
     // Both violations: raw snapshot has currentOn=false AND selectedStepId='off'
-    // while desiredStepId='low'. Both onoffViolated and stepViolated should be true.
+    // while desiredStepId='low'. The binary axis and stepNeedsAdjustment should both be violated.
     const snapshot = buildSnapshot({
       binaryControl: { on: false },
       selectedStepId: 'off',

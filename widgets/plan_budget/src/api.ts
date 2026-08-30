@@ -37,7 +37,7 @@ const flattenStoreToCombinedPriceData = (value: unknown): CombinedPriceData | nu
   if (!value || typeof value !== 'object') return null;
   const record = value as { days?: unknown; prices?: unknown; lastFetched?: unknown; priceUnit?: unknown };
   // The widget runs in a separate JS context; if it loads before the app has
-  // had a chance to persist the V1 → V2 migration via readPriceStore, accept
+  // had a chance to persist the V1 → V2 migration via `combinedPricesReader.readStore`, accept
   // the legacy `{ prices: [...] }` shape directly so charts render instead of
   // staying empty.
   const isV2 = record.days && typeof record.days === 'object' && !Array.isArray(record.days);

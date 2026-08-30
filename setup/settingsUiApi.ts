@@ -422,7 +422,7 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
   const app = getApp(homey);
   const priceArea = homey.settings.get('price_area') as unknown;
   const homeyCurrency = homey.settings.get('homey_prices_currency') as unknown;
-  // The settings-UI client (`deadlinePlanData.getCombinedPrices`) accepts
+  // The settings-UI client (`normalizeCombinedPrices`, `ui/combinedPrices.ts`) accepts
   // both the legacy V1 `{ prices: [...] }` and V2 `{ days: {...} }` shapes,
   // so the raw persisted value is forwarded as-is. A first read through the
   // combined-prices reader (daily-budget service, plan service) migrates V1 to

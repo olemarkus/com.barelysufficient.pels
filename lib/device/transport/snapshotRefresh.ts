@@ -676,7 +676,7 @@ export async function refreshSnapshot(
         // when a degraded zones read hangs after a healthy device fetch.
         // The detach is safe: `fetchZoneTree` never throws or rejects, the
         // post-commit notification is contained in `refreshZoneTreeCache`,
-        // `setZoneTree` is a whole-tree last-writer-wins replacement, and
+        // `zoneTreeCache.set` is a whole-tree last-writer-wins replacement, and
         // refresh cycles are serialized by the coalescing guard, so a dangling
         // fetch racing the next cycle's commit is benign for this dormant,
         // eventually-consistent cache. Still fired only after a successful

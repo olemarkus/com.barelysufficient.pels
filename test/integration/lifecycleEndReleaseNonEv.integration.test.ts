@@ -462,7 +462,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       // `target.observedValue === shedTemperature`, so the second cycle
       // (with observation now updated) skips. The intermediate cycle (with
       // observation still lagging) is gated by the pendingTargetCommands
-      // tracker via `isTargetCommandPending` inside `dispatchTargetCommand`.
+      // tracker via `getPendingTargetCommandDecision` inside `dispatchTargetCommand`.
       //
       // We use a harness flavor that does NOT mutate the snapshot on
       // `setCapability` to simulate the async lag.

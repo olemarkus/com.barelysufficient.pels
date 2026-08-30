@@ -106,7 +106,7 @@ If a UI surface needs the stable learned mean separately, it can read `objective
 
 The active-plan provenance carries two confidence values:
 
-- `confidence` — the raw per-sample CV-based stat from `objectiveProfileStats.resolveProfileConfidence`. Honest about per-sample noise. On thermal devices this sits at `low` effectively forever (stratification + ambient drift + draw history pushes CV above 0.75 regardless of sample count). Kept for logs and diagnostics.
+- `confidence` — the raw per-sample CV-based stat from `resolveProfileConfidence` (`lib/objectives/stats.ts`). Honest about per-sample noise. On thermal devices this sits at `low` effectively forever (stratification + ambient drift + draw history pushes CV above 0.75 regardless of sample count). Kept for logs and diagnostics.
 - `displayConfidence` — the band-aware aggregate driving the "Estimating" / "Refining" chip. Reflects whether the bands actually integrated for this resolution are well-supported.
 
 `resolveDisplayConfidence` aggregates per the rule:

@@ -808,7 +808,7 @@ export const PlanHero = ({
   // The one question the hero has to ask before it can render numbers: is there
   // a meter reading this cycle? The capacity guard holds `null` until its
   // meter's first sample, and again after an in-place meter swap
-  // (`resetLastTotalPower`). `uncontrolledKw` is the whole-home total minus the
+  // (`SuffixedTrackerPersistence.resetFreshness`). `uncontrolledKw` is the whole-home total minus the
   // managed side, so it is absent exactly when the total is — the pair is one
   // fact, checked once, and both checks are needed only because the compiler
   // cannot see that they move together.

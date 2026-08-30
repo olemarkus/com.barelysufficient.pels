@@ -76,8 +76,9 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   };
 }
 
-// `resolveBinaryCapabilityId` and `resolveCanSetBinaryControl` moved with
-// `getBinaryControlPlan` to `lib/device/deviceActionProjection.ts`.
+// `getBinaryControlPlan` moved to `lib/device/deviceActionProjection.ts`, where
+// `resolveCanSetBinaryControl` collapsed into `resolveCanSetControl` and
+// `resolveBinaryCapabilityId` gave way to the `hasBinaryAxis` shape check.
 //
 // `syncPendingBinaryCommands` moved to `lib/observer/pendingBinaryCommands.ts`
 // as part of PR #4 of the observer/transport split. Import from observer

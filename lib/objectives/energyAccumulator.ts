@@ -4,7 +4,7 @@
 // window at one power poisons `kwhPerUnit`. These helpers integrate each
 // sub-interval at its own left-edge power across the `rise_too_small` skips
 // that the baseline-preserving path used to discard. Lives beside
-// `objectiveProfiles.ts` to keep that file within the `max-lines` lint cap and
+// `profiles.ts` to keep that file within the `max-lines` lint cap and
 // to match the existing `objectiveProfile*` companion-file split.
 import type {
   DeviceObjectiveProfile,

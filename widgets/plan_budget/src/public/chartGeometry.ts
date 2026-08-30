@@ -11,7 +11,7 @@
 // it grows with the plot rather than being pinned to the viewBox bottom.
 //
 // Because the caller passes a height that preserves the container's true aspect
-// ratio (`measureChartHeight` scales measured px into the fixed 480 viewBox
+// ratio (`measureChart` in `widgetApp.ts` scales measured px into the fixed 480 viewBox
 // width), the SVG can use `preserveAspectRatio="none"` and still map the viewBox
 // 1:1 onto the tile WITHOUT distortion: the x and y scale factors are equal, so
 // `<circle>` dots stay round. See `chart.ts` `applyViewBox`.

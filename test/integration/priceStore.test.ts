@@ -101,7 +101,7 @@ describe('readStore', () => {
     expect(result!.priceUnit).toBe('NOK/kWh');
     expect(result!.lastFetched).toBe('2026-05-10T00:00:00.000Z');
     // The migration must persist V2 to settings so subsequent direct reads
-    // (planStatusWriter.getCombinedPrices, settingsUiApi, widget) see V2 too.
+    // (settingsUiApi, widget) see V2 too.
     expect(homey.settings.set).toHaveBeenCalledTimes(1);
     const written = homey.settings.set.mock.calls[0][1] as { version: number };
     expect(written.version).toBe(2);

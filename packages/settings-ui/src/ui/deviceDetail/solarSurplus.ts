@@ -289,7 +289,7 @@ const initDeviceDetailDumpLoadHandlers = (params: {
     const controlState = resolveDeviceDetailControlState(device, deviceId);
     // Shape-only (not the solar-offer gate): a user opting OUT while the solar
     // device has disappeared must still be able to save — the escape hatch would
-    // be dead otherwise (isDumpLoadCandidateDevice would reject the opt-out).
+    // be dead otherwise (`resolveSurplusControlAvailable` would reject the opt-out).
     if (!isDumpLoadDeviceShape(device, controlState)) return;
 
     const surplusWilling = deviceDetailDumpLoadOpt.selected;

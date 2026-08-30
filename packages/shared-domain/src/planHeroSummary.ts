@@ -444,8 +444,8 @@ export const buildDecisionSentence = (
 // Surfaces the cheapest upcoming hour beneath the energy section so the user
 // can anticipate a good moment for high-load appliances. Returns `null` when
 // no upcoming price data exists. Staleness gating is the caller's
-// responsibility — `PlanHero` compares `latestFetchedAtMs` against its own
-// freshness window before invoking this helper. The caller also decides
+// responsibility — `PlanHero` compares the latest price entry's `startsAtMs`
+// against its own 6 h staleness window before invoking this helper. The caller also decides
 // further suppression rules (e.g. when the chip rail already shows a
 // `Price low` chip — avoid doubling up).
 //
