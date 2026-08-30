@@ -43,11 +43,18 @@ import {
   type ReportSteppedLoadActualStepResult,
   type SteppedLoadDesiredRuntimeState,
 } from './steppedCommandState';
-import type { SteppedLoadReportedRuntimeState } from '../observer/steppedReportedStep';
+import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { DeviceControlProfiles, SteppedLoadCommandStatus } from '../../packages/contracts/src/types';
 
 export class SteppedCommandStore {
   private readonly state: DeviceControlRuntimeState = createDeviceControlRuntimeState();
+
+  /**
+   * The observer's record of what the device attested. Injected, not owned:
+   * reconciling a command against a report is this layer's job, but the report
+   * itself belongs to `lib/observer/steppedReportedStep.ts`.
+   */
+  constructor(private readonly reportedStore: SteppedReportedStepStore) {}
 
   // --- Commanded axis: reads -------------------------------------------------
 
@@ -106,13 +113,6 @@ export class SteppedCommandStore {
     return false;
   }
 
-  // --- Reported axis: reads --------------------------------------------------
-
-  /** The raw last Flow-reported step, before decoration resolves it. */
-  getReported(deviceId: string): SteppedLoadReportedRuntimeState | undefined {
-    return this.state.steppedLoadReportedByDeviceId.get(deviceId);
-  }
-
   // --- Writes ----------------------------------------------------------------
 
   markDesiredStepIssued(params: Omit<MarkSteppedLoadDesiredStepIssuedParams, 'unacknowledged'>): void {
@@ -136,12 +136,11 @@ export class SteppedCommandStore {
     reportedAtMs?: number;
     planningPowerW?: number;
   }): ReportSteppedLoadActualStepResult {
-    return reportSteppedLoadActualStep({ runtimeState: this.state, ...params });
-  }
-
-  /** Drop the raw Flow report — the device's native wiring is authoritative. */
-  clearReported(deviceId: string): void {
-    this.state.steppedLoadReportedByDeviceId.delete(deviceId);
+    return reportSteppedLoadActualStep({
+      runtimeState: this.state,
+      reportedStore: this.reportedStore,
+      ...params,
+    });
   }
 
   /**
@@ -189,4 +188,6 @@ export class SteppedCommandStore {
   }
 }
 
-export const createSteppedCommandStore = (): SteppedCommandStore => new SteppedCommandStore();
+export const createSteppedCommandStore = (
+  reportedStore: SteppedReportedStepStore,
+): SteppedCommandStore => new SteppedCommandStore(reportedStore);

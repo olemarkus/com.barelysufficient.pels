@@ -29,6 +29,7 @@ import {
   type ReportSteppedLoadActualStepResult,
 } from '../lib/executor/steppedCommandState';
 import type { SteppedCommandStore } from '../lib/executor/steppedCommandStore';
+import type { SteppedReportedStepStore } from '../lib/observer/steppedReportedStep';
 import {
   emitSteppedFeedbackLog,
   isValidSteppedLoadFeedbackProfile,
@@ -138,11 +139,12 @@ export const decorateSnapshotWithDeviceControl = (params: {
   snapshot: TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe;
   profiles: DeviceControlProfiles;
   store: SteppedCommandStore;
+  reportedStore: SteppedReportedStepStore;
   temperatureControlDisabled?: boolean;
   nowMs?: number;
 }): DecoratedDeviceSnapshot => {
   const {
-    snapshot, profiles, store, temperatureControlDisabled = false, nowMs = Date.now(),
+    snapshot, profiles, store, reportedStore, temperatureControlDisabled = false, nowMs = Date.now(),
   } = params;
   // The denial is a stamp, not a demotion. The step cluster below is resolved
   // exactly as it is for any other device — the flag says nothing about a
@@ -174,12 +176,12 @@ export const decorateSnapshotWithDeviceControl = (params: {
   }
 
   store.pruneStale(nowMs);
-  const reported = store.getReported(snapshot.id);
+  const reported = reportedStore.get(snapshot.id);
   const nativeSteppedControlEnabled = nativeProfile !== null;
   const snapshotReportedStepId = getSteppedLoadStep(profile, snapshot.reportedStepId)?.id;
   const nativeReportedStepId = nativeSteppedControlEnabled ? snapshotReportedStepId : undefined;
   if (nativeSteppedControlEnabled && reported) {
-    store.clearReported(snapshot.id);
+    reportedStore.clear(snapshot.id);
   }
   const confirmedReportedStepId = nativeReportedStepId ?? snapshotReportedStepId;
   const observedStepId = nativeReportedStepId ?? reported?.stepId ?? snapshotReportedStepId;
@@ -253,9 +255,12 @@ export const decorateSnapshotWithDeviceControl = (params: {
 
 export class AppDeviceControlHelpers {
   constructor(private readonly deps: {
-    // The commanded axis is executor state; this class only reads and drives it
-    // (`lib/executor/steppedCommandStore.ts`, `setup/AGENTS.md` § "No state").
+    // Two axes, two owners: what PELS commanded
+    // (`lib/executor/steppedCommandStore.ts`) and what the device attested
+    // (`lib/observer/steppedReportedStep.ts`). This class reads and drives
+    // both; it holds neither (`setup/AGENTS.md` § "No state").
     store: SteppedCommandStore;
+    reportedStore: SteppedReportedStepStore;
     getProfiles: () => DeviceControlProfiles;
     getTargetPowerConfig?: (deviceId: string) => TargetPowerSteppedLoadConfig | undefined;
     updateTargetPowerReachability?: (deviceId: string, reachability: TargetPowerReachabilityState) => boolean;
@@ -325,7 +330,7 @@ export class AppDeviceControlHelpers {
       reportedStepId: profile
         ? getSteppedLoadStep(
           profile,
-          this.deps.store.getReported(deviceId)?.stepId,
+          this.deps.reportedStore.get(deviceId)?.stepId,
         )?.id
         : undefined,
       // Whether a step command is in flight. Read from the commanded axis, not
@@ -354,6 +359,7 @@ export class AppDeviceControlHelpers {
       snapshot: device,
       profiles,
       store: this.deps.store,
+      reportedStore: this.deps.reportedStore,
       temperatureControlDisabled: this.deps.isTemperatureControlDisabled?.(device.id) === true,
       nowMs,
     }));
@@ -431,7 +437,7 @@ export class AppDeviceControlHelpers {
     // only carry `deviceName` when actually known (never an id-derived placeholder).
     const knownDeviceName = snapshot ? snapshot.name.trim() : undefined;
     if (hasNativeSteppedLoadFeedbackAuthority(snapshot)) {
-      this.deps.store.clearReported(deviceId);
+      this.deps.reportedStore.clear(deviceId);
       this.deps.debugStructured({
         event: 'stepped_load_feedback_ignored', reason: 'native_wiring_enabled', deviceId, deviceName: knownDeviceName,
       });
@@ -452,7 +458,7 @@ export class AppDeviceControlHelpers {
       });
       return 'invalid';
     }
-    const previousReportedStepId = this.deps.store.getReported(deviceId)?.stepId;
+    const previousReportedStepId = this.deps.reportedStore.get(deviceId)?.stepId;
     const previousDesired = this.deps.store.getDesired(deviceId);
     const previousDesiredStepId = resolvePreviousDesiredStepId(profile, previousDesired);
     const latestPlanDesiredStepId = resolveLatestPlanDesiredStepId({

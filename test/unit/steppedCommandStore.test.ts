@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSteppedCommandStore } from '../../lib/executor/steppedCommandStore';
+import { steppedStoresForTest } from '../helpers/steppedStores';
 import { STEPPED_LOAD_COMMAND_STALE_MS } from '../../lib/executor/steppedCommandState';
 
 /**
@@ -10,7 +10,7 @@ import { STEPPED_LOAD_COMMAND_STALE_MS } from '../../lib/executor/steppedCommand
  */
 describe('SteppedCommandStore', () => {
   it('tracks an issued command as pending and hands it back', () => {
-    const store = createSteppedCommandStore();
+    const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
 
     expect(store.getDesired('dev-1')).toMatchObject({
@@ -22,7 +22,7 @@ describe('SteppedCommandStore', () => {
   });
 
   it('goes stale only once the pending window has elapsed', () => {
-    const store = createSteppedCommandStore();
+    const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
 
     expect(store.pruneStale(1_000 + STEPPED_LOAD_COMMAND_STALE_MS - 1)).toBe(false);
@@ -33,7 +33,7 @@ describe('SteppedCommandStore', () => {
   });
 
   it('clears the whole command session when the ladder changed under it', () => {
-    const store = createSteppedCommandStore();
+    const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({
       deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: 1_000, confirmationPolicy: 'assume_applied',
     });
@@ -48,7 +48,7 @@ describe('SteppedCommandStore', () => {
   });
 
   it('reports a pending target-power probe only while one is in flight', () => {
-    const store = createSteppedCommandStore();
+    const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
     // A command with no admitted rung above the confirmed ceiling is not a probe.
     expect(store.hasPendingTargetPowerProbe()).toBe(false);
@@ -68,7 +68,7 @@ describe('SteppedCommandStore', () => {
   });
 
   it('drops a stale initialization latch when the ladder changed under it', () => {
-    const store = createSteppedCommandStore();
+    const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({
       deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: 1_000, confirmationPolicy: 'assume_applied',
     });
@@ -82,7 +82,7 @@ describe('SteppedCommandStore', () => {
   });
 
   it('drops a command session when the device is observed turning off', () => {
-    const store = createSteppedCommandStore();
+    const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
     store.expireConfirmedDesiredOnBinaryOff('dev-1', true);
     expect(store.getDesired('dev-1')).toBeDefined();

@@ -63,3 +63,54 @@ export const hasSteppedLoadReportChanged = (
   if (!previous) return true;
   return previous.stepId !== next.stepId || previous.planningPowerW !== next.planningPowerW;
 };
+
+/**
+ * Observer-owned store of the last Flow-reported rung per device.
+ *
+ * The map used to live in the executor's `DeviceControlRuntimeState`, beside
+ * the commanded axis. That put an OBSERVATION — what the device attested — in a
+ * struct whose other members are all "what PELS asked for", and left the
+ * executor answering, on the observer's behalf, whether a device had ever
+ * reported. The two axes stay apart because they answer different questions,
+ * and the layer that owns each answer is the layer that owns the question
+ * (`lib/executor/AGENTS.md`; the module docblock above).
+ *
+ * `record` returns whether the report says anything new, because "is this news"
+ * is a question about observations and is answered here — the executor reacts
+ * to the verdict rather than recomputing it.
+ */
+export class SteppedReportedStepStore {
+  private readonly byDeviceId = new Map<string, SteppedLoadReportedRuntimeState>();
+
+  /** The device's last admitted Flow report, or `undefined` if it never reported. */
+  get(deviceId: string): SteppedLoadReportedRuntimeState | undefined {
+    return this.byDeviceId.get(deviceId);
+  }
+
+  /**
+   * Admit a report and say whether it is news. The caller has already checked
+   * that `stepId` names a rung on the device's ladder — that is a question
+   * about the configured profile, which this layer does not hold.
+   */
+  record(params: {
+    deviceId: string;
+    stepId: string;
+    reportedAtMs: number;
+    planningPowerW?: number;
+  }): 'changed' | 'unchanged' {
+    const { deviceId, ...report } = params;
+    const previous = this.byDeviceId.get(deviceId);
+    const next = buildSteppedLoadReportedState(report);
+    this.byDeviceId.set(deviceId, next);
+    return hasSteppedLoadReportChanged(previous, next) ? 'changed' : 'unchanged';
+  }
+
+  /** Forget the report: the device's native wiring is authoritative instead. */
+  clear(deviceId: string): void {
+    this.byDeviceId.delete(deviceId);
+  }
+}
+
+export const createSteppedReportedStepStore = (): SteppedReportedStepStore => (
+  new SteppedReportedStepStore()
+);
