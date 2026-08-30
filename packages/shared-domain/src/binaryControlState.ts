@@ -2,20 +2,26 @@
  * Canonical readings of a device's observed binary on/off state, so the
  * planner and executor never re-decide what an absent `binaryControl` means.
  *
- * `binaryControl` is `{ on: boolean } | undefined`; absence means "no trusted
- * binary state" (a non-binary device, or a binary device before its first
- * observation). The domain rule — documented on `ObservedDeviceState` — is that
- * absence is treated as ON ("may draw, stays sheddable"). These readers encode
- * that rule once, so call sites can't mishandle the `undefined` — and so the
- * planner/executor never touch `binaryControl.on` directly (enforced by the
- * `check-binary-vocab` guard). The two predicates collapse absence to the
+ * `binaryControl` is `{ on: boolean } | undefined`, and absence is STRUCTURAL:
+ * the contract is "present IFF the device has binary control"
+ * (`ObservedDeviceState`, `packages/contracts/src/types.ts`). It says the device
+ * has no on/off axis. It is not an unreadable axis, not a not-yet-observed one,
+ * and `on` is never `undefined` when `binaryControl` is there — so there is no
+ * third state to model, and a consumer that widens this shape to admit one ends
+ * up guarding a value the producer cannot emit.
+ *
+ * The domain rule for that structural absence is that it reads as ON ("may
+ * draw, stays sheddable"). These readers encode it once, so call sites can't
+ * mishandle the `undefined` — and so the planner/executor never touch
+ * `binaryControl.on` directly (enforced by the `check-binary-vocab` guard).
+ * `isBinaryOnOrUnknown` and `isBinaryObservedOff` collapse absence to the
  * default; callers that must tell "non-binary" apart from on/off narrow through
  * `isBinaryControlled` and then read a guaranteed `boolean` via `getBinaryOn` —
  * no sentinel (`null`/`undefined`) re-encodes the non-binary case as a value.
  *
  * Browser-safe: a structural shape, no Homey SDK types.
  */
-type BinaryControlObserved = { binaryControl?: { on: boolean } };
+export type BinaryControlObserved = { binaryControl?: { on: boolean } };
 
 /** A device narrowed to one that HAS observed binary control. */
 type BinaryControlled = { binaryControl: { on: boolean } };
@@ -36,6 +42,21 @@ export const isBinaryOnOrUnknown = (device: BinaryControlObserved | null | undef
  */
 export const isBinaryObservedOff = (device: BinaryControlObserved | null | undefined): boolean => (
   device?.binaryControl?.on === false
+);
+
+/**
+ * True only when the binary control is CONFIRMED observed-on
+ * (`binaryControl.on === true`). Absent binary state is NOT on — the third
+ * reading, and the mirror of `isBinaryObservedOff`.
+ *
+ * Distinct from `isBinaryOnOrUnknown`, and the difference is directional: use
+ * that one to decide whether a device MAY DRAW (absence must not fabricate an
+ * off), and this one to decide whether the device WAS TURNED ON (absence must
+ * not fabricate consent). The external-off hold needs both — it starts on an
+ * observed on→off transition and releases only on affirmative on evidence.
+ */
+export const isBinaryObservedOn = (device: BinaryControlObserved | null | undefined): boolean => (
+  device?.binaryControl?.on === true
 );
 
 /**

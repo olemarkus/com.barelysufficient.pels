@@ -42,6 +42,10 @@ import type { ExternalOffHoldPolicy } from '../lib/observer/externalOffHold';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import { isEvSessionInactive } from '../packages/shared-domain/src/evPlugState';
 import { isEvObserved } from '../packages/shared-domain/src/evObservedState';
+import {
+  isBinaryObservedOn,
+  type BinaryControlObserved,
+} from '../packages/shared-domain/src/binaryControlState';
 import type {
   EvObservedProbe,
   TargetDeviceSnapshot,
@@ -86,7 +90,7 @@ export function toExternalOffHoldObservedDevice(
   return {
     id: device.id,
     binaryObservationCapabilityId: device.binaryControlObservation?.capabilityId,
-    binaryAxisOn: device.binaryControl?.on === true,
+    binaryAxisOn: isBinaryObservedOn(device),
     binaryAxisObservedAtMs: device.binaryControlObservation?.observedAtMs,
     // The device's own session question, asked directly of the decided
     // plug-state — this seam wants only that bit, not a whole commandability
@@ -251,22 +255,27 @@ export function syncExternalOffHoldForDevice(params: {
 /**
  * Affirmative ON evidence for RELEASING a hold.
  *
- * Deliberately not `resolveCurrentOn`, which answers the weaker "not known to be
- * off" and therefore reads absent binary state as ON. A partial device update
- * that transiently drops the capability would then release a hold nobody
- * touched, and PELS would resume the device once the capability returned.
- * Starting a hold may lean on inference; ending one may not.
+ * Deliberately not `isBinaryOnOrUnknown`, which answers the weaker "not known to
+ * be off" and so reads absent binary state as ON. Starting a hold may lean on
+ * inference; ending one may not — absence must not fabricate consent, so this
+ * asks `isBinaryObservedOn`.
+ *
+ * The parameter used to redeclare the snapshot shape locally as
+ * `binaryControl?: { on?: boolean }`, one field weaker than the contract
+ * (`packages/contracts/src/types.ts`) and than the shared readers, and then
+ * guarded the `{ on: undefined }` the producer cannot emit. A consumer that
+ * models a state its supplier cannot produce makes its own guard look
+ * necessary; take the canonical shape and the canonical reader instead.
  */
 export const isAffirmativelyOn = (
-  device: {
-    binaryControl?: { on?: boolean };
+  device: (BinaryControlObserved & {
     evCharging?: boolean;
     evChargingState?: unknown;
-  } | undefined,
+  }) | undefined,
 ): boolean => (
   device?.evChargingState !== undefined
     ? device.evCharging === true
-    : device?.binaryControl?.on === true
+    : isBinaryObservedOn(device)
 );
 
 export function releaseExternalOffHoldsForObservedOn(params: {
