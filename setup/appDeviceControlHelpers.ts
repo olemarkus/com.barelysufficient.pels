@@ -4,6 +4,7 @@ import {
   normalizeDeviceControlProfiles, resolveSteppedLoadPlanningPowerKw,
 } from '../lib/utils/deviceControlProfiles';
 import { resolveCurrentOn } from '../lib/observer/observedState';
+import { isBinaryOnOrUnknown } from '../packages/shared-domain/src/binaryControlState';
 import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import type { DevicePlan } from '../lib/plan/planTypes';
@@ -201,7 +202,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
   const stepFields = buildSteppedLoadSnapshotStepFields({
     profile,
     nowMs,
-    binaryOn: snapshot.binaryControl?.on ?? true,
+    binaryOn: isBinaryOnOrUnknown(snapshot),
     nativeSteppedControlEnabled,
     nativeReportedStep: { stepId: nativeReportedStepId, observedAtMs: snapshot.lastUpdated },
     flowReportedStep: {

@@ -37,7 +37,7 @@ const require = createRequire(import.meta.url);
 const ts = require('typescript');
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const consumerDirs = ['lib/plan', 'lib/executor'].map((d) => path.join(rootDir, d));
+const consumerDirs = ['lib/plan', 'lib/executor', 'setup'].map((d) => path.join(rootDir, d));
 
 // True when `node` is a reference to a `binaryControl` member — either
 // `x.binaryControl` (property access) or a bare `binaryControl` identifier
@@ -119,7 +119,7 @@ for (const file of files) {
 if (offenders.length > 0) {
   process.stderr.write(
     'Binary-control containment violation (check-binary-vocab):\n'
-    + 'lib/plan/** and lib/executor/** must not read `binaryControl.on` directly.\n'
+    + 'lib/plan/**, lib/executor/** and setup/** must not read `binaryControl.on` directly.\n'
     + 'Use the shared-domain readers (isBinaryOnOrUnknown, isBinaryObservedOff, or\n'
     + 'isBinaryControlled + getBinaryOn) so absence-handling stays in one place.\n'
     + 'Forwarding the struct (`binaryControl: x.binaryControl`) is fine; reading\n'
@@ -132,4 +132,4 @@ if (offenders.length > 0) {
   process.exit(1);
 }
 
-process.stdout.write(`binary:vocab OK — no raw binaryControl.on reads in plan/executor (${files.length} files scanned)\n`);
+process.stdout.write(`binary:vocab OK — no raw binaryControl.on reads in plan/executor/setup (${files.length} files scanned)\n`);
