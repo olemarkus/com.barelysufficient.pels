@@ -1,6 +1,6 @@
 import { mockHomeyInstance } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { buildFlowDaySlots } from '../../lib/price/flowPriceUtils';
+import { buildFlowDaySlots } from '../../packages/shared-domain/src/price/flowPriceUtils';
 
 type PriceEntry = { startsAt: string; totalPrice: number };
 

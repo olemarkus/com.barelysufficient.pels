@@ -1,17 +1,19 @@
-// TWIN FILE — this module exists twice, identical apart from the import
-// specifier: `lib/price/flowPriceUtils.ts` (runtime) and
-// `packages/shared-domain/src/price/flowPriceUtils.ts` (browser-safe, consumed
-// by the settings UI). Consolidating would violate `.dependency-cruiser.cjs`'s
-// `no-settings-ui-to-runtime` rule (error), which forbids settings-ui → `lib/**`.
-// The copies are kept in step BY HAND — no sync script, no CI check — so apply
-// every change to both. An export with no importer in one copy carries
-// `@public` there so knip does not report it; do not delete it from one side.
+// The one home for flow price-payload parsing, imported by both the runtime
+// price service (`lib/price/**`) and the settings UI. It lives here because
+// shared-domain is browser-safe AND ships inside the app bundle: the runtime
+// entry points inline `packages/` (scripts/bundle-homey-build.mjs), and
+// scripts/sanitize-homey-build.mjs prunes only `packages/contracts`.
+//
+// This module used to exist twice, hand-synced, on the grounds that merging it
+// would breach `no-settings-ui-to-runtime`. That rule forbids settings-ui →
+// `lib/**`; it says nothing about `lib/**` → shared-domain, which is the
+// direction that merges them and which ~165 runtime files already take.
 import {
   buildLocalDayBuckets,
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
   getZonedParts,
-} from '../utils/dateUtils.ts';
+} from '../utils/dateUtils';
 
 export type FlowHourlyPrice = {
   startsAt: string;
@@ -163,7 +165,6 @@ export const getExpectedFlowHours = (dateKey: string, timeZone: string): number[
   }, []);
 };
 
-/** @public — no importer in this copy; see the twin note at the top of the file. */
 export const parseFlowPricePayloadInput = (
   raw: unknown,
   context: { dateKey: string; timeZone: string },
@@ -242,7 +243,6 @@ export const getMissingFlowHours = (
     .filter((hour) => !Number.isFinite(pricesByHour[String(hour)]))
 );
 
-/** @public — no importer in this copy; see the twin note at the top of the file. */
 export const buildFlowEntries = (payload: FlowPricePayload, timeZone: string): FlowHourlyPrice[] => {
   const daySlots = buildFlowDaySlots(payload.dateKey, timeZone);
   const exactSlotPrices = new Map<string, number>(
@@ -251,6 +251,7 @@ export const buildFlowEntries = (payload: FlowPricePayload, timeZone: string): F
 
   return daySlots.flatMap((slot) => {
     const price = exactSlotPrices.get(slot.startsAt) ?? payload.pricesByHour[String(slot.hour)];
+    // An hour the payload never carried a price for is simply not an entry.
     if (price === undefined || !Number.isFinite(price)) return [];
     return [{
       startsAt: slot.startsAt,

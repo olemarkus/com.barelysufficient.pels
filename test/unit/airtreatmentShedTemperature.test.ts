@@ -1,7 +1,7 @@
 import {
   computeDefaultAirtreatmentShedTemperature,
   normalizeShedTemperature,
-} from '../../lib/utils/airtreatmentShedTemperature';
+} from '../../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 
 describe('airtreatment shed temperature utils', () => {
   describe('normalizeShedTemperature', () => {

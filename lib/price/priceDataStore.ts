@@ -1,5 +1,5 @@
 import type { SpotPriceEntry } from './spotPriceFetch';
-import type { FlowPricePayload } from './flowPriceUtils';
+import type { FlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import type { CombinedPricesV2 } from './priceTypes';
 
 /**

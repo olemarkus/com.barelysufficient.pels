@@ -3,7 +3,7 @@ import { HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW } from '../utils/settingsKeys
 import { formatHomeyEnergyError, type HomeyEnergyApi } from '../utils/homeyEnergy';
 import { normalizeError } from '../utils/errorUtils';
 import { fetchHomeyEnergyCurrency, fetchHomeyEnergyPricesForDate } from './homeyEnergyPriceFetch';
-import { getFlowPricePayload, type FlowPricePayload } from './flowPriceUtils';
+import { getFlowPricePayload, type FlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import { getLogger, type StructuredDebugEmitter } from '../logging/logger';
 
 const priceLogger = getLogger('price');

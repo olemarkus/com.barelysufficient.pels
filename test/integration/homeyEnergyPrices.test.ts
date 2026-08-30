@@ -3,7 +3,7 @@ import {
   fetchHomeyEnergyPricesForDate,
   normalizeHomeyEnergyPrices,
 } from '../../lib/price/homeyEnergyPriceFetch';
-import { buildFlowDaySlots } from '../../lib/price/flowPriceUtils';
+import { buildFlowDaySlots } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import {
   isHomeyEnergyApi,
   resolveCurrencyLabel,
