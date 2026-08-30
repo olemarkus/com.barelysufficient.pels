@@ -19,7 +19,11 @@ import {
   recordPvSample,
   type PvGenerationHistory,
 } from '../../packages/shared-domain/src/solar/pvGenerationHistory';
-import { fitPvGain, type PvGainFit, type PvGainTrainingPoint } from '../../packages/shared-domain/src/solar/pvGain';
+import {
+  fitPvGain,
+  type LearnedPvGain,
+  type PvGainTrainingPoint,
+} from '../../packages/shared-domain/src/solar/pvGain';
 import { forecastPvKwh } from '../../packages/shared-domain/src/solar/pvForecast';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 
@@ -30,12 +34,24 @@ const DEFAULT_RETENTION_MS = 90 * 24 * HOUR_MS;
 const FORWARD_FORECAST_HOURS = 24;
 
 /**
+ * One hour's shortwave-irradiance read. `absent` — the source holds no value for
+ * that hour — is a named member rather than an absent number: a missing sample
+ * is a state of the lookup, and no consumer may read it as 0 W/m² (which would
+ * make a bright hour look dark, or a forecast hour look like measured darkness).
+ * The `reported` arm carries a FINITE, NON-NEGATIVE W/m²; the provider resolves
+ * that at its own boundary and consumers trust it.
+ */
+export type PvIrradianceRead =
+  | { kind: 'reported'; irradianceWm2: number }
+  | { kind: 'absent' };
+
+/**
  * Per-hour shortwave irradiance (W/m²) for a UTC hour-start. Serves both the
  * recorded nowcast (irradiance at the time generation occurred, for training) and
- * the forward forecast. `undefined` when the source has no value for that hour.
+ * the forward forecast.
  */
 export type PvIrradianceProvider = {
-  getIrradiance: (hourStartMs: number) => number | undefined;
+  getIrradiance: (hourStartMs: number) => PvIrradianceRead;
 };
 
 export type PvForecastServiceState = {
@@ -124,15 +140,21 @@ const mergeRecoveredHistory = (
   };
 };
 
+// The gain memo. Nothing memoised yet (or an invalidation since) is a state of
+// the MEMO — `stale` — not a missing gain: the gain's own `learning` member
+// already means "no fit yet", and one type may not carry both meanings.
+type PvGainMemo =
+  | { kind: 'stale' }
+  | { kind: 'fresh'; gain: LearnedPvGain };
+
 export class PvForecastService {
   private history: PvGenerationHistory;
   private irradianceByHour: Record<string, number>;
   // Memoised gain: the fit walks the whole recorded window, so it is computed at
-  // most once per data change rather than on every forecast call. `undefined` =
-  // stale (recompute on next read); `null` = fit but still learning. Only data
+  // most once per data change rather than on every forecast call. Only data
   // (history + recorded irradiance) feeds the fit, so a sample/prune invalidation
   // is sufficient — there is no location to key on.
-  private cachedFit: PvGainFit | null | undefined;
+  private cachedFit: PvGainMemo = { kind: 'stale' };
   private readonly irradiance: PvIrradianceProvider;
 
   constructor(deps: PvForecastServiceDeps) {
@@ -146,11 +168,11 @@ export class PvForecastService {
    *  positive) used as zero-export-clamp evidence; omitted when unknown. */
   recordSample(generationW: number, atMs: number, netW?: number): void {
     this.history = recordPvSample(this.history, generationW, atMs, { netW });
-    const irradianceWm2 = this.irradiance.getIrradiance(hourStartMs(atMs));
-    if (isFiniteNumber(irradianceWm2) && irradianceWm2 >= 0) {
-      this.irradianceByHour[String(hourStartMs(atMs))] = irradianceWm2;
+    const read = this.irradiance.getIrradiance(hourStartMs(atMs));
+    if (read.kind === 'reported') {
+      this.irradianceByHour[String(hourStartMs(atMs))] = read.irradianceWm2;
     }
-    this.cachedFit = undefined; // new data ⇒ re-fit on next read
+    this.cachedFit = { kind: 'stale' }; // new data ⇒ re-fit on next read
   }
 
   /** Drop recorded generation + irradiance older than the retention window. */
@@ -162,7 +184,7 @@ export class PvForecastService {
       if (Number(key) >= cutoff) irradianceByHour[key] = value;
     }
     this.irradianceByHour = irradianceByHour;
-    this.cachedFit = undefined;
+    this.cachedFit = { kind: 'stale' };
   }
 
   /** The persistable state (history + recorded irradiance). */
@@ -182,20 +204,21 @@ export class PvForecastService {
   mergeRecoveredState(recovered: PvForecastServiceState): void {
     this.history = mergeRecoveredHistory(recovered.history, this.history);
     this.irradianceByHour = { ...recovered.irradianceByHour, ...this.irradianceByHour };
-    this.cachedFit = undefined; // recovered data ⇒ re-fit on next read
+    this.cachedFit = { kind: 'stale' }; // recovered data ⇒ re-fit on next read
   }
 
   /**
    * Fit the device gain from complete recorded hours that also carry an irradiance
-   * reading, or `null` while still learning (too few usable hours).
+   * reading, or the gain's `learning` member (too few usable hours).
    */
-  getFit(): PvGainFit | null {
-    if (this.cachedFit !== undefined) return this.cachedFit;
-    this.cachedFit = this.computeFit();
-    return this.cachedFit;
+  getFit(): LearnedPvGain {
+    if (this.cachedFit.kind === 'fresh') return this.cachedFit.gain;
+    const gain = this.computeFit();
+    this.cachedFit = { kind: 'fresh', gain };
+    return gain;
   }
 
-  private computeFit(): PvGainFit | null {
+  private computeFit(): LearnedPvGain {
     const points: PvGainTrainingPoint[] = [];
     for (const hour of pvTrainingHours(this.history)) {
       const irradianceWm2 = this.irradianceByHour[String(hour.hourStartMs)];
@@ -234,13 +257,16 @@ export class PvForecastService {
    * guessed.
    */
   forecast(hourStarts: readonly number[]): PvForecastHour[] {
-    const fit = this.getFit();
-    if (!fit) return [];
+    const learned = this.getFit();
+    if (learned.kind === 'learning') return [];
     const result: PvForecastHour[] = [];
     for (const hourStart of hourStarts) {
-      const irradianceWm2 = this.irradiance.getIrradiance(hourStart);
-      if (!isFiniteNumber(irradianceWm2)) continue;
-      result.push({ hourStartMs: hourStart, generationKwh: forecastPvKwh(fit.gainKwhPerWm2, irradianceWm2) });
+      const read = this.irradiance.getIrradiance(hourStart);
+      if (read.kind === 'absent') continue;
+      result.push({
+        hourStartMs: hourStart,
+        generationKwh: forecastPvKwh(learned.fit.gainKwhPerWm2, read.irradianceWm2),
+      });
     }
     return result;
   }

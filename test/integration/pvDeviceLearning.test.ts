@@ -20,6 +20,7 @@ import {
   PvForecastService,
   type PvIrradianceProvider,
 } from '../../lib/solar/pvForecastService';
+import type { PvGainFit } from '../../packages/shared-domain/src/solar/pvGain';
 
 const HOUR_MS = 3_600_000;
 const TRUE_GAIN = 0.00045; // kWh per (W/m²·h) — the device the service must learn
@@ -30,7 +31,17 @@ const irradianceAt = (hourStartMs: number): number => {
   const x = (hourOfDay - 12) / 6; // 0 at noon, ±1 at 06/18
   return Math.max(0, 1 - x * x) * 900; // 0..900 W/m²
 };
-const mockIrradiance: PvIrradianceProvider = { getIrradiance: (hourStartMs) => irradianceAt(hourStartMs) };
+const mockIrradiance: PvIrradianceProvider = {
+  getIrradiance: (hourStartMs) => ({ kind: 'reported', irradianceWm2: irradianceAt(hourStartMs) }),
+};
+
+// The fitted arm, or a failed test — the assertions are about the gain, not
+// about discriminating the answer.
+const fittedGain = (service: PvForecastService): PvGainFit => {
+  const learned = service.getFit();
+  if (learned.kind !== 'fitted') throw new Error('expected a fitted gain, got: learning');
+  return learned.fit;
+};
 
 const trueGenerationKwh = (hourStartMs: number): number => TRUE_GAIN * irradianceAt(hourStartMs);
 // Constant power over the hour whose energy equals the hour's true generation.
@@ -58,11 +69,10 @@ describe('Learning a PV device (irradiance mocked)', () => {
     const days = 18; // ~11 usable daylight hours/day ⇒ >168 hours ⇒ 'high' tier
     recordDays(service, startMs, days);
 
-    const fit = service.getFit();
-    expect(fit).not.toBeNull();
-    expect(fit!.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 7);
-    expect(fit!.sampleCount).toBeGreaterThanOrEqual(168);
-    expect(fit!.confidence).toBe('high');
+    const fit = fittedGain(service);
+    expect(fit.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 7);
+    expect(fit.sampleCount).toBeGreaterThanOrEqual(168);
+    expect(fit.confidence).toBe('high');
 
     const nextDayStart = startMs + days * 24 * HOUR_MS;
     const forwardHours = Array.from({ length: 24 }, (_, h) => nextDayStart + h * HOUR_MS);
@@ -90,18 +100,20 @@ describe('Learning a PV device (irradiance mocked)', () => {
       initialState: emptyPvForecastServiceState(),
     });
     recordDays(learned, startMs, days);
-    expect(learned.getFit()).not.toBeNull();
+    expect(learned.getFit().kind).toBe('fitted');
     expect(learned.hasForwardForecast(forwardMs)).toBe(true);
 
     // Same learned state, but the provider has no forward irradiance.
     const blindProvider: PvIrradianceProvider = {
-      getIrradiance: (hourStartMs) => (hourStartMs >= forwardMs ? undefined : irradianceAt(hourStartMs)),
+      getIrradiance: (hourStartMs) => (hourStartMs >= forwardMs
+        ? { kind: 'absent' }
+        : { kind: 'reported', irradianceWm2: irradianceAt(hourStartMs) }),
     };
     const blind = new PvForecastService({
       irradiance: blindProvider,
       initialState: learned.getState(),
     });
-    expect(blind.getFit()).not.toBeNull();
+    expect(blind.getFit().kind).toBe('fitted');
     expect(blind.forecast([forwardMs])).toEqual([]);
     expect(blind.hasForwardForecast(forwardMs)).toBe(false);
   });
@@ -121,7 +133,7 @@ describe('Learning a PV device (irradiance mocked)', () => {
     });
     const startMs = Date.UTC(2026, 5, 1, 0);
     recordDays(service, startMs, 1); // a single day — below the learning threshold
-    expect(service.getFit()).toBeNull();
+    expect(service.getFit()).toEqual({ kind: 'learning' });
     expect(service.forecast([startMs + 100 * HOUR_MS])).toEqual([]);
   });
 
@@ -137,11 +149,10 @@ describe('Learning a PV device (irradiance mocked)', () => {
       initialState: emptyPvForecastServiceState(),
     });
     recordDays(importHome, startMs, days, { netW: 800 });
-    const importFit = importHome.getFit();
-    expect(importFit).not.toBeNull();
-    expect(importFit!.trainingMode).toBe('unclamped_median');
-    expect(importFit!.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 7);
-    expect(importFit!.confidence).toBe('high');
+    const importFit = fittedGain(importHome);
+    expect(importFit.trainingMode).toBe('unclamped_median');
+    expect(importFit.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 7);
+    expect(importFit.confidence).toBe('high');
 
     // Zero-export home: the inverter clamps output to house consumption — the
     // measured output is 40% of potential while net hovers at a +50 W standing
@@ -154,19 +165,18 @@ describe('Learning a PV device (irradiance mocked)', () => {
       initialState: emptyPvForecastServiceState(),
     });
     recordDays(clampedHome, startMs, days, { outputFactor: 0.4, netW: 50 });
-    const clampedFit = clampedHome.getFit();
-    expect(clampedFit).not.toBeNull();
-    expect(clampedFit!.trainingMode).toBe('clamp_aware_quantile');
-    expect(clampedFit!.confidence).toBe('low');
-    expect(clampedFit!.gainKwhPerWm2).toBeCloseTo(0.4 * TRUE_GAIN, 7);
+    const clampedFit = fittedGain(clampedHome);
+    expect(clampedFit.trainingMode).toBe('clamp_aware_quantile');
+    expect(clampedFit.confidence).toBe('low');
+    expect(clampedFit.gainKwhPerWm2).toBeCloseTo(0.4 * TRUE_GAIN, 7);
 
     // forecast() consumes the learned gain identically in both modes — no
     // trainingMode branching downstream of the fit (observability only).
     const noon = startMs + days * 24 * HOUR_MS + 12 * HOUR_MS;
     expect(importHome.forecast([noon])[0].generationKwh)
-      .toBeCloseTo(importFit!.gainKwhPerWm2 * irradianceAt(noon), 9);
+      .toBeCloseTo(importFit.gainKwhPerWm2 * irradianceAt(noon), 9);
     expect(clampedHome.forecast([noon])[0].generationKwh)
-      .toBeCloseTo(clampedFit!.gainKwhPerWm2 * irradianceAt(noon), 9);
+      .toBeCloseTo(clampedFit.gainKwhPerWm2 * irradianceAt(noon), 9);
   });
 });
 
