@@ -473,7 +473,7 @@ describe('settingsUiApi', () => {
       electricityPrices: null,
       priceArea: 'NO1',
       // No app on this fixture homey ⇒ the selector seam is absent (boot window).
-      pvForecastSource: null,
+      pvForecastSource: { kind: 'unknown' },
       gridTariffData: [{ dateKey: '2026-03-03', energyFeeIncVat: 0.5 }],
       flowToday: { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' },
       flowTomorrow: { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' },

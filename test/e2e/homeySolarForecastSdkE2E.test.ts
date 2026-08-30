@@ -136,7 +136,7 @@ describe('PV-forecast source selection (SDK-boundary e2e)', () => {
     await drainPending();
 
     const homeyRefresh = events.find((event) => event.event === 'pv_forecast_homey');
-    expect(homeyRefresh).toMatchObject({ totalWhReported: 18_000 });
+    expect(homeyRefresh).toMatchObject({ totalWhReported: { kind: 'reported', wh: 18_000 } });
     expect(homeyRefresh?.hourCount).toBe(48);
 
     await buildCombinedPrices(app);

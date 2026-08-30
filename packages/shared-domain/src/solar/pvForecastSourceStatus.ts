@@ -10,7 +10,10 @@
  * Browser-safe: no Homey SDK types, no runtime imports.
  */
 
-import type { PvForecastSourceUiStatus } from '../../../contracts/src/settingsUiApi.js';
+import type {
+  PvForecastSourceSelectedStatus,
+  PvForecastSourceUiStatus,
+} from '../../../contracts/src/settingsUiApi.js';
 
 /**
  * Resolve an untrusted `pvForecastSource` payload field into the typed status.
@@ -21,38 +24,40 @@ import type { PvForecastSourceUiStatus } from '../../../contracts/src/settingsUi
  * between layers" puts the single validation at — inward of here the view reads
  * the status directly and never re-checks it.
  *
- * Anything that is not a complete, well-formed status resolves to `null`, which
- * the section already renders as "say nothing" (the pre-boot state). A partial
- * object is deliberately NOT repaired field by field: a malformed `activeSource`
- * would otherwise fall through the resolver as though it were `learned`, and a
- * non-boolean availability field would state provenance the runtime never
- * reported.
+ * Anything that is not a complete, well-formed selection resolves to the
+ * status union's own `unknown` member — the same "say nothing" the section
+ * renders for the pre-boot state, and a typed value rather than a nullable one.
+ * A partial object is deliberately NOT repaired field by field: a malformed
+ * `activeSource` would otherwise fall through the resolver as though it were
+ * `learned`, and a non-boolean availability field would state provenance the
+ * runtime never reported.
  */
 export const resolvePvForecastSourceUiStatus = (
   value: unknown,
-): PvForecastSourceUiStatus | null => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+): PvForecastSourceUiStatus => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { kind: 'unknown' };
   const record = value as Record<string, unknown>;
-  const { activeSource, homeyForecastAvailable, learnedForecastAvailable } = record;
-  if (activeSource !== null && activeSource !== 'homey_energy' && activeSource !== 'learned') {
-    return null;
-  }
+  const { kind, activeSource, homeyForecastAvailable, learnedForecastAvailable } = record;
+  if (kind !== 'selected') return { kind: 'unknown' };
+  if (activeSource !== 'homey_energy' && activeSource !== 'learned') return { kind: 'unknown' };
   if (typeof homeyForecastAvailable !== 'boolean' || typeof learnedForecastAvailable !== 'boolean') {
-    return null;
+    return { kind: 'unknown' };
   }
-  return { activeSource, homeyForecastAvailable, learnedForecastAvailable };
+  return {
+    kind: 'selected', activeSource, homeyForecastAvailable, learnedForecastAvailable,
+  };
 };
 
 /**
- * Which forecast actually feeds planning right now. `null` (say nothing) until
- * the runtime selector reports. The selected-but-empty states each get their
- * own honest sentence — and the pinned-Homey one names the real toggle out,
+ * Which forecast actually feeds planning right now. Total over the `selected`
+ * arm — the caller renders nothing at all for `unknown`, so there is no empty
+ * sentence to model here. The selected-but-empty states each get their own
+ * honest sentence — and the pinned-Homey one names the real toggle out,
  * because remedy copy names the control the owner would actually use.
  */
 export const resolvePvForecastStatusLine = (
-  status: PvForecastSourceUiStatus | null,
-): string | null => {
-  if (!status || status.activeSource === null) return null;
+  status: PvForecastSourceSelectedStatus,
+): string => {
   if (status.activeSource === 'homey_energy') {
     return status.homeyForecastAvailable
       ? 'Using Homey’s solar forecast.'

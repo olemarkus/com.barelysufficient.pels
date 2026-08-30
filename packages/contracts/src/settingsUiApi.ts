@@ -486,20 +486,35 @@ export type SettingsUiPowerPayload = {
 };
 
 /**
- * Live provenance of the PV-forecast source selection, for the Electricity
- * prices view's Solar forecast section (`PvForecastSourceSetting` itself is
- * declared once further up). `activeSource` is what actually feeds planning
- * right now; the two availability flags say whether each producer currently
- * has a usable forecast — Homey Energy's route (firmware 13.4.0+ with a solar
- * device) and the learned model's fit — so the section can state honestly when
- * the selected source is still running without one. All come from the runtime
- * selector, never recomputed UI-side.
+ * The provenance the runtime selector reports: `activeSource` is what actually
+ * feeds planning right now, and the two availability flags say whether each
+ * producer currently has a usable forecast — Homey Energy's route (firmware
+ * 13.4.0+ with a solar device) and the learned model's fit — so the section can
+ * state honestly when the selected source is still running without one. All
+ * come from the runtime selector, never recomputed UI-side.
  */
-export type PvForecastSourceUiStatus = {
-  activeSource: Exclude<PvForecastSourceSetting, 'auto'> | null;
+export type PvForecastSourceSelectedStatus = {
+  kind: 'selected';
+  activeSource: Exclude<PvForecastSourceSetting, 'auto'>;
   homeyForecastAvailable: boolean;
   learnedForecastAvailable: boolean;
 };
+
+/**
+ * Live provenance of the PV-forecast source selection, for the Electricity
+ * prices view's Solar forecast section (`PvForecastSourceSetting` itself is
+ * declared once further up).
+ *
+ * Absence is a NAMED member, not a nullable value: `unknown` is the honest
+ * answer while the runtime has not wired the forecast selector yet (the boot
+ * window), and equally when the payload crossing the WebView bridge does not
+ * carry a well-formed status. A selection, once made, always names a source —
+ * `auto` resolves to one of the two producers, so `activeSource` is never
+ * absent inside the `selected` arm.
+ */
+export type PvForecastSourceUiStatus =
+  | PvForecastSourceSelectedStatus
+  | { kind: 'unknown' };
 
 export type SettingsUiPricesPayload = {
   combinedPrices: unknown | null;
@@ -511,8 +526,8 @@ export type SettingsUiPricesPayload = {
   homeyCurrency: string | null;
   homeyToday: unknown | null;
   homeyTomorrow: unknown | null;
-  /** `null` only during the boot window before the forecast selector is wired. */
-  pvForecastSource: PvForecastSourceUiStatus | null;
+  /** `{ kind: 'unknown' }` during the boot window before the forecast selector is wired. */
+  pvForecastSource: PvForecastSourceUiStatus;
 };
 
 export type SettingsUiDeviceDiagnosticsResponse = SettingsUiDeviceDiagnosticsPayload;

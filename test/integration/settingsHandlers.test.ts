@@ -67,6 +67,7 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
 
   return {
     homey,
+    onPvForecastSourceObserved: vi.fn(),
     loadCapacitySettings: vi.fn(),
     reloadExpectedPowerOverrides: vi.fn(),
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),

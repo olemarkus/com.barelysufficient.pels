@@ -7,7 +7,10 @@
 // crosses into the planner only as the flat `getCurtailedSurplusKw` getter on
 // the app context (late-bound in `createPlanEngine`).
 
-import { CurtailmentSurplusEstimator, type CurtailmentPotential } from '../../lib/solar/curtailmentSurplus';
+import {
+  CurtailmentSurplusEstimator,
+  type CurtailmentPotentialRead,
+} from '../../lib/solar/curtailmentSurplus';
 import { createCurtailmentHoldStore } from '../curtailmentHoldStateAdapter';
 import { getLogger } from '../../lib/logging/logger';
 import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
@@ -22,7 +25,8 @@ import type { PvForecastSourceId, SelectedPvForecast } from '../../lib/solar/pvF
  * (no timers of its own), so there is no uninit handling. Called post-startup,
  * after the PV forecast exists; until then both ctx members are unset and every
  * consumer no-ops / reads null (fail-closed, the same post-boot precedent as
- * the budget-price PV inputs).
+ * the budget-price PV inputs). The selected forecast is passed in already
+ * resolved — this wiring never sees a "not selected yet" state.
  */
 // The estimator reads the potential on every 10 s pipeline tick, but each tick
 // also feeds the PV forecast a sample, which invalidates its fit memo — an
@@ -40,38 +44,43 @@ import type { PvForecastSourceId, SelectedPvForecast } from '../../lib/solar/pvF
 // `getConfidence()` calls stay behind the memo.
 const POTENTIAL_MEMO_TTL_MS = 30_000;
 
-export function wireCurtailmentSurplus(
-  ctx: AppContext,
-  getSelectedPvForecast: () => SelectedPvForecast | undefined,
-): CurtailmentSurplusEstimator {
-  let potentialMemo: {
+// Nothing memoized yet is a state of the memo, not a missing entry: `empty` is
+// a member of the memo's own type so the hit test reads one discriminant and
+// never a presence check.
+type PotentialMemo =
+  | { kind: 'empty' }
+  | {
+    kind: 'cached';
     hourStartMs: number;
     atMs: number;
     sourceId: PvForecastSourceId;
-    value: CurtailmentPotential | null;
-  } | undefined;
+    value: CurtailmentPotentialRead;
+  };
+
+export function wireCurtailmentSurplus(
+  ctx: AppContext,
+  getSelectedPvForecast: () => SelectedPvForecast,
+): CurtailmentSurplusEstimator {
+  let potentialMemo: PotentialMemo = { kind: 'empty' };
   const resolvePotential = (
     selected: SelectedPvForecast,
     hourStartMs: number,
-  ): CurtailmentPotential | null => {
+  ): CurtailmentPotentialRead => {
     const kwh = selected.forecast([hourStartMs])[0]?.generationKwh;
     const confidence = selected.getConfidence();
-    if (!isFiniteNumber(kwh) || confidence === null) return null;
-    return { kw: kwh, confidence };
+    if (!isFiniteNumber(kwh) || confidence === 'none') return { kind: 'unresolvable' };
+    return { kind: 'resolved', potential: { kw: kwh, confidence } };
   };
   return new CurtailmentSurplusEstimator({
     // Forecast potential for a UTC hour-start: the 1-hour forecast kWh IS the
     // mean kW over that hour; the selected source's confidence rides along so
-    // the estimator can resolve its discount. Null (fail-closed) when the
-    // forecast is not yet wired/armed, reports no confidence, or skips the hour.
-    getPotential: (hourStartMs): CurtailmentPotential | null => {
+    // the estimator can resolve its discount. `unresolvable` (fail-closed) when
+    // the selected source reports no confidence or skips the hour.
+    getPotential: (hourStartMs): CurtailmentPotentialRead => {
       const nowMs = Date.now();
       const selected = getSelectedPvForecast();
-      // Not wired yet (pre-boot): fail closed and memo nothing, so the first
-      // real selection is resolved rather than served from an empty entry.
-      if (!selected) return null;
       if (
-        potentialMemo
+        potentialMemo.kind === 'cached'
         && potentialMemo.hourStartMs === hourStartMs
         && potentialMemo.sourceId === selected.sourceId
         && nowMs - potentialMemo.atMs < POTENTIAL_MEMO_TTL_MS
@@ -79,7 +88,9 @@ export function wireCurtailmentSurplus(
         return potentialMemo.value;
       }
       const value = resolvePotential(selected, hourStartMs);
-      potentialMemo = { hourStartMs, atMs: nowMs, sourceId: selected.sourceId, value };
+      potentialMemo = {
+        kind: 'cached', hourStartMs, atMs: nowMs, sourceId: selected.sourceId, value,
+      };
       return value;
     },
     hasHomeBattery: () => ctx.deviceManager?.hasBatteryDevices() ?? false,

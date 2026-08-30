@@ -29,20 +29,21 @@ export type HomeySolarForecastLike = {
 };
 
 export type PvForecastSourceSelectorDeps = {
-  getLearned: () => LearnedPvForecastLike | undefined;
-  getHomey: () => HomeySolarForecastLike | undefined;
+  learned: LearnedPvForecastLike;
+  homey: HomeySolarForecastLike;
   getNowMs: () => number;
   logger: PvForecastLogger;
 };
 
 /**
- * Build the live `getSelectedPvForecast` closure. `undefined` until both
- * controllers exist (the post-boot fail-closed precedent of the budget-price
- * PV inputs). The SELECTION is still evaluated per call — a Homey outage
- * changes `hasUsefulForecast` at any moment and `auto` must follow it — but the
- * SETTING behind it is held, not re-read. Emits `pv_forecast_source_selected`
- * on selection transitions only, so prod logs can correlate which source feeds
- * the planning price.
+ * Build the live `getSelectedPvForecast` closure. Both controllers are passed
+ * BY VALUE, not behind getters: the only caller builds this closure in the same
+ * step that constructs them, so "not wired yet" is not a state this closure can
+ * be in and nothing downstream has to model it. The SELECTION is still
+ * evaluated per call — a Homey outage changes `hasUsefulForecast` at any moment
+ * and `auto` must follow it — but the SETTING behind it is held, not re-read.
+ * Emits `pv_forecast_source_selected` on selection transitions only, so prod
+ * logs can correlate which source feeds the planning price.
  * NOTE for log audits: the emitting call is the FIRST read after the change —
  * usually a combined-prices rebuild, but a settings-UI provenance read shares
  * this closure, so the line's timestamp marks when the change was observed,
@@ -50,12 +51,10 @@ export type PvForecastSourceSelectorDeps = {
  */
 export function createPvForecastSourceSelector(
   deps: PvForecastSourceSelectorDeps,
-): () => SelectedPvForecast | undefined {
+): () => SelectedPvForecast {
+  const { learned, homey } = deps;
   let lastLoggedSourceId: PvForecastSourceId | undefined;
   return () => {
-    const learned = deps.getLearned();
-    const homey = deps.getHomey();
-    if (!learned || !homey) return undefined;
     const setting = homey.getSourceSetting();
     const selected = selectPvForecastSource({
       setting,
@@ -65,7 +64,9 @@ export function createPvForecastSourceSelector(
       },
       learned: {
         forecast: (hourStarts) => learned.service.forecast(hourStarts),
-        getConfidence: () => learned.service.getFit()?.confidence ?? null,
+        // The learned fit is absent until enough production has been observed;
+        // the port names that as `'none'` rather than passing a null onward.
+        getConfidence: () => learned.service.getFit()?.confidence ?? 'none',
       },
     });
     if (selected.sourceId !== lastLoggedSourceId) {

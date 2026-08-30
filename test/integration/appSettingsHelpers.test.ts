@@ -191,10 +191,14 @@ const buildContext = (): AppContext => {
   } as unknown as AppContext;
 };
 
+// The only hook the wiring is REQUIRED to supply — every settings-handler
+// caller answers it, so these fixtures do too.
+const HOOKS = { onPvForecastSourceObserved: () => {} };
+
 describe('initSettingsHandlerForApp', () => {
   it('publishes the temperature-control policy at the synchronous settings edge', async () => {
     const ctx = buildContext();
-    const { handle } = initSettingsHandlerForApp(ctx);
+    const { handle } = initSettingsHandlerForApp(ctx, HOOKS);
 
     const handling = handle(TEMPERATURE_CONTROL_DISABLED_DEVICES);
 
@@ -205,7 +209,7 @@ describe('initSettingsHandlerForApp', () => {
   it('routes daily budget updates through the app context callback', async () => {
     const ctx = buildContext();
 
-    const { handle } = initSettingsHandlerForApp(ctx);
+    const { handle } = initSettingsHandlerForApp(ctx, HOOKS);
     await handle(CAPACITY_LIMIT_KW);
 
     expect(ctx.updateDailyBudgetState).toHaveBeenCalledWith({
@@ -219,7 +223,7 @@ describe('initSettingsHandlerForApp', () => {
     const ctx = buildContext();
     const onHomeScopedSettingChanged = vi.fn();
 
-    const { handle } = initSettingsHandlerForApp(ctx, { onHomeScopedSettingChanged });
+    const { handle } = initSettingsHandlerForApp(ctx, { ...HOOKS, onHomeScopedSettingChanged });
     await handle(`${POWER_TRACKER_STATE}:cabin`);
     await handle(`${CAPACITY_LIMIT_KW}:cabin`);
 
@@ -237,6 +241,7 @@ describe('initSettingsHandlerForApp', () => {
     const ctx = buildContext();
     const onHomeRuntimePowerSourceChanged = vi.fn();
     const { handle } = initSettingsHandlerForApp(ctx, {
+      ...HOOKS,
       onHomeRuntimePowerSourceChanged,
     });
 
@@ -249,7 +254,7 @@ describe('initSettingsHandlerForApp', () => {
     const ctx = buildContext();
     const onHomeScopedSettingChanged = vi.fn();
 
-    const { handle } = initSettingsHandlerForApp(ctx, { onHomeScopedSettingChanged });
+    const { handle } = initSettingsHandlerForApp(ctx, { ...HOOKS, onHomeScopedSettingChanged });
     await handle(CAPACITY_LIMIT_KW);
 
     expect(onHomeScopedSettingChanged).not.toHaveBeenCalled();
@@ -264,7 +269,7 @@ describe('initSettingsHandlerForApp', () => {
     const ctx = buildContext();
     delete ctx.priceCoordinator;
 
-    expect(() => initSettingsHandlerForApp(ctx)).toThrow(
+    expect(() => initSettingsHandlerForApp(ctx, HOOKS)).toThrow(
       'PriceCoordinator must be initialized before settings handler setup.',
     );
   });
@@ -273,7 +278,7 @@ describe('initSettingsHandlerForApp', () => {
     const ctx = buildContext();
     delete ctx.planService;
 
-    expect(() => initSettingsHandlerForApp(ctx)).toThrow(
+    expect(() => initSettingsHandlerForApp(ctx, HOOKS)).toThrow(
       'PlanService must be initialized before use.',
     );
   });
@@ -282,7 +287,7 @@ describe('initSettingsHandlerForApp', () => {
     const ctx = buildContext();
     delete ctx.dailyBudgetService;
 
-    expect(() => initSettingsHandlerForApp(ctx)).toThrow(
+    expect(() => initSettingsHandlerForApp(ctx, HOOKS)).toThrow(
       'DailyBudgetService must be initialized before settings handler setup.',
     );
   });

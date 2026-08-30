@@ -324,11 +324,12 @@ export type AppContext = {
   // persists the underlying latch, so this is a brief boot window rather than a
   // nightly one.
   canContributeCurtailmentSurplus?: () => boolean;
-  // PV-forecast source provenance for the settings UI, ASSIGNED by
+  // PV-forecast source provenance for the settings UI, REPLACED by
   // `startPostStartupBackgroundTasks` (the wiring-assigns-ctx-members house
-  // pattern) from the live selector — never recomputed elsewhere. Absent until
-  // the forecast controllers exist; the prices payload then carries `null`.
-  getPvForecastSourceUiStatus?: () => PvForecastSourceUiStatus;
+  // pattern) with a read of the live selector — never recomputed elsewhere.
+  // Always answerable: before the forecast controllers exist the seam answers
+  // the status union's own `unknown` member, so no consumer holds a nullable.
+  getPvForecastSourceUiStatus: () => PvForecastSourceUiStatus;
   planService?: PlanService;
   // Released after the first device snapshot refresh succeeds, or after the
   // configured timeout — whichever comes first. Holds the first

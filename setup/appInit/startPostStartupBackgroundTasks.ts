@@ -20,10 +20,8 @@ export type PostStartupBackgroundDeps = {
   timers: TimerRegistry;
   startPowerTrackerPruning: () => void;
   setWeatherCollector: (collector: WeatherCollector | undefined) => void;
-  getPvForecast: () => PvForecastController | undefined;
   setPvForecast: (pvForecast: PvForecastController | undefined) => void;
-  setHomeySolarForecast: (controller: HomeySolarForecastController | undefined) => void;
-  getHomeySolarForecast: () => HomeySolarForecastController | undefined;
+  setHomeySolarForecast: (controller: HomeySolarForecastController) => void;
   runNativeWiringDetectionBestEffort: () => void;
 };
 
@@ -41,13 +39,16 @@ export const startPostStartupBackgroundTasks = (
   deps.setHomeySolarForecast(collectors.homeySolarForecast);
   // ONE selector closure feeds both forecast consumers, so the budget price and
   // the curtailment potential always read the same selected source.
+  // Both controllers are in hand HERE, so the selector takes them by value and
+  // answers a selected source on every call — no "not wired yet" state travels
+  // to the consumers below.
   const getSelectedPvForecast = createPvForecastSourceSelector({
-    getLearned: deps.getPvForecast,
-    getHomey: deps.getHomeySolarForecast,
+    learned: collectors.pvForecast,
+    homey: collectors.homeySolarForecast,
     getNowMs: () => Date.now(),
     logger: getLogger('solar'),
   });
-  wireBudgetPrice(ctx, (ms) => getSelectedPvForecast()?.forecast([ms])[0]?.generationKwh);
+  wireBudgetPrice(ctx, (ms) => getSelectedPvForecast().forecast([ms])[0]?.generationKwh);
   // Provenance for the settings UI's Solar forecast section — read from the
   // live selector so the UI can never disagree with what planning consumes.
   // Both availability flags ask the producer whether it can answer for the
@@ -56,7 +57,8 @@ export const startPostStartupBackgroundTasks = (
   // would have claimed planning was using it.
   // eslint-disable-next-line functional/immutable-data
   ctx.getPvForecastSourceUiStatus = () => ({
-    activeSource: getSelectedPvForecast()?.sourceId ?? null,
+    kind: 'selected',
+    activeSource: getSelectedPvForecast().sourceId,
     homeyForecastAvailable: collectors.homeySolarForecast.source.hasUsefulForecast(Date.now()),
     learnedForecastAvailable: collectors.pvForecast.service.hasForwardForecast(Date.now()),
   });
@@ -70,7 +72,7 @@ export const startPostStartupBackgroundTasks = (
       });
     }
   };
-  deps.getPvForecast()?.setOnRefreshed(recomputeCombinedPrices);
+  collectors.pvForecast.setOnRefreshed(recomputeCombinedPrices);
   // Registered AFTER wireBudgetPrice for the same reason as the learned hook:
   // a completion must never trigger a combined-prices recompute before the
   // planning-price inputs exist. Fresh (or vanished) Homey points can change

@@ -15,7 +15,7 @@ import {
   type CurtailmentHoldRead,
   type CurtailmentHoldStore,
   type CurtailmentPersistedHoldState,
-  type CurtailmentPotential,
+  type CurtailmentPotentialRead,
 } from '../../lib/solar/curtailmentSurplus';
 // Test code may cross the plan↔solar boundary the runtime bans — that is the
 // point: the constant pairing below has no shared runtime constant to enforce it.
@@ -28,14 +28,14 @@ type Harness = {
   estimator: CurtailmentSurplusEstimator;
   events: Array<Record<string, unknown>>;
   ctl: {
-    potential: CurtailmentPotential | null;
+    potential: CurtailmentPotentialRead;
     battery: boolean;
     lift: boolean;
   };
 };
 
 const build = (
-  potential: CurtailmentPotential | null = { kw: 3, confidence: 'high' },
+  potential: CurtailmentPotentialRead = { kind: 'resolved', potential: { kw: 3, confidence: 'high' } },
   holdStore?: CurtailmentHoldStore,
 ): Harness => {
   const ctl = { potential, battery: false, lift: false };
@@ -145,22 +145,22 @@ describe('CurtailmentSurplusEstimator — term math and gates', () => {
   });
 
   it('yields null when the potential is unresolvable (no fit / no forecast hour)', () => {
-    const h = build(null);
+    const h = build({ kind: 'unresolvable' });
     h.estimator.recordSample(0, 500, T0);
     expect(h.estimator.getCurtailedSurplusKw(T0)).toBeNull();
   });
 
   it('yields null on a non-finite potential (boundary guard on the injected dep)', () => {
-    const h = build({ kw: Number.NaN, confidence: 'high' });
+    const h = build({ kind: 'resolved', potential: { kw: Number.NaN, confidence: 'high' } });
     h.estimator.recordSample(0, 500, T0);
     expect(h.estimator.getCurtailedSurplusKw(T0)).toBeNull();
   });
 
   it('applies the low-confidence discount (0.8) vs the medium/high discount (0.9)', () => {
-    const low = build({ kw: 3, confidence: 'low' });
+    const low = build({ kind: 'resolved', potential: { kw: 3, confidence: 'low' } });
     low.estimator.recordSample(0, 500, T0);
     expect(low.estimator.getCurtailedSurplusKw(T0)).toBeCloseTo(0.8 * 3 - 0.5, 6);
-    const medium = build({ kw: 3, confidence: 'medium' });
+    const medium = build({ kind: 'resolved', potential: { kw: 3, confidence: 'medium' } });
     medium.estimator.recordSample(0, 500, T0);
     expect(medium.estimator.getCurtailedSurplusKw(T0)).toBeCloseTo(0.9 * 3 - 0.5, 6);
   });
@@ -223,7 +223,7 @@ describe('CurtailmentSurplusEstimator — outcome-based verification', () => {
   });
 
   it('does not open a window when the term is zero/null at the rising edge', () => {
-    const h = build({ kw: 0.4, confidence: 'high' }); // 0.9×0.4 − 0.5 gen < 0 ⇒ term 0
+    const h = build({ kind: 'resolved', potential: { kw: 0.4, confidence: 'high' } }); // 0.9×0.4 − 0.5 gen < 0 ⇒ term 0
     ticks(h, T0, 2, 0);
     h.ctl.lift = true;
     h.estimator.recordSample(0, 500, T0 + 2 * TICK_MS);
@@ -914,7 +914,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     const { store } = fakeStore(loaded({ holdLevel: 0, holdUntilMs: null, importLatchUntilMs: null, armed: true }));
     const events: Array<Record<string, unknown>> = [];
     const estimator = new CurtailmentSurplusEstimator({
-      getPotential: () => ({ kw: 3, confidence: 'high' }),
+      getPotential: () => ({ kind: 'resolved', potential: { kw: 3, confidence: 'high' } }),
       hasHomeBattery: () => false,
       isSurplusLiftEngaged: () => true, // engaged since before this process
       holdStore: store,

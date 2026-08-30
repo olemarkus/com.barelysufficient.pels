@@ -3,6 +3,7 @@ import {
   HomeySolarForecastController,
   type HomeySolarForecastControllerCtx,
 } from '../../lib/solar/homeySolarForecastController';
+import { summaryHourCount } from '../../lib/solar/homeyEnergySolarForecast';
 import type { SolarForecastDayRead } from '../../lib/solar/homeyEnergySolarForecast';
 import type { PvForecastSourceSetting } from '../../lib/solar/pvForecastSource';
 
@@ -55,7 +56,9 @@ describe('HomeySolarForecastController', () => {
     const okCall = logger.info.mock.calls.find(
       (call) => (call[0] as { event: string }).event === 'pv_forecast_homey',
     );
-    expect(okCall?.[0]).toMatchObject({ hourCount: 2, next24hKwh: 2, totalWhReported: 1000 });
+    expect(okCall?.[0]).toMatchObject({
+      hourCount: 2, next24hKwh: 2, totalWhReported: { kind: 'reported', wh: 1000 },
+    });
   });
 
   describe('probe gating', () => {
@@ -289,7 +292,7 @@ describe('HomeySolarForecastController', () => {
       phase = 'split';
       await controller.refresh();
       expect(onRefreshed).toHaveBeenCalledTimes(2);
-      expect(controller.source.summarize(NOW_MS).hourCount).toBe(1);
+      expect(summaryHourCount(controller.source.summarize(NOW_MS))).toBe(1);
     });
 
     it('serializes overlapping refreshes so a slow pass cannot wipe a newer one', async () => {
@@ -322,7 +325,7 @@ describe('HomeySolarForecastController', () => {
       releaseFirst?.();
       await Promise.all([first, second]);
       // Serialized: the stale unavailable lands first, the fresh points last.
-      expect(controller.source.summarize(NOW_MS).hourCount).toBe(2);
+      expect(summaryHourCount(controller.source.summarize(NOW_MS))).toBe(2);
     });
 
     it('drops a completion that lands after stop()', async () => {

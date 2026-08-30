@@ -15,7 +15,7 @@
 import { getDateKeyInTimeZone, shiftDateKey } from '../utils/dateUtils';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import type { PvForecastHour } from './pvForecastService';
-import type { PvGainFit } from '../../packages/shared-domain/src/solar/pvGain';
+import type { PvForecastConfidence } from './pvForecastSource';
 
 const HOUR_MS = 3_600_000;
 const WATTS_PER_KW = 1000;
@@ -32,11 +32,21 @@ export type SolarForecastDayRead =
   | { kind: 'unavailable' }
   | { kind: 'failed' };
 
+/**
+ * Homey's own daily integral for one forecast day. Observability only — never
+ * summed with the point-derived hours. A body that carries no finite `totalWh`
+ * is `absent`: a named member rather than a nullable number, so no consumer can
+ * read a missing integral as a measured zero.
+ */
+export type ReportedForecastTotal =
+  | { kind: 'reported'; wh: number }
+  | { kind: 'absent' };
+
 export type SolarForecastDay = {
   /** Mean generation per UTC hour-start, kWh (an hour with no valid points is absent, never 0). */
   kwhByHourStart: Record<string, number>;
-  /** Homey's own daily integral (Wh) when finite — observability only, never summed with points. */
-  totalWh: number | null;
+  /** Homey's own daily integral — see `ReportedForecastTotal`. */
+  totalWh: ReportedForecastTotal;
 };
 
 export type HomeyEnergySolarForecastDeps = {
@@ -75,11 +85,35 @@ export function parseSolarForecastDay(raw: unknown): SolarForecastDay {
   const kwhByHourStart = Object.fromEntries(
     Object.entries(sums).map(([hourKey, slot]) => [hourKey, slot.watts / slot.count / WATTS_PER_KW]),
   );
-  const totalWh = isFiniteNumber(body?.totalWh) ? body.totalWh : null;
+  const rawTotalWh = body?.totalWh;
+  const totalWh: ReportedForecastTotal = isFiniteNumber(rawTotalWh)
+    ? { kind: 'reported', wh: rawTotalWh }
+    : { kind: 'absent' };
   return { kwhByHourStart, totalWh };
 }
 
 export type SolarForecastRefreshOutcome = 'ok' | 'unavailable' | 'failed';
+
+/**
+ * What `summarize` answers. `empty` is the whole-summary absence (no cached
+ * hour at all); `summary` carries only totals every field of which is defined
+ * by the non-empty hour set it was folded over.
+ */
+export type SolarForecastSummary =
+  | { kind: 'empty' }
+  | {
+    kind: 'summary';
+    hourCount: number;
+    next24hKwh: number;
+    firstHourStartMs: number;
+    lastHourStartMs: number;
+    totalWhReported: ReportedForecastTotal;
+  };
+
+/** The hour count a summary stands for — zero over the empty summary. */
+export const summaryHourCount = (summary: SolarForecastSummary): number => (
+  summary.kind === 'summary' ? summary.hourCount : 0
+);
 
 export class HomeyEnergySolarForecastSource {
   // Per-local-date cache so a transiently failed day keeps its last good series
@@ -170,37 +204,45 @@ export class HomeyEnergySolarForecastSource {
    * Dogfood-tunable: if prod comparison shows Homey overstating deliverable
    * surplus for zero-export homes, derive this instead of pinning it.
    */
-  getConfidence(): PvGainFit['confidence'] | null {
-    return this.hasUsefulForecast(this.deps.getNowMs()) ? 'high' : null;
+  getConfidence(): PvForecastConfidence {
+    return this.hasUsefulForecast(this.deps.getNowMs()) ? 'high' : 'none';
   }
 
-  /** Observability rollup for the structured refresh log. */
-  summarize(nowMs: number): {
-    hourCount: number;
-    next24hKwh: number;
-    firstHourStartMs: number | null;
-    lastHourStartMs: number | null;
-    totalWhReported: number | null;
-  } {
+  /**
+   * Observability rollup for the structured refresh log. An empty cache does
+   * not make each FIELD absent — it makes the whole summary absent, so the two
+   * states are separate members and every field inside `summary` is a real
+   * number: the span bounds are a min/max over at least one hour, and the hour
+   * count is a count over the same non-empty set.
+   */
+  summarize(nowMs: number): SolarForecastSummary {
     const currentHourStartMs = Math.floor(nowMs / HOUR_MS) * HOUR_MS;
-    let hourCount = 0;
+    const hourStarts: number[] = [];
     let next24hKwh = 0;
-    let firstHourStartMs: number | null = null;
-    let lastHourStartMs: number | null = null;
-    let totalWhReported: number | null = null;
+    let reportedWh = 0;
+    let sawReportedTotal = false;
     for (const day of Object.values(this.cacheByDate)) {
-      if (day.totalWh !== null) totalWhReported = (totalWhReported ?? 0) + day.totalWh;
+      if (day.totalWh.kind === 'reported') {
+        reportedWh += day.totalWh.wh;
+        sawReportedTotal = true;
+      }
       for (const [hourKey, kwh] of Object.entries(day.kwhByHourStart)) {
         const hourStartMs = Number(hourKey);
-        hourCount += 1;
-        if (firstHourStartMs === null || hourStartMs < firstHourStartMs) firstHourStartMs = hourStartMs;
-        if (lastHourStartMs === null || hourStartMs > lastHourStartMs) lastHourStartMs = hourStartMs;
+        hourStarts.push(hourStartMs);
         if (hourStartMs >= currentHourStartMs && hourStartMs < currentHourStartMs + 24 * HOUR_MS) {
           next24hKwh += kwh;
         }
       }
     }
-    return { hourCount, next24hKwh, firstHourStartMs, lastHourStartMs, totalWhReported };
+    if (hourStarts.length === 0) return { kind: 'empty' };
+    return {
+      kind: 'summary',
+      hourCount: hourStarts.length,
+      next24hKwh,
+      firstHourStartMs: Math.min(...hourStarts),
+      lastHourStartMs: Math.max(...hourStarts),
+      totalWhReported: sawReportedTotal ? { kind: 'reported', wh: reportedWh } : { kind: 'absent' },
+    };
   }
 
   private lookupKwh(hourStartMs: number): number | undefined {

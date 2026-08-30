@@ -39,7 +39,7 @@ import type { PowerSampleRebuildState } from './lib/plan/rebuildScheduler/powerD
 import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { createHomePowerPipeline } from './setup/homeRuntime/createHomePowerPipeline';
 import type { PvForecastController } from './setup/appInit/createPvForecastService';
-import type { HomeySolarForecastController } from './lib/solar/homeySolarForecastController';
+import type { HomeySolarForecastLifecycle } from './lib/solar/homeySolarForecastController';
 import type { WeatherCollector } from './lib/weather/weatherCollector';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
 import { SettingsRepository } from './setup/settingsRepository';
@@ -47,6 +47,7 @@ import { createCombinedPricesReaderForApp } from './setup/priceCombinedPricesAda
 import { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore';
 import { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
+import type { PvForecastSourceUiStatus } from './packages/contracts/src/settingsUiApi';
 import {
   createModeTargetPersistence,
   createUnsupportedDeviceDemotion,
@@ -243,7 +244,15 @@ class PelsApp extends PelsAppBase implements AppContext {
   private stopSettingsHandler?: () => void;
   protected weatherCollector?: WeatherCollector;
   private pvForecast?: PvForecastController;
-  private homeySolarForecast?: HomeySolarForecastController;
+  // Replaced by `startPostStartupBackgroundTasks` with a read of the live
+  // source selector. Until then the seam still answers — `unknown` is the
+  // status union's own member for "no provenance to report yet".
+  public getPvForecastSourceUiStatus: () => PvForecastSourceUiStatus = () => ({ kind: 'unknown' });
+
+  // "Not started" is a named lifecycle state, not an absent field: the
+  // controller is built by the post-startup background step, while the
+  // settings hook and the uninit sweep are wired before it.
+  private homeySolarForecast: HomeySolarForecastLifecycle = { kind: 'not_started' };
   protected readonly backgroundTasks = new BackgroundTasksController({
     homey: this.homey,
     log: (...args: unknown[]) => this.log(...args),
@@ -386,7 +395,9 @@ class PelsApp extends PelsAppBase implements AppContext {
     getPvForecast: () => this.pvForecast,
     setPvForecast: (pvForecast) => { this.pvForecast = pvForecast; },
     getHomeySolarForecast: () => this.homeySolarForecast,
-    setHomeySolarForecast: (controller) => { this.homeySolarForecast = controller; },
+    setHomeySolarForecast: (controller) => {
+      this.homeySolarForecast = { kind: 'started', controller };
+    },
     setNativeWiringUninitializing: (value) => { this.nativeWiringUninitializing = value; },
     isManagedFilterActive: () => this.isManagedFilterActive(),
     resolveNativeWiringEnabled: (deviceId) => this.resolveNativeWiringEnabled(deviceId),

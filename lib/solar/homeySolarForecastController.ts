@@ -19,7 +19,7 @@
 // whole story — a persisted copy would add a second staleness policy for zero
 // benefit.
 
-import { HomeyEnergySolarForecastSource } from './homeyEnergySolarForecast';
+import { HomeyEnergySolarForecastSource, summaryHourCount } from './homeyEnergySolarForecast';
 import type { SolarForecastDayRead, SolarForecastRefreshOutcome } from './homeyEnergySolarForecast';
 import type { PvForecastSourceSetting } from './pvForecastSource';
 import { normalizeError } from '../utils/errorUtils';
@@ -44,6 +44,17 @@ export type HomeySolarForecastControllerCtx = {
   isLearnedActive: () => boolean;
   logger: HomeySolarForecastLogger;
 };
+
+/**
+ * Whether the Homey solar-forecast controller exists yet. It is constructed in
+ * the post-startup background step, while the settings-change hook and the
+ * uninit sweep are wired earlier — so "not started yet" is a real lifecycle
+ * state of the app, named here rather than left as an absent field for every
+ * reader to null-check.
+ */
+export type HomeySolarForecastLifecycle =
+  | { kind: 'not_started' }
+  | { kind: 'started'; controller: HomeySolarForecastController };
 
 export class HomeySolarForecastController {
   readonly source: HomeyEnergySolarForecastSource;
@@ -157,7 +168,7 @@ export class HomeySolarForecastController {
   private async refreshInner(): Promise<void> {
     if (this.stopped || !this.shouldProbe()) return;
     const nowMs = this.ctx.getNowMs();
-    const hourCountBefore = this.source.summarize(nowMs).hourCount;
+    const hourCountBefore = summaryHourCount(this.source.summarize(nowMs));
     const outcome = await this.source.refresh(nowMs);
     if (this.stopped) return;
     if (outcome === 'ok') this.hasSucceeded = true;
@@ -170,7 +181,7 @@ export class HomeySolarForecastController {
     // whole cache emptying missed the common shape: one day retained through a
     // transient failure while the other is dropped leaves the cache non-empty,
     // so the planning price kept the vanished day's solar adjustment.
-    const hourCountAfter = this.source.summarize(nowMs).hourCount;
+    const hourCountAfter = summaryHourCount(this.source.summarize(nowMs));
     if (outcome === 'ok' || hourCountAfter !== hourCountBefore) this.onRefreshed?.();
   }
 

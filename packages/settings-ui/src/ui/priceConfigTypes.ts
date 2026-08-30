@@ -71,7 +71,7 @@ export type PriceConfigState = {
   // Solar forecast source: the stored setting plus the runtime provenance
   // (which source actually feeds planning) from the prices payload.
   pvForecastSource: PvForecastSourceSetting;
-  pvForecastStatus: PvForecastSourceUiStatus | null;
+  pvForecastStatus: PvForecastSourceUiStatus;
 };
 
 /** Everything the page's config state takes from the settings store. */

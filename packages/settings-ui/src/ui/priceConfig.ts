@@ -74,7 +74,7 @@ let configState: PriceConfigState = {
   exportSpotFactor: 0,
   exportFixed: 0,
   pvForecastSource: 'auto',
-  pvForecastStatus: null,
+  pvForecastStatus: { kind: 'unknown' },
 };
 
 let electricityPricesSurface: HTMLElement | null = null;
@@ -144,7 +144,8 @@ const renderElectricityPrices = () => {
     // moment Homey serves a forecast.
     showSolarForecastSection: resolveHomeExhibitsSolar()
       || configState.pvForecastSource !== 'auto'
-      || configState.pvForecastStatus?.homeyForecastAvailable === true,
+      || (configState.pvForecastStatus.kind === 'selected'
+        && configState.pvForecastStatus.homeyForecastAvailable),
     pvForecastSource: configState.pvForecastSource,
     pvForecastStatus: configState.pvForecastStatus,
     exportPriceEnabled: configState.exportPriceEnabled,
@@ -463,7 +464,7 @@ const refreshStatusInfo = async () => {
     const payload = pricesPayload ?? {
       combinedPrices: null, electricityPrices: null, priceArea: null, gridTariffData: null,
       flowToday: null, flowTomorrow: null, homeyCurrency: null, homeyToday: null, homeyTomorrow: null,
-      pvForecastSource: null,
+      pvForecastSource: { kind: 'unknown' },
     };
     configState = {
       ...configState,
