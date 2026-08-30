@@ -27,7 +27,6 @@ All of these must hold for a device to be eligible for classification:
   near-goal signal, so we cannot distinguish "satisfied hold" from "broken".
 - Has a temperature objective rather than an EV state-of-charge objective.
   EV pauses are modelled separately via `binary_release`.
-- Observation is fresh — the observer-resolved freshness (`!isDeviceObservationStale`, supplied to the classifier via the `getObservationStale` dep), not a plan-device flag.
 - Observably on (`currentState === 'on'`).
 - PELS is **not** the reason it is off — `shedAction` is undefined. A device
   PELS just shed will trivially be idle near its (lowered) setpoint.

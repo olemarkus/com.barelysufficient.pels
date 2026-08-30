@@ -480,11 +480,11 @@ describe('device overview formatter', () => {
     });
   });
 
-  it('does not treat stale stepped devices as active mode transitions', () => {
+  it('does not treat unavailable stepped devices as active mode transitions', () => {
     expect(isDeviceOverviewSteppedModeTransition(buildSteppedOverviewDevice({
       currentState: 'on',
       plannedState: 'keep',
-      observationStale: true,
+      available: false,
       currentDrawKw: 0,
       reason: r('keep'),
     }, {

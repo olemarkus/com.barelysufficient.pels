@@ -101,7 +101,6 @@ describe('smart-task sub-home gate (app lanes)', () => {
       suppressionState: 'counting',
       countingCause: 'daily_budget',
       pauseReason: null,
-      observationFresh: true,
     });
     const start = Date.now();
     for (const offsetMinutes of [0, 9, 16]) {

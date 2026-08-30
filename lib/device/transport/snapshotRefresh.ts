@@ -272,7 +272,7 @@ function commitRefreshedSnapshot(ctx: TransportContext, params: {
     // of capability VALUE changes; the manager-level `device.update` stream does
     // not carry them. A class `car` device never survives parse, so without this
     // union the probe would never see a plug transition in realtime and would be
-    // limited to the :25/:55 fetch — far coarser than its 90 s coincidence window.
+    // limited to the device poll — far coarser than its 90 s coincidence window.
     ctx.updateLiveFeedTrackedDevices([
         ...snapshot.map((d) => d.id),
         ...ctx.observationProducers.evCarLink.getObservedCarDeviceIds(),

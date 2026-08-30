@@ -89,9 +89,9 @@ function applyEvChargingStateObservation(
     // contract is enforced by DROPPING the device at parse — an EV charger in the
     // snapshot always has a valid plug-state (`EvObservedFields`). So this seam
     // cannot write the violation inward: it ignores the event and lets the next
-    // parse drop the device, which strands the prior state for at most one refresh
-    // (~60 s, `STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS`), with the measured
-    // power axis contradicting a wrongly-retained "charging" belief meanwhile.
+    // parse drop the device, which strands the prior state until the next snapshot
+    // refresh, with the measured power axis contradicting a wrongly-retained
+    // "charging" belief meanwhile.
     // This reverses the previous rule here ("normalise to `undefined` and apply it,
     // never strand the stale state"), which could only be right while an EV device
     // was allowed to carry no plug-state at all.

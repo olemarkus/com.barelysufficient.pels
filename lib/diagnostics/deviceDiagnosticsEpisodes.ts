@@ -34,7 +34,6 @@ export const normalizeStarvationObservation = (
   observation: DeviceDiagnosticsPlanObservation,
 ): LiveStarvationObservation => ({
   eligibleForStarvation: observation.eligibleForStarvation,
-  observationFresh: observation.observationFresh,
   currentTemperatureC: observation.currentTemperatureC,
   intendedNormalTargetC: observation.intendedNormalTargetC,
   commandedTargetC: observation.commandedTargetC,
@@ -48,9 +47,6 @@ export const normalizeStarvationObservation = (
 
 const isValidStarvationObservation = (observation: LiveStarvationObservation): boolean => (
   observation.eligibleForStarvation
-  // A stale observation is not "confirmed no progress" — never count
-  // stale-but-unobserved time toward starvation (the freshness is observer-resolved).
-  && observation.observationFresh
   && isFiniteNumber(observation.intendedNormalTargetC)
   // A setpoint comparison needs a finite commanded target; a turn_off shed
   // instead compares the device's temperature against the intended target, so a

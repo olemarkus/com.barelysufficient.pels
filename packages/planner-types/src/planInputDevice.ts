@@ -135,11 +135,11 @@ export type PlanInputDeviceBase = {
   targets: TargetCapabilitySnapshot[];
   deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
-  // No `observationStale` field: the plan trusts the producer-resolved
-  // `currentOn`/`currentState` (staleness is folded in by the observer) and has
-  // no right to distrust observer data. Staleness *reporting* is the observer's
-  // concern (e.g. the idle classifier, the overview gray-state), sourced from
-  // the observer projection — never off the plan device.
+  // No device-observation freshness field: the plan trusts the producer-resolved
+  // `currentOn`/`currentState`. Nothing anywhere ages a device observation out —
+  // a Homey driver only republishes a capability on value CHANGE, so silence
+  // means "unchanged", not "unknown". `available === false` is the one honest
+  // "this device is gone" signal, and it comes from the SDK.
   communicationModel?: 'local' | 'cloud';
   reportedStepId?: string;
   targetStepId?: string;

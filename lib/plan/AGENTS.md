@@ -78,7 +78,7 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   `PlanContext` carries `headroomForLimitKw`, `powerIsMeasured`, and
   `powerMeasuredAtOrBelowKw` — no total, no freshness label, nothing to
   discriminate. `PowerFreshnessState` must not be importable from `lib/plan`. This
-  is the twin of `observationStale` being off the plan kinds, and it exists
+  is the twin of the plan kinds carrying no device-observation freshness, and it exists
   because four control paths had each re-derived "is power observable" from a
   freshness label, disagreeing with the producer's own answer. Display facts
   (`powerFreshnessState`, the raw total) travel BESIDE the context to the meta

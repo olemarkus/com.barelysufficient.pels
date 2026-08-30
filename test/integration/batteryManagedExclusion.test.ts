@@ -267,7 +267,6 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       restoreResult: emptyRestoreResult,
       priceOptimizationEnabled: false,
       priceOptimizationSettings: {},
-      getObservationStale: () => false,
     });
     const batteryObservation = observations.find((o) => o.deviceId === BATTERY_ID);
     expect(batteryObservation?.eligibleForStarvation).toBe(false);

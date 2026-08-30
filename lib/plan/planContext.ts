@@ -71,7 +71,7 @@ export type PlanContext = {
    * `lib/power` owns the meter, so it decides what a doubtful reading means and
    * answers in kW — the planner cannot tell a measured headroom from a
    * synthesized one, and has no business trying (2026-08-16 ruling; the twin of
-   * `observationStale` being off the plan kinds).
+   * the plan kinds carrying no device-observation freshness).
    *
    * The lineage: consumers once received a raw total plus a `powerKnown` boolean
    * and re-derived trust themselves; 2026-08-07 replaced that with a single

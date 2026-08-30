@@ -44,11 +44,12 @@ export {
  * that reports nothing credits nothing, which is what this card's own
  * conservative rule asks for.
  *
- * Observation staleness is intentionally NOT a short-circuit. Many Homey drivers
- * only republish per-capability `lastUpdated` on value change, so a thermostat
- * steady at setpoint can age out of `STALE_DEVICE_OBSERVATION_MS` while still on
- * and drawing exactly what it last reported. Returning 0 for that case
- * under-credited known load and blocked legitimate activations.
+ * Observation age is intentionally NOT a short-circuit. Many Homey drivers only
+ * republish per-capability `lastUpdated` on value change, so a thermostat steady
+ * at setpoint falls silent for hours while still on and drawing exactly what it
+ * last reported. Returning 0 for that case under-credited known load and blocked
+ * legitimate activations. (Nothing ages an observation out any more; the rule is
+ * kept stated here because it is what makes the plain read below correct.)
  */
 const resolveObservedHeadroomDeviceKw = (
   device: HeadroomCardDeviceLike,

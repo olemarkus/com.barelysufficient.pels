@@ -202,7 +202,7 @@ describe('MyApp initialization', () => {
 
   it('applies the observed-state projection before syncLivePlanState reads it', async () => {
     // Regression (stage 4b): listeners fire in registration order, and
-    // syncLivePlanState reads the projection (via toPlanDevice's observationStale).
+    // syncLivePlanState reads the projection (via toPlanDevice's observed reads).
     // The projection-apply listener must run first so the live-plan pass triggered
     // by an event sees that event's freshly-merged observed value, not the prior one.
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
@@ -2813,7 +2813,7 @@ describe('periodic snapshot refresh scheduling', () => {
     vi.restoreAllMocks();
   });
 
-  it('fires refresh at minute :25 and :55', async () => {
+  it('logs periodic status at minute :25 and :55', async () => {
     vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
 
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
@@ -2821,47 +2821,45 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
 
     (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
 
     // Advance to :25 — should fire
     await vi.advanceTimersByTimeAsync(25 * 60 * 1000);
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
     expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy).toHaveBeenCalledWith({ includeDeviceHealth: true });
 
     // Advance to :55 — should fire again
     await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
-    expect(refreshSpy).toHaveBeenCalledTimes(2);
     expect(logSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('waits for periodic snapshot refresh completion before logging periodic status', async () => {
+  it('logs periodic status without fetching — the device poll is the only fetcher', async () => {
+    // The :25/:55 timer used to fetch every device and then report device health
+    // only if that fetch had succeeded. It no longer fetches at all: the 5-minute
+    // device poll owns that, so the committed snapshot this reports on is never
+    // more than one poll old.
     const app = createApp();
     vi.spyOn(app as any, 'getNow').mockReturnValue(new Date('2026-03-21T10:00:00Z'));
 
-    let resolveRefresh: (() => void) | undefined;
-    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
-      new Promise<void>((resolve) => { resolveRefresh = resolve; })
-    ));
+    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
-    const rescheduleSpy = vi.spyOn((app as any).snapshotHelpers, 'scheduleNextSnapshotRefresh');
+    const rescheduleSpy = vi.spyOn((app as any).snapshotHelpers, 'schedulePeriodicStatusLog');
 
     (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
+    refreshSpy.mockClear();
 
-    vi.advanceTimersByTime(25 * 60 * 1000);
-    await Promise.resolve();
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
-    expect(logSpy).not.toHaveBeenCalled();
-    expect(rescheduleSpy).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(25 * 60 * 1000);
 
-    resolveRefresh?.();
-    await Promise.resolve();
-    await Promise.resolve();
     expect(logSpy).toHaveBeenCalledTimes(1);
     expect(logSpy).toHaveBeenCalledWith({ includeDeviceHealth: true });
+    // Armed once at start, re-armed once after firing. There is nothing to
+    // await now, so both happen synchronously.
     expect(rescheduleSpy).toHaveBeenCalledTimes(2);
+    // Exactly the five 5-minute polls that fell inside those 25 minutes — the
+    // status timer contributed no fetch of its own.
+    expect(refreshSpy).toHaveBeenCalledTimes(5);
   });
 
   it('does not fire at other minutes', async () => {
@@ -2872,68 +2870,59 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
 
     (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
 
-    // Advance 10 minutes — no scheduled refresh
+    // Advance 10 minutes — no scheduled status log
     await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
-    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalled();
   });
 
-  it('runs a targeted fallback refresh when managed device observations become stale', async () => {
-    vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
+  it('polls devices on a fixed cadence, not because an observation aged out', async () => {
+    // Regression for the removal of timeout-based device staleness. The poll
+    // used to be gated on a 40-minute per-device "stale observation" window, so
+    // the app polled only when some device happened to have been quiet a while
+    // — and in production that meant re-polling the whole managed set every
+    // minute while logging a `stale_device_observation_refresh` line per device
+    // per window, for a fetch that recovered a device once in 18 days (a
+    // snapshot fetch returns the same per-capability `lastUpdated` Homey already
+    // served). The poll is now unconditional: a home whose devices have all just
+    // reported polls exactly as often as one whose devices have gone quiet.
+    const pollCountFor = async (lastDataAt: string): Promise<number> => {
+      vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
+      const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+      setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
-    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
-    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+      const app = createApp();
+      await initApp(app);
+      (app as any).managedDevices = { 'dev-1': true };
+      (app as any).deviceManager.setSnapshotForTests(
+        (app as any).deviceManager.getSnapshot().map((device: any) => ({
+          ...device,
+          lastFreshDataMs: new Date(lastDataAt).getTime(),
+          lastUpdated: new Date(lastDataAt).getTime(),
+        })),
+      );
 
-    const app = createApp();
-    await initApp(app);
-    (app as any).managedDevices = { 'dev-1': true };
-    const staleSnapshot = (app as any).deviceManager.getSnapshot().map((device: any) => ({
-      ...device,
-      lastFreshDataMs: new Date('2026-03-21T09:10:00Z').getTime(),
-      lastUpdated: new Date('2026-03-21T09:10:00Z').getTime(),
-    }));
-    (app as any).deviceManager.setSnapshotForTests(staleSnapshot);
+      const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+      (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
+      // 25 minutes: five 5-minute polls, ending exactly on the :25 status log
+      // (which no longer fetches, so it contributes nothing here).
+      await vi.advanceTimersByTimeAsync(25 * 60 * 1000);
+      return refreshSpy.mock.calls.length;
+    };
 
-    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    // Reported one minute ago vs. reported 50 minutes ago — past the retired
+    // 40-minute window, which used to be the difference between polling and not.
+    const justReported = await pollCountFor('2026-03-21T09:59:00Z');
+    const longSilent = await pollCountFor('2026-03-21T09:10:00Z');
 
-    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
-
-    await vi.advanceTimersByTimeAsync(60 * 1000);
-
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
-    expect(refreshSpy).toHaveBeenCalledWith({ targeted: true });
+    expect(justReported).toBe(5);
+    expect(longSilent).toBe(justReported);
   });
 
-  it('does not reschedule stale observation fallback after uninit during an in-flight refresh', async () => {
-    vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
-
-    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
-    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
-
-    const app = createApp();
-    await initApp(app);
-
-    let resolveRefresh: (() => void) | undefined;
-    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshStaleDeviceObservations').mockImplementation(() => (
-      new Promise<void>((resolve) => { resolveRefresh = resolve; })
-    ));
-
-    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
-    await vi.advanceTimersByTimeAsync(60 * 1000);
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
-
-    await (app as any).onUninit();
-    resolveRefresh?.();
-    await Promise.resolve();
-    await vi.advanceTimersByTimeAsync(60 * 1000);
-
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not reschedule periodic refresh after stop during an in-flight refresh', async () => {
+  it('does not reschedule the device poll after stop during an in-flight poll', async () => {
     const app = createApp();
     vi.spyOn(app as any, 'getNow').mockReturnValue(new Date('2026-03-21T10:00:00Z'));
     vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
@@ -2942,21 +2931,22 @@ describe('periodic snapshot refresh scheduling', () => {
     const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
       new Promise<void>((resolve) => { resolveRefresh = resolve; })
     ));
-    const rescheduleSpy = vi.spyOn((app as any).snapshotHelpers, 'scheduleNextSnapshotRefresh');
 
     (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
 
-    vi.advanceTimersByTime(25 * 60 * 1000);
+    vi.advanceTimersByTime(5 * 60 * 1000);
     await Promise.resolve();
     expect(refreshSpy).toHaveBeenCalledTimes(1);
-    expect(rescheduleSpy).toHaveBeenCalledTimes(1);
 
+    // Stop mid-poll, then let the in-flight poll resolve: its `finally` must not
+    // arm the next one.
     (app as any).snapshotHelpers.stop();
     resolveRefresh?.();
     await Promise.resolve();
     await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
 
-    expect(rescheduleSpy).toHaveBeenCalledTimes(1);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
   });
 
   it('wraps to next hour when past :55', async () => {
@@ -2967,17 +2957,17 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
 
     (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
 
     // Should not fire during remaining 4 minutes of the hour
     await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
-    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalled();
 
     // Advance to next hour :25 (29 minutes from :56)
     await vi.advanceTimersByTimeAsync(25 * 60 * 1000);
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy).toHaveBeenCalledTimes(1);
   });
 
   it('skips implicit Homey Energy sample recording when refresh opts out', async () => {
@@ -3040,10 +3030,12 @@ describe('periodic snapshot refresh scheduling', () => {
     vi.spyOn(app as any, 'getStructuredDebugEmitter').mockReturnValue(debugEmit);
 
     (app as any).snapshotHelpers.schedulePostActuationRefresh();
-    const firstTimer = (app as any).snapshotHelpers.getPostActuationRefreshTimer();
+    expect((app as any).snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
     (app as any).snapshotHelpers.schedulePostActuationRefresh();
 
-    expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBe(firstTimer);
+    // Still exactly one armed: the second call took the skip branch below rather
+    // than re-arming, which is what `post_actuation_refresh_skipped` proves.
+    expect((app as any).snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
     expect(refreshSpy).not.toHaveBeenCalled();
     expect(debugEmit).toHaveBeenCalledWith(expect.objectContaining({
       event: 'post_actuation_refresh_skipped',
@@ -3055,13 +3047,13 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
 
     (app as any).snapshotHelpers.schedulePostActuationRefresh();
-    expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBeDefined();
+    expect((app as any).snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
 
     (app as any).snapshotHelpers.stop();
-    expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBeUndefined();
+    expect((app as any).snapshotHelpers.hasPendingPostActuationRefresh()).toBe(false);
 
     (app as any).snapshotHelpers.schedulePostActuationRefresh();
-    expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBeDefined();
+    expect((app as any).snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
   });
 
   it('runs post-actuation refresh without recording a Homey Energy sample', async () => {
@@ -3838,8 +3830,8 @@ describe('periodic snapshot refresh scheduling', () => {
   it('pushes same-value flow-backed freshness advances into the observer projection', async () => {
     // Regression: a steady (no value change) flow-backed report advances the
     // snapshot's lastFreshDataMs in place. It must also dispatch an observed-state
-    // delta, or the projection-fed observationStale reader (stage 4b) would mark
-    // the device stale until the next value change/full refresh.
+    // delta, or the projection would keep serving the prior observed value until
+    // the next value change / full refresh.
     const app = createApp();
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');

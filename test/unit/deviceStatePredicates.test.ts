@@ -61,10 +61,6 @@ describe('device state predicates', () => {
       expect(isGrayStateDevice({ available: false })).toBe(true);
     });
 
-    it('treats stale-observation devices as gray', () => {
-      expect(isGrayStateDevice({ observationStale: true })).toBe(true);
-    });
-
     it('treats unknown / disappeared current state as gray', () => {
       expect(isGrayStateDevice({ currentState: 'unknown' })).toBe(true);
       expect(isGrayStateDevice({ currentState: 'disappeared' })).toBe(true);

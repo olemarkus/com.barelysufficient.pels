@@ -8117,7 +8117,7 @@ describe('DeviceTransport', () => {
                 // Homey serves cached capability values even when the device has been silent
                 // for hours. A successful poll is not by itself evidence the device is alive;
                 // only Homey's per-capability `lastUpdated` proves new observation. The
-                // 40-minute `STALE_DEVICE_OBSERVATION_MS` window is the backstop.
+                // Silence is not a fault: a driver only republishes on value change.
                 vi.useFakeTimers();
                 try {
                     await deviceManager.init();

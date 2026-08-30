@@ -238,7 +238,6 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       restoreResult: emptyRestoreResult,
       priceOptimizationEnabled: false,
       priceOptimizationSettings: {},
-      getObservationStale: () => false,
     });
     const solarObservation = observations.find((o) => o.deviceId === SOLAR_ID);
     expect(solarObservation?.eligibleForStarvation).toBe(false);

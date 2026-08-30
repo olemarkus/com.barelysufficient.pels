@@ -98,7 +98,6 @@ export type PlanBuilderDeps = {
   // (starvation must not count stale-but-unobserved time). Sourced from the
   // observer projection at the wiring layer (createPlanEngine); absent in tests
   // that don't exercise freshness, which then treat every device as fresh.
-  getObservationStale?: (deviceId: string) => boolean;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
   // Smart-task (deferred-objective) decoration seam. The smart-task controller

@@ -41,10 +41,9 @@ export const DEVICE_OVERVIEW_LOG_MAX_DEVICES = 64;
 export type DeviceOverviewLogRecord = SettingsUiDeviceLogEntry;
 
 /**
- * A plan device carrying the display fields the plan itself does not own:
- * the resolved `controlModel` and the observer's `observationStale`. Built once
- * per device by `planOverviewEmit.recordOverviewChange` and threaded through
- * every helper here.
+ * A plan device carrying the display fields the plan itself does not own.
+ * Built once per device by `planOverviewEmit.recordOverviewChange` and threaded
+ * through every helper here.
  *
  * These helpers used to take a bare `DevicePlanDevice`, so nothing stopped a
  * caller handing them a device with no stepped cluster at all — which
@@ -53,7 +52,6 @@ export type DeviceOverviewLogRecord = SettingsUiDeviceLogEntry;
  */
 export type OverviewLogDevice = DevicePlanDevice & {
   steppedLoad?: DeviceOverviewSteppedLoad;
-  observationStale?: boolean;
 };
 
 // The overview-transition signature: a change in this value is the boundary

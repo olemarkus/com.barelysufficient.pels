@@ -972,7 +972,7 @@ program) remain deferred.*
       pinned by a test asserting the fields appear when a promotion fires.
 
 - [ ] **Unmanaged picker devices are served from a cached parse, so their observed state is
-      up to half an hour stale.** `/ui_devices` merges the managed snapshot with the
+      up to one device-poll interval behind.** `/ui_devices` merges the managed snapshot with the
       unmanaged-but-eligible picker list, and `withLiveObservedState`
       (`setup/settingsUiApi.ts`) refreshes only the devices the observer projection holds. The
       projection is fed from the committed runtime snapshot

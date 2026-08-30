@@ -164,7 +164,6 @@ const isOnLike = (value: string | undefined): boolean => {
 
 const isGray = (device: DeviceOverviewSnapshot): boolean => {
   if (device.available === false) return true;
-  if (device.observationStale === true) return true;
   const normalized = normalize(device.currentState);
   return normalized === 'unknown' || normalized === 'disappeared';
 };

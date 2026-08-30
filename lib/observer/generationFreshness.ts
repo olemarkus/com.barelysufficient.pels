@@ -5,10 +5,14 @@ import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/sr
  * into a value a power sample may carry, or `undefined` when there is nothing
  * trustworthy to co-sample.
  *
- * Lives in `lib/observer/` beside `observationFreshness.ts` because freshness is
- * this layer's mandate — consumers read a producer-resolved answer and must not
- * re-derive it from a raw age (`lib/observer/AGENTS.md`). `ObservedHomePower`
- * itself stays a dumb value+time store; the POLICY is here.
+ * Lives in `lib/observer/` because freshness policy is this layer's mandate —
+ * consumers read a producer-resolved answer and must not re-derive it from a raw
+ * age (`lib/observer/AGENTS.md`). `ObservedHomePower` itself stays a dumb
+ * value+time store; the POLICY is here.
+ *
+ * This is about the whole-home METER, which pushes on a fixed cadence and whose
+ * silence therefore IS a fault. It is not a per-device observation, where
+ * silence means "unchanged" and no timeout applies.
  *
  * Needed only where net and production arrive on DIFFERENT clocks — the flow
  * source, where net comes from the `report_power_usage` card and production from

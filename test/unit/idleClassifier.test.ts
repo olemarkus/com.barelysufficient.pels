@@ -26,7 +26,6 @@ const heaterAt = (
   id: 'heater-1',
   name: 'Connected 300',
   currentState: 'on',
-  observationStale: false,
   currentDrawKw: 0,
   temperature: { currentTemperature: 61.5, currentTarget: 65 },
   plannedState: 'keep',
@@ -270,15 +269,6 @@ describe('createIdleClassifier', () => {
       const t0 = 1_000_000;
       classifier.classifyAll([heaterAt({ currentDrawKw: 1.5, plannedState: 'shed' })], t0);
       classifier.classifyAll([heaterAt({ currentDrawKw: 0, plannedState: 'shed' })], t0 + 10_000);
-      expect(eventNames(debug)).not.toContain('device_power_draw_stopped');
-    });
-
-    it('does not log a stopped edge when the observation goes stale (0 W is untrusted)', () => {
-      const debug = createSink();
-      const classifier = createIdleClassifier({ debugStructured: debug.emit });
-      const t0 = 1_000_000;
-      classifier.classifyAll([heaterAt({ currentDrawKw: 1.5 })], t0); // seed: drawing
-      classifier.classifyAll([heaterAt({ currentDrawKw: 0, observationStale: true })], t0 + 10_000);
       expect(eventNames(debug)).not.toContain('device_power_draw_stopped');
     });
 

@@ -14,7 +14,7 @@ import {
  * owns the meter, so `lib/power` decides what a doubtful reading means and
  * answers in kW (root `AGENTS.md` → "Clean and trusted interfaces between
  * layers"; the 2026-08-16 ruling that `lib/plan` holds no concept of staleness,
- * the twin of `observationStale` being off the plan kinds).
+ * the twin of the plan kinds carrying no device-observation freshness).
  *
  * `display` is the other direction: facts the owner is entitled to see (the
  * hero's "Power readings have dropped"), written outward onto the plan snapshot

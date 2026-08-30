@@ -27,11 +27,6 @@ export type OverviewEmitDeps = {
   isOverviewDebugEnabled?: () => boolean;
   overviewDebugStructured?: StructuredDebugEmitter;
   deviceOverviewLogRecorder?: DeviceOverviewLogRecorder;
-  // Display-only staleness for the overview signature/log, sourced from the
-  // observer (the plan device no longer carries `observationStale`). Mirrors the
-  // live-card read model (`settingsOverviewReadModel`) so the device-log/activity
-  // view and the live overview card agree on the gray "unresponsive" state.
-  getObservationStale?: (deviceId: string) => boolean;
   // Same observer-owned current pair the live read model overlays. This seam
   // must not reconstruct a second temperature view from the plan snapshot.
   getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
@@ -46,7 +41,6 @@ export type OverviewEmitDeps = {
 type OverviewPassContext = {
   recorder: DeviceOverviewLogRecorder | undefined;
   debugEnabled: boolean;
-  getObservationStale: (deviceId: string) => boolean;
   getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
 };
 
@@ -74,11 +68,6 @@ function recordOverviewChange(
     // The draw needs no adapter: the display/log helpers read `currentDrawKw`,
     // the producer-resolved field the plan device already carries — one value,
     // two seams, no second answer anywhere in the planner.
-    // Display-only staleness, sourced from the observer (the plan device no longer
-    // carries it) so the signature flips on a gray/"unresponsive" transition and the
-    // device-log/debug surfaces match the live card — same provenance as the read
-    // model's gray-state label. A WRITE, not a planner read of `.observationStale`.
-    observationStale: pass.getObservationStale(device.id),
   };
   const signature = buildOverviewSignatureForDevice(overviewDevice);
   const previousSignature = signatureByDeviceId.get(device.id);
@@ -118,7 +107,6 @@ function buildOverviewPassContext(
   return {
     recorder,
     debugEnabled,
-    getObservationStale: deps.getObservationStale ?? ((): boolean => false),
     getObservedTemperature: deps.getObservedTemperature,
   };
 }

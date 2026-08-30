@@ -97,7 +97,6 @@ const serializePlanForUi = (
     getAssociatedCarChargingState: (deviceId) => deps.getAssociatedCarChargingState?.(deviceId),
     getObservedStateOfCharge: (deviceId) => deps.getObservedStateOfCharge?.(deviceId),
     getObservedTemperature: deps.getObservedTemperature,
-    getObservationStale: (deviceId) => deps.getObservationStale?.(deviceId) ?? false,
     getSteppedLoadProfileById: deps.getSteppedLoadProfileById,
   });
 };
@@ -480,16 +479,12 @@ export class PlanService {
     // The temperature cluster rides as ONE optional object on the classifier
     // input (mirroring the observer's atomic facet): stamped together for a
     // temperature device, omitted otherwise — no nullable fields synthesized.
-    // The idle classifier is an observer-side diagnostic tap whose "unresponsive"
-    // detection legitimately needs staleness; the plan device no longer carries
-    // `observationStale`, so source it from the observer projection here.
     const idleInputs = plan.devices.map((device): IdleClassifierDeviceInput => ({
       id: device.id,
       name: device.name,
       currentState: device.currentState,
       currentDrawKw: device.currentDrawKw,
       plannedState: device.plannedState,
-      observationStale: this.deps.getObservationStale?.(device.id) ?? false,
       ...(isTemperaturePlanDevice(device)
         ? {
           temperature: {

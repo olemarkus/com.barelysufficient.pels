@@ -1266,9 +1266,9 @@ overrides, the horizon scheduler (budget-friendly buckets with deadline margin),
 `expectedStepId` selection, EV admission (disconnect invalidation, fresh-progress gating,
 `satisfied`→pause on cap-off via the lifecycle clock), deadline auto-disable on pass
 (`statusTransitions.ts` + `handleDeferredDeadlineReached`), and the Smart-tasks + per-device plan/history UI with public flow-card
-creation/clearing. The freshness doctrine — credit aged-out temperature (thermostats fall silent at
-setpoint) but require strictly-fresh EV SoC — lives in `lib/observer/observationFreshness.ts` and
-`lib/objectives/deferredObjectives/diagnosticProgress.ts`.
+creation/clearing. The freshness doctrine — credit a long-silent temperature (thermostats fall silent
+at setpoint; nothing ages a device observation out) but require strictly-fresh EV SoC — lives in
+`lib/observer/AGENTS.md` and `lib/objectives/deferredObjectives/diagnosticProgress.ts`.
 
 **Deferred to dedicated notes:** confidence-adjusted status
 margin and transition hysteresis ([`notes/status-hysteresis/README.md`](../status-hysteresis/README.md));

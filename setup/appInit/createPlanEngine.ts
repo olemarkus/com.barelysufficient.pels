@@ -8,7 +8,6 @@ import { PlanExecutor } from '../../lib/executor/planExecutor';
 import type { PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { AppContext } from '../../lib/app/appContext';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
@@ -72,7 +71,6 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     getInferredSurplusKw: deps.getInferredSurplusKw,
     getPowerTracker: deps.getPowerTracker,
     getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
-    getObservationStale: deps.getObservationStale,
     getShedBehavior: deps.getShedBehavior,
     getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
     holdsModeTargetRaisesWhilePowerUnknown: deps.holdsModeTargetRaisesWhilePowerUnknown,
@@ -160,22 +158,12 @@ export function createPlanEngineComposition(
     deviceManager,
     getObservedState: (deviceId) => ctx.getObservedState(deviceId),
     getObservationRevision: () => ctx.getObservationRevision(),
-    // Observer-resolved per-device staleness for the diagnostics freshness gate
-    // (starvation must not count stale-but-unobserved time). Same observer-projection
-    // seam as createPlanService.getObservationStale; resolved to a flat boolean here.
-    // A device with no projection entry yet is treated as not stale.
     // "Leave off until turned on again": resolved HERE rather than per caller so
     // no home can be wired without it — a missing one would silently make the
     // executor's restore carve-out a no-op for that home's devices. Same
     // resolution the producer applies, so plan and executor share one definition
     // of "held".
     isExternalOffHeld: (deviceId) => isExternalOffHeldForDevice(ctx, deviceId),
-    // Persisted pre-shed setpoint anchors; one app-wide store (device ids are
-    // globally unique), so every home's planner shares the same debt ledger.
-    getObservationStale: (deviceId) => {
-      const observed = ctx.getObservedState(deviceId);
-      return observed !== undefined && isDeviceObservationStale(observed);
-    },
     actuator,
     binaryCommandLifecycle: scope.binaryCommandLifecycle,
     capacityGuard: options.capacityGuard,

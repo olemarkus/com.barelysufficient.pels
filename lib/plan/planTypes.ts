@@ -435,10 +435,10 @@ type DevicePlanDeviceBase = {
   // (`lib/plan/planTemperatureDevice.ts`). The boost configs and readings are
   // off the plan device entirely — it carries the resolved `boostActive`
   // decision and nothing behind it.
-  // There is intentionally no
-  // `observationStale` field: the plan has no right to distrust observer data
-  // (it trusts the producer-resolved `currentOn`/`currentState`), and staleness
-  // *reporting* is the observer's concern, not the plan's.
+  // There is intentionally no device-observation freshness field: the plan
+  // trusts the producer-resolved `currentOn`/`currentState`. Nothing anywhere
+  // ages a device observation out — a Homey driver only republishes a
+  // capability on value CHANGE, so silence means "unchanged", not "unknown".
   communicationModel?: 'local' | 'cloud';
   reportedStepId?: string;
   targetStepId?: string;

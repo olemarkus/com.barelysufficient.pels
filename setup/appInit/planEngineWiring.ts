@@ -36,7 +36,6 @@ export type PlanEngineWiring = {
   }>;
   getCurrentHourPriceLevel: () => { cheap: boolean; expensive: boolean };
   getInferredSurplusKw?: () => number | null;
-  getObservationStale?: (deviceId: string) => boolean;
   isExternalOffHeld?: (deviceId: string) => boolean;
   /** Pre-shed setpoint anchor store — the persisted adapter, shared across
    * homes (device ids are globally unique). Required: a home wired without it

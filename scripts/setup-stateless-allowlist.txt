@@ -25,7 +25,7 @@ setup/homeRuntime/suffixedTrackerPersistence.ts 4
 setup/homeRuntime/powerSourceEpochFence.ts 5
 
 # --- Device/snapshot lane (→ lib/device) -----------------------------------
-setup/appSnapshotHelpers.ts 11
+setup/appSnapshotHelpers.ts 5
 setup/targetPowerProbeScheduler.ts 4
 setup/appNativeWiring.ts 1
 setup/appFlowBacked.ts 7
