@@ -41,6 +41,7 @@
     "binary:seam": "node scripts/check-binary-seam.mjs",
     "executor:settle-seam": "node scripts/check-executor-settle-seam.mjs",
     "setup:stateless": "node scripts/check-setup-stateless.mjs",
+    "params:no-bundles": "node scripts/check-param-bundles.mjs",
     "executor:plan-edge": "node scripts/check-executor-plan-edge.mjs",
     "deadcode:check": "knip",
     "sanitize:homey-build": "node scripts/sanitize-homey-build.mjs",
