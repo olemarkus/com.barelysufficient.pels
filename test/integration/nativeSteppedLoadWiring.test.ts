@@ -23,6 +23,7 @@ import {
   buildExecutableSteppedLoadIntent,
 } from '../../lib/executor/executableSteppedLoadProjection';
 import { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
+import { createSteppedCommandStore } from '../../lib/executor/steppedCommandStore';
 import type {
   DevicePlanDevice,
   BinaryControlDiscriminantProbe,
@@ -850,6 +851,7 @@ describe('native stepped-load wiring', () => {
     } satisfies TargetDeviceSnapshot & MeasuredPowerObservedProbe & ReportedStepObservedProbe;
     let snapshots = [flowSnapshot];
     const helpers = new AppDeviceControlHelpers({
+    store: createSteppedCommandStore(),
       getProfiles: () => ({ 'hoiax-1': steppedProfile }),
       getDeviceSnapshots: () => snapshots,
       getStructuredLogger: () => undefined,
@@ -907,6 +909,7 @@ describe('native stepped-load wiring', () => {
       suggestedSteppedLoadProfile: steppedProfile,
     } satisfies TargetDeviceSnapshot & MeasuredPowerObservedProbe & ReportedStepObservedProbe;
     const helpers = new AppDeviceControlHelpers({
+    store: createSteppedCommandStore(),
       getProfiles: () => ({ 'hoiax-1': configuredProfile }),
       getDeviceSnapshots: () => [nativeSnapshot],
       getStructuredLogger: () => undefined,

@@ -23,17 +23,11 @@ import {
   resolveNativeSteppedLoadProfile,
 } from './appDeviceControlSteppedState';
 import {
-  confirmSteppedLoadDesiredStep,
-  expireConfirmedDesiredStepOnBinaryOff,
-  markSteppedLoadDesiredStepIssued,
-  preserveSteppedLoadDesiredStep,
-  pruneStaleSteppedLoadCommandStates,
-  reportSteppedLoadActualStep,
   type DeviceControlRuntimeState,
   type MarkSteppedLoadDesiredStepIssuedParams,
   type ReportSteppedLoadActualStepResult,
-  createDeviceControlRuntimeState,
 } from '../lib/executor/steppedCommandState';
+import type { SteppedCommandStore } from '../lib/executor/steppedCommandStore';
 import {
   emitSteppedFeedbackLog,
   isValidSteppedLoadFeedbackProfile,
@@ -152,12 +146,12 @@ export const decorateSnapshotWithDeviceControl = (params: {
   // effective profile and writes it (with `reportedStepId`) onto the carrier.
   snapshot: TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe;
   profiles: DeviceControlProfiles;
-  runtimeState: DeviceControlRuntimeState;
+  store: SteppedCommandStore;
   temperatureControlDisabled?: boolean;
   nowMs?: number;
 }): DecoratedDeviceSnapshot => {
   const {
-    snapshot, profiles, runtimeState, temperatureControlDisabled = false, nowMs = Date.now(),
+    snapshot, profiles, store, temperatureControlDisabled = false, nowMs = Date.now(),
   } = params;
   // The denial is a stamp, not a demotion. The step cluster below is resolved
   // exactly as it is for any other device — the flag says nothing about a
@@ -188,32 +182,29 @@ export const decorateSnapshotWithDeviceControl = (params: {
     };
   }
 
-  pruneStaleSteppedLoadCommandStates(runtimeState, nowMs);
-  const reported = runtimeState.steppedLoadReportedByDeviceId.get(snapshot.id);
+  store.pruneStale(nowMs);
+  const reported = store.getReported(snapshot.id);
   const nativeSteppedControlEnabled = nativeProfile !== null;
   const snapshotReportedStepId = getSteppedLoadStep(profile, snapshot.reportedStepId)?.id;
   const nativeReportedStepId = nativeSteppedControlEnabled ? snapshotReportedStepId : undefined;
   if (nativeSteppedControlEnabled && reported) {
-    runtimeState.steppedLoadReportedByDeviceId.delete(snapshot.id);
+    store.clearReported(snapshot.id);
   }
   const confirmedReportedStepId = nativeReportedStepId ?? snapshotReportedStepId;
   const observedStepId = nativeReportedStepId ?? reported?.stepId ?? snapshotReportedStepId;
-  expireConfirmedDesiredStepOnBinaryOff({
-    runtimeState,
-    deviceId: snapshot.id,
-    observedOn: resolveObservedSteppedOn(snapshot.binaryControl?.on, profile, observedStepId),
-  });
-  const desired = runtimeState.steppedLoadDesiredByDeviceId.get(snapshot.id);
+  store.expireConfirmedDesiredOnBinaryOff(
+    snapshot.id,
+    resolveObservedSteppedOn(snapshot.binaryControl?.on, profile, observedStepId),
+  );
+  const desired = store.getDesired(snapshot.id);
   if (confirmedReportedStepId && desired?.stepId === confirmedReportedStepId) {
-    confirmSteppedLoadDesiredStep({ runtimeState, deviceId: snapshot.id, desired });
+    store.confirmDesired(snapshot.id, desired);
   }
-  const currentDesired = runtimeState.steppedLoadDesiredByDeviceId.get(snapshot.id);
+  const currentDesired = store.getDesired(snapshot.id);
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
-  const initializedStepId = runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.get(snapshot.id);
+  const initializedStepId = store.getInitializedStepId(snapshot.id);
   if (initializedStepId && initializedStepId !== fallbackStepId) {
-    runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.delete(snapshot.id);
-    runtimeState.steppedLoadDesiredByDeviceId.delete(snapshot.id);
-    runtimeState.steppedLoadStepCommandIssuedByDeviceId.delete(snapshot.id);
+    store.clearCommandSession(snapshot.id);
   }
   const stepFields = buildSteppedLoadSnapshotStepFields({
     profile,
@@ -268,9 +259,10 @@ export const decorateSnapshotWithDeviceControl = (params: {
 
 
 export class AppDeviceControlHelpers {
-  private readonly runtimeState: DeviceControlRuntimeState = createDeviceControlRuntimeState();
-
   constructor(private readonly deps: {
+    // The commanded axis is executor state; this class only reads and drives it
+    // (`lib/executor/steppedCommandStore.ts`, `setup/AGENTS.md` § "No state").
+    store: SteppedCommandStore;
     getProfiles: () => DeviceControlProfiles;
     getTargetPowerConfig?: (deviceId: string) => TargetPowerSteppedLoadConfig | undefined;
     updateTargetPowerReachability?: (deviceId: string, reachability: TargetPowerReachabilityState) => boolean;
@@ -334,28 +326,25 @@ export class AppDeviceControlHelpers {
     const lowestStepId = profile
       ? getSteppedLoadLowestActiveStep(profile)?.id
       : undefined;
-    const initializedStepId = this.runtimeState
-      .steppedLoadInitializedAtLowestStepByDeviceId.get(deviceId);
+    const initializedStepId = this.deps.store.getInitializedStepId(deviceId);
     if (initializedStepId && initializedStepId !== lowestStepId) {
-      this.runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.delete(deviceId);
-      this.runtimeState.steppedLoadDesiredByDeviceId.delete(deviceId);
-      this.runtimeState.steppedLoadStepCommandIssuedByDeviceId.delete(deviceId);
+      this.deps.store.clearCommandSession(deviceId);
     }
     return {
       initializationAssumedStepId: initializedStepId === lowestStepId
         ? initializedStepId
         : undefined,
-      hasPriorStepCommand: this.runtimeState.steppedLoadStepCommandIssuedByDeviceId.has(deviceId),
+      hasPriorStepCommand: this.deps.store.hasPriorStepCommand(deviceId),
       reportedStepId: profile
         ? getSteppedLoadStep(
           profile,
-          this.runtimeState.steppedLoadReportedByDeviceId.get(deviceId)?.stepId,
+          this.deps.store.getReported(deviceId)?.stepId,
         )?.id
         : undefined,
       // Whether a step command is in flight. Read from the commanded axis, not
       // from a decorated snapshot: the decoration is a once-per-cycle copy, and
       // drift asks this between cycles.
-      stepCommandPending: this.runtimeState.steppedLoadDesiredByDeviceId.get(deviceId)?.pending === true,
+      stepCommandPending: this.deps.store.getDesired(deviceId)?.pending === true,
     };
   }
 
@@ -373,11 +362,11 @@ export class AppDeviceControlHelpers {
         deviceId: device.id,
       }),
     });
-    pruneStaleSteppedLoadCommandStates(this.runtimeState, nowMs);
+    this.deps.store.pruneStale(nowMs);
     return resolvedSnapshots.map((device) => decorateSnapshotWithDeviceControl({
       snapshot: device,
       profiles,
-      runtimeState: this.runtimeState,
+      store: this.deps.store,
       temperatureControlDisabled: this.deps.isTemperatureControlDisabled?.(device.id) === true,
       nowMs,
     }));
@@ -404,8 +393,7 @@ export class AppDeviceControlHelpers {
     const stepPowers = params.unacknowledged === true
       ? planningPowersOnly
       : resolvedStepPowers;
-    markSteppedLoadDesiredStepIssued({
-      runtimeState: this.runtimeState,
+    this.deps.store.markDesiredStepIssued({
       deviceId: params.deviceId,
       desiredStepId: params.desiredStepId,
       previousStepId: params.previousStepId,
@@ -414,7 +402,7 @@ export class AppDeviceControlHelpers {
       confirmationPolicy: params.confirmationPolicy,
       ...stepPowers,
     });
-    const desired = this.runtimeState.steppedLoadDesiredByDeviceId.get(params.deviceId);
+    const desired = this.deps.store.getDesired(params.deviceId);
     if (
       desired?.targetPowerProbeConfirmedMaxPowerW !== undefined
       && desired.targetPowerProbeStartedAtMs !== undefined
@@ -427,11 +415,7 @@ export class AppDeviceControlHelpers {
   }
 
   hasPendingTargetPowerProbe(): boolean {
-    return [...this.runtimeState.steppedLoadDesiredByDeviceId.values()].some((desired) => (
-      desired.pending
-      && desired.targetPowerProbeConfirmedMaxPowerW !== undefined
-      && desired.targetPowerProbeStartedAtMs !== undefined
-    ));
+    return this.deps.store.hasPendingTargetPowerProbe();
   }
 
   reconcileTargetPowerReachability(
@@ -441,7 +425,7 @@ export class AppDeviceControlHelpers {
     if (!this.deps.getTargetPowerConfig || !this.deps.updateTargetPowerReachability) return;
     reconcileTargetPowerReachability({
       snapshots,
-      runtimeState: this.runtimeState,
+      store: this.deps.store,
       nowMs,
       getConfig: this.deps.getTargetPowerConfig,
       update: this.deps.updateTargetPowerReachability,
@@ -460,7 +444,7 @@ export class AppDeviceControlHelpers {
     // only carry `deviceName` when actually known (never an id-derived placeholder).
     const knownDeviceName = snapshot ? snapshot.name.trim() : undefined;
     if (hasNativeSteppedLoadFeedbackAuthority(snapshot)) {
-      this.runtimeState.steppedLoadReportedByDeviceId.delete(deviceId);
+      this.deps.store.clearReported(deviceId);
       this.deps.debugStructured({
         event: 'stepped_load_feedback_ignored', reason: 'native_wiring_enabled', deviceId, deviceName: knownDeviceName,
       });
@@ -481,8 +465,8 @@ export class AppDeviceControlHelpers {
       });
       return 'invalid';
     }
-    const previousReportedStepId = this.runtimeState.steppedLoadReportedByDeviceId.get(deviceId)?.stepId;
-    const previousDesired = this.runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
+    const previousReportedStepId = this.deps.store.getReported(deviceId)?.stepId;
+    const previousDesired = this.deps.store.getDesired(deviceId);
     const previousDesiredStepId = resolvePreviousDesiredStepId(profile, previousDesired);
     const latestPlanDesiredStepId = resolveLatestPlanDesiredStepId({
       plan: this.deps.getLatestPlanSnapshot?.(),
@@ -499,8 +483,7 @@ export class AppDeviceControlHelpers {
         observedAtMs: reportedAtMs,
       });
     }
-    const changed = reportSteppedLoadActualStep({
-      runtimeState: this.runtimeState,
+    const changed = this.deps.store.reportActualStep({
       profiles: {
         ...storedProfiles,
         [deviceId]: profile,
@@ -520,8 +503,7 @@ export class AppDeviceControlHelpers {
       reportedStepId: stepId,
     });
     if (desiredStepToPreserve) {
-      preserveSteppedLoadDesiredStep({
-        runtimeState: this.runtimeState,
+      this.deps.store.preserveDesiredStep({
         deviceId,
         desiredStepId: desiredStepToPreserve,
         previousStepId: stepId,
@@ -548,7 +530,7 @@ export class AppDeviceControlHelpers {
   }
 
   getRuntimeStateForTests(): DeviceControlRuntimeState {
-    return this.runtimeState;
+    return this.deps.store.getStateForTests();
   }
 
   private resolveSteppedLoadFeedbackProfile(

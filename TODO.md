@@ -869,30 +869,23 @@ program) remain deferred.*
       while they leak, but a device that returns after a long absence is judged against a posture decided
       before it left. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
-- [ ] **The executor's stepped-command state lives in `setup/`, and setup advances its lifecycle
-      from inside the plan-input producer.** `DeviceControlRuntimeState` is defined in
-      `lib/executor/steppedCommandState.ts` but instantiated and held at
-      `setup/appDeviceControlHelpers.ts:271`, and three of its four lifecycle transitions run from
-      setup, not from the executor: `pruneStaleSteppedLoadCommandStates`,
-      `expireConfirmedDesiredStepOnBinaryOff` and `confirmSteppedLoadDesiredStep` are called inside
-      `decorateSnapshotWithDeviceControl` (plus one more confirm in
-      `setup/appTargetPowerReachability.ts:119`). The executor calls only
-      `markSteppedLoadDesiredStepIssued`. So a step command settles because the planner asked for
-      its input devices, not because the executor observed materialization — and the commanded axis
-      (`desiredStepId`, `targetStepId`, `stepCommandPending`) reaches the planner through the
-      decorated snapshot while `no-plan-to-executor` sees no import to object to. It also
-      contradicts `lib/executor/AGENTS.md` ("the in-flight command state comes from this layer's own
-      stores"), which is true for `pendingBinaryCommandStore` and false for the stepped axis.
-      Change: give the executor a `SteppedCommandStore` owned the way
-      `lib/observer/pendingBinaryCommands.ts` is — constructed in
-      `setup/appInit/createPlanEngine.ts`, injected into the executor as writer and lifecycle owner
-      and into the plan-input producer read-only; move confirm/expire/prune onto the executor's
-      settle path; land the commanded fields on `PlanInputDevice` as a named commanded cluster
-      rather than blended into the observation spread (`setup/appInit/toPlanDevice.ts:639`). Done
-      when `grep -rn "confirmSteppedLoadDesiredStep\|expireConfirmedDesiredStep\|pruneStaleSteppedLoad" setup/`
-      is empty, `setup/appDeviceControlHelpers.ts` is gone from
-      `scripts/setup-stateless-allowlist.txt`, and a regression test pins that a step command
-      settles on the executor's observation rather than on a plan-device read. Found 2026-08-29.
+- [ ] **A stepped command settles inside the plan-input producer, not on the executor's settle
+      path.** The store is now executor-owned (`lib/executor/steppedCommandStore.ts`, injected from
+      `app.ts`), but three of its four lifecycle transitions still run from
+      `decorateSnapshotWithDeviceControl` (`setup/appDeviceControlHelpers.ts`):
+      `pruneStale`, `expireConfirmedDesiredOnBinaryOff` and `confirmDesired`, plus one more
+      `confirmDesired` in `setup/appTargetPowerReachability.ts`. So a step command confirms because
+      the planner asked for its input devices — a mutating read run once per power sample — rather
+      than because the executor observed the command materialize, and the settle timing is coupled
+      to plan-build cadence. The binary axis already has the shape this wants:
+      `syncPendingBinaryCommands` (`lib/observer/pendingBinaryCommands.ts`) is a sweep over devices
+      carrying a producer-resolved `binaryCommandConfirmation` discriminated union, called from
+      `PlanService.syncLivePlanStateInline` and `planServiceRebuild`. Change: give the stepped axis
+      the same — a `steppedCommandConfirmation` (`unavailable | observed`) resolved by the producer
+      onto the settle device, and a `syncSteppedCommands` sweep beside the binary one; the decorator
+      then only READS the store. Done when `decorateSnapshotWithDeviceControl` makes no write to the
+      store, the four lifecycle call sites in `setup/` are gone, and a regression test drives a step
+      command to confirmation with no plan rebuild in between. Found 2026-08-29.
 
 ## P2 Product, Observability, and Maintainability
 

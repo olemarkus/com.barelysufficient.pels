@@ -33,6 +33,7 @@ import {
 } from './lib/objectives/deferredObjectives';
 import type { DebugLoggingTopic } from './packages/shared-domain/src/utils/debugLogging';
 import { AppDeviceControlHelpers } from './setup/appDeviceControlHelpers';
+import { createSteppedCommandStore, type SteppedCommandStore } from './lib/executor/steppedCommandStore';
 import { DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, MAIN_HOME_ID } from './lib/utils/settingsKeys';
 import type { PowerSampleRebuildState } from './lib/plan/rebuildScheduler/powerDriven';
 import { BackgroundTasksController } from './setup/backgroundTasksController';
@@ -284,7 +285,16 @@ class PelsApp extends PelsAppBase implements AppContext {
   });
   public readonly homeyEnergyHelpers = createHomeyEnergyPollSource(this, this.powerSamplePipeline);
   public readonly generationPollSource = createGenerationPollSource(this, this.observedHomePower);
+  /**
+   * The executor's commanded axis for stepped loads. Constructed here because
+   * `app.ts` is the composition root and this store outlives every home's plan
+   * engine; device ids are globally unique, so one app-wide store serves them
+   * all. It is handed to the wiring that drives it and to the plan engine that
+   * owns it — `lib/executor/steppedCommandStore.ts`.
+   */
+  public readonly steppedCommandStore: SteppedCommandStore = createSteppedCommandStore();
   public readonly deviceControlHelpers: AppDeviceControlHelpers = new AppDeviceControlHelpers({
+    store: this.steppedCommandStore,
     getProfiles: () => this.deviceControlProfiles,
     ...this.targetPowerReachabilityWiring.deviceControlDeps,
     isTemperatureControlDisabled: (deviceId) => this.isTemperatureControlDisabled(deviceId),

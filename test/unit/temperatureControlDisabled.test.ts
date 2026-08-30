@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import {
-  createDeviceControlRuntimeState,
   decorateSnapshotWithDeviceControl,
   markSteppedLoadDesiredStepIssued,
   reportSteppedLoadActualStep,
   resolveTemperatureControlDisabled,
 } from '../../setup/appDeviceControlHelpers';
+import { createSteppedCommandStore } from '../../lib/executor/steppedCommandStore';
 import { createTemperatureControlFencedActuator } from '../../setup/appInit/buildDeviceActuator';
 import { readTemperatureControlDisabledDevicesSetting } from '../../setup/appSettingsHelpers';
 
@@ -146,7 +146,8 @@ describe('disabled temperature control', () => {
       ],
     };
     const profiles = { [raw.id]: profile };
-    const runtimeState = createDeviceControlRuntimeState();
+    const store = createSteppedCommandStore();
+    const runtimeState = store.getStateForTests();
     markSteppedLoadDesiredStepIssued({
       runtimeState,
       deviceId: raw.id,
@@ -166,7 +167,7 @@ describe('disabled temperature control', () => {
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: raw,
       profiles,
-      runtimeState,
+      store,
       temperatureControlDisabled: true,
       nowMs: 110,
     });
@@ -191,7 +192,7 @@ describe('disabled temperature control', () => {
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: thermostat(),
       profiles: {},
-      runtimeState: createDeviceControlRuntimeState(),
+      store: createSteppedCommandStore(),
       temperatureControlDisabled: true,
       nowMs: 110,
     });

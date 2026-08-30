@@ -7,9 +7,10 @@
 // becomes a channel between modules that are forbidden to talk to each other —
 // with no import edge to show for it, so `arch:check` cannot see it.
 //
-// That is not hypothetical. `setup/appDeviceControlHelpers.ts` holds the
-// EXECUTOR's stepped-command state, and three of its four lifecycle transitions
-// (confirm / expire / prune) are called from setup, inside
+// That is not hypothetical. `setup/appDeviceControlHelpers.ts` HELD the
+// executor's stepped-command state until it was moved to
+// `lib/executor/steppedCommandStore.ts`, and it still drives three of that
+// store's four lifecycle transitions (confirm / expire / prune) from inside
 // `decorateSnapshotWithDeviceControl` — the plan-input producer. So a step
 // command settles because the planner asked for its devices, not because the
 // executor observed materialization, and the commanded axis reaches the planner
