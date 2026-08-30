@@ -7,6 +7,7 @@ import type {
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../lib/utils/types';
+import { isBinaryOnOrUnknown } from '../packages/shared-domain/src/binaryControlState';
 import type {
   DeviceStateComparison,
   DeviceStateComparisonSource,
@@ -69,7 +70,7 @@ export const buildPelsSnapshotComparisonSource = (
   const target = Array.isArray(snapshot.targets) ? snapshot.targets[0] : null;
   const powerW = resolveComparisonPowerW(snapshot);
   return {
-    sourceState: (snapshot.binaryControl?.on ?? true) ? 'on' : 'off',
+    sourceState: isBinaryOnOrUnknown(snapshot) ? 'on' : 'off',
     ...(target ? { target: target.value } : {}),
     ...(powerW !== null ? { powerW } : {}),
     ...(asTimestampString(snapshot.lastUpdated) ? { lastSeenAt: asTimestampString(snapshot.lastUpdated) } : {}),
