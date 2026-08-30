@@ -9,6 +9,7 @@ import {
     type CapabilityObservationSource,
     type DeviceTransportObservationState,
 } from './observationState';
+import { incPerfCounter } from '../../utils/perfCounters';
 import { applyCapabilityObservation, clearCapabilityObservationIfMatched } from './observationApply';
 import { preserveNewerReportedStepObservation } from './reportedStepObservation';
 
@@ -314,8 +315,10 @@ function mergeCapabilityObservation(params: {
         && Number.isFinite(fetchedLastUpdatedMs);
     const fetchedIsFreshEnough = fetchedHasKnownFreshness && fetchedLastUpdatedMs >= observation.observedAt;
     // For the binary control capability, log both sources' observations and the
-    // value the observer consolidates them to (the two-source reconciliation we
-    // want visibility on). `emitBinaryConsolidation` no-ops for non-control capabilities.
+    // value the observer consolidates them to whenever one source wins (the
+    // two-source reconciliation we want visibility on); when both already agree
+    // there is no reconciliation, so that case is counted instead. Both helpers
+    // no-op for non-control capabilities.
     const fetchedValue = sourceDevice.capabilitiesObj?.[capabilityId]?.value;
     const consolidationCtx: ConsolidationContext = {
         debugStructured,
@@ -352,7 +355,7 @@ function mergeCapabilityObservation(params: {
         return;
     }
     if (!applyCapabilityObservation(nextSnapshot, capabilityId, observation)) {
-        emitBinaryConsolidation(consolidationCtx, observation.value, 'agree', 'values_match');
+        recordBinaryConsolidationUnchanged(consolidationCtx);
         return;
     }
     emitBinaryConsolidation(consolidationCtx, observation.value, 'retained', 'retained_fresher');
@@ -419,7 +422,16 @@ function shouldPreserveRetainedObservation(params: {
     return fetchedHasKnownFreshness && fetchedIsOlder;
 }
 
-type ConsolidationWinner = 'pull' | 'retained' | 'agree';
+// Only a source that actually won carries a decision. The case where both
+// sources already hold the same value is counted, not logged — see
+// `recordBinaryConsolidationUnchanged`.
+type ConsolidationWinner = 'pull' | 'retained';
+
+type ConsolidationReason =
+    | 'retained_not_preserved'
+    | 'retained_fresher'
+    | 'pull_fresher_or_equal'
+    | 'retained_over_disagreeing_pull';
 
 type ConsolidationContext = {
     debugStructured?: StructuredDebugEmitter;
@@ -432,13 +444,60 @@ type ConsolidationContext = {
     observation: CapabilityObservation;
 };
 
+function isBinaryControlConsolidation(ctx: ConsolidationContext): boolean {
+    return ctx.capabilityId === ctx.nextSnapshot.binaryCapabilityId;
+}
+
+/**
+ * The retained observation left the snapshot unchanged. That is not on its own
+ * an agreement, so the two sources are compared before one is claimed.
+ *
+ * When they hold the same value nothing was reconciled and there is no decision
+ * to record — the steady state of a working merge, not an event. When they do
+ * not, the snapshot is unchanged for the opposite reason: the pull carried
+ * something the parse seam would not take (a malformed `onoff`, or none at all)
+ * and the retained observation is what stands. That IS a decision, and the
+ * payload's `pull` field is the only place the mismatch is visible, so it keeps
+ * its line.
+ *
+ * The comparison costs nothing: across one 16 h production window all 3,088
+ * agreeing lines carried `pull.value === retained.value`, so the guard reintroduces
+ * no volume while keeping `binary_observation_agreed_total` honest.
+ *
+ * The mirror case — a retained observation that is not a boolean — needs no
+ * check here. `applyControlCapabilityObservation` refuses one, but none can be
+ * retained: the realtime path diverts a non-boolean control payload before it is
+ * ever recorded, `device_update` records malformed temperature entries only, and
+ * a local write stores PELS's own normalized boolean. Re-deriving that guard is
+ * the hedge `AGENTS.md` § "Clean and trusted interfaces" rules out.
+ *
+ * Agreement is counted rather than logged. All 3,088 lines in that window were
+ * this case — 1.36 MB, 6% of structured stdout — and not one recorded a choice
+ * between the two sources. The counter keeps "the merge ran and the sources
+ * agreed" visible in `perf_counters`, where it costs one map entry per window
+ * instead of ~440 bytes per observation.
+ */
+function recordBinaryConsolidationUnchanged(ctx: ConsolidationContext): void {
+    if (!isBinaryControlConsolidation(ctx)) return;
+    if (ctx.fetchedValue !== ctx.observation.value) {
+        emitBinaryConsolidation(
+            ctx,
+            ctx.observation.value,
+            'retained',
+            'retained_over_disagreeing_pull',
+        );
+        return;
+    }
+    incPerfCounter('binary_observation_agreed_total');
+}
+
 function emitBinaryConsolidation(
     ctx: ConsolidationContext,
     consolidatedValue: unknown,
     winner: ConsolidationWinner,
-    reason: string,
+    reason: ConsolidationReason,
 ): void {
-    if (ctx.capabilityId !== ctx.nextSnapshot.binaryCapabilityId) return;
+    if (!isBinaryControlConsolidation(ctx)) return;
     ctx.debugStructured?.({
         event: 'binary_observation_consolidated',
         deviceId: ctx.deviceId,
