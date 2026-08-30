@@ -7,7 +7,7 @@ import {
   getMissingFlowHours,
   parseFlowPricePayloadInput,
   type FlowPricePayload,
-} from './flowPriceUtils';
+} from '../../packages/shared-domain/src/price/flowPriceUtils';
 
 type BaseHourlyPrice = {
   startsAt: string;

@@ -5,7 +5,7 @@ import {
   getFlowPricePayload,
   getMissingFlowHours,
   parseFlowPricePayloadInput,
-} from '../../lib/price/flowPriceUtils';
+} from '../../packages/shared-domain/src/price/flowPriceUtils';
 
 const hasMatchingSlotStart = (startsAt: string, slots: Array<{ startsAt: string }>): boolean => (
   slots.some((slot) => slot.startsAt === startsAt)

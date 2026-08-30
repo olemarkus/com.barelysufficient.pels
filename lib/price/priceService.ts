@@ -18,7 +18,7 @@ import {
   getSpotPriceCacheDecision,
   getSpotPriceDates,
 } from './priceServiceUtils';
-import { getFlowPricePayload } from './flowPriceUtils';
+import { getFlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import { shouldUseGridTariffCache } from './gridTariffUtils';
 import { resolveGridTariffFallback } from './staticGridTariffFallback';
 import { NETTLEIE_FALLBACK_GENERATED_AT } from './nettleieFallbackData.generated';
@@ -37,7 +37,7 @@ import {
   type FlowSlotChange,
 } from './priceServiceFlowHelpers';
 import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
-import type { FlowPricePayload } from './flowPriceUtils';
+import type { FlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import {
   buildCombinedPricePayload,
   combinedRebuildLostActionableEntries,

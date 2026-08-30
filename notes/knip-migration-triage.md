@@ -51,13 +51,18 @@ reason. Current holders:
   `packages/shared-domain/src/commandableNow.ts` — curated "parked" entries
   inherited from the old `check-dead-code.mjs` list.
 - `packages/settings-ui/src/ui/utils.ts` — test-only API.
-- `packages/shared-domain/src/price/flowPriceUtils.ts`,
-  `packages/shared-domain/src/utils/dateUtils.ts` — **twin files.** Each is a
-  hand-maintained copy of a `lib/` module that the settings UI cannot import
-  (`.dependency-cruiser.cjs` `no-settings-ui-to-runtime`, severity error). An
-  export with no importer in the browser-safe copy is tagged rather than
-  deleted, so the two sides stay patchable as one diff. Both files carry a
-  `TWIN FILE` header note.
+- `packages/shared-domain/src/utils/dateUtils.ts` — the last **twin file.** It
+  is a hand-maintained copy of a `lib/` module, and it carries a `TWIN FILE`
+  header note. An export with no importer in the browser-safe copy is tagged
+  rather than deleted, so the two sides stay patchable as one diff.
+
+  The header's stated justification is wrong and should not be copied to a new
+  file: `no-settings-ui-to-runtime` forbids settings-ui → `lib/**`, not
+  `lib/**` → shared-domain, and it is the latter direction that merges a twin.
+  `flowPriceUtils.ts` left this list by being merged that way; `dateUtils.ts`
+  is still duplicated only because its two copies have genuinely drifted (the
+  `lib` side memoizes its `Intl.DateTimeFormat`s, the shared-domain side does
+  not), so merging it is a behavioural change that needs its own PR.
 
 Also still true: `test/mocks/echarts-subpath-shim.ts` is referenced as a vitest
 `moduleNameMapper` resolve path, not an import — it stays in `ignore`.

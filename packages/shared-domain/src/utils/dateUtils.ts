@@ -2,10 +2,49 @@
 // (runtime). The settings UI consumes this copy because
 // `.dependency-cruiser.cjs`'s `no-settings-ui-to-runtime` rule (error) forbids
 // settings-ui → `lib/**`, so the duplication is structural. The copies are kept
-// in step BY HAND — no sync script, no CI check — and have already drifted (the
-// runtime copy caches its `Intl.DateTimeFormat` instances; this one carries
-// `formatDayFirstInTimeZone`). An export with no importer in one copy carries
-// `@public` there so knip does not report it; do not delete it from one side.
+// in step BY HAND — no sync script, no CI check — and have already drifted (this
+// one carries `formatDayFirstInTimeZone`). An export with no importer in one copy
+// carries `@public` there so knip does not report it; do not delete it from one
+// side.
+//
+// `Intl.DateTimeFormat` construction is the expensive part of every helper here
+// — far more than the formatting — and `buildFlowDaySlots` calls them in a loop
+// while it searches day boundaries and maps slots. Both formatters are therefore
+// memoized per time zone, as the runtime copy has always been. The zone set is
+// bounded by the homes a user has, so the maps do not grow.
+const zonedPartsFormatterByTimezone = new Map<string, Intl.DateTimeFormat>();
+const offsetFormatterByTimezone = new Map<string, Intl.DateTimeFormat>();
+
+const getZonedPartsFormatter = (timeZone: string): Intl.DateTimeFormat => {
+    const cached = zonedPartsFormatterByTimezone.get(timeZone);
+    if (cached) return cached;
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        hourCycle: 'h23',
+    });
+    zonedPartsFormatterByTimezone.set(timeZone, formatter);
+    return formatter;
+};
+
+const getOffsetFormatter = (timeZone: string): Intl.DateTimeFormat => {
+    const cached = offsetFormatterByTimezone.get(timeZone);
+    if (cached) return cached;
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        timeZoneName: 'shortOffset',
+        hour: '2-digit',
+    });
+    offsetFormatterByTimezone.set(timeZone, formatter);
+    return formatter;
+};
+
 const timeZoneOffsetErrorLogged = new Set<string>();
 const DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1000;
 
@@ -44,11 +83,7 @@ export function getHourBucketKey(nowMs: number = Date.now()): string {
 export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
     let primaryError: unknown;
     try {
-        const parts = new Intl.DateTimeFormat('en-US', {
-            timeZone,
-            timeZoneName: 'shortOffset',
-            hour: '2-digit',
-        }).formatToParts(date);
+        const parts = getOffsetFormatter(timeZone).formatToParts(date);
         const tzName = parts.find((part) => part.type === 'timeZoneName')?.value ?? '';
         const match = tzName.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/);
         if (!match) throw new Error('Missing GMT offset');
@@ -102,17 +137,7 @@ export function getZonedParts(date: Date, timeZone: string): {
     minute: number;
     second: number;
 } {
-    const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-        hourCycle: 'h23',
-    }).formatToParts(date);
+    const parts = getZonedPartsFormatter(timeZone).formatToParts(date);
     const map = parts.reduce<Record<string, string>>((acc, part) => {
         if (part.type !== 'literal') {
             return { ...acc, [part.type]: part.value };

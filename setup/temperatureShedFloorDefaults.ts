@@ -18,11 +18,14 @@ import {
   OVERSHOOT_BEHAVIORS,
   homeScopedSettingsKey,
 } from '../lib/utils/settingsKeys';
-import { AIRTREATMENT_SHED_FLOOR_C, NON_ONOFF_TEMPERATURE_SHED_FLOOR_C } from '../lib/utils/airtreatmentConstants';
+import {
+  AIRTREATMENT_SHED_FLOOR_C,
+  NON_ONOFF_TEMPERATURE_SHED_FLOOR_C,
+} from '../packages/shared-domain/src/utils/airtreatmentConstants';
 import {
   computeDefaultAirtreatmentShedTemperature,
   normalizeShedTemperature,
-} from '../lib/utils/airtreatmentShedTemperature';
+} from '../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 import { getPrimaryTargetCapability } from '../lib/utils/targetCapabilities';
 import { sanitizeModeDeviceTargets } from '../packages/shared-domain/src/settings/modeDeviceTargets';
 

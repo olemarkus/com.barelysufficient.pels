@@ -1,5 +1,9 @@
 import { getDateKeyInTimeZone, getHourStartInTimeZone, getZonedParts } from '../utils/dateUtils';
-import { buildFlowDaySlots, type FlowHourlyPrice, type FlowPricePayload } from './flowPriceUtils';
+import {
+  buildFlowDaySlots,
+  type FlowHourlyPrice,
+  type FlowPricePayload,
+} from '../../packages/shared-domain/src/price/flowPriceUtils';
 import {
   HomeyEnergyApi,
   HomeyEnergyPriceDocument,
