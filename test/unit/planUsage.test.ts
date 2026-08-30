@@ -105,7 +105,7 @@ describe('plan usage budget exemption helpers', () => {
   });
 
   it('treats a measured 0 on an observed-on device as authoritative live usage (does not pad with expected demand)', () => {
-    // Regression for the resolveLiveUsagePowerKw observed-on branch: when
+    // Regression for the observed-on branch of managed-usage attribution (`sumControlledUsageKw`): when
     // measured_power reports 0 (transient sample, between thermostat duty
     // cycles), the device contributes 0 to live attribution — the expected
     // demand is reserved for restore admission, not live usage padding.

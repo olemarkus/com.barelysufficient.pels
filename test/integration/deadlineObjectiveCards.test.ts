@@ -1524,7 +1524,7 @@ describe('deadline objective flow cards', () => {
       previousPlanStatus: null,
       previousWasPending: false,
       allocationChanged: true,
-      // Force buildPlanChangedTokens to throw by giving it a malformed revision.
+      // Force buildSmartTaskPlanChangedTokens to throw by giving it a malformed revision.
       projectedFinishAtMs: 0,
       revision: null as unknown as never,
     })).not.toThrow();

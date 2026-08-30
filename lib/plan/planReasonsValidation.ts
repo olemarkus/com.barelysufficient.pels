@@ -65,7 +65,7 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
 
 /**
  * Reasons that require a producer-resolved posture flag on the same device.
- * See the cross-field invariant in `findPlanReasonPairIssue`.
+ * See the cross-field invariant in `validatePlanReasonPair`.
  */
 const REASON_REQUIRED_FLAGS = [
   {

@@ -471,9 +471,9 @@ export type SettingsUiPowerPayload = {
   };
   // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's
   // Solar card (which cannot read the lazy-loaded devices payload). True only
-  // when a tracked solar/PV device exists AND the active source delivers a
-  // production reading (`deliversProductionSignal`) — without one the
-  // generation buckets can never fill and the card must not promise data (see
+  // when a tracked solar/PV device exists (`hasSolarProductionCandidate`) —
+  // production is source-independent, and without such a device the generation
+  // buckets can never fill and the card must not promise data (see
   // getSettingsUiPower). EXPORT is a separate axis and is not gated by this
   // flag. Optional: realtime status-only pushes don't carry it — consumers
   // treat absence as false and fall back to the recorded solar buckets.

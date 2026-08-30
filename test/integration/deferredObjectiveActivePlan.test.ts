@@ -1011,7 +1011,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(saved()!.plansByDeviceId.dev.diagnosticReasonCode).toBeUndefined();
 
     // t1 (still hour 2, before :58 → no replan due): the car is unplugged.
-    // Production routes a blocking `reasonCode` through `withUnknown`
+    // Production routes a blocking `reasonCode` through `withUnavailableTrajectory`
     // (diagnosticsBridge.ts), which OMITS `horizonPlan`, so a real blocked
     // diag is horizon-less and is recorded via `ensurePendingRecord` (the
     // `candidateHours === null` set path) — delete `horizonPlan` to match.
@@ -1047,7 +1047,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.flushIfDirty();
     expect(saved()!.plansByDeviceId.dev.diagnosticReasonCode).toBeUndefined();
 
-    // A real invalid-session diag is horizon-less (routed through `withUnknown`
+    // A real invalid-session diag is horizon-less (routed through `withUnavailableTrajectory`
     // in diagnosticsBridge.ts, which omits `horizonPlan`), so it's recorded via
     // `ensurePendingRecord`, not the committed path — delete `horizonPlan` to match.
     const unplugged = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });

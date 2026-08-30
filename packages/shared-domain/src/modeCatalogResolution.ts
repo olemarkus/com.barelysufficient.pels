@@ -16,7 +16,7 @@
  * simply is not one of them — rather than by a null answer every consumer has to
  * branch on. Applicability is already resolved upstream (`isTemperaturePlanDevice`,
  * and the per-device temperature-control flag, which strips the target axis at
- * `projectEffectiveControlDevice`); this module does not re-derive it.
+ * `projectTemperatureDeniedDevice`); this module does not re-derive it.
  *
  * Why one module rather than a convention: the gap-filling used to be re-derived
  * at every call site, and the copies disagreed. `resolveDevicePriority` answered

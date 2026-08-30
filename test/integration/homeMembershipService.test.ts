@@ -2744,9 +2744,10 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
         // selection the reopen predicate reads are populated by `resolve()`, and
         // every plan build already runs it (`filterDevicesForHome` ->
         // `getConfiguredMeterSources`, plus the write seam's own fence check).
-        // No REAL edge can be missed by depending on it: `wasBlocked` can only
-        // be true once `resolveForActuation` has returned 'blocked', which is
-        // the same call that primes both fields.
+        // The priming call is what populates them: `sampledFenceEpisode` is also set
+        // directly by `noteResolvedHomeMeter` when an admitted sample collides, without
+        // `resolveForActuation` ever returning 'blocked' — and that callback reads the
+        // cached source and meter selection this call fills in.
         service.isMainHomeActuationFenced();
         return service;
       };

@@ -10,7 +10,7 @@
 //
 // Nothing internal is mocked — the existing gates (the `supportsTemperature` guard
 // in `resolvePlannedTarget`, `controllable === false` in shedding, the
-// `supportsTemperatureBoostDevice` surplus/boost filter, the starvation
+// `supportsTemperatureLift` surplus/boost filter, the starvation
 // `controllable === true` + temperature requirement) are exactly what keeps the
 // battery inert. These tests prove being managed+non-controllable+non-temperature is
 // sufficient; no new control gate is added.

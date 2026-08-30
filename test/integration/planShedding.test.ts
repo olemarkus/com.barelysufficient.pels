@@ -1559,8 +1559,10 @@ describe('buildSheddingPlan', () => {
       },
     );
 
-    // Stepped-load devices must use the stepped path (executor skips applyShedAction
-    // for them), so turn_off at lowest active step should step to 'off', not binary.
+    // Stepped-load devices must use the stepped path: `buildSheddingPlan` resolves
+    // a turn_off device's shed target through `resolveSteppedLoadDirectShedStepId`
+    // (`lib/plan/planSteppedShedResolution.ts`), so at the lowest active step it
+    // steps to 'off' rather than shedding the binary axis.
     expect(result.shedSet.has('connected-300')).toBe(true);
   });
 

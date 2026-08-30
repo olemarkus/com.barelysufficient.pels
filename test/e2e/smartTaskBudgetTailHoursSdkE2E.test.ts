@@ -5,12 +5,13 @@
 // The soft budget deliberately does not claw back later hours, so the day plan's
 // per-hour allocations legitimately sum ABOVE `dailyBudgetKWh` once the day has
 // run hot. `buildAllowedCumKWh` nonetheless clamps its running total at the day
-// total, and the allocator recovers an hour's share by DIFFERENCING that clamped
-// curve (`resolvePerBucketBudget`). Every hour past the point where the
-// cumulative meets the cap therefore subtracts to zero — even when that hour
-// holds several kWh of its own, and even though nothing else in the system
-// applies the clamp (the live controller paces off the raw, unclamped
-// `plannedKWh[currentBucketIndex]`).
+// total, and the allocator USED TO recover an hour's share by DIFFERENCING that
+// clamped curve (the since-deleted `resolvePerBucketBudget`). Every hour past the
+// point where the cumulative met the cap therefore subtracted to zero — even when
+// that hour held several kWh of its own, and even though nothing else in the
+// system applied the clamp (the live controller paces off the raw, unclamped
+// `plannedKWh[currentBucketIndex]`). The allocator now reads the hour's own share
+// (`controlledShareKWh`, `policyHorizon.ts`), deliberately not by differencing.
 //
 // Reproduced from production 2026-08-08 21:54 local: 22:00 and 23:00 each held
 // 4.700 kWh against ~4.1 kWh of forecast background — ~0.6 kWh of genuine

@@ -427,7 +427,7 @@ function attemptDeferredObjectiveBackfill(
 /**
  * Run the back-fill that an earlier boot deferred because the per-key migration marker was
  * not yet set (`ctx.deferredObjectiveBackfillPending`). Invoked at the TOP of each observe
- * tick, BEFORE the tick advances the watermark — so once an in-session `migrateBlobToPerKey`
+ * tick, BEFORE the tick advances the watermark — so once an in-session `migrateBlobToPerKeyIfNeeded`
  * retry sets the marker, the still-pending `(watermark, now]` offline window is back-filled
  * before the watermark jumps to `now` and the migrated legacy task's elapsed deadline is
  * silently skipped. No-op (and no re-scan) once the back-fill has completed for this session.

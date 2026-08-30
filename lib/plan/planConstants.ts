@@ -58,11 +58,12 @@ export const SWAP_RESTORE_RESERVE_KW = 0.3;
 // — so lower-priority devices are not held out of admission indefinitely for a start that will not
 // happen. Long enough for a genuine block to assemble as cycling loads finish their duty cycle.
 export const HEADROOM_RESERVE_MAX_MS = 15 * 60 * 1000;
-// `BINARY_COMMAND_PENDING_MS` moved to
-// `lib/observer/pendingBinaryCommandTypes.ts` in PR #4 of the
+// The old `BINARY_COMMAND_PENDING_MS` constant is gone: the pending window is
+// resolved per communication model by `resolveBinaryCommandPendingMs`
+// (`lib/observer/pendingBinaryCommandTypes.ts`), which arrived with PR #4 of the
 // observer/transport split (see
-// `notes/state-management/observer-transport-split.md`); the constant is no
-// longer surfaced from plan because observer is the only consumer.
+// `notes/state-management/observer-transport-split.md`). Plan does not surface
+// it because observer is the only consumer.
 // `TARGET_COMMAND_RETRY_DELAYS_MS` and `STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS`
 // moved to `lib/executor/commandRetrySchedule.ts`. Command retry pacing is
 // materialization, and the planner never read either constant — only the

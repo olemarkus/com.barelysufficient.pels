@@ -174,9 +174,8 @@ const buildPowerSampleRequest = (
  *
  * `recordPowerSample(currentPowerW, nowMs)` is the public entry point.
  * The Homey-Energy poll source and the flow-card power-sample reporter
- * (both wired in `PelsApp.onInit`) call it; the app's
- * `appPowerSampleIngest.recordPowerSample` AppContext member also
- * routes here.
+ * (both wired in `PelsApp.onInit`) call it; the `AppContext.recordPowerSample`
+ * member (implemented by `AppRuntimeApi.recordPowerSample`) also routes here.
  */
 export class PowerSamplePipeline {
   private powerSampleLoop?: Promise<void>;

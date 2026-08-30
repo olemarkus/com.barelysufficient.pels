@@ -21,7 +21,7 @@
  *
  * Sample routing: `routeMeterReadings` receives the per-meter map one
  * `manager/energy/live` poll resolved (transport seam
- * `setOnAdditionalMeterReadings`) and feeds each home's OWN meter reading to
+ * `onAdditionalMeterReadings`) and feeds each home's OWN meter reading to
  * that home's pipeline. A home with no meter, or whose meter produced no
  * finite reading this poll, gets NO sample — freshness machinery handles the
  * gap; a zero is never fabricated.

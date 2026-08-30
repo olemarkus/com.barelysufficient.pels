@@ -300,7 +300,7 @@ describe('HomeySolarForecastController', () => {
       // flight. `HomeyEnergySolarForecastSource.refresh` rebuilds the whole
       // per-day cache from the reads it started with, so an older pass
       // resolving `unavailable` after a newer one stored points would discard
-      // them — and its stale `hadPoints` would skip the completion hook too.
+      // them — and its stale `hourCountBefore` would skip the completion hook too.
       let releaseFirst: (() => void) | undefined;
       const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
       let calls = 0;

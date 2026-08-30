@@ -58,7 +58,7 @@
 //     `BackgroundTasksController.stopPerfLog` — is state and is caught.
 //   - A module const whose name is SCREAMING_SNAKE_CASE and whose initializer is
 //     an array or object literal: the repo's constant-table convention
-//     (`SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55]`). The exemption is by
+//     (`PERIODIC_STATUS_MINUTE_INTERVALS = [25, 55]`). The exemption is by
 //     literal only — `const CACHE = new Map()` is state whatever it is called.
 //
 // THE ALLOWLIST (`scripts/setup-stateless-allowlist.txt`) carries the files that
@@ -118,7 +118,7 @@ function isReadonlyCollectionType(typeNode) {
 }
 
 /**
- * `const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55]` — a constant table.
+ * `const PERIODIC_STATUS_MINUTE_INTERVALS = [25, 55]` — a constant table.
  * SCREAMING_SNAKE alone is not enough: `const CACHE = {}` is a mutable store
  * wearing a constant's name. The contents must be present and all literal, so
  * anything with room to grow entries is still state.

@@ -87,7 +87,7 @@ export class DeferredObjectiveDecorationController {
     dailyBudgetSnapshot: DailyBudgetUiPayload | null,
     nowTs: number,
   ): DeferredObjectiveDiagnostic[] {
-    // Mirrors the planner's `trackDuration` (duration + per-op RSS delta) so the
+    // Mirrors the planner's `trackPlanStage` (duration + per-op RSS delta) so the
     // `evaluate_deferred_objectives_ms` telemetry is unchanged by the relocation;
     // per-op RSS attribution matters under PELS's tight memory ceiling.
     const start = Date.now();

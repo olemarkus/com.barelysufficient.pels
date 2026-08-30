@@ -883,7 +883,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    // Trigger an initial shed to set deviceLastShedMs.
+    // Trigger an initial shed to set lastDeviceShedMs.
     (app as any).computeDynamicSoftLimit = () => 0.5;
     (app as any).computeDynamicSoftLimit = () => 0.5;
     await (app as any).powerSamplePipeline.recordPowerSample(1200);

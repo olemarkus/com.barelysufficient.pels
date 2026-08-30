@@ -845,7 +845,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
       .toBe(true);
 
     // set_step shed at off-step → expected 'off'.
-    // Note: for stepped devices, resolveSteppedLoadCurrentState returns 'off' for
+    // Note: for stepped devices, resolveCurrentOn (lib/observer/observedState.ts) resolves 'off' for
     // the off-step regardless of currentOn, so both currentOn=true and currentOn=false
     // produce liveCurrentState='off' when selectedStepId='off'. Binary drift cannot
     // be triggered by toggling currentOn alone at the off-step.
