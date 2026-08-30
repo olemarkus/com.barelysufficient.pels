@@ -12,11 +12,6 @@
 # the destination, not a promise about when: see TODO.md for the entries.
 # Declaration counts are as of the guard's introduction (21 files, 104 declarations).
 
-# --- Executor command state (→ lib/executor) -------------------------------
-# The stepped-command store, whose confirm/expire/prune lifecycle is also driven
-# from setup, inside the plan-input producer. The reason this guard exists.
-setup/appDeviceControlHelpers.ts 1
-
 # --- Power lane (→ lib/power) ----------------------------------------------
 setup/powerMeasurementGate.ts 3
 setup/powerSamplePipeline.ts 5

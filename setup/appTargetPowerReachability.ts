@@ -22,9 +22,8 @@ import type {
   TargetPowerReachabilityState,
   TargetPowerSteppedLoadConfig,
 } from '../packages/contracts/src/types';
+import type { SteppedCommandStore } from '../lib/executor/steppedCommandStore';
 import {
-  confirmSteppedLoadDesiredStep,
-  type DeviceControlRuntimeState,
   type SteppedLoadDesiredRuntimeState,
 } from '../lib/executor/steppedCommandState';
 
@@ -75,9 +74,9 @@ const persistObservedMaximum = (params: {
 
 const resolveIssuedDesired = (params: {
   snapshot: ReachabilitySnapshot;
-  runtimeState: DeviceControlRuntimeState;
+  store: SteppedCommandStore;
 }): IssuedTargetPowerDesired | undefined => {
-  const desired = params.runtimeState.steppedLoadDesiredByDeviceId.get(params.snapshot.id);
+  const desired = params.store.getDesired(params.snapshot.id);
   if (
     !desired
     || desired.planningPowerW === undefined
@@ -96,7 +95,7 @@ const applyProbeTransition = (params: {
   config: TargetPowerSteppedLoadConfig;
   evidence: TargetPowerExactObservation | undefined;
   desired: IssuedTargetPowerDesired;
-  runtimeState: DeviceControlRuntimeState;
+  store: SteppedCommandStore;
   nowMs: number;
   update: (reachability: TargetPowerReachabilityState) => boolean;
   logger?: Logger;
@@ -116,11 +115,7 @@ const applyProbeTransition = (params: {
   if (transition.kind === 'waiting') return false;
   if (transition.kind === 'confirmed') {
     params.update(transition.reachability);
-    confirmSteppedLoadDesiredStep({
-      runtimeState: params.runtimeState,
-      deviceId: params.snapshot.id,
-      desired: params.desired,
-    });
+    params.store.confirmDesired(params.snapshot.id, params.desired);
     params.logger?.info({
       event: 'target_power_reachability_raised',
       deviceId: params.snapshot.id,
@@ -131,7 +126,7 @@ const applyProbeTransition = (params: {
     return true;
   }
   params.update(transition.reachability);
-  params.runtimeState.steppedLoadDesiredByDeviceId.delete(params.snapshot.id);
+  params.store.deleteDesired(params.snapshot.id);
   params.logger?.warn({
     event: 'target_power_step_settled_below_request',
     deviceId: params.snapshot.id,
@@ -187,7 +182,7 @@ export const resolveTargetPowerFeedbackReport = (params: {
 /** Join accepted EV step commands with exact post-command feedback. */
 export const reconcileTargetPowerReachability = (params: {
   snapshots: ReachabilitySnapshot[];
-  runtimeState: DeviceControlRuntimeState;
+  store: SteppedCommandStore;
   nowMs: number;
   getConfig: (deviceId: string) => TargetPowerSteppedLoadConfig | undefined;
   update: (deviceId: string, reachability: TargetPowerReachabilityState) => boolean;
@@ -200,7 +195,7 @@ export const reconcileTargetPowerReachability = (params: {
     const update = (reachability: TargetPowerReachabilityState): boolean => (
       params.update(snapshot.id, reachability)
     );
-    const desired = resolveIssuedDesired({ snapshot, runtimeState: params.runtimeState });
+    const desired = resolveIssuedDesired({ snapshot, store: params.store });
     if (desired && applyProbeTransition({ ...params, snapshot, config, evidence, desired, update })) continue;
     if (evidence) persistObservedMaximum({ config, evidence, update });
   }
