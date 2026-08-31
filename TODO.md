@@ -817,23 +817,19 @@ What remains open is below.*
       changed their mind. *Hypothesis:* the instant-on after toggle-off reads as PELS ignoring the toggle.
       P2. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
-- [ ] **A stepped command settles inside the plan-input producer, not on the executor's settle
-      path.** The store is now executor-owned (`lib/executor/steppedCommandStore.ts`, injected from
-      `app.ts`), but three of its four lifecycle transitions still run from
-      `decorateSnapshotWithDeviceControl` (`setup/appDeviceControlHelpers.ts`):
-      `pruneStale`, `expireConfirmedDesiredOnBinaryOff` and `confirmDesired`, plus one more
-      `confirmDesired` in `setup/appTargetPowerReachability.ts`. So a step command confirms because
-      the planner asked for its input devices — a mutating read run once per power sample — rather
-      than because the executor observed the command materialize, and the settle timing is coupled
-      to plan-build cadence. The binary axis already has the shape this wants:
-      `syncPendingBinaryCommands` (`lib/observer/pendingBinaryCommands.ts`) is a sweep over devices
-      carrying a producer-resolved `binaryCommandConfirmation` discriminated union, called from
-      `PlanService.syncLivePlanStateInline` and `planServiceRebuild`. Change: give the stepped axis
-      the same — a `steppedCommandConfirmation` (`unavailable | observed`) resolved by the producer
-      onto the settle device, and a `syncSteppedCommands` sweep beside the binary one; the decorator
-      then only READS the store. Done when `decorateSnapshotWithDeviceControl` makes no write to the
-      store, the four lifecycle call sites in `setup/` are gone, and a regression test drives a step
-      command to confirmation with no plan rebuild in between. Found 2026-08-29.
+- [ ] **`steppedLoadLastBinaryOnByDeviceId` is an observation cached in the executor.**
+      The last remaining member of `DeviceControlRuntimeState` that is not commanded-axis state
+      (`lib/executor/steppedCommandState.ts:56`). It exists so
+      `expireConfirmedDesiredStepOnBinaryOff` can spot the on→off EDGE, which needs a previous
+      value the observer projection does not carry — the projection holds the current fold only.
+      The repo expresses edges properly elsewhere: `ObservedBinaryChange` +
+      `sawOnToOffTransition` (`setup/externalOffHoldDetection.ts:65,121`), fed by the
+      observed-state event stream. Now that the lifecycle runs in `syncSteppedCommands` rather
+      than during decoration, the sweep is a place a change set could reach. Change: feed the
+      sweep the observed binary CHANGES rather than a per-device fold, and delete the latch.
+      Done when `grep -n steppedLoadLastBinaryOnByDeviceId lib/` is empty and the two-sample edge
+      test in `test/unit/syncSteppedCommands.test.ts` still passes against the change-set input.
+      Found 2026-08-31.
 
 ## P2 Product, Observability, and Maintainability
 

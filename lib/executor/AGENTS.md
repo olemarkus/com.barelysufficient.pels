@@ -42,7 +42,8 @@
 
   **The live side of that comparison comes from the OWNERS, never from a plan.** The observation is
   read per device from the observer projection; the in-flight command state comes from this layer's
-  own stores (`pendingBinaryCommandStore`, `steppedCommandStore`); the ladder is configuration and
+  own stores (`pendingBinaryCommandStore`, `steppedCommandStore`, settled by their sweeps
+  `syncPendingBinaryCommands` / `syncSteppedCommands`); the ladder is configuration and
   rides the intent. `driftObservedDevice.ts` is the seam that joins them, and `PlanExecutor.driftObservationDeps()`
   is where they are bound. A device the observer has not seen yet is SKIPPED, not assumed to agree.
 

@@ -1,4 +1,5 @@
 import type { SettingsPort, FlowPort, ApiPort } from '../ports/homeyRuntime';
+import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
 import type { Loggers, StructuredDebugEmitter } from '../logging/logger';
 import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { DeviceOverviewLogRecorder } from './deviceOverviewLog';
@@ -31,6 +32,7 @@ type PlanServicePlanEngine = Pick<
   | 'getObservationRevision'
   | 'syncPendingTargetCommands'
   | 'syncPendingBinaryCommands'
+  | 'syncSteppedCommands'
   | 'hasActiveBinaryTurnOnCommand'
   | 'prunePendingTargetCommands'
   | 'decoratePlanWithPendingTargetCommands'
@@ -64,6 +66,8 @@ export type PlanServiceDeps = {
   // Minimal observer projection for binary confirmation; never raw transport
   // snapshots or plan devices.
   getSettleDevices: () => PendingBinaryLiveDevice[];
+  /** The stepped axis's settle evidence; see `lib/device/steppedSettleSnapshot.ts`. */
+  getSteppedSettleDevices: () => readonly SteppedSettleDevice[];
   // EV charging state for the settings-UI read model, sourced from the observer
   // (its canonical owner — `ObservedDeviceState`), not the plan device. The
   // planner no longer carries the raw `evChargingState`.

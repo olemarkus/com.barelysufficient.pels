@@ -114,6 +114,8 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     planEngine: new ComposedPlanEngine({
       state,
       pendingBinaryCommandStore,
+      steppedCommandStore: deps.steppedCommandStore,
+      steppedReportedStore: deps.steppedReportedStore,
       builder,
       executor,
       deviceDiagnostics: deps.deviceDiagnostics,
@@ -157,6 +159,10 @@ export function createPlanEngineComposition(
     // new scope), so log correlation needs no extra getter.
     homeId: scope.homeId,
     setCapacityInShortfall: scope.setCapacityInShortfall,
+    // App-wide, like the profiles they interpret: device ids are globally
+    // unique, so every home's settle pass reads the same two stores.
+    steppedCommandStore: ctx.steppedCommandStore,
+    steppedReportedStore: ctx.steppedReportedStore,
     persistLastControlledMs: scope.persistLastControlledMs,
     deviceManager,
     getObservedState: (deviceId) => ctx.getObservedState(deviceId),

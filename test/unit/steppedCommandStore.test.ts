@@ -38,11 +38,11 @@ describe('SteppedCommandStore', () => {
       deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: 1_000, confirmationPolicy: 'assume_applied',
     });
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 2_000 });
-    expect(store.resolveInitializationLatch('dev-1', 'low')).toBe('low');
+    expect(store.peekInitializationLatch('dev-1', 'low')).toBe('low');
 
     store.clearCommandSession('dev-1');
 
-    expect(store.resolveInitializationLatch('dev-1', 'low')).toBeUndefined();
+    expect(store.peekInitializationLatch('dev-1', 'low')).toBeUndefined();
     expect(store.getDesired('dev-1')).toBeUndefined();
     expect(store.hasPriorStepCommand('dev-1')).toBe(false);
   });
@@ -74,8 +74,13 @@ describe('SteppedCommandStore', () => {
     });
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 2_000 });
 
-    // The ladder's lowest active rung is no longer the one the latch named.
-    expect(store.resolveInitializationLatch('dev-1', 'lowest-2')).toBeUndefined();
+    // Asking must not change the answer: the peek reports the latch as invalid
+    // against the new ladder, and leaves the session alone.
+    expect(store.peekInitializationLatch('dev-1', 'lowest-2')).toBeUndefined();
+    expect(store.getDesired('dev-1')).toBeDefined();
+
+    // The settle pass is what acts on it.
+    store.reconcileInitializationLatch('dev-1', 'lowest-2');
 
     expect(store.getDesired('dev-1')).toBeUndefined();
     expect(store.hasPriorStepCommand('dev-1')).toBe(false);

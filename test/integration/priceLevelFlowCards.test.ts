@@ -103,6 +103,7 @@ describe('Price level flow cards', () => {
     const planService = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       homey: mockHomeyInstance as unknown as Homey.App['homey'],
       writePelsStatus: (status) => mockHomeyInstance.settings.set('pels_status', status),

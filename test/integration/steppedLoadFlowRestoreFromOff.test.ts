@@ -36,6 +36,8 @@
  * `shedReleaseActuation`), and this charger has `evcharger_charging`.
  */
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
+import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
+import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
 import { steppedStoresForTest } from '../helpers/steppedStores';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
@@ -217,8 +219,9 @@ const buildHarness = (
 ) => {
   const snapshotHolder: { current: TransportDeviceSnapshot } = { current: initialSnapshot };
   const structuredLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  const stores = steppedStoresForTest();
   const helpers = new AppDeviceControlHelpers({
-    ...steppedStoresForTest(),
+    ...stores,
     getProfiles: () => profiles,
     getDeviceSnapshots: () => [snapshotHolder.current],
     getLatestPlanSnapshot: () => null,
@@ -226,7 +229,16 @@ const buildHarness = (
     debugStructured: vi.fn(),
   });
 
+  // Decoration only PROJECTS; the command lifecycle advances on the settle
+  // pass, which production runs each plan-service cycle off a projection. This
+  // helper is that cycle, so the returned device reads post-settle.
   const decorate = (): DecoratedDeviceSnapshot => {
+    const [projection] = helpers.decorateTargetSnapshotList([snapshotHolder.current]);
+    syncSteppedCommands({
+      store: stores.store,
+      reportedStore: stores.reportedStore,
+      devices: buildSteppedSettleSnapshot([projection]),
+    });
     const [decorated] = helpers.decorateTargetSnapshotList([snapshotHolder.current]);
     return decorated;
   };

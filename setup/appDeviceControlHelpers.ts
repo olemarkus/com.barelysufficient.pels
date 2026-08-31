@@ -148,13 +148,15 @@ export const decorateSnapshotWithDeviceControl = (params: {
   } = params;
   // The denial is a stamp, not a demotion. The step cluster below is resolved
   // exactly as it is for any other device — the flag says nothing about a
-  // ladder. Deliberately no command-state teardown here either:
-  // `decorateTargetSnapshotList` is a mutating read run once per power sample,
-  // so wiping the command axis from it would clear live state every few
-  // seconds — no command would ever confirm, retry back-off would die, and the
-  // lowest-step initialization latch would never latch. Stale state is already
-  // covered by `pruneStaleSteppedLoadCommandStates` and
-  // `expireConfirmedDesiredStepOnBinaryOff`.
+  // ladder.
+  //
+  // This function is a PURE projection: it resolves the device's ladder from
+  // whatever source it has and writes it, with the step fields derived from it,
+  // onto the device. It advances no command state. Settling belongs to the
+  // executor and happens on observation, in `syncSteppedCommands`
+  // (`lib/executor/syncSteppedCommands.ts`) — a command must not confirm
+  // because the planner asked for its input devices, and a read of the plan
+  // input must not have side effects.
   const temperatureDenial = temperatureControlDisabled
     ? { temperatureControlDisabled: true as const }
     : {};
@@ -175,32 +177,12 @@ export const decorateSnapshotWithDeviceControl = (params: {
     };
   }
 
-  store.pruneStale(nowMs);
   const reported = reportedStore.get(snapshot.id);
   const nativeSteppedControlEnabled = nativeProfile !== null;
   const snapshotReportedStepId = getSteppedLoadStep(profile, snapshot.reportedStepId)?.id;
   const nativeReportedStepId = nativeSteppedControlEnabled ? snapshotReportedStepId : undefined;
-  if (nativeSteppedControlEnabled && reported) {
-    reportedStore.clear(snapshot.id);
-  }
-  const confirmedReportedStepId = nativeReportedStepId ?? snapshotReportedStepId;
-  const observedStepId = nativeReportedStepId ?? reported?.stepId ?? snapshotReportedStepId;
-  // One fold, one owner: the same `resolveCurrentOn` the decorated snapshot's
-  // own `binaryControl.on` is built from, below. The setup-local twin this used
-  // to call was that expression written twice — and the twin had drifted, since
-  // it answered "unknown" where the canonical fold answers `true`.
-  store.expireConfirmedDesiredOnBinaryOff(snapshot.id, resolveCurrentOn({
-    binaryControl: snapshot.binaryControl,
-    steppedLoadProfile: profile,
-    selectedStepId: observedStepId,
-  }));
-  const desired = store.getDesired(snapshot.id);
-  if (confirmedReportedStepId && desired?.stepId === confirmedReportedStepId) {
-    store.confirmDesired(snapshot.id, desired);
-  }
   const currentDesired = store.getDesired(snapshot.id);
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
-  store.resolveInitializationLatch(snapshot.id, fallbackStepId);
   const stepFields = buildSteppedLoadSnapshotStepFields({
     profile,
     nowMs,
@@ -325,7 +307,7 @@ export class AppDeviceControlHelpers {
       ? getSteppedLoadLowestActiveStep(profile)?.id
       : undefined;
     return {
-      initializationAssumedStepId: this.deps.store.resolveInitializationLatch(deviceId, lowestStepId),
+      initializationAssumedStepId: this.deps.store.peekInitializationLatch(deviceId, lowestStepId),
       hasPriorStepCommand: this.deps.store.hasPriorStepCommand(deviceId),
       reportedStepId: profile
         ? getSteppedLoadStep(
@@ -354,7 +336,6 @@ export class AppDeviceControlHelpers {
         deviceId: device.id,
       }),
     });
-    this.deps.store.pruneStale(nowMs);
     return resolvedSnapshots.map((device) => decorateSnapshotWithDeviceControl({
       snapshot: device,
       profiles,

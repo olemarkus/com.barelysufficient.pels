@@ -171,8 +171,9 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     debugStructured: vi.fn(),
     error: vi.fn(),
   });
+  const steppedStores = steppedStoresForTest();
   const deviceControlHelpers = deviceControlHelpersOverride ?? new AppDeviceControlHelpers({
-    ...steppedStoresForTest(),
+    ...steppedStores,
     getProfiles: () => deviceControlProfiles,
     getDeviceSnapshots: () => latestTargetSnapshot,
     getStructuredLogger: () => undefined,
@@ -345,6 +346,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     homeyEnergyHelpers,
     generationPollSource,
     deviceControlHelpers,
+    steppedCommandStore: steppedStores.store,
+    steppedReportedStore: steppedStores.reportedStore,
     timers,
   };
 
