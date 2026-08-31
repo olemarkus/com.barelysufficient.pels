@@ -11,9 +11,6 @@ export type DisplayPlanDeviceSnapshot<Device extends TimedPlanDevice = TimedPlan
 
 export type TimedPlanSnapshot = {
   generatedAtMs?: number;
-  meta?: {
-    lastPowerUpdateMs?: number;
-  };
   devices?: TimedPlanDevice[];
 };
 
@@ -133,10 +130,14 @@ const hasLiveCountdowns = (plan: TimedPlanSnapshot | null, renderedAtMs: number,
   });
 };
 
+/**
+ * Live (per-second) rerendering is owed only to content that changes per
+ * second: running countdowns. The old `meta.lastPowerUpdateMs` arm backed the
+ * hero's freshness age readout; with that surface deleted, keying ticks on it
+ * only rerendered an unchanged hero once a second for every measured home.
+ */
 export const planNeedsLiveUpdates = (
   plan: TimedPlanSnapshot | null,
   renderedAtMs: number,
   nowMs: number,
-): boolean => (
-  typeof plan?.meta?.lastPowerUpdateMs === 'number' || hasLiveCountdowns(plan, renderedAtMs, nowMs)
-);
+): boolean => hasLiveCountdowns(plan, renderedAtMs, nowMs);

@@ -80,9 +80,6 @@ export function buildPlanMeta(params: {
     // single resolved figure every status/display consumer reads — it replaced
     // a `powerKnown` boolean that each of them recombined with a raw total.
     powerNowKw: power.measuredTotalKw,
-    hasLivePowerSample: power.hasLiveSample,
-    powerSampleAgeMs: power.powerSampleAgeMs,
-    powerFreshnessState: power.freshnessState,
     powerIsMeasured: context.powerIsMeasured,
     ...shortfallMeta,
     hourlyBudgetExhausted,
@@ -152,9 +149,6 @@ export function buildPlanContextHeadroomLogFields(
     // single resolved figure every status/display consumer reads — it replaced
     // a `powerKnown` boolean that each of them recombined with a raw total.
     powerNowKw: power.measuredTotalKw,
-    hasLivePowerSample: power.hasLiveSample,
-    powerSampleAgeMs: power.powerSampleAgeMs,
-    powerFreshnessState: power.freshnessState,
     shortfallBudgetThresholdKw: shortfallBudgetThresholdKw ?? null,
     shortfallBudgetHeadroomKw,
     hardCapHeadroomKw,

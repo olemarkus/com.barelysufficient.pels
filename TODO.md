@@ -706,13 +706,11 @@ What remains open is below.*
       ingredients are already there: `lib/power/sampleIngest.ts` computes the exempt sum via its
       injected `sumBudgetExemptUsage` and records `exemptPowerW` into the tracker's
       `exemptBuckets`. Ship it on `SettingsUiPowerPayload` (`packages/contracts/src/settingsUiApi.ts`,
-      read via `getPowerReadModel()`), where a consumer also gets the freshness it needs to
-      interpret the value — putting it on the plan snapshot would encode freshness a second time,
-      as absence, on a surface whose `powerFreshnessState` already says it outright. That is not
-      a corner case: `measured` is true only inside the 60 s `fresh` band, the measurement gate is
-      a once-ever latch rather than a freshness gate, and under `power_source = flow` a gap
-      between events is ordinary cadence — so a plan-side nullable would be absent most of the
-      time on those homes. Unclamped and signed, per the deficit identity in the item below. Done
+      read via `getPowerReadModel()`), where a consumer also gets the tracker timestamp it needs
+      to interpret the value (staleness is a UI-only banner fact computed from that timestamp) —
+      putting it on the plan snapshot would encode freshness as absence on a surface that carries
+      no freshness at all. Under `power_source = flow` a gap between events is ordinary cadence,
+      so a plan-side nullable would be absent regularly on those homes. Unclamped and signed, per the deficit identity in the item below. Done
       when a `lib/power` producer hands out the non-exempt draw resolved, the settings UI reads it
       off the power payload, and no plan type carries it. Source: naming-program follow-up,
       2026-08-25; design in `notes/safe-pace-two-constraints.md` § "What remains".
@@ -808,6 +806,24 @@ What remains open is below.*
       P2. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
 ## P2 Product, Observability, and Maintainability
+
+- [ ] **A silent meter AREA has no staleness indication — the no-readings banner speaks only for
+      Main.** The banner (`packages/shared-domain/src/powerReadingsBanner.ts`, fed by the
+      deliberately Main-only `getPowerReadModel` in `packages/settings-ui/src/ui/power.ts`) is the
+      one staleness surface after the freshness chip's removal, and before that removal a silent
+      area still surfaced through the scoped hero's chip. Decide whose scope the global banner
+      speaks for: either feed it from the ACTIVE home scope's tracker timestamp (scoped read
+      carries it), or add a per-area arm to the banner copy. Done when silencing an area's meter
+      for >60 s shows a user-visible indication while Main stays fresh, pinned by a UI test.
+
+- [ ] **The meter-authority migration's in-flight retry chain is not fenced at teardown.**
+      `runMainMeterAuthorityMigration` (`setup/mainMeterAuthorityMigration.ts`) schedules retries
+      through the `TimerRegistry` (cleared at `onUninit`), but a `readLiveEnergyReport` promise
+      already in flight when the app tears down still runs its continuation and can write
+      settings through the ownership seam after uninit. Fix: give the migration a disposed
+      check (fed from the registry or an explicit fence) consulted at the top of the `.then`
+      continuation, so a post-uninit resolve decides nothing. Done when a test that resolves
+      the report read after teardown observes zero settings writes and no marker.
 
 - [ ] **The zone tree is refetched on every snapshot refresh — 538 Homey round-trips per 12 h for
       an answer that changed zero times — and the obvious fix (a refresh interval) is unsafe as
@@ -1011,15 +1027,15 @@ What remains open is below.*
       the two are separated by a gap rather than inferring it from whichever total survived. Found
       2026-08-17 fixing the display-to-control edge on PR #2146. [P2]
 
-- [ ] **A measurement-gated home keeps serving the previous run's `pels_status`, and the UI reads
-      it as `fresh`.**
+- [ ] **A measurement-gated home keeps serving the previous run's `pels_status` watts.**
       `PlanService.rebuildPlanFromCache` returns before `PlanStatusWriter` when the build gate is
       shut, so nothing rewrites the persisted `pels_status` blob — while `getSettingsUiPower`
       (`setup/settingsUiApi.ts:167`) reads that blob straight out of settings, including
-      `powerNowKw`, `headroomKw`, `hasLivePowerSample`, and `powerFreshnessState`. After a restart,
-      a `power_source = flow` home whose reporting Flow never fires therefore shows the *last run's*
-      watts and available power, labelled `'fresh'`, for as long as it stays unmeasured — the one
-      state the gate exists to declare. The gate's own refusal is correct; only the read is
+      `powerNowKw` and `headroomKw`. After a restart, a `power_source = flow` home whose reporting
+      Flow never fires therefore shows the *last run's* watts and available power for as long as
+      it stays unmeasured — the one state the gate exists to declare. (The freshness label is
+      gone from the blob; the no-readings banner does say readings stopped, but the hero numbers
+      still read as current.) The gate's own refusal is correct; only the read is
       dishonest. Fix direction: the read is the boundary, so classify it there — have the settings-UI
       power composer resolve to an explicit measurement-unavailable result while the gate is shut,
       rather than passing a stale blob through as a live one. Preserve the stored state (a
@@ -2314,11 +2330,10 @@ What remains open is below.*
 - [ ] **`pels_status` blobs (bare and suffixed) are object-guarded, not field-resolved.** Both
       `getSettingsUiPower` (`setup/settingsUiApi.ts`, main's unsuffixed read) and
       `SettingsUiHomeScopeAdapter.readStatus` (`setup/settingsUiHomeScope.ts`, the `pels_status:<id>`
-      read PR 5b added with deliberate precedent parity) check object-ness and then assert the full `SettingsUiPowerStatus` shape — closed unions
-      (`powerFreshnessState`) and numbers included. *Persona:* contributor debugging a WebView that
+      read PR 5b added with deliberate precedent parity) check object-ness and then assert the full `SettingsUiPowerStatus` shape — numbers included. *Persona:* contributor debugging a WebView that
       renders nothing for a status field after a partial/corrupt settings write. *Hypothesis:* a
-      malformed blob (e.g. `powerFreshnessState: "garbage"`, `headroomKw: "3"`) flows inward typed as
-      the closed union / number, matches no branch, and the surface silently drops the field with no
+      malformed blob (e.g. `headroomKw: "3"`) flows inward typed as
+      a number, matches no branch, and the surface silently drops the field with no
       log — the AGENTS.md boundary rule ("finiteness-gate numbers, shape-guard objects") says the
       producer should classify it instead. Extract one field-level status resolver (the
       `asRecord` + `toFiniteNumber` pattern `managerEnergy.ts` cites) and use it from both readers. P3.

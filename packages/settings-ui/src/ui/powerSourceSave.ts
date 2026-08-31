@@ -19,7 +19,6 @@ import {
   normalizePowerSource,
   refreshStaleDataBanner,
   hasConfirmedPowerSourcePaintSince,
-  setPowerSourceConfigured,
   supersedeCapacityPowerSourcePaints,
   type PowerSource,
 } from './capacity.ts';
@@ -61,11 +60,9 @@ const settleFailedPowerSourceSave = (
     // proposed value selected would present a refused/failed write as saved,
     // while normalizing absence to Flow would fabricate the opposite answer.
     markPowerSourceSelectUnavailable();
-    setPowerSourceConfigured(false);
     return;
   }
   rollbackPowerSourceSelect(previous);
-  setPowerSourceConfigured(true);
 };
 
 /**
@@ -114,7 +111,6 @@ const buildPowerSourceSaveBody = (request: PowerSourceSaveRequest): Record<strin
 
 const paintSavedPowerSource = (savedSource: PowerSource): void => {
   applySettingsPatch({ [POWER_SOURCE]: savedSource });
-  setPowerSourceConfigured(true);
   if (settingsPowerSourceSelect) settingsPowerSourceSelect.value = savedSource;
   syncHomeyEnergyMeterVisibility(savedSource);
   refreshStaleDataBanner();

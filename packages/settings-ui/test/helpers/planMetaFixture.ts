@@ -26,7 +26,6 @@ export const buildPlanMeta = (
   projectedExemptKw: null,
   softLimitSource: 'capacity',
   headroomKw: 5.3,
-  powerFreshnessState: 'fresh',
   hardCapLimitKw: 12,
   usedKWh: 1.2,
   hourBudgetKWh: 9.5,

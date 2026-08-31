@@ -135,7 +135,6 @@ export class PlanStatusWriter {
       changes,
       priceLevel,
       lastPowerUpdate,
-      powerFreshnessState: plan.meta.powerFreshnessState,
       powerNowKw: plan.meta.powerNowKw,
       dryRunEffective,
     });

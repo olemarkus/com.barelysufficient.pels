@@ -7,7 +7,6 @@ import {
   formatCheapestUpcomingHour,
   formatEnergyMeterMarkerLabels,
   formatEnergyUsedOfBudgetParts,
-  formatFreshnessChip,
   formatHeroHeadline,
   formatPowerMeterMarkerLabels,
   formatProjectedEnergySubline,
@@ -28,7 +27,6 @@ import { resolveDisplayPlanDevices } from '../planLiveData.ts';
 import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemantics.ts';
 import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type {
-  SettingsUiPowerStatus,
   SettingsUiPricesPayload,
 } from '../../../../contracts/src/settingsUiApi.ts';
 import { resolveCostDisplayFromCombinedPrices, resolvePriceUnitLabel } from '../priceUnit.ts';
@@ -40,15 +38,13 @@ import {
 } from '../../../../shared-domain/src/solar/solarNow.ts';
 import { MdIconButton } from './materialWebJSX.tsx';
 
-type FreshnessState = NonNullable<SettingsUiPowerStatus['powerFreshnessState']>;
-type HeroStatus = 'on-track' | 'above-safe-pace' | 'projected-over-budget' | 'over-hard-cap' | 'dry-run' | 'no-data';
+type HeroStatus = 'on-track' | 'above-safe-pace' | 'projected-over-budget' | 'over-hard-cap' | 'dry-run';
 
 const HERO_STATUS_LABEL: Partial<Record<HeroStatus, string>> = {
   'above-safe-pace': 'Above safe pace',
   'projected-over-budget': 'Above budget',
   'over-hard-cap': 'Above hard cap',
   'dry-run': 'Simulation mode',
-  'no-data': 'No data',
 };
 
 const HERO_STATUS_CHIP_TONE: Record<HeroStatus, string> = {
@@ -57,7 +53,6 @@ const HERO_STATUS_CHIP_TONE: Record<HeroStatus, string> = {
   'projected-over-budget': 'warn',
   'over-hard-cap': 'alert',
   'dry-run': 'warn',
-  'no-data': 'alert',
 };
 
 const HERO_STATUS_DATA_TONE: Record<HeroStatus, string> = {
@@ -66,27 +61,15 @@ const HERO_STATUS_DATA_TONE: Record<HeroStatus, string> = {
   'projected-over-budget': 'warn',
   'over-hard-cap': 'alert',
   'dry-run': 'warn',
-  'no-data': 'alert',
-};
-
-const resolveFreshnessState = (
-  power: SettingsUiPowerStatus | null | undefined,
-  meta: PlanMetaSnapshot,
-): FreshnessState | undefined => {
-  const fromPower = power?.powerFreshnessState;
-  if (fromPower) return fromPower;
-  return meta.powerFreshnessState;
 };
 
 const resolveHeroStatus = (
   headline: HeroHeadline,
   devices: PlanDeviceSnapshot[],
-  freshnessState: FreshnessState | undefined,
   dryRun: boolean,
   projectionTone: ProjectionTone | null,
   projectedOverHardCap: boolean,
 ): HeroStatus => {
-  if (freshnessState === 'stale_fail_closed') return 'no-data';
   // "Above hard cap" is a trajectory judgement: projected this-hour energy
   // exceeds the cap's hourly kWh. Instantaneous kW above the cap is NOT a
   // breach — the cap is an hourly-average tariff-step ceiling, and safe pace
@@ -169,14 +152,12 @@ const isWouldLimitDevice = (device: PlanDeviceSnapshot): boolean => (
 // independent of UI types.
 const buildDecisionSentence = ({
   devices,
-  freshnessState,
   dryRun,
   projectedOverHardCap,
   projectionTone,
   safePaceKw,
 }: {
   devices: PlanDeviceSnapshot[];
-  freshnessState: FreshnessState | undefined;
   dryRun: boolean;
   projectedOverHardCap: boolean;
   projectionTone: ProjectionTone | null;
@@ -186,7 +167,6 @@ const buildDecisionSentence = ({
   return buildSharedDecisionSentence({
     limitedCount: limited.length,
     resumingCount: devices.filter(isResumingDevice).length,
-    freshness: freshnessState,
     dryRun,
     projectedOverHardCap,
     projectedOverBudget: projectedOverHardCap
@@ -355,34 +335,23 @@ const InfoIcon = () => (
 );
 
 // Overview hero answers "am I OK right now?". The chip rail is pared back to
-// the live status signal plus a freshness chip when data is stale. Mode and
+// the live status signal. Mode and
 // price-level chips were demoted in PR9 (owner walk 2026-05-17): mode is a
 // stable filter belonging to page chrome, and price-level is a Budget concern.
 // See notes/overview-hero-spec.md § "Chip row".
 const HeroChipRow = ({
   heroStatus,
-  freshnessState,
-  ageText,
 }: {
   heroStatus: HeroStatus;
-  freshnessState: FreshnessState | undefined;
-  ageText: string | null;
 }) => {
-  const freshness = formatFreshnessChip(freshnessState);
-  // Hide freshness chip when data is fresh — chip rail stays calm on the
-  // happy path. (notes/overview-hero-spec.md — "Freshness chip".)
-  const showFreshness = freshness !== null && freshness.kind !== 'fresh';
-  const freshnessTooltip = ageText ? `Power reading updated ${ageText}` : undefined;
+  // The old freshness chip ('Delayed'/'No data') is retired: staleness is the
+  // global no-readings banner's fact, rendered above the hero (owner ruling
+  // 2026-08-31 — banner only).
   const statusLabel = HERO_STATUS_LABEL[heroStatus] ?? null;
   return (
     <div class="plan-hero__chips">
       <div class="plan-hero__chip-rail">
         {statusLabel && <Chip label={statusLabel} tone={HERO_STATUS_CHIP_TONE[heroStatus]} />}
-        {showFreshness && (
-          <span class={`plan-chip plan-chip--${freshness.tone}`} data-tooltip={freshnessTooltip}>
-            {freshness.label}
-          </span>
-        )}
       </div>
       <MdIconButton
         class="plan-hero__info-button"
@@ -785,7 +754,6 @@ const resolveCheapestUpcomingText = (
 
 export const PlanHero = ({
   plan,
-  power,
   prices,
   solarNowInput,
   context,
@@ -793,7 +761,6 @@ export const PlanHero = ({
   nowMs,
 }: {
   plan: PlanSnapshot | null;
-  power: SettingsUiPowerStatus | null;
   prices?: SettingsUiPricesPayload | null;
   solarNowInput?: SolarNowInput | null;
   context: HeroContext;
@@ -833,8 +800,7 @@ export const PlanHero = ({
     );
   }
 
-  const headline = formatHeroHeadline(heroMeta, nowMs);
-  const freshnessState = resolveFreshnessState(power, meta);
+  const headline = formatHeroHeadline(heroMeta);
   const energyScale = computeEnergyBarScale(meta);
   const projectionTone = energyScale ? resolveProjectionTone(energyScale) : null;
   // The over-cap trajectory verdict is computed from the same four meta fields
@@ -858,7 +824,6 @@ export const PlanHero = ({
   const heroStatus = resolveHeroStatus(
     headline,
     devices,
-    freshnessState,
     context.dryRun,
     projectionTone,
     projectedOverHardCap,
@@ -866,7 +831,6 @@ export const PlanHero = ({
   const safePaceKw = meta.softLimitKw;
   const decision = buildDecisionSentence({
     devices,
-    freshnessState,
     dryRun: context.dryRun,
     projectedOverHardCap,
     projectionTone,
@@ -886,11 +850,7 @@ export const PlanHero = ({
 
   return (
     <div class="plan-hero pels-hero" data-tone={HERO_STATUS_DATA_TONE[heroStatus]} aria-live="polite">
-      <HeroChipRow
-        heroStatus={heroStatus}
-        freshnessState={freshnessState}
-        ageText={headline.ageText}
-      />
+      <HeroChipRow heroStatus={heroStatus} />
       <PowerSection
         headline={headline}
         meta={meta}

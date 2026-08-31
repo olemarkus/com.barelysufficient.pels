@@ -5,7 +5,6 @@ import {
   formatCheapestUpcomingHour,
   formatEnergyMeterMarkerLabels,
   formatEnergyUsedOfBudgetParts,
-  formatFreshnessChip,
   formatHeroHeadline,
   formatPowerMeterMarkerLabels,
   formatProjectedEnergySubline,
@@ -13,7 +12,6 @@ import {
   type PlanHeroMetaInput,
 } from '../../packages/shared-domain/src/planHeroSummary';
 
-const NOW = Date.UTC(2026, 3, 20, 12, 0, 0);
 
 const meta = (overrides: Partial<PlanHeroMetaInput> = {}): PlanHeroMetaInput => ({
   totalKw: 5.2,
@@ -22,25 +20,23 @@ const meta = (overrides: Partial<PlanHeroMetaInput> = {}): PlanHeroMetaInput => 
   hardCapLimitKw: 14,
   controlledKw: 3.1,
   uncontrolledKw: 2.1,
-  lastPowerUpdateMs: NOW - 120_000,
   ...overrides,
 });
 
 describe('formatHeroHeadline', () => {
   it('formats an under-budget state', () => {
-    const headline = formatHeroHeadline(meta(), NOW);
+    const headline = formatHeroHeadline(meta());
     expect(headline.totalKw).toBeCloseTo(5.2);
     expect(headline.softLimitKw).toBeCloseTo(11.0);
     expect(headline.overSoftLimit).toBe(false);
     expect(headline.hardLimitKw).toBeCloseTo(14);
-    expect(headline.ageText).toBe('2m ago');
   });
 
   it('flags over-soft-limit state', () => {
     const headline = formatHeroHeadline(meta({
       totalKw: 12,
       headroomKw: -1,
-    }), NOW);
+    }));
     expect(headline.overSoftLimit).toBe(true);
   });
 
@@ -53,15 +49,11 @@ describe('formatHeroHeadline', () => {
       totalKw: 15,
       headroomKw: -4,
       hardCapLimitKw: 14,
-    }), NOW);
+    }));
     expect(headline.hardLimitKw).toBe(14);
     expect(headline && 'overHardLimit' in headline).toBe(false);
   });
 
-  it('omits age text when lastPowerUpdateMs is missing', () => {
-    const headline = formatHeroHeadline(meta({ lastPowerUpdateMs: undefined }), NOW);
-    expect(headline.ageText).toBeNull();
-  });
 
 });
 
@@ -105,22 +97,6 @@ describe('formatProjectedEnergySubline', () => {
   });
 });
 
-describe('formatFreshnessChip', () => {
-  it('returns null when no state is provided', () => {
-    expect(formatFreshnessChip(undefined)).toBeNull();
-  });
-
-  it('maps each freshness state to a plain-English label', () => {
-    expect(formatFreshnessChip('fresh')).toEqual({ kind: 'fresh', label: 'Live', tone: 'ok' });
-    expect(formatFreshnessChip('stale_hold')).toEqual({ kind: 'stale_hold', label: 'Delayed', tone: 'warn' });
-    expect(formatFreshnessChip('stale_fail_closed')).toEqual({
-      kind: 'stale_fail_closed',
-      label: 'No data',
-      tone: 'alert',
-    });
-  });
-});
-
 describe('hero meter marker labels', () => {
   it('formats power markers with the numeric value in the visible legend label', () => {
     // The legend is the only touch-reachable home for these numbers (tippy
@@ -158,7 +134,6 @@ describe('buildDecisionSentence', () => {
   const baseline = (overrides: Partial<DecisionSentenceInput> = {}): DecisionSentenceInput => ({
     limitedCount: 0,
     resumingCount: 0,
-    freshness: 'fresh',
     dryRun: false,
     projectedOverHardCap: false,
     projectedOverBudget: false,
@@ -173,13 +148,6 @@ describe('buildDecisionSentence', () => {
     });
   });
 
-  it('routes stale_fail_closed to the no-data line first', () => {
-    expect(buildDecisionSentence(baseline({
-      freshness: 'stale_fail_closed',
-      limitedCount: 3,
-      projectedOverHardCap: true,
-    })).text).toBe('Power readings have dropped. Devices stay limited until data returns.');
-  });
 
   it('reports the on-pace-over-cap trajectory before active limiting', () => {
     expect(buildDecisionSentence(baseline({

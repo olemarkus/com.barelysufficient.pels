@@ -275,8 +275,7 @@ describe('planExecutablePlan', () => {
       meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
-        headroomKw: 4,
-        powerFreshnessState: 'fresh'}),
+        headroomKw: 4}),
       devices: [evCharger],
     });
 
@@ -306,8 +305,7 @@ describe('planExecutablePlan', () => {
       meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
-        headroomKw: 4,
-        powerFreshnessState: 'fresh'}),
+        headroomKw: 4}),
       devices: [evCharger],
     });
 

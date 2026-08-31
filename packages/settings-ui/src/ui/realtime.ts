@@ -155,7 +155,7 @@ const handlePowerUpdated = (power: unknown) => {
   // Only a full-tracker push refreshes the hero's "Solar now" triple; a
   // status-only push keeps the cached one (the resolver's staleness gate
   // retires it on its own).
-  updatePlanPower(liveStatus, hasFullTracker ? payload.tracker : undefined);
+  updatePlanPower(hasFullTracker ? payload.tracker : undefined);
   updateBudgetPower(liveStatus);
   // The hub's `Awaiting prices` chip reads the price level this push just
   // primed into the power cache — cheap idempotent DOM sync.

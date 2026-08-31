@@ -7,7 +7,6 @@ import type {
   PlanInputDeviceBase,
   StepPowerCalibrationView,
 } from '../../packages/planner-types/src/planInputDevice';
-import type { PowerFreshnessState } from '../power/sampleFreshness';
 import type {
   DeviceControlAdapterSnapshot,
   ExpectedPowerSource,
@@ -680,15 +679,11 @@ export type DevicePlan = {
     softLimitSource: 'capacity' | 'daily';
     headroomKw: number;
     powerNowKw: number | null;
-    hasLivePowerSample: boolean;
-    powerSampleAgeMs: number | null;
-    powerFreshnessState: PowerFreshnessState;
     /**
      * Producer-resolved: did this cycle have a measurement. Downstream layers
-     * that gate a positive (turn-on) action read THIS, never
-     * `powerFreshnessState` — `lib/executor` used to test the label itself and
-     * so answered the same question with a different predicate (`fresh` alone,
-     * where the planner required a total too).
+     * that gate a positive (turn-on) action read THIS — the plan carries no
+     * freshness label at all any more (staleness is a UI-only banner fact,
+     * owner ruling 2026-08-31).
      */
     powerIsMeasured: boolean;
     capacityShortfall: boolean;

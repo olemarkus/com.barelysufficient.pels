@@ -2,7 +2,6 @@ import type { PowerTrackerState } from './tracker';
 import {
   POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
   resolvePowerSampleFreshness,
-  type PowerFreshnessState,
 } from './sampleFreshness';
 
 /**
@@ -76,10 +75,6 @@ export type PowerCycleDisplay = {
    * shape deleted on 2026-08-07 and easy to reintroduce one site at a time.
    */
   measuredTotalKw: number | null;
-  /** Producer-resolved; consumers must not test `freshnessState === 'fresh'`. */
-  hasLiveSample: boolean;
-  freshnessState: PowerFreshnessState;
-  powerSampleAgeMs: number | null;
   lastPowerUpdateMs: number | null;
 };
 
@@ -146,9 +141,6 @@ export const resolvePowerCycleReading = (params: {
     display: {
       totalKw,
       measuredTotalKw: measured ? totalKw : null,
-      hasLiveSample: freshness.hasLivePowerSample,
-      freshnessState: freshness.powerFreshnessState,
-      powerSampleAgeMs: freshness.powerSampleAgeMs,
       lastPowerUpdateMs: freshness.lastPowerUpdateMs,
     },
   };

@@ -181,10 +181,6 @@ const REQUIRED_META_NULLABLE_NUMBERS = [
 ] as const;
 
 const SOFT_LIMIT_SOURCES: ReadonlySet<unknown> = new Set(['capacity', 'daily']);
-const POWER_FRESHNESS_STATES: ReadonlySet<unknown> = new Set([
-  'fresh', 'stale_hold', 'stale_fail_closed',
-]);
-
 // `totalKw` and `uncontrolledKw` are ONE fact and must be null together.
 // `splitControlledUsageKw` derives the background side as the whole-home total
 // minus the managed side, so it is absent exactly when the total is — which is
@@ -208,8 +204,7 @@ const isValidPlanMeta = (value: unknown): boolean => {
       (key) => meta[key] === null || isFiniteNumber(meta[key]),
     )
     && hasConsistentMeterNullness(meta)
-    && SOFT_LIMIT_SOURCES.has(meta.softLimitSource)
-    && POWER_FRESHNESS_STATES.has(meta.powerFreshnessState);
+    && SOFT_LIMIT_SOURCES.has(meta.softLimitSource);
 };
 
 export const parsePlanSnapshot = (value: unknown): PlanSnapshot | null => {

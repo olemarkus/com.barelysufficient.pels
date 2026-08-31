@@ -273,7 +273,6 @@ describe('control toggle — optimistic rollback + serialization', () => {
         controlledKw: 2.5,
         uncontrolledKw: 1.5,
         powerNowKw: 2,
-        hasLivePowerSample: true,
         devicesOff: 0,
         limitReason: 'none',
       },

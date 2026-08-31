@@ -15,7 +15,6 @@ import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { OverviewDeviceRow } from '../overviewDeviceRows.ts';
 import { DEVICE_OVERVIEW_AWAITING_FIRST_READING } from '../../../../shared-domain/src/deviceOverviewStrings.ts';
 import type {
-  SettingsUiPowerStatus,
   SettingsUiPricesPayload,
 } from '../../../../contracts/src/settingsUiApi.ts';
 import type { SolarNowInput } from '../../../../shared-domain/src/solar/solarNow.ts';
@@ -42,7 +41,6 @@ type OverviewProps = {
   // payload is the empty shape, and rendering it would fabricate a `0.0 kW`
   // reading nobody took.
   scopeUnavailable: boolean;
-  power: SettingsUiPowerStatus | null;
   prices: SettingsUiPricesPayload | null;
   solarNowInput: SolarNowInput | null;
   // The one smart-task failure/readiness row below the hero (null renders
@@ -154,7 +152,7 @@ const ScopeUnavailableNotice = () => (
 );
 
 const PlanOverviewRoot = ({
-  rows, devicesResolved, plan, planResolved, scopeUnavailable, power, prices, solarNowInput, smartTaskRow, context, renderedAtMs, nowMs,
+  rows, devicesResolved, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, context, renderedAtMs, nowMs,
 }: OverviewProps) => {
   if (scopeUnavailable) {
     return <div><ScopeUnavailableNotice /></div>;
@@ -178,7 +176,6 @@ const PlanOverviewRoot = ({
     <div>
       <PlanHero
         plan={plan}
-        power={power}
         prices={prices}
         solarNowInput={solarNowInput}
         context={context}

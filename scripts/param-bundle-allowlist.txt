@@ -294,7 +294,6 @@ packages/settings-ui/src/ui/budgetPlanningPriceOverlay.ts 1
 packages/settings-ui/src/ui/budgetRedesignChartData.ts 2
 packages/settings-ui/src/ui/budgetRedesignChartOptions.ts 4
 packages/settings-ui/src/ui/budgetRedesignResolvers.ts 3
-packages/settings-ui/src/ui/capacity.ts 1
 packages/settings-ui/src/ui/chartReadout.ts 1
 packages/settings-ui/src/ui/chartTooltipFormat.ts 6
 packages/settings-ui/src/ui/dayViewChart.ts 1
@@ -347,7 +346,7 @@ packages/settings-ui/src/ui/views/ElectricityPricesView.tsx 6
 packages/settings-ui/src/ui/views/HomeLimitsSection.tsx 1
 packages/settings-ui/src/ui/views/HomesSettingsSection.tsx 3
 packages/settings-ui/src/ui/views/PlanDeviceCards.tsx 5
-packages/settings-ui/src/ui/views/PlanHero.tsx 4
+packages/settings-ui/src/ui/views/PlanHero.tsx 3
 packages/settings-ui/src/ui/views/PlanOverview.tsx 1
 packages/settings-ui/src/ui/views/PlanSteppedCard.tsx 1
 packages/settings-ui/src/ui/views/PriceAwareDevicesView.tsx 2
