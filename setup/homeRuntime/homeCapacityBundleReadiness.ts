@@ -12,6 +12,7 @@ import type { PlanService } from '../../lib/plan/planService';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import { installPowerSampleFreshnessEscalation } from '../powerSampleFreshnessEscalation';
+import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 
 // Base freshness-heartbeat cadence (mirrors `POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS`
 // in `setup/powerSamplePipeline.ts`). The test value is coarser than the poll
@@ -38,6 +39,8 @@ export type InstallBundleReadinessParams = {
   logger: () => ReturnType<AppContext['getStructuredLogger']>;
   planService: PlanService;
   getTrackerState: () => PowerTrackerState;
+  /** This bundle's silence policy — shared with its composed plan-build gate. */
+  meterSilence: MeterSilenceMonitor;
   /** Teardown fence: true once `teardown()` ran (all continuations must bail). */
   isTornDown: () => boolean;
   getStableSampleRevision: () => StableSampleRevision;
@@ -137,7 +140,7 @@ export function installBundleReadinessAndFreshness(
   markPreparedOwnershipGenerationReconciled: () => void;
 } {
   const {
-    ctx, homeId, timerKey, logger, planService, getTrackerState,
+    ctx, homeId, timerKey, logger, planService, getTrackerState, meterSilence,
     isTornDown, getStableSampleRevision, beginPreparedOwnershipReconcile,
     flushDeferredShortfallSideEffect,
     isMembershipReady, isMeterSourceAuthorized,
@@ -230,6 +233,7 @@ export function installBundleReadinessAndFreshness(
     timerKey: timerKey('freshnessHeartbeat'),
     logger,
     rebuild: () => planService.rebuildPlanFromCache('freshness_heartbeat'),
+    meterSilence,
     getLastSampleAtMs: () => getTrackerState().lastTimestamp,
     isTornDown,
     // Sub-home meters are fanned out ONLY by the Homey Energy poll

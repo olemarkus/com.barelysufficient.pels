@@ -88,11 +88,13 @@ export type PlanContext = {
   budgetPaceKw: number | null;
   projectedExemptKw: number | null;
   softLimitSource: SoftLimitSource;
-  // A headroom-blocked restore hold is releasable by the daily budget ONLY when the
-  // daily pace is the binding limit, the power sample is fresh, and capacity is not
-  // ALSO breached. Fresh power: `stale_hold` synthesizes headroom 0 and
-  // `stale_fail_closed` forces -1, so a stale meter blocks restores for reasons the
-  // budget cannot lift. No breach: when total is over the capacity limit too,
+  // A headroom-blocked restore hold is releasable by the daily budget ONLY when
+  // the daily pace is the binding limit, the reading is measured, and capacity is
+  // not ALSO breached. Measured: a reading inside the silence timeout carries
+  // forward as measured (the 2026-08-31 ruling); once the meter has been silent
+  // past it, the fail-closed pass forces -1 and then the silence block stops
+  // planning altogether — holds the budget cannot lift.
+  // No breach: when total is over the capacity limit too,
   // capacity is the constraint doing the work and a budget release cannot help
   // (prod 2026-07-25). Resolved to one flat boolean HERE so no consumer recomposes
   // it from ingredients — `planDiagnostics` (starvation counting cause, rescue
@@ -110,9 +112,9 @@ export type PlanContext = {
   // the binding pace made its reservation unusable by construction, prod
   // 2026-08-01), and a non-exempt candidate must also fit the budget pace with
   // a MEASURED exempt sum, so it cannot spend headroom that exists only as an
-  // off exempt device's projection. Both carry the same stale-meter forcing as
-  // `headroom` (stale_hold → 0, stale_fail_closed → -1) and the exhausted-hour
-  // force, so fail-closed and exhausted hours still block every restore.
+  // off exempt device's projection. Both carry the same fail-closed forcing as
+  // `headroom` (silent meter → -1) and the exhausted-hour force, so a
+  // fail-closed pass and an exhausted hour still block every restore.
   capacityHeadroomKw: number;
   // null when no daily budget applies (sub-homes, budget disabled).
   budgetHeadroomKw: number | null;
@@ -239,7 +241,9 @@ export function buildPlanContext(params: {
   // If the hourly energy budget is exhausted and soft limit is zero while instantaneous power reads ~0,
   // force a minimal negative headroom to proactively shed controllable devices.
   // The ~0 read must be MEASURED: this used to test the raw cached total, which
-  // could fire off a reading the meter had long stopped confirming.
+  // could fire off a reading the meter had long stopped confirming. "Measured"
+  // now spans the whole silence timeout (carry-forward as measured, ruling
+  // 2026-08-31): past it, the silence block stops planning instead.
   if (hourlyBudgetExhausted && softLimit <= 0 && power.measuredAtOrBelowKw(IDLE_HOUSE_KW)) {
     headroom = -1; // triggers shedding logic with needed ~=1 kW (effectivePower fallback)
     // An exhausted hour blocks every restore, including budget-exempt candidates

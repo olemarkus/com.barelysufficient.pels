@@ -1,4 +1,3 @@
-import type { Logger as PinoLogger } from '../logging/logger';
 import type { PowerTrackerState } from './tracker';
 import {
   POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
@@ -17,9 +16,10 @@ import {
  * the twin of the plan kinds carrying no device-observation freshness).
  *
  * `display` is the other direction: facts the owner is entitled to see (the
- * hero's "Power readings have dropped"), written outward onto the plan snapshot
- * and never read back as a control input. It is deliberately a separate member
- * so a planner branch cannot reach a freshness label by accident.
+ * settings UI's no-readings banner derives from its timestamp), written
+ * outward onto the plan snapshot and never read back as a control input. It is
+ * deliberately a separate member so a planner branch cannot reach a freshness
+ * label by accident.
  */
 export type PowerCycleReading = {
   headroomKw: (limitKw: number) => number;
@@ -84,137 +84,72 @@ export type PowerCycleDisplay = {
 };
 
 /**
- * Synthesized headroom when the meter cannot be trusted. Not a measurement —
+ * Synthesized headroom for the ONE build that runs while the meter is silent
+ * past the shed timeout: the escalation's fail-closed pass. Not a measurement —
  * a decision, and the meter's owner is the only layer entitled to make it.
- * `stale_hold` holds (admit nothing, force nothing); `stale_fail_closed` sheds.
+ * Every other silent-window build is blocked by the wiring's composed gate
+ * (`MeterSilenceMonitor`), so this constant is how the single pass sheds.
  */
 const FAIL_CLOSED_HEADROOM_KW = -1;
+/**
+ * Defensive only: reachable when a caller reaches a build with no measurement,
+ * which the measurement gate prevents in production.
+ */
 const HOLD_HEADROOM_KW = 0;
 
-export type PowerFreshnessLogger = Pick<PinoLogger, 'info' | 'warn'>;
-
 /**
- * Resolves one cycle's reading and owns the freshness state machine, including
- * its transition logs.
+ * Resolve one plan cycle's reading — pure, no per-home state.
  *
- * Per home: the state is "what did this meter read like last cycle", and a
- * shared instance would cross-talk between a main home and its meter areas.
- * Only the plan-build path calls `observe`, so a transition is logged once per
- * rebuild — `resolvePowerSampleFreshness` stays available, and silent, for
- * read-only callers.
+ * The old 3-state freshness ladder (`stale_hold`'s 0 kW synthesis, the
+ * monitor's transition logs, the restart grace) is gone (owner ruling
+ * 2026-08-31): between the 60 s staleness threshold and the 10-minute shed
+ * timeout the last good value carries forward AS MEASURED — a transient gap
+ * is a no-op, not a hold — and past the timeout the wiring blocks new builds
+ * outright (`lib/power/meterSilence.ts`, which also owns the restart rule
+ * that replaced `holdWhileStillWaiting`). What remains here is the one
+ * decision the reading's owner still makes: the escalation's single
+ * fail-closed pass resolves −1 kW so it sheds without the planner ever
+ * learning why.
  */
-export class PowerFreshnessMonitor {
-  private lastState: PowerFreshnessState | null = null;
-
+export const resolvePowerCycleReading = (params: {
+  powerTracker: PowerTrackerState;
   /**
-   * When this monitor first looked. The escalation to `stale_fail_closed` is
-   * measured from HERE as well as from the sample, because the sample timestamp
-   * outlives the process: `loadPowerTrackerState` restores it across a restart,
-   * so a Homey reboot after any gap longer than the timeout would otherwise
-   * resolve fail-closed on the very first build — shedding the whole house blind
-   * before the first 10-second poll had a chance to land. The producer must not
-   * reach a conclusion it has not waited for.
-   *
-   * Seeded from app start where the caller knows it, so the window is "how long
-   * has PELS been able to observe", not "how long since the first plan build" —
-   * a home whose first build happens late must not get a fresh grace.
+   * `null` only when a caller reached a plan build without a measurement,
+   * which `lib/power/powerMeasurementGate.ts` prevents in production. Resolved
+   * here, into a held headroom, so the absence stops at this boundary.
    */
-  private observingSinceMs: number | null = null;
+  totalKw: number | null;
+  nowMs: number;
+}): PowerCycleReading => {
+  const { powerTracker, totalKw, nowMs } = params;
+  const freshness = resolvePowerSampleFreshness(powerTracker, nowMs);
+  const silent = freshness.powerSampleAgeMs !== null
+    && freshness.powerSampleAgeMs >= POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
+  // A total with NO timestamp cannot be judged silent-or-not, so it is not
+  // spendable: production ingest always stamps both together, so this arm is
+  // only reachable by a gate-bypassing caller — the same family as the
+  // null-total hold below.
+  const measured = !silent && totalKw !== null && freshness.lastPowerUpdateMs !== null;
 
-  constructor(
-    private readonly structuredLog?: PowerFreshnessLogger,
-    /**
-     * When PELS became able to observe. Read lazily rather than captured, so a
-     * caller that learns its start time after construction is not silently
-     * ignored. Falls back to the first `observe` when absent.
-     */
-    private readonly getObservingSinceMs?: () => number,
-  ) {}
-
-  observe(params: {
-    powerTracker: PowerTrackerState;
-    /**
-     * `null` only when a caller reached a plan build without a measurement,
-     * which `lib/power/powerMeasurementGate.ts` prevents in production. Resolved
-     * here, into a held headroom, so the absence stops at this boundary.
-     */
-    totalKw: number | null;
-    nowMs: number;
-  }): PowerCycleReading {
-    const { powerTracker, totalKw, nowMs } = params;
-    this.observingSinceMs = this.getObservingSinceMs?.() ?? this.observingSinceMs ?? nowMs;
-    const freshness = resolvePowerSampleFreshness(powerTracker, nowMs);
-    const state = this.holdWhileStillWaiting(freshness.powerFreshnessState, nowMs);
-    this.emitTransitionLogs(state, freshness.powerSampleAgeMs);
-    this.lastState = state;
-    const measured = state === 'fresh' && totalKw !== null;
-
-    return {
-      isMeasured: measured,
-      headroomKw: (limitKw: number): number => {
-        if (measured && totalKw !== null) return limitKw - totalKw;
-        return state === 'stale_fail_closed' ? FAIL_CLOSED_HEADROOM_KW : HOLD_HEADROOM_KW;
-      },
-      measuredAtOrBelowKw: (thresholdKw: number): boolean => (
-        measured && totalKw !== null && totalKw <= thresholdKw
-      ),
-      measuredAboveKw: (limitKw: number): boolean => (
-        measured && totalKw !== null && totalKw > limitKw
-      ),
-      display: {
-        totalKw,
-        measuredTotalKw: measured ? totalKw : null,
-        hasLiveSample: freshness.hasLivePowerSample,
-        freshnessState: state,
-        powerSampleAgeMs: freshness.powerSampleAgeMs,
-        lastPowerUpdateMs: freshness.lastPowerUpdateMs,
-      },
-    };
-  }
-
-  /**
-   * Downgrade a fail-closed verdict to a hold until this monitor has itself been
-   * watching for the full timeout.
-   *
-   * Only reachable with a sample timestamp that predates the process — i.e. a
-   * restart. A home that has never sampled at all already resolves to
-   * `stale_hold` and has no age to escalate on, so this does not change it; a
-   * home sampling normally is fresh and never reaches here. What it removes is
-   * the restart blind-shed, and nothing else.
-   */
-  private holdWhileStillWaiting(state: PowerFreshnessState, nowMs: number): PowerFreshnessState {
-    if (state !== 'stale_fail_closed') return state;
-    const observingForMs = nowMs - (this.observingSinceMs ?? nowMs);
-    return observingForMs >= POWER_SAMPLE_STALE_SHED_TIMEOUT_MS ? state : 'stale_hold';
-  }
-
-  /**
-   * The two ladders are INDEPENDENT, as they were when this lived in
-   * `planBuilderMeta`: a `stale_hold` → `stale_fail_closed` step emits both the
-   * hold's `_cleared` and the fail-closed's `_entered`. Collapsing them into one
-   * else-if chain would silently drop a log line that `pels-log-review` and
-   * saved queries read.
-   */
-  private emitTransitionLogs(state: PowerFreshnessState, powerSampleAgeMs: number | null): void {
-    this.emitLadderTransition(state, powerSampleAgeMs, 'stale_hold', HOLD_HEADROOM_KW);
-    this.emitLadderTransition(state, powerSampleAgeMs, 'stale_fail_closed', FAIL_CLOSED_HEADROOM_KW);
-  }
-
-  private emitLadderTransition(
-    state: PowerFreshnessState,
-    powerSampleAgeMs: number | null,
-    ladder: 'stale_hold' | 'stale_fail_closed',
-    syntheticHeadroomKw: number,
-  ): void {
-    const previous = this.lastState;
-    if (previous !== ladder && state === ladder) {
-      this.structuredLog?.warn?.({
-        event: `power_sample_${ladder}_entered`,
-        powerSampleAgeMs,
-        syntheticHeadroomKw,
-      });
-    } else if (previous === ladder && state !== ladder) {
-      this.structuredLog?.info?.({ event: `power_sample_${ladder}_cleared`, powerSampleAgeMs });
-    }
-  }
-}
+  return {
+    isMeasured: measured,
+    headroomKw: (limitKw: number): number => {
+      if (measured && totalKw !== null) return limitKw - totalKw;
+      return silent ? FAIL_CLOSED_HEADROOM_KW : HOLD_HEADROOM_KW;
+    },
+    measuredAtOrBelowKw: (thresholdKw: number): boolean => (
+      measured && totalKw !== null && totalKw <= thresholdKw
+    ),
+    measuredAboveKw: (limitKw: number): boolean => (
+      measured && totalKw !== null && totalKw > limitKw
+    ),
+    display: {
+      totalKw,
+      measuredTotalKw: measured ? totalKw : null,
+      hasLiveSample: freshness.hasLivePowerSample,
+      freshnessState: freshness.powerFreshnessState,
+      powerSampleAgeMs: freshness.powerSampleAgeMs,
+      lastPowerUpdateMs: freshness.lastPowerUpdateMs,
+    },
+  };
+};

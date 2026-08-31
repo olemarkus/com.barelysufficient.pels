@@ -41,6 +41,7 @@ const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePi
     pvForecast: vi.fn<(generationW: number | undefined, nowMs: number, netW?: number) => void>(),
   };
   const pipeline = new PowerSamplePipeline({
+    noteSampleAdmitted: () => {},
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({ limitKw: 12, marginKw: 0.5 }),

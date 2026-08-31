@@ -148,7 +148,7 @@ async function executePlanRebuild(
   }
 
   const {
-    applyMs, appliedActions, deviceWriteCount, commandRequestCount, writtenDeviceIds,
+    applyMs, appliedActions, deviceWriteCount, commandRequestCount, deviceApplyFailureCount, writtenDeviceIds,
   } = await maybeApplyPlanChanges(
     host,
     stampedPlan,
@@ -169,6 +169,7 @@ async function executePlanRebuild(
     appliedActions,
     deviceWriteCount,
     commandRequestCount,
+    deviceApplyFailureCount,
     writtenDeviceIds,
     hadShedding,
   });
@@ -307,11 +308,17 @@ async function maybeApplyPlanChanges(
   appliedActions: boolean;
   deviceWriteCount: number;
   commandRequestCount: number;
+  deviceApplyFailureCount: number;
   writtenDeviceIds: string[];
 }> {
   if (!shouldApplyPlan(host, plan, changes, isDryRun, observationRevision)) {
     return {
-      applyMs: 0, appliedActions: false, deviceWriteCount: 0, commandRequestCount: 0, writtenDeviceIds: [],
+      applyMs: 0,
+      appliedActions: false,
+      deviceWriteCount: 0,
+      commandRequestCount: 0,
+      deviceApplyFailureCount: 0,
+      writtenDeviceIds: [],
     };
   }
 
@@ -319,6 +326,7 @@ async function maybeApplyPlanChanges(
   let appliedActions = false;
   let deviceWriteCount = 0;
   let commandRequestCount = 0;
+  let deviceApplyFailureCount = 0;
   let writtenDeviceIds: string[] = [];
   try {
     const actuation = await host.deps.planEngine.applyPlanActions(plan);
@@ -326,6 +334,7 @@ async function maybeApplyPlanChanges(
     const rawCommandRequestCount = actuation?.commandRequestCount;
     deviceWriteCount = sanitizeActuationCount(rawDeviceWriteCount);
     commandRequestCount = sanitizeActuationCount(rawCommandRequestCount);
+    deviceApplyFailureCount = sanitizeActuationCount(actuation?.deviceApplyFailureCount);
     writtenDeviceIds = Array.isArray(actuation?.writtenDeviceIds)
       ? actuation.writtenDeviceIds.filter((id): id is string => typeof id === 'string')
       : [];
@@ -348,6 +357,7 @@ async function maybeApplyPlanChanges(
     appliedActions,
     deviceWriteCount,
     commandRequestCount,
+    deviceApplyFailureCount,
     writtenDeviceIds,
   };
 }

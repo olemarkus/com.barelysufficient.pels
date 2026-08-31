@@ -70,6 +70,7 @@ import { createPlanEngine } from '../appInit/createPlanEngine';
 import { createPlanService } from '../appInit/createPlanService';
 import { buildHomePlanDevices } from './planDevicePrePass';
 import { createHomePowerPipeline } from './createHomePowerPipeline';
+import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import {
   buildHomeCapacityBundleApi,
   createPreparedBundleSampleFence,
@@ -302,10 +303,12 @@ function buildSubHomeScope(params: {
   /** Late-bound: the bundle's OWN engine, for the sub-home PELS-OFF provenance cleanup. */
   getPlanEngineForCommandProvenance: () => ReturnType<typeof createPlanEngine> | undefined;
   modeCatalog: HomeModeCatalog;
+  meterSilenceMonitor: MeterSilenceMonitor;
 }): HomeScope {
   const {
     ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars,
     getTracker, getServiceForSync, getPlanEngineForCommandProvenance, modeCatalog,
+    meterSilenceMonitor,
   } = params;
   const binaryCommandReachability = createBinaryCommandReachability({
     requestRebuild: () => {
@@ -347,6 +350,7 @@ function buildSubHomeScope(params: {
       isTornDown, isMembershipReady, isMeterSourceAuthorized, getScalars,
     }),
     getPowerTracker: getTracker,
+    getMeterSilenceMonitor: () => meterSilenceMonitor,
     getDailyBudgetSnapshot: () => null,
     getPlanDevices: () => {
       // Capacity-only overrides: NO surplus posture (a sub-home has no
@@ -432,6 +436,7 @@ function createBundleSamplePipeline(params: {
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   savePowerTracker: (state: PowerTrackerState) => void;
   getPowerTracker: () => PowerTrackerState;
+  noteSampleAdmitted: () => void;
 }): { pipeline: ReturnType<typeof createHomePowerPipeline>; scheduler: PlanRebuildScheduler } {
   const scheduler = createBundleRebuildScheduler({
     ctx: params.ctx,
@@ -453,6 +458,7 @@ function createBundleSamplePipeline(params: {
     getCapacitySettings: params.getCapacitySettings,
     getCapacityGuard: params.getCapacityGuard,
     getPowerSampleRebuildState: params.getRebuildState,
+    noteSampleAdmitted: params.noteSampleAdmitted,
     // No weather/PV/curtailment taps for sub-homes: a sub-home meter's net W is
     // not the home's grid power — feeding it to those estimators would corrupt them.
   });
@@ -476,6 +482,14 @@ function createBundlePlanningRuntime(params: {
   setRebuildState: (state: PowerSampleRebuildState) => void;
   modeCatalog: HomeModeCatalog;
 }) {
+  // This home's meter-silence policy: shared by the composed plan-build gate
+  // (via the scope), the pipeline's admitted-sample push, and the freshness
+  // escalation's shed-pass protocol.
+  const meterSilenceMonitor = new MeterSilenceMonitor({
+    getLastSampleAtMs: () => params.tracker.getState().lastTimestamp,
+    nowMs: () => Date.now(),
+    structuredLog: () => params.ctx.getStructuredLogger('power'),
+  });
   const scope = buildSubHomeScope({
     ctx: params.ctx,
     homeId: params.homeId,
@@ -488,6 +502,7 @@ function createBundlePlanningRuntime(params: {
     getServiceForSync: () => planService,
     getPlanEngineForCommandProvenance: () => planEngine,
     modeCatalog: params.modeCatalog,
+    meterSilenceMonitor,
   });
   const isActuationFenced = (): boolean => {
     if (
@@ -537,12 +552,14 @@ function createBundlePlanningRuntime(params: {
     getCapacitySettings: scope.getCapacitySettings,
     savePowerTracker: params.tracker.save,
     getPowerTracker: params.tracker.getState,
+    noteSampleAdmitted: () => meterSilenceMonitor.noteSampleAdmitted(),
   });
   return {
     scope,
     planEngine,
     planService,
     guard,
+    meterSilenceMonitor,
     flushDeferredShortfallSideEffect,
     holdDeferredShortfallSideEffect,
     pipeline,
@@ -599,6 +616,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     holdDeferredShortfallSideEffect,
     pipeline,
     planRebuildScheduler,
+    meterSilenceMonitor,
   } = createBundlePlanningRuntime({
     ctx, homeId,
     isMembershipReady: deps.isMembershipReady,
@@ -646,6 +664,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     logger,
     planService,
     getTrackerState: tracker.getState,
+    meterSilence: meterSilenceMonitor,
     isTornDown,
     getStableSampleRevision: () => pipeline.getStableSampleRevision(),
     beginPreparedOwnershipReconcile,

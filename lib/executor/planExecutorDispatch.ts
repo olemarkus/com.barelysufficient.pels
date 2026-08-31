@@ -441,6 +441,7 @@ export const dispatchPlanActions = async (
   logUnderspecifiedSteppedShedDevices(plan, executablePlan);
   let deviceWriteCount = 0;
   let commandRequestCount = 0;
+  let deviceApplyFailureCount = 0;
   const writtenDeviceIds: string[] = [];
   for (const intent of executablePlan.devices) {
     const observed = observedMap.get(intent.id);
@@ -460,6 +461,7 @@ export const dispatchPlanActions = async (
         writtenDeviceIds.push(intent.id);
       }
     } catch (error) {
+      deviceApplyFailureCount += 1;
       logger.error({
         event: 'executor_plan_error',
         msg: `Failed to apply action for ${intent.name}; continuing with remaining devices`,
@@ -467,7 +469,7 @@ export const dispatchPlanActions = async (
       });
     }
   }
-  return { deviceWriteCount, commandRequestCount, writtenDeviceIds };
+  return { deviceWriteCount, commandRequestCount, deviceApplyFailureCount, writtenDeviceIds };
 };
 
 export const applySheddingToDeviceImpl = async (

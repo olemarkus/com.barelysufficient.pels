@@ -20,6 +20,7 @@ import type {
 import type { PlanEngine } from '../plan/planEngine';
 import type { ExternalOffHoldPolicy } from '../observer/externalOffHold';
 import type { SnapshotWarmupGate } from '../plan/snapshotWarmupGate';
+import type { MeterSilenceMonitor } from '../power/meterSilence';
 import type { PendingTargetObservationSource, ShedBehavior } from '../plan/planTypes';
 import type { PlanService } from '../plan/planService';
 import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatcher';
@@ -337,6 +338,12 @@ export type AppContext = {
   // snapshot. Optional so tests that build a context without going through
   // `app.ts` are unaffected.
   snapshotWarmupGate?: SnapshotWarmupGate;
+  /**
+   * Main's 10-minute meter-silence policy (`lib/power/meterSilence.ts`): the
+   * wiring composes its block into the plan-build gate and the escalation
+   * clock drives its one shed pass. Sub-homes carry their own on the bundle.
+   */
+  meterSilenceMonitor: MeterSilenceMonitor;
   readonly snapshotHelpers: AppSnapshotHelpers;
   readonly homeyEnergyHelpers: HomeyEnergyPollSource;
   /**

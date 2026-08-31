@@ -28,6 +28,7 @@ import { filterDevicesForHome } from '../homeMembership';
 import { resolveFreshGenerationW } from '../../lib/observer/generationFreshness';
 import type { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { PowerSamplePipeline } from '../powerSamplePipeline';
+import { MeterSilenceMonitor, type MeterSilenceMonitorDeps } from '../../lib/power/meterSilence';
 
 export type HomePowerPipelineDeps = {
   ctx: AppContext;
@@ -68,6 +69,8 @@ export type HomePowerPipelineDeps = {
    * capacity-only and must never adopt the main home's production.
    */
   observedHomePower?: ObservedHomePower;
+  /** The home's meter-silence monitor admitted-sample push; no-op when absent. */
+  noteSampleAdmitted: () => void;
 };
 
 export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSamplePipeline {
@@ -106,6 +109,7 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
       : undefined,
     recordPvGenerationSample: deps.recordPvGenerationSample,
     recordCurtailmentSample: deps.recordCurtailmentSample,
+    noteSampleAdmitted: deps.noteSampleAdmitted,
     // Main home only: the sampled whole-home meter identity feeds membership's
     // ownership fence, and only Main's samples carry one. Sub-home pipelines
     // never receive identity-carrying options (their `recordMeterSample` route
@@ -119,4 +123,14 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
       }
       : {}),
   });
+}
+
+/**
+ * Construction seam for a home's `MeterSilenceMonitor`, co-located with the
+ * pipeline factory because the two are wired together (the pipeline's
+ * admitted-sample push is what clears the block). The composition root holds
+ * the instance; this module only constructs.
+ */
+export function createMeterSilenceMonitor(deps: MeterSilenceMonitorDeps): MeterSilenceMonitor {
+  return new MeterSilenceMonitor(deps);
 }

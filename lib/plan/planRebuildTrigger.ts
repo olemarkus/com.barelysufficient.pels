@@ -49,12 +49,11 @@ export const PLAN_REBUILD_TRIGGERS = [
 
   // The power lane speaking about the ABSENCE of a reading — and the ONE thing
   // it is allowed to say. Fires once, at `POWER_SAMPLE_STALE_SHED_TIMEOUT_MS`
-  // (10 minutes) with no sample, so the planner runs and sheds instead of holding
-  // an "under cap" decision taken before the meter died
-  // (`setup/powerSampleFreshnessEscalation.ts`). Everything short of that window
-  // is a no-op: the last good reading carries forward. A clock is needed because
-  // a whole-home reading is now the primary trigger, so when the meter is what
-  // died, nothing else is guaranteed to fire.
+  // (10 minutes) with no sample and for BOTH sources, so the planner runs one
+  // fail-closed pass and sheds instead of holding an "under cap" decision taken
+  // before the meter died; the composed plan-build gate then blocks every
+  // further rebuild until an admitted sample returns
+  // (`setup/powerSampleFreshnessEscalation.ts`, `lib/power/meterSilence.ts`).
   'freshness_heartbeat',
 
   // An input other than the reading changed, so a re-decision is owed regardless

@@ -15,11 +15,12 @@ import type { ConfiguredPowerSourceRead } from './powerSource';
  * (root `AGENTS.md` → "Clean and trusted interfaces between layers", and the
  * 2026-08-16 ruling that `lib/plan` holds no concept of staleness).
  *
- * This is NOT a freshness gate. Once a meter has reported once, the gate stays
- * open for the rest of that meter's life and a later dropout is handled where it
- * belongs — `lib/power` decides what a stale reading means and answers the
- * planner in kW. The gate shuts again only when the measurement itself goes
- * away: an in-place meter swap clears the tracker latch
+ * This is NOT a freshness gate. Once a meter has reported once, THIS gate stays
+ * open for the rest of that meter's life; the freshness half now lives beside
+ * it in the composed plan-build gate (`lib/power/meterSilence.ts`, owner ruling
+ * 2026-08-31 — superseding the 2026-08-16 "no escalation" clause below; the
+ * "no fabricated reading" half stands). This gate shuts again only when the
+ * measurement itself goes away: an in-place meter swap clears the tracker latch
  * (`SuffixedTrackerPersistence.resetFreshness`), putting the bundle back to "no
  * reading from THIS meter yet".
  *

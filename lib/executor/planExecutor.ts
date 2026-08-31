@@ -527,7 +527,7 @@ export class PlanExecutor {
 
   public async applyPlanActions(plan: DevicePlan): Promise<PlanActuationResult> {
     if (!plan || !Array.isArray(plan.devices)) {
-      return { deviceWriteCount: 0, commandRequestCount: 0, writtenDeviceIds: [] };
+      return { deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, writtenDeviceIds: [] };
     }
 
     this.controlPersistenceBatchDepth += 1;

@@ -40,7 +40,7 @@ describe('FlowPowerSampleFreshnessClock', () => {
     };
   };
 
-  it('heartbeats while fresh, holds quietly, and escalates only at the shed timeout', async () => {
+  it('heartbeats while fresh, then holds quietly forever — no escalation of its own', async () => {
     const { clock, requests } = createClock();
 
     clock.noteSample(Date.now());
@@ -49,17 +49,12 @@ describe('FlowPowerSampleFreshnessClock', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(requests).toEqual(['flow_power_sample_hold', 'flow_power_sample_hold']);
 
-    // Past the freshness threshold the clock asks for NOTHING: the sample being a
-    // minute old is not a new decision, and the last reading carries forward.
-    await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_THRESHOLD_MS - 20_000);
+    // Past the freshness threshold the clock asks for NOTHING, ever: the last
+    // reading carries forward, and the 10-minute silence mark belongs to the
+    // unified escalation (`installMainFreshnessEscalation` runs for BOTH
+    // sources; `lib/power/meterSilence.ts` blocks after its one pass).
+    await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
     expect(requests.every((reason) => reason === 'flow_power_sample_hold')).toBe(true);
-    const beforeTimeout = requests.length;
-
-    // The shed timeout is the one escalation, and it is a one-shot.
-    await vi.advanceTimersByTimeAsync(
-      POWER_SAMPLE_STALE_SHED_TIMEOUT_MS - POWER_SAMPLE_STALE_THRESHOLD_MS,
-    );
-    expect(requests.slice(beforeTimeout)).toEqual(['flow_power_sample_fail_closed']);
   });
 
   it('seeds the silence ladder from a persisted fresh sample timestamp', async () => {
@@ -71,24 +66,14 @@ describe('FlowPowerSampleFreshnessClock', () => {
     expect(requests).toEqual(['flow_power_sample_hold']);
   });
 
-  it('holds quietly for a sample already past freshness, then escalates at the timeout', async () => {
-    const { clock, requests } = createClock();
+  it('goes quiet for a sample already past freshness — the escalation is not its job', async () => {
+    const { clock, requests, timers } = createClock();
 
     clock.syncLatestSample(Date.now() - POWER_SAMPLE_STALE_THRESHOLD_MS);
     expect(requests).toEqual([]);
 
-    await vi.advanceTimersByTimeAsync(
-      POWER_SAMPLE_STALE_SHED_TIMEOUT_MS - POWER_SAMPLE_STALE_THRESHOLD_MS,
-    );
-    expect(requests).toEqual(['flow_power_sample_fail_closed']);
-  });
-
-  it('requests fail-closed immediately when seeding a sample past the fail-closed timeout', () => {
-    const { clock, requests, timers } = createClock();
-
-    clock.syncLatestSample(Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
-
-    expect(requests).toEqual(['flow_power_sample_fail_closed']);
+    await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
+    expect(requests).toEqual([]);
     expect(timers.has('flowPowerSampleFreshness')).toBe(false);
   });
 
@@ -168,7 +153,8 @@ describe('FlowPowerSampleFreshnessClock', () => {
     expect(requests).toEqual(['flow_power_sample_hold']);
 
     await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
-    expect(requests.at(-1)).toBe('flow_power_sample_fail_closed');
+    // No escalation of its own: the silence policy owns the 10-minute mark.
+    expect(requests.at(-1)).toBe('flow_power_sample_hold');
   });
 
   it('retries when the classified source callback sees an existing key read as undefined', async () => {
@@ -223,9 +209,9 @@ describe('FlowPowerSampleFreshnessClock', () => {
 
     sourceReadFails = false;
     await vi.advanceTimersByTimeAsync(1_000);
-    // Recovered, past freshness, before the timeout: nothing requested, still armed
-    // for the escalation the timeout owes.
+    // Recovered, past freshness: nothing requested and nothing armed — the
+    // escalation is the unified silence policy's job, not this clock's.
     expect(requests).toEqual([]);
-    expect(timers.has('flowPowerSampleFreshness')).toBe(true);
+    expect(timers.has('flowPowerSampleFreshness')).toBe(false);
   });
 });

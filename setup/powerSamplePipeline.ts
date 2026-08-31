@@ -79,6 +79,14 @@ export type PowerSamplePipelineDeps = {
    * absent (sub-home pipelines).
    */
   noteResolvedHomeMeter?: (deviceId: string, sampleAtMs: number) => void;
+  /**
+   * Admitted-sample push for the home's meter-silence monitor
+   * (`lib/power/meterSilence.ts`): fires for EVERY admitted sample of this
+   * home's pipeline — flow-driven, polled, or sub-meter — at the same
+   * persisted-watts point as the identity publication, so "silence" clears on
+   * exactly the ingest that moved the tracker latch. No-op when absent.
+   */
+  noteSampleAdmitted: () => void;
 };
 
 type PowerSampleOptions = {
@@ -349,6 +357,11 @@ export class PowerSamplePipeline {
           // identity - Main commanding from an area's watts. Publication is
           // contained, so a membership failure can never break the rebuild.
           this.publishResolvedHomeMeter(request);
+          try {
+            this.deps.noteSampleAdmitted();
+          } catch {
+            incPerfCounter('power_sample_silence_note_failed_total');
+          }
           await schedulePlanRebuildFromSignal({
             scheduler: this.deps.planRebuildScheduler,
             getState: () => this.deps.getPowerSampleRebuildState(),

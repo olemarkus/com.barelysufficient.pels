@@ -388,8 +388,8 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
    * Sub-home bundles are driven ONLY by the per-meter fan-out of the
    * `manager/energy/live` poll, which never runs under `power_source = flow`
    * (`homeyEnergyPoll.ts`). So a sub-home configured in flow mode gets ZERO
-   * meter samples for the app's lifetime: its bundle stays in `stale_hold` and
-   * never actuates. Surface a structured warning alongside the Multiple meters
+   * meter samples for the app's lifetime: its bundle never opens its
+   * measurement gate, so it never actuates. Surface a structured warning alongside the Multiple meters
    * UI's Homey Energy warning; edge-triggered so it logs once per transition
    * into the misconfigured state, not on every reconcile.
    */

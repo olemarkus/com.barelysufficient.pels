@@ -754,6 +754,12 @@ export type PlanRebuildOutcome = {
   appliedActions: boolean;
   deviceWriteCount: number;
   /**
+   * Devices whose apply threw (caught per-device by the dispatch). The
+   * silence escalation reads this: a fail-closed pass whose writes all
+   * failed did NOT take effect and must not latch as completed.
+   */
+  deviceApplyFailureCount: number;
+  /**
    * Ids of the devices this rebuild actually wrote to. `appliedActions` says only
    * that SOMETHING was written; this says which.
    *

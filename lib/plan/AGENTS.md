@@ -77,7 +77,9 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   owns the meter, so it decides what a doubtful reading means and answers in kW:
   `PlanContext` carries `headroomForLimitKw`, `powerIsMeasured`, and
   `powerMeasuredAtOrBelowKw` — no total, no freshness label, nothing to
-  discriminate. `PowerFreshnessState` must not be importable from `lib/plan`. This
+  discriminate. No freshness concept (`lib/power/meterSilence.ts` included) may be
+  importable from `lib/plan`; the wiring composes the silence block into the one
+  `planBuildGate` boolean instead. This
   is the twin of the plan kinds carrying no device-observation freshness, and it exists
   because four control paths had each re-derived "is power observable" from a
   freshness label, disagreeing with the producer's own answer. Display facts

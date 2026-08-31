@@ -26,6 +26,7 @@
 import { requirePlanService } from '../appInit/contextGuards';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { PriceLevel } from '../../lib/price/priceLevels';
@@ -77,6 +78,13 @@ export type HomeScope = {
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityDryRun: () => boolean;
   getPowerTracker: () => PowerTrackerState;
+  /**
+   * This home's 10-minute meter-silence monitor (`lib/power/meterSilence.ts`):
+   * `createPlanService` composes its block into the plan-build gate, and the
+   * freshness escalation drives its one shed pass. Main binds the ctx-owned
+   * instance; a bundle binds its own over the per-home tracker.
+   */
+  getMeterSilenceMonitor: () => MeterSilenceMonitor;
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   /** Active planned devices with a unique, gap-free relative priority in this home. */
   getPlanDevices: () => PlanInputDevice[];
@@ -246,6 +254,7 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     getCapacitySettings: () => ctx.capacitySettings,
     getCapacityDryRun: () => ctx.capacityDryRun,
     getPowerTracker: () => ctx.powerTracker,
+    getMeterSilenceMonitor: () => ctx.meterSilenceMonitor,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
     getPlanDevices: () => {
       // Boot/hot-plug seed of the observed-state projection from the RAW cached
