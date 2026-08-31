@@ -1,5 +1,5 @@
 export { isBlockedBySwapState } from './blocking';
-export { buildSwapCandidates } from './candidates';
+export { buildSwapCandidates, hasSwappableDraw } from './candidates';
 export {
   buildRequestedTargetFromDeviceUpdate,
   cleanupCompletedSwaps,

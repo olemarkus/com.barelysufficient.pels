@@ -23,6 +23,7 @@ import {
   setRestorePlanDevice,
 } from './planDeviceUpdates';
 import type { RestoreAdmissionMode } from './types';
+import type { SwapRestoreOutcome } from './swap';
 import { applySteppedCooldownPreviewAdmission } from './cooldownPreview';
 
 export type SteppedSwapExecutor = (params: {
@@ -30,9 +31,10 @@ export type SteppedSwapExecutor = (params: {
   needed: number;
   devPower: number;
   availableHeadroom: number;
+  restoreDebugKey: string;
   admittedDeviceUpdate: Partial<DevicePlanDevice>;
   rejectedDeviceUpdate: Partial<DevicePlanDevice>;
-}) => { availableHeadroom: number; restoredOneThisCycle: boolean };
+}) => SwapRestoreOutcome;
 
 export function admitSteppedRestore(params: {
   dev: SteppedPlanDevice;
@@ -87,6 +89,7 @@ export function admitSteppedRestore(params: {
         needed,
         devPower: nextStep.planningPowerW / 1000,
         availableHeadroom: effectiveHeadroomKw,
+        restoreDebugKey,
         admittedDeviceUpdate: {
           desiredStepId: nextStep.id,
           targetStepId: nextStep.id,
@@ -100,7 +103,14 @@ export function admitSteppedRestore(params: {
         },
         rejectedDeviceUpdate: resolveRejectedSteppedSwapUpdate(dev),
       });
-      return { ...swapResult, availableHeadroom: swapResult.availableHeadroom + reservedHeadroomKw };
+      // `no_source` falls through: nothing was running to swap out, so the
+      // reject below is the decision, with the step's own shortfall figures.
+      if (swapResult.kind === 'decided') {
+        return {
+          availableHeadroom: swapResult.availableHeadroom + reservedHeadroomKw,
+          restoredOneThisCycle: swapResult.restoredOneThisCycle,
+        };
+      }
     }
     return rejectSteppedRestoreForInsufficientHeadroom({
       dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
