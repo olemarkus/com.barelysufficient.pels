@@ -1,3 +1,5 @@
+import type { DeviceDiagnosticsPlanObservation } from '../../lib/diagnostics/deviceDiagnosticsServiceTypes';
+import type { AppContext } from '../../lib/app/appContext';
 // Integration-tier app-lane battery for the multi-home v1 smart-task scope
 // gate (moved from the e2e spec per the repo test taxonomy: these cases call
 // app methods directly and sanity-read the membership service, so they are
@@ -48,7 +50,7 @@ describe('smart-task sub-home gate (app lanes)', () => {
     // The serialized settings recompute immediately starts its fenced
     // rebuild/reconcile; callers must not sit in the backoff-only generation
     // gap after the semantic homes/pins state is already authoritative.
-    expect(app.homeMembership.hasPendingOwnershipGeneration()).toBe(false);
+    expect((app as AppContext).homeMembership?.hasPendingOwnershipGeneration()).toBe(false);
     expect(app.timers.has('mainOwnershipRecovery')).toBe(false);
 
     // Widget create lane.
@@ -79,7 +81,7 @@ describe('smart-task sub-home gate (app lanes)', () => {
     // Feed the REAL diagnostics service through its production observe API:
     // both heaters budget-starved past the 15-minute entry latency. The service,
     // the rescue-entry computation, and the app's join+filter all run for real.
-    const observation = (deviceId: string, name: string) => ({
+    const observation = (deviceId: string, name: string): DeviceDiagnosticsPlanObservation => ({
       deviceId,
       name,
       includeDemandMetrics: true,
@@ -128,7 +130,7 @@ describe('smart-task sub-home gate (app lanes)', () => {
       'heater-main': 'h_cabin',
     });
     await settleAsyncSeams();
-    expect(app.homeMembership.getHomeIdForDevice('heater-main')).toBe('h_cabin');
+    expect((app as AppContext).homeMembership?.getHomeIdForDevice('heater-main')).toBe('h_cabin');
 
     // Editing (a re-create) is now refused with the typed reason…
     expect(app.createDeferredObjective('heater-main', tempCandidate(70)))

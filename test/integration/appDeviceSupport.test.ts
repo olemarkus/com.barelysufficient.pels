@@ -1,3 +1,5 @@
+import type Homey from 'homey';
+import { partialDouble } from '../helpers/partialDouble';
 import {
   disableUnsupportedDevices,
   isManagedFilterActive,
@@ -14,6 +16,15 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { TemperatureDiscriminantProbe } from '../../lib/plan/planTypes';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
+
+type AppSettings = Homey.App['homey']['settings'];
+// Passes the mock store across the production seam with its provided members
+// typechecked against the real settings manager.
+const asAppSettings = (s: { get: unknown; getKeys: unknown; set: unknown }): AppSettings => partialDouble<AppSettings>({
+  get: s.get as AppSettings['get'],
+  getKeys: s.getKeys as AppSettings['getKeys'],
+  set: s.set as AppSettings['set'],
+});
 
 const makeSettings = (initial: Record<string, unknown>) => {
   const store: Record<string, unknown> = { ...initial };
@@ -57,7 +68,7 @@ describe('disableUnsupportedDevices', () => {
 
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       debugStructured,
     });
 
@@ -89,8 +100,8 @@ describe('disableUnsupportedDevices', () => {
         powerCapable: true,
         capabilities: ['target_temperature'],
         targets: [{ id: 'target_temperature', value: 21, unit: '°C', min: 5, max: 35, step: 0.5 }],
-      }] as any,
-      settings: settings as any,
+      }],
+      settings: asAppSettings(settings),
       debugStructured: vi.fn(),
     });
 
@@ -111,7 +122,7 @@ describe('disableUnsupportedDevices', () => {
 
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       debugStructured,
     });
 
@@ -133,7 +144,7 @@ describe('disableUnsupportedDevices', () => {
 
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice(), buildFullyUnsupportedDevice()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       debugStructured,
     });
 
@@ -152,7 +163,7 @@ describe('disableUnsupportedDevices', () => {
 
     disableUnsupportedDevices({
       snapshot: [buildFullyUnsupportedDevice()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       debugStructured,
     });
 
@@ -171,7 +182,7 @@ describe('disableUnsupportedDevices', () => {
 
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       debugStructured,
     });
     expect(debugStructured.mock.calls.flat().some(
@@ -182,7 +193,7 @@ describe('disableUnsupportedDevices', () => {
     debugStructured.mockClear();
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       debugStructured,
     });
     expect(debugStructured).not.toHaveBeenCalled();
@@ -207,7 +218,7 @@ describe('disableUnsupportedDevices', () => {
 
     disableUnsupportedDevices({
       snapshot: [evDevice],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       debugStructured,
     });
 
@@ -222,7 +233,7 @@ describe('disableUnsupportedDevices', () => {
     settings.set.mockClear();
     disableUnsupportedDevices({
       snapshot: [evDevice],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       debugStructured,
     });
     expect(settings.set).not.toHaveBeenCalled();
@@ -284,7 +295,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [buildThermostat()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog,
       debugStructured,
     });
@@ -307,7 +318,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [buildThermostat()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog: vi.fn(),
       debugStructured: vi.fn(),
     });
@@ -321,7 +332,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [buildThermostat()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog,
       debugStructured: vi.fn(),
     });
@@ -346,7 +357,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [thermostat],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog: vi.fn(),
       debugStructured: vi.fn(),
     });
@@ -364,7 +375,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [thermostat],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog: vi.fn(),
       debugStructured: vi.fn(),
     });
@@ -381,7 +392,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [buildThermostat({ deviceType: 'onoff', targets: [] })],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog: vi.fn(),
       debugStructured: vi.fn(),
     });
@@ -400,7 +411,7 @@ describe('persistFilledModeTargets', () => {
         buildThermostat({ id: 't-unmanaged' }),
         buildThermostat({ id: 't-notemp', deviceType: 'onoff', targets: [] }),
       ],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog: vi.fn(),
       debugStructured: vi.fn(),
     });
@@ -417,7 +428,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [buildThermostat()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog: vi.fn(),
       debugStructured: vi.fn(),
     });
@@ -439,7 +450,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [buildThermostat()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog: vi.fn(),
       debugStructured: vi.fn(),
     });
@@ -459,7 +470,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [buildThermostat()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog: vi.fn(),
       debugStructured: vi.fn(),
     });
@@ -475,7 +486,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [buildThermostat()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog: vi.fn(),
       debugStructured: vi.fn(),
     });
@@ -502,7 +513,7 @@ describe('persistFilledModeTargets', () => {
     [malformed, emptyKeyList, throwingRead].forEach((settings) => {
       persistFilledModeTargets({
         devices: [buildThermostat()],
-        settings: settings as any,
+        settings: asAppSettings(settings),
         structuredLog: vi.fn(),
         debugStructured: vi.fn(),
       });
@@ -523,7 +534,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [buildThermostat()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog: vi.fn(),
       debugStructured: vi.fn(),
     });
@@ -546,7 +557,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [buildThermostat()],
-      settings: initial as any,
+      settings: asAppSettings(initial),
       structuredLog,
       debugStructured: vi.fn(),
     });
@@ -562,7 +573,7 @@ describe('persistFilledModeTargets', () => {
 
     persistFilledModeTargets({
       devices: [buildThermostat()],
-      settings: afterClear as any,
+      settings: asAppSettings(afterClear),
       structuredLog,
       debugStructured: vi.fn(),
     });
@@ -586,7 +597,7 @@ describe('persistFilledModeTargets', () => {
     // First pass seeds the original device, recording its fingerprints.
     persistFilledModeTargets({
       devices: [buildThermostat()],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog,
       debugStructured: vi.fn(),
     });
@@ -602,7 +613,7 @@ describe('persistFilledModeTargets', () => {
           { id: 'target_temperature', value: 19, unit: '°C', min: 5, max: 35, step: 0.5 },
         ] }),
       ],
-      settings: settings as any,
+      settings: asAppSettings(settings),
       structuredLog,
       debugStructured: vi.fn(),
     });

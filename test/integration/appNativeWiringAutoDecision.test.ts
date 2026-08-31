@@ -1,3 +1,5 @@
+import type MyApp from '../../app.ts';
+import { partialDouble } from '../helpers/partialDouble';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { setRestClient, resetRestClient } from '../../lib/device/transport/managerHomeyApi';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -23,10 +25,10 @@ describe('applyNativeWiringAutoDecisions', () => {
     const app = createApp();
     const refreshTargetDevicesSnapshot = vi.fn().mockResolvedValue(undefined);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
-    (app as any).snapshotWarmupGate = { wait: async () => {} };
-    (app as any).deviceManager = { getSnapshot: () => snapshot };
-    (app as any).snapshotHelpers = { refreshTargetDevicesSnapshot };
-    (app as any).planService = { rebuildPlanFromCache };
+    app.snapshotWarmupGate = partialDouble<NonNullable<MyApp['snapshotWarmupGate']>>({ wait: async () => {} });
+    app.deviceManager = partialDouble<MyApp['deviceManager']>({ getSnapshot: () => snapshot });
+    (app as unknown as { snapshotHelpers: unknown }).snapshotHelpers = { refreshTargetDevicesSnapshot };
+    app.planService = partialDouble<MyApp['planService']>({ rebuildPlanFromCache });
     return { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache };
   };
 
@@ -35,14 +37,14 @@ describe('applyNativeWiringAutoDecisions', () => {
     setRestClient({ get: async () => ({}), put: vi.fn() });
     const { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache } = stubApp([hoiaxCandidate('hoiax-1')]);
 
-    await (app as any).applyNativeWiringAutoDecisions();
+    await app['applyNativeWiringAutoDecisions']();
 
-    expect((app as any).autoNativeWiringDecisions).toEqual({ 'hoiax-1': true });
+    expect(app['autoNativeWiringDecisions']).toEqual({ 'hoiax-1': true });
     expect(refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
     expect(rebuildPlanFromCache).toHaveBeenCalledWith('native_wiring_auto_decision');
 
     // Second run with the same decision set must not refresh/rebuild again.
-    await (app as any).applyNativeWiringAutoDecisions();
+    await app['applyNativeWiringAutoDecisions']();
     expect(refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
@@ -57,13 +59,13 @@ describe('applyNativeWiringAutoDecisions', () => {
     });
     const { app } = stubApp([hoiaxCandidate('hoiax-1')]);
 
-    const first = (app as any).applyNativeWiringAutoDecisions();
+    const first = app['applyNativeWiringAutoDecisions']();
     await Promise.resolve(); // let the first run begin its (gated) reads
     const callsDuringFirst = getCalls;
 
     // A concurrent call while the first is in flight must early-return without
     // starting its own detection reads.
-    await (app as any).applyNativeWiringAutoDecisions();
+    await app['applyNativeWiringAutoDecisions']();
     expect(getCalls).toBe(callsDuringFirst);
 
     releaseGet();
@@ -79,15 +81,15 @@ describe('applyNativeWiringAutoDecisions', () => {
     setRestClient({ get: async () => { await gate; return {}; }, put: vi.fn() });
     const { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache } = stubApp([hoiaxCandidate('hoiax-1')]);
 
-    const run = (app as any).applyNativeWiringAutoDecisions();
+    const run = app['applyNativeWiringAutoDecisions']();
     await Promise.resolve(); // park the run on the gated read
 
     // Simulate onUninit racing the in-flight read.
-    (app as any).nativeWiringUninitializing = true;
+    app['nativeWiringUninitializing'] = true;
     releaseGet();
     await run;
 
-    expect((app as any).autoNativeWiringDecisions).toEqual({});
+    expect(app['autoNativeWiringDecisions']).toEqual({});
     expect(refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
@@ -98,12 +100,12 @@ describe('applyNativeWiringAutoDecisions', () => {
     // an empty "ok" verdict that would turn native control off for a tick.
     setRestClient({ get: async () => ({}), put: vi.fn() });
     const { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache } = stubApp([]);
-    (app as any).autoNativeWiringDecisions = { 'hoiax-1': true };
-    (app as any).delayMs = vi.fn().mockResolvedValue(undefined); // skip retry waits
+    app['autoNativeWiringDecisions'] = { 'hoiax-1': true };
+    app['delayMs'] = vi.fn().mockResolvedValue(undefined); // skip retry waits
 
-    await (app as any).applyNativeWiringAutoDecisions();
+    await app['applyNativeWiringAutoDecisions']();
 
-    expect((app as any).autoNativeWiringDecisions).toEqual({ 'hoiax-1': true });
+    expect(app['autoNativeWiringDecisions']).toEqual({ 'hoiax-1': true });
     expect(refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
@@ -111,14 +113,14 @@ describe('applyNativeWiringAutoDecisions', () => {
   it('rolls back the decision when the refresh/rebuild fails (atomic apply)', async () => {
     setRestClient({ get: async () => ({}), put: vi.fn() });
     const { app, rebuildPlanFromCache } = stubApp([hoiaxCandidate('hoiax-1')]);
-    (app as any).snapshotHelpers = {
+    (app as unknown as { snapshotHelpers: unknown }).snapshotHelpers = {
       refreshTargetDevicesSnapshot: vi.fn().mockRejectedValue(new Error('refresh boom')),
     };
 
-    await expect((app as any).applyNativeWiringAutoDecisions()).rejects.toThrow('refresh boom');
+    await expect(app['applyNativeWiringAutoDecisions']()).rejects.toThrow('refresh boom');
 
     // Decision rolled back so a later re-query is not short-circuited.
-    expect((app as any).autoNativeWiringDecisions).toEqual({});
+    expect(app['autoNativeWiringDecisions']).toEqual({});
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
 
@@ -130,18 +132,18 @@ describe('applyNativeWiringAutoDecisions', () => {
     // Empty on the first check (gate released before the snapshot warmed),
     // populated on the retry.
     let call = 0;
-    (app as any).snapshotWarmupGate = { wait: async () => {} };
-    (app as any).deviceManager = {
+    app.snapshotWarmupGate = partialDouble<NonNullable<MyApp['snapshotWarmupGate']>>({ wait: async () => {} });
+    app.deviceManager = partialDouble<MyApp['deviceManager']>({
       getSnapshot: () => (++call === 1 ? [] : [hoiaxCandidate('hoiax-1')]),
-    };
-    (app as any).snapshotHelpers = { refreshTargetDevicesSnapshot };
-    (app as any).planService = { rebuildPlanFromCache };
-    (app as any).delayMs = vi.fn().mockResolvedValue(undefined); // skip the real wait
+    });
+    (app as unknown as { snapshotHelpers: unknown }).snapshotHelpers = { refreshTargetDevicesSnapshot };
+    app.planService = partialDouble<MyApp['planService']>({ rebuildPlanFromCache });
+    app['delayMs'] = vi.fn().mockResolvedValue(undefined); // skip the real wait
 
-    await (app as any).applyNativeWiringAutoDecisions();
+    await app['applyNativeWiringAutoDecisions']();
 
-    expect((app as any).delayMs).toHaveBeenCalled();
-    expect((app as any).autoNativeWiringDecisions).toEqual({ 'hoiax-1': true });
+    expect(app['delayMs']).toHaveBeenCalled();
+    expect(app['autoNativeWiringDecisions']).toEqual({ 'hoiax-1': true });
     expect(rebuildPlanFromCache).toHaveBeenCalledWith('native_wiring_auto_decision');
   });
 
@@ -149,9 +151,9 @@ describe('applyNativeWiringAutoDecisions', () => {
     setRestClient({ get: async () => { throw new Error('403 Forbidden'); }, put: vi.fn() });
     const { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache } = stubApp([hoiaxCandidate('hoiax-1')]);
 
-    await (app as any).applyNativeWiringAutoDecisions();
+    await app['applyNativeWiringAutoDecisions']();
 
-    expect((app as any).autoNativeWiringDecisions).toEqual({});
+    expect(app['autoNativeWiringDecisions']).toEqual({});
     expect(refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });

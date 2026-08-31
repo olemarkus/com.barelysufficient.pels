@@ -1,3 +1,4 @@
+import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 const addPerfDurationMock = vi.fn();
 
 vi.mock('../../lib/utils/perfCounters', async (importOriginal) => {
@@ -67,7 +68,7 @@ const createCapacityGuardMock = (): CapacityGuard => createTestCapacityGuard({ h
 
 describe('recordDailyBudgetCap', () => {
   it('returns existing state for invalid snapshots', () => {
-    const wrapUiPayload = (day: any) => ({
+    const wrapUiPayload = (day: unknown) => ({
       days: { '2024-01-01': day },
       todayKey: '2024-01-01',
     });
@@ -82,7 +83,7 @@ describe('recordDailyBudgetCap', () => {
 
     cases.forEach((snapshot) => {
       const powerTracker: PowerTrackerState = { dailyBudgetCaps: { existing: 1 } };
-      const result = recordDailyBudgetCap({ powerTracker, snapshot: snapshot as any });
+      const result = recordDailyBudgetCap({ powerTracker, snapshot: snapshot as unknown as DailyBudgetUiPayload });
       expect(result).toBe(powerTracker);
     });
   });
@@ -101,7 +102,7 @@ describe('recordDailyBudgetCap', () => {
       todayKey: '2024-01-01',
     };
 
-    const result = recordDailyBudgetCap({ powerTracker, snapshot: snapshot as any });
+    const result = recordDailyBudgetCap({ powerTracker, snapshot: snapshot as unknown as DailyBudgetUiPayload });
     expect(result).not.toBe(powerTracker);
     expect(result.dailyBudgetCaps).toEqual({ existing: 1, [bucketKey]: 2.5 });
   });

@@ -1,3 +1,4 @@
+import type { AppContext } from '../../lib/app/appContext';
 import {
   mockHomeyInstance,
   setMockDrivers,
@@ -8,13 +9,13 @@ import { createApp, cleanupApps } from '../utils/appTestUtils';
 
 vi.mock('../../setup/appLifecycleHelpers', () => ({
   runStartupStep: async (_label: string, work: () => unknown | Promise<unknown>) => work(),
-  startAppServices: async (ctx: any) => {
+  startAppServices: async (ctx: AppContext) => {
     ctx.loadPowerTracker();
     ctx.loadPriceOptimizationSettings();
-    ctx.priceCoordinator.initOptimizer();
+    ctx.priceCoordinator?.initOptimizer();
     await ctx.updateOverheadToken();
     await ctx.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
-    await ctx.planService.rebuildPlanFromCache('startup_snapshot_bootstrap');
+    await ctx.planService?.rebuildPlanFromCache('startup_snapshot_bootstrap');
     ctx.registerFlowCards();
     ctx.snapshotHelpers.startPeriodicSnapshotRefresh();
     ctx.homeyEnergyHelpers.start();
@@ -23,7 +24,7 @@ vi.mock('../../setup/appLifecycleHelpers', () => ({
 }));
 
 const flushPromises = () => new Promise<void>((resolve) => {
-  const queueMicrotaskFn = (globalThis as any).queueMicrotask as ((cb: () => void) => void) | undefined;
+  const queueMicrotaskFn = (globalThis as { queueMicrotask?: (cb: () => void) => void }).queueMicrotask;
   if (typeof queueMicrotaskFn === 'function') {
     queueMicrotaskFn(() => resolve());
     return;
@@ -70,35 +71,6 @@ describe('Mode device targets', () => {
     const app = createApp();
     await app.onInit();
 
-    // Inject mock homeyApi that updates the actual device
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'dev-1': {
-            id: 'dev-1',
-            name: 'Heater',
-            class: 'heater',
-            capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-            capabilitiesObj: {
-              measure_power: { value: 1200, id: 'measure_power' },
-              measure_temperature: { value: 21, id: 'measure_temperature' },
-              target_temperature: { value: 20, id: 'target_temperature' },
-            },
-            settings: {},
-          },
-        }),
-        setCapabilityValue: async ({ deviceId, capabilityId, value }: any) => {
-          const drivers = mockHomeyInstance.drivers.getDrivers();
-          for (const driver of Object.values(drivers)) {
-            for (const device of driver.getDevices()) {
-              if (device.idValue === deviceId) {
-                await device.setCapabilityValue(capabilityId, value);
-              }
-            }
-          }
-        },
-      },
-    };
 
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 } });
     mockHomeyInstance.settings.set('operating_mode', 'Home');
@@ -123,35 +95,6 @@ describe('Mode device targets', () => {
     const app = createApp();
     await app.onInit();
 
-    // Inject mock homeyApi that updates the actual device
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'dev-1': {
-            id: 'dev-1',
-            name: 'Heater',
-            class: 'heater',
-            capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-            capabilitiesObj: {
-              measure_power: { value: 1200, id: 'measure_power' },
-              measure_temperature: { value: 21, id: 'measure_temperature' },
-              target_temperature: { value: 20, id: 'target_temperature' },
-            },
-            settings: {},
-          },
-        }),
-        setCapabilityValue: async ({ deviceId, capabilityId, value }: any) => {
-          const drivers = mockHomeyInstance.drivers.getDrivers();
-          for (const driver of Object.values(drivers)) {
-            for (const device of driver.getDevices()) {
-              if (device.idValue === deviceId) {
-                await device.setCapabilityValue(capabilityId, value);
-              }
-            }
-          }
-        },
-      },
-    };
 
     // Update targets for the current mode; should immediately apply.
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21.5 } });

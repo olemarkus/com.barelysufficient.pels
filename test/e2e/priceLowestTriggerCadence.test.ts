@@ -1,3 +1,5 @@
+import type MyApp from '../../app.ts';
+import { partialDouble } from '../helpers/partialDouble';
 import { mockHomeyInstance } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { buildFlowDaySlots } from '../../packages/shared-domain/src/price/flowPriceUtils';
@@ -50,9 +52,9 @@ describe('Lowest price trigger cadence', () => {
       ...buildUtcDay('2026-03-03'),
       ...buildUtcDay('2026-03-04'),
     ];
-    (app as any).priceCoordinator = {
+    app.priceCoordinator = partialDouble<MyApp['priceCoordinator']>({
       getCombinedHourlyPrices: () => combined,
-    };
+    });
     return app;
   };
 
@@ -60,7 +62,7 @@ describe('Lowest price trigger cadence', () => {
     vi.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
     const app = setupApp();
 
-    (app as any).backgroundTasks.startPriceLowestTriggerChecker();
+    app['backgroundTasks'].startPriceLowestTriggerChecker();
 
     vi.setSystemTime(new Date('2026-03-03T11:00:00.000Z'));
     vi.advanceTimersByTime(30_000);
@@ -79,7 +81,7 @@ describe('Lowest price trigger cadence', () => {
     vi.setSystemTime(new Date('2026-03-03T10:30:00.000Z'));
     const app = setupApp();
 
-    (app as any).backgroundTasks.startPriceLowestTriggerChecker();
+    app['backgroundTasks'].startPriceLowestTriggerChecker();
 
     vi.setSystemTime(new Date('2026-03-03T11:00:00.000Z'));
     vi.advanceTimersByTime(30_000);
@@ -97,7 +99,7 @@ describe('Lowest price trigger cadence', () => {
     vi.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
     const app = setupApp();
 
-    (app as any).backgroundTasks.startPriceLowestTriggerChecker();
+    app['backgroundTasks'].startPriceLowestTriggerChecker();
 
     vi.setSystemTime(new Date('2026-03-03T11:00:00.000Z'));
     vi.advanceTimersByTime(30_000);
@@ -118,11 +120,11 @@ describe('Lowest price trigger cadence', () => {
     mockHomeyInstance.clock.getTimezone = () => 'Europe/Oslo';
 
     const app = createApp();
-    (app as any).priceCoordinator = {
+    app.priceCoordinator = partialDouble<MyApp['priceCoordinator']>({
       getCombinedHourlyPrices: () => buildDstDay('2024-10-27', 'Europe/Oslo'),
-    };
+    });
 
-    (app as any).backgroundTasks.startPriceLowestTriggerChecker();
+    app['backgroundTasks'].startPriceLowestTriggerChecker();
 
     vi.setSystemTime(new Date('2024-10-27T01:00:00.000Z'));
     vi.advanceTimersByTime(30_000);

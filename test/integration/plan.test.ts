@@ -1,3 +1,7 @@
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import type { DevicePlan } from '../../lib/plan/planTypes';
+import type MyApp from '../../app.ts';
+import type { ComposedPlanEngine } from '../../setup/appInit/composedPlanEngine';
 /**
  * @vitest-environment node
  */
@@ -11,7 +15,8 @@ import {
 } from '../mocks/homey';
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { buildPlanInputDevice, buildPlanMeta, buildPlanDevice } from '../utils/planTestUtils';
+import { capturePlanBuilderStructuredLog } from '../helpers/planBuilderLogCapture';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
@@ -32,9 +37,9 @@ const setManagedAndControllableDevices = (params: {
   mockHomeyInstance.settings.set('controllable_devices', params.controllable);
 };
 
-async function advanceTimeAndRecordPower(app: any, advanceMs: number, powerW: number): Promise<void> {
+async function advanceTimeAndRecordPower(app: MyApp, advanceMs: number, powerW: number): Promise<void> {
   vi.advanceTimersByTime(advanceMs);
-  await app.powerSamplePipeline.recordPowerSample(powerW);
+  await app['powerSamplePipeline'].recordPowerSample(powerW);
 }
 
 // Factory for creating a Hoiax Connected 300 water heater mock
@@ -94,13 +99,13 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     // Clear events from initialization
     mockHomeyInstance.api.clearRealtimeEvents();
 
     // Trigger a plan rebuild by recording power
-    await (app as any).powerSamplePipeline.recordPowerSample(1000);
+    await app['powerSamplePipeline'].recordPowerSample(1000);
     await flushPromises();
 
     // Check that plan_updated event was emitted
@@ -132,25 +137,25 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     // Deterministic soft limit for the test.
-    (app as any).computeDynamicSoftLimit = () => 9;
-    (app as any).computeDynamicSoftLimit = () => 9;
+    app.computeDynamicSoftLimit = () => 9;
+    app.computeDynamicSoftLimit = () => 9;
 
     // Report 12 kW total; over the 9 kW soft limit
-    await (app as any).powerSamplePipeline.recordPowerSample(12000);
+    await app['powerSamplePipeline'].recordPowerSample(12000);
     await flushPromises();
 
     const plan = getLatestPlanSnapshotForTests();
     expect(plan).toBeTruthy();
 
     // dev-2 (priority 10, less important) should be shed
-    const dev2Plan = plan.devices.find((d: any) => d.id === 'dev-2');
+    const dev2Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-2');
     expect(dev2Plan?.plannedState).toBe('shed');
 
     // dev-1 (priority 1, most important) should be kept
-    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const dev1Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
   });
 
@@ -171,20 +176,20 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Deterministic soft limit for the test.
-    (app as any).computeDynamicSoftLimit = () => 9;
-    (app as any).computeDynamicSoftLimit = () => 9;
+    app.computeDynamicSoftLimit = () => 9;
+    app.computeDynamicSoftLimit = () => 9;
 
     // Report 12 kW total; over the 9 kW soft limit
-    await (app as any).powerSamplePipeline.recordPowerSample(12000);
+    await app['powerSamplePipeline'].recordPowerSample(12000);
     await flushPromises();
 
     const plan = getLatestPlanSnapshotForTests();
     expect(plan).toBeTruthy();
     // dev-2 (priority 10, less important) should be shed first
-    const dev2Plan = plan.devices.find((d: any) => d.id === 'dev-2');
+    const dev2Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-2');
     expect(dev2Plan?.plannedState).toBe('shed');
     // dev-1 (priority 1, most important) should be kept
-    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const dev1Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
   });
 
@@ -205,13 +210,13 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Force overshoot
-    (app as any).computeDynamicSoftLimit = () => 1;
-    (app as any).computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
+    await app['powerSamplePipeline'].recordPowerSample(5000);
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.shedAction).toBe('set_temperature');
     expect(devPlan?.plannedTarget).toBe(15);
     expect(devPlan?.plannedState).toBe('shed');
@@ -238,16 +243,16 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 1;
-    (app as any).computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
+    await app['powerSamplePipeline'].recordPowerSample(5000);
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
 
-    const state = (app as any).planEngine.state;
+    const state = app.planEngine.state;
     // Decision-time clock: stamped by the planner at finalization...
     expect(state.shedDecidedMs['dev-1']).toEqual(expect.any(Number));
     // ...actuation-time clock: unset because dry-run never issues the write.
@@ -268,33 +273,33 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 2;
-    (app as any).computeDynamicSoftLimit = () => 2;
+    app.computeDynamicSoftLimit = () => 2;
+    app.computeDynamicSoftLimit = () => 2;
 
     // First cycle: overshoot enters
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
-    expect((app as any).planEngine.state.wasOvershoot).toBe(true);
-    expect((app as any).planEngine.state.overshootLogged).toBe(true);
+    await app['powerSamplePipeline'].recordPowerSample(5000);
+    expect(app.planEngine.state.wasOvershoot).toBe(true);
+    expect(app.planEngine.state.overshootLogged).toBe(true);
 
     // The shed-everything plan is unactionable, so subsequent rebuilds ride the
     // max-interval escape — simulate that interval having elapsed before each cycle.
     const openMaxIntervalEscape = () => {
-      (app as any).powerSampleRebuildState = {
-        ...(app as any).powerSampleRebuildState,
+      app.powerSampleRebuildState = {
+        ...app.powerSampleRebuildState,
         lastMs: Date.now() - 31_000,
       };
     };
 
     // Second cycle: still in overshoot, state remains stable (no double-log)
     openMaxIntervalEscape();
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
-    expect((app as any).planEngine.state.wasOvershoot).toBe(true);
+    await app['powerSamplePipeline'].recordPowerSample(5000);
+    expect(app.planEngine.state.wasOvershoot).toBe(true);
 
     // Third cycle: power drops — overshoot clears
     openMaxIntervalEscape();
-    await (app as any).powerSamplePipeline.recordPowerSample(0);
-    expect((app as any).planEngine.state.wasOvershoot).toBe(false);
-    expect((app as any).planEngine.state.overshootLogged).toBe(false);
+    await app['powerSamplePipeline'].recordPowerSample(0);
+    expect(app.planEngine.state.wasOvershoot).toBe(false);
+    expect(app.planEngine.state.overshootLogged).toBe(false);
   });
 
   it('logs bounded overshoot-entry contributors with controlled and uncontrolled deltas', async () => {
@@ -317,88 +322,90 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 4;
-    (app as any).computeDynamicSoftLimit = () => 4;
+    app.computeDynamicSoftLimit = () => 4;
+    app.computeDynamicSoftLimit = () => 4;
 
-    const structuredEvents: Record<string, unknown>[] = [];
-    (app as any).planEngine.builder.deps.structuredLog = {
-      info: (obj: Record<string, unknown>) => { structuredEvents.push(obj); },
-      warn: vi.fn(),
-      error: vi.fn(),
-      child: () => (app as any).planEngine.builder.deps.structuredLog,
-    };
+    const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-ctrl',
         name: 'Controlled Heater',
         targets: [],
         binaryControl: { on: true },
-        currentState: 'on',
         measuredPowerKw: 1.0,
         expectedPowerKw: 0.8,
         controllable: true,
       },
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-pending',
         name: 'Pending Heater',
         targets: [],
         binaryControl: { on: true },
-        currentState: 'on',
         measuredPowerKw: 0.2,
         expectedPowerKw: 0.2,
         controllable: true,
       },
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-cooldown',
         name: 'Cooldown Heater',
         targets: [],
         binaryControl: { on: true },
-        currentState: 'on',
         measuredPowerKw: 0.4,
         expectedPowerKw: 0.4,
         controllable: true,
       },
       {
+        available: true,
+        expectedPowerKw: 0,
+        expectedPowerSource: 'default',
         id: 'dev-uncontrolled',
         name: 'Sauna',
         targets: [],
         binaryControl: { on: true },
-        currentState: 'on',
         measuredPowerKw: 0.5,
         controllable: false,
       },
     ]);
 
     const pendingStartedMs = Date.now();
-    (app as any).planEngine.state.pendingBinaryCommands['dev-pending'] = {
+    app.planEngine.state.pendingBinaryCommands['dev-pending'] = {
+      dispatchState: 'dispatching',
       desired: true,
       startedMs: pendingStartedMs,
       pendingMs: 90_000,
     };
-    (app as any).planEngine.state.lastDeviceShedMs['dev-cooldown'] = Date.now();
-    (app as any).planEngine.state.lastInstabilityMs = Date.now();
+    app.planEngine.state.lastDeviceShedMs['dev-cooldown'] = Date.now();
+    app.planEngine.state.lastInstabilityMs = Date.now();
 
-    await (app as any).powerSamplePipeline.recordPowerSample(3000);
+    await app['powerSamplePipeline'].recordPowerSample(3000);
     structuredEvents.length = 0;
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-ctrl',
         name: 'Controlled Heater',
         targets: [],
         binaryControl: { on: true },
-        currentState: 'on',
         measuredPowerKw: 2.6,
         expectedPowerKw: 1.1,
         controllable: true,
       },
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-pending',
         name: 'Pending Heater',
         targets: [],
         binaryControl: { on: true },
-        currentState: 'on',
         binaryCapabilityId: 'onoff',
         binaryControlObservation: {
           valid: true,
@@ -413,39 +420,42 @@ describe('Device plan snapshot', () => {
         controllable: true,
       },
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-cooldown',
         name: 'Cooldown Heater',
         targets: [],
         binaryControl: { on: true },
-        currentState: 'on',
         measuredPowerKw: 0.8,
         expectedPowerKw: 0.4,
         controllable: true,
       },
       {
+        available: true,
+        expectedPowerKw: 0,
+        expectedPowerSource: 'default',
         id: 'dev-uncontrolled',
         name: 'Sauna',
         targets: [],
         binaryControl: { on: true },
-        currentState: 'on',
         measuredPowerKw: 1.8,
         controllable: false,
       },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(5300);
+    await app['powerSamplePipeline'].recordPowerSample(5300);
 
-    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
+    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered');
     expect(overshootEvent).toBeTruthy();
-    expect(overshootEvent.reasonCode).toBe('active_overshoot');
-    expect(overshootEvent.lastPlanBuildAgeMs).toEqual(expect.any(Number));
-    expect(overshootEvent.lastPowerUpdateAgeMs).toEqual(expect.any(Number));
-    expect(overshootEvent.overshootPlanAgeMs).toEqual(expect.any(Number));
-    expect(overshootEvent.overshootPowerSampleAgeMs).toEqual(expect.any(Number));
-    expect(overshootEvent.overshootTotalDeltaKw).toBeCloseTo(2.3, 5);
-    expect(overshootEvent.overshootAttributionDeltaKw).toBeCloseTo(3.8, 5);
-    expect(overshootEvent.overshootUnattributedDeltaKw).toBeCloseTo(-1.5, 5);
-    expect(overshootEvent.overshootTopControlledContributors).toEqual([
+    expect(overshootEvent?.reasonCode).toBe('active_overshoot');
+    expect(overshootEvent?.lastPlanBuildAgeMs).toEqual(expect.any(Number));
+    expect(overshootEvent?.lastPowerUpdateAgeMs).toEqual(expect.any(Number));
+    expect(overshootEvent?.overshootPlanAgeMs).toEqual(expect.any(Number));
+    expect(overshootEvent?.overshootPowerSampleAgeMs).toEqual(expect.any(Number));
+    expect(overshootEvent?.overshootTotalDeltaKw).toBeCloseTo(2.3, 5);
+    expect(overshootEvent?.overshootAttributionDeltaKw).toBeCloseTo(3.8, 5);
+    expect(overshootEvent?.overshootUnattributedDeltaKw).toBeCloseTo(-1.5, 5);
+    expect(overshootEvent?.overshootTopControlledContributors).toEqual([
       expect.objectContaining({
         deviceId: 'dev-ctrl',
         deltaKw: 1.6,
@@ -463,7 +473,7 @@ describe('Device plan snapshot', () => {
         deltaKw: 0.4,
       }),
     ]);
-    expect(overshootEvent.overshootTopUncontrolledContributors).toEqual([
+    expect(overshootEvent?.overshootTopUncontrolledContributors).toEqual([
       expect.objectContaining({
         deviceId: 'dev-uncontrolled',
         deltaKw: 1.3,
@@ -493,40 +503,34 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 4;
-    (app as any).computeDynamicSoftLimit = () => 4;
+    app.computeDynamicSoftLimit = () => 4;
+    app.computeDynamicSoftLimit = () => 4;
 
-    const structuredEvents: Record<string, unknown>[] = [];
-    (app as any).planEngine.builder.deps.structuredLog = {
-      info: (obj: Record<string, unknown>) => { structuredEvents.push(obj); },
-      warn: vi.fn(),
-      error: vi.fn(),
-      child: () => (app as any).planEngine.builder.deps.structuredLog,
-    };
+    const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    (app as any).deviceManager.setSnapshotForTests([
-      { id: 'dev-1', name: 'One', targets: [], binaryControl: { on: true }, currentState: 'on', measuredPowerKw: 0.5, controllable: true },
-      { id: 'dev-2', name: 'Two', targets: [], binaryControl: { on: true }, currentState: 'on', measuredPowerKw: 0.5, controllable: true },
-      { id: 'dev-3', name: 'Three', targets: [], binaryControl: { on: true }, currentState: 'on', measuredPowerKw: 0.5, controllable: true },
-      { id: 'dev-4', name: 'Four', targets: [], binaryControl: { on: true }, currentState: 'on', measuredPowerKw: 0.5, controllable: true },
+    app.deviceManager.setSnapshotForTests([
+      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-1', name: 'One', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.5, controllable: true },
+      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-2', name: 'Two', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.5, controllable: true },
+      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-3', name: 'Three', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.5, controllable: true },
+      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-4', name: 'Four', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.5, controllable: true },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(2000);
+    await app['powerSamplePipeline'].recordPowerSample(2000);
     structuredEvents.length = 0;
 
-    (app as any).deviceManager.setSnapshotForTests([
-      { id: 'dev-1', name: 'One', targets: [], binaryControl: { on: true }, currentState: 'on', measuredPowerKw: 1.5, controllable: true },
-      { id: 'dev-2', name: 'Two', targets: [], binaryControl: { on: true }, currentState: 'on', measuredPowerKw: 1.2, controllable: true },
-      { id: 'dev-3', name: 'Three', targets: [], binaryControl: { on: true }, currentState: 'on', measuredPowerKw: 1.0, controllable: true },
-      { id: 'dev-4', name: 'Four', targets: [], binaryControl: { on: true }, currentState: 'on', measuredPowerKw: 0.8, controllable: true },
+    app.deviceManager.setSnapshotForTests([
+      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-1', name: 'One', targets: [], binaryControl: { on: true }, measuredPowerKw: 1.5, controllable: true },
+      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-2', name: 'Two', targets: [], binaryControl: { on: true }, measuredPowerKw: 1.2, controllable: true },
+      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-3', name: 'Three', targets: [], binaryControl: { on: true }, measuredPowerKw: 1.0, controllable: true },
+      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-4', name: 'Four', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.8, controllable: true },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(4500);
+    await app['powerSamplePipeline'].recordPowerSample(4500);
 
-    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
+    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered');
     expect(overshootEvent).toBeTruthy();
-    expect(overshootEvent.overshootTopControlledContributors).toHaveLength(3);
-    expect(overshootEvent.overshootTopControlledContributors.map((entry: any) => entry.deviceId)).toEqual([
+    expect(overshootEvent?.overshootTopControlledContributors).toHaveLength(3);
+    expect((overshootEvent?.overshootTopControlledContributors as { deviceId: string }[]).map((entry: { deviceId: string }) => entry.deviceId)).toEqual([
       'dev-1',
       'dev-2',
       'dev-3',
@@ -543,56 +547,55 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 1;
-    (app as any).computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
 
-    const structuredEvents: Record<string, unknown>[] = [];
-    (app as any).planEngine.builder.deps.structuredLog = {
-      info: (obj: Record<string, unknown>) => { structuredEvents.push(obj); },
-      warn: vi.fn(),
-      error: vi.fn(),
-      child: () => (app as any).planEngine.builder.deps.structuredLog,
-    };
+    const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerKw: 0,
+        expectedPowerSource: 'default',
         id: 'dev-off-pending',
         name: 'Heater Awaiting Off',
         targets: [],
         binaryControl: { on: true },
-        currentState: 'on',
         communicationModel: 'local',
         measuredPowerKw: 0.7,
         controllable: true,
       },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(700);
+    await app['powerSamplePipeline'].recordPowerSample(700);
     structuredEvents.length = 0;
 
-    (app as any).planEngine.state.pendingBinaryCommands['dev-off-pending'] = {
+    app.planEngine.state.pendingBinaryCommands['dev-off-pending'] = {
+      dispatchState: 'dispatching',
       desired: false,
       startedMs: Date.now(),
       pendingMs: 90_000,
     };
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerKw: 0,
+        expectedPowerSource: 'default',
         id: 'dev-off-pending',
         name: 'Heater Awaiting Off',
         targets: [],
         binaryControl: { on: true },
-        currentState: 'on',
         communicationModel: 'local',
         measuredPowerKw: 1.3,
         controllable: true,
       },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(1300);
+    await app['powerSamplePipeline'].recordPowerSample(1300);
 
-    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
+    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered');
     expect(overshootEvent).toBeTruthy();
-    expect(overshootEvent.overshootTopControlledContributors).toEqual([
+    expect(overshootEvent?.overshootTopControlledContributors).toEqual([
       expect.objectContaining({
         deviceId: 'dev-off-pending',
         changedDuringPendingWindow: true,
@@ -610,57 +613,54 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 4;
-    (app as any).computeDynamicSoftLimit = () => 4;
+    app.computeDynamicSoftLimit = () => 4;
+    app.computeDynamicSoftLimit = () => 4;
 
-    const structuredEvents: Record<string, unknown>[] = [];
-    (app as any).planEngine.builder.deps.structuredLog = {
-      info: (obj: Record<string, unknown>) => { structuredEvents.push(obj); },
-      warn: vi.fn(),
-      error: vi.fn(),
-      child: () => (app as any).planEngine.builder.deps.structuredLog,
-    };
+    const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-on-pending',
         name: 'Pending Restore Heater',
         targets: [],
         binaryControl: { on: false },
-        currentState: 'off',
         measuredPowerKw: 0,
         expectedPowerKw: 1.4,
         controllable: true,
       },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(2500);
+    await app['powerSamplePipeline'].recordPowerSample(2500);
     structuredEvents.length = 0;
 
-    (app as any).planEngine.state.pendingBinaryCommands['dev-on-pending'] = {
+    app.planEngine.state.pendingBinaryCommands['dev-on-pending'] = {
+      dispatchState: 'dispatching',
       desired: true,
       startedMs: Date.now(),
       pendingMs: 90_000,
     };
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-on-pending',
         name: 'Pending Restore Heater',
         targets: [],
         binaryControl: { on: false },
-        currentState: 'off',
         measuredPowerKw: 1.6,
         expectedPowerKw: 1.4,
         controllable: true,
       },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(4500);
+    await app['powerSamplePipeline'].recordPowerSample(4500);
 
-    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
+    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered');
     expect(overshootEvent).toBeTruthy();
-    expect(overshootEvent.overshootTopControlledContributors).toEqual([
+    expect(overshootEvent?.overshootTopControlledContributors).toEqual([
       expect.objectContaining({
         deviceId: 'dev-on-pending',
         changedDuringPendingWindow: true,
@@ -679,36 +679,33 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 1;
-    (app as any).computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
 
-    const structuredEvents: Record<string, unknown>[] = [];
-    (app as any).planEngine.builder.deps.structuredLog = {
-      info: (obj: Record<string, unknown>) => { structuredEvents.push(obj); },
-      warn: vi.fn(),
-      error: vi.fn(),
-      child: () => (app as any).planEngine.builder.deps.structuredLog,
-    };
+    const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerKw: 0,
+        expectedPowerSource: 'default',
         id: 'dev-target-pending',
         name: 'Target Heater',
         deviceType: 'temperature',
         temperature: { currentTemperature: 21, target: { id: 'target_temperature', value: 21, unit: '°C' } },
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         binaryControl: { on: true },
-        currentState: 'on',
         measuredPowerKw: 0.7,
         controllable: true,
       },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(700);
+    await app['powerSamplePipeline'].recordPowerSample(700);
     structuredEvents.length = 0;
 
-    (app as any).planEngine.state.pendingTargetCommands['dev-target-pending'] = {
-      capabilityId: 'target_temperature',
+    app.planEngine.state.pendingTargetCommands['dev-target-pending'] = {
+      target: 'temperature',
+      pendingMs: 30_000,
       desired: 23,
       startedMs: Date.now(),
       lastAttemptMs: Date.now(),
@@ -716,25 +713,27 @@ describe('Device plan snapshot', () => {
       nextRetryAtMs: Date.now() + 60_000,
       status: 'waiting_confirmation',
     };
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerKw: 0,
+        expectedPowerSource: 'default',
         id: 'dev-target-pending',
         name: 'Target Heater',
         deviceType: 'temperature',
         temperature: { currentTemperature: 21, target: { id: 'target_temperature', value: 21, unit: '°C' } },
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         binaryControl: { on: true },
-        currentState: 'on',
         measuredPowerKw: 1.2,
         controllable: true,
       },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(1200);
+    await app['powerSamplePipeline'].recordPowerSample(1200);
 
-    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
+    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered');
     expect(overshootEvent).toBeTruthy();
-    expect(overshootEvent.overshootTopControlledContributors).toEqual([
+    expect(overshootEvent?.overshootTopControlledContributors).toEqual([
       expect.objectContaining({
         deviceId: 'dev-target-pending',
         changedDuringPendingWindow: true,
@@ -758,13 +757,13 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 1;
-    (app as any).computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
+    await app['powerSamplePipeline'].recordPowerSample(5000);
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(reasonText(devPlan?.reason)).toContain('shed');
   });
 
@@ -785,13 +784,13 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    (app as any).computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(1000); // force overshoot (will try to shed but already at min temp)
+    await app['powerSamplePipeline'].recordPowerSample(1000); // force overshoot (will try to shed but already at min temp)
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(reasonText(devPlan?.reason)).toContain('shed due to capacity');
   });
@@ -817,14 +816,14 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    (app as any).computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(1800); // total 1.8 kW -> shed both
+    await app['powerSamplePipeline'].recordPowerSample(1800); // total 1.8 kW -> shed both
 
     const plan = getLatestPlanSnapshotForTests();
-    const minPlan = plan.devices.find((d: any) => d.id === 'dev-min');
-    const offPlan = plan.devices.find((d: any) => d.id === 'dev-off');
+    const minPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-min');
+    const offPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-off');
 
     expect(minPlan?.plannedState).toBe('shed');
     expect(minPlan?.shedAction).toBe('set_temperature');
@@ -853,14 +852,14 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Force shortfall state and an overshoot so shedding occurs.
-    (app as any).capacityGuard.isInShortfall = () => true;
-    (app as any).planEngine.state.inShortfall = true;
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    await (app as any).powerSamplePipeline.recordPowerSample(1200);
+    app.capacityGuard.isInShortfall = () => true;
+    app.planEngine.state.inShortfall = true;
+    app.computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
+    await app['powerSamplePipeline'].recordPowerSample(1200);
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.shedAction).toBe('set_temperature');
     expect(reasonText(devPlan?.reason)).toContain('shortfall (need');
@@ -884,23 +883,23 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Trigger an initial shed to set lastDeviceShedMs.
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    await (app as any).powerSamplePipeline.recordPowerSample(1200);
+    app.computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
+    await app['powerSamplePipeline'].recordPowerSample(1200);
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
 
     // Force cooldown window for device by keeping lastDeviceShedMs recent.
-    (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
-    (app as any).planEngine.state.lastInstabilityMs = Date.now();
+    app.planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
+    app.planEngine.state.lastInstabilityMs = Date.now();
 
     // Now plan with ample headroom but still within cooldown.
-    (app as any).computeDynamicSoftLimit = () => 5;
-    (app as any).computeDynamicSoftLimit = () => 5;
-    await (app as any).powerSamplePipeline.recordPowerSample(500);
+    app.computeDynamicSoftLimit = () => 5;
+    app.computeDynamicSoftLimit = () => 5;
+    await app['powerSamplePipeline'].recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.plannedTarget).toBe(16);
     expect(reasonText(devPlan?.reason)).toContain('cooldown');
@@ -924,23 +923,23 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Trigger shed to set min-temp.
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
+    app.computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
+    await app['powerSamplePipeline'].recordPowerSample(5000);
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
 
-    await (app as any).refreshTargetDevicesSnapshot();
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.refreshTargetDevicesSnapshot();
+    await app.planService.rebuildPlanFromCache('unknown');
 
     // Rebuild plan to reflect current snapshot.
-    (app as any).computeDynamicSoftLimit = () => 5;
-    (app as any).computeDynamicSoftLimit = () => 5;
-    await (app as any).powerSamplePipeline.recordPowerSample(500);
+    app.computeDynamicSoftLimit = () => 5;
+    app.computeDynamicSoftLimit = () => 5;
+    await app['powerSamplePipeline'].recordPowerSample(500);
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.plannedTarget).toBe(16);
   });
@@ -962,25 +961,25 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Initial overshoot to start shedding and record timestamps.
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    await (app as any).powerSamplePipeline.recordPowerSample(1200);
+    app.computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
+    await app['powerSamplePipeline'].recordPowerSample(1200);
 
     // Force cooldown window and rebuild plan with available headroom.
-    (app as any).planEngine.state.lastInstabilityMs = Date.now();
-    (app as any).computeDynamicSoftLimit = () => 5;
-    (app as any).computeDynamicSoftLimit = () => 5;
+    app.planEngine.state.lastInstabilityMs = Date.now();
+    app.computeDynamicSoftLimit = () => 5;
+    app.computeDynamicSoftLimit = () => 5;
 
     // The shed-everything plan is unactionable, so the next rebuild rides the
     // max-interval escape — simulate that interval having elapsed.
-    (app as any).powerSampleRebuildState = {
-      ...(app as any).powerSampleRebuildState,
+    app.powerSampleRebuildState = {
+      ...app.powerSampleRebuildState,
       lastMs: Date.now() - 31_000,
     };
-    await (app as any).powerSamplePipeline.recordPowerSample(500);
+    await app['powerSamplePipeline'].recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.shedAction).toBe('set_temperature');
     expect(devPlan?.plannedTarget).toBe(16);
@@ -1007,8 +1006,10 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater',
         temperature: { currentTemperature: 16, target: { id: 'target_temperature', value: 16, unit: '°C' } },
@@ -1018,13 +1019,13 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    (app as any).planEngine.state.lastInstabilityMs = Date.now();
-    (app as any).planEngine.state.lastPlannedShedIds = new Set(['dev-1']);
+    app.planEngine.state.lastInstabilityMs = Date.now();
+    app.planEngine.state.lastPlannedShedIds = new Set(['dev-1']);
 
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.planService.rebuildPlanFromCache('unknown');
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(devPlan?.plannedTarget).toBe(20);
     expect(reasonText(devPlan?.reason)).toBe('capacity control off');
@@ -1045,10 +1046,13 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).planEngine.state.shedDecidedMs['dev-1'] = Date.now();
+    app.planEngine.state.shedDecidedMs['dev-1'] = Date.now();
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerKw: 0,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Lamp',
         targets: [],
@@ -1059,10 +1063,10 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.planService.rebuildPlanFromCache('unknown');
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(await dev1.getCapabilityValue('onoff')).toBe(true);
   });
@@ -1083,8 +1087,11 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerKw: 0,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Lamp',
         targets: [],
@@ -1094,10 +1101,10 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.planService.rebuildPlanFromCache('unknown');
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(await dev1.getCapabilityValue('onoff')).toBe(false);
   });
@@ -1117,10 +1124,13 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).planEngine.state.shedDecidedMs['dev-1'] = Date.now();
+    app.planEngine.state.shedDecidedMs['dev-1'] = Date.now();
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerKw: 0,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Lamp',
         targets: [],
@@ -1131,12 +1141,15 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.planService.rebuildPlanFromCache('unknown');
     expect(await dev1.getCapabilityValue('onoff')).toBe(true);
 
     await dev1.setCapabilityValue('onoff', false);
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerKw: 0,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Lamp',
         targets: [],
@@ -1146,7 +1159,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.planService.rebuildPlanFromCache('unknown');
     expect(await dev1.getCapabilityValue('onoff')).toBe(false);
   });
 
@@ -1167,28 +1180,28 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Initial overshoot to shed.
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    await (app as any).powerSamplePipeline.recordPowerSample(1200);
+    app.computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
+    await app['powerSamplePipeline'].recordPowerSample(1200);
 
     // Move past cooldown and provide ample headroom so device should restore.
-    (app as any).planEngine.state.lastInstabilityMs = Date.now() - 180000; // cooldown expired
-    (app as any).planEngine.state.lastRecoveryMs = Date.now() - 180000;
-    (app as any).computeDynamicSoftLimit = () => 5;
-    (app as any).computeDynamicSoftLimit = () => 5;
+    app.planEngine.state.lastInstabilityMs = Date.now() - 180000; // cooldown expired
+    app.planEngine.state.lastRecoveryMs = Date.now() - 180000;
+    app.computeDynamicSoftLimit = () => 5;
+    app.computeDynamicSoftLimit = () => 5;
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
-    (app as any).planEngine.state.sheddingActive = false;
+    app.planEngine.state.sheddingActive = false;
 
     // The shed-everything plan is unactionable, so the next rebuild rides the
     // max-interval escape — simulate that interval having elapsed.
-    (app as any).powerSampleRebuildState = {
-      ...(app as any).powerSampleRebuildState,
+    app.powerSampleRebuildState = {
+      ...app.powerSampleRebuildState,
       lastMs: Date.now() - 31_000,
     };
-    await (app as any).powerSamplePipeline.recordPowerSample(500);
+    await app['powerSamplePipeline'].recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(devPlan?.plannedTarget).toBe(21);
     expect(reasonText(devPlan?.reason)).toContain('keep');
@@ -1209,10 +1222,10 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 10;
-    (app as any).computeDynamicSoftLimit = () => 10;
+    app.computeDynamicSoftLimit = () => 10;
+    app.computeDynamicSoftLimit = () => 10;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(2000);
+    await app['powerSamplePipeline'].recordPowerSample(2000);
     await flushPromises();
 
     const runSetExpected = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
@@ -1223,11 +1236,11 @@ describe('Device plan snapshot', () => {
     await expect(runSetExpected({ device: { id: 'dev-1' }, power_w: 3500 })).resolves.toBe(true);
     await flushPromises();
 
-    await (app as any).planService.rebuildPlanFromCache('headroom_step_down_test');
+    await app.planService.rebuildPlanFromCache('headroom_tight');
     await flushPromises();
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(reasonText(devPlan?.reason)).toBe('keep');
   });
@@ -1246,15 +1259,15 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Plenty of headroom but still in cooldown due to a recent shed
-    (app as any).computeDynamicSoftLimit = () => 5;
-    (app as any).computeDynamicSoftLimit = () => 5;
-    (app as any).planEngine.state.lastInstabilityMs = Date.now(); // force cooldown window
-    (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
+    app.computeDynamicSoftLimit = () => 5;
+    app.computeDynamicSoftLimit = () => 5;
+    app.planEngine.state.lastInstabilityMs = Date.now(); // force cooldown window
+    app.planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
 
-    await (app as any).powerSamplePipeline.recordPowerSample(1000);
+    await app['powerSamplePipeline'].recordPowerSample(1000);
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(reasonText(devPlan?.reason)).toContain('cooldown (shedding');
     expect(devPlan).not.toHaveProperty('headroomCardBlocked');
@@ -1277,12 +1290,12 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    (app as any).computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(600); // 0.6 kW total, overshoot of 0.1 kW
+    await app['powerSamplePipeline'].recordPowerSample(600); // 0.6 kW total, overshoot of 0.1 kW
 
-    expect((app as any).planEngine.state.lastInstabilityMs).toBeNull();
+    expect(app.planEngine.state.lastInstabilityMs).toBeNull();
   });
 
   it('executes shedding action when plan says shed and dry run is off', async () => {
@@ -1297,12 +1310,13 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     const spy = vi
-      .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
-      .mockResolvedValue(undefined);
+      .spyOn((app.planEngine as ComposedPlanEngine)['executor'], 'applySheddingToDevice')
+      .mockResolvedValue(false);
 
-    const plan = {
+    const plan: DevicePlan = {
+      meta: buildPlanMeta(),
       devices: [
-        {
+        buildPlanDevice({
           id: 'dev-1',
           name: 'Heater A',
           plannedState: 'shed',
@@ -1310,11 +1324,11 @@ describe('Device plan snapshot', () => {
           currentOn: true,
           controllable: true,
           reason: fixtureDeviceReason('shed due to capacity'),
-        },
+        }),
       ],
     };
 
-    await (app as any).applyPlanActions(plan);
+    await app['applyPlanActions'](plan);
     expect(spy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
   });
 
@@ -1333,7 +1347,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    await (app as any).applySheddingToDevice('dev-1', 'Heater A', 'test overshoot');
+    await app['applySheddingToDevice']('dev-1', 'Heater A', 'test overshoot');
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(12);
     expect(await dev1.getCapabilityValue('onoff')).toBe(true);
@@ -1361,13 +1375,13 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Soft limit 1.3 kW, current total 1.0 kW -> headroom 0.3 kW (not enough for ~1 kW restore)
-    (app as any).computeDynamicSoftLimit = () => 1.3;
-    (app as any).computeDynamicSoftLimit = () => 1.3;
-    await (app as any).powerSamplePipeline.recordPowerSample(1000);
+    app.computeDynamicSoftLimit = () => 1.3;
+    app.computeDynamicSoftLimit = () => 1.3;
+    await app['powerSamplePipeline'].recordPowerSample(1000);
 
     const plan = getLatestPlanSnapshotForTests();
-    const highPlan = plan.devices.find((d: any) => d.id === 'dev-high');
-    const minPlan = plan.devices.find((d: any) => d.id === 'dev-min');
+    const highPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-high');
+    const minPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-min');
 
     expect(highPlan?.plannedState).toBe('shed');
     expect(reasonText(highPlan?.reason)).toContain('insufficient headroom');
@@ -1390,13 +1404,13 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Force soft limit low and total high to trigger shedding.
-    (app as any).computeDynamicSoftLimit = () => 1;
-    (app as any).computeDynamicSoftLimit = () => 1;
-    await (app as any).powerSamplePipeline.recordPowerSample(5000); // 5 kW total, over limit
+    app.computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
+    await app['powerSamplePipeline'].recordPowerSample(5000); // 5 kW total, over limit
 
     const plan = getLatestPlanSnapshotForTests();
-    const ctlPlan = plan.devices.find((d: any) => d.id === 'dev-ctl');
-    const nonCtlPlan = plan.devices.find((d: any) => d.id === 'dev-non');
+    const ctlPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-ctl');
+    const nonCtlPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-non');
 
     expect(ctlPlan?.plannedState).toBe('shed');
     expect(nonCtlPlan?.plannedState).toBe('keep');
@@ -1415,7 +1429,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan).toBeUndefined();
   });
 
@@ -1432,9 +1446,9 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Ensure plan exists for Home.
-    await (app as any).powerSamplePipeline.recordPowerSample(1000);
+    await app['powerSamplePipeline'].recordPowerSample(1000);
     let plan = getLatestPlanSnapshotForTests();
-    const homePlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const homePlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(homePlan?.plannedTarget).toBe(19);
 
     // Switch mode; settings listener should rebuild snapshot/plan.
@@ -1442,7 +1456,7 @@ describe('Device plan snapshot', () => {
     await flushPromises();
 
     plan = getLatestPlanSnapshotForTests();
-    const comfortPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const comfortPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(comfortPlan?.plannedTarget).toBe(21);
   });
 
@@ -1468,52 +1482,52 @@ describe('Device plan snapshot', () => {
 
     // Step 1: Overshoot - device should be shed
     // Set soft limit low enough to trigger shedding
-    (app as any).computeDynamicSoftLimit = () => 0.5; // 500W limit
-    (app as any).computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5; // 500W limit
+    app.computeDynamicSoftLimit = () => 0.5;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(1000); // 1kW total, 500W limit => -500W headroom
+    await app['powerSamplePipeline'].recordPowerSample(1000); // 1kW total, 500W limit => -500W headroom
     let plan = getLatestPlanSnapshotForTests();
-    expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
+    expect(plan.devices.find((d: { id: string }) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
     // Step 2: Small positive headroom (below restore margin) - device should STAY shed
     // First, update mock device to reflect it was turned off
     await dev1.setCapabilityValue('onoff', false);
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     // Clear shedding-related cooldowns but NOT restore margin consideration
-    (app as any).planEngine.state.lastInstabilityMs = 0;
-    if ((app as any).capacityGuard) {
-      (app as any).planEngine.state.sheddingActive = false;
+    app.planEngine.state.lastInstabilityMs = 0;
+    if (app.capacityGuard) {
+      app.planEngine.state.sheddingActive = false;
     }
 
     // Now set headroom to small positive (0.1 kW) - below device power (1kW) + margin (0.2kW)
     // With device off, power drops. Say power is now 0.5kW (other loads).
     // Soft limit 0.7 => headroom = 0.2kW. Device needs 1kW + 0.2kW margin = 1.2kW. Not enough.
-    (app as any).computeDynamicSoftLimit = () => 0.7;
-    (app as any).computeDynamicSoftLimit = () => 0.7;
+    app.computeDynamicSoftLimit = () => 0.7;
+    app.computeDynamicSoftLimit = () => 0.7;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(500); // 500W with device off
+    await app['powerSamplePipeline'].recordPowerSample(500); // 500W with device off
     plan = getLatestPlanSnapshotForTests();
     // Device should stay shed because headroom (0.2kW) < device power (1kW) + margin (0.2kW)
-    expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
+    expect(plan.devices.find((d: { id: string }) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
     // Step 3: Large headroom - device should restore
     // Clear all cooldowns to allow restoration
-    (app as any).planEngine.state.lastInstabilityMs = 0;
-    (app as any).planEngine.state.lastRestoreMs = 0;
+    app.planEngine.state.lastInstabilityMs = 0;
+    app.planEngine.state.lastRestoreMs = 0;
 
     // Set soft limit high enough for restoration:
     // with recent-shed backoff (1.15×) → needed≈1.38kW, plus 0.25kW reserve + 0.25kW floor.
     // Power 500W, soft limit 2.5kW => headroomRaw 2.0kW. That clears the stricter restore gate.
-    (app as any).computeDynamicSoftLimit = () => 2.5;
-    (app as any).computeDynamicSoftLimit = () => 2.5;
+    app.computeDynamicSoftLimit = () => 2.5;
+    app.computeDynamicSoftLimit = () => 2.5;
 
     // Soft-limit changes alone no longer trigger an immediate rebuild.
     // Force the periodic max-interval rebuild path for this restore check.
-    (app as any).powerSampleRebuildState.lastMs = (app as any).getPlanRebuildNowMs() - 200;
-    await (app as any).powerSamplePipeline.recordPowerSample(500);
+    app.powerSampleRebuildState.lastMs = app['getPlanRebuildNowMs']() - 200;
+    await app['powerSamplePipeline'].recordPowerSample(500);
     plan = getLatestPlanSnapshotForTests();
-    expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('keep');
+    expect(plan.devices.find((d: { id: string }) => d.id === 'dev-1')?.plannedState).toBe('keep');
   });
 
   it('restores devices when plan says keep even if headroom is below its power need', async () => {
@@ -1529,13 +1543,13 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Force headroom small; monkey-patch guard headroom and margin.
-    (app as any).capacitySettings.marginKw = 0.2;
-    (app as any).capacityGuard.getSoftLimit = () => 0.3;
-    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
+    app.capacitySettings.marginKw = 0.2;
+    app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
-    const plan = {
+    const plan: DevicePlan = {
+      meta: buildPlanMeta(),
       devices: [
-        {
+        buildPlanDevice({
           id: 'dev-1',
           name: 'Heater A',
           binaryCapabilityId: 'onoff',
@@ -1546,13 +1560,13 @@ describe('Device plan snapshot', () => {
           expectedPowerKw: 2, // needs at least 2 + margin headroom
           controllable: true,
           reason: fixtureDeviceReason('keep'),
-        },
+        }),
       ],
     };
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await (app as any).applyPlanActions(plan);
+    await app['applyPlanActions'](plan);
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
       { value: true },
@@ -1571,27 +1585,26 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Force soft limit to 2 kW and total to 2.1 kW -> shed.
-    (app as any).computeDynamicSoftLimit = () => 2;
-    (app as any).computeDynamicSoftLimit = () => 2;
-    await (app as any).powerSamplePipeline.recordPowerSample(2100);
+    app.computeDynamicSoftLimit = () => 2;
+    app.computeDynamicSoftLimit = () => 2;
+    await app['powerSamplePipeline'].recordPowerSample(2100);
     let plan = getLatestPlanSnapshotForTests();
-    expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
+    expect(plan.devices.find((d: { id: string }) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
     // Simulate device now off, but headroom still below need (2.5 + margin).
-    plan = await (app as any).planService.buildDevicePlanSnapshot([
-      withFixtureResidualKw({
+    plan = await app.planService.buildDevicePlanSnapshot([
+      buildPlanInputDevice({
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
         expectedPowerKw: 2.5,
         priority: 1,
         currentOn: false,
-        canSetControl: true,
         controllable: true,
         binaryCapabilityId: 'onoff',
       }),
     ]);
-    const nextState = plan.devices.find((d: any) => d.id === 'dev-1');
+    const nextState = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(nextState?.plannedState).toBe('shed');
   });
 
@@ -1609,20 +1622,19 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    const plan = await (app as any).planService.buildDevicePlanSnapshot([
-      withFixtureResidualKw({
+    const plan = await app.planService.buildDevicePlanSnapshot([
+      buildPlanInputDevice({
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
         expectedPowerKw: 1,
         priority: 1,
         currentOn: false,
-        canSetControl: true,
         controllable: true,
         binaryCapabilityId: 'onoff',
       }),
     ]);
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(reasonText(devPlan?.reason)).toContain('available 0.00kW');
   });
@@ -1642,18 +1654,18 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Force soft limit to 1 kW so 2 kW total is an overshoot.
-    (app as any).computeDynamicSoftLimit = () => 1;
-    (app as any).computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
 
     const shedSpy = vi
-      .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
-      .mockResolvedValue(undefined);
+      .spyOn((app.planEngine as ComposedPlanEngine)['executor'], 'applySheddingToDevice')
+      .mockResolvedValue(false);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(2000);
+    await app['powerSamplePipeline'].recordPowerSample(2000);
 
     expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
     const plan = getLatestPlanSnapshotForTests();
-    const planned = plan.devices.find((d: any) => d.id === 'dev-1');
+    const planned = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(planned?.plannedState).toBe('shed');
   });
 
@@ -1677,17 +1689,17 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Force soft limit to about 3.1 kW so total 5.63 kW is an overshoot of ~2.53 kW.
-    (app as any).computeDynamicSoftLimit = () => 3.1;
-    (app as any).computeDynamicSoftLimit = () => 3.1;
+    app.computeDynamicSoftLimit = () => 3.1;
+    app.computeDynamicSoftLimit = () => 3.1;
 
     const shedSpy = vi
-      .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
-      .mockResolvedValue(undefined);
+      .spyOn((app.planEngine as ComposedPlanEngine)['executor'], 'applySheddingToDevice')
+      .mockResolvedValue(false);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(5630); // 5.63 kW total
+    await app['powerSamplePipeline'].recordPowerSample(5630); // 5.63 kW total
 
     const plan = getLatestPlanSnapshotForTests();
-    const shedIds = plan.devices.filter((d: any) => d.plannedState === 'shed').map((d: any) => d.id);
+    const shedIds = plan.devices.filter((d: { plannedState: string }) => d.plannedState === 'shed').map((d: { id: string }) => d.id);
     expect(shedIds).toEqual(expect.arrayContaining(['dev-1', 'dev-2']));
     expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
     expect(shedSpy).toHaveBeenCalledWith('dev-2', 'Heater B', undefined);
@@ -1701,11 +1713,13 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 1;
-    (app as any).computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
@@ -1717,6 +1731,8 @@ describe('Device plan snapshot', () => {
         priority: 1,
       },
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-2',
         name: 'Heater B',
         targets: [],
@@ -1732,15 +1748,17 @@ describe('Device plan snapshot', () => {
     // Anchored to now, not epoch+1s: a sample stamped in 1970 reads as long
     // stale, and these cases would then be exercising the fail-closed shed
     // rather than the same-sample skip they are named for.
-    await (app as any).powerSamplePipeline.recordPowerSample(2000, Date.now());
+    await app['powerSamplePipeline'].recordPowerSample(2000, Date.now());
 
     let plan = getLatestPlanSnapshotForTests();
-    const initialShed = plan.devices.filter((d: any) => d.plannedState === 'shed').map((d: any) => d.id);
+    const initialShed = plan.devices.filter((d: { plannedState: string }) => d.plannedState === 'shed').map((d: { id: string }) => d.id);
     expect(initialShed).toEqual(['dev-2']);
 
     // Simulate the shed device turning off, but no new measurement arrives.
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
@@ -1751,6 +1769,8 @@ describe('Device plan snapshot', () => {
         priority: 1,
       },
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-2',
         name: 'Heater B',
         targets: [],
@@ -1762,10 +1782,10 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    (app as any).planEngine.state.lastRestoreMs = Date.now() - 60000;
-    await (app as any).planService.rebuildPlanFromCache();
+    app.planEngine.state.lastRestoreMs = Date.now() - 60000;
+    await app.planService.rebuildPlanFromCache('unknown');
     plan = getLatestPlanSnapshotForTests();
-    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const dev1Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
   });
 
@@ -1784,7 +1804,10 @@ describe('Device plan snapshot', () => {
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     // Keep an onoff-capable snapshot entry so turn_off is attempted, then force a second attempt.
-    (app as any).deviceManager.setSnapshotForTests([{
+    app.deviceManager.setSnapshotForTests([{
+      available: true,
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
       id: 'dev-1',
       name: 'Heater A',
       targets: [],
@@ -1793,9 +1816,12 @@ describe('Device plan snapshot', () => {
       controllable: true,
     }]);
 
-    await (app as any).applySheddingToDevice('dev-1', 'Heater A');
+    await app['applySheddingToDevice']('dev-1', 'Heater A');
     // Simulate plan still thinks it is on to force a second attempt.
-    (app as any).deviceManager.setSnapshotForTests([{
+    app.deviceManager.setSnapshotForTests([{
+      available: true,
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
       id: 'dev-1',
       name: 'Heater A',
       targets: [],
@@ -1804,7 +1830,7 @@ describe('Device plan snapshot', () => {
       binaryControl: { on: true },
       controllable: true,
     }]);
-    await (app as any).applySheddingToDevice('dev-1', 'Heater A');
+    await app['applySheddingToDevice']('dev-1', 'Heater A');
 
     expect(putSpy).toHaveBeenCalledTimes(1);
   });
@@ -1818,7 +1844,10 @@ describe('Device plan snapshot', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    (app as any).deviceManager.setSnapshotForTests([{
+    app.deviceManager.setSnapshotForTests([{
+      available: true,
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
       id: 'dev-1',
       name: 'No On/Off Device',
       targets: [],
@@ -1826,10 +1855,10 @@ describe('Device plan snapshot', () => {
       controllable: true,
     }]);
 
-    await (app as any).applySheddingToDevice('dev-1', 'No On/Off Device');
+    await app['applySheddingToDevice']('dev-1', 'No On/Off Device');
 
     expect(putSpy).not.toHaveBeenCalled();
-    const after = (app as any).planEngine.state.lastDeviceShedMs['dev-1'];
+    const after = app.planEngine.state.lastDeviceShedMs['dev-1'];
     expect(typeof after).toBe('number');
   });
 
@@ -1848,12 +1877,12 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 5;
-    (app as any).computeDynamicSoftLimit = () => 5;
+    app.computeDynamicSoftLimit = () => 5;
+    app.computeDynamicSoftLimit = () => 5;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(250);
+    await app['powerSamplePipeline'].recordPowerSample(250);
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.currentState).toBe('not_applicable');
     expect(reasonText(devPlan?.reason)).not.toContain('restore');
   });
@@ -1877,15 +1906,15 @@ describe('Device plan snapshot', () => {
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     // Force a low soft limit so the device must be shed.
-    (app as any).computeDynamicSoftLimit = () => 1;
-    (app as any).computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
 
     // First overshoot triggers shedding.
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
+    await app['powerSamplePipeline'].recordPowerSample(5000);
     // Let async plan actions flush before second sample.
     await flushPromises();
     // Second overshoot arrives before cooldown; should not call setCapabilityValue again.
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
+    await app['powerSamplePipeline'].recordPowerSample(5000);
     await flushPromises();
 
     expect(putSpy).toHaveBeenCalledTimes(1);
@@ -1910,7 +1939,7 @@ describe('Device plan snapshot', () => {
       settings: { load: 450 },
     };
 
-    const parsed = (app as any).deviceManager.parseDeviceListForTests([sampleDevice]);
+    const parsed = app.deviceManager.parseDeviceListForTests([sampleDevice]);
     expect(parsed[0].expectedPowerKw).toBeCloseTo(0.45, 2);
     expect(parsed[0].targets[0].value).toBe(22);
   });
@@ -1934,14 +1963,14 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Soft limit 3 kW, total 6.3 kW -> need ~3.3 kW. Off device should not be counted as shed.
-    (app as any).computeDynamicSoftLimit = () => 3;
-    (app as any).computeDynamicSoftLimit = () => 3;
+    app.computeDynamicSoftLimit = () => 3;
+    app.computeDynamicSoftLimit = () => 3;
 
     const shedSpy = vi
-      .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
-      .mockResolvedValue(undefined);
+      .spyOn((app.planEngine as ComposedPlanEngine)['executor'], 'applySheddingToDevice')
+      .mockResolvedValue(false);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(6300);
+    await app['powerSamplePipeline'].recordPowerSample(6300);
 
     expect(shedSpy).toHaveBeenCalledWith('dev-on', 'On Device', undefined);
     expect(shedSpy).not.toHaveBeenCalledWith('dev-off', 'Off Device');
@@ -1963,20 +1992,22 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
     const triggerSpy = vi.fn().mockReturnValue({ catch: vi.fn() });
-    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
+    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard.bind(mockHomeyInstance.flow);
     mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
       if (id === 'capacity_shortfall') {
-        return { trigger: triggerSpy };
+        return { trigger: triggerSpy } as unknown as ReturnType<typeof originalGetTrigger>;
       }
-      return originalGetTrigger();
-    }) as any;
+      return originalGetTrigger(id);
+    }) as typeof mockHomeyInstance.flow.getTriggerCard;
 
     const app = createApp();
     await app.onInit();
 
     // Only 1 kW available to shed
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
@@ -1991,7 +2022,7 @@ describe('Device plan snapshot', () => {
 
     // Use very high power to ensure it exceeds any threshold.
     // Threshold is clamped with a minimum remaining time of 0.01h, so max threshold is 500kW.
-    await (app as any).powerSamplePipeline.recordPowerSample(600000); // 600kW definitely exceeds threshold
+    await app['powerSamplePipeline'].recordPowerSample(600000); // 600kW definitely exceeds threshold
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
     // Shortfall is now detected by Plan calling checkShortfall() - no need for tick()
     // The payload names the home: this app is the Main home, and every home
@@ -2017,20 +2048,20 @@ describe('Device plan snapshot', () => {
     setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
 
     const triggerSpy = vi.fn();
-    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
+    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard.bind(mockHomeyInstance.flow);
     mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
-      if (id === 'capacity_shortfall') return { trigger: triggerSpy } as any;
-      return originalGetTrigger();
-    }) as any;
+      if (id === 'capacity_shortfall') return { trigger: triggerSpy } as unknown as ReturnType<typeof originalGetTrigger>;
+      return originalGetTrigger(id);
+    }) as typeof mockHomeyInstance.flow.getTriggerCard;
 
     const app = createApp();
     await app.onInit();
 
     // Soft limit 3.2 kW, total 5.6 kW -> need 2.4 kW, controllables can cover ~2.7 kW so no shortfall.
-    (app as any).computeDynamicSoftLimit = () => 3.2;
-    (app as any).computeDynamicSoftLimit = () => 3.2;
+    app.computeDynamicSoftLimit = () => 3.2;
+    app.computeDynamicSoftLimit = () => 3.2;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(5600);
+    await app['powerSamplePipeline'].recordPowerSample(5600);
     expect(triggerSpy).not.toHaveBeenCalled();
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
@@ -2048,19 +2079,21 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
     const triggerSpy = vi.fn().mockReturnValue({ catch: vi.fn() });
-    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
+    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard.bind(mockHomeyInstance.flow);
     mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
       if (id === 'capacity_shortfall') {
-        return { trigger: triggerSpy };
+        return { trigger: triggerSpy } as unknown as ReturnType<typeof originalGetTrigger>;
       }
-      return originalGetTrigger();
-    }) as any;
+      return originalGetTrigger(id);
+    }) as typeof mockHomeyInstance.flow.getTriggerCard;
 
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
@@ -2071,13 +2104,13 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(500000);
+    await app['powerSamplePipeline'].recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(550000);
+    await app['powerSamplePipeline'].recordPowerSample(550000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(520000);
+    await app['powerSamplePipeline'].recordPowerSample(520000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
@@ -2100,20 +2133,22 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
     const triggerSpy = vi.fn().mockReturnValue({ catch: vi.fn() });
-    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
+    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard.bind(mockHomeyInstance.flow);
     mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
       if (id === 'capacity_shortfall') {
-        return { trigger: triggerSpy };
+        return { trigger: triggerSpy } as unknown as ReturnType<typeof originalGetTrigger>;
       }
-      return originalGetTrigger();
-    }) as any;
+      return originalGetTrigger(id);
+    }) as typeof mockHomeyInstance.flow.getTriggerCard;
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
@@ -2124,7 +2159,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(500000);
+    await app['powerSamplePipeline'].recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
@@ -2132,8 +2167,8 @@ describe('Device plan snapshot', () => {
     // `checkShortfall`) ride the max-interval escape and its execution floor —
     // simulate that interval having elapsed before each recovery sample.
     const openMaxIntervalEscape = () => {
-      (app as any).powerSampleRebuildState = {
-        ...(app as any).powerSampleRebuildState,
+      app.powerSampleRebuildState = {
+        ...app.powerSampleRebuildState,
         lastMs: Date.now() - 31_000,
       };
     };
@@ -2145,10 +2180,10 @@ describe('Device plan snapshot', () => {
     openMaxIntervalEscape();
     await advanceTimeAndRecordPower(app, 31000, 1000);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
-    expect((app as any).timers.has('mainShortfallAlertSustained')).toBe(false);
+    expect(app.timers.has('mainShortfallAlertSustained')).toBe(false);
 
     openMaxIntervalEscape();
-    await (app as any).powerSamplePipeline.recordPowerSample(500000);
+    await app['powerSamplePipeline'].recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(2);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
@@ -2173,18 +2208,17 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Simulate recent shedding/overshoot.
-    (app as any).planEngine.state.lastInstabilityMs = Date.now();
-    if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.getSoftLimit = () => 5; // plenty of headroom
-      (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
-      (app as any).capacityGuard.isSheddingActive = () => false;
+    app.planEngine.state.lastInstabilityMs = Date.now();
+    if (app.capacityGuard) {
+      app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
     }
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    const plan = {
+    const plan: DevicePlan = {
+      meta: buildPlanMeta(),
       devices: [
-        {
+        buildPlanDevice({
           id: 'dev-1',
           name: 'Heater A',
           plannedState: 'keep',
@@ -2194,11 +2228,11 @@ describe('Device plan snapshot', () => {
           binaryCapabilityId: 'onoff',
           expectedPowerKw: 0.5,
           reason: fixtureDeviceReason('keep'),
-        },
+        }),
       ],
     };
 
-    await (app as any).applyPlanActions(plan);
+    await app['applyPlanActions'](plan);
 
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
@@ -2222,19 +2256,18 @@ describe('Device plan snapshot', () => {
 
     // Simulate being in shortfall state with positive headroom (waiting for 60s sustain)
     // This happens when power drops but we haven't sustained positive headroom long enough
-    (app as any).planEngine.state.lastInstabilityMs = Date.now() - 120000; // shedding was 2 minutes ago (past cooldown)
-    if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.getSoftLimit = () => 2; // plenty of headroom
-      (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
-      (app as any).capacityGuard.isSheddingActive = () => false;
-      (app as any).capacityGuard.isInShortfall = () => true; // still in shortfall, waiting for sustained period
+    app.planEngine.state.lastInstabilityMs = Date.now() - 120000; // shedding was 2 minutes ago (past cooldown)
+    if (app.capacityGuard) {
+      app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
+      app.capacityGuard.isInShortfall = () => true; // still in shortfall, waiting for sustained period
     }
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    const plan = {
+    const plan: DevicePlan = {
+      meta: buildPlanMeta(),
       devices: [
-        {
+        buildPlanDevice({
           id: 'dev-1',
           name: 'Heater A',
           plannedState: 'keep',
@@ -2244,11 +2277,11 @@ describe('Device plan snapshot', () => {
           binaryCapabilityId: 'onoff',
           expectedPowerKw: 0.5,
           reason: fixtureDeviceReason('keep'),
-        },
+        }),
       ],
     };
 
-    await (app as any).applyPlanActions(plan);
+    await app['applyPlanActions'](plan);
 
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
@@ -2272,7 +2305,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     const snapshot = getLatestTargetSnapshotForTests();
-    const device = snapshot.find((d: any) => d.id === 'dev-1');
+    const device = snapshot.find((d: { id: string }) => d.id === 'dev-1');
     expect(device!.expectedPowerKw).toBeCloseTo(1.2, 3);
   });
 
@@ -2320,11 +2353,11 @@ describe('Device plan snapshot', () => {
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     // Force very low soft limit
-    (app as any).computeDynamicSoftLimit = () => 1;
-    (app as any).computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
 
     // Report high power - should trigger shedding
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
+    await app['powerSamplePipeline'].recordPowerSample(5000);
     await flushPromises();
 
     // Verify the device was turned off
@@ -2357,8 +2390,10 @@ describe('Device plan snapshot', () => {
     // Trigger mode change via flow card
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Away' });
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'hoiax-1',
         name: 'Connected 300',
         deviceType: 'temperature',
@@ -2369,10 +2404,10 @@ describe('Device plan snapshot', () => {
         controllable: true,
       },
     ]);
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.planService.rebuildPlanFromCache('unknown');
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'hoiax-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'hoiax-1');
     expect(devPlan?.plannedTarget).toBe(45);
 
     expect(putSpy).toHaveBeenCalledWith(
@@ -2411,23 +2446,23 @@ describe('Device plan snapshot', () => {
     // Shedding low-pri (1.2 kW) gives 2.7 kW potential headroom.
     // After the swap reserve (0.3) that leaves 2.4 kW, enough even with
     // recent-shed backoff plus the final admission reserve.
-    (app as any).computeDynamicSoftLimit = () => 4.5;
-    (app as any).computeDynamicSoftLimit = () => 4.5;
+    app.computeDynamicSoftLimit = () => 4.5;
+    app.computeDynamicSoftLimit = () => 4.5;
 
     // Clear any shedding/overshoot timestamps to avoid cooldown
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
-    (app as any).planEngine.state.lastDeviceShedMs = {};
-    if ((app as any).capacityGuard) {
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastDeviceShedMs = {};
+    if (app.capacityGuard) {
       // Ensure shedding is not active
-      (app as any).planEngine.state.sheddingActive = false;
+      app.planEngine.state.sheddingActive = false;
     }
 
-    await (app as any).powerSamplePipeline.recordPowerSample(3000); // 3 kW total
+    await app['powerSamplePipeline'].recordPowerSample(3000); // 3 kW total
 
     const plan = getLatestPlanSnapshotForTests();
-    const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
-    const lowPriPlan = plan.devices.find((d: any) => d.id === 'dev-low');
+    const highPriPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-high');
+    const lowPriPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-low');
 
     // Swap phase 1 makes room first; the high-priority target stays pending until
     // the lower-priority source is confirmed off.
@@ -2460,16 +2495,16 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Headroom 0.5 kW, not enough for dev-high (1.5 kW + margin)
-    (app as any).computeDynamicSoftLimit = () => 3;
-    (app as any).computeDynamicSoftLimit = () => 3;
+    app.computeDynamicSoftLimit = () => 3;
+    app.computeDynamicSoftLimit = () => 3;
 
-    (app as any).planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastInstabilityMs = null;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(2500);
+    await app['powerSamplePipeline'].recordPowerSample(2500);
 
     const plan = getLatestPlanSnapshotForTests();
-    const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
-    const high2Plan = plan.devices.find((d: any) => d.id === 'dev-high2');
+    const highPriPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-high');
+    const high2Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-high2');
 
     // dev-high should stay off (not enough headroom, no lower-pri to swap)
     expect(highPriPlan?.plannedState).toBe('shed');
@@ -2504,17 +2539,17 @@ describe('Device plan snapshot', () => {
     // High-pri needs 2 + 0.2 margin = 2.2 kW
     // Even with shedding low-pri (0.3 kW), we'd only get 0.5 + 0.3 = 0.8 kW
     // 0.8 < 2.2, so swap should NOT happen
-    (app as any).computeDynamicSoftLimit = () => 3.5;
-    (app as any).computeDynamicSoftLimit = () => 3.5;
+    app.computeDynamicSoftLimit = () => 3.5;
+    app.computeDynamicSoftLimit = () => 3.5;
 
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(3000);
+    await app['powerSamplePipeline'].recordPowerSample(3000);
 
     const plan = getLatestPlanSnapshotForTests();
-    const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
-    const lowPriPlan = plan.devices.find((d: any) => d.id === 'dev-low');
+    const highPriPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-high');
+    const lowPriPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-low');
 
     // High priority should stay off - not enough headroom even with swap
     expect(highPriPlan?.plannedState).toBe('shed');
@@ -2555,19 +2590,19 @@ describe('Device plan snapshot', () => {
     // Shedding both low-priority devices yields 2.8 kW potential headroom.
     // After the swap reserve (0.3) that leaves 2.5 kW, enough for the stricter gate,
     // while one low-priority device alone is still insufficient.
-    (app as any).computeDynamicSoftLimit = () => 4.8;
-    (app as any).computeDynamicSoftLimit = () => 4.8;
+    app.computeDynamicSoftLimit = () => 4.8;
+    app.computeDynamicSoftLimit = () => 4.8;
 
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
-    (app as any).planEngine.state.lastDeviceShedMs = {};
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastDeviceShedMs = {};
 
-    await (app as any).powerSamplePipeline.recordPowerSample(3000);
+    await app['powerSamplePipeline'].recordPowerSample(3000);
 
     const plan = getLatestPlanSnapshotForTests();
-    const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
-    const low1Plan = plan.devices.find((d: any) => d.id === 'dev-low1');
-    const low2Plan = plan.devices.find((d: any) => d.id === 'dev-low2');
+    const highPriPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-high');
+    const low1Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-low1');
+    const low2Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-low2');
 
     // Swap phase 1 makes room first; the high-priority target is not restored
     // until the lower-priority sources are confirmed off.
@@ -2617,23 +2652,23 @@ describe('Device plan snapshot', () => {
     // But with NO on devices, swap target can restore normally with 1.4 kW needed
     // To test the blocking, we need to manually set up the pendingSwapTargets
 
-    (app as any).computeDynamicSoftLimit = () => 2;
-    (app as any).computeDynamicSoftLimit = () => 2;
+    app.computeDynamicSoftLimit = () => 2;
+    app.computeDynamicSoftLimit = () => 2;
 
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
 
     // Simulate that a swap was initiated: swap target is in pendingSwapTargets
     // This mimics the state after a swap where the target hasn't been restored yet
-    (app as any).planEngine.state.swapByDevice['dev-swap-target'] = { pendingTarget: true };
+    app.planEngine.state.swapByDevice['dev-swap-target'] = { pendingTarget: true };
 
     // Record power - only 0.8 kW headroom (not enough for swap target with 1.4 kW needed)
     // But enough for lower priority (0.7 kW needed)
-    await (app as any).powerSamplePipeline.recordPowerSample(1200); // 1.2 kW total
+    await app['powerSamplePipeline'].recordPowerSample(1200); // 1.2 kW total
 
     const plan = getLatestPlanSnapshotForTests();
-    const swapTargetPlan = plan.devices.find((d: any) => d.id === 'dev-swap-target');
-    const lowerPriPlan = plan.devices.find((d: any) => d.id === 'dev-lower');
+    const swapTargetPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-swap-target');
+    const lowerPriPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-lower');
 
     // Swap target doesn't have enough headroom, should stay shed
     expect(swapTargetPlan?.plannedState).toBe('shed');
@@ -2668,18 +2703,18 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 1.4;
-    (app as any).computeDynamicSoftLimit = () => 1.4;
+    app.computeDynamicSoftLimit = () => 1.4;
+    app.computeDynamicSoftLimit = () => 1.4;
 
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
-    (app as any).planEngine.state.swapByDevice['dev-pending-low'] = { pendingTarget: true };
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.swapByDevice['dev-pending-low'] = { pendingTarget: true };
 
-    await (app as any).powerSamplePipeline.recordPowerSample(300);
+    await app['powerSamplePipeline'].recordPowerSample(300);
 
     const plan = getLatestPlanSnapshotForTests();
-    const pendingLowPlan = plan.devices.find((d: any) => d.id === 'dev-pending-low');
-    const higherPriorityPlan = plan.devices.find((d: any) => d.id === 'dev-high');
+    const pendingLowPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-pending-low');
+    const higherPriorityPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-high');
 
     expect(pendingLowPlan?.plannedState).toBe('shed');
     expect(reasonText(pendingLowPlan?.reason)).toMatch(/^meter settling \(\d+s remaining\)$/);
@@ -2716,26 +2751,26 @@ describe('Device plan snapshot', () => {
 
     // Setup: not enough headroom for swap target (needs 2kW + 0.4 = 2.4kW)
     // but enough for swapped-out device (needs 0.5kW + 0.4 = 0.9kW)
-    (app as any).computeDynamicSoftLimit = () => 3;
-    (app as any).computeDynamicSoftLimit = () => 3;
+    app.computeDynamicSoftLimit = () => 3;
+    app.computeDynamicSoftLimit = () => 3;
 
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
 
     // Simulate swap state: dev-swapped was shed for dev-target, but dev-target can't restore
     // Set timestamp to 61 seconds ago (stale)
     const staleTime = Date.now() - 61000;
-    (app as any).planEngine.state.swapByDevice = {
+    app.planEngine.state.swapByDevice = {
       'dev-swapped': { swappedOutFor: 'dev-target' },
       'dev-target': { pendingTarget: true, timestamp: staleTime },
     };
 
     // Record power - only 1.5kW headroom (not enough for swap target 2.4kW, but enough for swapped 0.9kW)
-    await (app as any).powerSamplePipeline.recordPowerSample(1500);
+    await app['powerSamplePipeline'].recordPowerSample(1500);
 
     const plan = getLatestPlanSnapshotForTests();
-    const swappedPlan = plan.devices.find((d: any) => d.id === 'dev-swapped');
-    const targetPlan = plan.devices.find((d: any) => d.id === 'dev-target');
+    const swappedPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-swapped');
+    const targetPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-target');
 
     // Swap target still can't restore (not enough headroom)
     expect(targetPlan?.plannedState).toBe('shed');
@@ -2745,8 +2780,8 @@ describe('Device plan snapshot', () => {
     expect(swappedPlan?.plannedState).toBe('keep');
 
     // Verify swap tracking was cleared
-    expect((app as any).planEngine.state.swapByDevice['dev-target']?.pendingTarget).toBeFalsy();
-    expect((app as any).planEngine.state.swapByDevice['dev-swapped']?.swappedOutFor).toBeUndefined();
+    expect(app.planEngine.state.swapByDevice['dev-target']?.pendingTarget).toBeFalsy();
+    expect(app.planEngine.state.swapByDevice['dev-swapped']?.swappedOutFor).toBeUndefined();
   });
 
   // Removed: 'syncs Guard controllables when updateLocalSnapshot changes on/off state'
@@ -2773,14 +2808,14 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Trigger a power sample to generate a plan
-    await (app as any).powerSamplePipeline.recordPowerSample(1000);
+    await app['powerSamplePipeline'].recordPowerSample(1000);
 
     const plan = getLatestPlanSnapshotForTests();
     expect(plan).toBeTruthy();
     expect(plan.devices.length).toBe(3);
 
     // Devices should be sorted by priority ascending (1 = most important, shown first)
-    const deviceOrder = plan.devices.map((d: any) => ({ name: d.name, priority: d.priority }));
+    const deviceOrder = plan.devices.map((d: { name: string; priority?: number }) => ({ name: d.name, priority: d.priority }));
 
     expect(deviceOrder[0].name).toBe('Most Important Heater');
     expect(deviceOrder[0].priority).toBe(1);
@@ -2818,32 +2853,25 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Set up conditions for swap
-    (app as any).computeDynamicSoftLimit = () => 4.8;
-    (app as any).computeDynamicSoftLimit = () => 4.8;
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
-    (app as any).planEngine.state.lastDeviceShedMs = {};
-    if ((app as any).capacityGuard) {
-      (app as any).planEngine.state.sheddingActive = false;
+    app.computeDynamicSoftLimit = () => 4.8;
+    app.computeDynamicSoftLimit = () => 4.8;
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastDeviceShedMs = {};
+    if (app.capacityGuard) {
+      app.planEngine.state.sheddingActive = false;
     }
 
     // Capture structured log events from the plan engine
-    const structuredEvents: Record<string, unknown>[] = [];
-    (app as any).planEngine.builder.deps.debugStructured = (obj: Record<string, unknown>) => structuredEvents.push(obj);
-    (app as any).planEngine.builder.deps.structuredLog = {
-      info: (obj: Record<string, unknown>) => structuredEvents.push(obj),
-      warn: vi.fn(),
-      error: vi.fn(),
-      child: () => (app as any).planEngine.builder.deps.structuredLog,
-    };
+    const structuredEvents = capturePlanBuilderStructuredLog(app, true);
 
     // Simulate what happens when periodic refresh and power sample happen close together
     // This replicates production behavior at 08:22:36 where:
     // - Periodic refresh calls refreshTargetDevicesSnapshot() -> buildDevicePlanSnapshot()
-    // - Power sample calls recordPowerSample() -> rebuildPlanFromCache() -> buildDevicePlanSnapshot()
+    // - Power sample calls recordPowerSample() -> rebuildPlanFromCache('unknown') -> buildDevicePlanSnapshot()
     await Promise.all([
-      (app as any).refreshTargetDevicesSnapshot(),
-      (app as any).powerSamplePipeline.recordPowerSample(3000),
+      app.refreshTargetDevicesSnapshot(),
+      app['powerSamplePipeline'].recordPowerSample(3000),
     ]);
 
     // Should only have ONE of each, not duplicates
@@ -2880,13 +2908,13 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Set up conditions for swap
-    (app as any).computeDynamicSoftLimit = () => 4.5;
-    (app as any).computeDynamicSoftLimit = () => 4.5;
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
-    (app as any).planEngine.state.lastDeviceShedMs = {};
-    if ((app as any).capacityGuard) {
-      (app as any).planEngine.state.sheddingActive = false;
+    app.computeDynamicSoftLimit = () => 4.5;
+    app.computeDynamicSoftLimit = () => 4.5;
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastDeviceShedMs = {};
+    if (app.capacityGuard) {
+      app.planEngine.state.sheddingActive = false;
     }
 
     const errorSpy = vi.spyOn(Object.getPrototypeOf(app), 'error').mockImplementation(() => { });
@@ -2896,18 +2924,11 @@ describe('Device plan snapshot', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     // Capture structured log events from the plan engine
-    const structuredEvents: Record<string, unknown>[] = [];
-    (app as any).planEngine.builder.deps.debugStructured = (obj: Record<string, unknown>) => structuredEvents.push(obj);
-    (app as any).planEngine.builder.deps.structuredLog = {
-      info: (obj: Record<string, unknown>) => structuredEvents.push(obj),
-      warn: vi.fn(),
-      error: vi.fn(),
-      child: () => (app as any).planEngine.builder.deps.structuredLog,
-    };
+    const structuredEvents = capturePlanBuilderStructuredLog(app, true);
 
     try {
       // First power sample - should plan the swap
-      await (app as any).powerSamplePipeline.recordPowerSample(3000);
+      await app['powerSamplePipeline'].recordPowerSample(3000);
       await flushPromises(); // Let async shedding attempt complete
 
       expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(1);
@@ -2917,7 +2938,7 @@ describe('Device plan snapshot', () => {
 
       // Second power sample - should NOT re-plan the same swap
       // The swap is already pending (dev-high in pendingSwapTargets)
-      await (app as any).powerSamplePipeline.recordPowerSample(3000);
+      await app['powerSamplePipeline'].recordPowerSample(3000);
       await flushPromises();
 
       // BUG: Without the fix, this would be 1 (re-planning the same swap)
@@ -2953,26 +2974,26 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 4.5;
-    (app as any).computeDynamicSoftLimit = () => 4.5;
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
-    (app as any).planEngine.state.lastDeviceShedMs = {};
-    if ((app as any).capacityGuard) {
-      (app as any).planEngine.state.sheddingActive = false;
+    app.computeDynamicSoftLimit = () => 4.5;
+    app.computeDynamicSoftLimit = () => 4.5;
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastDeviceShedMs = {};
+    if (app.capacityGuard) {
+      app.planEngine.state.sheddingActive = false;
     }
 
     // Anchored to now, not epoch+1s: a sample stamped in 1970 reads as long
     // stale, and these cases would then be exercising the fail-closed shed
     // rather than the same-sample skip they are named for.
-    await (app as any).powerSamplePipeline.recordPowerSample(3000, Date.now());
+    await app['powerSamplePipeline'].recordPowerSample(3000, Date.now());
 
     let plan = getLatestPlanSnapshotForTests();
-    expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('shed');
+    expect(plan.devices.find((d: { id: string }) => d.id === 'dev-low')?.plannedState).toBe('shed');
 
     // Simulate swap state being cleared without a new measurement.
     // Keep lastPlanMeasurementTs to block re-planning on the same measurement.
-    const swapByDevice = (app as any).planEngine.state.swapByDevice;
+    const swapByDevice = app.planEngine.state.swapByDevice;
     for (const key of Object.keys(swapByDevice)) {
       const entry = swapByDevice[key];
       delete entry.swappedOutFor;
@@ -2983,9 +3004,9 @@ describe('Device plan snapshot', () => {
       }
     }
 
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.planService.rebuildPlanFromCache('unknown');
     plan = getLatestPlanSnapshotForTests();
-    expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('keep');
+    expect(plan.devices.find((d: { id: string }) => d.id === 'dev-low')?.plannedState).toBe('keep');
   });
 
   it('allows swaps again after a new measurement arrives', async () => {
@@ -3010,29 +3031,29 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 4.8;
-    (app as any).computeDynamicSoftLimit = () => 4.8;
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
-    (app as any).planEngine.state.lastDeviceShedMs = {};
-    if ((app as any).capacityGuard) {
-      (app as any).planEngine.state.sheddingActive = false;
+    app.computeDynamicSoftLimit = () => 4.8;
+    app.computeDynamicSoftLimit = () => 4.8;
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastDeviceShedMs = {};
+    if (app.capacityGuard) {
+      app.planEngine.state.sheddingActive = false;
     }
 
     // Anchored to now, not epoch+1s: a sample stamped in 1970 reads as long
     // stale, and these cases would then be exercising the fail-closed shed
     // rather than the same-sample skip they are named for.
     const sampleBaseMs = Date.now();
-    await (app as any).powerSamplePipeline.recordPowerSample(3000, sampleBaseMs);
+    await app['powerSamplePipeline'].recordPowerSample(3000, sampleBaseMs);
 
     // Clear swap state without a new measurement.
-    (app as any).planEngine.state.swapByDevice = {};
+    app.planEngine.state.swapByDevice = {};
 
-    (app as any).planEngine.state.lastRestoreMs = Date.now() - 120000;
-    await (app as any).powerSamplePipeline.recordPowerSample(3000, sampleBaseMs + 1000);
+    app.planEngine.state.lastRestoreMs = Date.now() - 120000;
+    await app['powerSamplePipeline'].recordPowerSample(3000, sampleBaseMs + 1000);
 
     const plan = getLatestPlanSnapshotForTests();
-    expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('shed');
+    expect(plan.devices.find((d: { id: string }) => d.id === 'dev-low')?.plannedState).toBe('shed');
   });
 });
 
@@ -3069,7 +3090,7 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // Verify the app is in dry run mode
-    expect((app as any).capacityDryRun).toBe(true);
+    expect(app.capacityDryRun).toBe(true);
   });
 
   it('defaults to dry run mode when capacity_dry_run setting is undefined', async () => {
@@ -3087,7 +3108,7 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // Verify the app is in dry run mode (undefined should not override default true)
-    expect((app as any).capacityDryRun).toBe(true);
+    expect(app.capacityDryRun).toBe(true);
   });
 
 
@@ -3106,11 +3127,13 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // Spy on applyPlanActions
-    const applyPlanSpy = vi.spyOn(app as any, 'applyPlanActions');
+    const applyPlanSpy = vi.spyOn(app as unknown as Record<'applyPlanActions', (...args: never[]) => Promise<void>>, 'applyPlanActions');
 
     // Rebuild plan with shedding needed
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
@@ -3120,7 +3143,7 @@ describe('Dry run mode', () => {
       },
     ]);
     // Guard no longer needs explicit sync
-    await (app as any).powerSamplePipeline.recordPowerSample(6000);
+    await app['powerSamplePipeline'].recordPowerSample(6000);
 
     // applyPlanActions should NOT be called in dry run mode
     expect(applyPlanSpy).not.toHaveBeenCalled();
@@ -3146,13 +3169,15 @@ describe('Dry run mode', () => {
 
     // Capture log calls
     const logCalls: string[] = [];
-    vi.spyOn(app as any, 'log').mockImplementation((...args: unknown[]) => {
+    vi.spyOn(app, 'log').mockImplementation((...args: unknown[]) => {
       logCalls.push(String(args[0]));
     });
 
     // Setup snapshot with a device that will be shed
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater A',
         targets: [],
@@ -3166,11 +3191,11 @@ describe('Dry run mode', () => {
     // Guard no longer needs explicit sync
 
     // Set a low soft limit to trigger shedding
-    (app as any).computeDynamicSoftLimit = () => 2;
-    (app as any).computeDynamicSoftLimit = () => 2;
+    app.computeDynamicSoftLimit = () => 2;
+    app.computeDynamicSoftLimit = () => 2;
 
     // Record power sample that triggers overshoot and plan rebuild
-    await (app as any).powerSamplePipeline.recordPowerSample(4000); // Will cause overshoot with soft limit of 2
+    await app['powerSamplePipeline'].recordPowerSample(4000); // Will cause overshoot with soft limit of 2
 
     // Should log dry run message
     expect(logCalls.some((msg) => msg.includes('Dry run'))).toBe(true);
@@ -3190,19 +3215,19 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    expect((app as any).capacityDryRun).toBe(true);
+    expect(app.capacityDryRun).toBe(true);
 
     // Change setting to disable dry run
     mockHomeyInstance.settings.set('capacity_dry_run', false);
     await flushPromises();
 
     // Verify the app picked up the change
-    expect((app as any).capacityDryRun).toBe(false);
+    expect(app.capacityDryRun).toBe(false);
 
     // Change back to dry run
     mockHomeyInstance.settings.set('capacity_dry_run', true);
     await flushPromises();
-    expect((app as any).capacityDryRun).toBe(true);
+    expect(app.capacityDryRun).toBe(true);
   });
 
   it('does not shed devices via applySheddingToDevice in dry run mode', async () => {
@@ -3220,7 +3245,7 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // Directly call applySheddingToDevice
-    await (app as any).applySheddingToDevice('dev-1', 'Heater A', 'test');
+    await app['applySheddingToDevice']('dev-1', 'Heater A', 'test');
 
     // Device should still be on (no actual shedding)
     expect(await dev1.getCapabilityValue('onoff')).toBe(true);
@@ -3269,7 +3294,7 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedTarget).toBe(22);
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(20);
   });
@@ -3318,7 +3343,7 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     // Temperature should NOT have been changed in dry run mode
     // (would be 65 if price optimization was applied: 55 + 10)
@@ -3351,17 +3376,19 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     // Verify dry run is enabled by default
-    expect((app as any).capacityDryRun).toBe(true);
+    expect(app.capacityDryRun).toBe(true);
 
     // Mock the cheap/expensive detection to return cheap
-    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
     // Ensure the device is in snapshot with correct structure
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater A',
         temperature: { currentTemperature: 55, target: { id: 'target_temperature', value: 55, unit: '°C' } },
@@ -3373,7 +3400,7 @@ describe('Dry run mode', () => {
     ]);
 
     // Manually trigger price optimization
-    await (app as any).priceCoordinator.applyPriceOptimization();
+    await app.priceCoordinator.applyPriceOptimization();
 
     // Temperature should NOT have been changed in dry run mode
     // (would be 65 if price optimization was applied: 55 + 10)
@@ -3415,16 +3442,18 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
-    (app as any).computeDynamicSoftLimit = () => 3;
-    (app as any).computeDynamicSoftLimit = () => 3;
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
-    (app as any).planEngine.state.lastDeviceShedMs = {};
-    (app as any).planEngine.state.lastPlannedShedIds = new Set();
+    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    app.computeDynamicSoftLimit = () => 3;
+    app.computeDynamicSoftLimit = () => 3;
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastDeviceShedMs = {};
+    app.planEngine.state.lastPlannedShedIds = new Set();
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater A',
         temperature: { currentTemperature: 40, target: { id: 'target_temperature', value: 40, unit: '°C' } },
@@ -3434,10 +3463,10 @@ describe('Dry run mode', () => {
         controllable: true,
       },
     ]);
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.planService.rebuildPlanFromCache('unknown');
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan.plannedTarget).toBe(50);
   });
 
@@ -3468,10 +3497,12 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater A',
         deviceType: 'temperature',
@@ -3482,7 +3513,7 @@ describe('Dry run mode', () => {
       },
     ]);
 
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.planService.rebuildPlanFromCache('unknown');
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(55);
   });
@@ -3527,10 +3558,12 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater A',
         temperature: { currentTemperature: 55, target: { id: 'target_temperature', value: 55, unit: '°C' } },
@@ -3542,18 +3575,18 @@ describe('Dry run mode', () => {
       },
     ]);
 
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.planService.rebuildPlanFromCache('unknown');
     const preShedPlan = getLatestPlanSnapshotForTests();
-    const preShedDevice = preShedPlan.devices.find((d: any) => d.id === 'dev-1');
+    const preShedDevice = preShedPlan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(preShedDevice.plannedTarget).toBe(65);
 
-    (app as any).computeDynamicSoftLimit = () => 1;
-    (app as any).computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(4000);
+    await app['powerSamplePipeline'].recordPowerSample(4000);
 
     const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan.plannedState).toBe('shed');
     expect(devPlan.shedAction).toBe('set_temperature');
     expect(devPlan.plannedTarget).toBe(12);
@@ -3577,27 +3610,27 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // Set a generous soft limit with plenty of headroom.
-    (app as any).computeDynamicSoftLimit = () => 8;
-    (app as any).computeDynamicSoftLimit = () => 8;
+    app.computeDynamicSoftLimit = () => 8;
+    app.computeDynamicSoftLimit = () => 8;
 
     // Simulate being in shortfall state.
-    if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.isInShortfall = () => true;
+    if (app.capacityGuard) {
+      app.capacityGuard.isInShortfall = () => true;
     }
-    (app as any).planEngine.state.inShortfall = true;
+    app.planEngine.state.inShortfall = true;
 
     // Report low power - plenty of headroom mathematically, but we're in shortfall.
-    await (app as any).powerSamplePipeline.recordPowerSample(2000); // 2 kW, headroom = 6 kW
+    await app['powerSamplePipeline'].recordPowerSample(2000); // 2 kW, headroom = 6 kW
 
     const plan = getLatestPlanSnapshotForTests();
-    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const dev1Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(dev1Plan).toBeTruthy();
     expect(dev1Plan.currentState).toBe('off');
     expect(dev1Plan.plannedState).toBe('shed');
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await (app as any).applyPlanActions(plan);
+    await app['applyPlanActions'](plan);
 
     expect(putSpy).not.toHaveBeenCalled();
   });
@@ -3627,23 +3660,23 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // Set a soft limit of 6.5 kW
-    (app as any).computeDynamicSoftLimit = () => 6.5;
-    (app as any).computeDynamicSoftLimit = () => 6.5;
+    app.computeDynamicSoftLimit = () => 6.5;
+    app.computeDynamicSoftLimit = () => 6.5;
 
     // Ensure not in shortfall or shedding
-    if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.inShortfall = false;
-      (app as any).planEngine.state.sheddingActive = false;
+    if (app.capacityGuard) {
+      app.capacityGuard['inShortfall'] = false;
+      app.planEngine.state.sheddingActive = false;
     }
-    (app as any).planEngine.state.inShortfall = false;
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.inShortfall = false;
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
 
     // Report 4.3 kW power - gives 2.2 kW headroom (6.5 - 4.3 = 2.2)
-    await (app as any).powerSamplePipeline.recordPowerSample(4300);
+    await app['powerSamplePipeline'].recordPowerSample(4300);
 
     const plan = getLatestPlanSnapshotForTests();
-    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const dev1Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(dev1Plan).toBeTruthy();
     expect(dev1Plan.currentState).toBe('off');
     expect(reasonText(dev1Plan.reason)).toBe('keep');
@@ -3651,7 +3684,7 @@ describe('Dry run mode', () => {
     // Now try to apply the plan
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await (app as any).applyPlanActions(plan);
+    await app['applyPlanActions'](plan);
 
     // The device should be restored because:
     // - Headroom: 2.2 kW
@@ -3659,7 +3692,7 @@ describe('Dry run mode', () => {
     // - 2.2 > 1.6, so there's enough headroom
     // But the 50% budget (1.1 kW) blocks it because 1.3 > 1.1
     const restoreCall = putSpy.mock.calls.find(
-      (call: any) => call[0] === 'manager/devices/device/dev-1/capability/onoff' && call[1]?.value === true,
+      (call) => call[0] === 'manager/devices/device/dev-1/capability/onoff' && (call[1] as { value?: unknown } | undefined)?.value === true,
     );
 
     // This SHOULD pass but will FAIL due to the 50% budget bug
@@ -3684,18 +3717,18 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 2.8;
-    (app as any).computeDynamicSoftLimit = () => 2.8;
+    app.computeDynamicSoftLimit = () => 2.8;
+    app.computeDynamicSoftLimit = () => 2.8;
 
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await (app as any).powerSamplePipeline.recordPowerSample(1000); // 1.0 kW total -> headroomRaw 1.8 kW (meets floor)
+    await app['powerSamplePipeline'].recordPowerSample(1000); // 1.0 kW total -> headroomRaw 1.8 kW (meets floor)
 
     const plan = getLatestPlanSnapshotForTests();
-    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const dev1Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
 
     expect(putSpy).toHaveBeenCalledWith(
@@ -3737,13 +3770,13 @@ describe('Dry run mode', () => {
 
     // 2. Trigger Overshoot to shed dev-1
     // Set Limit to 1.5kW. Total 2kW. Need to shed 0.5kW.
-    (app as any).computeDynamicSoftLimit = () => 1.5;
-    (app as any).computeDynamicSoftLimit = () => 1.5;
-    await (app as any).powerSamplePipeline.recordPowerSample(2000);
+    app.computeDynamicSoftLimit = () => 1.5;
+    app.computeDynamicSoftLimit = () => 1.5;
+    await app['powerSamplePipeline'].recordPowerSample(2000);
 
     // Identify the shed device (could be dev-1 or dev-2 depending on ordering).
     const plan1 = getLatestPlanSnapshotForTests();
-    const shedDevice = plan1.devices.find((d: any) => d.plannedState === 'shed');
+    const shedDevice = plan1.devices.find((d: { plannedState: string }) => d.plannedState === 'shed');
     expect(shedDevice).toBeTruthy();
     // Manually update the shed device to reflect it reached 15C.
     if (shedDevice.id === 'dev-1') {
@@ -3752,8 +3785,10 @@ describe('Dry run mode', () => {
       await dev2.setCapabilityValue('target_temperature', 15);
     }
     // Refresh snapshot so the plan sees the new shed temperature.
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater A',
         deviceType: 'temperature',
@@ -3768,6 +3803,8 @@ describe('Dry run mode', () => {
         controllable: true,
       },
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-2',
         name: 'Heater B',
         deviceType: 'temperature',
@@ -3786,20 +3823,20 @@ describe('Dry run mode', () => {
     // 3. Trigger another overshoot.
     // Total power still 2kW (heater might still run at lower temp).
     // Limit drops to 0.5kW. Need to shed another 1.5kW.
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    (app as any).computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
+    app.computeDynamicSoftLimit = () => 0.5;
 
     // Ensure we don't skip shedding due to same-measurement throttling.
-    (app as any).planEngine.state.lastShedPlanMeasurementTs = null;
+    app.planEngine.state.lastShedPlanMeasurementTs = null;
 
-    await (app as any).powerSamplePipeline.recordPowerSample(2000);
+    await app['powerSamplePipeline'].recordPowerSample(2000);
 
     // Expectations:
     // dev-1 is already at shed temp (15C). It should NOT be shed again.
     // dev-2 is at normal temp (20C). It SHOULD be shed.
     const plan2 = getLatestPlanSnapshotForTests();
-    const dev1Plan = plan2.devices.find((d: any) => d.id === 'dev-1');
-    const dev2Plan = plan2.devices.find((d: any) => d.id === 'dev-2');
+    const dev1Plan = plan2.devices.find((d: { id: string }) => d.id === 'dev-1');
+    const dev2Plan = plan2.devices.find((d: { id: string }) => d.id === 'dev-2');
     expect(dev1Plan.plannedState).toBe('shed');
     expect(dev2Plan.plannedState).toBe('shed');
     expect(dev1Plan.plannedTarget).toBe(15);
@@ -3832,8 +3869,8 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // 1. Set Soft Limit to 1.1 kW.
-    (app as any).computeDynamicSoftLimit = () => 1.1;
-    (app as any).computeDynamicSoftLimit = () => 1.1;
+    app.computeDynamicSoftLimit = () => 1.1;
+    app.computeDynamicSoftLimit = () => 1.1;
 
     // 2. Report Power 1.0 kW.
     // Headroom = 1.1 - 1.0 = 0.1 kW.
@@ -3842,12 +3879,12 @@ describe('Dry run mode', () => {
     // Expected: No shed (positive headroom), but NO restore either (below margin).
     // Current Bug: App subtracts margin: 0.1 - 0.5 = -0.4 -> OVERSHOOT! -> Sheds dev-1.
 
-    const logSpy = vi.spyOn((app as any), 'log');
+    const logSpy = vi.spyOn(app, 'log');
 
-    await (app as any).powerSamplePipeline.recordPowerSample(1000);
+    await app['powerSamplePipeline'].recordPowerSample(1000);
 
     const plan = getLatestPlanSnapshotForTests();
-    const sheds = plan.devices.filter((d: any) => d.plannedState === 'shed');
+    const sheds = plan.devices.filter((d: { plannedState: string }) => d.plannedState === 'shed');
 
     // Expectation: No shedding because we are under the limit (0.1 kW free).
     expect(sheds.length).toBe(0);
@@ -3895,13 +3932,13 @@ describe('Dry run mode', () => {
 
       // 1. Trigger Overshoot to shed both devices
       // Limit = 0.5 kW. Usage = 2.0 kW. Overshoot.
-      (app as any).computeDynamicSoftLimit = () => 0.5;
-      (app as any).computeDynamicSoftLimit = () => 0.5;
-      await (app as any).powerSamplePipeline.recordPowerSample(2000);
+      app.computeDynamicSoftLimit = () => 0.5;
+      app.computeDynamicSoftLimit = () => 0.5;
+      await app['powerSamplePipeline'].recordPowerSample(2000);
 
       // Verify both are shed to 10C
       const plan1 = getLatestPlanSnapshotForTests();
-      const shedCount = plan1.devices.filter((d: any) => d.plannedState === 'shed').length;
+      const shedCount = plan1.devices.filter((d: { plannedState: string }) => d.plannedState === 'shed').length;
       expect(shedCount).toBe(2);
 
       // Update devices to reflect shed state
@@ -3911,33 +3948,33 @@ describe('Dry run mode', () => {
       // 2. Restore Capacity
       // Limit = 5.0 kW. Usage = 2.0 kW (still pulling power at lower temp? or less. say 2.0 for simplicity).
       // Headroom = 3.0 kW. Enough to restore both.
-      (app as any).computeDynamicSoftLimit = () => 5.0;
-      (app as any).computeDynamicSoftLimit = () => 5.0;
+      app.computeDynamicSoftLimit = () => 5.0;
+      app.computeDynamicSoftLimit = () => 5.0;
 
       // Advance time to bypass cooldowns if any
       vi.advanceTimersByTime(10 * 60 * 1000);
       vi.setSystemTime(new Date('2023-01-01T12:10:00Z'));
 
       // Explicitly clear cooldowns to avoid test flakiness with Date mocking
-      (app as any).planEngine.state.lastInstabilityMs = 0;
-      (app as any).planEngine.state.lastRecoveryMs = 0;
-      (app as any).planEngine.state.lastDeviceShedMs = {};
+      app.planEngine.state.lastInstabilityMs = 0;
+      app.planEngine.state.lastRecoveryMs = 0;
+      app.planEngine.state.lastDeviceShedMs = {};
       // Deactivate the guard so the next cycle doesn't trigger a fresh recovery transition.
-      (app as any).planEngine.state.sheddingActive = false;
+      app.planEngine.state.sheddingActive = false;
       // Drain the microtask the previous step's rebuild is still sitting on.
       // Clearing the latch used to be an `await`ed guard call, which yielded
       // here by accident; the assignment does not, and the next sample would
       // otherwise race that rebuild.
       await Promise.resolve();
 
-      await (app as any).powerSamplePipeline.recordPowerSample(2000);
+      await app['powerSamplePipeline'].recordPowerSample(2000);
 
       const plan2 = getLatestPlanSnapshotForTests();
 
       // Check how many devices are still planned as 'shed'
       // Ideally, only one should be restored, so one should still be 'shed'.
       // If the bug exists, both will be restored (0 shed).
-      const shedDevicesAfterRestore = plan2.devices.filter((d: any) => d.plannedState === 'shed');
+      const shedDevicesAfterRestore = plan2.devices.filter((d: { plannedState: string }) => d.plannedState === 'shed');
 
       // We expect throttling: only 1 device restored per cycle.
       // So 1 device should still be shed.
@@ -3959,31 +3996,39 @@ describe('Dry run mode', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    (app as any).deviceManager.setSnapshotForTests([{
+    // `canSetOnOff` is the legacy setability input (`BinaryControlPlanInput`);
+    // it is live in the projection but not declared on the snapshot type, so
+    // the fixture widens the element type to carry it explicitly.
+    const readOnlyRelay: TransportDeviceSnapshot & { canSetOnOff: boolean } = {
       id: 'dev-1',
       name: 'Read-only relay',
       targets: [],
+      available: true,
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
       binaryCapabilityId: 'onoff',
       capabilities: ['onoff'],
       canSetOnOff: false,
       binaryControl: { on: true },
       controllable: true,
-    }]);
+    };
+    app.deviceManager.setSnapshotForTests([readOnlyRelay]);
 
-    const plan = {
+    const plan: DevicePlan = {
+      meta: buildPlanMeta(),
       devices: [
-        {
+        buildPlanDevice({
           id: 'dev-1',
           name: 'Read-only relay',
           plannedState: 'keep',
           currentState: 'off',
           controllable: true,
           expectedPowerKw: 0.2,
-        },
+        }),
       ],
     };
 
-    await (app as any).applyPlanActions(plan);
+    await app['applyPlanActions'](plan);
 
     expect(putSpy).not.toHaveBeenCalled();
   });
@@ -3997,7 +4042,7 @@ describe('Dry run mode', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    (app as any).deviceManager.setSnapshotForTests([{
+    app.deviceManager.setSnapshotForTests([{
       id: 'dev-unavailable',
       name: 'Unavailable Heater',
       deviceType: 'temperature',
@@ -4007,6 +4052,8 @@ describe('Dry run mode', () => {
       binaryControl: { on: true },
       controllable: true,
       available: false,
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
     }, {
       id: 'dev-available',
       name: 'Available Heater',
@@ -4017,11 +4064,14 @@ describe('Dry run mode', () => {
       binaryControl: { on: true },
       controllable: true,
       available: true,
-    }] as any);
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
+    }]);
 
-    const plan = {
+    const plan: DevicePlan = {
+      meta: buildPlanMeta(),
       devices: [
-        {
+        buildPlanDevice({
           id: 'dev-unavailable',
           name: 'Unavailable Heater',
           deviceType: 'temperature',
@@ -4031,8 +4081,8 @@ describe('Dry run mode', () => {
           currentTarget: 18,
           currentTemperature: 18,
           controllable: true,
-        },
-        {
+        }),
+        buildPlanDevice({
           id: 'dev-available',
           name: 'Available Heater',
           deviceType: 'temperature',
@@ -4042,11 +4092,11 @@ describe('Dry run mode', () => {
           currentTarget: 18,
           currentTemperature: 18,
           controllable: true,
-        },
+        }),
       ],
     };
 
-    await (app as any).applyPlanActions(plan);
+    await app['applyPlanActions'](plan);
 
     expect(putSpy).toHaveBeenCalledTimes(1);
     expect(putSpy).toHaveBeenCalledWith(
@@ -4064,7 +4114,7 @@ describe('Dry run mode', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    (app as any).deviceManager.setSnapshotForTests([{
+    app.deviceManager.setSnapshotForTests([{
       id: 'dev-unavailable',
       name: 'Unavailable Heater',
       deviceType: 'temperature',
@@ -4074,6 +4124,8 @@ describe('Dry run mode', () => {
       binaryControl: { on: true },
       controllable: true,
       available: false,
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
     }, {
       id: 'dev-available',
       name: 'Available Heater',
@@ -4084,11 +4136,14 @@ describe('Dry run mode', () => {
       binaryControl: { on: true },
       controllable: true,
       available: true,
-    }] as any);
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
+    }]);
 
-    const plan = {
+    const plan: DevicePlan = {
+      meta: buildPlanMeta(),
       devices: [
-        {
+        buildPlanDevice({
           id: 'dev-unavailable',
           name: 'Unavailable Heater',
           deviceType: 'temperature',
@@ -4100,8 +4155,8 @@ describe('Dry run mode', () => {
           currentTemperature: 20,
           shedAction: 'set_temperature',
           controllable: true,
-        },
-        {
+        }),
+        buildPlanDevice({
           id: 'dev-available',
           name: 'Available Heater',
           deviceType: 'temperature',
@@ -4112,11 +4167,11 @@ describe('Dry run mode', () => {
           currentTemperature: 20,
           shedAction: 'set_temperature',
           controllable: true,
-        },
+        }),
       ],
     };
 
-    await (app as any).applyPlanActions(plan);
+    await app['applyPlanActions'](plan);
 
     expect(putSpy).toHaveBeenCalledTimes(1);
     expect(putSpy).toHaveBeenCalledWith(
@@ -4132,7 +4187,7 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.setSnapshotForTests([{
+    app.deviceManager.setSnapshotForTests([{
       id: 'dev-1',
       name: 'Failing device',
       targets: [],
@@ -4141,6 +4196,8 @@ describe('Dry run mode', () => {
       binaryControl: { on: true },
       controllable: true,
       available: true,
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
     }, {
       id: 'dev-2',
       name: 'Healthy device',
@@ -4150,7 +4207,9 @@ describe('Dry run mode', () => {
       binaryControl: { on: true },
       controllable: true,
       available: true,
-    }] as any);
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
+    }]);
 
     const callback = vi.fn().mockImplementation(async (deviceId: string) => {
       if (deviceId === 'dev-1') {
@@ -4161,11 +4220,12 @@ describe('Dry run mode', () => {
       return undefined;
     });
 
-    vi.spyOn((app as any).planEngine.executor, 'applySheddingToDevice').mockImplementation(callback);
+    vi.spyOn((app.planEngine as ComposedPlanEngine)['executor'], 'applySheddingToDevice').mockImplementation(callback);
 
-    const plan = {
+    const plan: DevicePlan = {
+      meta: buildPlanMeta(),
       devices: [
-        {
+        buildPlanDevice({
           id: 'dev-1',
           name: 'Failing device',
           plannedState: 'shed',
@@ -4175,8 +4235,8 @@ describe('Dry run mode', () => {
           controllable: true,
           binaryCapabilityId: 'onoff',
           reason: fixtureDeviceReason('shed due to capacity'),
-        },
-        {
+        }),
+        buildPlanDevice({
           id: 'dev-2',
           name: 'Healthy device',
           plannedState: 'shed',
@@ -4186,11 +4246,11 @@ describe('Dry run mode', () => {
           controllable: true,
           binaryCapabilityId: 'onoff',
           reason: fixtureDeviceReason('shed due to capacity'),
-        },
+        }),
       ],
     };
 
-    await expect((app as any).applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+    await expect(app['applyPlanActions'](plan)).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
     }));
@@ -4226,14 +4286,16 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 0.7; // 0.7kW limit
-    (app as any).computeDynamicSoftLimit = () => 0.7;
+    app.computeDynamicSoftLimit = () => 0.7; // 0.7kW limit
+    app.computeDynamicSoftLimit = () => 0.7;
 
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'spotter',
         name: 'Spotter kjøkkenbenk',
         targets: [],
@@ -4246,6 +4308,8 @@ describe('Dry run mode', () => {
         lastFreshDataMs: Date.now(),
       },
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'low-temp',
         name: 'Lower-priority thermostat',
         temperature: { currentTemperature: 20, target: { id: 'target_temperature', value: 20, unit: '°C' } },
@@ -4261,11 +4325,11 @@ describe('Dry run mode', () => {
 
     // Headroom = 0.7 - 0.2 = 0.5kW. Direct restore still requires swapping out the lower-priority
     // thermostat (spotter needs ~0.25kW but the combined reserve+floor of 0.50kW makes direct fail).
-    await (app as any).powerSamplePipeline.recordPowerSample(200);
+    await app['powerSamplePipeline'].recordPowerSample(200);
 
     const plan = getLatestPlanSnapshotForTests();
-    const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
-    const lowTempPlan = plan.devices.find((d: any) => d.id === 'low-temp');
+    const spotterPlan = plan.devices.find((d: { id: string }) => d.id === 'spotter');
+    const lowTempPlan = plan.devices.find((d: { id: string }) => d.id === 'low-temp');
 
     expect(spotterPlan?.plannedState).toBe('shed');
     expect(reasonText(spotterPlan?.reason)).toBe('swap pending');
@@ -4300,14 +4364,16 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 0.7;
-    (app as any).computeDynamicSoftLimit = () => 0.7;
+    app.computeDynamicSoftLimit = () => 0.7;
+    app.computeDynamicSoftLimit = () => 0.7;
 
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    (app as any).planEngine.state.lastRestoreMs = null;
+    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.lastRestoreMs = null;
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'spotter',
         name: 'Spotter kjøkkenbenk',
         targets: [],
@@ -4320,6 +4386,8 @@ describe('Dry run mode', () => {
         lastFreshDataMs: Date.now(),
       },
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'low-temp-no-onoff',
         name: 'Lower-priority thermostat without onoff',
         temperature: { currentTemperature: 20, target: { id: 'target_temperature', value: 20, unit: '°C' } },
@@ -4333,11 +4401,11 @@ describe('Dry run mode', () => {
       },
     ]);
 
-    await (app as any).powerSamplePipeline.recordPowerSample(200);
+    await app['powerSamplePipeline'].recordPowerSample(200);
 
     const plan = getLatestPlanSnapshotForTests();
-    const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
-    const lowTempPlan = plan.devices.find((d: any) => d.id === 'low-temp-no-onoff');
+    const spotterPlan = plan.devices.find((d: { id: string }) => d.id === 'spotter');
+    const lowTempPlan = plan.devices.find((d: { id: string }) => d.id === 'low-temp-no-onoff');
 
     expect(spotterPlan?.plannedState).toBe('shed');
     expect(reasonText(spotterPlan?.reason)).toBe('swap pending');

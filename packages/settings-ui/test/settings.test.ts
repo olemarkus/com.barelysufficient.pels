@@ -9,7 +9,7 @@ vi.mock('../src/ui/toast.ts', () => ({
 }));
 
 const flushPromises = () => new Promise<void>((resolve) => {
-  const queueMicrotaskFn = (globalThis as any).queueMicrotask as ((cb: () => void) => void) | undefined;
+  const queueMicrotaskFn = (globalThis as { queueMicrotask?: (cb: () => void) => void }).queueMicrotask;
   if (typeof queueMicrotaskFn === 'function') {
     queueMicrotaskFn(() => {
       if (typeof setImmediate === 'function') {
@@ -1448,7 +1448,7 @@ describe('settings script', () => {
   });
 
   it('copies priorities and targets from the active mode when adding a new mode', async () => {
-    const store: Record<string, any> = {};
+    const store: Record<string, unknown> = {};
     const setSpy = vi.fn((key, val, cb) => {
       store[key] = val;
       if (cb) cb(null);
@@ -1482,7 +1482,7 @@ describe('settings script', () => {
     addBtn.click();
     modeInput.value = 'Cozy';
     confirmBtn.click();
-    await waitFor(() => Boolean(store.capacity_priorities?.Cozy));
+    await waitFor(() => Boolean((store.capacity_priorities as Record<string, unknown> | undefined)?.Cozy));
 
     expect(store.capacity_priorities).toEqual({
       Home: { 'dev-1': 1, 'dev-2': 2 },
@@ -1495,7 +1495,7 @@ describe('settings script', () => {
   });
 
   it('reveals the shared mode-name editor only on demand (hidden at rest)', async () => {
-    const store: Record<string, any> = {};
+    const store: Record<string, unknown> = {};
     const setSpy = vi.fn((key, val, cb) => { store[key] = val; if (cb) cb(null); });
     installedHomeyMock().set = setSpy;
     installedHomeyMock().get = vi.fn((key, cb) => {
@@ -1771,13 +1771,13 @@ describe('Plan sorting', () => {
     });
   });
 
-  const setupPlanHomeyMock = (planSnapshot: any) => {
+  const setupPlanHomeyMock = (planSnapshot: { devices?: { id: string; name: string; priority?: number }[] } | null) => {
     installSettingsHomeyMock({
       planSnapshot: planSnapshot,
       // The Overview renders the DEVICE list joined to the plan, so a plan
       // fixture alone draws no cards. Production's device list is a superset of
       // the plan's devices; mirroring the plan's ids is the faithful minimum.
-      target_devices_snapshot: (planSnapshot?.devices ?? []).map((device: any) => ({
+      target_devices_snapshot: (planSnapshot?.devices ?? []).map((device) => ({
         id: device.id,
         name: device.name,
         priority: device.priority,

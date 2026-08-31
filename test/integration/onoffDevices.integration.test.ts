@@ -132,7 +132,7 @@ describe('On/off device integration', () => {
       }),
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string; powerCapable?: boolean }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
@@ -156,7 +156,7 @@ describe('On/off device integration', () => {
       }),
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
@@ -194,7 +194,7 @@ describe('On/off device integration', () => {
       }),
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
@@ -232,7 +232,7 @@ describe('On/off device integration', () => {
       ],
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
@@ -266,7 +266,7 @@ describe('On/off device integration', () => {
       }),
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
@@ -300,7 +300,7 @@ describe('On/off device integration', () => {
       }),
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
@@ -332,7 +332,7 @@ describe('On/off device integration', () => {
       }),
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
@@ -363,7 +363,7 @@ describe('On/off device integration', () => {
       }),
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
@@ -399,7 +399,7 @@ describe('On/off device integration', () => {
         },
       }),
     });
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     apiGetSpy.mockResolvedValue({
       'device-a': buildOnOffApiDevice({
@@ -411,7 +411,7 @@ describe('On/off device integration', () => {
         },
       }),
     });
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
     await flushPromises();
     await flushPromises();
 
@@ -472,7 +472,7 @@ describe('On/off device integration', () => {
       ],
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
     await flushPromises();
     await flushPromises();
 
@@ -507,7 +507,7 @@ describe('On/off device integration', () => {
       }),
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string }>;
     expect(snapshot.find((entry) => entry.id === 'device-a')).toBeUndefined();
@@ -524,7 +524,7 @@ describe('On/off device integration', () => {
       }),
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string }>;
     expect(snapshot.find((entry) => entry.id === 'device-a')).toBeUndefined();
@@ -545,7 +545,7 @@ describe('On/off device integration', () => {
       },
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string }>;
     expect(snapshot.find((entry) => entry.id === 'device-a')).toBeUndefined();

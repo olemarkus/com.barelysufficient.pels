@@ -53,7 +53,7 @@ describe('Expected power written through the settings key', () => {
     });
 
     await vi.waitFor(() => expect(readExpectedPowerKw(app, 'dev-1')).toBeCloseTo(2.4));
-    expect((app as any).expectedPowerKwOverrides['dev-1']?.kw).toBeCloseTo(2.4);
+    expect(app.expectedPowerKwOverrides['dev-1']?.kw).toBeCloseTo(2.4);
   });
 
   it('returns to the automatic figure when the entry is cleared', async () => {
@@ -70,7 +70,7 @@ describe('Expected power written through the settings key', () => {
     mockHomeyInstance.settings.set(DEVICE_EXPECTED_POWER_OVERRIDES, {});
 
     await vi.waitFor(() => expect(readExpectedPowerKw(app, 'dev-1')).toBeCloseTo(1));
-    expect((app as any).expectedPowerKwOverrides['dev-1']).toBeUndefined();
+    expect(app.expectedPowerKwOverrides['dev-1']).toBeUndefined();
   });
 
   it('keeps the live figure when the record reads back malformed', async () => {
@@ -88,7 +88,7 @@ describe('Expected power written through the settings key', () => {
     await vi.waitFor(() => expect(
       mockHomeyInstance.settings.get(DEVICE_EXPECTED_POWER_OVERRIDES),
     ).toBe('not-a-record'));
-    expect((app as any).expectedPowerKwOverrides['dev-1']?.kw).toBeCloseTo(2.4);
+    expect(app.expectedPowerKwOverrides['dev-1']?.kw).toBeCloseTo(2.4);
     expect(readExpectedPowerKw(app, 'dev-1')).toBeCloseTo(2.4);
   });
 });

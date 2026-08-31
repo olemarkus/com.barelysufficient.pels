@@ -12,7 +12,10 @@ Answer two questions: **what is real**, and **how is the subject driven/observed
   unit.)
 - `test/integration/` — one **layer** end to end. Mock only the layer's outward seams, and
   only via the shared helpers in `test/mocks/**` and `test/helpers/**` — never ad-hoc
-  `as any`.
+  `as any` (`no-explicit-any` is an error in every test tier). A deliberate partial stub
+  widens through `partialDouble` (`test/helpers/partialDouble.ts`); a private member is
+  reached with typed element access (`service['manager']`), which a production rename
+  still breaks loudly.
 - `test/e2e/` — **runtime e2e**: nothing internal mocked; drive through the Homey SDK
   boundary (device temp/SoC, prices, clock), observe through SDK reads + **structured logs**.
   Never parse prose; if you can't assert via a structured field/capability/persisted value,

@@ -67,7 +67,7 @@ describe('Airconditioning device integration', () => {
             'aircon-a': buildAirconApiDevice(),
         });
 
-        await (app as any).refreshTargetDevicesSnapshot();
+        await app.refreshTargetDevicesSnapshot();
 
         const snapshot = getLatestTargetSnapshotForTests();
         const entry = snapshot.find((device) => device.id === 'aircon-a');

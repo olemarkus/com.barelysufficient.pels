@@ -21,7 +21,7 @@ const createSelectOption = (value: string, label: string): HTMLElement & { value
 };
 
 const flushPromises = async () => new Promise<void>((resolve) => {
-  const queueMicrotaskFn = (globalThis as any).queueMicrotask as ((cb: () => void) => void) | undefined;
+  const queueMicrotaskFn = (globalThis as { queueMicrotask?: (cb: () => void) => void }).queueMicrotask;
   if (typeof queueMicrotaskFn === 'function') {
     queueMicrotaskFn(() => resolve());
     return;

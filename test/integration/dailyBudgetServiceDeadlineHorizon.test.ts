@@ -1,3 +1,7 @@
+import type Homey from 'homey';
+import { partialDouble } from '../helpers/partialDouble';
+
+type AppHomey = Homey.App['homey'];
 // Regression: when the daily-budget hot path runs many times before tomorrow's
 // spot prices land, the cached snapshot must still expose tomorrow once prices
 // arrive so the deferred-objective `policyHorizon` can reach a next-day deadline
@@ -69,10 +73,15 @@ const buildService = (initialSettings: SettingsStore): {
   const set = vi.fn((key: string, value: unknown) => {
     settings[key] = value;
   });
-  const homey = {
-    settings: { get, set, on: vi.fn(), off: vi.fn() },
-    clock: { getTimezone: () => TZ },
-  } as any;
+  const homey = partialDouble<AppHomey>({
+    settings: partialDouble<AppHomey['settings']>({
+      get: get as AppHomey['settings']['get'],
+      set: set as AppHomey['settings']['set'],
+      on: vi.fn() as unknown as AppHomey['settings']['on'],
+      off: vi.fn() as unknown as AppHomey['settings']['off'],
+    }),
+    clock: partialDouble<AppHomey['clock']>({ getTimezone: () => TZ }),
+  });
   const service = new DailyBudgetService({
     getTimeZone: () => TZ,
     log: () => undefined,
@@ -175,7 +184,7 @@ describe('DailyBudgetService → deferred objective policy horizon', () => {
     const { service } = buildService(settings);
 
     service.updateState({ nowMs: NOW_MS });
-    const buildPreviewSpy = vi.spyOn(service as any, 'buildTomorrowPreview');
+    const buildPreviewSpy = vi.spyOn(service as unknown as Record<'buildTomorrowPreview', (...args: never[]) => unknown>, 'buildTomorrowPreview');
     for (let i = 0; i < 20; i += 1) {
       service.updateState({ nowMs: NOW_MS + (i + 1) * 10_000 });
     }

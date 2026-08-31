@@ -176,7 +176,7 @@ coordinate across worktrees because `flock` is unavailable.
 
 **Testing rules:**
 - Unit tests must have a narrow, specific purpose — avoid adding broad checks already covered by integration or regression tests.
-- Use shared, type-safe mock helpers instead of ad-hoc `as any` casts so mocks stay in sync with the production API. Runtime tests use the mock SDK in `test/mocks/homey.ts`; if a runtime change uses a new Homey SDK API, update that mock.
+- Use shared, type-safe mock helpers instead of ad-hoc `as any` casts so mocks stay in sync with the production API — `@typescript-eslint/no-explicit-any` is an **error in every test tier**, runtime and settings-UI alike. For a deliberate partial stub, widen through `partialDouble` (`test/helpers/partialDouble.ts`); for a private member, use typed element access (`app['planEngine']`) so a production rename still breaks the spec. Runtime tests use the mock SDK in `test/mocks/homey.ts`; if a runtime change uses a new Homey SDK API, update that mock.
 - **Deferred-objective / planner e2e simulate only the Homey SDK boundary** (device temperature/SoC, prices, clock) and drive the real bridge + recorder + admission — never mock PELS internals like `aheadOfHourMilestone` or the fresh/frozen dispatch. Mocking those confirms your assumptions instead of the system's behaviour (it once turned a non-existent cold-start "catastrophe" into a phantom P0). See `lib/objectives/deferredObjectives/AGENTS.md` and `test/e2e/deferredObjectiveColdStartSdkE2E.test.ts`.
 
 ### Linting and Checks

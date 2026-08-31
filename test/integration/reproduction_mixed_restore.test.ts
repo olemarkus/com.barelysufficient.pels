@@ -1,3 +1,4 @@
+import type MyApp from '../../app.ts';
 
 import { getLatestPlanSnapshotForTests, mockHomeyInstance, setMockDrivers, MockDriver, MockDevice } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
@@ -14,7 +15,7 @@ afterAll(() => {
 });
 
 describe('Mixed Type Restoration Throttling', () => {
-    let app: any;
+    let app: MyApp;
 
     beforeEach(async () => {
         currentTime = 1000000000000;
@@ -76,14 +77,13 @@ describe('Mixed Type Restoration Throttling', () => {
         await app.onInit();
 
         // Reset timers
-        (app as any).planEngine.state.lastInstabilityMs = 0;
-        (app as any).planEngine.state.lastRestoreMs = 0;
-        (app as any).planEngine.state.lastDeviceShedMs = {};
+        app.planEngine.state.lastInstabilityMs = 0;
+        app.planEngine.state.lastRestoreMs = 0;
+        app.planEngine.state.lastDeviceShedMs = {};
     });
 
     afterEach(async () => {
         await cleanupApps();
-        app = undefined;
     });
 
     test('should throttle restoration and enforce cooldown between mixed device types', async () => {
@@ -91,12 +91,12 @@ describe('Mixed Type Restoration Throttling', () => {
         // Limit 10. Usage 15.
         // Need to shed 1+1=2kW.
 
-        (app as any).computeDynamicSoftLimit = () => 0.5; // Very low limit
-        await (app as any).powerSamplePipeline.recordPowerSample(5000);
+        app.computeDynamicSoftLimit = () => 0.5; // Very low limit
+        await app['powerSamplePipeline'].recordPowerSample(5000);
 
         let plan = getLatestPlanSnapshotForTests();
-        const d1 = plan.devices.find((d: any) => d.id === 'dev-1');
-        const d2 = plan.devices.find((d: any) => d.id === 'dev-2');
+        const d1 = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
+        const d2 = plan.devices.find((d: { id: string }) => d.id === 'dev-2');
 
         // Verify both are shed
         expect(d1.plannedState).toBe('shed'); // Heater Off
@@ -107,25 +107,25 @@ describe('Mixed Type Restoration Throttling', () => {
         const mockD2 = mockHomeyInstance.drivers.getDrivers()['driver-1'].getDevices()[1];
         await mockD1.setCapabilityValue('onoff', false);
         await mockD2.setCapabilityValue('target_temperature', 10);
-        await (app as any).refreshTargetDevicesSnapshot();
+        await app.refreshTargetDevicesSnapshot();
 
         // Advance time past Shed Cooldown (60s)
         currentTime += 61000;
         vi.setSystemTime(currentTime);
 
         // 2. Headroom returns - enough for BOTH
-        (app as any).computeDynamicSoftLimit = () => 10.0;
+        app.computeDynamicSoftLimit = () => 10.0;
         // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
-        (app as any).planEngine.state.sheddingActive = false;
-        (app as any).planEngine.state.lastRecoveryMs = currentTime - 61000;
+        app.planEngine.state.sheddingActive = false;
+        app.planEngine.state.lastRecoveryMs = currentTime - 61000;
         // Headroom = 10 - 5 = 5kW. Needs 2kW.
 
         // Record sample to trigger restore plan
-        await (app as any).powerSamplePipeline.recordPowerSample(5000);
+        await app['powerSamplePipeline'].recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 
-        const d1Codes = plan.devices.find((d: any) => d.id === 'dev-1');
-        const d2Codes = plan.devices.find((d: any) => d.id === 'dev-2');
+        const d1Codes = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
+        const d2Codes = plan.devices.find((d: { id: string }) => d.id === 'dev-2');
 
         // Expect ONLY ONE to be restored in this cycle
         const d1Restored = d1Codes.plannedState !== 'shed';
@@ -140,7 +140,7 @@ describe('Mixed Type Restoration Throttling', () => {
         } else if (d2Restored) {
             await mockD2.setCapabilityValue('target_temperature', 20);
         }
-        await (app as any).refreshTargetDevicesSnapshot();
+        await app.refreshTargetDevicesSnapshot();
 
         // Assume D2 (Temp) restored (based on user logs/priority).
         // Or whoever restored, verify the OTHER restores later.
@@ -149,11 +149,11 @@ describe('Mixed Type Restoration Throttling', () => {
         // Should NOT restore the other one due to Cooldown
         currentTime += 5000; // +5s
         vi.setSystemTime(currentTime);
-        await (app as any).powerSamplePipeline.recordPowerSample(5000);
+        await app['powerSamplePipeline'].recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 
-        const d1Cycles2 = plan.devices.find((d: any) => d.id === 'dev-1');
-        const d2Cycles2 = plan.devices.find((d: any) => d.id === 'dev-2');
+        const d1Cycles2 = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
+        const d2Cycles2 = plan.devices.find((d: { id: string }) => d.id === 'dev-2');
 
         const d1RestoredC2 = d1Cycles2.plannedState !== 'shed';
         const d2RestoredC2 = d2Cycles2.plannedState !== 'shed';
@@ -183,12 +183,12 @@ describe('Mixed Type Restoration Throttling', () => {
         // 4. After Cooldown (60s)
         currentTime += 35000; // +35s (Total 40s from first restore)
         vi.setSystemTime(currentTime);
-        await (app as any).powerSamplePipeline.recordPowerSample(5000);
+        await app['powerSamplePipeline'].recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 
         // Still in restore cooldown, and the still-shed peer still says so.
-        const d1Cycles3 = plan.devices.find((d: any) => d.id === 'dev-1');
-        const d2Cycles3 = plan.devices.find((d: any) => d.id === 'dev-2');
+        const d1Cycles3 = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
+        const d2Cycles3 = plan.devices.find((d: { id: string }) => d.id === 'dev-2');
 
         if (d1Restored) {
             expect(d2Cycles3.plannedState).toBe('shed');
@@ -201,11 +201,11 @@ describe('Mixed Type Restoration Throttling', () => {
         // 5. After restore cooldown window
         currentTime += 90000; // +90s (Total 130s from first restore)
         vi.setSystemTime(currentTime);
-        await (app as any).powerSamplePipeline.recordPowerSample(5000);
+        await app['powerSamplePipeline'].recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 
-        const d1Cycles4 = plan.devices.find((d: any) => d.id === 'dev-1');
-        const d2Cycles4 = plan.devices.find((d: any) => d.id === 'dev-2');
+        const d1Cycles4 = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
+        const d2Cycles4 = plan.devices.find((d: { id: string }) => d.id === 'dev-2');
 
         expect(d1Cycles4.plannedState).not.toBe('shed');
         expect(d2Cycles4.plannedState).not.toBe('shed');

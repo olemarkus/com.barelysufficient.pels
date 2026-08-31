@@ -1,8 +1,11 @@
+import type Homey from 'homey';
+import type MyApp from '../../app.ts';
+import { partialDouble } from '../helpers/partialDouble';
 import { PriceLevel, PRICE_LEVEL_OPTIONS } from '../../lib/price/priceLevels';
 import { PlanService } from '../../lib/plan/planService';
 import { mockHomeyInstance } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { openPlanBuildGate } from '../utils/planTestUtils';
+import { openPlanBuildGate, buildPlanMeta } from '../utils/planTestUtils';
 
 describe('Price level helpers', () => {
   it('exposes enum values and option metadata', () => {
@@ -39,7 +42,7 @@ describe('Price level flow cards', () => {
 
   it('returns autocomplete options for price_level_changed trigger', async () => {
     const app = createApp();
-    (app as any).registerFlowCards();
+    app.registerFlowCards();
 
     const listener = mockHomeyInstance.flow._triggerCardAutocompleteListeners?.price_level_changed?.level;
     expect(typeof listener).toBe('function');
@@ -50,7 +53,7 @@ describe('Price level flow cards', () => {
 
   it('matches price_level_is condition against stored status', async () => {
     const app = createApp();
-    (app as any).registerFlowCards();
+    app.registerFlowCards();
     mockHomeyInstance.settings.set('pels_status', { priceLevel: PriceLevel.EXPENSIVE });
 
     const listener = mockHomeyInstance.flow._conditionCardListeners.price_level_is;
@@ -62,8 +65,8 @@ describe('Price level flow cards', () => {
 
   it('uses the last live level when persisted status is malformed', async () => {
     const app = createApp();
-    (app as any).planService = { getLastNotifiedPriceLevel: () => PriceLevel.CHEAP };
-    (app as any).registerFlowCards();
+    app.planService = partialDouble<MyApp['planService']>({ getLastNotifiedPriceLevel: () => PriceLevel.CHEAP });
+    app.registerFlowCards();
     mockHomeyInstance.settings.set('pels_status', { priceLevel: 'premium' });
 
     const listener = mockHomeyInstance.flow._conditionCardListeners.price_level_is;
@@ -72,8 +75,8 @@ describe('Price level flow cards', () => {
 
   it('uses the last live level when persisted status cannot be read', async () => {
     const app = createApp();
-    (app as any).planService = { getLastNotifiedPriceLevel: () => PriceLevel.EXPENSIVE };
-    (app as any).registerFlowCards();
+    app.planService = partialDouble<MyApp['planService']>({ getLastNotifiedPriceLevel: () => PriceLevel.EXPENSIVE });
+    app.registerFlowCards();
     vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementationOnce(() => {
       throw new Error('settings unavailable');
     });
@@ -84,10 +87,10 @@ describe('Price level flow cards', () => {
 
   it('emits price_level_changed with state when level flips', () => {
     const app = createApp();
-    (app as any).priceCoordinator = {
+    app.priceCoordinator = partialDouble<MyApp['priceCoordinator']>({
       getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
-    };
-    (app as any).registerFlowCards();
+    });
+    app.registerFlowCards();
     mockHomeyInstance.settings.set('combined_prices', {
       version: 2,
       days: { '2026-05-10': { hours: [
@@ -101,9 +104,9 @@ describe('Price level flow cards', () => {
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
-      homey: mockHomeyInstance as any,
+      homey: mockHomeyInstance as unknown as Homey.App['homey'],
       writePelsStatus: (status) => mockHomeyInstance.settings.set('pels_status', status),
-      planEngine: {} as any,
+      planEngine: partialDouble<ConstructorParameters<typeof PlanService>[0]['planEngine']>({}),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => true,
@@ -112,9 +115,9 @@ describe('Price level flow cards', () => {
     });
 
     planService.updatePelsStatus({
-      meta: { totalKw: null, softLimitKw: 0, headroomKw: null },
+      meta: buildPlanMeta({ totalKw: null, softLimitKw: 0, headroomKw: 0 }),
       devices: [],
-    } as any);
+    });
 
     const triggers = mockHomeyInstance.flow._triggerCardTriggers.price_level_changed;
     expect(triggers?.[0]?.tokens?.level).toBe(PriceLevel.CHEAP);

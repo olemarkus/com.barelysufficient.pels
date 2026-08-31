@@ -45,8 +45,31 @@ vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
 // Helper to wait for async operations
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
+type HvaKosterRow = {
+  NOK_per_kWh: number;
+  EUR_per_kWh: number;
+  EXR: number;
+  time_start: string;
+  time_end: string;
+};
+
+type GridTariffRow = {
+  dateKey: string;
+  time: number;
+  fixedFeeExVat: number;
+  energyFeeExVat: number;
+  fixedFeeIncVat: number;
+  energyFeeIncVat: number;
+};
+
+type MockHttpsRequest = {
+  on: ReturnType<typeof vi.fn>;
+  setTimeout: ReturnType<typeof vi.fn>;
+  destroy: ReturnType<typeof vi.fn>;
+};
+
 const createErroringRequest = () => {
-  const req: any = {
+  const req: MockHttpsRequest = {
     on: vi.fn(),
     setTimeout: vi.fn(),
     destroy: vi.fn(),
@@ -205,8 +228,14 @@ const mockNveGridTariffResponse = [
 ];
 
 // Helper to create a mock https response
-const createMockHttpsResponse = (statusCode: number, data: any) => {
-  const mockResponse: any = {
+type MockHttpsResponse = {
+  statusCode: number;
+  statusMessage: string;
+  on: ReturnType<typeof vi.fn>;
+};
+
+const createMockHttpsResponse = (statusCode: number, data: unknown) => {
+  const mockResponse: MockHttpsResponse = {
     statusCode,
     statusMessage: statusCode === 200 ? 'OK' : 'Error',
     on: vi.fn((event: string, callback: Function) => {
@@ -260,7 +289,7 @@ describe('Spot price fetching', () => {
     mockHomeyInstance.settings.set('price_area', 'NO1');
 
     // Mock the HTTPS response
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
       return {
@@ -301,7 +330,7 @@ describe('Spot price fetching', () => {
 
     mockHomeyInstance.settings.set('price_area', 'NO1');
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
       return {
@@ -353,7 +382,7 @@ describe('Spot price fetching', () => {
       time_start: entry.time_start.replace(/\d{4}-\d{2}-\d{2}/, todayStr),
       time_end: entry.time_end.replace(/\d{4}-\d{2}-\d{2}/, todayStr),
     }));
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, todayResponse);
       callback(response);
       return {
@@ -386,7 +415,7 @@ describe('Spot price fetching', () => {
 
     mockHomeyInstance.settings.set('price_area', 'NO1');
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(404, null);
       callback(response);
       return {
@@ -441,7 +470,7 @@ describe('Spot price fetching', () => {
     // No price_area set
 
     let capturedUrl = '';
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       capturedUrl = url;
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
@@ -474,7 +503,7 @@ describe('Spot price fetching', () => {
     const todayStr = now.toISOString().split('T')[0];
     const originalDate = global.Date;
     const MockDate = class extends Date {
-      constructor(...args: any[]) {
+      constructor(...args: unknown[]) {
         if (args.length === 0) {
           super(now.getTime());
         } else {
@@ -501,7 +530,7 @@ describe('Spot price fetching', () => {
 
     let fetchCount = 0;
     let capturedUrl = '';
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       fetchCount++;
       capturedUrl = url;
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
@@ -546,7 +575,7 @@ describe('Spot price fetching', () => {
     mockHomeyInstance.settings.set('price_area', 'NO1');
 
     let fetchCount = 0;
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       fetchCount++;
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
@@ -559,7 +588,7 @@ describe('Spot price fetching', () => {
 
     // Mock Date to return 14:00 UTC
     const MockDate = class extends Date {
-      constructor(...args: any[]) {
+      constructor(...args: unknown[]) {
         if (args.length === 0) {
           super(now.getTime());
         } else {
@@ -618,7 +647,7 @@ describe('Spot price fetching', () => {
     mockHomeyInstance.settings.set('price_area', 'NO1');
 
     let fetchCount = 0;
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       fetchCount++;
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
@@ -631,7 +660,7 @@ describe('Spot price fetching', () => {
 
     // Mock Date to return 14:00 UTC
     const MockDate = class extends Date {
-      constructor(...args: any[]) {
+      constructor(...args: unknown[]) {
         if (args.length === 0) {
           super(now.getTime());
         } else {
@@ -680,7 +709,7 @@ describe('Spot price fetching', () => {
     mockHomeyInstance.settings.set('price_area', 'NO1');
 
     let fetchCount = 0;
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       fetchCount++;
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
@@ -693,7 +722,7 @@ describe('Spot price fetching', () => {
 
     // Mock Date to return 10:00
     const MockDate = class extends Date {
-      constructor(...args: any[]) {
+      constructor(...args: unknown[]) {
         if (args.length === 0) {
           super(now.getTime());
         } else {
@@ -973,7 +1002,7 @@ describe('Grid tariff fetching', () => {
 
     const now = new Date(2026, 0, 3, 12, 0, 0);
     const MockDate = class extends Date {
-      constructor(...args: any[]) {
+      constructor(...args: unknown[]) {
         if (args.length === 0) {
           super(now.getTime());
         } else {
@@ -1045,7 +1074,7 @@ describe('Grid tariff fetching', () => {
 
     const now = new Date(2026, 0, 3, 12, 0, 0);
     const MockDate = class extends Date {
-      constructor(...args: any[]) {
+      constructor(...args: unknown[]) {
         if (args.length === 0) {
           super(now.getTime());
         } else {
@@ -1287,7 +1316,7 @@ describe('Price optimization', () => {
 
   const withMockedNow = async <T>(now: Date, run: () => Promise<T>): Promise<T> => {
     const MockDate = class extends Date {
-      constructor(...args: any[]) {
+      constructor(...args: unknown[]) {
         if (args.length === 0) {
           super(now.getTime());
         } else {
@@ -1346,7 +1375,7 @@ describe('Price optimization', () => {
 
   // Generate grid tariff data for 24 hours
   const generateMockGridTariffFor24Hours = () => {
-    const data: any[] = [];
+    const data: GridTariffRow[] = [];
     for (let hour = 0; hour < 24; hour++) {
       // Day rate (6-22) vs night rate (22-6)
       const isNight = hour < 6 || hour >= 22;
@@ -1405,7 +1434,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('nettleie_data', gridTariffData);
 
     // Mock https for the refresh that happens on init
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, generateMockPricesForAppDay(now));
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -1415,7 +1444,7 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    const combinedPrices = (app as any).priceCoordinator.getCombinedHourlyPrices();
+    const combinedPrices = app.priceCoordinator.getCombinedHourlyPrices();
 
     expect(Array.isArray(combinedPrices)).toBe(true);
     expect(combinedPrices.length).toBeGreaterThan(0);
@@ -1434,15 +1463,15 @@ describe('Price optimization', () => {
     expect(firstPrice).toHaveProperty('totalExVat');
     expect(firstPrice).toHaveProperty('totalPrice');
     expect(firstPrice.totalExVat).toBeCloseTo(
-      firstPrice.spotPriceExVat
-        + firstPrice.gridTariffExVat
-        + firstPrice.providerSurchargeExVat
-        + firstPrice.consumptionTaxExVat
-        + firstPrice.enovaFeeExVat,
+      (firstPrice.spotPriceExVat ?? NaN)
+        + (firstPrice.gridTariffExVat ?? NaN)
+        + (firstPrice.providerSurchargeExVat ?? NaN)
+        + (firstPrice.consumptionTaxExVat ?? NaN)
+        + (firstPrice.enovaFeeExVat ?? NaN),
       5,
     );
     expect(firstPrice.totalPrice).toBeCloseTo(
-      firstPrice.totalExVat * firstPrice.vatMultiplier - firstPrice.electricitySupport,
+      (firstPrice.totalExVat ?? NaN) * (firstPrice.vatMultiplier ?? NaN) - (firstPrice.electricitySupport ?? NaN),
       5,
     );
   });
@@ -1467,7 +1496,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('provider_surcharge', 12.5);
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -1477,7 +1506,7 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    const [firstPrice] = (app as any).priceCoordinator.getCombinedHourlyPrices();
+    const [firstPrice] = app.priceCoordinator.getCombinedHourlyPrices();
     expect(firstPrice.providerSurchargeExVat).toBeCloseTo(10, 5);
   });
 
@@ -1501,7 +1530,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -1511,12 +1540,12 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    const [firstPrice] = (app as any).priceCoordinator.getCombinedHourlyPrices();
+    const [firstPrice] = app.priceCoordinator.getCombinedHourlyPrices();
     const expectedSupportExVat = (spotPriceExVat - ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT) * ELECTRICITY_SUPPORT_COVERAGE;
     expect(firstPrice.electricitySupportExVat).toBeCloseTo(expectedSupportExVat, 5);
-    expect(firstPrice.electricitySupport).toBeCloseTo(expectedSupportExVat * firstPrice.vatMultiplier, 5);
+    expect(firstPrice.electricitySupport).toBeCloseTo(expectedSupportExVat * (firstPrice.vatMultiplier ?? NaN), 5);
     expect(firstPrice.totalPrice).toBeCloseTo(
-      firstPrice.totalExVat * firstPrice.vatMultiplier - firstPrice.electricitySupport,
+      (firstPrice.totalExVat ?? NaN) * (firstPrice.vatMultiplier ?? NaN) - (firstPrice.electricitySupport ?? NaN),
       5,
     );
   });
@@ -1552,7 +1581,7 @@ describe('Price optimization', () => {
       energyFeeExVat: gridTariffExVat,
     }]);
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -1562,10 +1591,10 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    const [firstPrice] = (app as any).priceCoordinator.getCombinedHourlyPrices();
+    const [firstPrice] = app.priceCoordinator.getCombinedHourlyPrices();
     expect(firstPrice.spotPriceExVat).toBeCloseTo(160, 5);
     expect(firstPrice.gridTariffExVat).toBeCloseTo(28, 5);
-    expect(firstPrice.consumptionTaxExVat * firstPrice.vatMultiplier).toBeCloseTo(8.91, 2);
+    expect((firstPrice.consumptionTaxExVat ?? NaN) * (firstPrice.vatMultiplier ?? NaN)).toBeCloseTo(8.91, 2);
     expect(firstPrice.electricitySupport).toBeCloseTo(93.38, 2);
     expect(firstPrice.totalPrice).toBeCloseTo(151.79, 2);
   });
@@ -1583,7 +1612,7 @@ describe('Price optimization', () => {
 
     // Generate 24 hours of prices starting from NOW
     const generate24HoursFromNow = () => {
-      const prices: any[] = [];
+      const prices: HvaKosterRow[] = [];
       for (let i = 0; i < 24; i++) {
         const date = new Date(now.getTime() + i * 60 * 60 * 1000);
         const hour = date.getHours();
@@ -1614,7 +1643,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', gridTariffData);
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, rawPrices);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -1625,16 +1654,16 @@ describe('Price optimization', () => {
     await flushPromises();
 
     // Find 4 cheapest hours
-    const cheapestHours = (app as any).priceCoordinator.findCheapestHours(4);
+    const cheapestHours = app.priceCoordinator.findCheapestHours(4);
 
     // Should get up to 4 hours (or fewer if not enough cheap hours exist in next 24h)
     expect(cheapestHours.length).toBeGreaterThan(0);
     expect(cheapestHours.length).toBeLessThanOrEqual(4);
 
     // Verify the returned hours are sorted by price (cheapest first)
-    const combinedPrices = (app as any).priceCoordinator.getCombinedHourlyPrices();
+    const combinedPrices = app.priceCoordinator.getCombinedHourlyPrices();
     const cheapestPrices = cheapestHours.map((hourStr: string) => {
-      const price = combinedPrices.find((p: any) => p.startsAt === hourStr);
+      const price = combinedPrices.find((p) => p.startsAt === hourStr);
       return price ? price.totalPrice : Infinity;
     });
 
@@ -1775,7 +1804,7 @@ describe('Price optimization', () => {
       },
     });
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, generateMockPricesForAppDay(new Date(now.getFullYear(), now.getMonth(), now.getDate())));
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -1824,7 +1853,7 @@ describe('Price optimization', () => {
       },
     });
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, generateMockPricesForAppDay(new Date(now.getFullYear(), now.getMonth(), now.getDate())));
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -1865,7 +1894,7 @@ describe('Price optimization', () => {
       },
     });
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, generateMockPricesForAppDay(now));
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -1899,7 +1928,7 @@ describe('Price optimization', () => {
     };
     mockHomeyInstance.settings.set('price_optimization_settings', settings);
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -1918,7 +1947,7 @@ describe('Price optimization', () => {
       driverA: new MockDriver('driverA', [waterHeater]),
     });
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -1977,7 +2006,7 @@ describe('Price optimization', () => {
     // GLOBALLY DISABLE price optimization
     mockHomeyInstance.settings.set('price_optimization_enabled', false);
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -2000,7 +2029,7 @@ describe('Price optimization', () => {
       driverA: new MockDriver('driverA', [waterHeater]),
     });
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -2041,7 +2070,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', generateMockGridTariffFor24Hours());
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, generateMockPricesForAppDay(now));
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -2052,7 +2081,7 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    const priceInfo = (app as any).priceCoordinator.getCurrentHourPriceInfo();
+    const priceInfo = app.priceCoordinator.getCurrentHourPriceInfo();
 
     expect(typeof priceInfo).toBe('string');
     expect(priceInfo).toContain('øre/kWh');
@@ -2088,7 +2117,7 @@ describe('Price optimization', () => {
       lastPowerW: 1000,
     });
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -2098,7 +2127,7 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    const priceInfo = (app as any).priceCoordinator.getCurrentHourPriceInfo();
+    const priceInfo = app.priceCoordinator.getCurrentHourPriceInfo();
     expect(priceInfo).toContain(' - norgespris adjustment ');
     expect(priceInfo).not.toContain('+ norgespris adjustment -');
   });
@@ -2154,7 +2183,7 @@ describe('Price optimization', () => {
       },
     });
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -2178,7 +2207,7 @@ describe('Price optimization', () => {
       expect(plan).toBeDefined();
       expect(plan.devices).toBeDefined();
 
-      const waterHeaterPlan = plan.devices.find((d: any) => d.id === 'water-heater-1');
+      const waterHeaterPlan = plan.devices.find((d: { id: string }) => d.id === 'water-heater-1');
       expect(waterHeaterPlan).toBeDefined();
 
       // During cheap hour, plannedTarget should be base (55) + cheapDelta (10) = 65
@@ -2220,7 +2249,7 @@ describe('Price optimization', () => {
       },
     });
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -2230,7 +2259,7 @@ describe('Price optimization', () => {
 
     // Mock Date to return hour 8
     const MockDate = class extends Date {
-      constructor(...args: any[]) {
+      constructor(...args: unknown[]) {
         if (args.length === 0) {
           super(now.getTime());
         } else {
@@ -2255,7 +2284,7 @@ describe('Price optimization', () => {
       expect(plan).toBeDefined();
       expect(plan.devices).toBeDefined();
 
-      const waterHeaterPlan = plan.devices.find((d: any) => d.id === 'water-heater-1');
+      const waterHeaterPlan = plan.devices.find((d: { id: string }) => d.id === 'water-heater-1');
       expect(waterHeaterPlan).toBeDefined();
 
       // During expensive hour, plannedTarget should be base (55) + expensiveDelta (-5) = 50
@@ -2298,7 +2327,7 @@ describe('Price optimization', () => {
       },
     });
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -2308,7 +2337,7 @@ describe('Price optimization', () => {
 
     // Mock Date to return hour 12
     const MockDate = class extends Date {
-      constructor(...args: any[]) {
+      constructor(...args: unknown[]) {
         if (args.length === 0) {
           super(now.getTime());
         } else {
@@ -2333,7 +2362,7 @@ describe('Price optimization', () => {
       expect(plan).toBeDefined();
       expect(plan.devices).toBeDefined();
 
-      const waterHeaterPlan = plan.devices.find((d: any) => d.id === 'water-heater-1');
+      const waterHeaterPlan = plan.devices.find((d: { id: string }) => d.id === 'water-heater-1');
       expect(waterHeaterPlan).toBeDefined();
 
       // During normal hour, plannedTarget should be base temperature (55), no delta applied
@@ -2376,7 +2405,7 @@ describe('Price optimization', () => {
       },
     });
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -2386,7 +2415,7 @@ describe('Price optimization', () => {
 
     // Mock Date to return hour 3
     const MockDate = class extends Date {
-      constructor(...args: any[]) {
+      constructor(...args: unknown[]) {
         if (args.length === 0) {
           super(now.getTime());
         } else {
@@ -2411,7 +2440,7 @@ describe('Price optimization', () => {
       expect(plan).toBeDefined();
       expect(plan.devices).toBeDefined();
 
-      const waterHeaterPlan = plan.devices.find((d: any) => d.id === 'water-heater-1');
+      const waterHeaterPlan = plan.devices.find((d: { id: string }) => d.id === 'water-heater-1');
       expect(waterHeaterPlan).toBeDefined();
 
       // Even during cheap hour, disabled optimization means base temp (55)
@@ -2436,7 +2465,7 @@ describe('Price optimization', () => {
     const spotPrices = buildSpotPricesForFixedNonDstAppDay((hour) => (hour === 8 ? 80 : 50));
 
     // Mock https to return spot prices when fetched
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       // Return spot prices for hvakosterstrommen API
       if (url.includes('hvakosterstrommen')) {
         const hvakosterResponse = spotPrices.map((p) => ({
@@ -2471,7 +2500,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('price_area', 'NO3');
 
     const MockDate = class extends Date {
-      constructor(...args: any[]) {
+      constructor(...args: unknown[]) {
         if (args.length === 0) {
           super(now.getTime());
         } else {
@@ -2516,7 +2545,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -2547,7 +2576,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -2575,7 +2604,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -2608,7 +2637,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('price_threshold_percent', 25);
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
@@ -2685,7 +2714,7 @@ describe('Price optimization', () => {
       structuredLog: structuredLog as unknown as import('../../lib/logging/logger').Logger,
     });
     const refreshError = Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
-    (coordinator as any).priceService.refreshGridTariffData = vi.fn().mockRejectedValue(refreshError);
+    coordinator['priceService'].refreshGridTariffData = vi.fn().mockRejectedValue(refreshError);
 
     await expect(coordinator.refreshGridTariffData(true)).rejects.toThrow('socket hang up');
 
@@ -2704,7 +2733,7 @@ describe('Price optimization', () => {
       error,
       structuredLog: structuredLog as unknown as import('../../lib/logging/logger').Logger,
     });
-    (coordinator as any).priceService.refreshSpotPrices = vi.fn().mockRejectedValue('timeout');
+    coordinator['priceService'].refreshSpotPrices = vi.fn().mockRejectedValue('timeout');
 
     await expect(coordinator.refreshSpotPrices(true)).rejects.toThrow('timeout');
 

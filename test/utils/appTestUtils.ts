@@ -5,7 +5,7 @@ import MyApp from '../../app.ts';
 import { mockHomeyInstance } from '../mocks/homey';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
-let appInstances: any[] = [];
+let appInstances: MyApp[] = [];
 
 type CreateAppOptions = {
   preserveStartupRestoreStabilization?: boolean;
@@ -30,26 +30,26 @@ const SEEDED_TOTAL_POWER_KW = 0;
  * Create an app instance and track it for cleanup.
  * Call cleanupApps() in afterEach to properly stop all intervals.
  */
-export function createApp(options: CreateAppOptions = {}): any {
-  // Access private lifecycle members through an untyped view: this test seam
-  // intentionally reaches into `initPlanEngine`/`planEngine` to suppress the
-  // startup restore-stabilization window, which the public API does not expose.
-  const app = new MyApp() as any;
+export function createApp(options: CreateAppOptions = {}): MyApp {
+  // Protected lifecycle members are reached via element access — the typed
+  // escape hatch, so a rename in the app still breaks this seam loudly. The
+  // wrap suppresses the startup restore-stabilization window, which the
+  // public API does not expose.
+  const app = new MyApp();
   if (!options.preserveStartupRestoreStabilization) {
-    const originalInitPlanEngine = app.initPlanEngine.bind(app);
-    app.initPlanEngine = (...args: unknown[]) => {
-      const result = originalInitPlanEngine(...args);
-      app.planEngine?.clearStartupRestoreStabilization?.();
-      return result;
+    const originalInitPlanEngine = app['initPlanEngine'].bind(app);
+    app['initPlanEngine'] = () => {
+      originalInitPlanEngine();
+      app.planEngine?.clearStartupRestoreStabilization();
     };
   }
   if (!options.withoutPowerMeasurement) {
     // Seed at guard construction, not after `onInit`: rebuilds that run DURING
     // startup (the price-delta-on-startup path) would otherwise still find the
-    // build gate shut. Same private-member seam as the plan-engine wrap above.
-    const originalInitCapacityGuard = app.initCapacityGuard.bind(app);
-    app.initCapacityGuard = (...args: unknown[]) => {
-      const result = originalInitCapacityGuard(...args);
+    // build gate shut. Same protected-member seam as the plan-engine wrap above.
+    const originalInitCapacityGuard = app['initCapacityGuard'].bind(app);
+    app['initCapacityGuard'] = () => {
+      originalInitCapacityGuard();
       // The VALUE latch only, deliberately: `lastTimestamp` is left alone, so
       // seeding a measurement does not also hand every test a FRESH sample and
       // silently rewrite its headroom. Production stamps both together
@@ -58,7 +58,6 @@ export function createApp(options: CreateAppOptions = {}): any {
       // `stale_hold`. Tracked in TODO.md; see the tests that assert stale-hold
       // via an absent timestamp rather than an old one.
       app.powerTracker = { ...app.powerTracker, lastPowerW: SEEDED_TOTAL_POWER_KW * 1000 };
-      return result;
     };
   }
   appInstances.push(app);

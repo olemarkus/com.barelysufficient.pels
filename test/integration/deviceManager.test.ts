@@ -146,8 +146,8 @@ describe('DeviceTransport', () => {
         });
 
         it('skips initialization if api is missing', async () => {
-            const savedApi = (homeyMock as any).api;
-            (homeyMock as any).api = undefined;
+            const savedApi = (homeyMock as { api?: unknown }).api;
+            (homeyMock as { api?: unknown }).api = undefined;
             deviceManager = new DeviceTransport(homeyMock, loggerMock);
             await deviceManager.init();
             expect(loggerMock.log).not.toHaveBeenCalledWith(expect.stringContaining('initialized'));
@@ -159,7 +159,7 @@ describe('DeviceTransport', () => {
                 reasonCode: 'sdk_api_missing',
                 realtimeListenerAttached: false,
             }));
-            (homeyMock as any).api = savedApi;
+            (homeyMock as { api?: unknown }).api = savedApi;
         });
     });
 
@@ -919,7 +919,7 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot();
 
-            expect((loggerMock as any).structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+            expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_snapshot_refresh_failed',
                 reasonCode: 'refresh_failed',
                 targetedRefresh: false,
