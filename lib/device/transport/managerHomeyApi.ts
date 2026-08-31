@@ -99,7 +99,6 @@ function logLateResponse(params: {
     // The owning app's own words. Truncated: some Homey error bodies carry a
     // full remote stack.
     responseBody: raw.slice(0, 200),
-    msg: `Homey answered ${method} ${urlPath} after PELS stopped waiting`,
   });
 }
 
@@ -118,7 +117,6 @@ function logLateFailure(params: {
     urlPath,
     elapsedMs: Date.now() - startedAtMs,
     err: normalizeError(error),
-    msg: `Homey never answered ${method} ${urlPath}`,
   });
 }
 

@@ -833,6 +833,44 @@ What remains open is below.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **The zone tree is refetched on every snapshot refresh — 538 Homey round-trips per 12 h for
+      an answer that changed zero times — and the obvious fix (a refresh interval) is unsafe as
+      written.** `refreshZoneTreeCache` (`lib/device/transport/snapshotRefresh.ts`) fetches
+      `manager/zones/zone` at the tail of every `refreshSnapshot`, roughly every 80 s. In the
+      sampled production window every one of the 538 answers was `zonesTotal: 29,
+      droppedEntries: 0`.
+
+      An interval alone reintroduces a correctness window, which is why the one added in PR #2252
+      was taken back out. Once ANY tree has committed, the multi-home actuation fence is open, and
+      `zoneAncestryPath` treats a zoneId missing from the cached tree the same as a broken parent
+      chain: `resolveDeviceHome` answers `{ homeId: MAIN_HOME_ID, source: 'fallback' }`
+      (`lib/home/membership.ts`, pinned by `test/unit/homeMembership.test.ts` "an unknown device
+      zone resolves to main"). So a device moved into a zone the stale tree has never seen is
+      planned and actuated by Main against the wrong meter for the length of the interval. Homey
+      publishes no zone event to correct it — the SDK ships no zones manager, and the realtime
+      feed subscribes only `homey:manager:devices` — so nothing shortens that window on its own.
+
+      **Where:** `refreshZoneTreeCache` in `lib/device/transport/snapshotRefresh.ts`,
+      `ZoneTreeCache` in `lib/device/transport/zoneTreeCache.ts`, and the fallback arm of
+      `resolveDeviceHome` in `lib/home/membership.ts`.
+
+      **What changes — rule on one of these:**
+      (a) *Make staleness self-correcting, then add the interval.* Mark the cache due when a
+      `device.update` reports a zoneId absent from the tree. `notifyDeviceZoneChangeContained`
+      (`lib/device/transport/deviceUpdateHandling.ts`) already computes the zone delta and holds
+      `ctx.zoneTreeCache`, so this needs no new plumbing and no `lib/device` → `lib/home` edge.
+      Covers a device moving into a new zone; does NOT cover a zone reparented with no device
+      moving, because no device's `zoneId` changes then.
+      (b) *Make staleness harmless, then add the interval.* Hold an unknown-zone device out of
+      actuation instead of falling back to Main. Removes the wrong-meter window by construction,
+      at the cost of not actuating a device whose zone cannot be resolved — which is the posture
+      already taken before the first commit, extended to a zone the tree does not know.
+      (c) *Accept the cost.* Keep the fetch on every refresh and close this entry.
+
+      **When it is done:** zone fetches per 12 h are down by at least an order of magnitude, and a
+      test drives a device into a zone the cached tree has never seen and asserts it is never
+      planned by the wrong home. Source: Codex P1 on PR #2252, 2026-08-31.
+
 - [ ] **The "Charge on solar surplus" toggle disappears when a charger is switched to an EV
       target-power preset, and stays hidden until the next device refetch.** The settings-UI gate
       reads a snapshot field the mode switch has just deleted, so it hides a control the runtime

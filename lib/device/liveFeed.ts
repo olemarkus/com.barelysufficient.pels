@@ -374,17 +374,21 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
 
   private attachDeviceUpdateListener(sub: SocketIOSocket): void {
     sub.on(DEVICES_URI, (eventName: string, data: unknown) => {
+      // Liveness counts every frame, whatever it carries.
       this.health.lastLiveEventMs = Date.now();
       this.quietEmittedAt = null;
-      (this.logger.structuredLog ?? moduleLogger).debug({
-        component: 'devices', source: 'web_api_subscription',
-        event: 'device_live_feed_event_received',
-        eventName, deviceId: extractDeviceId(data),
-        subscriptionState: this.health.subscriptionState,
-      });
+      // Cheapest discriminator first. `extractDeviceId` used to run on every
+      // frame, including the ones this branch is about to discard.
       if (eventName !== DEVICE_UPDATE_EVENT) {
         this.health.ignoredLiveEventCount += 1;
-        (this.logger.structuredLog ?? moduleLogger).info({
+        // DEBUG, not info. The feed emits a `capability.create`/`capability.delete`
+        // pair per refresh by design — 548 of each in a 12 h window — so this is
+        // the routine case, and it was the only line on this handler reaching the
+        // log while the one that names the changed device sat below it at debug.
+        // The two ignore reasons underneath stay at info: those are payloads that
+        // claimed to be a device update and were not, which is a contract
+        // violation at the seam rather than ordinary feed traffic.
+        (this.logger.structuredLog ?? moduleLogger).debug({
           component: 'devices', source: 'web_api_subscription',
           event: 'device_live_feed_event_ignored',
           eventName, ignoreReason: 'not_device_update',
@@ -392,6 +396,12 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
         });
         return;
       }
+      (this.logger.structuredLog ?? moduleLogger).debug({
+        component: 'devices', source: 'web_api_subscription',
+        event: 'device_live_feed_event_received',
+        eventName, deviceId: extractDeviceId(data),
+        subscriptionState: this.health.subscriptionState,
+      });
       if (!data || typeof data !== 'object') {
         this.health.ignoredLiveEventCount += 1;
         (this.logger.structuredLog ?? moduleLogger).info({

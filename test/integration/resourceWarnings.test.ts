@@ -34,13 +34,80 @@ describe('Homey resource warning perf logging', () => {
     vi.clearAllTimers();
   });
 
+  // The context is ~4.7 KB of walked rebuild traces and runtime spans, serialised
+  // at the moment the runtime has said memory is tight. In one production window
+  // 299 of 663 warnings arrived within 60 s of the previous, each rebuilding it.
+  it('warns every time but attaches the perf context at most once per interval', async () => {
+    const app = createApp();
+    const errorSpy = vi.spyOn(app, 'error').mockImplementation(() => undefined);
+    try {
+      await app.onInit();
+      errorSpy.mockClear();
+
+      mockHomeyInstance.emit('memwarn', { count: 2, limit: 5 });
+      mockHomeyInstance.emit('memwarn', { count: 3, limit: 5 });
+      mockHomeyInstance.emit('memwarn', { count: 4, limit: 5 });
+
+      const records = errorSpy.mock.calls.map(([m]) => JSON.parse(String(m)) as {
+        event?: string; count?: number; perf?: unknown; perfContextSuppressed?: boolean;
+      });
+      // Every warning is still logged — the arrival rate is itself the signal.
+      expect(records).toHaveLength(3);
+      expect(records.map((r) => r.count)).toEqual([2, 3, 4]);
+      expect(records.every((r) => r.event === 'homey_memwarn')).toBe(true);
+      // Only the first carries the expensive payload.
+      expect(records[0]?.perf).toBeDefined();
+      expect(records[1]?.perf).toBeUndefined();
+      expect(records[2]?.perf).toBeUndefined();
+      expect(records[1]?.perfContextSuppressed).toBe(true);
+      expect(records[2]?.perfContextSuppressed).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  // The payload summarises the same global 120 s window whichever warning
+  // carried it, so a per-kind budget would dump ~4.7 KB twice in a combined
+  // pressure episode — the one moment the interval exists to protect.
+  it('spends one context budget across cpuwarn and memwarn together', async () => {
+    const app = createApp();
+    const errorSpy = vi.spyOn(app, 'error').mockImplementation(() => undefined);
+    try {
+      await app.onInit();
+      errorSpy.mockClear();
+
+      mockHomeyInstance.emit('memwarn', { count: 2, limit: 5 });
+      mockHomeyInstance.emit('cpuwarn', { count: 2, limit: 12 });
+      mockHomeyInstance.emit('memwarn', { count: 3, limit: 5 });
+
+      const records = errorSpy.mock.calls.map(([m]) => JSON.parse(String(m)) as {
+        event?: string; perf?: unknown; perfContextSuppressed?: boolean;
+      });
+      // Every warning still logged, of both kinds.
+      expect(records.map((r) => r.event)).toEqual([
+        'homey_memwarn', 'homey_cpuwarn', 'homey_memwarn',
+      ]);
+      // ...but only the first spends the context.
+      expect(records[0]?.perf).toBeDefined();
+      expect(records[1]?.perf).toBeUndefined();
+      expect(records[1]?.perfContextSuppressed).toBe(true);
+      expect(records[2]?.perf).toBeUndefined();
+      expect(records[2]?.perfContextSuppressed).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('skips first cpuwarn count/limit after startup', async () => {
     const app = createApp();
     const logSpy = vi.spyOn(app, 'log');
     const errorSpy = vi.spyOn(app, 'error').mockImplementation(() => undefined);
     try {
       await app.onInit();
-      await app.planService.rebuildPlanFromCache('unknown');
+      // A trigger no other lane emits during this test. `unknown` is the power
+      // lane's own fallback label (`rebuildScheduler/policy.ts`), so a stray
+      // power sample would satisfy the count assertions below on its own.
+      await app.planService.rebuildPlanFromCache('flow_card');
       logSpy.mockClear();
       errorSpy.mockClear();
 
@@ -60,7 +127,7 @@ describe('Homey resource warning perf logging', () => {
     const errorSpy = vi.spyOn(app, 'error').mockImplementation(() => undefined);
     try {
       await app.onInit();
-      await app.planService.rebuildPlanFromCache('unknown');
+      await app.planService.rebuildPlanFromCache('flow_card');
       logSpy.mockClear();
       errorSpy.mockClear();
 
@@ -121,10 +188,10 @@ describe('Homey resource warning perf logging', () => {
       }));
       expect(payload.rebuilds?.window?.count).toBeGreaterThanOrEqual(1);
       expect(payload.rebuilds?.window?.reasons).toEqual(expect.objectContaining({
-        unknown: expect.any(Number),
+        flow_card: expect.any(Number),
       }));
       expect(payload.rebuilds?.recent?.[0]).toEqual(expect.objectContaining({
-        reason: 'unknown',
+        reason: 'flow_card',
         totalMs: expect.any(Number),
         ageMs: expect.any(Number),
       }));

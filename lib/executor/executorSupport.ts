@@ -28,7 +28,6 @@ export const shouldSkipUnavailable = (params: {
     event: 'plan_executor_skip_unavailable',
     deviceName: name,
     operation,
-    msg: `Capacity: skip ${operation} for ${name}, device unavailable`,
   });
   return true;
 };
@@ -63,7 +62,6 @@ export const shouldSkipShedding = (params: {
       reasonCode: 'unavailable',
       deviceId,
       deviceName,
-      msg: `Actuator: skip shedding ${deviceName}, device unavailable`,
     });
     return true;
   }
@@ -73,7 +71,6 @@ export const shouldSkipShedding = (params: {
       reasonCode: 'already_in_progress',
       deviceId,
       deviceName,
-      msg: `Actuator: skip shedding ${deviceName}, already in progress`,
     });
     return true;
   }
@@ -83,7 +80,6 @@ export const shouldSkipShedding = (params: {
       reasonCode: 'already_off',
       deviceId,
       deviceName,
-      msg: `Actuator: skip shedding ${deviceName}, already off in snapshot`,
     });
     return true;
   }

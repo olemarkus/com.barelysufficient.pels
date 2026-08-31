@@ -339,8 +339,6 @@ const logUnacknowledgedSteppedLoadCommand = (
     plannedDesiredStepId: transition?.plannedDesiredStepId ?? desiredStep.id,
     ...(commandTransport ? { commandTransport } : {}),
     ...(err === undefined ? {} : { err }),
-    msg: `Capacity: stepped-load command for ${action.name} was not acknowledged; `
-      + `awaiting telemetry for step ${desiredStep.id}`,
   });
 };
 
