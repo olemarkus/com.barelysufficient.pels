@@ -328,7 +328,7 @@ describe('device manager support helpers', () => {
     const deviceManager = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger() as unknown as Logger,
-      {},
+      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
       { lastKnownPowerKw, onLearnedPeakChanged },
     );
 

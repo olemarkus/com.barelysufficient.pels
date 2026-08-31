@@ -158,7 +158,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         expect(h.projection.getObservedState('dev1')).toBeUndefined();
 
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', true, '2026-03-20T06:00:00.000Z') });
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
         const seeded = h.projection.getObservedState('dev1');
         expect(seeded).toBeDefined();
@@ -170,7 +170,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
     it('publishes temperature only as a complete pair and removes only that facet on malformed input', async () => {
         const h = await buildHarness();
         mockApiGet.mockResolvedValue({ dev1: temperatureDevice('dev1') });
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
         const admitted = h.projection.getObservedState('dev1');
         if (!admitted || !hasObservedTemperature(admitted)) {
@@ -196,7 +196,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
             dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z'),
             dev2: onoffDevice('dev2', true, '2026-03-20T06:00:00.000Z'),
         });
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
         // Realtime deltas through the real merge.
         h.transport.injectCapabilityUpdateForTest('dev1', 'onoff', true);
@@ -214,7 +214,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
             dev1: onoffDevice('dev1', true, '2026-03-20T07:00:00.000Z'),
             dev2: onoffDevice('dev2', false, '2026-03-20T07:00:00.000Z'),
         });
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
         assertShadowEquality(h);
         h.transport.destroy();
@@ -228,7 +228,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         // post-update value is visible without any trailing refresh.
         const h = await buildHarness();
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z') });
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(false);
 
         h.transport.injectDeviceUpdateForTest(onoffDevice('dev1', true, '2026-03-20T06:05:00.000Z'));
@@ -257,7 +257,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
     it('realtime delta survives between two refreshes', async () => {
         const h = await buildHarness();
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z') });
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(false);
 
         h.transport.injectCapabilityUpdateForTest('dev1', 'onoff', true);
@@ -270,7 +270,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         const h = await buildHarness();
         // Seed currentOn=false.
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z') });
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(false);
 
         // Realtime turns it on.
@@ -281,7 +281,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         // fresher-wins keeps currentOn=true, so Event A carries true and the
         // projection stays true (no rollback).
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T05:30:00.000Z') });
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
         expect(h.transport.getSnapshotByDeviceId('dev1')?.binaryControl?.on).toBe(true);
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
@@ -298,7 +298,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         });
         try {
             mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', true, '2026-03-20T06:00:00.000Z') });
-            await h.transport.refreshSnapshot();
+            await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
 
             // Force every Date.now() to strictly increase so the optimistic
@@ -326,12 +326,12 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
     it('abandon-grace: a transient empty read defers commit, fires no refresh event, and retains prior values', async () => {
         const h = await buildHarness();
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', true, '2026-03-20T06:00:00.000Z') });
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
 
         // Empty raw read within the grace window → commit deferred → no Event A.
         mockApiGet.mockResolvedValue({});
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
         expect(h.transport.getSnapshot()).toHaveLength(1);
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
@@ -344,11 +344,11 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
             dev1: onoffDevice('dev1', true, '2026-03-20T06:00:00.000Z'),
             dev2: onoffDevice('dev2', true, '2026-03-20T06:00:00.000Z'),
         });
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         expect(h.projection.getObservedState('dev2')).toBeDefined();
 
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', true, '2026-03-20T07:00:00.000Z') });
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
         expect(h.projection.getObservedState('dev1')).toBeDefined();
         expect(h.projection.getObservedState('dev2')).toBeUndefined();
@@ -369,7 +369,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
                 },
             }),
         });
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
         const storedBefore = h.projection.getObservedState('dev1');
         const storedTarget = storedBefore?.targets.find((t) => t.id === 'target_temperature');
@@ -589,12 +589,12 @@ describe('targeted refresh merge-overlay and per-device miss grace', () => {
             dev2: onoffDevice('dev2', false, '2026-03-20T06:00:00.000Z'),
         };
         serveDevices(full, full);
-        await h.transport.refreshSnapshot(); // full refresh primes both devices
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } }); // full refresh primes both devices
         expect(ids(h)).toEqual(['dev1', 'dev2']);
 
         // Targeted refresh: dev1 reads (updated to on:true), dev2's by-id read 404s.
         serveDevices(full, { dev1: onoffDevice('dev1', true, '2026-03-20T07:00:00.000Z') });
-        await h.transport.refreshSnapshot({ targetedRefresh: true });
+        await h.transport.refreshSnapshot({ targetedRefresh: true, mainMeterSelection: { state: 'unavailable' } });
 
         // Both retained: dev1 updated, dev2 retained with its prior entry.
         expect(ids(h)).toEqual(['dev1', 'dev2']);
@@ -615,7 +615,7 @@ describe('targeted refresh merge-overlay and per-device miss grace', () => {
                 dev2: onoffDevice('dev2', false, '2026-03-20T06:00:00.000Z'),
             };
             serveDevices(full, full);
-            await h.transport.refreshSnapshot();
+            await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
             // dev2's by-id read fails; dev1 keeps reading.
             serveDevices(full, { dev1: onoffDevice('dev1', false, '2026-03-20T07:00:00.000Z') });
@@ -624,19 +624,19 @@ describe('targeted refresh merge-overlay and per-device miss grace', () => {
             // retained.
             for (let i = 0; i < TARGETED_DEVICE_MISS_GRACE_READS + 1; i += 1) {
                 vi.advanceTimersByTime(1_000); // 1s apart
-                await h.transport.refreshSnapshot({ targetedRefresh: true });
+                await h.transport.refreshSnapshot({ targetedRefresh: true, mainMeterSelection: { state: 'unavailable' } });
             }
             expect(ids(h)).toEqual(['dev1', 'dev2']);
 
             // Reset-on-success: dev2 reads again → counter + first-miss cleared.
             serveDevices(full, full);
-            await h.transport.refreshSnapshot({ targetedRefresh: true });
+            await h.transport.refreshSnapshot({ targetedRefresh: true, mainMeterSelection: { state: 'unavailable' } });
             expect(ids(h)).toEqual(['dev1', 'dev2']);
 
             // Now miss it again, spread past the wall-clock floor → dropped + pruned.
             serveDevices(full, { dev1: onoffDevice('dev1', false, '2026-03-20T08:00:00.000Z') });
             for (let i = 0; i < TARGETED_DEVICE_MISS_GRACE_READS; i += 1) {
-                await h.transport.refreshSnapshot({ targetedRefresh: true });
+                await h.transport.refreshSnapshot({ targetedRefresh: true, mainMeterSelection: { state: 'unavailable' } });
                 vi.advanceTimersByTime(TARGETED_DEVICE_MISS_GRACE_MS);
             }
             expect(ids(h)).toEqual(['dev1']);
@@ -653,12 +653,12 @@ describe('targeted refresh merge-overlay and per-device miss grace', () => {
             dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z'),
             dev2: onoffDevice('dev2', false, '2026-03-20T06:00:00.000Z'),
         }, {});
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         expect(ids(h)).toEqual(['dev1', 'dev2']);
 
         // Full refresh now returns only dev1 → dev2 is genuinely gone, dropped now.
         serveDevices({ dev1: onoffDevice('dev1', false, '2026-03-20T07:00:00.000Z') }, {});
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         expect(ids(h)).toEqual(['dev1']);
         expect(h.projection.getObservedState('dev2')).toBeUndefined();
         h.transport.destroy();
@@ -671,7 +671,7 @@ describe('targeted refresh merge-overlay and per-device miss grace', () => {
             dev2: onoffDevice('dev2', false, '2026-03-20T06:00:00.000Z'),
         };
         serveDevices(full, full);
-        await h.transport.refreshSnapshot();
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         expect(ids(h)).toEqual(['dev1', 'dev2']);
 
         // Targeted refresh: dev1 reads fine; dev2's by-id read SUCCEEDS but returns
@@ -682,7 +682,7 @@ describe('targeted refresh merge-overlay and per-device miss grace', () => {
             dev1: onoffDevice('dev1', false, '2026-03-20T07:00:00.000Z'),
             dev2: parsedOutDev2,
         });
-        await h.transport.refreshSnapshot({ targetedRefresh: true });
+        await h.transport.refreshSnapshot({ targetedRefresh: true, mainMeterSelection: { state: 'unavailable' } });
 
         expect(ids(h)).toEqual(['dev1']);
         expect(h.transport.getSnapshotByDeviceId('dev2')).toBeUndefined();

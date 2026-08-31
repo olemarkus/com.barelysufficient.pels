@@ -202,35 +202,25 @@ patch releases, not release blockers; each item carries its own source/date.
       tighten the gap ceiling — which changes export accounting for homes already running on flow.
       Persona: the prosumer on the flow source reading the Solar card (`notes/personas.md`).
 
-- [ ] **A transient `null` makes an explicitly configured Main meter read as Automatic; two
-      sibling nullable settings readers have the same destructive fallback.** `settings.get()`
-      answers an unset key and some transient misses with `null`, so the `raw === null` return in
-      `setup/mainMeterSettings.ts:22-27` bypasses the key-list check and turns a valid explicit Main
-      selection into real Automatic authority. The saved ownership remains correct, but the next
-      poll can select another physical `cumulative` meter. If that id belongs to an area,
-      `homeMainMeterAuthority` correctly fences Main before actuation; a combined/superset meter
-      whose id is not an area's configured meter cannot be detected and can still make Main respond
-      conservatively to area usage. This is the supported-runtime path formerly misdescribed by a
-      separate sampled-fence UI entry — it is a dirty producer, not configured Main/Annex
-      ownership confusion.
-      `setup/homeRuntime/homeOperatingMode.ts` (`resolveForHome`) has the same early-null shape: its
+- [ ] **Two sibling nullable settings readers turn a transient `null` read into a destructive
+      fallback.** (The third sibling — `setup/mainMeterSettings.ts` reading a transient null as
+      Automatic — dissolved with the Automatic selection itself: `null` stopped being a stored
+      value there, and every non-string read is now semantic `unavailable`.)
+      `setup/homeRuntime/homeOperatingMode.ts` (`resolveForHome`) has the early-null shape: its
       suspect ladder (`malformed_key_list` / `empty_key_list` / `missing_existing_key`) is skipped
       and a pinned meter area silently reverts to the global operating mode (different device
       targets, with no production pin-fault log).
       `setup/externalOffHoldAdapter.ts:61` is the same class with no cross-check at all: one bad
       read makes every de-opted device look un-opted, so PELS resumes loads the owner turned off
       by hand.
-      **Not a one-liner:** for all three, `null` is *also* a legitimate stored value (Automatic,
-      "no pin", cleared map), so key-presence cannot discriminate stored-null from a miss. Needs
+      **Not a one-liner:** for both, `null` is *also* a legitimate stored value ("no pin",
+      cleared map), so key-presence cannot discriminate stored-null from a miss. Needs
       a written-before marker (the pattern `externalOffHoldAdapter` already uses for its own
       state blob) or a counted grace window, decided per key. Same class as the v2.20.0
       temperature-control regression fixed in `readTemperatureControlDisabledDevicesSetting`;
-      the rule now lives in `setup/AGENTS.md`. Their unit specs
-      (`test/unit/mainMeterSettings.test.ts:14,21,25`) pin `get: () => undefined` exclusively and
-      so assert branches the device cannot reach — fix the specs with the readers. Done when a
-      real-Homey `get() => null` miss cannot replace any of the three last-good semantic values,
-      deliberate stored-null/cleared writes still take effect, and an integration test proves a
-      transient Main-meter miss neither fetches nor admits an Automatic whole-home sample.
+      the rule now lives in `setup/AGENTS.md`. Done when a real-Homey `get() => null` miss
+      cannot replace either last-good semantic value while deliberate stored-null/cleared writes
+      still take effect.
       Source: 2026-08-02 adversarial review of the temperature-control policy fix. [P1]
 
 - [ ] **The editor client still revokes a standing limit-only grant on any permission toggle.**
@@ -2825,28 +2815,6 @@ split follow-ups from this batch are fixed by the solar-accounting follow-up; re
       `backgroundTasksController.ts`, `appDebugPrimitives.ts`. Fix: add integration cover for the readout assembler
       and the collector factory before the next weather PR. Persona: contributor landing the next weather change;
       hypothesis: a coverage failure attributed to an unrelated diff costs a full CI round to diagnose. P2.
-
-- [ ] **Weather meter-scope fingerprint: resolve the Automatic arm to the sampled meter identity.** With Main on
-      Automatic, `readWholeHomeMeterScopeSignature` (`setup/weatherMeterScopeSignature.ts`) composes the constant
-      `main:automatic`. Automatic now retains a previously proven cumulative meter across report reordering, but a
-      change to the sole usable candidate can still switch the physically sampled device with no fingerprint change, so
-      records from two physical scopes mix without an invalidation. The resolved identity already exists: membership
-      publishes it through `noteResolvedHomeMeter` into `SampledMeterIdentity` (`setup/homeSampledMeterIdentity.ts`),
-      keyed to the sample's own freshness horizon. It cannot simply be consumed by the composer, because it is
-      unproven at the collector's boot-time `start()` reconcile (the primary invalidation edge): composing
-      `undefined` there would skip the boot reconcile for Automatic homes entirely, and falling back to a constant
-      arm would flip-flop against the resolved arm and strip learned state spuriously. The sound design is a
-      mid-run reconcile edge: expose the current sampled id through the
-      membership port, fire an identity-proven/changed callback from `MainMeterAuthority.noteResolvedHomeMeter`,
-      and have the wiring compare the freshly composed signature against
-      `weatherCollector.getHistoryStateSnapshot().meterScopeSignature`, driving `reloadWeatherCollector` only on a
-      real mismatch (a full restart, not an in-place strip — a mid-run strip races in-flight backfill-chain
-      continuations, which only the stop()-generation bump discards). The stable Automatic resolver removes pure
-      report-order flapping, but candidate availability can still move the identity. Do NOT re-resolve the
-      Automatic pick anywhere else — consume the membership fence's identity. Persona: multi-meter Automatic-mode
-      home (e.g. main meter plus a PV/battery cumulative device); hypothesis: a silent sampled-device switch makes
-      the energy signature blend two scopes and the advisor's suggestions drift without any visible cause. Source:
-      codex P2 on PR #1910, 2026-07-27. P2.
 
 - [ ] **The power-driven rebuild due-time floor is implemented twice.** `PlanRebuildIntentPolicy.resolveDueAtMs`
       (`setup/planRebuildIntentPolicy.ts`) and `createBundleRebuildScheduler` (`setup/homeRuntime/

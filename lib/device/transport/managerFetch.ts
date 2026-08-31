@@ -3,10 +3,10 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 import { getLogger } from '../../logging/logger';
 import { isHomeyDeviceLike } from '../../utils/types';
 import { normalizeError } from '../../utils/errorUtils';
+import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 
 const moduleLogger = getLogger('device/manager-fetch');
 import {
-  resolveAutomaticHomePowerReading,
   extractLiveGenerationWatts,
   extractLiveMeterItems,
   extractLiveMeterPowerWatts,
@@ -158,8 +158,8 @@ export type LivePowerReport = {
    * optional so a future failure branch cannot silently default to available.
    */
   reportAvailable: boolean;
-  /** Whether the configured/Automatic Main meter produced authoritative watts. */
-  homeMeterResolution: 'resolved' | 'ambiguous' | 'unavailable';
+  /** Whether the selected Main meter produced authoritative watts. */
+  homeMeterResolution: 'resolved' | 'unavailable';
   homePowerW: number | null;
   /** Gross PV generation (W) from the same payload; null when absent. `+`-only. */
   generationW: number | null;
@@ -172,29 +172,6 @@ export type LivePowerReport = {
    * machinery handles the gap.
    */
   additionalMeterPowerW: Record<string, number>;
-  /**
-   * Identity of the meter `homePowerW` was actually read from, so ownership can
-   * be proven rather than assumed. An explicit selection resolves to that id;
-   * Automatic resolves to the sole usable `cumulative` item or retains its
-   * previously proven candidate. Either may be a superset of the Main home or
-   * even a meter area's own meter. `null` means the sampled identity is UNKNOWN (no
-   * reading, or the resolved item carried no id) — never treat it as proof of
-   * non-collision.
-   */
-  resolvedHomeMeterDeviceId: string | null;
-  /**
-   * Raw number of `cumulative` rows the payload carried, including duplicate or
-   * unreadable rows. Read `homeMeterResolution` for the ambiguity decision.
-   */
-  cumulativeItemCount: number;
-  /**
-   * How many id-bearing meter items the payload carried — exactly the set the
-   * whole-home meter picker seam exposes (`extractLiveMeterItems`: `cumulative`
-   * or `device` items with an id, which explicit reads accept). Evidence for
-   * the arrangement derivation: an id-less aggregate is only proven UNNAMEABLE
-   * when no such item exists beside it.
-   */
-  selectableMeterItemCount: number;
 };
 
 /**
@@ -217,86 +194,28 @@ export const buildEmptyLivePowerReport = (): LivePowerReport => ({
   generationW: null,
   deviceCount: 0,
   additionalMeterPowerW: {},
-  resolvedHomeMeterDeviceId: null,
-  cumulativeItemCount: 0,
-  selectableMeterItemCount: 0,
 });
 
 /**
- * What ONE whole-home read proves about whether the whole-home meter can be
- * NAMED (selected by device id):
- * - `identified` — the reading resolved with a device id, so an explicit
- *   selection can pin it.
- * - `idless_aggregate_only` — a reading was produced, the report's ONLY
- *   cumulative item carries no id (the arrangement `managerEnergy.ts`
- *   documents: some Homey setups emit the whole-home aggregate id-less), AND
- *   the payload carried no other id-bearing meter item. Only then is "no
- *   selection can ever name this meter" actually proven.
- * - `unproven` — this read proves neither: nothing was read (SDK miss), several
- *   cumulative items made Automatic ambiguous, or the id-less aggregate sat
- *   beside id-bearing items the picker seam
- *   exposes (`extractLiveMeterItems`) — naming one may then be the remedy, so
- *   this read must not claim unnameability. (Whether such an item survives the
- *   picker's device-class join lives outside this payload, so the read stays
- *   agnostic rather than proving either way.) Consumers must retain their last
- *   proven answer — an SDK miss must never flip a proven arrangement in either
- *   direction.
- */
-export type HomeMeterArrangementObservation = 'identified' | 'idless_aggregate_only' | 'unproven';
-
-export const deriveHomeMeterArrangement = (
-  report: Pick<
-    LivePowerReport,
-    'homePowerW' | 'resolvedHomeMeterDeviceId' | 'cumulativeItemCount' | 'selectableMeterItemCount'
-  >,
-): HomeMeterArrangementObservation => {
-  if (report.homePowerW === null) return 'unproven';
-  if (report.resolvedHomeMeterDeviceId !== null) return 'identified';
-  return report.cumulativeItemCount === 1 && report.selectableMeterItemCount === 0
-    ? 'idless_aggregate_only'
-    : 'unproven';
-};
-
-/**
- * The whole-home reading together with the identity it came from, so the two are
- * resolved in ONE place and no consumer re-derives which meter was sampled.
- *
- * Explicit selection: the identity is the configured id, reported only when that
- * meter actually produced a reading (a miss must not claim the meter was read).
- * Automatic: both come from the sole cumulative item or the retained prior
- * candidate. An unresolved multi-cumulative report produces no Main reading.
+ * The whole-home reading for the producer-clean Main meter selection, resolved
+ * in ONE place. An `unavailable` selection still lets the caller populate the
+ * per-device lanes; the whole-home half is honestly absent — never a guess,
+ * because the only guessable answer was Automatic, and claiming it is how the
+ * wrong meter's watts become the whole home's. The identity of a resolved
+ * reading is by construction the configured id the caller already holds, so
+ * the report no longer echoes it back.
  */
 const resolveHomeReading = (
   report: unknown,
-  meterDeviceId: string | null | undefined,
-  preferredAutomaticMeterDeviceId: string | null,
-): Pick<
-  LivePowerReport,
-  'homeMeterResolution' | 'homePowerW' | 'resolvedHomeMeterDeviceId' | 'cumulativeItemCount'
-> => {
-  if (meterDeviceId != null) {
-    const homePowerW = extractLiveMeterPowerWatts(report, meterDeviceId);
-    return {
-      homeMeterResolution: homePowerW === null ? 'unavailable' : 'resolved',
-      homePowerW,
-      resolvedHomeMeterDeviceId: homePowerW === null ? null : meterDeviceId,
-      cumulativeItemCount: 0,
-    };
+  selection: MainMeterSelection,
+): Pick<LivePowerReport, 'homeMeterResolution' | 'homePowerW'> => {
+  if (selection.state !== 'resolved') {
+    return { homeMeterResolution: 'unavailable', homePowerW: null };
   }
-  const automatic = resolveAutomaticHomePowerReading(report, preferredAutomaticMeterDeviceId);
-  if (automatic.state !== 'resolved') {
-    return {
-      homeMeterResolution: automatic.state,
-      homePowerW: null,
-      resolvedHomeMeterDeviceId: null,
-      cumulativeItemCount: automatic.cumulativeItemCount,
-    };
-  }
+  const homePowerW = extractLiveMeterPowerWatts(report, selection.meterDeviceId);
   return {
-    homeMeterResolution: 'resolved',
-    homePowerW: automatic.watts,
-    resolvedHomeMeterDeviceId: automatic.deviceId,
-    cumulativeItemCount: automatic.cumulativeItemCount,
+    homeMeterResolution: homePowerW === null ? 'unavailable' : 'resolved',
+    homePowerW,
   };
 };
 
@@ -356,19 +275,16 @@ export async function fetchLiveGenerationW(logger: Logger): Promise<LiveGenerati
 export async function fetchLivePowerReport(params: {
   logger: Logger;
   debugStructured?: StructuredDebugEmitter;
-  /** Resolved explicit whole-home meter id; null/undefined = Automatic. */
-  meterDeviceId?: string | null;
-  /** Previously resolved Automatic meter id, used only to retain a candidate. */
-  preferredAutomaticMeterDeviceId?: string | null;
-  /** Additional per-meter reading requests (sub-home meters); empty/absent = none. */
-  additionalMeterDeviceIds?: readonly string[];
+  /** Producer-clean Main meter selection; `unavailable` nulls the whole-home half. */
+  meterSelection: MainMeterSelection;
+  /** Additional per-meter reading requests (sub-home meters); empty = none. */
+  additionalMeterDeviceIds: readonly string[];
 }): Promise<LivePowerReport> {
   const {
     logger,
     debugStructured,
-    meterDeviceId,
-    preferredAutomaticMeterDeviceId = null,
-    additionalMeterDeviceIds = [],
+    meterSelection,
+    additionalMeterDeviceIds,
   } = params;
   try {
     const report = await getEnergyLiveReport();
@@ -380,15 +296,9 @@ export async function fetchLivePowerReport(params: {
       return buildEmptyLivePowerReport();
     }
     const byDeviceId = extractLivePowerWattsByDeviceId(report);
-    const {
-      homeMeterResolution,
-      homePowerW,
-      resolvedHomeMeterDeviceId,
-      cumulativeItemCount,
-    } = resolveHomeReading(report, meterDeviceId, preferredAutomaticMeterDeviceId);
+    const { homeMeterResolution, homePowerW } = resolveHomeReading(report, meterSelection);
     const generationW = extractLiveGenerationWatts(report);
     const additionalMeterPowerW = extractAdditionalMeterPowerW(report, additionalMeterDeviceIds);
-    const selectableMeterItemCount = extractLiveMeterItems(report).length;
     const deviceCount = Object.keys(byDeviceId).length;
     (debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
       event: 'energy_live_report_received',
@@ -397,10 +307,9 @@ export async function fetchLivePowerReport(params: {
       homePowerW,
       generationW,
       deviceCount,
-      // Always logged, explicit or Automatic: an unattributed whole-home reading
-      // is exactly what made a wrong-meter sample undiagnosable.
-      resolvedHomeMeterDeviceId,
-      ...(meterDeviceId != null ? { meterDeviceId } : { cumulativeItemCount, selectableMeterItemCount }),
+      // Always logged: an unattributed whole-home reading is exactly what made
+      // a wrong-meter sample undiagnosable.
+      ...(meterSelection.state === 'resolved' ? { meterDeviceId: meterSelection.meterDeviceId } : {}),
       ...(additionalMeterDeviceIds.length > 0
         ? {
           additionalMetersRequested: additionalMeterDeviceIds.length,
@@ -416,9 +325,6 @@ export async function fetchLivePowerReport(params: {
       generationW,
       deviceCount,
       additionalMeterPowerW,
-      resolvedHomeMeterDeviceId,
-      cumulativeItemCount,
-      selectableMeterItemCount,
     };
   } catch (error) {
     logDeviceTransportRuntimeError(logger, { event: 'energy_live_report_fetch_failed' }, error);
@@ -454,7 +360,7 @@ export async function censusLiveSoleCumulativeMeter(): Promise<LiveSoleCumulativ
  * the meter-selection reader resolves against, so the picker offers exactly
  * what a selection can read (no capability/class proxy over the device list).
  * A read failure or uninitialised client resolves to an empty list, never a
- * throw: the picker then shows only Automatic and re-fetches on the next open.
+ * throw: the picker then shows only its placeholder and re-fetches on the next open.
  */
 export async function fetchLiveMeterItems(): Promise<LiveMeterItem[]> {
   try {

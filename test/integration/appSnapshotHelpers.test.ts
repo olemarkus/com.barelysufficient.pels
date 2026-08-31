@@ -20,7 +20,7 @@ const mockPowerSource = () => normalizePowerSource(mockHomeyInstance.settings.ge
 // Automatic is these fixtures' whole-home meter posture. Stated once here and
 // passed in, because the helper takes the selection as a required dep: there is
 // no in-class default that could quietly stand in for an unread selection.
-const automaticMeterSelection = (): MainMeterSelection => ({ state: 'resolved', meterDeviceId: null });
+const mainMeterSelection = (): MainMeterSelection => ({ state: 'resolved', meterDeviceId: 'm-area' });
 
 describe('appSnapshotHelpers', () => {
   beforeEach(() => {
@@ -58,7 +58,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      resolveMainMeterSelection: automaticMeterSelection,
+      resolveMainMeterSelection: mainMeterSelection,
     });
 
     helper.startPeriodicSnapshotRefresh();
@@ -93,7 +93,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      resolveMainMeterSelection: automaticMeterSelection,
+      resolveMainMeterSelection: mainMeterSelection,
     });
     const refresh = vi.spyOn(helper, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     helper.startPeriodicSnapshotRefresh();
@@ -129,7 +129,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      resolveMainMeterSelection: automaticMeterSelection,
+      resolveMainMeterSelection: mainMeterSelection,
       getNextTargetPowerProbe: () => ({ deviceId: 'sub-home-charger', dueAtMs: 100 }),
       rebuildOwningHomePlanForDevice,
     });
@@ -166,7 +166,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      resolveMainMeterSelection: automaticMeterSelection,
+      resolveMainMeterSelection: mainMeterSelection,
     });
     const refresh = vi.spyOn(helper, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
       new Promise<void>((resolve) => { finishRefresh = resolve; })
@@ -223,7 +223,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      resolveMainMeterSelection: automaticMeterSelection,
+      resolveMainMeterSelection: mainMeterSelection,
     });
     const scheduleTargetPowerProbe = vi.spyOn(helper, 'scheduleTargetPowerProbe');
 
@@ -294,7 +294,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated,
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      resolveMainMeterSelection: automaticMeterSelection,
+      resolveMainMeterSelection: mainMeterSelection,
     });
 
     await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
@@ -362,7 +362,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      resolveMainMeterSelection: automaticMeterSelection,
+      resolveMainMeterSelection: mainMeterSelection,
     });
 
     await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
@@ -428,7 +428,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      resolveMainMeterSelection: automaticMeterSelection,
+      resolveMainMeterSelection: mainMeterSelection,
     });
 
     await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
@@ -469,7 +469,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests,
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      resolveMainMeterSelection: automaticMeterSelection,
+      resolveMainMeterSelection: mainMeterSelection,
     });
     helperRef.current = helper;
     helper['snapshotRefreshStopped'] = false;
@@ -515,7 +515,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      resolveMainMeterSelection: automaticMeterSelection,
+      resolveMainMeterSelection: mainMeterSelection,
     });
     helper['snapshotRefreshStopped'] = false;
 
@@ -566,7 +566,7 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      resolveMainMeterSelection: automaticMeterSelection,
+      resolveMainMeterSelection: mainMeterSelection,
     });
     helper['snapshotRefreshStopped'] = false;
 
@@ -612,12 +612,11 @@ describe('appSnapshotHelpers', () => {
     const buildHelper = (
       refreshSnapshot: ReturnType<typeof vi.fn>,
       recordPowerSample: ReturnType<typeof vi.fn>,
-      noteAdmittedAutomaticHomeMeter: ReturnType<typeof vi.fn>,
-      resolveMainMeterSelection: () => MainMeterSelection = automaticMeterSelection,
+      resolveMainMeterSelection: () => MainMeterSelection = mainMeterSelection,
     ) => new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
-      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot: refreshSnapshot as DeviceTransport['refreshSnapshot'], noteAdmittedAutomaticHomeMeter: noteAdmittedAutomaticHomeMeter as DeviceTransport['noteAdmittedAutomaticHomeMeter'] }),
+      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot: refreshSnapshot as DeviceTransport['refreshSnapshot'] }),
       getPlanEngine: () => undefined,
       getPlanService: () => partialDouble<PlanService>({
         syncLivePlanState: vi.fn(async () => false),
@@ -640,25 +639,23 @@ describe('appSnapshotHelpers', () => {
       resolveMainMeterSelection,
     });
 
-    const AREA_SAMPLE = { powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area' };
+    const AREA_SAMPLE = { powerW: 4_200, meterDeviceId: 'm-area' };
 
     const runRefresh = async (
       options: Parameters<AppSnapshotHelpers['refreshTargetDevicesSnapshot']>[0],
-      resolveSelection: () => MainMeterSelection = automaticMeterSelection,
+      resolveSelection: () => MainMeterSelection = mainMeterSelection,
       pipelineAdmission: PowerSampleAdmission = { state: 'admitted', revision: 1 },
     ) => {
       const refreshSnapshot = vi.fn().mockResolvedValue(AREA_SAMPLE);
       const recordPowerSample = vi.fn().mockResolvedValue(pipelineAdmission);
-      const noteAdmittedAutomaticHomeMeter = vi.fn();
       const helper = buildHelper(
         refreshSnapshot,
         recordPowerSample,
-        noteAdmittedAutomaticHomeMeter,
         resolveSelection,
       );
       await helper.refreshTargetDevicesSnapshot(options);
       expect(refreshSnapshot).toHaveBeenCalled();
-      return { noteAdmittedAutomaticHomeMeter, recordPowerSample, refreshSnapshot };
+      return { recordPowerSample, refreshSnapshot };
     };
 
     // The reason the selection is a required dep and not an optional with an
@@ -667,7 +664,7 @@ describe('appSnapshotHelpers', () => {
     // for a home whose selection nobody could read.
     it('an unreadable selection reaches the fetch as unavailable and records nothing', async () => {
       mockHomeyInstance.settings.set('power_source', 'homey_energy');
-      const { noteAdmittedAutomaticHomeMeter, recordPowerSample, refreshSnapshot } = await runRefresh(
+      const { recordPowerSample, refreshSnapshot } = await runRefresh(
         {},
         () => ({ state: 'unavailable' }),
       );
@@ -675,66 +672,50 @@ describe('appSnapshotHelpers', () => {
         expect.objectContaining({ mainMeterSelection: { state: 'unavailable' } }),
       );
       expect(recordPowerSample).not.toHaveBeenCalled();
-      expect(noteAdmittedAutomaticHomeMeter).not.toHaveBeenCalled();
     });
 
-    it('an ordinary Automatic refresh records and retains the sample identity', async () => {
+    it('an ordinary refresh records the identity-carrying sample', async () => {
       mockHomeyInstance.settings.set('power_source', 'homey_energy');
-      const { noteAdmittedAutomaticHomeMeter, recordPowerSample } = await runRefresh({});
+      const { recordPowerSample } = await runRefresh({});
       expect(recordPowerSample).toHaveBeenCalledTimes(1);
       // The identity arrives ON the recorded sample — the pipeline publishes it
       // from exactly this object, so sample and identity cannot diverge.
       expect(recordPowerSample).toHaveBeenCalledWith(AREA_SAMPLE);
-      expect(noteAdmittedAutomaticHomeMeter).toHaveBeenCalledWith('m-area');
     });
 
     it('the post-actuation refresh records nothing, so its identity claim dies with the sample', async () => {
       mockHomeyInstance.settings.set('power_source', 'homey_energy');
-      const { noteAdmittedAutomaticHomeMeter, recordPowerSample } = await runRefresh({
+      const { recordPowerSample } = await runRefresh({
         targeted: true,
         recordHomeyEnergySample: false,
       });
       expect(recordPowerSample).not.toHaveBeenCalled();
-      expect(noteAdmittedAutomaticHomeMeter).not.toHaveBeenCalled();
     });
 
     it('flow mode records nothing', async () => {
       mockHomeyInstance.settings.set('power_source', 'flow');
-      const { noteAdmittedAutomaticHomeMeter, recordPowerSample } = await runRefresh({});
+      const { recordPowerSample } = await runRefresh({});
       expect(recordPowerSample).not.toHaveBeenCalled();
-      expect(noteAdmittedAutomaticHomeMeter).not.toHaveBeenCalled();
     });
 
     it('a mid-flight meter selection change records nothing', async () => {
       mockHomeyInstance.settings.set('power_source', 'homey_energy');
       let call = 0;
-      const { noteAdmittedAutomaticHomeMeter, recordPowerSample } = await runRefresh({}, () => {
+      const { recordPowerSample } = await runRefresh({}, () => {
         call += 1;
         return { state: 'resolved', meterDeviceId: call === 1 ? 'm-old' : 'm-new' };
       });
       expect(recordPowerSample).not.toHaveBeenCalled();
-      expect(noteAdmittedAutomaticHomeMeter).not.toHaveBeenCalled();
     });
 
-    it('an admitted explicit-meter snapshot does not influence Automatic', async () => {
+    it('a superseded snapshot still hands the pipeline its sample — coalescing owns the drop', async () => {
       mockHomeyInstance.settings.set('power_source', 'homey_energy');
-      const { noteAdmittedAutomaticHomeMeter, recordPowerSample } = await runRefresh(
+      const { recordPowerSample } = await runRefresh(
         {},
-        () => ({ state: 'resolved', meterDeviceId: 'm-area' }),
-      );
-      expect(recordPowerSample).toHaveBeenCalledWith(AREA_SAMPLE);
-      expect(noteAdmittedAutomaticHomeMeter).toHaveBeenCalledWith(null);
-    });
-
-    it('a superseded Automatic snapshot does not influence the retained meter', async () => {
-      mockHomeyInstance.settings.set('power_source', 'homey_energy');
-      const { noteAdmittedAutomaticHomeMeter, recordPowerSample } = await runRefresh(
-        {},
-        automaticMeterSelection,
+        mainMeterSelection,
         { state: 'superseded', revision: 1, latestRevision: 2 },
       );
       expect(recordPowerSample).toHaveBeenCalledWith(AREA_SAMPLE);
-      expect(noteAdmittedAutomaticHomeMeter).toHaveBeenCalledWith(null);
     });
 
     it('an unreadable power source surfaces as a failed refresh, recording nothing', async () => {
@@ -743,15 +724,13 @@ describe('appSnapshotHelpers', () => {
       // refresh fails visibly, and neither the sample nor its identity land.
       const refreshSnapshot = vi.fn().mockResolvedValue(AREA_SAMPLE);
       const recordPowerSample = vi.fn().mockResolvedValue({ state: 'admitted', revision: 1 });
-      const noteAdmittedAutomaticHomeMeter = vi.fn();
-      const helper = buildHelper(refreshSnapshot, recordPowerSample, noteAdmittedAutomaticHomeMeter);
+      const helper = buildHelper(refreshSnapshot, recordPowerSample);
       helper['deps'].getPowerSource = () => {
         throw new Error('settings unavailable');
       };
 
       await expect(helper.refreshTargetDevicesSnapshot({})).rejects.toThrow('settings unavailable');
       expect(recordPowerSample).not.toHaveBeenCalled();
-      expect(noteAdmittedAutomaticHomeMeter).not.toHaveBeenCalled();
     });
   });
 });

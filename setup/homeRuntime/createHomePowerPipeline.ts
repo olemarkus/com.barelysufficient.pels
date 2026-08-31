@@ -113,14 +113,8 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     // ctx: membership is wired after the pipeline.
     ...(deps.homeId === MAIN_HOME_ID
       ? {
-        noteResolvedHomeMeter: (deviceId: string | null, sampleAtMs: number) => (
+        noteResolvedHomeMeter: (deviceId: string, sampleAtMs: number) => (
           ctx.homeMembership?.noteResolvedHomeMeter(deviceId, sampleAtMs)
-        ),
-        // Same admitted ingest, same latch rules (`unproven` never overwrites):
-        // the arrangement is the config surface's evidence for the id-less
-        // whole-home-aggregate refusal, so it must ride the identical clock.
-        noteHomeMeterArrangement: (observation, _sampleAtMs) => (
-          ctx.homeMembership?.noteHomeMeterArrangement(observation)
         ),
       }
       : {}),

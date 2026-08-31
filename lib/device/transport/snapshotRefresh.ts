@@ -566,13 +566,15 @@ async function resolveLivePowerForRefresh(
     const livePowerReport = includeLivePower
         ? await fetchLivePowerReport(ctx, mainMeterSelection)
         : buildEmptyLivePowerReport();
-    const homePowerSample = includeLivePower ? updateHomePowerFromReport(ctx, livePowerReport) : null;
+    const homePowerSample = includeLivePower
+        ? updateHomePowerFromReport(ctx, livePowerReport, mainMeterSelection)
+        : null;
     return { livePowerReport, homePowerSample };
 }
 
 export async function refreshSnapshot(
     ctx: TransportContext,
-    options: SnapshotRefreshOptions = {},
+    options: SnapshotRefreshOptions,
 ): Promise<HomePowerSampleWithIdentity | null> {
     const stopSpan = startRuntimeSpan('device_snapshot_refresh');
     const start = Date.now();
@@ -585,12 +587,7 @@ export async function refreshSnapshot(
         const { livePowerReport, homePowerSample } = await resolveLivePowerForRefresh(
             ctx,
             options.includeLivePower !== false,
-            // Resolved once, here, and required from this line inward. A caller
-            // that captured a selection before its cycle began passes it so the
-            // report cannot land under a meter the owner switched to mid-flight;
-            // a caller with no such capture gets the authority's answer now.
-            // Neither path invents one.
-            options.mainMeterSelection ?? ctx.resolveMainMeterSelection(),
+            options.mainMeterSelection,
         );
         const effectiveList = observeBatteryStateFromList(
             ctx,

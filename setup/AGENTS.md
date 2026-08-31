@@ -24,19 +24,21 @@
   fenced setpoint control on every thermostat of every install that had never touched the
   toggle. `readTemperatureControlDisabledDevicesSetting` (`appSettingsHelpers.ts`) and
   `readConfiguredPowerSource` (`powerSourceSettings.ts`) are the reference readers.
-  Where `null` is itself a stored value — the Main meter's "Automatic" — the read value cannot
-  distinguish stored-null from a transient miss. The key list can prove only whether the key is
-  written; a listed key plus a `null` value still needs producer-owned last-good state, a companion
-  marker, or a bounded grace policy. See the outstanding TODO for `mainMeterSettings.ts` and
-  `homeRuntime/homeOperatingMode.ts`, which still gate on `undefined` alone.
+  Where `null` is itself a stored value, the read value cannot distinguish stored-null from a
+  transient miss. The key list can prove only whether the key is written; a listed key plus a
+  `null` value still needs producer-owned last-good state, a companion marker, or a bounded grace
+  policy. (The Main meter's retired "Automatic" was the canonical case; since the boot-time
+  meter-authority migration, `mainMeterSettings.ts` reads every non-string as semantic
+  `unavailable`.) See the outstanding TODO for `homeRuntime/homeOperatingMode.ts`, which still
+  gates on `undefined` alone.
 - **Configured meter ownership and sampled-meter provenance are different facts.** The
-  `ui_homes_save` seam requires an explicit Main meter before any meter area can run, refuses the
-  same explicit meter on both sides, and refuses switching Main back to Automatic while areas run.
+  `ui_homes_save` seam requires an explicit Main meter before any meter area can run and refuses
+  the same explicit meter on both sides (there is no Automatic to switch back to).
   A valid current configuration therefore cannot assign an Annex/area meter to Main. The sampled
   fence in `homeMainMeterAuthority.ts` is defence for a different boundary: legacy or externally
   malformed persisted state, an in-flight sample while such state is repaired, a fresh restored
-  sample whose meter identity did not survive restart, and adapter failures such as the outstanding
-  `mainMeterSettings.ts` null-read defect above. Describe those states as **sample provenance being
+  sample whose meter identity did not survive restart, and transient adapter failures. Describe
+  those states as **sample provenance being
   temporarily untrusted**, never as PELS confusing two valid configured owners. Fix a supported
   path at the dirty producer; do not weaken the save invariant or turn the defensive fence into a
   normal Multiple meters journey.

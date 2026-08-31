@@ -151,11 +151,15 @@ describe('fetchLivePowerReport', () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [
         { type: 'device', id: 'dev1', values: { W: 800 } },
-        { type: 'cumulative', values: { W: 3200 } },
+        { type: 'cumulative', id: 'meter-main', values: { W: 3200 } },
       ],
     });
 
-    const result = await fetchLivePowerReport({ logger });
+    const result = await fetchLivePowerReport({
+      logger,
+      meterSelection: { state: 'resolved', meterDeviceId: 'meter-main' },
+      additionalMeterDeviceIds: [],
+    });
 
     expect(result.byDeviceId).toEqual({ dev1: 800 });
     expect(result.homePowerW).toBe(3200);
@@ -170,49 +174,37 @@ describe('fetchLivePowerReport', () => {
       ],
     });
 
-    const result = await fetchLivePowerReport({ logger, meterDeviceId: 'han-meter' });
+    const result = await fetchLivePowerReport({
+      logger,
+      meterSelection: { state: 'resolved', meterDeviceId: 'han-meter' },
+      additionalMeterDeviceIds: [],
+    });
 
     expect(result.homePowerW).toBe(3200);
     expect(result.byDeviceId).toEqual({ 'han-meter': 3200 });
   });
 
-  it('classifies unresolved Automatic candidates as ambiguous instead of choosing by order', async () => {
+  it('nulls the whole-home half on an unavailable selection while keeping the per-device lanes', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [
         { type: 'cumulative', id: 'meter-rental', values: { W: 5_000 } },
-        { type: 'cumulative', id: 'meter-main', values: { W: 3_000 } },
-      ],
-    });
-
-    const result = await fetchLivePowerReport({ logger });
-
-    expect(result).toMatchObject({
-      homeMeterResolution: 'ambiguous',
-      homePowerW: null,
-      resolvedHomeMeterDeviceId: null,
-      cumulativeItemCount: 2,
-    });
-  });
-
-  it('uses a preferred Automatic candidate without considering its relative power', async () => {
-    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
-      items: [
-        { type: 'cumulative', id: 'meter-rental', values: { W: 5_000 } },
-        { type: 'cumulative', id: 'meter-main', values: { W: 3_000 } },
+        { type: 'device', id: 'dev1', values: { W: 800 } },
       ],
     });
 
     const result = await fetchLivePowerReport({
       logger,
-      preferredAutomaticMeterDeviceId: 'meter-main',
+      meterSelection: { state: 'unavailable' },
+      additionalMeterDeviceIds: [],
     });
 
+    // No guessing: there is no Automatic to fall back to, so an unknown
+    // authority yields no whole-home reading — never another meter's watts.
     expect(result).toMatchObject({
-      homeMeterResolution: 'resolved',
-      homePowerW: 3_000,
-      resolvedHomeMeterDeviceId: 'meter-main',
-      cumulativeItemCount: 2,
+      homeMeterResolution: 'unavailable',
+      homePowerW: null,
     });
+    expect(result.byDeviceId).toEqual({ dev1: 800 });
   });
 
   it('resolves homePowerW to null when the selected meter is missing, keeping the rest of the report', async () => {
@@ -224,7 +216,11 @@ describe('fetchLivePowerReport', () => {
       ],
     });
 
-    const result = await fetchLivePowerReport({ logger, meterDeviceId: 'gone-meter' });
+    const result = await fetchLivePowerReport({
+      logger,
+      meterSelection: { state: 'resolved', meterDeviceId: 'gone-meter' },
+      additionalMeterDeviceIds: [],
+    });
 
     expect(result.homePowerW).toBeNull();
     expect(result.byDeviceId).toEqual({ dev1: 800 });
@@ -234,7 +230,11 @@ describe('fetchLivePowerReport', () => {
   it('returns empty results when REST client is not initialized', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
 
-    const result = await fetchLivePowerReport({ logger });
+    const result = await fetchLivePowerReport({
+      logger,
+      meterSelection: { state: 'resolved', meterDeviceId: 'meter-main' },
+      additionalMeterDeviceIds: [],
+    });
 
     expect(result.byDeviceId).toEqual({});
     expect(result.homePowerW).toBeNull();
@@ -245,7 +245,11 @@ describe('fetchLivePowerReport', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockRejectedValue(new Error('API down'));
 
-    const result = await fetchLivePowerReport({ logger });
+    const result = await fetchLivePowerReport({
+      logger,
+      meterSelection: { state: 'resolved', meterDeviceId: 'meter-main' },
+      additionalMeterDeviceIds: [],
+    });
 
     expect(result.byDeviceId).toEqual({});
     expect(result.homePowerW).toBeNull();
@@ -286,59 +290,23 @@ describe('transport Main-meter authority', () => {
     expect(report.additionalMeterPowerW).toEqual({ 'sub-meter': 1_200 });
   });
 
-  it('retains the sole Automatic meter when a second cumulative item appears first', async () => {
-    vi.spyOn(homeyApi, 'getEnergyLiveReport')
-      .mockResolvedValueOnce({
-        items: [{ type: 'cumulative', id: 'meter-main', values: { W: 3_000 } }],
-      })
-      .mockResolvedValueOnce({
-        items: [
-          { type: 'cumulative', id: 'meter-rental', values: { W: 5_000 } },
-          { type: 'cumulative', id: 'meter-main', values: { W: 3_200 } },
-        ],
-      });
-    const automaticHomeMeterState = { preferredDeviceId: null as string | null };
-    const ctx = {
-      logger,
-      automaticHomeMeterState,
-      resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
-      providers: {},
-    } as unknown as TransportContext;
-
-    const first = await pollHomePowerWithMeterFanOut(ctx, () => true);
-    automaticHomeMeterState.preferredDeviceId = first?.automaticHomeMeterDeviceId ?? null;
-    const reordered = await pollHomePowerWithMeterFanOut(ctx, () => true);
-
-    expect(first).toMatchObject({
-      powerW: 3_000,
-      resolvedHomeMeterDeviceId: 'meter-main',
-    });
-    expect(automaticHomeMeterState.preferredDeviceId).toBe('meter-main');
-    expect(reordered).toMatchObject({
-      powerW: 3_200,
-      resolvedHomeMeterDeviceId: 'meter-main',
-    });
-  });
-
-  it('returns an Automatic candidate without retaining it before admission', async () => {
+  it('stamps the poll sample with the resolved selection identity', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
-      items: [{ type: 'cumulative', id: 'meter-stale', values: { W: 3_000 } }],
+      items: [{ type: 'cumulative', id: 'meter-main', values: { W: 3_000 } }],
     });
-    const automaticHomeMeterState = { preferredDeviceId: null as string | null };
     const ctx = {
       logger,
-      automaticHomeMeterState,
-      resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+      resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }),
       providers: {},
     } as unknown as TransportContext;
 
-    const sample = await pollHomePowerWithMeterFanOut(ctx, () => false);
-
-    expect(automaticHomeMeterState.preferredDeviceId).toBeNull();
-    expect(sample?.automaticHomeMeterDeviceId).toBe('meter-stale');
+    await expect(pollHomePowerWithMeterFanOut(ctx, () => true)).resolves.toEqual({
+      powerW: 3_000,
+      meterDeviceId: 'meter-main',
+    });
   });
 
-  it('fans out area readings when Automatic Main is ambiguous', async () => {
+  it('fans out area readings while the Main selection is unavailable', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [
         { type: 'cumulative', id: 'meter-main', values: { W: 3_000 } },
@@ -348,8 +316,7 @@ describe('transport Main-meter authority', () => {
     const onAdditionalMeterReadings = vi.fn();
     const ctx = {
       logger,
-      automaticHomeMeterState: { preferredDeviceId: null },
-      resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+      resolveMainMeterSelection: () => ({ state: 'unavailable' as const }),
       providers: {
         getAdditionalMeterDeviceIds: () => ['meter-area'],
         onAdditionalMeterReadings,
@@ -374,7 +341,7 @@ describe('resolved home meter identity on the sample', () => {
     vi.restoreAllMocks();
   });
 
-  // Drives the REAL `DeviceTransport.refreshSnapshot()` pipeline, not the
+  // Drives the REAL `DeviceTransport.refreshSnapshot` pipeline, not the
   // wrapper in isolation: this return value is what `AppSnapshotHelpers` hands
   // to `recordPowerSample`, so the identity riding it is what the pipeline
   // publishes iff the sample is admitted.
@@ -385,74 +352,68 @@ describe('resolved home meter identity on the sample', () => {
     const transport = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }) },
+      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'm-area' }) },
     );
 
-    const sample = await transport.refreshSnapshot();
+    const sample = await transport.refreshSnapshot({
+      mainMeterSelection: { state: 'resolved', meterDeviceId: 'm-area' },
+    });
 
     expect(sample).toEqual({
       powerW: 4_200,
-      resolvedHomeMeterDeviceId: 'm-area',
-      homeMeterArrangement: 'identified',
+      meterDeviceId: 'm-area',
     });
   });
 
-  it('carries a NULL identity when the reading has no attributable id', async () => {
+  it('yields no sample for an id-less aggregate — nothing nameable can be read', async () => {
+    // The id-less whole-home aggregate is unreadable without Automatic: no
+    // selection can name it, so no whole-home sample exists. Such a home runs
+    // on the Flow source after the boot-time migration.
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [{ type: 'cumulative', values: { W: 4_200 } }],
     });
     const transport = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }) },
+      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }) },
     );
 
-    const sample = await transport.refreshSnapshot();
+    const sample = await transport.refreshSnapshot({
+      mainMeterSelection: { state: 'resolved', meterDeviceId: 'meter-main' },
+    });
 
-    // The watts are real; only their ownership is unprovable. `null` must ride
-    // along so the ingest can evaluate the fence episode without claiming
-    // proof of non-collision.
-    expect(sample).toEqual({ powerW: 4_200, resolvedHomeMeterDeviceId: null, homeMeterArrangement: 'idless_aggregate_only' });
+    expect(sample).toBeNull();
   });
 
   it('carries the identity on the poll path sample too', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
-      items: [{ type: 'cumulative', id: 'm-area', values: { W: 4_200 } }],
+      items: [{ type: 'cumulative', id: 'meter-main', values: { W: 2_800 } }],
     });
-    const ctx = {
+    const transport = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
       logger,
-      automaticHomeMeterState: { preferredDeviceId: null },
-      resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
-      providers: {},
-    } as unknown as TransportContext;
+      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }) },
+    );
 
-    const sample = await pollHomePowerWithMeterFanOut(ctx, () => true);
-
-    // The candidate rides to the poll source's admitted-ingest boundary. A
-    // stale, wrong-source, or superseded sample therefore cannot retain it.
-    expect(sample).toEqual({
-      powerW: 4_200,
-      resolvedHomeMeterDeviceId: 'm-area',
-      homeMeterArrangement: 'identified',
-      automaticHomeMeterDeviceId: 'm-area',
+    await expect(transport.pollHomePowerW()).resolves.toEqual({
+      powerW: 2_800,
+      meterDeviceId: 'meter-main',
     });
   });
 
-  // A transport wired without a meter authority is a wiring mistake, and the
-  // only selection it could invent is Automatic — the strongest claim there is.
-  // It fences instead: no authority, no whole-home sample, so nobody records
-  // watts under a meter nobody chose.
-  it('reads no whole-home sample at all when no meter authority is wired', async () => {
+  it('reads no whole-home sample at all under an unavailable authority', async () => {
+    // No authority, no whole-home sample: nobody records watts under a meter
+    // nobody chose — the only inventable answer was Automatic, and it is gone.
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [{ type: 'cumulative', id: 'm-area', values: { W: 4_200 } }],
     });
     const transport = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      {},
+      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
     );
 
-    await expect(transport.refreshSnapshot()).resolves.toBeNull();
+    await expect(transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } })).resolves.toBeNull();
   });
 
   it('does NOT read live power on a fast refresh, so no sample and no identity exist', async () => {
@@ -460,55 +421,20 @@ describe('resolved home meter identity on the sample', () => {
     const transport = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }) },
+      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }) },
     );
 
-    const sample = await transport.refreshSnapshot({ includeLivePower: false });
+    const sample = await transport.refreshSnapshot({
+      includeLivePower: false,
+      mainMeterSelection: { state: 'resolved', meterDeviceId: 'meter-main' },
+    });
 
     expect(getEnergyLiveReport).not.toHaveBeenCalled();
     expect(sample).toBeNull();
   });
 
-  // The arrangement observation RIDES THE SAMPLE (same admitted ingest as the
-  // identity): what one read proves about whether the whole-home meter can be
-  // NAMED at all. An empty report yields no sample, so it can publish nothing
-  // — structurally the `unproven`-never-overwrites semantics.
-  it.each([
-    [
-      'a sole id-less cumulative item proves the aggregate is unnameable',
-      [{ type: 'cumulative', values: { W: 3_100 } }],
-      'idless_aggregate_only',
-    ],
-    [
-      'an id-bearing whole-home item proves it can be named',
-      [{ type: 'cumulative', id: 'han', values: { W: 3_100 } }],
-      'identified',
-    ],
-    [
-      // Latching `idless_aggregate_only` here would make the area save refuse
-      // with "not supported" while the Whole-home meter picker offers this very
-      // device meter — naming it is the remedy, so the read proves neither.
-      'an id-less aggregate beside a selectable id-bearing meter proves neither',
-      [
-        { type: 'cumulative', values: { W: 3_100 } },
-        { type: 'device', id: 'garage-meter', values: { W: 900 } },
-      ],
-      'unproven',
-    ],
-  ])('the sample carries the arrangement: %s', async (_label, items, expected) => {
-    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ items });
-    const transport = new DeviceTransport(
-      mockHomeyInstance as unknown as Homey.App,
-      logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }) },
-    );
 
-    const sample = await transport.refreshSnapshot();
-
-    expect(sample?.homeMeterArrangement).toBe(expected);
-  });
-
-  it('several cumulative items produce no Automatic sample without a proven preference', async () => {
+  it('an unavailable selection yields no whole-home sample from the refresh path', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [
         { type: 'cumulative', values: { W: 3_100 } },
@@ -518,21 +444,23 @@ describe('resolved home meter identity on the sample', () => {
     const transport = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }) },
+      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
     );
 
-    await expect(transport.refreshSnapshot()).resolves.toBeNull();
+    await expect(transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } })).resolves.toBeNull();
   });
 
-  it('an empty report yields NO sample, so no arrangement can publish at all', async () => {
+  it('an empty report yields NO sample, so no identity can publish at all', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ items: [] });
     const transport = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }) },
+      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }) },
     );
 
-    const sample = await transport.refreshSnapshot();
+    const sample = await transport.refreshSnapshot({
+      mainMeterSelection: { state: 'resolved', meterDeviceId: 'meter-main' },
+    });
 
     expect(sample).toBeNull();
   });

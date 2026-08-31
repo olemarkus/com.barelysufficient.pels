@@ -106,7 +106,7 @@ const driveHomeEnergy = (netW: number, generationW: number): void => {
     if (path === 'manager/energy/live') {
       return {
         items: [
-          { type: 'cumulative', values: { W: netW } },
+          { type: 'cumulative', id: 'meter-main', values: { W: netW } },
           { type: 'generator', values: { W: generationW } },
         ],
         totalGenerated: { W: generationW },
@@ -152,6 +152,7 @@ describe('smart task running during a sunny hour (SDK-boundary e2e via createApp
 
     mockHomeyInstance.settings.set(DEBUG_LOGGING_TOPICS, ['plan', 'diagnostics', 'deferred_objectives']);
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, CAP_KW);
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);

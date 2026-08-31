@@ -182,6 +182,7 @@ const readPersistedBudgetState = (): {
 const seedSettings = (): void => {
   mockHomeyInstance.settings.set(DEBUG_LOGGING_TOPICS, ['plan', 'diagnostics', 'deferred_objectives', 'daily_budget']);
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
+  mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
   mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
   // A roomy hard cap: capacity must not be the binding constraint, so the daily
   // budget slice is the only thing that can zero an hour.
@@ -273,7 +274,7 @@ describe('smart task on an overspent soft-budget day (SDK-boundary e2e)', () => 
 
     const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
     vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
-      if (path === 'manager/energy/live') return { items: [{ type: 'cumulative', values: { W: STEP_LOW_W } }] };
+      if (path === 'manager/energy/live') return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: STEP_LOW_W } }] };
       return originalGet(path);
     });
 

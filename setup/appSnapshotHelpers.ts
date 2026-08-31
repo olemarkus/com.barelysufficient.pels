@@ -362,7 +362,7 @@ export class AppSnapshotHelpers {
       targetedRefresh: options.targeted === true,
     });
     this.deps.emitSettingsUiDevicesUpdated();
-    await this.recordImplicitHomeyEnergySample(deviceManager, options, homePowerSample, meterSelectionAtStart);
+    await this.recordImplicitHomeyEnergySample(options, homePowerSample, meterSelectionAtStart);
   }
 
   /**
@@ -414,7 +414,7 @@ export class AppSnapshotHelpers {
   }
 
   private async recordImplicitHomeyEnergySample(
-    deviceManager: DeviceTransport, options: RefreshTargetDevicesSnapshotOptions,
+    options: RefreshTargetDevicesSnapshotOptions,
     sample: HomePowerSample | null, meterSelectionAtStart: MainMeterSelection,
   ): Promise<void> {
     const admission = this.classifyImplicitHomeyEnergySample(options, meterSelectionAtStart);
@@ -429,12 +429,7 @@ export class AppSnapshotHelpers {
     if (admission !== 'admitted') return;
 
     if (sample) {
-      const pipelineAdmission = await this.deps.recordPowerSample(sample);
-      deviceManager.noteAdmittedAutomaticHomeMeter(
-        pipelineAdmission.state === 'admitted'
-          && meterSelectionAtStart.state === 'resolved' && meterSelectionAtStart.meterDeviceId === null
-          ? sample.resolvedHomeMeterDeviceId : null,
-      );
+      await this.deps.recordPowerSample(sample);
     }
   }
 }

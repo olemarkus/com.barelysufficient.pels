@@ -99,10 +99,10 @@ export type MeterKwhBackfillDeps = {
    * cannot provide this constraint itself: after an explicit meter switch the
    * PREVIOUS meter's pre-switch days still match the retained tracker history
    * strongest, so an open election would re-admit it and re-vouch old-scope
-   * kWh. Absent = open election over every installed cumulative meter
-   * (Automatic mode, where no admitted identity exists).
+   * kWh. REQUIRED: the open election died with the Automatic selection — a
+   * caller with no admitted identity has no election to run.
    */
-  restrictToDeviceId?: string;
+  restrictToDeviceId: string;
   timeZone: string;
   nowMs: number;
 };
@@ -110,9 +110,7 @@ export type MeterKwhBackfillDeps = {
 export async function resolveMeterDailyKwh(deps: MeterKwhBackfillDeps): Promise<MeterKwhBackfillOutcome> {
   const devices = await deps.fetchFromHomeyApi('manager/devices/device');
   const installed = listMeterCandidates(devices);
-  const candidates = deps.restrictToDeviceId === undefined
-    ? installed
-    : installed.filter((candidate) => candidate.deviceId === deps.restrictToDeviceId);
+  const candidates = installed.filter((candidate) => candidate.deviceId === deps.restrictToDeviceId);
   if (candidates.length === 0) return { outcome: 'no_candidates' };
   const todayKey = getDateKeyInTimeZone(new Date(deps.nowMs), deps.timeZone);
   const probe = await probeCandidates(candidates, todayKey, deps);

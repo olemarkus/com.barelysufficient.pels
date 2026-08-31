@@ -43,6 +43,7 @@ const buildDevice = async (id: string): Promise<MockDevice> => {
 
 const configureManaged = () => {
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
+  mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
   mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
   mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
   mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);

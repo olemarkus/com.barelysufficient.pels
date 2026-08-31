@@ -135,6 +135,7 @@ const installApiRoutes = () => {
 
 const configureMainCapacity = (limitKw: number) => {
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
+  mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
   mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
   mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, limitKw);
   mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
@@ -681,6 +682,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     setMockDrivers({ driverA: new MockDriver('driverA', [mainDevice, heater]) });
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
@@ -747,6 +749,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     setMockDrivers({ driverA: new MockDriver('driverA', [mainDevice, heater]) });
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
@@ -816,6 +819,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
@@ -859,6 +863,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     setMockDrivers({ driverA: new MockDriver('driverA', [mainDevice, heater]) });
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);

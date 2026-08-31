@@ -3011,6 +3011,7 @@ describe('periodic snapshot refresh scheduling', () => {
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
 
     const app = createApp();
     await initApp(app);
@@ -3020,8 +3021,7 @@ describe('periodic snapshot refresh scheduling', () => {
       .mockResolvedValue({
         powerW: 2600,
         generationW: 900,
-        resolvedHomeMeterDeviceId: 'meter-main',
-        homeMeterArrangement: 'identified',
+        meterDeviceId: 'meter-main',
       });
 
     try {
@@ -3034,8 +3034,7 @@ describe('periodic snapshot refresh scheduling', () => {
     expect(recordSpy).toHaveBeenCalledWith(2600, undefined, {
       powerW: 2600,
       generationW: 900,
-      resolvedHomeMeterDeviceId: 'meter-main',
-      homeMeterArrangement: 'identified',
+      meterDeviceId: 'meter-main',
     });
   });
 

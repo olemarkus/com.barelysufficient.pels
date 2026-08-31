@@ -77,14 +77,12 @@ export type SnapshotRefreshOptions = {
   includeLivePower?: boolean;
   targetedRefresh?: boolean;
   /**
-   * The Main meter authority this cycle belongs to, captured by the caller
-   * BEFORE the cycle started. Callers that fence a sample against a mid-flight
-   * meter change (the app's snapshot refresh) must pass it; callers with no
-   * such capture omit it and `refreshSnapshot` asks the authority itself. The
-   * one thing neither does is fabricate a selection — omitted never means
-   * Automatic.
+   * The Main meter selection this refresh resolves live power against —
+   * REQUIRED, so a cycle that captured its selection up front (the staleness
+   * fence in `appSnapshotHelpers`) and a cycle that resolves it at entry are
+   * both explicit; nothing falls back silently.
    */
-  mainMeterSelection?: MainMeterSelection;
+  mainMeterSelection: MainMeterSelection;
 };
 
 /**
@@ -109,17 +107,13 @@ export type TransportContext = {
   readonly observationState: DeviceTransportObservationState;
   readonly recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
   readonly recentRealtimeCapabilityEventLogByKey: Map<string, number>;
-  /** Session-sticky identity used to stabilize Automatic cumulative selection. */
-  readonly automaticHomeMeterState: { preferredDeviceId: string | null };
 
   /**
-   * The transport's Main meter authority: the one place the optional
-   * `providers.getHomeyEnergyMeterSelection` is read, with its absence already
-   * classified as `unavailable`. Every live-power path takes its selection from
-   * here (or from a selection its caller captured first) — none of them may
-   * invent one, because the only inventable answer is Automatic, and claiming
-   * Automatic for an unknown authority is how the wrong meter's watts become
-   * the whole home's.
+   * The transport's Main meter authority: the one place
+   * `providers.getHomeyEnergyMeterSelection` is read. Every live-power path
+   * takes its selection from here (or from a selection its caller captured
+   * first) — none of them may invent one, because an invented identity is how
+   * the wrong meter's watts become the whole home's.
    */
   readonly resolveMainMeterSelection: () => MainMeterSelection;
 
@@ -150,7 +144,7 @@ export type TransportContext = {
   readonly getFlowTriggerCard: ((cardId: string) => SteppedLoadFlowTriggerCard | undefined) | undefined;
   isSdkReady(): boolean;
   dispatchObservedStateForDevice(deviceId: string, capabilityId?: string): void;
-  refreshSnapshot(options?: SnapshotRefreshOptions): Promise<HomePowerSampleWithIdentity | null>;
+  refreshSnapshot(options: SnapshotRefreshOptions): Promise<HomePowerSampleWithIdentity | null>;
 
   // --- Snapshot-refresh pipeline collaborators (snapshotRefresh.ts) ---
   // Parse-binding inputs (stable references built once in the constructor).

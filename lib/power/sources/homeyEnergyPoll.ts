@@ -12,17 +12,14 @@ export type HomeyEnergyPowerSample = {
   powerW: number;
   generationW?: number;
   /**
-   * Opaque passthrough: identity of the meter `powerW` was read from (`null` =
-   * unknown), produced by the transport read and consumed by the sample-ingest
-   * seam. This source neither reads nor branches on it — it only guarantees the
-   * field survives the discard checks, so a stale-generation or wrong-source
-   * poll drops the identity claim together with the watts.
+   * Opaque passthrough: identity of the meter `powerW` was read from — always
+   * the explicit selection's configured id (a homey_energy sample cannot exist
+   * without a named meter). Produced by the transport read and consumed by the
+   * sample-ingest seam; this source neither reads nor branches on it — it only
+   * guarantees the field survives the discard checks, so a stale-generation or
+   * wrong-source poll drops the identity claim together with the watts.
    */
-  resolvedHomeMeterDeviceId?: string | null;
-  /** Automatic candidate to retain only if this exact poll is finally admitted. */
-  automaticHomeMeterDeviceId?: string | null;
-  /** Rides with the identity; same admitted-ingest contract. */
-  homeMeterArrangement?: 'identified' | 'idless_aggregate_only' | 'unproven';
+  meterDeviceId: string;
 };
 
 /**

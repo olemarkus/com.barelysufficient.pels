@@ -95,17 +95,12 @@ export const resolveExplicitMainMeterDeviceId = (raw: unknown): string | null =>
   return isCanonicalHomeyDeviceId(trimmed) ? trimmed : null;
 };
 
-/**
- * Find the sub-home that owns Main's explicitly selected meter, if any. Only
- * an explicit device id can be compared across the two stores.
- */
+/** Find the sub-home that owns Main's explicitly selected meter, if any. */
 export const findMainMeterCollision = (
-  mainMeterDeviceId: string | null,
+  mainMeterDeviceId: string,
   subHomes: readonly SubHomeConfig[],
 ): SubHomeConfig | null => (
-  mainMeterDeviceId === null
-    ? null
-    : subHomes.find(({ meterDeviceId }) => meterDeviceId === mainMeterDeviceId) ?? null
+  subHomes.find(({ meterDeviceId }) => meterDeviceId === mainMeterDeviceId) ?? null
 );
 
 /**

@@ -1,4 +1,3 @@
-import type { HomeMeterArrangementObservation } from '../lib/device/transport/managerFetch';
 import type CapacityGuard from '../lib/power/capacityGuard';
 import type { DeviceTransport } from '../lib/device/deviceTransport';
 import type { PlanEngine } from '../lib/plan/planEngine';
@@ -79,28 +78,18 @@ export type PowerSamplePipelineDeps = {
    * sub-home samples never carry the field and never publish. No-op when
    * absent (sub-home pipelines).
    */
-  noteResolvedHomeMeter?: (deviceId: string | null, sampleAtMs: number) => void;
-  /**
-   * The same admitted-ingest contract for the meter-ARRANGEMENT observation
-   * (id-bearing vs id-less-aggregate-only vs unproven): published only after
-   * the sample records, with the same stamp, dropped with a superseded
-   * request's watts. No-op when absent (sub-home pipelines).
-   */
-  noteHomeMeterArrangement?: (observation: HomeMeterArrangementObservation, sampleAtMs: number) => void;
+  noteResolvedHomeMeter?: (deviceId: string, sampleAtMs: number) => void;
 };
 
 type PowerSampleOptions = {
   generationW?: number;
   /**
-   * Identity of the meter this sample was read from. Present (string or null)
-   * only on Homey-Energy whole-home samples; ABSENT on flow-driven and
-   * sub-home-meter samples, which carry no identity semantics. `null` = the
-   * read produced watts but could not attribute them; never proof of
-   * non-collision.
+   * Identity of the meter this sample was read from. Present only on
+   * Homey-Energy whole-home samples — and then always a named meter (there is
+   * no Automatic and no unattributed reading); ABSENT on flow-driven and
+   * sub-home-meter samples, which carry no identity semantics.
    */
-  resolvedHomeMeterDeviceId?: string | null;
-  /** Rides with the identity above; present only when it is. */
-  homeMeterArrangement?: HomeMeterArrangementObservation;
+  meterDeviceId?: string;
 };
 
 export type StableSampleRevision =
@@ -120,8 +109,7 @@ type PowerSampleRequest = {
    * observer's held value. Consumers read the flat field and branch on nothing.
    */
   coTemporalGenerationW?: number;
-  resolvedHomeMeterDeviceId?: string | null;
-  homeMeterArrangement?: HomeMeterArrangementObservation;
+  meterDeviceId?: string;
 };
 
 const buildPowerSampleRequest = (
@@ -152,11 +140,8 @@ const buildPowerSampleRequest = (
     revision,
     ...(generationW !== undefined ? { generationW } : {}),
     ...(ownGenerationW !== undefined ? { coTemporalGenerationW: ownGenerationW } : {}),
-    ...(options.resolvedHomeMeterDeviceId !== undefined
-      ? { resolvedHomeMeterDeviceId: options.resolvedHomeMeterDeviceId }
-      : {}),
-    ...(options.homeMeterArrangement !== undefined
-      ? { homeMeterArrangement: options.homeMeterArrangement }
+    ...(options.meterDeviceId !== undefined
+      ? { meterDeviceId: options.meterDeviceId }
       : {}),
   };
 };
@@ -267,12 +252,9 @@ export class PowerSamplePipeline {
    * recompute work must never break the sample loop.
    */
   private publishResolvedHomeMeter(request: PowerSampleRequest): void {
-    if (request.resolvedHomeMeterDeviceId === undefined) return;
+    if (request.meterDeviceId === undefined) return;
     try {
-      this.deps.noteResolvedHomeMeter?.(request.resolvedHomeMeterDeviceId, request.nowMs);
-      if (request.homeMeterArrangement !== undefined) {
-        this.deps.noteHomeMeterArrangement?.(request.homeMeterArrangement, request.nowMs);
-      }
+      this.deps.noteResolvedHomeMeter?.(request.meterDeviceId, request.nowMs);
     } catch {
       incPerfCounter('power_sample_identity_publish_failed_total');
     }

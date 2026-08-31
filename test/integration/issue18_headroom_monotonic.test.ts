@@ -76,7 +76,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         });
 
         // Refresh to populate measured power
-        await deviceManager.refreshSnapshot();
+        await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         let snapshot = deviceManager.getSnapshot();
         expect(snapshot[0].expectedPowerKw).toBe(1.67);
         expect(snapshot[0].expectedPowerKw).toBe(1.67);
@@ -99,7 +99,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
             },
         });
 
-        await deviceManager.refreshSnapshot();
+        await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         snapshot = deviceManager.getSnapshot();
 
         expect(snapshot[0].expectedPowerKw).toBe(3.0);
@@ -133,7 +133,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
             },
         });
 
-        await deviceManager.refreshSnapshot();
+        await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         const snapshot = deviceManager.getSnapshot();
 
         expect(snapshot[0].expectedPowerKw).toBe(3.0);
@@ -161,13 +161,13 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
             },
         });
 
-        await deviceManager.refreshSnapshot();
+        await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         let snapshot = deviceManager.getSnapshot();
         expect(snapshot[0].expectedPowerKw).toBe(3.0);
 
         // User sets expected power to 2.0 kW while measured is still 3.0 kW.
         expectedPowerKwOverrides[deviceId] = { kw: 2.0, ts: Date.now() };
-        await deviceManager.refreshSnapshot();
+        await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         snapshot = deviceManager.getSnapshot();
         expect(snapshot[0].expectedPowerKw).toBe(2.0);
 
@@ -186,7 +186,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
             },
         });
 
-        await deviceManager.refreshSnapshot();
+        await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         snapshot = deviceManager.getSnapshot();
         expect(snapshot[0].expectedPowerKw).toBe(2.0);
     });

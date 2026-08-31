@@ -56,7 +56,7 @@ const stubSdk = (devices: Record<string, unknown>, totalW: number) => {
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
     if (path === 'manager/energy/live') {
-      return { items: [{ type: 'cumulative', values: { W: totalW } }] };
+      return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: totalW } }] };
     }
     if (path === 'manager/devices/device') {
       return devices;
@@ -67,6 +67,7 @@ const stubSdk = (devices: Record<string, unknown>, totalW: number) => {
 
 const enableCapacity = (deviceId: string, limitKw: number) => {
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
+  mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
   mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, limitKw);
   mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
   mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);

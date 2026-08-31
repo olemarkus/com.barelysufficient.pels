@@ -68,16 +68,16 @@ const findMeterOwnershipRefusal = (
   if (powerSource.state === 'suspect') return { ok: false, reason: 'degraded' };
   if (powerSource.value === 'flow') return { ok: false, reason: 'homey_energy_required' };
   const mainMeter = readMainMeterSelection(homey.settings);
-  // Unavailable = the persisted selection could not be read, which is a
-  // degraded store, not a bad payload. Never guess Automatic from it.
-  if (mainMeter.state === 'unavailable') return { ok: false, reason: 'degraded' };
-  if (findMainMeterCollision(mainMeter.meterDeviceId, subHomes) !== null) {
-    return { ok: false, reason: 'invalid' };
+  if (mainMeter.state === 'resolved') {
+    return findMainMeterCollision(mainMeter.meterDeviceId, subHomes) !== null
+      ? { ok: false, reason: 'invalid' }
+      : null;
   }
-  if (subHomes.length === 0 || mainMeter.meterDeviceId !== null) return null;
-  // No whole-home meter persisted while areas exist: a legacy shape the
-  // boot-time migration defers on (nothing nameable to adopt), since the
-  // picker can no longer express "no meter". The remedy is the picker.
+  // `unavailable` covers both the legacy no-meter shape the boot-time
+  // migration defers on (nothing nameable to adopt) and a transient read
+  // miss of a configured meter. The picker remedy is actionable in both —
+  // re-picking shows the truth on a transient miss — where a `degraded`
+  // "try again" would loop forever on the persistent legacy shape.
   return { ok: false, reason: 'main_meter_required' };
 };
 

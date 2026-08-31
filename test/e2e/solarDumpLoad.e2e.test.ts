@@ -44,7 +44,7 @@ const wireHomePower = () => {
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
     if (path === 'manager/energy/live') {
-      return { items: [{ type: 'cumulative', values: { W: homePowerW } }] };
+      return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: homePowerW } }] };
     }
     return originalGet(path);
   });
@@ -52,6 +52,7 @@ const wireHomePower = () => {
 
 const seedSettings = (surplusWilling: boolean) => {
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
+  mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
   // Cap far above any draw here — capacity pressure never sheds in these tests.
   mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
   mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);

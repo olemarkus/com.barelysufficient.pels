@@ -16,7 +16,7 @@ export function requestTemperatureRecovery(ctx: TransportContext, deviceId: stri
   state.pendingDeviceIds.add(deviceId);
   if (state.refreshInFlightDeviceIds.has(deviceId)) return;
   state.refreshInFlightDeviceIds.add(deviceId);
-  void ctx.refreshSnapshot({ targetedRefresh: true })
+  void ctx.refreshSnapshot({ targetedRefresh: true, mainMeterSelection: ctx.resolveMainMeterSelection() })
     .catch((error: unknown) => {
       moduleLogger.error({
         event: 'temperature_observation_recovery_failed',

@@ -90,6 +90,7 @@ const createLogger = (): Logger => ({
 const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   logger,
   providers: {
+    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
     getNativeEvWiringEnabled: () => true,
   },
   powerState: {
