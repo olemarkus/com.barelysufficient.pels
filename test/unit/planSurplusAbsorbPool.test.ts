@@ -32,7 +32,7 @@ const surplusConfig = { surplusWilling: true, surplusDelta: 2 };
 const resolve = (params: {
   state: PlanEngineState;
   signedNetKw: number | null;
-  inferredSurplusKw?: number | null;
+  inferredSurplusKw: number;
   powerKnown?: boolean;
   nowTs: number;
   devices?: PlanInputDevice[];
@@ -63,15 +63,15 @@ describe('resolveSurplusEligibility — inferred-term pool composition', () => {
     expect(eligible(state)).toBe(true);
   });
 
-  it.each([
-    ['null', null],
-    ['undefined', undefined],
-    ['NaN', Number.NaN],
-    ['negative', -3],
-  ])('a %s inferred term is byte-identical to today\'s pool (no engage at net~0)', (_label, term) => {
+  // This used to enumerate `null` / `undefined` / `NaN` / negative and prove the
+  // pool clamped each to nothing. The producer answers a finite kW >= 0 for
+  // every state it can be in and the seam is required, so those four are no
+  // longer representable — the clamp went, and the only case left is the one
+  // the producer really emits when it has nothing to offer.
+  it('a claimed-nothing term is byte-identical to today\'s pool (no engage at net~0)', () => {
     const state = createPlanEngineState();
-    resolve({ state, signedNetKw: 0, inferredSurplusKw: term, nowTs: 0 });
-    resolve({ state, signedNetKw: 0, inferredSurplusKw: term, nowTs: SURPLUS_ABSORB_SETTLE_MS });
+    resolve({ state, signedNetKw: 0, inferredSurplusKw: 0, nowTs: 0 });
+    resolve({ state, signedNetKw: 0, inferredSurplusKw: 0, nowTs: SURPLUS_ABSORB_SETTLE_MS });
     expect(eligible(state)).toBe(false);
     expect(state.surplusEligibilityByDevice[DEVICE_ID]).toBeUndefined(); // no pending flip either
   });
@@ -100,13 +100,13 @@ describe('resolveSurplusEligibility — inferred-term pool composition', () => {
     resolve({ state, signedNetKw: 0, inferredSurplusKw: 1.5, nowTs: 0 });
     resolve({ state, signedNetKw: 0, inferredSurplusKw: 1.5, nowTs: SURPLUS_ABSORB_SETTLE_MS });
     expect(eligible(state)).toBe(true);
-    // The home imports 1 kW and the PRODUCER has latched the term to null (its
+    // The home imports 1 kW and the PRODUCER has latched its term to 0 (its
     // import guard fires at 0.30, below this gate's 0.35 hard-off bar — the
     // producer always stops feeding first). Pool collapses, hard-off clock runs.
     const importAt = SURPLUS_ABSORB_SETTLE_MS + 10_000;
-    resolve({ state, signedNetKw: 1.0, inferredSurplusKw: null, nowTs: importAt });
+    resolve({ state, signedNetKw: 1.0, inferredSurplusKw: 0, nowTs: importAt });
     expect(eligible(state)).toBe(true); // settle still applies
-    resolve({ state, signedNetKw: 1.0, inferredSurplusKw: null, nowTs: importAt + SURPLUS_ABSORB_SETTLE_MS });
+    resolve({ state, signedNetKw: 1.0, inferredSurplusKw: 0, nowTs: importAt + SURPLUS_ABSORB_SETTLE_MS });
     expect(eligible(state)).toBe(false); // released far inside the 5-min dwell
     expect(importAt + SURPLUS_ABSORB_SETTLE_MS).toBeLessThan(SURPLUS_ABSORB_SETTLE_MS + SURPLUS_ABSORB_MIN_DWELL_MS);
   });
@@ -141,25 +141,19 @@ describe('resolveSurplusEligibility — inferred-term pool composition', () => {
     expect(payload.poolKw).toBeCloseTo(1.6, 6);
   });
 
-  it('logs a junk/absent inferred term as its clamped 0 contribution (record reconciles to poolKw)', () => {
+  it('reconciles the record when the producer claims no term at all (0 kW)', () => {
+    // The predecessor of this spec fed `NaN` to prove the pool clamped it. The
+    // producer answers a finite kW >= 0 for every state it can be in — declining
+    // to claim IS 0 — so the clamp went, and with it the only input that could
+    // reach it. What still matters is the identity: the three components sum to
+    // poolKw when the inferred term contributes nothing.
     const state = createPlanEngineState();
     const debugStructured = vi.fn();
-    resolve({ state, signedNetKw: -0.4, inferredSurplusKw: Number.NaN, nowTs: 0, debugStructured });
+    resolve({ state, signedNetKw: -0.4, inferredSurplusKw: 0, nowTs: 0, debugStructured });
     const payload = debugStructured.mock.calls[0]![0] as Record<string, number>;
-    // The logged component is the CLAMPED value that entered the pool (0), so the
-    // three components sum to poolKw even for a junk/negative raw term.
     expect(payload.inferredSurplusKw).toBe(0);
     expect(payload.measuredExportKw + payload.addBackKw + payload.inferredSurplusKw)
       .toBeCloseTo(payload.poolKw, 6);
-    expect(payload.poolKw).toBeCloseTo(0.4, 6);
-  });
-
-  it('logs a negative inferred term as its clamped 0 contribution', () => {
-    const state = createPlanEngineState();
-    const debugStructured = vi.fn();
-    resolve({ state, signedNetKw: -0.4, inferredSurplusKw: -3, nowTs: 0, debugStructured });
-    const payload = debugStructured.mock.calls[0]![0] as Record<string, number>;
-    expect(payload.inferredSurplusKw).toBe(0);
     expect(payload.poolKw).toBeCloseTo(0.4, 6);
   });
 });

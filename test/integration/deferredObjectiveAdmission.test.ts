@@ -208,6 +208,7 @@ const buildBuilder = (
     getHardCapKw: () => capacitySettings.limitKw,
   });
   return new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
     capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
@@ -346,6 +347,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getHardCapKw: () => 100,
     });
     const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
@@ -601,6 +603,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getHardCapKw: () => 100,
     });
     const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),

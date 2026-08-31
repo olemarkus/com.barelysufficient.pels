@@ -77,6 +77,7 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanContext => (
 });
 
 const deps = (surplusWilling: boolean, surplusDelta = SURPLUS_DELTA_C): PlanDevicesDeps => ({
+  getInferredSurplusKw: () => 0,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({
@@ -104,6 +105,7 @@ const buildDevices = (params: {
     devices: params.context.devices,
     state: params.state,
     signedNetKw: params.context.measuredDrawKw,
+    inferredSurplusKw: 0,
     getConfig: (deviceId) => params.deps.getPriceOptimizationSettings()[deviceId],
   });
   return buildInitialPlanDevices({
@@ -338,7 +340,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
     const cycleInferred = (
       state: PlanEngineState,
       signedNetKw: number,
-      inferredSurplusKw: number | null,
+      inferredSurplusKw: number,
       options: { powerKnown?: boolean; debugStructured?: (payload: Record<string, unknown>) => void } = {},
     ): number | undefined => {
       const powerKnown = options.powerKnown ?? true;
@@ -390,15 +392,15 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
       expect(cycleInferred(state, 0, 1.5)).toBe(MODE_C + SURPLUS_DELTA_C);
       // The inference was wrong: the lift forces real grid import. The producer's
-      // import latch zeroes the term (this stub mirrors that — the producer gate
+      // import latch takes the term to 0 (this stub mirrors that — the producer gate
       // fires at 0.30, before the plan gate's 0.35 hard-off), the pool collapses,
       // and the sustained import hard-offs the release past the settle window,
       // far inside the 5-min dwell.
       const importAt = SURPLUS_ABSORB_SETTLE_MS + 10_000;
       vi.setSystemTime(importAt);
-      expect(cycleInferred(state, IMPORTING_KW, null)).toBe(MODE_C + SURPLUS_DELTA_C); // settle applies
+      expect(cycleInferred(state, IMPORTING_KW, 0)).toBe(MODE_C + SURPLUS_DELTA_C); // settle applies
       vi.setSystemTime(importAt + SURPLUS_ABSORB_SETTLE_MS);
-      expect(cycleInferred(state, IMPORTING_KW, null)).toBe(MODE_C);
+      expect(cycleInferred(state, IMPORTING_KW, 0)).toBe(MODE_C);
       expect(importAt + SURPLUS_ABSORB_SETTLE_MS)
         .toBeLessThan(SURPLUS_ABSORB_SETTLE_MS + SURPLUS_ABSORB_MIN_DWELL_MS);
     });

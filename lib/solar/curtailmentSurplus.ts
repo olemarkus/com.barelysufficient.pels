@@ -126,19 +126,6 @@ export type CurtailmentPotentialRead =
   | { kind: 'resolved'; potential: CurtailmentPotential }
   | { kind: 'unresolvable' };
 
-/**
- * The inferred curtailed-surplus term for one instant. `suppressed` — dormant
- * home, stale co-sample, battery home, refuted hold, import latch, or an
- * unresolvable potential for the hour — is the named member the estimator's own
- * `CurtailmentTermState` already spelled, not a nullable kW. It is NOT `0 kW`
- * either: a suppressed term is "no trustworthy surplus reading", while a real
- * `term` of 0 is a measured "nothing spare right now", and both the verify
- * window and the term-state log turn on that difference.
- */
-export type CurtailedSurplusRead =
-  | { kind: 'term'; kw: number }
-  | { kind: 'suppressed' };
-
 /** Minimal structured-log surface (satisfied by the pino logger). */
 export type CurtailmentSurplusLogger = {
   info: (obj: Record<string, unknown>) => void;
@@ -460,7 +447,7 @@ export class CurtailmentSurplusEstimator {
    * Only the two PERMANENT suppressors count. `dormant` is the home's own
    * capability latch (lifted once, by the first positive co-temporal generation
    * reading), and a battery home has the term suppressed outright in v1. The
-   * transient suppressions `getCurtailedSurplusKw` also applies — stale
+   * transient declines `getCurtailedSurplusKw` also applies — stale
    * co-sample, import latch, refute hold, no resolvable potential — are deliberately
    * EXCLUDED: they come and go by the minute, and folding them in would flap a
    * dump load on and off all afternoon.
@@ -482,29 +469,51 @@ export class CurtailmentSurplusEstimator {
   }
 
   /**
-   * The inferred curtailed-surplus term (kW, >= 0), or `suppressed` when it
-   * cannot be trusted: dormant, stale co-sample, battery home, refuted-hold,
-   * import latch, or no resolvable potential for the current hour. A consumer
-   * whose own seam needs a number for a suppressed term chooses that itself —
-   * this producer never hands one out.
+   * Every cause that makes the estimator DECLINE to claim inferred surplus:
+   * dormant, battery home, stale co-sample, refuted hold, import latch, or no
+   * resolvable potential for the current hour. None of them is a missing
+   * reading — each is a decision, which is why the term below spends them all
+   * on one number rather than a named absence.
+   *
+   * Lifted out so `resolveTermState` reports the SAME verdict the term acts on
+   * instead of re-deriving it from the value; that log used to read the term's
+   * own discriminant back, which made the state a restatement of the read.
    */
-  getCurtailedSurplusKw(nowMs: number): CurtailedSurplusRead {
-    const suppressed: CurtailedSurplusRead = { kind: 'suppressed' };
-    if (!isFiniteNumber(nowMs)) return suppressed;
+  private declinesToClaim(nowMs: number): boolean {
+    if (!isFiniteNumber(nowMs)) return true;
     // Dormancy and the battery suppression, shared with `canContributeSurplus`.
-    if (this.permanentlySuppressed()) return suppressed;
-    if (this.lastSampleAtMs === null || nowMs - this.lastSampleAtMs > CURTAIL_SAMPLE_FRESH_MS) return suppressed;
-    if (this.holdUntilMs !== undefined && nowMs < this.holdUntilMs) return suppressed;
-    if (this.importLatchUntilMs !== undefined && nowMs < this.importLatchUntilMs) return suppressed;
+    if (this.permanentlySuppressed()) return true;
+    if (this.lastSampleAtMs === null || nowMs - this.lastSampleAtMs > CURTAIL_SAMPLE_FRESH_MS) return true;
+    if (this.holdUntilMs !== undefined && nowMs < this.holdUntilMs) return true;
+    if (this.importLatchUntilMs !== undefined && nowMs < this.importLatchUntilMs) return true;
     const hourStartMs = Math.floor(nowMs / HOUR_MS) * HOUR_MS;
     const read = this.deps.getPotential(hourStartMs);
-    if (read.kind !== 'resolved' || !isFiniteNumber(read.potential.kw)) return suppressed;
+    return read.kind !== 'resolved' || !isFiniteNumber(read.potential.kw);
+  }
+
+  /**
+   * The inferred curtailed-surplus term: kW of export the home would be making
+   * if something were not curtailing it, >= 0 and ALWAYS a number.
+   *
+   * Declining to claim a term is 0 kW spare, not an absent reading. The two
+   * were modelled apart once and nothing could tell them apart: the only
+   * control consumer is `composeSurplusPool`, which adds this into the pool
+   * through `positiveOrZero` — so a declined term and a term of 0 contribute
+   * the identical nothing. The verify window needs a term STRICTLY above 0, so
+   * it never separated them either. Do not reintroduce a named absence here
+   * without a consumer that behaves differently on it.
+   */
+  getCurtailedSurplusKw(nowMs: number): number {
+    if (this.declinesToClaim(nowMs)) return 0;
+    const hourStartMs = Math.floor(nowMs / HOUR_MS) * HOUR_MS;
+    const read = this.deps.getPotential(hourStartMs);
+    if (read.kind !== 'resolved') return 0;
     const { potential } = read;
     const discount = potential.confidence === 'low'
       ? CURTAIL_POTENTIAL_DISCOUNT_LOW_CONF
       : CURTAIL_POTENTIAL_DISCOUNT;
     const generationKw = (this.lastGenerationW ?? 0) / 1000;
-    return { kind: 'term', kw: Math.max(0, discount * potential.kw - generationKw) };
+    return Math.max(0, discount * potential.kw - generationKw);
   }
 
   // Close the verify window (any cause) and reset its evidence accumulator.
@@ -628,12 +637,12 @@ export class CurtailmentSurplusEstimator {
   private trackLiftEdges(nowMs: number): void {
     const liftEngaged = this.deps.isSurplusLiftEngaged();
     if (liftEngaged && !this.lastLiftEngaged) {
-      const term = this.getCurtailedSurplusKw(nowMs);
-      if (this.verifyWindowUntilMs === undefined && term.kind === 'term' && term.kw > 0) {
+      const termKw = this.getCurtailedSurplusKw(nowMs);
+      if (this.verifyWindowUntilMs === undefined && termKw > 0) {
         this.verifyWindowUntilMs = nowMs + CURTAIL_VERIFY_WINDOW_MS;
         this.deps.logger.info({
           event: 'curtailment_verify_started',
-          termKw: term.kw,
+          termKw,
           windowMs: CURTAIL_VERIFY_WINDOW_MS,
         });
       }
@@ -646,7 +655,7 @@ export class CurtailmentSurplusEstimator {
   private resolveTermState(nowMs: number): CurtailmentTermState {
     if (this.holdUntilMs !== undefined && nowMs < this.holdUntilMs) return 'hold';
     if (this.importLatchUntilMs !== undefined && nowMs < this.importLatchUntilMs) return 'latched';
-    return this.getCurtailedSurplusKw(nowMs).kind === 'suppressed' ? 'suppressed' : 'armed';
+    return this.declinesToClaim(nowMs) ? 'suppressed' : 'armed';
   }
 
   // Transition-only state record (armed↔suppressed↔latched↔hold) for dogfood

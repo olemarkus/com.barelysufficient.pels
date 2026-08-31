@@ -120,6 +120,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       shedStepTargets: sheddingPlan.shedStepTargets,
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),

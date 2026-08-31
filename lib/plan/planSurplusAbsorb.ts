@@ -234,7 +234,7 @@ function composeSurplusPool(params: {
   willing: PlanInputDevice[];
   state: PlanEngineState;
   signedNetKw: number;
-  inferredSurplusKw: number | null | undefined;
+  inferredSurplusKw: number;
   debugStructured?: StructuredDebugEmitter;
 }): number {
   let addBackKw = 0;
@@ -242,18 +242,16 @@ function composeSurplusPool(params: {
     if (addsBackOwnDraw(params.state, dev)) addBackKw += positiveOrZero(dev.currentDrawKw);
   }
   const measuredExportKw = -params.signedNetKw;
-  const inferredContributionKw = positiveOrZero(params.inferredSurplusKw);
-  const poolKw = measuredExportKw + addBackKw + inferredContributionKw;
-  // Log the CLAMPED contribution that actually entered the pool, so the three
-  // components sum to poolKw (a null/negative raw term would otherwise make the
-  // record fail to reconcile). The raw term never reaches here negative — the
-  // producer clamps at 0 or yields null — so this only differs from the raw on
-  // the absent/junk cases, which contribute nothing anyway.
+  // No clamp: the producer already answers a finite kW >= 0 for every state it
+  // can be in, so re-guarding it here would be the hedging consumer AGENTS.md
+  // rules out. The three components therefore sum to poolKw by construction.
+  const inferredSurplusKw = params.inferredSurplusKw;
+  const poolKw = measuredExportKw + addBackKw + inferredSurplusKw;
   params.debugStructured?.({
     event: 'surplus_pool',
     measuredExportKw,
     addBackKw,
-    inferredSurplusKw: inferredContributionKw,
+    inferredSurplusKw,
     poolKw,
   });
   return poolKw;
@@ -543,7 +541,7 @@ export function resolveSurplusEligibility(params: {
   // only ever ENLARGE the pool, and the `powerOk` gate below is unaffected: a
   // fresh measured meter is still required before any raise (never raise blind
   // on inference alone).
-  inferredSurplusKw?: number | null;
+  inferredSurplusKw: number;
   getConfig: (deviceId: string) => SurplusConfig | undefined;
   // Smart-task precedence at the ALLOCATION stage (mirrors the hold exclusion):
   // a device an active deferred objective currently governs must never be

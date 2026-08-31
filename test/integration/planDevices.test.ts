@@ -100,6 +100,7 @@ const pendingStoreFor = (state: PlanEngineState) =>
   createPendingBinaryCommandStore(state.pendingBinaryCommands);
 
 const defaultDeps: PlanDevicesDeps = {
+  getInferredSurplusKw: () => 0,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
@@ -325,6 +326,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 55 }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -369,6 +371,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -415,6 +418,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -462,6 +466,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -499,6 +504,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -545,6 +551,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map([['dev-1', 'mid']]),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -587,6 +594,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -618,6 +626,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -650,6 +659,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -675,6 +685,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -696,6 +707,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -725,6 +737,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -757,6 +770,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -790,6 +804,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: true, // Shortfall!
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -824,6 +839,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -854,6 +870,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: true,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -889,6 +906,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -923,6 +941,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -956,6 +975,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -985,6 +1005,7 @@ describe('buildInitialPlanDevices', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
@@ -1007,6 +1028,7 @@ const buildTurnOffDeps = (overrides: Partial<PlanDevicesDeps> = {}): PlanDevices
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
+  getInferredSurplusKw: () => 0,
   pendingBinaryCommandStore: emptyPendingStore,
   ...overrides,
 });

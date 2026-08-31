@@ -31,11 +31,11 @@ export type PlanDevicesDeps = {
   getShedBehavior: (deviceId: string) => ShedBehavior;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
-  // Producer-resolved inferred curtailed-surplus term (kW) for the surplus
-  // allocator's pool; absent getter or null result = no inferred surplus. The
-  // producer (`lib/solar/curtailmentSurplus.ts`, injected flat via setup wiring)
-  // owns every safety decision about the term — this layer never re-validates it.
-  getInferredSurplusKw?: () => number | null;
+  // Producer-resolved inferred curtailed-surplus term (kW, >= 0) for the surplus
+  // allocator's pool; 0 = no inferred surplus. The producer
+  // (`lib/solar/curtailmentSurplus.ts`, injected flat via setup wiring) owns
+  // every safety decision about the term — this layer never re-validates it.
+  getInferredSurplusKw: () => number;
   getOperatingMode?: () => string;
   /**
    * Producer-resolved: does THIS home hold a mode-target RAISE while its own

@@ -65,7 +65,7 @@ describe('wireCurtailmentSurplus — the lift-state predicate that gates verific
     const at = T0 + TICK + PAST_LATCH;
     est.recordSample(0, 500, at);
     // Still suppressed past the bare 90 s latch ⇒ it is on the 15-min refute hold.
-    expect(est.getCurtailedSurplusKw(at)).toEqual({ kind: 'suppressed' });
+    expect(est.getCurtailedSurplusKw(at)).toBe(0);
   });
 
   it('a NON-BINDING eligibility opens NO window: an import is a bare latch, not a refute hold', () => {
@@ -83,7 +83,7 @@ describe('wireCurtailmentSurplus — the lift-state predicate that gates verific
     const at = T0 + TICK + PAST_LATCH;
     est.recordSample(0, 500, at);
     // No window opened, so the import was only a 90 s latch — the term is back.
-    expect(est.getCurtailedSurplusKw(at)).toEqual({ kind: 'term', kw: expect.closeTo(2.2, 6) });
+    expect(est.getCurtailedSurplusKw(at)).toBeCloseTo(2.2, 6);
   });
 
   it('a source flip inside the memo TTL is resolved fresh, not served from the old source', () => {
@@ -115,13 +115,13 @@ describe('wireCurtailmentSurplus — the lift-state predicate that gates verific
     const est = wireCurtailmentSurplus(ctx, () => selected);
 
     est.recordSample(0, 500, T0);
-    expect(est.getCurtailedSurplusKw(T0)).toEqual({ kind: 'term', kw: expect.closeTo(2.2, 6) });
+    expect(est.getCurtailedSurplusKw(T0)).toBeCloseTo(2.2, 6);
     expect(learnedCalls.length).toBeGreaterThan(0);
 
     // Same hour, well inside the 30 s TTL — only the SOURCE changed.
     selected = homey;
     est.recordSample(0, 500, T0 + TICK);
-    expect(est.getCurtailedSurplusKw(T0 + TICK)).toEqual({ kind: 'suppressed' });
+    expect(est.getCurtailedSurplusKw(T0 + TICK)).toBe(0);
     expect(homeyCalls.length).toBeGreaterThan(0);
   });
 });

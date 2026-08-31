@@ -127,6 +127,7 @@ describe('PlanBuilder budget exemption handling', () => {
     ];
 
     const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
@@ -196,6 +197,7 @@ describe('PlanBuilder budget exemption handling', () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
     const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
@@ -244,6 +246,7 @@ describe('PlanBuilder budget exemption handling', () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
     const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),

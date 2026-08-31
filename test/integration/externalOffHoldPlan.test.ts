@@ -162,6 +162,7 @@ describe('external-off hold — plan-device propagation', () => {
   });
 
   const deps: PlanDevicesDeps = {
+    getInferredSurplusKw: () => 0,
     getShedBehavior: () => ({ action: 'turn_off' }),
     getPriceOptimizationEnabled: () => false,
     getPriceOptimizationSettings: () => ({}),

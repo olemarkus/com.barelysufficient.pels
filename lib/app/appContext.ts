@@ -57,7 +57,6 @@ import type {
   FlowReportedCapabilityId,
 } from '../device/transport/flowReportedCapabilities';
 import type { PvForecastSourceUiStatus, SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
-import type { CurtailedSurplusRead } from '../solar/curtailmentSurplus';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import type { PlanRebuildTrigger } from '../plan/planRebuildTrigger';
 
@@ -312,11 +311,11 @@ export type AppContext = {
   externalOffHold?: ExternalOffHoldPolicy;
   // Curtailment-surplus estimator seams, both ASSIGNED by `wireCurtailmentSurplus`
   // post-startup (the wiring-assigns-ctx-members house pattern): the read of the
-  // inferred curtailed-surplus term the plan wiring consumes — a kW `term` or the
-  // named `suppressed` member, never a nullable kW — and the co-sampled push feed
-  // from the power pipeline. Both are absent until the wiring runs — fail-closed,
-  // same precedent as the budget-price PV inputs.
-  getCurtailedSurplusKw?: () => CurtailedSurplusRead;
+  // inferred curtailed-surplus term the plan wiring consumes — always a kW, >= 0,
+  // because declining to claim a term IS 0 kW spare — and the co-sampled push
+  // feed from the power pipeline. Both are absent until the wiring runs —
+  // fail-closed, same precedent as the budget-price PV inputs.
+  getCurtailedSurplusKw?: () => number;
   recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   // Standing capability, not the current term: "could an inferred curtailment
   // term ever arrive for this home?". Gates the `surplusOnly` posture via

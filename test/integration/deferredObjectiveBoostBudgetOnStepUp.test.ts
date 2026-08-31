@@ -269,6 +269,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
   });
 
   const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
     capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),

@@ -136,6 +136,7 @@ const emptyRestoreResult: RestorePlanResult = {
 };
 
 const defaultDeps: PlanDevicesDeps = {
+  getInferredSurplusKw: () => 0,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
@@ -224,6 +225,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       devices: [batteryInputDevice()],
       state,
       signedNetKw: -3, // 3 kW export available
+      inferredSurplusKw: 0,
       // Even if a (nonsensical) surplus config were present, the temperature-boost
       // filter drops the battery before allocation.
       getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),

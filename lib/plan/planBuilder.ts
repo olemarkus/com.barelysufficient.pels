@@ -74,9 +74,10 @@ export type PlanBuilderDeps = {
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
   // Producer-resolved: both current-hour flags from ONE combined-series build.
   getCurrentHourPriceLevel: () => PriceLevel;
-  // Producer-resolved inferred curtailed-surplus term for the surplus allocator
-  // (zero-export homes); forwarded untouched to the per-device prep pass.
-  getInferredSurplusKw?: () => number | null;
+  // Producer-resolved inferred curtailed-surplus term (kW, >= 0) for the surplus
+  // allocator (zero-export homes); forwarded untouched to the per-device prep
+  // pass. 0 is the whole of "nothing inferred" — see `homeScope`.
+  getInferredSurplusKw: () => number;
   // Producer-resolved per-home posture: hold a mode-target RAISE while this
   // home's own power reading is unknown (see `applyModeSeedModulation` in
   // `planDevices.ts`). Absent = no hold, which is the main home's binding.

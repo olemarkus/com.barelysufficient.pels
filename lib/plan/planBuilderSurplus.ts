@@ -55,10 +55,10 @@ export function runSurplusPass(params: {
     'forceShedSet' | 'deferredAvoidDeviceIds' | 'deferredReleaseIntentByDeviceId' | 'admittedDeviceIds'
   >;
   getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined;
-  // Zero-export inferred curtailed-surplus term (producer:
+  // Zero-export inferred curtailed-surplus term (kW, >= 0; producer:
   // `lib/solar/curtailmentSurplus.ts`), injected flat through the plan deps and
-  // enlarging the same pool as measured export. Absent ⇒ measured export only.
-  getInferredSurplusKw?: () => number | null;
+  // enlarging the same pool as measured export. 0 ⇒ measured export only.
+  getInferredSurplusKw: () => number;
   // Structured emitter for the `surplus_pool` composition log (debug-gated).
   debugStructured?: StructuredDebugEmitter;
   // One timestamp for the whole build, so the settle/dwell clocks and the
@@ -82,7 +82,7 @@ export function runSurplusPass(params: {
     // Producer-resolved: `null` when no trustworthy total exists this cycle, so
     // the allocator has no untrusted number to guard against.
     signedNetKw: context.measuredDrawKw,
-    inferredSurplusKw: params.getInferredSurplusKw?.() ?? null,
+    inferredSurplusKw: params.getInferredSurplusKw(),
     excludeIds,
     getConfig: params.getConfig,
     debugStructured: params.debugStructured,
