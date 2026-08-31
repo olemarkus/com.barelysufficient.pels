@@ -33,6 +33,7 @@ import {
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -4927,5 +4928,204 @@ describe('stepped-load shed invariant', () => {
       pendingTarget: true,
       lastPlanMeasurementTs: 201,
     });
+  });
+});
+
+describe('a restore decision is made once, and logged once', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  // Typed as the emitter the deps actually take, so the spy stays assignable
+  // without widening `RestoreDeps`.
+  const debugSpy = () => vi.fn<StructuredDebugEmitter>();
+  type DebugSpy = ReturnType<typeof debugSpy>;
+
+  const swapDeps = (debugStructured: DebugSpy) => ({
+    powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+    normalizedShedFloorCByDevice: new Map(),
+    getShedBehavior: () => ({ action: 'turn_off' as const }),
+    logDebug: vi.fn(),
+    debugStructured,
+  });
+
+  // An off device wanting more than the house has, plus one lower-priority
+  // device the swap may consider pausing.
+  const blockedRestoreWithSource = (sourceDrawKw: number) => [
+    buildPlanDevice({
+      id: 'dev', name: 'Heater', currentState: 'off', priority: 50,
+      expectedPowerKw: 1, measuredPowerKw: 0,
+    }),
+    buildPlanDevice({
+      id: 'src', name: 'Dump load', currentState: 'on', priority: 120,
+      expectedPowerKw: sourceDrawKw, measuredPowerKw: sourceDrawKw,
+    }),
+  ];
+
+  const rejectionsFor = (debugStructured: DebugSpy, deviceId: string) => (
+    debugStructured.mock.calls
+      .map(([payload]) => payload)
+      .filter((payload) => payload['event'] === 'restore_rejected' && payload['deviceId'] === deviceId)
+  );
+
+  it('re-announces a swap rejection only when the situation changes', () => {
+    const state = createPlanEngineState();
+    const debugStructured = debugSpy();
+    // 0.4 kW of swappable draw is nowhere near the 1.2 kW need, so the swap is
+    // searched, found wanting, and reaches the same verdict on every rebuild.
+    const run = () => applyRestorePlan({
+      planDevices: blockedRestoreWithSource(0.4),
+      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: swapDeps(debugStructured),
+    });
+    run();
+    run();
+    run();
+
+    // The swap rejection was the one restore emitter that wrote unconditionally.
+    expect(rejectionsFor(debugStructured, 'dev')).toEqual([
+      expect.objectContaining({ restoreType: 'swap', rejectionReason: 'insufficient_headroom' }),
+    ]);
+  });
+
+  it('does not announce a rejection for a device the swap goes on to admit', () => {
+    const state = createPlanEngineState();
+    const debugStructured = debugSpy();
+    // 1.5 kW freed on top of 0.5 kW clears the 1.2 kW need and both reserves.
+    const result = applyRestorePlan({
+      planDevices: blockedRestoreWithSource(1.5),
+      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: swapDeps(debugStructured),
+    });
+
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_swap_approved', deviceId: 'dev',
+    }));
+    // The swap had not decided yet when the old code announced this.
+    expect(rejectionsFor(debugStructured, 'dev')).toEqual([]);
+    expect(result.planDevices.find((d) => d.id === 'src')?.plannedState).toBe('shed');
+  });
+
+  it('rejects on the direct figures when nothing is running to swap out', () => {
+    const state = createPlanEngineState();
+    const debugStructured = debugSpy();
+    applyRestorePlan({
+      // The only other device draws nothing, so it can fund no swap.
+      planDevices: blockedRestoreWithSource(0),
+      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: swapDeps(debugStructured),
+    });
+
+    // One line, from the direct path, carrying the available power the card
+    // shows — not the swap arithmetic's `available − swap reserve`.
+    expect(rejectionsFor(debugStructured, 'dev')).toEqual([
+      expect.objectContaining({
+        restoreType: 'binary',
+        availableKw: 0.5,
+        neededKw: 1.2,
+        rejectionReason: 'insufficient_headroom',
+      }),
+    ]);
+  });
+
+  it('lets a stepped restore reject on its own figures when there is no swap source', () => {
+    const state = createPlanEngineState();
+    const debugStructured = debugSpy();
+    applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Priority tank',
+          priority: 1,
+          currentState: 'off',
+          plannedState: 'keep',
+          boostActive: false,
+          selectedStepId: 'off',
+          desiredStepId: undefined,
+          currentDrawKw: 0,
+        }),
+        // Lower priority and nominally on, but drawing nothing — it can fund
+        // no swap, so the stepped path falls through to its own rejection.
+        buildPlanDevice({
+          id: 'lower-priority',
+          name: 'Lower priority heater',
+          priority: 5,
+          currentState: 'on',
+          plannedState: 'keep',
+          boostActive: false,
+          controllable: true,
+          measuredPowerKw: 0, expectedPowerKw: 0,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 0.3, headroom: 0.3 }),
+      state,
+      sheddingActive: false,
+      deps: swapDeps(debugStructured),
+    });
+
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_stepped_rejected',
+      deviceId: 'dev-step',
+      rejectionReason: 'insufficient_headroom',
+    }));
+    expect(rejectionsFor(debugStructured, 'dev-step')).toEqual([]);
+  });
+
+  it('names the meter, not the shortfall, when a swap stands down for want of a reading', () => {
+    const state = createPlanEngineState();
+    const debugStructured = debugSpy();
+    applyRestorePlan({
+      planDevices: blockedRestoreWithSource(0.4),
+      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        ...swapDeps(debugStructured),
+        // No reading yet: `buildRestoreTiming` resolves `measurementTs` from the
+        // tracker, so a tracker with no timestamp is a cold start.
+        powerTracker: { lastTimestamp: undefined } as unknown as PowerTrackerState,
+      },
+    });
+
+    // These two stand-downs used to log nothing, and were covered only by the
+    // caller's pre-announcement mislabelling them `insufficient_headroom`.
+    expect(rejectionsFor(debugStructured, 'dev')).toEqual([
+      expect.objectContaining({
+        restoreType: 'swap',
+        rejectionReason: 'no_measurement',
+      }),
+    ]);
+  });
+
+  it('holds a swap target mid-handshake even after its sources stop drawing', () => {
+    const state = createPlanEngineState();
+    const debugStructured = debugSpy();
+    // Approve a swap, then re-plan with the source drawing nothing:
+    // `hasSwappableDraw` is now false, and the short-circuit must not fire ahead
+    // of the handshake gates that keep the target pending.
+    const approved = applyRestorePlan({
+      planDevices: blockedRestoreWithSource(1.5),
+      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: swapDeps(debugStructured),
+    });
+    state.swapByDevice = approved.stateUpdates.swapByDevice;
+    const result = applyRestorePlan({
+      planDevices: blockedRestoreWithSource(0),
+      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: swapDeps(debugStructured),
+    });
+
+    expect(result.planDevices.find((d) => d.id === 'dev')?.reason).toEqual(
+      expect.objectContaining({ code: PLAN_REASON_CODES.swapPending }),
+    );
   });
 });

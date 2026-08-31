@@ -5,18 +5,53 @@ import {
 } from '../planConstants';
 import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from '../admission';
 
+/**
+ * The half of swap viability that does not depend on who wants the power: a
+ * source has to be drawing something and not already be spoken for. Named
+ * separately because it is also the answer to a question the search itself
+ * cannot ask — *could a swap free anything at all?* — and that answer has to
+ * come from the same predicate the search uses, or the two drift apart.
+ */
+function canReleaseDrawForSwap(
+  onDev: DevicePlanDevice,
+  swappedOutFor: ReadonlyMap<string, string>,
+  restoredThisCycle: ReadonlySet<string>,
+): boolean {
+  if (onDev.currentDrawKw <= 0) return false;
+  if (onDev.plannedState === 'shed') return false;
+  if (swappedOutFor.has(onDev.id)) return false;
+  if (restoredThisCycle.has(onDev.id)) return false;
+  return true;
+}
+
+/**
+ * Whether any running device could be paused to fund a restore this cycle.
+ * False means the swap avenue does not exist — `buildSwapCandidates` would walk
+ * the whole list and come back with nothing to shed for every candidate — so
+ * the caller's own rejection is already the decision.
+ *
+ * Evaluated per candidate rather than once per pass: `plannedState`,
+ * `swappedOutFor` and `restoredThisCycle` all move as the pass runs, and a
+ * verdict cached before the first admission would be stale by the second.
+ */
+export function hasSwappableDraw(
+  onDevices: readonly DevicePlanDevice[],
+  swappedOutFor: ReadonlyMap<string, string>,
+  restoredThisCycle: ReadonlySet<string>,
+): boolean {
+  return onDevices.some((onDev) => canReleaseDrawForSwap(onDev, swappedOutFor, restoredThisCycle));
+}
+
 function isViableSwapCandidate(
   onDev: DevicePlanDevice,
   dev: DevicePlanDevice,
   swappedOutFor: ReadonlyMap<string, string>,
   restoredThisCycle: ReadonlySet<string>,
 ): boolean {
+  if (!canReleaseDrawForSwap(onDev, swappedOutFor, restoredThisCycle)) return false;
   const onDevPriority = onDev.priority ?? 100;
   const devPriority = dev.priority ?? 100;
   if (onDevPriority <= devPriority) return false;
-  if (onDev.plannedState === 'shed') return false;
-  if (swappedOutFor.has(onDev.id)) return false;
-  if (restoredThisCycle.has(onDev.id)) return false;
   // A NON-exempt target must not count freed draw from a budget-exempt source:
   // its budget axis is `budgetPaceKw + measuredExemptKw − total`, and turning
   // the exempt source off drops `measuredExemptKw` and `total` together — the
@@ -68,8 +103,6 @@ export function buildSwapCandidates(params: {
     if (!isViableSwapCandidate(onDev, dev, swappedOutFor, restoredThisCycle)) continue;
 
     const pwr = onDev.currentDrawKw;
-    if (pwr <= 0) continue;
-
     toShed.push(onDev);
     currentPotential += pwr;
     effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);

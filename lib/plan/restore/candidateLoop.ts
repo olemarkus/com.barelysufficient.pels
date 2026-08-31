@@ -210,12 +210,17 @@ export function buildSteppedSwapExecutor(params: {
   deps: RestoreDeps;
 }): SteppedSwapExecutor {
   const { deviceMap, onDevices, swapState, state, timing, restoredThisCycle, deps } = params;
-  return ({ dev, needed, devPower, availableHeadroom, admittedDeviceUpdate, rejectedDeviceUpdate }) => (
+  return ({
+    dev, needed, devPower, availableHeadroom, restoreDebugKey,
+    admittedDeviceUpdate, rejectedDeviceUpdate,
+  }) => (
     attemptSwapRestore({
       dev,
       deviceMap,
       onDevices,
       swapState,
+      state,
+      restoreDebugKey,
       phase: resolveRestoreDecisionPhase(state.currentRebuildTrigger),
       availableHeadroom,
       restoreNeed: { needed, devPower, penaltyLevel: 0, penaltyExtraKw: 0 },

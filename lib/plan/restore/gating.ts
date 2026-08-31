@@ -399,7 +399,6 @@ function rejectBinaryRestoreForInsufficientHeadroom(params: {
       minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       decision: 'rejected',
       rejectionReason: 'insufficient_headroom',
-      swapAttempt: false,
     },
     debugStructured,
   });
@@ -449,8 +448,8 @@ function handleInsufficientBinaryRestoreHeadroom(params: {
     deps,
     allowSwap,
   } = params;
-  if (batchContinuation || !allowSwap) {
-    return rejectBinaryRestoreForInsufficientHeadroom({
+  const rejectDirectly = (): { availableHeadroom: number; restoredOneThisCycle: boolean } => (
+    rejectBinaryRestoreForInsufficientHeadroom({
       state,
       deviceMap,
       dev,
@@ -462,30 +461,16 @@ function handleInsufficientBinaryRestoreHeadroom(params: {
       restoreDebugKey,
       restoredOneThisCycle,
       debugStructured: deps.debugStructured,
-    });
-  }
+    })
+  );
+  if (batchContinuation || !allowSwap) return rejectDirectly();
 
-  emitRestoreDebugEventOnChange({
-    state,
-    key: restoreDebugKey,
-    payload: {
-      event: 'restore_rejected',
-      restoreType: 'binary',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      powerSource,
-      neededKw: restoreNeed.needed,
-      availableKw: availableHeadroom,
-      ...buildRestoreAdmissionLogFields(admission),
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-      decision: 'rejected',
-      rejectionReason: 'insufficient_headroom',
-      swapAttempt: true,
-    },
-    debugStructured: deps.debugStructured,
-  });
-
+  // No rejection is announced before the swap runs. It used to be: this branch
+  // emitted `restore_rejected` and then attempted the swap, so a device that the
+  // swap went on to admit was logged as rejected first, and a device it did not
+  // was logged as rejected twice. A restore decision is made once, by whichever
+  // path owns it.
+  //
   // The swap decides against the RESERVED figure, so a swap can only proceed by freeing enough to
   // cover this device's need on top of the block already promised elsewhere. `attemptSwapRestore`
   // returns the headroom it was handed unchanged on every path, so the caller's running total is
@@ -495,6 +480,8 @@ function handleInsufficientBinaryRestoreHeadroom(params: {
     deviceMap,
     onDevices,
     swapState,
+    state,
+    restoreDebugKey,
     phase,
     availableHeadroom: availableHeadroom - reservedHeadroomKw,
     restoreNeed,
@@ -502,5 +489,11 @@ function handleInsufficientBinaryRestoreHeadroom(params: {
     restoredThisCycle,
     deps,
   });
-  return { ...swap, availableHeadroom: swap.availableHeadroom + reservedHeadroomKw };
+  // Nothing was running to swap out, so no swap happened and the direct
+  // shortfall is the whole story — the same figures this device's card carries.
+  if (swap.kind === 'no_source') return rejectDirectly();
+  return {
+    availableHeadroom: swap.availableHeadroom + reservedHeadroomKw,
+    restoredOneThisCycle: swap.restoredOneThisCycle,
+  };
 }
