@@ -1,4 +1,4 @@
-import type { AppContext } from '../../lib/app/appContext';
+import type { InitializedAppContext } from '../../lib/app/appContext';
 import {
   mockHomeyInstance,
   setMockDrivers,
@@ -9,13 +9,17 @@ import { createApp, cleanupApps } from '../utils/appTestUtils';
 
 vi.mock('../../setup/appLifecycleHelpers', () => ({
   runStartupStep: async (_label: string, work: () => unknown | Promise<unknown>) => work(),
-  startAppServices: async (ctx: AppContext) => {
+  // Mirrors production's signature: `startAppServices` runs immediately after
+  // `requireInitializedAppContext`, so both services are present by contract.
+  // Typed loosely, the optional chaining below would let a future reorder skip
+  // the startup rebuild silently and leave this spec green on a shorter start.
+  startAppServices: async (ctx: InitializedAppContext) => {
     ctx.loadPowerTracker();
     ctx.loadPriceOptimizationSettings();
-    ctx.priceCoordinator?.initOptimizer();
+    ctx.priceCoordinator.initOptimizer();
     await ctx.updateOverheadToken();
     await ctx.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
-    await ctx.planService?.rebuildPlanFromCache('startup_snapshot_bootstrap');
+    await ctx.planService.rebuildPlanFromCache('startup_snapshot_bootstrap');
     ctx.registerFlowCards();
     ctx.snapshotHelpers.startPeriodicSnapshotRefresh();
     ctx.homeyEnergyHelpers.start();

@@ -136,23 +136,90 @@ const buildWarningPerfPayload = (nowMs: number) => {
 // a regex. `.error` keeps them on Homey's error channel — `homeyDestination`
 // routes at/above pino's error level there — so the routing is unchanged and only
 // the encoding moves.
+
+/**
+ * How often the full perf context rides along with a warning.
+ *
+ * Matched to the window the payload itself summarises
+ * (`summarizeRecentPlanRebuildTraces(120_000)`): a second context inside that
+ * window is largely a re-dump of the same rows, so the interval is the point
+ * below which the extra copy stops telling a reader anything new.
+ *
+ * It needs an interval at all because the context is the most expensive thing
+ * this file does — roughly 4.7 KB of walked rebuild traces and runtime spans,
+ * serialised at precisely the moment the runtime has told us memory is tight.
+ * Building it per warning is worst-case behaviour: the diagnostic allocates
+ * hardest exactly when the condition it reports is at its worst, against a
+ * 70 MB heap limit. 299 of the 663 warnings in the sampled window arrived
+ * within 60 s of the previous one.
+ */
+const WARNING_CONTEXT_INTERVAL_MS = 120_000;
+
+/**
+ * The context budget, shared by every warning kind.
+ *
+ * One budget rather than one per kind, because the payload is not per-kind: it
+ * summarises the SAME global 120 s window of rebuild traces and runtime spans
+ * whichever warning carried it. Two private counters would each treat a
+ * combined CPU-and-memory episode as their first and dump ~4.7 KB of
+ * substantially the same rows — doubling the allocation in exactly the episode
+ * the interval exists to protect.
+ *
+ * `suppressedContext` is shared for the same reason: it counts warnings of any
+ * kind that went without context since the last one carried it, which is the
+ * number a reader needs to tell a quiet period from a suppressed burst.
+ */
+type WarningContextBudget = {
+  /** Take the context if it is due, and say how many were skipped waiting. */
+  claim(nowMs: number): { withContext: boolean; suppressedContext: number };
+};
+
+const createWarningContextBudget = (): WarningContextBudget => {
+  let lastContextAtMs: number | null = null;
+  let suppressedContextCount = 0;
+  return {
+    claim(nowMs: number) {
+      const withContext = lastContextAtMs === null
+        || (nowMs - lastContextAtMs) >= WARNING_CONTEXT_INTERVAL_MS;
+      const suppressedContext = suppressedContextCount;
+      if (withContext) {
+        lastContextAtMs = nowMs;
+        suppressedContextCount = 0;
+      } else {
+        suppressedContextCount += 1;
+      }
+      return { withContext, suppressedContext };
+    },
+  };
+};
+
+// The WARNING itself is never throttled — every one is still logged, because
+// the arrival rate is itself the signal. Only the context is rationed, and a
+// record that goes without says how many preceded it, so a reader can tell a
+// quiet period from a suppressed burst.
 const createWarnLogger = (
   kind: 'cpuwarn' | 'memwarn',
-): ((payload: unknown) => void) => (
-  (payload: unknown): void => {
+  budget: WarningContextBudget,
+): ((payload: unknown) => void) => {
+  return (payload: unknown): void => {
     const data = (payload && typeof payload === 'object') ? payload as { count?: unknown; limit?: unknown } : {};
     const count = typeof data.count === 'number' && Number.isFinite(data.count) ? data.count : null;
     const limit = typeof data.limit === 'number' && Number.isFinite(data.limit) ? data.limit : null;
     if (count === 1) return;
+    const nowMs = Date.now();
+    const { withContext, suppressedContext } = budget.claim(nowMs);
     resourceWarningLogger.error({
       event: `homey_${kind}`,
       kind,
       count,
       limit,
-      perf: buildWarningPerfPayload(Date.now()),
+      ...(withContext
+        ? { perf: buildWarningPerfPayload(nowMs) }
+        : { perfContextSuppressed: true }),
+      ...(withContext && suppressedContext > 0 ? { suppressedContextCount: suppressedContext } : {}),
     });
-  }
-);
+  };
+};
 
 export const startResourceWarningListeners = (
   params: StartResourceWarningListenersParams,
@@ -160,8 +227,12 @@ export const startResourceWarningListeners = (
   const { homey: emitter } = params;
   if (!emitter || typeof emitter.on !== 'function') return undefined;
 
-  const cpuwarn = createWarnLogger('cpuwarn');
-  const memwarn = createWarnLogger('memwarn');
+  // One budget for both listeners — see `WarningContextBudget`. Created per
+  // start rather than at module scope so a restart begins with a clean window
+  // and tests do not inherit one another's.
+  const contextBudget = createWarningContextBudget();
+  const cpuwarn = createWarnLogger('cpuwarn', contextBudget);
+  const memwarn = createWarnLogger('memwarn', contextBudget);
   const unload = (): void => {
     resourceWarningLogger.info({ event: 'homey_unload' });
   };

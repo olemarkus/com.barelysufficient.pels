@@ -9,8 +9,12 @@
  * so the caller can keep its previously cached tree — the abandon-grace
  * convention for transient external failures (`notes/persisted-settings-state.md`).
  *
- * Additive/dormant: nothing consumes the tree yet — multi-home membership will
- * join device `zoneId`s against it.
+ * Consumed by multi-home membership, which joins device `zoneId`s against it
+ * (`setup/homeMembership.ts`); until the first tree commits, a pinned sub-home
+ * member is held out of actuation. AFTER that first commit an unknown zone is
+ * no longer held — it resolves to Main — so the tree rides every snapshot
+ * refresh rather than a slower cadence of its own: Homey publishes no zone
+ * event, so a stale tree has nothing to correct it. See `TODO.md`.
  */
 import type { Logger } from '../../utils/types';
 import { isUnknownRecord } from '../../utils/types';
@@ -71,6 +75,15 @@ const toZoneTreeNode = (value: unknown): ZoneTreeNode | null => {
  * discipline (same REST client, record-or-array payload tolerance) but never
  * throws outward: any failure — including an empty payload or one where every
  * entry is malformed — returns `null` so the caller retains its cached tree.
+ */
+/*
+ * Keeps the INJECTED devices-topic logger rather than a module logger. The root
+ * pino logger is created at its default `info` level (`installStructuredLogger`
+ * passes no level), so `moduleLogger.debug` here emits nothing in production —
+ * it would silently drop every `zone_tree_fetch_failed` / `zone_tree_fetched`
+ * record, which are the diagnostics an owner enables the `devices` topic to
+ * read. The caller's neighbouring zone logs in `snapshotRefresh` go through the
+ * same injected emitter, so this also keeps one zone story on one channel.
  */
 export async function fetchZoneTree(params: { logger: Logger }): Promise<ZoneTree | null> {
   const { logger } = params;
