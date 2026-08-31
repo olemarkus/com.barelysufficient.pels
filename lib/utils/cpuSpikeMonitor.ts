@@ -53,21 +53,29 @@ const takeCpuSample = (
   };
 };
 
-const buildRebuildSummary = (nowMs: number): string => {
+type CpuSpikeRebuildSummary = {
+  count: number;
+  maxTotalMs: number;
+  maxQueueWaitMs: number;
+  maxApplyMs: number;
+  recent: { reason: string; totalMs: number; ageMs: number }[];
+};
+
+const buildRebuildSummary = (nowMs: number): CpuSpikeRebuildSummary | undefined => {
   const rebuildWindow = summarizeRecentPlanRebuildTraces(120_000, nowMs);
-  if (rebuildWindow.count === 0) return '';
+  if (rebuildWindow.count === 0) return undefined;
 
-  const recentRebuilds = getRecentPlanRebuildTraces(3, nowMs)
-    .map((trace) => `${trace.reason}:${trace.totalMs}ms age=${trace.ageMs}ms`)
-    .join(' | ');
-
-  return [
-    `rebuildWindow=count=${rebuildWindow.count}`,
-    `maxTotalMs=${rebuildWindow.maxTotalMs}`,
-    `maxQueueWaitMs=${rebuildWindow.maxQueueWaitMs}`,
-    `maxApplyMs=${rebuildWindow.maxApplyMs}`,
-    `recentRebuilds=${recentRebuilds}`,
-  ].join(' ');
+  return {
+    count: rebuildWindow.count,
+    maxTotalMs: rebuildWindow.maxTotalMs,
+    maxQueueWaitMs: rebuildWindow.maxQueueWaitMs,
+    maxApplyMs: rebuildWindow.maxApplyMs,
+    recent: getRecentPlanRebuildTraces(3, nowMs).map((trace) => ({
+      reason: trace.reason,
+      totalMs: trace.totalMs,
+      ageMs: trace.ageMs,
+    })),
+  };
 };
 
 const emitCpuSpike = (sample: CpuSample, nowMs: number): void => {
@@ -83,7 +91,7 @@ const emitCpuSpike = (sample: CpuSample, nowMs: number): void => {
     memory: resolveMemorySummary(),
     activeSpans,
     recentSpans,
-    rebuild: buildRebuildSummary(nowMs) || undefined,
+    rebuild: buildRebuildSummary(nowMs),
   });
 };
 

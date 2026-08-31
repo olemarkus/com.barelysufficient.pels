@@ -4,7 +4,6 @@ import {
   type BinaryControlDecisionSnapshot,
   type BinaryControlLogContext,
   type BinaryControlRestoreSource,
-  buildBinaryControlLogMessage,
 } from '../plan/planBinaryControlHelpers';
 import { decideBinaryControl } from '../plan/planBinaryControl';
 import { resolveBinaryCommandPendingMs } from '../observer/pendingBinaryCommandTypes';
@@ -263,13 +262,6 @@ function emitBinaryCommandSuccess(params: {
     logContext: decision.logContext,
     ...(decision.restoreSource ? { restoreSource: decision.restoreSource } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
-    msg: buildBinaryControlSuccessLogMessage({
-      logContext: decision.logContext,
-      desired: decision.desired,
-      name: decision.name,
-      reason: decision.reason,
-      restoreSource: decision.restoreSource,
-    }),
   });
 }
 
@@ -289,10 +281,6 @@ function emitBinaryCommandFailure(params: {
     ...(decision.restoreSource ? { restoreSource: decision.restoreSource } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
     err,
-    msg: buildBinaryControlFailureLogMessage({
-      desired: decision.desired,
-      name: decision.name,
-    }),
   });
 }
 
@@ -320,44 +308,8 @@ function emitBinaryCommandOutcomeUnknown(params: {
     ...(decision.restoreSource ? { restoreSource: decision.restoreSource } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
     err,
-    msg: buildBinaryControlUnknownLogMessage({
-      desired: decision.desired,
-      name: decision.name,
-    }),
   });
 }
 
-function buildBinaryControlSuccessLogMessage(params: {
-  logContext: BinaryControlLogContext;
-  desired: boolean;
-  name: string;
-  reason?: string;
-  restoreSource?: BinaryControlRestoreSource;
-}): string {
-  const {
-    logContext,
-    desired,
-    name,
-    reason,
-    restoreSource,
-  } = params;
-  return buildBinaryControlLogMessage({ logContext, desired, name, reason, restoreSource });
-}
 
-function buildBinaryControlFailureLogMessage(params: {
-  desired: boolean;
-  name: string;
-}): string {
-  const { desired, name } = params;
-  const verb = `${desired ? 'turn on' : 'turn off'}`;
-  return `Failed to ${verb} ${name} via DeviceTransport`;
-}
 
-function buildBinaryControlUnknownLogMessage(params: {
-  desired: boolean;
-  name: string;
-}): string {
-  const { desired, name } = params;
-  const verb = `${desired ? 'turn on' : 'turn off'}`;
-  return `Timed out waiting for DeviceTransport to ${verb} ${name}; outcome unknown, awaiting telemetry`;
-}

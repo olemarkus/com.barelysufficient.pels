@@ -4,11 +4,6 @@ import {
   SWAP_RESTORE_RESERVE_KW,
 } from '../planConstants';
 import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from '../admission';
-import { buildRestoreHeadroomReason } from '../planReasonStrings';
-import {
-  formatDeviceReason,
-  PLAN_REASON_CODES,
-} from '../../../packages/shared-domain/src/planReasonSemantics';
 
 function isViableSwapCandidate(
   onDev: DevicePlanDevice,
@@ -55,14 +50,6 @@ export function buildSwapCandidates(params: {
   displayPostReserveMarginKw: number;
   admission: RestoreAdmissionMetrics;
   reserveKw: number;
-  // The already-formatted decision sentence for the swap-rejection log lines
-  // (`lib/plan/restore/swap.ts`). A STRING, not a `DeviceReason`: this value is
-  // never a device's reason and never reaches a card. It used to be one — the
-  // "with victims" case wrapped the formatted text back into a
-  // `{ code: 'other', text }` object purely so both call sites could unwrap it
-  // with `formatDeviceReason`, and that round-trip was the only producer of the
-  // `other` code anywhere in the runtime.
-  decisionText: string;
 } {
   const {
     dev,
@@ -105,15 +92,6 @@ export function buildSwapCandidates(params: {
     availableKw: displayEffectiveHeadroomKw,
     neededKw: needed,
   });
-  const decisionText = buildSwapCandidateDecisionText({
-    ready,
-    targetName: dev.name,
-    neededKw: needed,
-    availableKw: currentPotential,
-    effectiveAvailableKw: displayEffectiveHeadroomKw,
-    postReserveMarginKw: displayAdmission.postReserveMarginKw,
-    shedNames: names,
-  });
 
   return {
     ready,
@@ -126,47 +104,6 @@ export function buildSwapCandidates(params: {
     displayPostReserveMarginKw: displayAdmission.postReserveMarginKw,
     admission,
     reserveKw: SWAP_RESTORE_RESERVE_KW,
-    decisionText,
   };
 }
 
-function buildSwapCandidateDecisionText(params: {
-  ready: boolean;
-  targetName: string;
-  neededKw: number;
-  availableKw: number;
-  effectiveAvailableKw: number;
-  postReserveMarginKw: number;
-  shedNames: string;
-}): string {
-  const {
-    ready,
-    targetName,
-    neededKw,
-    availableKw,
-    effectiveAvailableKw,
-    postReserveMarginKw,
-    shedNames,
-  } = params;
-
-  if (ready) return formatDeviceReason({ code: PLAN_REASON_CODES.swappedOut, targetName });
-
-  // No swap-target clause in the reject text. `insufficientHeadroom` used to
-  // carry a `swapTargetName` purely to prefix this one string, and the name it
-  // stated is `dev.name` — the same value the enclosing debug payload already
-  // logs as `deviceName`, one field away (`lib/plan/restore/swap.ts`). Carrying a
-  // slot on every device's reason to duplicate a sibling log field is not worth a
-  // permanently-null field in the plan contract, so the slot is gone and the text
-  // reads as the plain restore-side rejection it is; `restoreType: 'swap'` and
-  // `shedNames` still identify it as the swap path.
-  const baseText = formatDeviceReason(buildRestoreHeadroomReason({
-    neededKw,
-    availableKw,
-    effectiveAvailableKw,
-    swapReserveKw: SWAP_RESTORE_RESERVE_KW,
-    postReserveMarginKw,
-    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-  }));
-
-  return shedNames ? `${baseText} from ${shedNames}` : baseText;
-}

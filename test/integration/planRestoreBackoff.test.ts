@@ -3127,6 +3127,12 @@ describe('restore admission — headroom and penalty gates', () => {
       event: 'restore_rejected',
       restoreType: 'target',
       deviceId: 'dev-temp',
+      // The gate that rejected, as a code. It used to be identifiable only from a
+      // prose `reason`; when that went, four branches briefly emitted payloads
+      // with no cause field at all — and since `emitRestoreDebugEventOnChange`
+      // dedupes on this payload, two of them share their numeric fields closely
+      // enough that a transition between causes could be suppressed outright.
+      rejectionReason: 'activation_backoff',
     }));
   });
 

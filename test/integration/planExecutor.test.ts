@@ -824,7 +824,9 @@ describe('PlanExecutor restore logging', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_succeeded',
-      msg: 'Capacity: turning on Heater (restored from shed state)',
+      deviceName: 'Heater',
+      desired: true,
+      restoreSource: 'shed_state',
     }));
   });
 
@@ -1046,7 +1048,7 @@ describe('PlanExecutor restore logging', () => {
     expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
   });
 
-  it('logs neutral restore text when matching the current plan after a later external off', async () => {
+  it('reports restoreSource=current_plan when matching the current plan after a later external off', async () => {
     const state = createPlanEngineState();
     state.lastDeviceShedMs['dev-1'] = Date.now() - 20_000;
     state.lastDeviceRestoreMs['dev-1'] = Date.now() - 5_000;
@@ -1057,7 +1059,9 @@ describe('PlanExecutor restore logging', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_succeeded',
-      msg: 'Capacity: turning on Heater (to match current plan)',
+      deviceName: 'Heater',
+      desired: true,
+      restoreSource: 'current_plan',
     }));
   });
 
@@ -2549,7 +2553,8 @@ describe('PlanExecutor stepped loads', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_succeeded',
-      msg: expect.stringContaining('turning on Tank'),
+      deviceName: 'Tank',
+      desired: true,
     }));
   });
 

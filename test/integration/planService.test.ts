@@ -369,9 +369,9 @@ describe('PlanService', () => {
       softLimitSource: 'daily',
       headroomKw: -0.97,
       restoreBlockedCount: 2,
-      restoreBlockedReasons: [{ reason: 'insufficient headroom', count: 2 }],
+      restoreBlockedReasons: [{ reasonCode: 'insufficient_headroom', count: 2 }],
       inactiveCount: 1,
-      inactiveReasons: [{ reason: 'charger is unplugged', count: 1 }],
+      inactiveReasons: [{ reasonCode: 'inactive', detail: 'charger is unplugged', count: 1 }],
     });
   });
 

@@ -1,8 +1,4 @@
 import type { DevicePlanDevice } from '../planTypes';
-import {
-  buildComparableDeviceReason,
-  formatDeviceReason,
-} from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanEngineState } from '../planState';
 import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
@@ -294,21 +290,9 @@ function rejectBinaryRestore(params: {
       deviceId: dev.id,
       deviceName: dev.name,
       phase,
-      reason: formatDeviceReason(reason),
       availableKw: availableHeadroom,
       decision: 'rejected',
-      decisionReason: formatDeviceReason(reason),
-    },
-    signaturePayload: {
-      event: 'restore_rejected',
-      restoreType: 'binary',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      reason: buildComparableDeviceReason(reason),
-      availableKw: availableHeadroom,
-      decision: 'rejected',
-      decisionReason: buildComparableDeviceReason(reason),
+      rejectionReason: reason.code,
     },
     debugStructured,
   });
@@ -357,21 +341,9 @@ function rejectBinaryRestoreForMeterSettling(params: {
       deviceId: dev.id,
       deviceName: dev.name,
       phase,
-      reason: formatDeviceReason(reason),
       availableKw: availableHeadroom,
       decision: 'rejected',
-      decisionReason: formatDeviceReason(reason),
-    },
-    signaturePayload: {
-      event: 'restore_rejected',
-      restoreType: 'binary',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      reason: buildComparableDeviceReason(reason),
-      availableKw: availableHeadroom,
-      decision: 'rejected',
-      decisionReason: buildComparableDeviceReason(reason),
+      rejectionReason: reason.code,
     },
     debugStructured,
   });

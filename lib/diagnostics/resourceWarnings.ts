@@ -19,7 +19,6 @@ type StartResourceWarningListenersParams = {
   // HomeyEmitter shape directly, not the HomeyRuntime port. The full injected
   // instance structurally satisfies it.
   homey: HomeyEmitter;
-  error: (...args: unknown[]) => void;
 };
 
 const summarizeDuration = (
@@ -130,32 +129,39 @@ const buildWarningPerfPayload = (nowMs: number) => {
   };
 };
 
+// One structured record, not the two prose lines this used to write. The first
+// of those (`[perf] homey memwarn count=2 limit=5`) was byte-identical across
+// all 663 emissions in the sampled production window, and the second wrapped its
+// JSON in a prose prefix that made the whole payload unparseable to anything but
+// a regex. `.error` keeps them on Homey's error channel — `homeyDestination`
+// routes at/above pino's error level there — so the routing is unchanged and only
+// the encoding moves.
 const createWarnLogger = (
   kind: 'cpuwarn' | 'memwarn',
-  error: (...args: unknown[]) => void,
 ): ((payload: unknown) => void) => (
   (payload: unknown): void => {
     const data = (payload && typeof payload === 'object') ? payload as { count?: unknown; limit?: unknown } : {};
     const count = typeof data.count === 'number' && Number.isFinite(data.count) ? data.count : null;
     const limit = typeof data.limit === 'number' && Number.isFinite(data.limit) ? data.limit : null;
     if (count === 1) return;
-    const countText = count !== null ? count : 'n/a';
-    const limitText = limit !== null ? limit : 'n/a';
-    const summary = `[perf] homey ${kind} count=${countText} limit=${limitText}`;
-    const context = `[perf] homey ${kind} context ${JSON.stringify(buildWarningPerfPayload(Date.now()))}`;
-    error(summary);
-    error(context);
+    resourceWarningLogger.error({
+      event: `homey_${kind}`,
+      kind,
+      count,
+      limit,
+      perf: buildWarningPerfPayload(Date.now()),
+    });
   }
 );
 
 export const startResourceWarningListeners = (
   params: StartResourceWarningListenersParams,
 ): (() => void) | undefined => {
-  const { homey: emitter, error } = params;
+  const { homey: emitter } = params;
   if (!emitter || typeof emitter.on !== 'function') return undefined;
 
-  const cpuwarn = createWarnLogger('cpuwarn', error);
-  const memwarn = createWarnLogger('memwarn', error);
+  const cpuwarn = createWarnLogger('cpuwarn');
+  const memwarn = createWarnLogger('memwarn');
   const unload = (): void => {
     resourceWarningLogger.info({ event: 'homey_unload' });
   };

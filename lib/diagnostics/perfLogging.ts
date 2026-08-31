@@ -153,17 +153,28 @@ const buildPerfDelta = (current: PerfSnapshot, previous?: PerfSnapshot | null): 
   return { counts: countsDelta, durations: durationsDelta };
 };
 
-const formatDurations = (durations: Record<string, PerfDurationEntry>, useProvidedAvg = false): string[] => (
-  Object.entries(durations).map(([key, value]) => {
-    let avgMs = 0;
-    if (useProvidedAvg && typeof value.avgMs === 'number' && Number.isFinite(value.avgMs)) {
-      avgMs = value.avgMs;
-    } else if (value.count > 0) {
-      avgMs = value.totalMs / value.count;
-    }
-    return `${key}: count=${value.count} totalMs=${value.totalMs.toFixed(1)} `
-      + `avgMs=${avgMs.toFixed(1)} maxMs=${value.maxMs.toFixed(1)}`;
-  })
+type LoggedDuration = {
+  count: number;
+  totalMs: number;
+  maxMs: number;
+};
+
+// One object per op instead of the pre-formatted line this used to emit
+// (`plan_build_ms: count=1 totalMs=121.0 avgMs=121.0 maxMs=121.0`). Nothing could
+// read `maxMs` out of that without a regex, which is the whole objection to prose
+// in a structured log — `resourceWarnings.summarizeDuration` has emitted the
+// object shape all along.
+//
+// `avgMs` is gone rather than converted: it is `totalMs / count`, so it was a
+// third of the numbers on every entry restating the other two.
+const buildLoggedDurations = (
+  durations: Record<string, PerfDurationEntry>,
+): Record<string, LoggedDuration> => Object.fromEntries(
+  Object.entries(durations).map(([key, value]) => [key, {
+    count: value.count,
+    totalMs: roundTo(value.totalMs, 1),
+    maxMs: roundTo(value.maxMs, 1),
+  }]),
 );
 
 const filterDeltaDurations = (durations: PerfDelta['durations']): PerfDelta['durations'] => (
@@ -269,7 +280,7 @@ export const startPerfLogger = (params: {
       summary: buildPerfSummary(delta),
       delta: {
         counts: delta.counts,
-        durations: formatDurations(filteredDeltaDurations, true),
+        durations: buildLoggedDurations(filteredDeltaDurations),
       },
     };
     params.logStructured({

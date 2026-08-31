@@ -48,21 +48,38 @@ export const startRuntimeSpan = (name: string): (() => void) => {
   };
 };
 
-export const listRuntimeSpans = (limit = 8, nowMs = Date.now()): string[] => (
+/** An in-flight span: how long it has been running. */
+export type ActiveRuntimeSpan = {
+  name: string;
+  runningMs: number;
+};
+
+/** A finished span: how long it took, and how long ago it ended. */
+export type RecentRuntimeSpan = {
+  name: string;
+  durationMs: number;
+  endedAgoMs: number;
+};
+
+export const listRuntimeSpans = (limit = 8, nowMs = Date.now()): ActiveRuntimeSpan[] => (
   Array.from(activeSpans.values())
     .sort((left, right) => left.startedAtMs - right.startedAtMs)
     .slice(-Math.max(1, limit))
-    .map((span) => `${span.name} ${Math.max(0, nowMs - span.startedAtMs)}ms`)
+    .map((span) => ({ name: span.name, runningMs: Math.max(0, nowMs - span.startedAtMs) }))
 );
 
 export const listRecentRuntimeSpans = (
   limit = 16,
   withinMs = 30_000,
   nowMs = Date.now(),
-): string[] => (
+): RecentRuntimeSpan[] => (
   Array.from(recentSpans.values())
     .filter((span) => (nowMs - span.endedAtMs) <= withinMs)
     .sort((left, right) => right.endedAtMs - left.endedAtMs)
     .slice(0, Math.max(1, limit))
-    .map((span) => `${span.name} ${Math.max(0, nowMs - span.endedAtMs)}ms ago=${span.durationMs}ms`)
+    .map((span) => ({
+      name: span.name,
+      durationMs: span.durationMs,
+      endedAgoMs: Math.max(0, nowMs - span.endedAtMs),
+    }))
 );

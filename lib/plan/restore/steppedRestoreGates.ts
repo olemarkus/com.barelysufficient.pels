@@ -3,10 +3,6 @@ import type { RestoreTiming } from './timing';
 import type { PlanEngineState } from '../planState';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import {
-  buildComparableDeviceReason,
-  formatDeviceReason,
-} from '../../../packages/shared-domain/src/planReasonSemantics';
-import {
   resolveCapacityRestoreBlockReason,
   resolveMeterSettlingCountdownTiming,
   resolveMeterSettlingRemainingSec,
@@ -90,8 +86,8 @@ export function applySteppedDeviceGates(params: {
       state,
       restoreDebugKey,
       phase,
-      reason,
       rejectionReason: 'meter_settling',
+
       availableHeadroom,
       requestedStepId,
       debugStructured,
@@ -114,8 +110,8 @@ export function applySteppedDeviceGates(params: {
       state,
       restoreDebugKey,
       phase,
-      reason: gateReason,
       rejectionReason: 'restore_gate',
+
       availableHeadroom,
       requestedStepId,
       debugStructured,
@@ -137,8 +133,8 @@ export function applySteppedDeviceGates(params: {
       state,
       restoreDebugKey,
       phase,
-      reason: waitingReason,
       rejectionReason: 'waiting_for_other_recovery',
+
       availableHeadroom,
       requestedStepId,
       debugStructured,
@@ -153,7 +149,6 @@ function emitSteppedRestoreGateRejection(params: {
   state: PlanEngineState;
   restoreDebugKey: string;
   phase: 'startup' | 'runtime';
-  reason: DevicePlanDevice['reason'];
   rejectionReason: 'meter_settling' | 'restore_gate' | 'waiting_for_other_recovery';
   availableHeadroom: number;
   requestedStepId: string | null;
@@ -164,7 +159,6 @@ function emitSteppedRestoreGateRejection(params: {
     state,
     restoreDebugKey,
     phase,
-    reason,
     rejectionReason,
     availableHeadroom,
     requestedStepId,
@@ -180,19 +174,6 @@ function emitSteppedRestoreGateRejection(params: {
       phase,
       currentStepId: dev.selectedStepId,
       requestedStepId: requestedStepId ?? undefined,
-      reason: formatDeviceReason(reason),
-      availableKw: availableHeadroom,
-      decision: 'rejected',
-      rejectionReason,
-    },
-    signaturePayload: {
-      event: 'restore_stepped_rejected',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      currentStepId: dev.selectedStepId,
-      requestedStepId: requestedStepId ?? undefined,
-      reason: buildComparableDeviceReason(reason),
       availableKw: availableHeadroom,
       decision: 'rejected',
       rejectionReason,

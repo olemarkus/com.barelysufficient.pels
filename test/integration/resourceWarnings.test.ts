@@ -67,17 +67,24 @@ describe('Homey resource warning perf logging', () => {
       mockHomeyInstance.emit('cpuwarn', { count: 2, limit: 12 });
 
       expect(logSpy).not.toHaveBeenCalled();
+      // One structured record on the error channel, not the prose summary + prose-prefixed
+      // context that used to be two calls. `homeyDestination` routes error level here.
       const errorMessages = errorSpy.mock.calls.map(([message]) => String(message));
-      expect(errorMessages).toEqual(expect.arrayContaining([
-        expect.stringContaining('[perf] homey cpuwarn count=2 limit=12'),
-        expect.stringContaining('[perf] homey cpuwarn context '),
-      ]));
-      const contextLine = errorMessages.find((message) => message.includes('[perf] homey cpuwarn context '));
-      expect(contextLine).toBeDefined();
-      expect(contextLine).not.toContain('\n');
+      expect(errorMessages).toHaveLength(1);
+      const record = JSON.parse(errorMessages[0]!) as {
+        event?: string;
+        kind?: string;
+        count?: number;
+        limit?: number;
+        perf?: Record<string, unknown>;
+      };
+      expect(record.event).toBe('homey_cpuwarn');
+      expect(record.kind).toBe('cpuwarn');
+      expect(record.count).toBe(2);
+      expect(record.limit).toBe(12);
+      expect(errorMessages[0]).not.toContain('\n');
 
-      const jsonStart = contextLine!.indexOf('{');
-      const payload = JSON.parse(contextLine!.slice(jsonStart)) as {
+      const payload = record.perf as {
         uptimeSec?: number;
         counts?: Record<string, number>;
         durations?: Record<string, { count: number; avgMs: number; maxMs: number }>;
@@ -85,8 +92,8 @@ describe('Homey resource warning perf logging', () => {
           window?: { count?: number; reasons?: Record<string, number> };
         recent?: Array<{ reason?: string; totalMs?: number; ageMs?: number }>;
         };
-        active?: string[];
-        recent?: string[];
+        active?: { name: string; runningMs: number }[];
+        recent?: { name: string; durationMs: number; endedAgoMs: number }[];
         smaps?: Record<string, number> | null;
       };
       expect(typeof payload.uptimeSec).toBe('number');

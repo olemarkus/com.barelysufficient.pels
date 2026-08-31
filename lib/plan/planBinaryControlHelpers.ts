@@ -199,41 +199,4 @@ export function hasPendingMatchingBinaryCommand(params: {
   return pending.desired === desired;
 }
 
-export function resolveBinaryRestoreSuffix(params: {
-  logContext: BinaryControlLogContext;
-  restoreSource: BinaryControlRestoreSource;
-}): string {
-  const { logContext, restoreSource } = params;
-  if (logContext !== 'capacity') return '';
-  return restoreSource === 'shed_state'
-    ? ' (restored from shed state)'
-    : ' (to match current plan)';
-}
 
-export function buildBinaryControlLogMessage(params: {
-  logContext: BinaryControlLogContext;
-  desired: boolean;
-  name: string;
-  reason?: string;
-  restoreSource?: BinaryControlRestoreSource;
-}): string {
-  const {
-    logContext,
-    desired,
-    name,
-    reason,
-    restoreSource = 'current_plan',
-  } = params;
-  if (desired) {
-    const prefix = logContext === 'capacity_control_off' ? 'Capacity control off' : 'Capacity';
-    const suffix = resolveBinaryRestoreSuffix({ logContext, restoreSource });
-    return `${prefix}: turning on ${name}${suffix}`;
-  }
-  if (reason && logContext === 'capacity') {
-    return `Capacity: turned off ${name} (${reason})`;
-  }
-  if (logContext === 'capacity') {
-    return `Capacity: turned off ${name} (shedding)`;
-  }
-  return `Capacity control off: turned off ${name}`;
-}

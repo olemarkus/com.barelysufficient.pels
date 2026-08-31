@@ -2,8 +2,6 @@ import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
 import type { PlanEngineState } from '../planState';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import {
-  buildComparableDeviceReason,
-  formatDeviceReason,
   PLAN_REASON_CODES,
 } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { isOffSteppedRestoreCandidate } from './devices';
@@ -200,22 +198,6 @@ export function blockSteppedRestoreForShedInvariant(params: {
         shedDeviceCount,
         decision: 'rejected',
         rejectionReason: 'shed_invariant',
-        reason: formatDeviceReason(reason),
-      },
-      signaturePayload: {
-        event: 'restore_stepped_rejected',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        currentStepId: dev.selectedStepId,
-        requestedStepId: nextStep.id,
-        lowestNonZeroStepId: lowestNonZeroStep.id,
-        allowedMaxStepId: lowestNonZeroStep.id,
-        blockedByShedInvariant: true,
-        shedDeviceCount,
-        decision: 'rejected',
-        rejectionReason: 'shed_invariant',
-        reason: buildComparableDeviceReason(reason),
       },
       debugStructured,
     });

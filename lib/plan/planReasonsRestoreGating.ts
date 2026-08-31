@@ -2,8 +2,6 @@ import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import {
-  buildComparableDeviceReason,
-  formatDeviceReason,
   PLAN_REASON_CODES,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -18,7 +16,6 @@ import {
 import { resolveRestorePowerSource } from './restore/accounting';
 import { getRestoreNeed } from './restore/support';
 import {
-  renderPlanReasonDecision,
   type PlanReasonDecision,
 } from './planReasonStrings';
 import {
@@ -87,11 +84,20 @@ function emitRestoreRejectedDebug(params: {
   restoreDebugKey: string;
   dev: DevicePlanDevice;
   phase: 'startup' | 'runtime';
+  /**
+   * Which gate rejected the restore, as a code. REQUIRED, and required here
+   * rather than left to each caller's payload: these branches differ only in
+   * their numbers, and two of them (insufficient power, restore gate) carry the
+   * same numeric fields. The prose reason used to be the only thing telling them
+   * apart; with the payload now serving as its own dedupe signature, dropping it
+   * would also let a transition BETWEEN causes be suppressed whenever the
+   * numbers happened to match.
+   */
+  rejectionReason: string;
   payload: Record<string, unknown>;
-  signaturePayload: Record<string, unknown>;
   debugStructured?: StructuredDebugEmitter;
 }): void {
-  const { state, restoreDebugKey, dev, phase, payload, signaturePayload, debugStructured } = params;
+  const { state, restoreDebugKey, dev, phase, rejectionReason, payload, debugStructured } = params;
   emitRestoreDebugEventOnChange({
     state,
     key: restoreDebugKey,
@@ -101,15 +107,8 @@ function emitRestoreRejectedDebug(params: {
       deviceId: dev.id,
       deviceName: dev.name,
       phase,
+      rejectionReason,
       ...payload,
-    },
-    signaturePayload: {
-      event: 'restore_rejected',
-      restoreType: 'target',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      ...signaturePayload,
     },
     debugStructured,
   });
@@ -132,25 +131,15 @@ export function resolveActivationBackoffHold(params: {
     remainingMs: setbackRemainingMs,
     countdownTiming: getActivationRestoreBlockCountdownTiming({ state, deviceId: dev.id }),
   };
-  const renderedReason = renderPlanReasonDecision(reason);
-  const reasonText = formatDeviceReason(renderedReason);
   emitRestoreRejectedDebug({
     state,
     restoreDebugKey,
     dev,
     phase,
+    rejectionReason: PLAN_REASON_CODES.activationBackoff,
     payload: {
-      reason: reasonText,
       availableKw: availableHeadroom,
       decision: 'rejected',
-      decisionReason: reasonText,
-      penaltyLevel: getActivationPenaltyLevel(state, dev.id),
-    },
-    signaturePayload: {
-      reason: buildComparableDeviceReason(renderedReason),
-      availableKw: availableHeadroom,
-      decision: 'rejected',
-      decisionReason: buildComparableDeviceReason(renderedReason),
       penaltyLevel: getActivationPenaltyLevel(state, dev.id),
     },
     debugStructured,
@@ -181,15 +170,13 @@ export function resolveInsufficientHeadroomHold(params: {
       penaltyExtraKw: restoreNeed.penaltyExtraKw,
     },
   };
-  const renderedReason = renderPlanReasonDecision(reason);
-  const reasonText = formatDeviceReason(renderedReason);
   emitRestoreRejectedDebug({
     state,
     restoreDebugKey,
     dev,
     phase,
+    rejectionReason: PLAN_REASON_CODES.insufficientHeadroom,
     payload: {
-      reason: reasonText,
       estimatedPowerKw: restoreNeed.devPower,
       powerSource: resolveRestorePowerSource(dev),
       neededKw: restoreNeed.needed,
@@ -197,20 +184,6 @@ export function resolveInsufficientHeadroomHold(params: {
       ...buildRestoreAdmissionLogFields(admission),
       minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       decision: 'rejected',
-      decisionReason: reasonText,
-      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
-    },
-    signaturePayload: {
-      reason: buildComparableDeviceReason(renderedReason),
-      estimatedPowerKw: restoreNeed.devPower,
-      powerSource: resolveRestorePowerSource(dev),
-      neededKw: restoreNeed.needed,
-      availableKw: availableHeadroom,
-      ...buildRestoreAdmissionLogFields(admission),
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-      decision: 'rejected',
-      decisionReason: buildComparableDeviceReason(renderedReason),
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
     },
@@ -266,8 +239,8 @@ export function resolveRestoreGateHold(params: {
     restoreDebugKey,
     dev,
     phase,
+    rejectionReason: gateReason.code,
     payload: {
-      reason: formatDeviceReason(gateReason),
       estimatedPowerKw: restoreNeed.devPower,
       powerSource: resolveRestorePowerSource(dev),
       neededKw: restoreNeed.needed,
@@ -276,19 +249,6 @@ export function resolveRestoreGateHold(params: {
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
       ...buildRestoreAdmissionLogFields(admission),
       decision: 'rejected',
-      decisionReason: formatDeviceReason(gateReason),
-    },
-    signaturePayload: {
-      reason: buildComparableDeviceReason(gateReason),
-      estimatedPowerKw: restoreNeed.devPower,
-      powerSource: resolveRestorePowerSource(dev),
-      neededKw: restoreNeed.needed,
-      availableKw: availableHeadroom,
-      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
-      ...buildRestoreAdmissionLogFields(admission),
-      decision: 'rejected',
-      decisionReason: buildComparableDeviceReason(gateReason),
     },
     debugStructured,
   });
@@ -361,25 +321,14 @@ export function resolveRestoreDecision(params: {
       restoreDebugKey,
       dev,
       phase,
+      rejectionReason: reservedReason.code,
       payload: {
-        reason: formatDeviceReason(reservedReason),
         estimatedPowerKw: restoreNeed.devPower,
         powerSource: resolveRestorePowerSource(dev),
         neededKw: restoreNeed.needed,
         availableKw: availableHeadroom,
         reservedKw: reserved.reservedKw,
         decision: 'rejected',
-        decisionReason: formatDeviceReason(reservedReason),
-      },
-      signaturePayload: {
-        reason: buildComparableDeviceReason(reservedReason),
-        estimatedPowerKw: restoreNeed.devPower,
-        powerSource: resolveRestorePowerSource(dev),
-        neededKw: restoreNeed.needed,
-        availableKw: availableHeadroom,
-        reservedKw: reserved.reservedKw,
-        decision: 'rejected',
-        decisionReason: buildComparableDeviceReason(reservedReason),
       },
       debugStructured,
     });

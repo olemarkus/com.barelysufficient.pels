@@ -3,10 +3,6 @@ import type { RestoreTiming } from './timing';
 import { resolveSurplusCeilingStepId, type PlanEngineState } from '../planState';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import {
-  buildComparableDeviceReason,
-  formatDeviceReason,
-} from '../../../packages/shared-domain/src/planReasonSemantics';
-import {
   getInactiveReason,
   getSteppedRestoreCandidates,
   isActiveSteppedRestoreCandidate,
@@ -155,15 +151,6 @@ export function blockRestoreForRecentActivationSetback(params: {
       penaltyLevel: getActivationPenaltyLevel(state, deviceId),
       remainingMs,
       stepped,
-      reason: formatDeviceReason(reason),
-    },
-    signaturePayload: {
-      event: 'restore_blocked_setback',
-      deviceId,
-      deviceName,
-      penaltyLevel: getActivationPenaltyLevel(state, deviceId),
-      stepped,
-      reason: buildComparableDeviceReason(reason),
     },
     debugStructured,
   });
