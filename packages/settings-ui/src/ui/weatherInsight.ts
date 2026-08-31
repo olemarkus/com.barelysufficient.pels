@@ -1,4 +1,8 @@
-import type { WeatherAdvisorReadoutPayload, WeatherDeviceReading } from '../../../contracts/src/weatherAdvisorTypes.ts';
+import type {
+  WeatherAdvisorReadout,
+  WeatherAdvisorReadoutPayload,
+  WeatherDeviceReading,
+} from '../../../contracts/src/weatherAdvisorTypes.ts';
 import { SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { WEATHER_ADVISOR_SETTINGS } from '../../../contracts/src/settingsKeys.ts';
 import { WEATHER_FIRST_ESTIMATE_TOAST } from '../../../shared-domain/src/weatherInsightCopy.ts';
@@ -66,12 +70,32 @@ export const getWeatherInsightView = (): WeatherInsightCardData | null => (
   currentSettings.enabled ? { readout: latestReadout, fetchFailed: readoutFailed } : null
 );
 
+// The fields this module dereferences without a further check. Anything short
+// of them is no readout at all — the card layer already draws that state.
+export const asReadoutPayload = (read: unknown): WeatherAdvisorReadoutPayload | null => {
+  if (typeof read !== 'object' || read === null) return null;
+  const { kind, payload } = read as { kind?: unknown; payload?: unknown };
+  if (kind !== 'readout' || typeof payload !== 'object' || payload === null) return null;
+  const { state, settings, outdoorReading } = payload as {
+    state?: unknown; settings?: unknown; outdoorReading?: unknown;
+  };
+  if (typeof state !== 'string') return null;
+  if (typeof settings !== 'object' || settings === null) return null;
+  if (typeof outdoorReading !== 'object' || outdoorReading === null) return null;
+  return payload as WeatherAdvisorReadoutPayload;
+};
+
 const fetchReadout = async (): Promise<void> => {
   try {
-    latestReadout = await callApi<WeatherAdvisorReadoutPayload | null>(
+    // The Homey API bridge is an untrusted transport, so the wire value is
+    // shape-guarded HERE and nowhere else (AGENTS.md, "Clean and trusted
+    // interfaces"). The `readout` discriminant alone is a compile-time claim;
+    // a partial one would reach `latestReadout.settings.outdoorDeviceId` below.
+    const read = await callApi<WeatherAdvisorReadout>(
       'GET',
       SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH,
-    ) ?? null;
+    );
+    latestReadout = asReadoutPayload(read);
     readoutFailed = false;
   } catch (error) {
     readoutFailed = true;

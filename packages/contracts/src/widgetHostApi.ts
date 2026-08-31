@@ -4,7 +4,7 @@ import type {
   DeferredObjectivePlanPreviewEstimate,
 } from './deferredObjectivePlanPreview.js';
 import type { StarvationRescueDevice } from './starvationRescue.js';
-import type { DailyBudgetUiPayload } from './dailyBudgetTypes.js';
+import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from './settingsUiApi.js';
 import type { SmartTaskHomeScope } from './smartTaskHomeScope.js';
@@ -58,7 +58,7 @@ export type StarvationRescueHostApi = {
 
 /** plan_budget widget host surface. */
 export type DailyBudgetHostApi = {
-  getDailyBudgetUiPayload(): DailyBudgetUiPayload | null;
+  getDailyBudgetUiPayload(): DailyBudgetUiRead;
 };
 
 /** smart_tasks widget host surface. */

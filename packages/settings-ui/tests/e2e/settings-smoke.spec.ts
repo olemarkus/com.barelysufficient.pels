@@ -295,8 +295,13 @@ test.describe('Settings UI (smoke)', () => {
           resolve(result);
         });
       });
-      const today = dailyBudget?.days?.[dailyBudget?.todayKey ?? ''] ?? null;
+      // `/daily_budget` answers the discriminated read; the day lives under the
+      // `budget` arm. Pinning `readKind` keeps an `unavailable` answer a failure
+      // rather than a pair of quietly-null budget fields.
+      const budgetPayload = dailyBudget?.kind === 'budget' ? dailyBudget.payload : null;
+      const today = budgetPayload?.days?.[budgetPayload?.todayKey ?? ''] ?? null;
       return {
+        readKind: dailyBudget?.kind ?? null,
         bootstrapBudgetKwh: bootstrap?.settings?.daily_budget_kwh ?? null,
         bootstrapDailyBudgetEnabled: bootstrap?.settings?.daily_budget_enabled ?? null,
         budgetEnabled: today?.budget?.enabled ?? null,
@@ -305,6 +310,7 @@ test.describe('Settings UI (smoke)', () => {
     });
 
     expect(payload).toEqual({
+      readKind: 'budget',
       bootstrapBudgetKwh: 7,
       bootstrapDailyBudgetEnabled: false,
       budgetEnabled: false,

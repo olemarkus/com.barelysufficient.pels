@@ -1033,6 +1033,15 @@
     return buildSampleDailyBudgetPayload();
   };
 
+  // The daily-budget endpoints answer the host API's discriminated read
+  // (`DailyBudgetUiRead`). The payload builders above stay payload-shaped so
+  // scenario patches and `__stub.setDailyBudgetPayload` keep working; the wrap
+  // happens once here, mirroring the producer.
+  const resolveDailyBudgetRead = () => {
+    const payload = resolveDailyBudgetPayload();
+    return payload ? { kind: 'budget', payload } : { kind: 'unavailable' };
+  };
+
   // Mirror the real API producer (`app.ts getDeferredObjectiveActivePlansUiPayload`
   // → `setup/deferredObjectiveActivePlansUiAssembler` → `toResolvedActivePlans`):
   // the settings UI receives active plans with the kind-split (°C/%) target,
@@ -1709,7 +1718,7 @@
   };
 
   const apiHandlers = {
-    'GET /daily_budget': () => resolveDailyBudgetPayload(),
+    'GET /daily_budget': () => resolveDailyBudgetRead(),
     'GET /ui_homes': () => buildHomesPayload(),
     'POST /ui_homes_save': (body) => applyHomesSaveOp(body),
     'GET /homey_devices': () => {
@@ -1738,7 +1747,7 @@
     },
     'GET /ui_bootstrap': () => ({
       settings: buildBootstrapSettings(),
-      dailyBudget: resolveDailyBudgetPayload(),
+      dailyBudget: resolveDailyBudgetRead(),
       deferredObjectiveActivePlans: resolveActivePlansPayload(),
       devices: settings.target_devices_snapshot,
       plan: buildPlanPayload(),
@@ -1779,7 +1788,11 @@
     // Serve an empty set so the call resolves cleanly — no chip in the default e2e
     // state, and no unhandled-key error noise from the dispatch chokepoint.
     'GET /ui_starvation_rescue_devices': () => ({ rescuableDeviceIds: [] }),
-    'GET /ui_weather_advisor_readout': () => buildWeatherReadoutPayload(),
+    'GET /ui_weather_advisor_readout': () => {
+      // `inactive` = the feature is off; the producer's structural-absence member.
+      const payload = buildWeatherReadoutPayload();
+      return payload ? { kind: 'readout', payload } : { kind: 'inactive' };
+    },
     'POST /settings_ui_log': () => ({ ok: true }),
     'POST /log_homey_device': () => ({ ok: true }),
     'POST /ui_refresh_devices': () => ({
@@ -1792,7 +1805,7 @@
     'POST /ui_refresh_grid_tariff': () => buildPricesPayload(),
     'POST /ui_reset_power_stats': () => ({
       power: buildPowerPayload(),
-      dailyBudget: resolveDailyBudgetPayload(),
+      dailyBudget: resolveDailyBudgetRead(),
     }),
     'POST /ui_preview_daily_budget_model': (body) => {
       const activePayload = resolveDailyBudgetPayload();
@@ -1805,7 +1818,7 @@
       };
       const candidatePayload = scaleBudgetPayload(activePayload, candidateSettings);
       return {
-        active: activePayload,
+        active: activePayload ? { kind: 'budget', payload: activePayload } : { kind: 'unavailable' },
         candidate: candidatePayload,
         settings: candidateSettings,
       };
@@ -1822,7 +1835,7 @@
       if (body?.priceShapingFlexShare !== undefined) {
         settings.daily_budget_price_flex_share = Number(body.priceShapingFlexShare);
       }
-      return resolveDailyBudgetPayload();
+      return resolveDailyBudgetRead();
     },
   };
 

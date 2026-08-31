@@ -1,6 +1,10 @@
 import type { Mock } from 'vitest';
 import { fixtureDeviceReason } from './fixtureDeviceReason.ts';
-import type { DailyBudgetModelSettings } from '../../../contracts/src/dailyBudgetTypes.ts';
+import type {
+  DailyBudgetModelSettings,
+  DailyBudgetUiPayload,
+  DailyBudgetUiRead,
+} from '../../../contracts/src/dailyBudgetTypes.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import {
   MAX_DAILY_BUDGET_KWH,
@@ -63,7 +67,7 @@ const ALLOWED_HOMEY_API_ROUTES = new Set(
 export type HomeyApiMethod = 'DELETE' | 'GET' | 'POST' | 'PUT';
 
 export type MockHomeyUiState = {
-  dailyBudget?: unknown;
+  dailyBudget?: DailyBudgetUiPayload | null;
   deferredObjectiveActivePlans?: DeferredObjectiveActivePlansV1 | null;
   deferredObjectiveHistory?: unknown;
   deferredObjectiveSettings?: unknown;
@@ -157,6 +161,17 @@ const getUiOverride = (homey: MockHomeyClient, key: keyof MockHomeyUiState): unk
   const uiState = homey.__uiState;
   if (!uiState || !Object.prototype.hasOwnProperty.call(uiState, key)) return undefined;
   return uiState[key];
+};
+
+// The daily-budget endpoints answer the host API's discriminated read; tests
+// still seed the plain payload, so the wrap lives here — mirroring the producer.
+const getDailyBudgetPayload = (homey: MockHomeyClient): DailyBudgetUiPayload | null => (
+  homey.__uiState?.dailyBudget ?? null
+);
+
+const getDailyBudgetRead = (homey: MockHomeyClient): DailyBudgetUiRead => {
+  const payload = getDailyBudgetPayload(homey);
+  return payload ? { kind: 'budget', payload } : { kind: 'unavailable' };
 };
 
 const isFiniteNumber = (value: unknown): value is number => (
@@ -324,7 +339,7 @@ const buildUiBootstrap = async (homey: MockHomeyClient) => ({
   settings: Object.fromEntries(await Promise.all(
     SETTINGS_UI_BOOTSTRAP_KEYS.map(async (key) => [key, await getHomeySetting(homey, key)]),
   )),
-  dailyBudget: getUiOverride(homey, 'dailyBudget') ?? null,
+  dailyBudget: getDailyBudgetRead(homey),
   // Seed the contract-required `deferredObjectiveActivePlans` field. Without
   // this the bootstrap response is missing a field declared on
   // `SettingsUiBootstrap`, which masks consumer regressions (the boot path in
@@ -360,11 +375,12 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'deferredObjectiveSettings') ?? { version: 1, objectivesByDeviceId: {} }
   ),
-  [buildRouteKey('GET', DAILY_BUDGET_PATH)]: (homey) => async () => getUiOverride(homey, 'dailyBudget') ?? null,
-  // Null = weather flag off (the production handler's structural-absence shape).
-  [buildRouteKey('GET', SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH)]: (homey) => async () => (
-    getUiOverride(homey, 'weatherAdvisorReadout') ?? null
-  ),
+  [buildRouteKey('GET', DAILY_BUDGET_PATH)]: (homey) => async () => getDailyBudgetRead(homey),
+  // `inactive` = weather flag off (the production handler's structural-absence member).
+  [buildRouteKey('GET', SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH)]: (homey) => async () => {
+    const override = getUiOverride(homey, 'weatherAdvisorReadout');
+    return override ? { kind: 'readout', payload: override } : { kind: 'inactive' };
+  },
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
   [buildRouteKey('GET', HOMEY_ENERGY_METERS_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'homeyEnergyMeters') ?? []
@@ -400,16 +416,16 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('POST', SETTINGS_UI_LOG_PATH)]: () => async () => ({ ok: true }),
   [buildRouteKey('POST', SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH)]: (homey) => async ({ body }) => ({
-    active: getUiOverride(homey, 'dailyBudget') ?? null,
-    candidate: getUiOverride(homey, 'dailyBudget') ?? null,
+    active: getDailyBudgetRead(homey),
+    candidate: getDailyBudgetPayload(homey) ?? { days: {}, todayKey: '' },
     settings: buildDailyBudgetModelSettings(homey, body),
   }),
   [buildRouteKey('POST', SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH)]: (homey) => async () => (
-    getUiOverride(homey, 'dailyBudget') ?? null
+    getDailyBudgetRead(homey)
   ),
   [buildRouteKey('POST', SETTINGS_UI_RESET_POWER_STATS_PATH)]: (homey) => async () => ({
     power: await buildUiPower(homey),
-    dailyBudget: getUiOverride(homey, 'dailyBudget') ?? null,
+    dailyBudget: getDailyBudgetRead(homey),
   }),
   // Overview "Let it run now" rescue. Defaults: an empty rescuable set (so the
   // chip's membership gate fails closed) and an unavailable preview/create.

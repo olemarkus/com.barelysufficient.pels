@@ -7,7 +7,7 @@ import type { PowerSource } from '../lib/power/powerSource';
 import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetSettingsInput,
-  DailyBudgetUiPayload,
+  DailyBudgetUiRead,
 } from '../lib/dailyBudget/dailyBudgetTypes';
 import {
   getAllModes as getAllModesHelper,
@@ -33,7 +33,7 @@ import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
   SettingsUiDeviceLogPayload,
 } from '../packages/contracts/src/settingsUiApi';
-import type { WeatherAdvisorReadoutPayload } from '../packages/contracts/src/weatherAdvisorTypes';
+import type { WeatherAdvisorReadout } from '../packages/contracts/src/weatherAdvisorTypes';
 import type { WeatherCollector } from '../lib/weather/weatherCollector';
 import type {
   DeferredObjectivePlanPreviewCandidate,
@@ -67,15 +67,22 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract readonly smartTaskPayloads: AppSmartTaskPayloads;
   protected abstract weatherCollector?: WeatherCollector;
 
-  public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null {
-    return this.requireDailyBudgetService().getUiPayload();
+  // The read answers `unavailable` when the service is not wired yet, because
+  // that IS the boot window the member is for — `hasDailyBudgetSeam` can only
+  // see the prototype method, which exists from construction, so the honest
+  // answer has to come from here. Preview and apply below keep throwing: they
+  // are commands, and a command that cannot run must fail loudly rather than
+  // report a state.
+  public getDailyBudgetUiPayload(): DailyBudgetUiRead {
+    const service = this.context.dailyBudgetService;
+    return service ? service.getUiPayload() : { kind: 'unavailable' };
   }
 
   public previewDailyBudgetModel(settings: DailyBudgetSettingsInput): DailyBudgetModelPreviewResponse {
     return this.requireDailyBudgetService().previewModelSettings(settings);
   }
 
-  public applyDailyBudgetModel(settings: DailyBudgetSettingsInput): DailyBudgetUiPayload | null {
+  public applyDailyBudgetModel(settings: DailyBudgetSettingsInput): DailyBudgetUiRead {
     return this.requireDailyBudgetService().applyModelSettings(settings);
   }
 
@@ -226,7 +233,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.requirePlanService().getDeviceLogUiPayload();
   }
 
-  public getWeatherAdvisorReadout(): Promise<WeatherAdvisorReadoutPayload | null> {
+  public getWeatherAdvisorReadout(): Promise<WeatherAdvisorReadout> {
     return assembleWeatherAdvisorReadout({ ctx: this.context, collector: this.weatherCollector });
   }
 

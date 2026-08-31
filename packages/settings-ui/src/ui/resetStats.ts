@@ -46,9 +46,9 @@ export const handleResetStats = async (btn: MdButtonElement) => {
     // reads): a scope pick landing while the reset repaints would otherwise
     // race this paint the same way a mid-boot pick races the bootstrap one.
     await refreshPowerData();
-    if (response?.dailyBudget !== undefined) {
-      await refreshDailyBudgetPlan(response.dailyBudget);
-    }
+    // Guarded, not defaulted: a malformed bridge response leaves the budget
+    // surface showing what it already had (unchanged behaviour).
+    if (response?.dailyBudget) await refreshDailyBudgetPlan(response.dailyBudget);
     await showToast('Usage history reset (current hour preserved).', 'ok');
     await logSettingsInfo('Reset stats completed', 'handleResetStats');
   } catch (error) {

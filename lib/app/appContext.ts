@@ -4,7 +4,7 @@ import type CapacityGuard from '../power/capacityGuard';
 import type { DeviceTransport } from '../device/deviceTransport';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DailyBudgetService } from '../dailyBudget/dailyBudgetService';
-import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetUiRead, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
 import type { DeferredObjectiveActivePlanRecorder } from '../objectives/deferredObjectives/activePlanRecorder';
 import type { DeferredObjectivePlanHistoryRecorder } from '../objectives/deferredObjectives/planHistory';
 import type { DeviceDiagnosticsService } from '../diagnostics/deviceDiagnosticsService';
@@ -198,7 +198,7 @@ export type AppContext = {
     params: Parameters<PlanService['evaluateHeadroomForDevice']>[0],
   ) => HeadroomForDeviceDecision | null;
   getCombinedHourlyPrices: () => CombinedHourlyPrice[];
-  getDailyBudgetUiPayload: () => DailyBudgetUiPayload | null;
+  getDailyBudgetUiPayload: () => DailyBudgetUiRead;
   getLatestPlanSnapshotForUi: () => SettingsUiPlanSnapshot | null;
   getPowerCalibrationSnapshot: () => PowerCalibrationSnapshot;
   get powerTracker(): PowerTrackerState;

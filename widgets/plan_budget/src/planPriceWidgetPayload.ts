@@ -1,5 +1,9 @@
 import type { CombinedPriceData } from '../../../lib/dailyBudget/dailyBudgetPrices';
-import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../lib/dailyBudget/dailyBudgetTypes';
+import type {
+  DailyBudgetDayPayload,
+  DailyBudgetUiPayload,
+  DailyBudgetUiRead,
+} from '../../../lib/dailyBudget/dailyBudgetTypes';
 import {
   PLAN_PRICE_WIDGET_EMPTY,
   PLAN_PRICE_WIDGET_TITLE,
@@ -273,28 +277,27 @@ const buildEmptyPayload = (
 });
 
 const resolveDayKey = (
-  snapshot: DailyBudgetUiPayload | null,
+  payload: DailyBudgetUiPayload,
   target: WidgetTarget,
 ): string | null => {
-  if (!snapshot || typeof snapshot !== 'object') return null;
-  const key = target === 'tomorrow' ? snapshot.tomorrowKey : snapshot.todayKey;
+  const key = target === 'tomorrow' ? payload.tomorrowKey : payload.todayKey;
   return typeof key === 'string' && key.trim() ? key : null;
 };
 
-const resolveDay = (snapshot: DailyBudgetUiPayload | null, target: WidgetTarget) => {
-  const dayKey = resolveDayKey(snapshot, target);
-  if (!dayKey || !snapshot?.days || typeof snapshot.days !== 'object') {
-    return { day: null, dayKey };
-  }
+const resolveDay = (snapshot: DailyBudgetUiRead, target: WidgetTarget) => {
+  if (snapshot.kind !== 'budget') return { day: null, dayKey: null };
+  const { payload } = snapshot;
+  const dayKey = resolveDayKey(payload, target);
+  if (!dayKey) return { day: null, dayKey };
 
   return {
-    day: snapshot.days[dayKey] ?? null,
+    day: payload.days[dayKey] ?? null,
     dayKey,
   };
 };
 
 export const buildPlanPriceWidgetPayload = (params: {
-  snapshot: DailyBudgetUiPayload | null;
+  snapshot: DailyBudgetUiRead;
   combinedPrices: CombinedPriceData | null;
   target: unknown;
   // Persisted price scheme (`norway` | `flow` | `homey`) from the price store.

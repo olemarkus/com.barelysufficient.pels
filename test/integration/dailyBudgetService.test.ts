@@ -348,7 +348,7 @@ describe('DailyBudgetService', () => {
     }));
     (service as any).manager.update = updateSpy;
 
-    const payload = service.recomputeTodayPlan();
+    const read = service.recomputeTodayPlan();
 
     expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
       nowMs: NOW_MS,
@@ -356,7 +356,7 @@ describe('DailyBudgetService', () => {
       recomputeFrozenPlan: true,
       refreshConfidence: true,
     }));
-    expect(payload?.todayKey).toBe('2025-03-15');
+    expect(read).toMatchObject({ kind: 'budget', payload: { todayKey: '2025-03-15' } });
     vi.useRealTimers();
   });
 
@@ -376,8 +376,8 @@ describe('DailyBudgetService', () => {
 
     expect(set).not.toHaveBeenCalled();
     expect(preview.settings.dailyBudgetKWh).toBe(24);
-    expect(preview.candidate?.todayKey).toBe('2025-03-15');
-    expect(preview.candidate?.tomorrowKey).toBe('2025-03-16');
+    expect(preview.candidate.todayKey).toBe('2025-03-15');
+    expect(preview.candidate.tomorrowKey).toBe('2025-03-16');
     vi.useRealTimers();
   });
 
@@ -387,7 +387,7 @@ describe('DailyBudgetService', () => {
     const service = buildService();
     const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
 
-    const payload = service.applyModelSettings({
+    const read = service.applyModelSettings({
       enabled: true,
       dailyBudgetKWh: 24,
       priceShapingEnabled: false,
@@ -400,7 +400,8 @@ describe('DailyBudgetService', () => {
     expect(set).toHaveBeenCalledWith('daily_budget_price_shaping_enabled', false);
     expect(set).toHaveBeenCalledWith('daily_budget_controlled_weight', 0.7);
     expect(set).toHaveBeenCalledWith('daily_budget_price_flex_share', 0.4);
-    expect(payload?.days[payload.todayKey]?.budget.dailyBudgetKWh).toBe(24);
+    if (read.kind !== 'budget') throw new Error('expected an applied budget read');
+    expect(read.payload.days[read.payload.todayKey]?.budget.dailyBudgetKWh).toBe(24);
     vi.useRealTimers();
   });
 

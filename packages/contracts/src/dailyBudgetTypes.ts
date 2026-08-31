@@ -105,8 +105,24 @@ export type DailyBudgetUiPayload = {
   yesterdayKey?: string | null;
 };
 
+/**
+ * What a daily-budget read answers.
+ *
+ * Absence is a NAMED member, not a nullable payload: `unavailable` is the
+ * honest answer while the budget model has not produced a day snapshot yet —
+ * the boot window before the first compute, a compute that failed and left
+ * nothing behind, and (at the settings/widget seams) the restart window in
+ * which `homey.app` is not wired at all. It is never a home that has a budget
+ * of zero, and the `budget` arm always carries a real snapshot.
+ */
+export type DailyBudgetUiRead =
+  | { kind: 'budget'; payload: DailyBudgetUiPayload }
+  | { kind: 'unavailable' };
+
 export type DailyBudgetModelPreviewResponse = {
-  active: DailyBudgetUiPayload | null;
-  candidate: DailyBudgetUiPayload | null;
+  /** The budget in force before the preview — `unavailable` in the boot window. */
+  active: DailyBudgetUiRead;
+  /** Always computed: the preview runs the model against the submitted settings. */
+  candidate: DailyBudgetUiPayload;
   settings: DailyBudgetModelSettings;
 };

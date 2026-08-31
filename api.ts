@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import type { DailyBudgetModelPreviewResponse, DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetModelPreviewResponse, DailyBudgetUiRead } from './lib/dailyBudget/dailyBudgetTypes';
 import type { Logger as PinoLogger } from 'pino';
 import type { HomeyDeviceLike } from './lib/utils/types';
 import { normalizeError } from './lib/utils/errorUtils';
@@ -24,6 +24,7 @@ import {
   getSettingsUiPricesPayload,
   logSettingsUiMessage,
   applySettingsUiDailyBudgetModel,
+  getSettingsUiDailyBudget,
   previewSettingsUiDailyBudgetModel,
   refreshSettingsUiDevices,
   refreshSettingsUiGridTariff,
@@ -49,8 +50,7 @@ type ApiContext = {
   homey: Homey.App['homey'];
 };
 
-type DailyBudgetApp = Homey.App & {
-  getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
+type ApiHostApp = Homey.App & {
   getApiStructuredLogger?: () => PinoLogger | undefined;
 };
 
@@ -58,7 +58,7 @@ const hasDeviceId = (device: HomeyDeviceLike): device is HomeyDeviceLike & { id:
   typeof device.id === 'string'
 );
 
-const getApp = (homey: Homey.App['homey']): DailyBudgetApp | null => {
+const getApp = (homey: Homey.App['homey']): ApiHostApp | null => {
   if (!homey || typeof homey !== 'object') return null;
   return homey.app;
 };
@@ -128,23 +128,21 @@ export = {
   ui_deferred_objective_settings: withApiLogging('ui_deferred_objective_settings', ({ homey }: ApiContext) => (
     getSettingsUiDeferredObjectiveSettingsPayload({ homey })
   )),
-  get_daily_budget: withApiLogging('get_daily_budget', ({ homey }: ApiContext): DailyBudgetUiPayload | null => {
-    const app = getApp(homey);
-    if (!app?.getDailyBudgetUiPayload) return null;
-    return app.getDailyBudgetUiPayload();
-  }),
+  get_daily_budget: withApiLogging('get_daily_budget', ({ homey }: ApiContext): DailyBudgetUiRead => (
+    getSettingsUiDailyBudget({ homey })
+  )),
   ui_weather_advisor_readout: withApiLogging('ui_weather_advisor_readout', ({ homey }: ApiContext) => (
     getSettingsUiWeatherAdvisorReadout({ homey })
   )),
   ui_preview_daily_budget_model: withApiLogging(
     'ui_preview_daily_budget_model',
-    ({ homey, body }: ApiContext & { body?: unknown }): DailyBudgetModelPreviewResponse | null => (
+    ({ homey, body }: ApiContext & { body?: unknown }): DailyBudgetModelPreviewResponse => (
       previewSettingsUiDailyBudgetModel({ homey, body })
     ),
   ),
   ui_apply_daily_budget_model: withApiLogging(
     'ui_apply_daily_budget_model',
-    ({ homey, body }: ApiContext & { body?: unknown }): DailyBudgetUiPayload | null => (
+    ({ homey, body }: ApiContext & { body?: unknown }): DailyBudgetUiRead => (
       applySettingsUiDailyBudgetModel({ homey, body })
     ),
   ),

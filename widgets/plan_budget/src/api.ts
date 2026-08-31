@@ -1,5 +1,6 @@
 import { handleWidgetClientLog, type WidgetClientLogContext } from '../../_shared/widgetClientLogApi';
 import type { CombinedPriceData, CombinedPriceEntry } from '../../../lib/dailyBudget/dailyBudgetPrices';
+import type { DailyBudgetUiRead } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { DailyBudgetHostApi } from '../../../packages/contracts/src/widgetHostApi';
 import { buildPlanPriceWidgetPayload } from './planPriceWidgetPayload';
 import type { PlanPriceWidgetPayload } from './planPriceWidgetTypes';
@@ -57,9 +58,13 @@ const flattenStoreToCombinedPriceData = (value: unknown): CombinedPriceData | nu
 
 export const getChart = async ({ homey, query }: WidgetApiContext): Promise<PlanPriceWidgetPayload> => {
   const app = homey.app;
-  const snapshot = typeof app?.getDailyBudgetUiPayload === 'function'
+  // `homey.app` is still absent while the app is unwired during a restart, so
+  // presence stays a runtime question at this seam — it answers the same
+  // `unavailable` member the host API does rather than a null the builder
+  // would have to interpret.
+  const snapshot: DailyBudgetUiRead = typeof app?.getDailyBudgetUiPayload === 'function'
     ? app.getDailyBudgetUiPayload()
-    : null;
+    : { kind: 'unavailable' };
   const rawCombinedPrices = homey.settings.get(COMBINED_PRICES_SETTING);
   const combinedPrices = flattenStoreToCombinedPriceData(rawCombinedPrices);
 

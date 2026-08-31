@@ -1,7 +1,11 @@
 /**
  * @vitest-environment node
  */
-import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type {
+  DailyBudgetDayPayload,
+  DailyBudgetUiPayload,
+  DailyBudgetUiRead,
+} from '../../lib/dailyBudget/dailyBudgetTypes';
 import {
   buildPlanPriceWidgetPayload,
   resolveLabel,
@@ -53,7 +57,21 @@ const buildDay = (bucketCount: number): DailyBudgetDayPayload => {
   };
 };
 
+// The builder takes the host API's discriminated read; these cases all exercise
+// the `budget` arm, so wrap the payload literal once here.
+const budgetRead = (payload: DailyBudgetUiPayload): DailyBudgetUiRead => ({ kind: 'budget', payload });
+
 describe('plan price widget payload', () => {
+  test('renders the empty state when the host has no budget to report', () => {
+    const payload = buildPlanPriceWidgetPayload({
+      snapshot: { kind: 'unavailable' },
+      combinedPrices: null,
+      target: 'today',
+    });
+
+    expect(payload.state).toBe('empty');
+  });
+
   test('builds a ready payload for today with actuals', () => {
     const day = buildDay(24);
     const snapshot: DailyBudgetUiPayload = {
@@ -62,7 +80,7 @@ describe('plan price widget payload', () => {
     };
 
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: null,
       target: 'today',
     });
@@ -86,7 +104,7 @@ describe('plan price widget payload', () => {
     };
 
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: null,
       target: 'today',
     });
@@ -129,7 +147,7 @@ describe('plan price widget payload', () => {
     };
 
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: null,
       target: 'today',
     });
@@ -162,7 +180,7 @@ describe('plan price widget payload', () => {
     };
 
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: null,
       target: 'today',
     });
@@ -191,7 +209,7 @@ describe('plan price widget payload', () => {
     };
 
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: null,
       target: 'today',
     });
@@ -221,7 +239,7 @@ describe('plan price widget payload', () => {
     };
 
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: null,
       target: 'today',
     });
@@ -241,7 +259,7 @@ describe('plan price widget payload', () => {
     };
 
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: null,
       target: 'today',
     });
@@ -258,7 +276,7 @@ describe('plan price widget payload', () => {
     };
 
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: { prices: [], priceUnit: 'EUR' },
       target: 'today',
       priceScheme: 'flow',
@@ -277,7 +295,7 @@ describe('plan price widget payload', () => {
     };
 
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: null,
       target: 'tomorrow',
     });
@@ -299,7 +317,7 @@ describe('plan price widget payload', () => {
     };
 
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: null,
       target: 'today',
     });
@@ -328,7 +346,7 @@ describe('plan price widget payload', () => {
     };
 
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: null,
       target: 'tomorrow',
     });
@@ -419,7 +437,7 @@ describe('plan price widget payload', () => {
       todayKey: today.dateKey,
     };
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: {
         priceUnit: 'øre/kWh',
         prices: [
@@ -495,7 +513,7 @@ describe('plan price widget payload', () => {
     };
 
     const payload = buildPlanPriceWidgetPayload({
-      snapshot,
+      snapshot: budgetRead(snapshot),
       combinedPrices: null,
       target: 'tomorrow',
     });

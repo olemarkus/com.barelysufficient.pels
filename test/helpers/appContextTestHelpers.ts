@@ -15,7 +15,7 @@ import { normalizePowerSource } from '../../lib/power/powerSource';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 import type { ShedBehavior } from '../../lib/plan/planTypes';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
@@ -235,7 +235,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getDynamicSoftLimitOverride: vi.fn(() => null),
     evaluateHeadroomForDevice: vi.fn(() => null),
     getCombinedHourlyPrices: vi.fn(() => []),
-    getDailyBudgetUiPayload: vi.fn((): DailyBudgetUiPayload | null => null),
+    getDailyBudgetUiPayload: vi.fn((): DailyBudgetUiRead => ({ kind: 'unavailable' })),
     getLatestPlanSnapshotForUi: vi.fn((): SettingsUiPlanSnapshot | null => null),
     getPowerCalibrationSnapshot: vi.fn(() => createEmptyPowerCalibrationSnapshot()),
     get powerTracker() { return powerTracker; },

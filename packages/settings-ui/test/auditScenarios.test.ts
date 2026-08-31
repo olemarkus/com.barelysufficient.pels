@@ -180,10 +180,16 @@ describe('audit scenarios', () => {
     const stub = loadBrowserStub();
     stub.applyAuditScenario('over-budget');
     const browser = (await callApi(stub, 'GET', '/daily_budget')) as {
-      days: Record<string, { state: { exceeded: boolean; usedNowKWh: number }; budget: { dailyBudgetKWh: number } }>;
-      todayKey: string;
+      kind: string;
+      payload: {
+        days: Record<string, {
+          state: { exceeded: boolean; usedNowKWh: number }; budget: { dailyBudgetKWh: number };
+        }>;
+        todayKey: string;
+      };
     };
-    const browserToday = browser.days[browser.todayKey];
+    expect(browser.kind).toBe('budget');
+    const browserToday = browser.payload.days[browser.payload.todayKey];
     expect(browserToday.state.exceeded).toBe(true);
     expect(browserToday.state.usedNowKWh).toBeGreaterThan(browserToday.budget.dailyBudgetKWh);
   });

@@ -54,17 +54,21 @@ import type {
   ConfidenceDebug,
   DailyBudgetDayPayload,
   DailyBudgetUiPayload,
+  DailyBudgetUiRead,
 } from '../../packages/contracts/src/dailyBudgetTypes';
 
 export type {
   ConfidenceDebug,
   DailyBudgetDayPayload,
   DailyBudgetUiPayload,
+  DailyBudgetUiRead,
 };
 
 export type DailyBudgetModelPreviewResponse = {
-  active: DailyBudgetUiPayload | null;
-  candidate: DailyBudgetUiPayload | null;
+  /** The budget in force before the preview — `unavailable` in the boot window. */
+  active: DailyBudgetUiRead;
+  /** Always computed: the preview runs the model against the submitted settings. */
+  candidate: DailyBudgetUiPayload;
   settings: DailyBudgetSettings;
 };
 

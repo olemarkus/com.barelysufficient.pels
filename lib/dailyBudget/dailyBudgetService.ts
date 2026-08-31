@@ -31,6 +31,7 @@ import type {
   DailyBudgetState,
   DailyBudgetStatePersistReason,
   DailyBudgetUiPayload,
+  DailyBudgetUiRead,
 } from './dailyBudgetTypes';
 import { incPerfCounter } from '../utils/perfCounters';
 import { recordOpDuration, safeRss } from '../utils/opRssTracker';
@@ -350,7 +351,7 @@ export class DailyBudgetService {
     );
   }
 
-  getUiPayload(): DailyBudgetUiPayload | null {
+  getUiPayload(): DailyBudgetUiRead {
     const nowMs = Date.now();
     this.updateState({
       nowMs,
@@ -359,11 +360,20 @@ export class DailyBudgetService {
       refreshConfidence: true,
       includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
     });
-    if (!this.snapshot) return null;
-    return this.snapshot;
+    return this.readSnapshot();
   }
 
-  recomputeTodayPlan(): DailyBudgetUiPayload | null {
+  /**
+   * The snapshot as a named read. `updateState` swallows a compute failure by
+   * design (the last good snapshot carries forward), so the only way to have
+   * nothing is to have never computed one — the boot window, or a first
+   * compute that threw. That is `unavailable`, not an empty budget.
+   */
+  private readSnapshot(): DailyBudgetUiRead {
+    return this.snapshot ? { kind: 'budget', payload: this.snapshot } : { kind: 'unavailable' };
+  }
+
+  recomputeTodayPlan(): DailyBudgetUiRead {
     const nowMs = Date.now();
     this.updateState({
       nowMs,
@@ -374,13 +384,13 @@ export class DailyBudgetService {
       includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
       persistReason: 'manual',
     });
-    return this.snapshot;
+    return this.readSnapshot();
   }
 
   previewModelSettings(input: DailyBudgetSettingsInput): DailyBudgetModelPreviewResponse {
     const nowMs = Date.now();
     const settings = this.resolveSettingsInput(input);
-    const active = this.snapshot;
+    const active = this.readSnapshot();
     const manager = this.createManagerClone();
     const timeZone = this.resolveTimeZone();
     const combinedPrices = readCombinedPriceData(this.deps.combinedPricesReader, new Date(nowMs), timeZone);
@@ -416,7 +426,7 @@ export class DailyBudgetService {
     return { active, candidate, settings };
   }
 
-  applyModelSettings(input: DailyBudgetSettingsInput): DailyBudgetUiPayload | null {
+  applyModelSettings(input: DailyBudgetSettingsInput): DailyBudgetUiRead {
     const settings = this.resolveSettingsInput(input);
     this.persistSettings(settings);
     this.settings = settings;

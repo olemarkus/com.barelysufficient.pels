@@ -480,3 +480,17 @@ export type WeatherAdvisorReadoutPayload = {
   suppressedDaysExcluded: number;
   generatedAtMs: number;
 };
+
+/**
+ * What the weather-insight readout endpoint answers.
+ *
+ * Absence is a NAMED member, not a nullable payload: `inactive` says the
+ * weather-insight feature is not running for this home — the owner has it
+ * switched off, or its collector is not wired yet (the restart window). Either
+ * way nothing is being learned, so there is no readout to show, and the UI
+ * renders no weather surface. A fetch that FAILS is not this member: it is a
+ * transport error the caller already handles by keeping the last readout.
+ */
+export type WeatherAdvisorReadout =
+  | { kind: 'readout'; payload: WeatherAdvisorReadoutPayload }
+  | { kind: 'inactive' };

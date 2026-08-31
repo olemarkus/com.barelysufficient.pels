@@ -2,7 +2,7 @@ import type Homey from 'homey';
 import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetModelSettings,
-  DailyBudgetUiPayload,
+  DailyBudgetUiRead,
 } from '../packages/contracts/src/dailyBudgetTypes';
 import type {
   ResolvedDeferredObjectiveActivePlansV1,
@@ -41,7 +41,7 @@ import type {
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { hasSolarProductionCandidate } from '../lib/device/solarPresence';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
-import type { WeatherAdvisorReadoutPayload } from '../packages/contracts/src/weatherAdvisorTypes';
+import type { WeatherAdvisorReadout } from '../packages/contracts/src/weatherAdvisorTypes';
 import {
   asPowerStatusBlobRead,
   classifyPowerStatusRead,
@@ -64,14 +64,10 @@ import { rankModeDevices } from '../packages/shared-domain/src/modeCatalogResolu
 type SettingsUiApiApp = Homey.App & {
   capacityDryRun?: unknown;
   capacitySettings?: unknown;
-  getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
-  previewDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetModelPreviewResponse;
-  applyDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetUiPayload | null;
   getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
   getDeviceLogUiPayload?: () => SettingsUiDeviceLogPayload;
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
   getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV1 | null;
-  getWeatherAdvisorReadout?: () => Promise<WeatherAdvisorReadoutPayload | null>;
 };
 
 /**
@@ -88,6 +84,50 @@ const hasPvForecastSourceSeam = (app: unknown): app is PvForecastSourceSeam => (
   && app !== null
   && 'getPvForecastSourceUiStatus' in app
   && typeof app.getPvForecastSourceUiStatus === 'function'
+);
+
+/**
+ * The daily-budget seam the running app exposes (`AppContext` and
+ * `PelsWidgetHostApi` both declare these required, so the real app always has
+ * all three). Same boundary role as `PvForecastSourceSeam` above: `homey.app`
+ * is the SDK's base `App`, so presence is a runtime question HERE — guarded
+ * once, answering the typed read every caller inward can trust.
+ */
+type DailyBudgetSeam = {
+  getDailyBudgetUiPayload: () => DailyBudgetUiRead;
+  previewDailyBudgetModel: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetModelPreviewResponse;
+  applyDailyBudgetModel: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetUiRead;
+};
+
+const hasDailyBudgetSeam = (app: unknown): app is DailyBudgetSeam => (
+  typeof app === 'object'
+  && app !== null
+  && 'getDailyBudgetUiPayload' in app
+  && typeof app.getDailyBudgetUiPayload === 'function'
+  && 'previewDailyBudgetModel' in app
+  && typeof app.previewDailyBudgetModel === 'function'
+  && 'applyDailyBudgetModel' in app
+  && typeof app.applyDailyBudgetModel === 'function'
+);
+
+/** The weather-insight readout seam; same boundary role as the two above. */
+type WeatherAdvisorReadoutSeam = { getWeatherAdvisorReadout: () => Promise<WeatherAdvisorReadout> };
+
+const hasWeatherAdvisorReadoutSeam = (app: unknown): app is WeatherAdvisorReadoutSeam => (
+  typeof app === 'object'
+  && app !== null
+  && 'getWeatherAdvisorReadout' in app
+  && typeof app.getWeatherAdvisorReadout === 'function'
+);
+
+/**
+ * The one place the daily-budget seam's absence is named. `unavailable` here
+ * is the restart window in which `homey.app` is not wired yet — the same
+ * "nothing computed" the service reports, so callers get one member to render
+ * rather than two spellings of nothing.
+ */
+const readDailyBudget = (app: unknown): DailyBudgetUiRead => (
+  hasDailyBudgetSeam(app) ? app.getDailyBudgetUiPayload() : { kind: 'unavailable' }
 );
 
 type ApiContext = {
@@ -423,7 +463,7 @@ export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<S
       // override fixes both UI read paths without a separate endpoint.
       [DEFERRED_OBJECTIVES_SETTINGS]: readAllObjectives(homey.settings),
     },
-    dailyBudget: app?.getDailyBudgetUiPayload?.() ?? null,
+    dailyBudget: readDailyBudget(app),
     deferredObjectiveActivePlans: app?.getDeferredObjectiveActivePlansUiPayload?.() ?? null,
     plan: getSettingsUiPlan({ homey }),
     power: getSettingsUiPower({ homey }),
@@ -662,13 +702,13 @@ export const getSettingsUiDeferredObjectiveSettingsPayload = (
   { homey }: ApiContext,
 ): DeferredObjectiveSettingsV1 => readAllObjectives(homey.settings);
 
-// 1-line delegation to the app's readout assembler; null when the app method
-// is not wired (old runtime) or the feature flag is off.
+// 1-line delegation to the app's readout assembler; `inactive` when the app
+// method is not wired (restart window) or the feature flag is off.
 export const getSettingsUiWeatherAdvisorReadout = async (
   { homey }: ApiContext,
-): Promise<WeatherAdvisorReadoutPayload | null> => {
+): Promise<WeatherAdvisorReadout> => {
   const app = getApp(homey);
-  if (!app?.getWeatherAdvisorReadout) return null;
+  if (!hasWeatherAdvisorReadoutSeam(app)) return { kind: 'inactive' };
   return app.getWeatherAdvisorReadout();
 };
 
@@ -692,23 +732,32 @@ export const resetSettingsUiPowerStats = async ({ homey }: ApiContext): Promise<
   await resetSettingsUiPowerStatsForApp(homey);
   return {
     power: getSettingsUiPower({ homey }),
-    dailyBudget: app?.getDailyBudgetUiPayload?.() ?? null,
+    dailyBudget: readDailyBudget(app),
   };
 };
 
+/** `GET /daily_budget` — the plain read the Budget surface polls. */
+export const getSettingsUiDailyBudget = ({ homey }: ApiContext): DailyBudgetUiRead => (
+  readDailyBudget(getApp(homey))
+);
+
 export const previewSettingsUiDailyBudgetModel = (
   { homey, body }: ApiContext & { body?: unknown },
-): DailyBudgetModelPreviewResponse | null => {
+): DailyBudgetModelPreviewResponse => {
   const app = getApp(homey);
-  if (!app?.previewDailyBudgetModel) return null;
+  if (!hasDailyBudgetSeam(app)) {
+    throw new Error('Daily budget preview is unavailable while the app is starting.');
+  }
   return app.previewDailyBudgetModel(asDailyBudgetModelSettings(body));
 };
 
 export const applySettingsUiDailyBudgetModel = (
   { homey, body }: ApiContext & { body?: unknown },
-): DailyBudgetUiPayload | null => {
+): DailyBudgetUiRead => {
   const app = getApp(homey);
-  if (!app?.applyDailyBudgetModel) return null;
+  if (!hasDailyBudgetSeam(app)) {
+    throw new Error('Daily budget cannot be applied while the app is starting.');
+  }
   return app.applyDailyBudgetModel(asDailyBudgetModelSettings(body));
 };
 
