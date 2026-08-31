@@ -26,8 +26,6 @@ export type PelsStatus = {
   uncontrolledKw?: number;
   powerNowKw?: number | null;
   powerKnown?: boolean;
-  hasLivePowerSample?: boolean;
-  powerFreshnessState?: DevicePlan['meta']['powerFreshnessState'];
   priceLevel: PriceLevel;
   devicesOn: number;
   devicesOff: number;
@@ -106,8 +104,6 @@ export function buildPelsStatus(params: {
     // Derived from `powerNowKw` so it cannot drift from the resolved value;
     // nothing inside PELS reads it any more.
     powerKnown: plan.meta.powerNowKw !== null && plan.meta.powerNowKw !== undefined,
-    hasLivePowerSample: plan.meta.hasLivePowerSample,
-    powerFreshnessState: plan.meta.powerFreshnessState,
     priceLevel,
     devicesOn: summary.devicesOn,
     devicesOff: summary.devicesOff,

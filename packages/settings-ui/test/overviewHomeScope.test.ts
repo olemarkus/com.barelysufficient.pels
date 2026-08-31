@@ -48,8 +48,7 @@ const buildPlan = (params: { totalKw: number; deviceId: string; deviceName: stri
     uncontrolledKw: Math.max(0, params.totalKw - 0.5),
     usedKWh: 0.2,
     hourBudgetKWh: 3,
-    minutesRemaining: 30,
-    powerFreshnessState: 'fresh'}),
+    minutesRemaining: 30}),
   devices: [{
     id: params.deviceId,
     name: params.deviceName,
@@ -556,41 +555,25 @@ describe('the bare-URI-prime realtime trap', () => {
     expect(heroPowerValue()).toBe('6.4');
   });
 
-  it('a Main power_updated push never stomps a selected area\'s hero status', async () => {
+  it('a Main power_updated push never stomps a selected area\'s hero numbers', async () => {
+    // The old observable was the 'No data' freshness chip; that chip is
+    // retired (staleness is the global banner's fact), so the guard is pinned
+    // on the hero numbers a stomping Main push would have replaced.
     const { emit } = await installRealtimeHarness();
     await selectArea();
     const { refreshPlan } = await import('../src/ui/plan.ts');
     await refreshPlan();
     await flushAsync();
-    expect(surfaceText()).not.toContain('No data');
 
-    // Main's power stream going fail-closed says nothing about the area.
+    // Main's power stream says nothing about the area.
     emit('power_updated', {
       tracker: null,
-      status: { state: 'live', status: { powerFreshnessState: 'stale_fail_closed' } },
+      status: { state: 'live', status: { powerNowKw: null } },
       heartbeat: null,
     });
     await flushAsync();
 
-    expect(surfaceText()).not.toContain('No data');
     expect(heroPowerValue()).toBe('0.7');
-  });
-
-  it('the same power push flips the Main hero to No data (contrast)', async () => {
-    const { emit } = await installRealtimeHarness();
-    const { refreshPlan } = await import('../src/ui/plan.ts');
-    await refreshPlan();
-    await flushAsync();
-    expect(surfaceText()).not.toContain('No data');
-
-    emit('power_updated', {
-      tracker: null,
-      status: { state: 'live', status: { powerFreshnessState: 'stale_fail_closed' } },
-      heartbeat: null,
-    });
-    await flushAsync();
-
-    expect(surfaceText()).toContain('No data');
   });
 });
 

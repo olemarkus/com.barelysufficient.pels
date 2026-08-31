@@ -46,14 +46,15 @@ One elevated Material 3 card with tonal background that shifts with state.
 ## Chip row
 
 The hero answers "am I OK right now?". The chip rail carries only signals that
-change that answer: status, plus freshness when the underlying data is stale.
+change that answer: the status chip.
 
 Why: owner walk 2026-05-17. The mode chip and price-level chip were demoted
 out of the hero in PR9. Mode is a stable filter (page chrome), not a status
 signal — restating it on the hero adds noise without changing the user's
 "am I OK now" answer. Price level is a Budget-page concern; the Budget page
-still surfaces it. The hero keeps status (because that *is* the answer) and
-freshness (because stale readings invalidate the answer).
+still surfaces it. The old freshness chip ('Delayed'/'No data') retired with
+the freshness wire fields (owner ruling 2026-08-31): staleness is the global
+no-readings banner's fact, rendered above the hero — one surface, one truth.
 
 ### Status chip
 
@@ -64,17 +65,12 @@ freshness (because stale readings invalidate the answer).
 | Projected hour above budget (but not past the cap) | `Above budget` | warning |
 | Projected hour above the hard cap's kWh | `Above hard cap` | error |
 | Simulation mode enabled and PELS would act | `Simulation mode` | warning |
-| Power data stale or fail-closed | `No data` | error |
 
 `Above hard cap` is a **trajectory** judgement (projection tone `critical`),
 never instantaneous kW vs the cap: the cap is an hourly-average tariff-step
 ceiling, a momentary excursion above it is not a breach, and the dynamic safe
 pace legitimately exceeds the cap late in an under-used hour (see
 `notes/ui-terminology.md` § "Hard cap is an hourly ceiling").
-
-### Freshness chip
-
-Show only when not `fresh`. Hide when live data is current.
 
 ### Mode (page chrome, not hero chip)
 
@@ -334,15 +330,14 @@ reason.
 
 Priority order (first matching condition wins):
 
-1. No data: `Power readings have dropped. Devices stay limited until data returns.`
-2. Above hard cap (trajectory — projected hour past the cap's kWh):
+1. Above hard cap (trajectory — projected hour past the cap's kWh):
    `On pace to exceed the hard cap this hour. Easing devices off.`
    The action clause renders only while a controllable managed device is
    still drawing — the trajectory alone does not imply PELS has load left to
    act on (an hour that already banked the energy with everything settled off
    drops to the bare `On pace to exceed the hard cap this hour.`). Under
    Simulation mode the action clause is likewise dropped, because PELS is not
-   acting (rule 3's hypothetical-voice principle applies here too).
+   acting (rule 2's hypothetical-voice principle applies here too).
    When the managed shed cascade is exhausted (no controllable managed device
    is still running to ease off) and the remaining breach is attributed to a
    device with Power-limit control turned off, the copy stops promising
@@ -352,13 +347,13 @@ Priority order (first matching condition wins):
    on so PELS can ease it off.` The recourse pluralises when several
    control-off devices breach; the hard cap is never offered as a remedy
    (see `notes/ui-terminology.md` § "Hard cap is an hourly ceiling").
-3. Simulation mode would act: `2 devices would be limited right now.`
+2. Simulation mode would act: `2 devices would be limited right now.`
    The slim simulation banner and the `Simulation mode` status chip already
    name simulation on the Overview, so this conclusion drops the redundant
    "if simulation mode were off" tail — simulation is stated at most twice on
    the first viewport. It stays hypothetical (`would`), never implying PELS
    acted.
-4. Actively limiting: `Holding back 2 devices so the house stays under 12.0 kW.`
+3. Actively limiting: `Holding back 2 devices so the house stays under 12.0 kW.`
    The safe-pace clause is dropped when the value is unavailable
    (`Holding back 2 devices.`). Two more-specific variants win over the
    safe-pace clause when they describe the whole limited set: all limited
@@ -368,13 +363,13 @@ Priority order (first matching condition wins):
    within today's budget.` — the budget variant names the constraint instead
    of a kW number, because under budget pacing the kW tick is not the thing
    holding devices back.
-5. Restoring: `Bringing 1 device back online. Power has stayed under the safe pace.`
-6. Projected over budget: `On pace to overshoot this hour’s energy budget.`
+4. Restoring: `Bringing 1 device back online. Power has stayed under the safe pace.`
+5. Projected over budget: `On pace to overshoot this hour’s energy budget.`
    Fires when no devices are being limited or resumed but the projected hour
    energy trips the `warning` projection tone (the `critical` tone — past the
-   cap — is rule 2), so the conclusion stays consistent with the
+   cap — is rule 1), so the conclusion stays consistent with the
    `Above budget` status chip surfaced by `resolveHeroStatus`.
-7. On track: `Quiet hour. Nothing to do.`
+6. On track: `Quiet hour. Nothing to do.`
 
 Simulation mode wording must be hypothetical throughout. The subject is the
 device count, not PELS:
@@ -460,7 +455,6 @@ hourUsedKWh             meta.usedKWh
 hourBudgetKWh           meta.hourBudgetKWh
 minutesRemaining        meta.minutesRemaining
 projectedHourKWh        computed: usedKWh + (currentKw × minutesRemaining / 60)
-freshnessState          powerStatus.powerFreshnessState
 dryRunEnabled           bootstrap setting `capacity_dry_run`; show as `Simulation mode` in UI copy
 limitedDeviceCount      count plan devices where currentState=shed
 restoringDeviceCount    count plan devices where plannedState=restore

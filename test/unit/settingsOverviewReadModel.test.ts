@@ -69,7 +69,6 @@ describe('settingsOverviewReadModel', () => {
         budgetKWh: 9.5,
         capacityLimitKw: 5,
         dailyBudgetHourKWh: 12,
-        hasLivePowerSample: true,
         capacityShortfall: false,
         dailyBudgetExceeded: false}),
       devices: [buildPlanDevice({ reason: { code: PLAN_REASON_CODES.keep, detail: null } })],

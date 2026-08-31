@@ -434,7 +434,6 @@ describe('savePowerSourceSetting', () => {
     });
 
     select.value = 'homey_energy';
-    capacitySettings.setPowerSourceConfigured(true);
     capacitySettings.updateStaleDataStatusFromPowerPayload({
       tracker: null, status: { state: 'unavailable', reason: 'no_measurement' }, heartbeat: null,
     });
@@ -459,7 +458,7 @@ describe('savePowerSourceSetting', () => {
     expect(select.value).toBe('flow');
     expect(document.querySelector<HTMLElement>('#settings-homey-energy-meter-field')!.hidden).toBe(true);
     expect(select.disabled).toBe(false);
-    expect(document.querySelector('#stale-data-text')!.textContent).toContain('Check your Flow');
+    expect(document.querySelector('#stale-data-text')!.textContent).toContain('Set up a Flow with the Report power usage action');
     expect((document.querySelector('#settings-capacity-limit') as SelectLike).value).toBe('10');
     expect((
       document.querySelector('#settings-simulation-mode') as HTMLElement & { selected: boolean }

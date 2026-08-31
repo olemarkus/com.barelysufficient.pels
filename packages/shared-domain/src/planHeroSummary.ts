@@ -1,4 +1,3 @@
-import { formatRelativeTime } from './planFormatUtils.ts';
 
 /**
  * The hero's input, resolved. Every power figure is a plain number: the caller
@@ -19,13 +18,8 @@ export type PlanHeroMetaInput = {
   hardCapLimitKw: number;
   controlledKw: number;
   uncontrolledKw: number;
-  /** Genuinely absent before the power tracker's first timestamp. */
-  lastPowerUpdateMs?: number;
 };
 
-export type PowerFreshnessState = 'fresh' | 'stale_hold' | 'stale_fail_closed';
-
-export type HeroTone = 'ok' | 'warn' | 'alert';
 
 // The headline deliberately carries NO instantaneous-vs-hard-cap judgement.
 // The hard cap is an hourly-average (tariff-step) ceiling — instantaneous kW
@@ -41,14 +35,6 @@ export type HeroHeadline = {
   uncontrolledKw: number;
   headroomKw: number;
   overSoftLimit: boolean;
-  /** `null` until the power tracker has a timestamp to be relative to. */
-  ageText: string | null;
-};
-
-export type FreshnessChipView = {
-  kind: PowerFreshnessState;
-  label: string;
-  tone: HeroTone;
 };
 
 /**
@@ -64,7 +50,6 @@ export type FreshnessChipView = {
  */
 export const formatHeroHeadline = (
   meta: PlanHeroMetaInput,
-  nowMs: number,
 ): HeroHeadline => ({
   totalKw: meta.totalKw,
   softLimitKw: meta.softLimitKw,
@@ -73,19 +58,7 @@ export const formatHeroHeadline = (
   uncontrolledKw: meta.uncontrolledKw,
   headroomKw: meta.headroomKw,
   overSoftLimit: meta.headroomKw < 0,
-  ageText: typeof meta.lastPowerUpdateMs === 'number'
-    ? formatRelativeTime(meta.lastPowerUpdateMs, nowMs)
-    : null,
 });
-
-export const formatFreshnessChip = (
-  state: PowerFreshnessState | undefined,
-): FreshnessChipView | null => {
-  if (!state) return null;
-  if (state === 'fresh') return { kind: state, label: 'Live', tone: 'ok' };
-  if (state === 'stale_hold') return { kind: state, label: 'Delayed', tone: 'warn' };
-  return { kind: state, label: 'No data', tone: 'alert' };
-};
 
 /**
  * The "energy used this hour" headline shown on the Overview hero, split for
@@ -266,7 +239,6 @@ export const computeEnergyBarScaleKWh = (
 export type DecisionSentenceInput = {
   limitedCount: number;
   resumingCount: number;
-  freshness: PowerFreshnessState | undefined;
   dryRun: boolean;
   // Projected this-hour energy exceeds the hard cap's hourly kWh — the
   // trajectory condition users read "Above hard cap" as. Never derived from
@@ -393,16 +365,10 @@ const resolveOverHardCapDecisionSentence = (
 export const buildDecisionSentence = (
   input: DecisionSentenceInput,
 ): DecisionSentenceResult => {
-  // 1. No data.
-  if (input.freshness === 'stale_fail_closed') {
-    return {
-      text: 'Power readings have dropped. Devices stay limited until data returns.',
-      positive: false,
-    };
-  }
-
-  // 2. On pace to exceed the hard cap this hour (trajectory, never
-  // instantaneous kW vs the cap).
+  // 1. On pace to exceed the hard cap this hour (trajectory, never
+  // instantaneous kW vs the cap). (The old rule 1 — "Power readings have
+  // dropped" — retired with the freshness label: staleness is the global
+  // banner's fact now, owner ruling 2026-08-31.)
   if (input.projectedOverHardCap) return resolveOverHardCapDecisionSentence(input);
 
   // 3. Simulation mode would act. The banner + `Simulation mode` status chip

@@ -99,7 +99,6 @@ describe('Redesign plan UI', () => {
           hardCapLimitKw: 14,
           controlledKw: 3.1,
           uncontrolledKw: 2.1,
-          powerFreshnessState: 'fresh',
           usedKWh: 4.2,
           hourBudgetKWh: 11,
           softLimitSource: 'daily',
@@ -153,7 +152,6 @@ describe('Redesign plan UI', () => {
           headroomKw: 5.8,
           controlledKw: 0,
           uncontrolledKw: 5.2,
-          powerFreshnessState: 'fresh',
           usedKWh: 4.2,
           hourBudgetKWh: 11,
           minutesRemaining: 8}),
@@ -179,7 +177,6 @@ describe('Redesign plan UI', () => {
           headroomKw: 5.8,
           controlledKw: 0,
           uncontrolledKw: 5.2,
-          powerFreshnessState: 'fresh',
           usedKWh: 4.2,
           hourBudgetKWh: 11,
           minutesRemaining: 8}),
@@ -205,7 +202,6 @@ describe('Redesign plan UI', () => {
           hardCapLimitKw: 14,
           controlledKw: 0.2,
           uncontrolledKw: 0.1,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.3,
           hourBudgetKWh: 4.5,
           softLimitSource: 'daily',
@@ -253,7 +249,6 @@ describe('Redesign plan UI', () => {
           totalKw: 1.2,
           softLimitKw: 6,
           headroomKw: 4.8,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 30}),
@@ -274,7 +269,6 @@ describe('Redesign plan UI', () => {
           hardCapLimitKw: 10,
           controlledKw: 3.0,
           uncontrolledKw: 2.0,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 30}),
@@ -293,7 +287,6 @@ describe('Redesign plan UI', () => {
           softLimitKw: 6,
           headroomKw: 4.8,
           hardCapLimitKw: 8,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 38}),
@@ -313,7 +306,6 @@ describe('Redesign plan UI', () => {
           hardCapLimitKw: 8,
           controlledKw: 3.0,
           uncontrolledKw: 9.0,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 38}),
@@ -367,7 +359,6 @@ describe('Redesign plan UI', () => {
           hardCapLimitKw: 8,
           controlledKw: 3.0,
           uncontrolledKw: 9.0,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 38}),
@@ -397,7 +388,6 @@ describe('Redesign plan UI', () => {
           hardCapLimitKw: 5,
           controlledKw: 1.5,
           uncontrolledKw: 0.5,
-          powerFreshnessState: 'fresh',
           usedKWh: 4.9,
           hourBudgetKWh: 0,
           minutesRemaining: 10}),
@@ -422,7 +412,6 @@ describe('Redesign plan UI', () => {
           hardCapLimitKw: 5,
           controlledKw: 2.4,
           uncontrolledKw: 4.6,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 38}),
@@ -464,7 +453,6 @@ describe('Redesign plan UI', () => {
           hardCapLimitKw: 5,
           controlledKw: 2.4,
           uncontrolledKw: 4.6,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 38}),
@@ -497,7 +485,6 @@ describe('Redesign plan UI', () => {
           hardCapLimitKw: 5,
           controlledKw: 2.4,
           uncontrolledKw: 4.6,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 38}),
@@ -543,7 +530,6 @@ describe('Redesign plan UI', () => {
           hardCapLimitKw: 5,
           controlledKw: 2.4,
           uncontrolledKw: 4.6,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 38}),
@@ -577,7 +563,6 @@ describe('Redesign plan UI', () => {
           softLimitKw: 5,
           headroomKw: 1.0,
           hardCapLimitKw: 7,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 30}),
@@ -596,7 +581,6 @@ describe('Redesign plan UI', () => {
           softLimitKw: 5,
           headroomKw: -2.0,
           hardCapLimitKw: 10,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 30}),
@@ -616,7 +600,6 @@ describe('Redesign plan UI', () => {
           softLimitKw: 6,
           headroomKw: 1.5,
           hardCapLimitKw: 8,
-          powerFreshnessState: 'fresh',
           usedKWh: 2.8,
           hourBudgetKWh: 4.5,
           minutesRemaining: 30}),
@@ -633,7 +616,6 @@ describe('Redesign plan UI', () => {
           softLimitKw: 5,
           headroomKw: -1.5,
           hardCapLimitKw: 8,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 30}),
@@ -660,7 +642,6 @@ describe('Redesign plan UI', () => {
           hardCapLimitKw: 5,
           controlledKw: 4.6,
           uncontrolledKw: 0.6,
-          powerFreshnessState: 'fresh',
           usedKWh: 1.9,
           hourBudgetKWh: 4.5,
           minutesRemaining: 28}),
@@ -695,7 +676,6 @@ describe('Redesign plan UI', () => {
           hardCapLimitKw: 14,
           controlledKw: 3.1,
           uncontrolledKw: 2.1,
-          powerFreshnessState: 'fresh',
           usedKWh: 4.2,
           hourBudgetKWh: 11,
           minutesRemaining: 30}),
@@ -754,7 +734,6 @@ describe('Redesign plan UI', () => {
           headroomKw: 0.8,
           controlledKw: 1.0,
           uncontrolledKw: 0.5,
-          powerFreshnessState: 'fresh',
           usedKWh: 0.3,
           hourBudgetKWh: 4.5,
           minutesRemaining: 40}),
@@ -780,8 +759,7 @@ describe('Redesign plan UI', () => {
           budgetPaceKw: 5,
           projectedExemptKw: 7,
           controlledKw: 7,
-          uncontrolledKw: 5.5,
-          powerFreshnessState: 'fresh'}),
+          uncontrolledKw: 5.5}),
         devices: [],
       });
 
@@ -813,7 +791,6 @@ describe('Redesign plan UI', () => {
           totalKw: 4,
           softLimitKw: 5,
           headroomKw: 1,
-          powerFreshnessState: 'fresh',
           ...fields}),
         devices: [],
       });
@@ -1168,38 +1145,5 @@ describe('Redesign plan UI', () => {
         .toBe('Refreshed device');
     });
 
-    it('uses plan freshness when a cached power status is stale and the power endpoint fails', async () => {
-      vi.resetModules();
-      setupPlanDom();
-      const homey = installHomeyMock({
-        uiState: {
-          plan: normalizePlanSnapshot({
-            meta: buildPlanMeta({
-              totalKw: 2.2,
-              softLimitKw: 6,
-              headroomKw: 3.8,
-              powerFreshnessState: 'stale_fail_closed'}),
-            devices: [],
-          }),
-        },
-        apiHandlers: {
-          [`GET ${SETTINGS_UI_POWER_PATH}`]: async () => {
-            throw new Error('power unavailable');
-          },
-        },
-      });
-      const { setHomeyClient } = await import('../src/ui/homey.ts');
-      const {
-        refreshPlan,
-        updatePlanPower,
-      } = await import('../src/ui/plan.ts');
-      setHomeyClient(homey);
-      updatePlanPower({ powerFreshnessState: 'fresh' });
-
-      await refreshPlan();
-
-      expect((document.querySelector('.plan-hero .plan-chip') as HTMLElement | null)?.textContent?.trim())
-        .toBe('No data');
-    });
   });
 });

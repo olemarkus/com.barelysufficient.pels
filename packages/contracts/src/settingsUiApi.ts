@@ -219,7 +219,6 @@ export type SettingsUiPlanMetaSnapshot = {
   projectedExemptKw: number | null;
   softLimitSource: 'capacity' | 'daily';
   headroomKw: number;
-  powerFreshnessState: 'fresh' | 'stale_hold' | 'stale_fail_closed';
   /** From `capacitySettings.limitKw` — a plain number, never absent or null. */
   hardCapLimitKw: number;
   usedKWh: number;
@@ -398,8 +397,6 @@ export type SettingsUiPowerStatus = {
   powerNowKw?: number | null;
   /** Back-compat for external `pels_status` readers; derived from `powerNowKw`. */
   powerKnown?: boolean;
-  hasLivePowerSample?: boolean;
-  powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
   capacityShortfall?: boolean;
   shortfallBudgetThresholdKw?: number;
   shortfallBudgetHeadroomKw?: number | null;
@@ -446,7 +443,7 @@ export type SettingsUiPowerStatusUnavailableReason =
  * for the blob (the home's measurement gate is open, so the blob is maintained
  * by THIS run); `unavailable` means no live status claim exists and the reason
  * arm says exactly why. Consumers branch on `state` and never re-derive
- * liveness from blob fields such as `powerFreshnessState`.
+ * liveness from blob fields such as `lastPowerUpdate`.
  */
 export type SettingsUiPowerStatusRead =
   | { readonly state: 'live'; readonly status: SettingsUiPowerStatus }

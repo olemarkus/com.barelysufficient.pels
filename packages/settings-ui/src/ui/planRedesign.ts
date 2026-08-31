@@ -6,7 +6,6 @@ import {
   type SettingsUiDeferredObjectivePlanHistoryPayload,
   type SettingsUiPlanPayload,
   type SettingsUiPowerPayload,
-  type SettingsUiPowerStatus,
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
@@ -32,9 +31,7 @@ import { flattenPlanHistoryEntries, resolveMissStreakBadges } from '../../../sha
 import { resolveSmartTaskListStatus } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { PlanSnapshot } from './planTypes.ts';
 import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts';
-import { liveStatusOrNull } from './powerStatusRead.ts';
 
-let cachedPowerStatus: SettingsUiPowerStatus | null = null;
 // Raw triple for the hero's "Solar now" subline; resolution (finiteness +
 // staleness + materiality gates) happens in `resolveSolarNow` at render time
 // so the line disappears on its own once the sample goes stale.
@@ -70,7 +67,7 @@ const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => (
 );
 
 /**
- * Which home the COMMITTED render state (`currentPlan`, `cachedPowerStatus`,
+ * Which home the COMMITTED render state (`currentPlan`,
  * `cachedSolarNowInput`) describes. One owner, three consequences in
  * `doRender`:
  *
@@ -125,16 +122,15 @@ const toSolarNowInput = (tracker: SettingsUiPowerPayload['tracker']): SolarNowIn
 );
 
 type PlanPowerRead = {
-  status: SettingsUiPowerStatus | null;
   solarNowInput: SolarNowInput | null;
 };
 
 const readPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
   try {
     const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
-    return { status: liveStatusOrNull(payload?.status), solarNowInput: toSolarNowInput(payload?.tracker ?? null) };
+    return { solarNowInput: toSolarNowInput(payload?.tracker ?? null) };
   } catch {
-    return { status: null, solarNowInput: null };
+    return { solarNowInput: null };
   }
 };
 
@@ -174,7 +170,6 @@ const doRender = () => {
     plan: currentPlan,
     planResolved: planPayloadReceived,
     scopeUnavailable: overviewScope.kind === 'area' && overviewScope.read === 'unavailable',
-    power: cachedPowerStatus,
     prices: cachedPrices,
     solarNowInput: cachedSolarNowInput,
     // Smart tasks are a Main-home feature (locked multi-home decision):
@@ -237,7 +232,6 @@ export const resetPlanSurfaceForScopeChange = (): void => {
     : { kind: 'area', homeId: selectedHomeId, read: 'pending', simulating: false };
   currentPlan = null;
   planPayloadReceived = false;
-  cachedPowerStatus = null;
   cachedSolarNowInput = null;
   doRender();
 };
@@ -278,11 +272,9 @@ registerPlanSurfaceRenderer(doRender);
 // shortfall) with Main's. The area's status arrives through its own scoped
 // `ui_power` read instead.
 export const updatePlanPower = (
-  power: SettingsUiPowerStatus | null,
   tracker?: SettingsUiPowerPayload['tracker'],
 ): void => {
   if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
-  cachedPowerStatus = power;
   if (tracker !== undefined) {
     cachedSolarNowInput = toSolarNowInput(tracker);
   }
@@ -395,13 +387,12 @@ export const updatePlanPrices = async (): Promise<void> => {
 const readScopedPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
   try {
     const read = await readUsagePower();
-    if (read.state !== 'served') return { status: null, solarNowInput: null };
+    if (read.state !== 'served') return { solarNowInput: null };
     return {
-      status: liveStatusOrNull(read.payload.status),
       solarNowInput: toSolarNowInput(read.payload.tracker ?? null),
     };
   } catch {
-    return { status: null, solarNowInput: null };
+    return { solarNowInput: null };
   }
 };
 
@@ -439,12 +430,10 @@ const refreshAreaPlan = async (homeId: string): Promise<void> => {
   if (planRead.state === 'unavailable') {
     // The empty shape carries NO information about this home: render the
     // honest notice, never `plan: null` dressed as "no plan committed yet".
-    cachedPowerStatus = null;
-    cachedSolarNowInput = null;
+      cachedSolarNowInput = null;
     commitPlan(null, { kind: 'area', homeId, read: 'unavailable', simulating });
     return;
   }
-  cachedPowerStatus = power.status;
   cachedSolarNowInput = power.solarNowInput;
   // An `unavailable` device read is a NO-OP, not an empty list. The two
   // channels fail independently, and a transient device-read failure is no
@@ -486,7 +475,6 @@ export const refreshPlan = async () => {
   // cached for the area's next live-tick repaint.
   if (generation !== planRefreshGeneration) return;
   if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
-  cachedPowerStatus = power.status;
   cachedSolarNowInput = power.solarNowInput;
   cachedPrices = prices;
   renderPlan(plan);

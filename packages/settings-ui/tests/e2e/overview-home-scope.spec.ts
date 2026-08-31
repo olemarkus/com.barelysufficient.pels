@@ -42,7 +42,6 @@ const buildPlanFixture = (totalKw: number, device: { id: string; name: string })
     usedKWh: 0.2,
     hourBudgetKWh: 3,
     minutesRemaining: 30,
-    powerFreshnessState: 'fresh',
   },
   devices: [{
     id: device.id,
@@ -103,7 +102,7 @@ test.describe('Overview follows the shown home', () => {
       // and would otherwise keep deciding for a device Main no longer owns.
       plan_snapshot: buildPlanFixture(1.5, { id: 'dev_heatpump', name: 'Living Room Heat Pump' }),
       [`plan_snapshot:${AREA_ID}`]: buildPlanFixture(0.7, { id: 'dev_bedroom', name: 'Bedroom Thermostat' }),
-      [`pels_status:${AREA_ID}`]: { powerFreshnessState: 'fresh' },
+      [`pels_status:${AREA_ID}`]: { powerNowKw: 0.7 },
     });
     await openOverview(page);
 

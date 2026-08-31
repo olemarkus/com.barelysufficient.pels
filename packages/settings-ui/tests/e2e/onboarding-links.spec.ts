@@ -3,11 +3,12 @@ import { expect, test } from './fixtures/test';
 // Fresh-install recovery paths: both zero-state surfaces must link the user to
 // the page that fixes them instead of dead-ending on a description.
 test.describe('Onboarding links', () => {
-  test('no-power-data banner offers power source setup and opens Limits & safety', async ({ page }) => {
+  test('no-readings banner names both remedies and opens Limits & safety', async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
-        // No sample ever received + no persisted power_source (the stub default)
-        // = the fresh-install state.
+        // No sample ever received; an unset source runs as Flow (the boot-time
+        // migration writes one on every real install, so this is at most the
+        // first-boot window).
         settings: { pels_status: null, power_tracker_state: null },
       };
     });
@@ -15,9 +16,11 @@ test.describe('Onboarding links', () => {
 
     const banner = page.locator('#stale-data-banner');
     await expect(banner).toBeVisible();
-    // Onboarding copy, not the "check your Flow" hint — the user never chose flows.
-    await expect(banner).toContainText('No power data yet');
-    await expect(banner.locator('#stale-data-action')).toHaveText('Choose power source');
+    // The never-received flow arm names BOTH remedies — the one honest arm
+    // for an install where detection found nothing.
+    await expect(banner).toContainText('No power readings yet');
+    await expect(banner).toContainText('Set up a Flow with the Report power usage action');
+    await expect(banner.locator('#stale-data-action')).toHaveText('Check power source');
 
     await banner.locator('#stale-data-action').click();
     await expect(page.locator('#limits-panel')).toBeVisible();
@@ -35,7 +38,7 @@ test.describe('Onboarding links', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const banner = page.locator('#stale-data-banner');
-    await expect(banner).toContainText('No power data yet');
+    await expect(banner).toContainText('No power readings yet');
 
     // Change only the hard cap — the first field on the page the banner links to.
     await page.getByRole('tab', { name: 'Settings' }).click();
@@ -47,8 +50,8 @@ test.describe('Onboarding links', () => {
     });
     await expect(page.locator('#toast')).toContainText('Limits & safety saved');
 
-    // The save must not materialize power_source, so the banner keeps its
-    // onboarding copy instead of flipping to "check your Flow".
+    // The save must not materialize power_source (the UI half of the rule the
+    // boot migration deliberately superseded for itself alone).
     const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
       (window as unknown as {
         Homey: { get: (key: string, cb: (error: Error | null, value?: unknown) => void) => void };
@@ -58,7 +61,7 @@ test.describe('Onboarding links', () => {
       });
     }));
     expect(stored).toBeNull();
-    await expect(banner).toContainText('No power data yet');
+    await expect(banner).toContainText('No power readings yet');
   });
 
   test('overview empty state links to the Devices settings page', async ({ page }) => {
@@ -82,7 +85,6 @@ test.describe('Onboarding links', () => {
           budgetPaceKw: null,
           projectedExemptKw: null,
           softLimitSource: 'capacity',
-          powerFreshnessState: 'fresh',
           headroomKw: 5,
           hardCapLimitKw: 10,
           usedKWh: 0,

@@ -1460,6 +1460,33 @@ rather than a generic failure. Three of them pin vocabulary:
   runs on the Flow source, and the area save's remedy line points at the
   Whole-home meter setting. Do not resurrect the string.
 
+## The no-readings banner
+
+The global warning banner above the home-scope bar is the ONE staleness
+surface (owner ruling 2026-08-31): the hero renders the last real
+measurements with no freshness chip or age text, and the banner alone says
+readings stopped. Source of truth: `resolvePowerReadingsBannerContent`
+(`packages/shared-domain/src/powerReadingsBanner.ts`), computed client-side
+from the tracker's own timestamp against the 60-second freshness threshold.
+
+- Leads: `No power readings yet.` (never received) / `No power readings in
+  the last minute.` (stopped). Say what happens — never "stale", "outdated",
+  or an age readout.
+- Hints name the remedy and the real control: the Flow card by its
+  registered name (**Report power usage** — `Set up a Flow with the Report
+  power usage action, …` / `Check the Flow that runs Report power usage.`),
+  the picker as `Pick a whole-home meter under Limits & safety.`, a chosen
+  meter as `Check that the selected whole-home meter is available and
+  reporting power in Homey Energy.`
+- The never-received Flow arm names BOTH remedies (Flow or meter) — the one
+  state where the install has nothing configured to point at.
+- Action label: `Check power source` on every arm.
+- Retired: the onboarding arm ("PELS needs to know where to read your home's
+  power use") — the boot-time migration persists a source on every install,
+  so "no source chosen" is not a steady state; and the hero's "Power
+  readings have dropped. Devices stay limited until data returns." decision
+  sentence — the banner is the one surface.
+
 ## Mode label
 
 With one home, the Settings page renders one selector labelled `Current mode`.

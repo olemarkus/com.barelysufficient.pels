@@ -112,8 +112,8 @@ const setMeterSelectionWriteBusy = (busy: boolean): void => {
   if (settingsHomeyEnergyMeterSelect) settingsHomeyEnergyMeterSelect.disabled = busy;
 };
 
-/** Whether a whole-home meter is chosen yet — feeds the stale-data hint. */
-export const isHomeyEnergyMeterExplicit = (): boolean => selectedMeterId !== null;
+/** Whether a whole-home meter is chosen yet — feeds the no-readings banner hint. */
+export const hasChosenWholeHomeMeter = (): boolean => selectedMeterId !== null;
 
 /** The chosen whole-home meter id; `null` while none is chosen yet. */
 export const getChosenWholeHomeMeterId = (): string | null => selectedMeterId;

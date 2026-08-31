@@ -94,7 +94,7 @@ const COOLDOWN_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
 ]);
 
 // This table is a PURE reason-code → counting-cause map; it must stay free of planner
-// state (`softLimitSource`, `powerFreshnessState`, …). The source-aware fold that
+// state (`softLimitSource`, headroom axes, …). The source-aware fold that
 // re-attributes `insufficient_headroom` → `daily_budget` for a budget-releasable hold
 // lives one layer up in the producer (`lib/plan/planDiagnostics.ts`,
 // `reattributeHeadroomShortfallCause`, gated on `budgetReleasableHeadroomHold`). Do not

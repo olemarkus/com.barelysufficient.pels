@@ -137,22 +137,19 @@ export const buildPelsStatusInputKey = (params: {
   // in a second copy of the precedence the status itself applied.
   priceLevel: PriceLevel;
   lastPowerUpdate: number | null;
-  powerFreshnessState?: DevicePlan['meta']['powerFreshnessState'];
   powerNowKw?: number | null;
   dryRunEffective?: boolean;
 }): string => {
   const {
-    changes, priceLevel, lastPowerUpdate, powerFreshnessState, powerNowKw, dryRunEffective,
+    changes, priceLevel, lastPowerUpdate, powerNowKw, dryRunEffective,
   } = params;
   const actionSignature = changes?.actionSignature ?? '';
   const detailSignature = changes?.detailSignature ?? '';
   const metaSignature = changes?.metaSignature ?? '';
   const lastPowerUpdateKey = lastPowerUpdate === null ? 'null' : String(lastPowerUpdate);
-  const freshnessKey = powerFreshnessState ?? 'none';
   // PRESENCE only, not the value: the figure moves every sample and would bust
   // the status cache on each one. What must bust it is the transition between
-  // having a measurement and not — which `freshnessKey` alone misses, because a
-  // fresh tracker with a null total (an in-place meter swap) is still 'fresh'.
+  // having a measurement and not.
   const powerNowKey = powerNowKw === null || powerNowKw === undefined ? 'unknown' : 'known';
   // Fold the effective dry-run in so a posture flip (membership becoming ready,
   // or the persisted flag toggled) busts the cache and forces a status write.
@@ -163,7 +160,6 @@ export const buildPelsStatusInputKey = (params: {
     metaSignature,
     priceLevel,
     lastPowerUpdateKey,
-    freshnessKey,
     powerNowKey,
     dryRunKey,
   ].join('|');

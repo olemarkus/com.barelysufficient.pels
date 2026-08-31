@@ -37,7 +37,7 @@ import {
   POWER_SOURCE,
 } from '../../../contracts/src/settingsKeys.ts';
 import {
-  isHomeyEnergyMeterExplicit,
+  hasChosenWholeHomeMeter,
   syncHomeyEnergyMeterSelection,
   syncHomeyEnergyMeterVisibility,
 } from './homeyEnergyMeter.ts';
@@ -49,7 +49,6 @@ import {
   topicsToScenarioIds,
 } from '../../../shared-domain/src/utils/debugLogging.ts';
 import { renderLegacyTopicsHint } from './debugLoggingHint.ts';
-import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../../shared-domain/src/powerFreshness.ts';
 import { usableCapacityKw } from '../../../shared-domain/src/capacityAllowance.ts';
 import {
   resolveSimulationBannerContent,
@@ -57,6 +56,7 @@ import {
 } from '../../../shared-domain/src/simulationPosture.ts';
 import { syncSimulationHomeScopeNote } from './simulationScopeNote.ts';
 import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
+import { resolvePowerReadingsBannerContent } from '../../../shared-domain/src/powerReadingsBanner.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
@@ -131,55 +131,6 @@ const resolveMainDryRun = (
 export const normalizePowerSource = (raw: unknown): PowerSource => (
   raw === 'homey_energy' ? 'homey_energy' : 'flow'
 );
-
-// Exported pure for tests; the meterSelected branch points at the explicitly
-// selected meter instead of Homey Energy's whole-home marking.
-export const resolveStaleDataHint = (source: string | undefined, meterSelected: boolean): string => {
-  if (source === 'homey_energy') {
-    return meterSelected
-      ? 'Check that the selected whole-home meter is available and reporting power in Homey Energy.'
-      // No meter chosen yet (a drafted source switch, or a legacy shape the
-      // boot migration deferred on): the remedy is the picker, not Homey.
-      : 'Pick a whole-home meter under Limits & safety.';
-  }
-  return 'Check your Flow that reports power usage.';
-};
-
-const getStaleDataHint = (): string => (
-  resolveStaleDataHint(settingsPowerSourceSelect?.value, isHomeyEnergyMeterExplicit())
-);
-
-export type StaleDataBannerContent = { text: string; actionLabel: string };
-
-// Exported pure for tests. The runtime never writes a default `power_source`,
-// so an absent setting plus no sample ever received means a fresh install where
-// the user hasn't chosen where PELS reads power from — that state gets
-// onboarding copy instead of a "check your Flow" hint about a Flow that was
-// never set up. Returns null when the banner should hide (fresh data).
-export const resolveStaleDataBannerContent = (input: {
-  lastPowerUpdate: number | null;
-  nowMs: number;
-  powerSourceConfigured: boolean;
-  hint: string;
-}): StaleDataBannerContent | null => {
-  if (input.lastPowerUpdate === null) {
-    if (!input.powerSourceConfigured) {
-      return {
-        text: 'No power data yet. PELS needs to know where to read your home’s power usage.',
-        actionLabel: 'Choose power source',
-      };
-    }
-    return {
-      text: `No power data received yet. ${input.hint}`,
-      actionLabel: 'Check power source',
-    };
-  }
-  if ((input.nowMs - input.lastPowerUpdate) <= POWER_SAMPLE_STALE_THRESHOLD_MS) return null;
-  return {
-    text: `No power data received in the last minute. ${input.hint}`,
-    actionLabel: 'Check power source',
-  };
-};
 
 // null means the outer settings boundary could not classify the saved homes
 // roster. In that case the banner uses the narrower Main-home claim: it remains
@@ -399,9 +350,6 @@ const validateCapacitySettings = ({ limit, margin }: ResolvedCapacitySettings) =
   }
 };
 
-// null = not yet loaded. Treated as configured so a returning user with stale
-// data never flashes the fresh-install copy while settings are still loading.
-let powerSourceConfigured: boolean | null = null;
 // Last value handed to the banner, so a settings load that resolves AFTER the
 // first power read can re-render the copy without refetching power. undefined
 // = the banner has never rendered.
@@ -432,22 +380,18 @@ const recordConfirmedPowerSourcePaint = (powerSource: unknown): void => {
 const updateStaleDataBanner = (lastPowerUpdate: number | null) => {
   lastBannerPowerUpdate = lastPowerUpdate;
   if (!staleDataBanner) return;
-  const content = resolveStaleDataBannerContent({
+  const content = resolvePowerReadingsBannerContent({
     lastPowerUpdate,
     nowMs: Date.now(),
-    powerSourceConfigured: powerSourceConfigured !== false,
-    hint: getStaleDataHint(),
+    // The select mirrors the persisted source (and a drafted Homey Energy
+    // switch, where the picker hint is exactly right).
+    source: normalizePowerSource(settingsPowerSourceSelect?.value),
+    meterChosen: hasChosenWholeHomeMeter(),
   });
   staleDataBanner.hidden = content === null;
   if (content === null) return;
   if (staleDataBannerText) staleDataBannerText.textContent = content.text;
   if (staleDataBannerAction) staleDataBannerAction.textContent = content.actionLabel;
-};
-
-export const setPowerSourceConfigured = (configured: boolean) => {
-  if (powerSourceConfigured === configured) return;
-  powerSourceConfigured = configured;
-  if (lastBannerPowerUpdate !== undefined) updateStaleDataBanner(lastBannerPowerUpdate);
 };
 
 export const refreshStaleDataBanner = (): void => {
@@ -475,19 +419,15 @@ export const updateStaleDataStatusFromPowerPayload = (power: SettingsUiPowerPayl
 const syncLoadedPowerSource = (powerSource: unknown): void => {
   const sourceResolved = powerSource === 'flow' || powerSource === 'homey_energy';
   if (sourceResolved) {
-    setPowerSourceConfigured(true);
     if (settingsPowerSourceSelect) settingsPowerSourceSelect.value = powerSource;
     syncHomeyEnergyMeterVisibility(powerSource);
     recordConfirmedPowerSourcePaint(powerSource);
     return;
   }
-  if (powerSourceConfigured === null) {
-    // First load with no configured source: keep the template's Flow default
-    // but mark it as onboarding, not persisted truth. After any confirmed
-    // paint, an unavailable read preserves that last-good source instead of
-    // fabricating Flow over a save rollback or another WebView's write.
-    setPowerSourceConfigured(false);
-  }
+  // An unavailable read preserves the last-good source paint instead of
+  // fabricating Flow over a save rollback or another WebView's write. (The
+  // old onboarding cell is gone: the boot-time migration persists a source
+  // on every install, so "not configured" is no longer a steady state.)
 };
 
 export const loadCapacitySettings = async () => {
@@ -542,6 +482,11 @@ export const loadCapacitySettings = async () => {
   commitCapacityScalars(normalizedLimit, normalizedMargin, isDryRun);
   syncDryRunBannerVisibility();
   syncSettingsHubChips();
+  // The banner may already have rendered from the template's defaults while
+  // this load was in flight (the boot-time power read runs in parallel):
+  // re-render it against the source and meter selection just painted. No-op
+  // until the first power read has handed the banner a timestamp.
+  refreshStaleDataBanner();
   // An external simulation-mode change (e.g. a second open WebView, or a Flow)
   // reaches here via the realtime settings.set handler. Re-render the overview
   // so the hero decision sentence and device-card "(simulation)" framing flip
