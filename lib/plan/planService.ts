@@ -137,6 +137,7 @@ export class PlanService {
       getLatestPlanSnapshotUpdatedAtMs: () => this.latestPlanSnapshotUpdatedAtMs,
       setLatestPlanSnapshotUpdatedAtMs: (ms) => { this.latestPlanSnapshotUpdatedAtMs = ms; },
       settleDevices: () => this.settleDevices(),
+      steppedSettleDevices: () => this.deps.getSteppedSettleDevices(),
       trackChanges: (plan, metaSignature) => this.changeTracker.track(plan, metaSignature),
       updatePlanSnapshot: (plan, changes) => this.updatePlanSnapshot(plan, changes),
       updatePelsStatus: (plan, changes) => this.updatePelsStatus(plan, changes),
@@ -252,10 +253,22 @@ export class PlanService {
   }
 
   private syncLivePlanStateInlineInContext(source: PendingTargetObservationSource): boolean {
+    // Ahead of the target/binary guard below, because that guard does not speak
+    // for this axis: when a stepped command is the only thing in flight both of
+    // its predicates are false, and a native rung or an on→off observation
+    // arriving here would not settle until some later meter-driven rebuild. On
+    // an irregular Flow feed that is a long time to leave `stepCommandPending`
+    // set, suppressing retries for a device that has already reported. The
+    // engine short-circuits internally when there is nothing tracked, so this
+    // costs nothing in the common case.
+    const steppedChanged = this.deps.planEngine.syncSteppedCommands(
+      () => this.deps.getSteppedSettleDevices(),
+    );
+
     const hasPendingTargetCommands = this.deps.planEngine.hasPendingTargetCommands();
     const hasPendingBinaryCommands = this.deps.planEngine.hasPendingBinaryCommands();
     if (!hasPendingTargetCommands && !hasPendingBinaryCommands) {
-      return false;
+      return steppedChanged;
     }
 
     const liveDevices = this.deps.getPlanDevices();
@@ -265,7 +278,7 @@ export class PlanService {
     const pendingBinaryChanged = hasPendingBinaryCommands
       ? this.deps.planEngine.syncPendingBinaryCommands(this.settleDevices(), source)
       : false;
-    const pendingChanged = pendingTargetChanged || pendingBinaryChanged;
+    const pendingChanged = pendingTargetChanged || pendingBinaryChanged || steppedChanged;
     if (!this.latestPlanSnapshot) {
       return pendingChanged;
     }

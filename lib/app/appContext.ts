@@ -45,6 +45,8 @@ import type {
 import type { DeviceTargetPowerConfigsWithReachability } from '../device/targetPowerReachability';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
+import type { SteppedCommandStore } from '../executor/steppedCommandStore';
+import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { HomeMembershipPort } from '../home/membership';
 import type { HomeRuntimeReadPort } from '../home/homeRuntimeRead';
 import type { GenerationPollSource } from '../power/sources/generationPoll';
@@ -345,6 +347,9 @@ export type AppContext = {
    */
   readonly generationPollSource: GenerationPollSource;
   readonly deviceControlHelpers: AppDeviceControlHelpers;
+  /** The stepped axis's two stores: what PELS commanded, and what the device attested. */
+  readonly steppedCommandStore: SteppedCommandStore;
+  readonly steppedReportedStore: SteppedReportedStepStore;
   readonly timers: TimerRegistry;
 };
 

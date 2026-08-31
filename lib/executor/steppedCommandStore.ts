@@ -74,20 +74,38 @@ export class SteppedCommandStore {
    * the ladder themselves: the same comparison written twice, one edit away
    * from two answers.
    */
-  resolveInitializationLatch(
+  peekInitializationLatch(
     deviceId: string,
     lowestActiveStepId: string | undefined,
   ): string | undefined {
     const latched = this.state.steppedLoadInitializedAtLowestStepByDeviceId.get(deviceId);
-    if (latched === undefined) return undefined;
-    if (latched === lowestActiveStepId) return latched;
+    return latched === lowestActiveStepId ? latched : undefined;
+  }
+
+  /**
+   * The write half of the same question, for the settle sweep: a latch that no
+   * longer names the ladder's lowest active rung is stale — the profile changed
+   * under it — so the whole command session goes with it. Split from the read so
+   * that ASKING what the latch is cannot change it; the read runs on every plan
+   * input build, and a read that mutates is why this lifecycle had to move.
+   */
+  reconcileInitializationLatch(deviceId: string, lowestActiveStepId: string | undefined): void {
+    const latched = this.state.steppedLoadInitializedAtLowestStepByDeviceId.get(deviceId);
+    if (latched === undefined || latched === lowestActiveStepId) return;
     this.clearCommandSession(deviceId);
-    return undefined;
   }
 
   /** Whether a step command was actually issued during this on-session. */
   hasPriorStepCommand(deviceId: string): boolean {
     return this.state.steppedLoadStepCommandIssuedByDeviceId.has(deviceId);
+  }
+
+  /** Whether anything at all is tracked — the settle pass's cheap early out. */
+  hasTrackedState(): boolean {
+    return this.state.steppedLoadDesiredByDeviceId.size > 0
+      || this.state.steppedLoadInitializedAtLowestStepByDeviceId.size > 0
+      || this.state.steppedLoadStepCommandIssuedByDeviceId.size > 0
+      || this.state.steppedLoadLastBinaryOnByDeviceId.size > 0;
   }
 
   /** Whether a step command is issued and not yet settled. */

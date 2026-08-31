@@ -4,6 +4,7 @@
  * planner consumers cannot construct or subclass this contract.
  */
 import type { PlanActuationResult } from '../planContract/planActuationResult';
+import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
 import type {
   PendingBinaryCommandStore,
   PendingBinaryLiveDevice,
@@ -58,6 +59,8 @@ export type PlanEngine = {
     devices: PendingBinaryLiveDevice[],
     source: PendingTargetObservationSource,
   ) => boolean;
+  /** The stepped axis's twin of the above; see `lib/executor/syncSteppedCommands.ts`. */
+  syncSteppedCommands: (getDevices: () => readonly SteppedSettleDevice[]) => boolean;
   decoratePlanWithPendingTargetCommands: (plan: DevicePlan) => DevicePlan;
   hasPendingTargetCommands: () => boolean;
   hasPendingTargetCommandsOlderThan: (thresholdMs: number) => boolean;

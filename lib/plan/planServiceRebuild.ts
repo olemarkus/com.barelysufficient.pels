@@ -10,6 +10,7 @@
  * helpers; the intent-queue serialization stays in `PlanService`.
  */
 import { randomUUID } from 'node:crypto';
+import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
 import { incPerfCounter } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
@@ -48,6 +49,7 @@ export type PlanRebuildHost = {
   getLatestPlanSnapshotUpdatedAtMs: () => number | null;
   setLatestPlanSnapshotUpdatedAtMs: (ms: number | null) => void;
   settleDevices: () => PendingBinaryLiveDevice[];
+  steppedSettleDevices: () => readonly SteppedSettleDevice[];
   trackChanges: (plan: DevicePlan, metaSignature: string) => PlanChangeSet;
   updatePlanSnapshot: (plan: DevicePlan, changes: PlanChangeSet) => void;
   updatePelsStatus: (plan: DevicePlan, changes?: StatusPlanChanges) => number;
@@ -178,6 +180,7 @@ async function buildPlanForRebuild(
 ): Promise<{ plan: DevicePlan; buildMs: number; observationRevision: number }> {
   const { planEngine } = host.deps;
   planEngine.syncPendingBinaryCommands(host.settleDevices(), 'rebuild');
+  planEngine.syncSteppedCommands(() => host.steppedSettleDevices());
   // Read BEFORE the inputs are captured. The build below awaits, so a realtime
   // observation can land mid-build; this is what lets the apply step tell that
   // the plan was decided against a world that has since moved.

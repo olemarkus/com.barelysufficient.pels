@@ -1,4 +1,6 @@
 import type { Actuator } from '../../lib/actuator/deviceActuator';
+import type { SteppedCommandStore } from '../../lib/executor/steppedCommandStore';
+import type { SteppedReportedStepStore } from '../../lib/observer/steppedReportedStep';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { PlanExecutorDeps } from '../../lib/executor/planExecutor';
@@ -18,6 +20,8 @@ export type PlanEngineWiring = {
   getHomeDisplayName: PlanExecutorDeps['getHomeDisplayName'];
   homeId: PlanExecutorDeps['homeId'];
   setCapacityInShortfall: (inShortfall: boolean) => void;
+  steppedCommandStore: SteppedCommandStore;
+  steppedReportedStore: SteppedReportedStepStore;
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
   deviceManager: PlanExecutorDeps['deviceManager'];
   getObservedState: PlanExecutorDeps['getObservedState'];

@@ -124,6 +124,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     }),
     getPlanDevices: () => [],
     getSettleDevices: () => [],
+    getSteppedSettleDevices: () => [],
     getCapacityDryRun: () => false,
     getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getLastPowerUpdate: () => null,
@@ -177,6 +178,7 @@ describe('PlanService', () => {
         value: { currentTarget: observedTarget, currentTemperature: 21 },
       }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: settingsSet, realtime }),
@@ -232,6 +234,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: settingsSet, realtime }),
@@ -757,6 +760,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
@@ -771,6 +775,7 @@ describe('PlanService', () => {
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         hasPendingBinaryCommands: vi.fn(() => true),
         syncPendingBinaryCommands: vi.fn(() => false),
+        syncSteppedCommands: () => false,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
@@ -921,6 +926,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -988,6 +994,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: settingsSet, realtime }),
@@ -1021,6 +1028,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
@@ -1071,6 +1079,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: settingsSet, realtime }),
@@ -1115,6 +1124,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
@@ -1200,6 +1210,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -1284,6 +1295,7 @@ describe('PlanService', () => {
         value: { currentTarget: 18, currentTemperature: 21 },
       }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: settingsSet, realtime }),
@@ -1381,6 +1393,7 @@ describe('PlanService', () => {
         value: { currentTarget: 20, currentTemperature: 21 },
       }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: settingsSet, realtime }),
@@ -1450,6 +1463,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
@@ -1464,6 +1478,7 @@ describe('PlanService', () => {
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         hasPendingBinaryCommands: vi.fn(() => true),
         syncPendingBinaryCommands: vi.fn(() => false),
+        syncSteppedCommands: () => false,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
@@ -1527,6 +1542,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
@@ -1544,6 +1560,7 @@ describe('PlanService', () => {
           hasPendingBinaryCommands = false;
           return true;
         }),
+        syncSteppedCommands: () => false,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
@@ -1634,6 +1651,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
@@ -1753,6 +1771,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
@@ -1861,6 +1880,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
@@ -2003,6 +2023,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
@@ -2119,6 +2140,7 @@ describe('PlanService', () => {
         value: { currentTarget: 21, currentTemperature: 21 },
       }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
@@ -2181,6 +2203,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -2264,6 +2287,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -2316,6 +2340,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -2405,6 +2430,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -2481,6 +2507,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: settingsSet, realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -2584,6 +2611,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -2665,6 +2693,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -2708,6 +2737,7 @@ describe('PlanService', () => {
     const planService = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey(),
@@ -2761,6 +2791,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       // The pels_status write is what `statusWriteMs` measures; route the injected
       // writer to the same fake-timer-advancing spy the settings.set used to be, so
@@ -2813,6 +2844,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: settingsSet, realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -3194,6 +3226,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -3250,6 +3283,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -3336,6 +3370,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -3383,6 +3418,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -3423,6 +3459,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -3456,6 +3493,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
+      getSteppedSettleDevices: () => [],
       homeId: 'main',
       writePelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),

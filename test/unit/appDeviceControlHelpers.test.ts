@@ -14,7 +14,9 @@ import {
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { resolveCurrentOn } from '../../lib/observer/observedState';
-import { steppedStoresForTest } from '../helpers/steppedStores';
+import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
+import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
+import { decorateAndSettle, steppedStoresForTest } from '../helpers/steppedStores';
 import type {
   DeviceControlProfiles,
   MeasuredPowerObservedProbe,
@@ -232,7 +234,12 @@ describe('appDeviceControlHelpers', () => {
     });
     const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2000);
 
-    helpers.decorateTargetSnapshotList([snapshot]);
+    // The pending window lapses on the settle pass, not on a projection read.
+    syncSteppedCommands({
+      store: stores.store,
+      reportedStore: stores.reportedStore,
+      devices: buildSteppedSettleSnapshot(helpers.decorateTargetSnapshotList([snapshot])),
+    });
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')?.status).toBe('stale');
     expect(helpers.reportSteppedLoadActualStep('dev-1', '25a')).toBe('changed');
     expect(config.reachability).toMatchObject({
@@ -616,7 +623,7 @@ describe('appDeviceControlHelpers', () => {
     const { store, reportedStore } = steppedStoresForTest();
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
 
-    decorateSnapshotWithDeviceControl({
+    decorateAndSettle({
       snapshot: baseSnapshot({ binaryControl: undefined }),
       profiles: steppedProfiles,
       store,
@@ -627,7 +634,7 @@ describe('appDeviceControlHelpers', () => {
 
     // Now the device is observed off. The on-session ended, so its command
     // state goes with it.
-    decorateSnapshotWithDeviceControl({
+    decorateAndSettle({
       snapshot: baseSnapshot({ binaryControl: { on: false } }),
       profiles: steppedProfiles,
       store,
@@ -713,7 +720,7 @@ describe('appDeviceControlHelpers', () => {
   it('clears the ended on-session before an unknown-level device turns on again', () => {
     const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
-    decorateSnapshotWithDeviceControl({
+    decorateAndSettle({
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       store,
@@ -734,7 +741,7 @@ describe('appDeviceControlHelpers', () => {
       issuedAtMs: 1_000,
     });
 
-    const whileOff = decorateSnapshotWithDeviceControl({
+    const whileOff = decorateAndSettle({
       snapshot: baseSnapshot({ binaryControl: { on: false } }),
       profiles: steppedProfiles,
       store,
@@ -746,7 +753,7 @@ describe('appDeviceControlHelpers', () => {
     expect(runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.has('dev-1')).toBe(false);
     expect(runtimeState.steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
 
-    const afterTurnOn = decorateSnapshotWithDeviceControl({
+    const afterTurnOn = decorateAndSettle({
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       store,
@@ -765,7 +772,7 @@ describe('appDeviceControlHelpers', () => {
   it('does not reinsert an ended-session command from a matching report on the off snapshot', () => {
     const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
-    decorateSnapshotWithDeviceControl({
+    decorateAndSettle({
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       store,
@@ -779,7 +786,7 @@ describe('appDeviceControlHelpers', () => {
       issuedAtMs: 1_000,
     });
 
-    decorateSnapshotWithDeviceControl({
+    decorateAndSettle({
       snapshot: baseSnapshot({
         binaryControl: { on: false },
         reportedStepId: 'max',
@@ -796,7 +803,7 @@ describe('appDeviceControlHelpers', () => {
   it('ends the session when an off-step report contradicts a binary-on capability', () => {
     const { store, reportedStore } = steppedStoresForTest();
     const runtimeState = store.getStateForTests();
-    decorateSnapshotWithDeviceControl({
+    decorateAndSettle({
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       store,
@@ -817,7 +824,7 @@ describe('appDeviceControlHelpers', () => {
       issuedAtMs: 1_000,
     });
 
-    decorateSnapshotWithDeviceControl({
+    decorateAndSettle({
       snapshot: baseSnapshot({
         binaryControl: { on: true },
         reportedStepId: 'off',
@@ -857,7 +864,7 @@ describe('appDeviceControlHelpers', () => {
       },
     };
 
-    const decorated = decorateSnapshotWithDeviceControl({
+    const decorated = decorateAndSettle({
       snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: changedProfiles,
       store,
@@ -1131,7 +1138,7 @@ describe('appDeviceControlHelpers', () => {
       issuedAtMs: 1_000,
     });
 
-    const decorated = decorateSnapshotWithDeviceControl({
+    const decorated = decorateAndSettle({
       snapshot: baseSnapshot({
         binaryControl: { on: true },
         reportedStepId: 'max',
@@ -1753,10 +1760,26 @@ describe('appDeviceControlHelpers', () => {
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
     const [onDecorated] = helpers.decorateTargetSnapshotList([snapshotHolder.current]);
     expect(onDecorated.stepCommandStatus).toBe('success');
+    // The settle pass runs every cycle in production, so the on-session is
+    // observed before it ends — the on→off expiry is a two-sample edge.
+    syncSteppedCommands({
+      store: stores.store,
+      reportedStore: stores.reportedStore,
+      devices: buildSteppedSettleSnapshot([onDecorated]),
+    });
 
     // Device turns off: the stale confirmation is downgraded, so the next
-    // restore-from-off must re-confirm through the flow.
+    // restore-from-off must re-confirm through the flow. Decoration only
+    // PROJECTS, so the downgrade happens on the settle pass and the projection
+    // carries it on the next read — the production order.
     snapshotHolder.current = baseSnapshot({ binaryControl: { on: false } });
+    const [offProjection] = helpers.decorateTargetSnapshotList([snapshotHolder.current]);
+    syncSteppedCommands({
+      store: stores.store,
+      reportedStore: stores.reportedStore,
+      devices: buildSteppedSettleSnapshot([offProjection]),
+    });
+
     const [offDecorated] = helpers.decorateTargetSnapshotList([snapshotHolder.current]);
     expect(offDecorated.stepCommandStatus).toBe('idle');
     expect(offDecorated.stepCommandPending).toBe(false);

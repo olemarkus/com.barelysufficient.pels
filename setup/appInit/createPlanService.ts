@@ -1,4 +1,5 @@
 import { requireDeviceManager, requirePlanEngine } from './contextGuards';
+import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
 import { PlanService } from '../../lib/plan/planService';
 import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
 import type { PlanEngine } from '../../lib/plan/planEngine';
@@ -40,6 +41,9 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // never cross into the plan-owned service merely because structural typing
     // accepts a wider object.
     getSettleDevices: () => deviceManager.getBinaryCommandConfirmationSnapshot(),
+    // The decorated devices carry their own ladder, so the settle evidence is a
+    // pure projection off them — no profile lookup at the consumer.
+    getSteppedSettleDevices: () => buildSteppedSettleSnapshot(ctx.latestTargetSnapshot),
     // EV charging state for the settings-UI read model comes from the observer
     // (its canonical owner), not the plan device — the planner carries only the
     // resolved flat EV plug-state sub-fields, not the raw observed plug-state. NB: do NOT

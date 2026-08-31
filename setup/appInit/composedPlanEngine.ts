@@ -1,4 +1,8 @@
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
+import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
+import type { SteppedSettleDevice } from '../../lib/observer/steppedSettleSnapshot';
+import type { SteppedCommandStore } from '../../lib/executor/steppedCommandStore';
+import type { SteppedReportedStepStore } from '../../lib/observer/steppedReportedStep';
 import {
   canRefreshPlanSnapshotFromLiveState,
   hasPlanExecutionDriftAgainstIntent,
@@ -38,6 +42,8 @@ const moduleLogger = getLogger('plan/engine');
 export type PlanEngineComposition = {
   state: PlanEngineState;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
+  steppedCommandStore: SteppedCommandStore;
+  steppedReportedStore: SteppedReportedStepStore;
   builder: PlanBuilder;
   executor: Pick<PlanExecutor,
     | 'handleShortfall'
@@ -58,6 +64,10 @@ export class ComposedPlanEngine implements PlanEngine {
   public readonly state: PlanEngineState;
   public readonly pendingBinaryCommandStore: PendingBinaryCommandStore;
 
+  private readonly steppedCommandStore: SteppedCommandStore;
+
+  private readonly steppedReportedStore: SteppedReportedStepStore;
+
   private readonly builder: PlanBuilder;
   private readonly executor: PlanEngineComposition['executor'];
   private readonly deviceDiagnostics?: DeviceDiagnosticsRecorder;
@@ -67,6 +77,8 @@ export class ComposedPlanEngine implements PlanEngine {
   public constructor(composition: PlanEngineComposition) {
     this.state = composition.state;
     this.pendingBinaryCommandStore = composition.pendingBinaryCommandStore;
+    this.steppedCommandStore = composition.steppedCommandStore;
+    this.steppedReportedStore = composition.steppedReportedStore;
     this.builder = composition.builder;
     this.executor = composition.executor;
     this.deviceDiagnostics = composition.deviceDiagnostics;
@@ -142,6 +154,20 @@ export class ComposedPlanEngine implements PlanEngine {
       state: this.state,
       plan,
       debugStructured: this.debugStructuredFn,
+    });
+  }
+
+  public syncSteppedCommands(getDevices: () => readonly SteppedSettleDevice[]): boolean {
+    // A thunk, so an empty store costs nothing: resolving the settle devices
+    // decorates the snapshot, and there is no point paying for that when
+    // nothing is tracked to settle.
+    if (!this.steppedCommandStore.hasTrackedState() && !this.steppedReportedStore.hasAny()) {
+      return false;
+    }
+    return syncSteppedCommands({
+      store: this.steppedCommandStore,
+      reportedStore: this.steppedReportedStore,
+      devices: getDevices(),
     });
   }
 

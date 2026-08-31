@@ -105,6 +105,11 @@ export class SteppedReportedStepStore {
     return hasSteppedLoadReportChanged(previous, next) ? 'changed' : 'unchanged';
   }
 
+  /** Whether any device has reported at all. */
+  hasAny(): boolean {
+    return this.byDeviceId.size > 0;
+  }
+
   /** Forget the report: the device's native wiring is authoritative instead. */
   clear(deviceId: string): void {
     this.byDeviceId.delete(deviceId);
