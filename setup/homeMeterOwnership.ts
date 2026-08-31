@@ -22,9 +22,8 @@ import { createHomesStore } from './homeRegistryAdapter';
 import { readMainMeterSelection } from './mainMeterSettings';
 import { readConfiguredPowerSource } from './powerSourceSettings';
 
-type MainMeterSaveRequest = Extract<SettingsUiHomesSaveRequest, { op: 'set_main_meter' }>;
 type PowerSourceSaveRequest = Extract<SettingsUiHomesSaveRequest, { op: 'set_power_source' }>;
-type AreaMutationRequest = Exclude<SettingsUiHomesSaveRequest, MainMeterSaveRequest | PowerSourceSaveRequest>;
+type AreaMutationRequest = Exclude<SettingsUiHomesSaveRequest, PowerSourceSaveRequest>;
 
 /**
  * Multi-home activation as the membership service latched it, passed in rather
@@ -36,16 +35,6 @@ type AreaMutationRequest = Exclude<SettingsUiHomesSaveRequest, MainMeterSaveRequ
 export type MultiHomeActivationRead =
   | { state: 'resolved'; runtimeActive: boolean }
   | { state: 'unavailable' };
-
-/**
- * The producer-latched answer to "can the whole-home meter be named?"
- * (`HomeMembershipDiagnostics.mainMeterArrangement`): `identified` when a read
- * proved an id-bearing whole-home meter, `idless_aggregate_only` when the
- * report's only cumulative item carries no id AND no other id-bearing meter
- * item exists to name instead, `unknown` before any proof.
- * Passed in like activation, never re-derived from a live poll here.
- */
-export type MainMeterArrangement = 'unknown' | 'identified' | 'idless_aggregate_only';
 
 /**
  * Cross-store meter ownership guard for a freshly composed area list, plus the
@@ -70,7 +59,6 @@ export type MainMeterArrangement = 'unknown' | 'identified' | 'idless_aggregate_
 const findMeterOwnershipRefusal = (
   homey: Homey.App['homey'],
   subHomes: readonly SubHomeConfig[],
-  mainMeterArrangement: MainMeterArrangement,
 ): SettingsUiHomesSaveRefusal | null => {
   if (!hasUniqueSubHomeMeters(subHomes)) return { ok: false, reason: 'invalid' };
   const powerSource = readConfiguredPowerSource(homey.settings);
@@ -87,14 +75,10 @@ const findMeterOwnershipRefusal = (
     return { ok: false, reason: 'invalid' };
   }
   if (subHomes.length === 0 || mainMeter.meterDeviceId !== null) return null;
-  // On a home whose whole-home reading is a PROVEN id-less aggregate, the
-  // main_meter_required remedy can never be satisfied — the picker has no
-  // whole-home meter to offer. Refuse honestly instead of pointing at it.
-  // `unknown` keeps the ordinary remedy: only a latched proof selects the
-  // honest-state copy, never a boot window or an SDK miss.
-  return mainMeterArrangement === 'idless_aggregate_only'
-    ? { ok: false, reason: 'meter_unnameable' }
-    : { ok: false, reason: 'main_meter_required' };
+  // No whole-home meter persisted while areas exist: a legacy shape the
+  // boot-time migration defers on (nothing nameable to adopt), since the
+  // picker can no longer express "no meter". The remedy is the picker.
+  return { ok: false, reason: 'main_meter_required' };
 };
 
 /** Whether an area upsert would swallow the whole known zone forest. */
@@ -126,15 +110,13 @@ export const findComposedHomeInvariantViolation = (
     upserted: SubHomeConfig;
     /** Whether this upsert adds an area rather than replacing one. */
     growsList: boolean;
-    /** Producer-latched nameability of the whole-home meter. */
-    mainMeterArrangement: MainMeterArrangement;
     zoneTree: ZoneTree | null;
   },
 ): SettingsUiHomesSaveRefusal | null => {
   const {
-    subHomes, upserted, growsList, mainMeterArrangement, zoneTree,
+    subHomes, upserted, growsList, zoneTree,
   } = params;
-  const meterRefusal = findMeterOwnershipRefusal(homey, subHomes, mainMeterArrangement);
+  const meterRefusal = findMeterOwnershipRefusal(homey, subHomes);
   if (meterRefusal !== null) return meterRefusal;
   // The cap bounds GROWTH, so it never blocks repairing a config that is
   // already over it. Nothing capped `homes_config` before this seam did, and an
@@ -184,41 +166,6 @@ const classifyAreasRunning = (
 };
 
 /**
- * Validate + persist Main's selection in one synchronous server turn. Sharing
- * the ui_homes_save intent seam with area mutations means either concurrent
- * arrival order observes the first owner and refuses the second.
- */
-export const saveMainMeterSelection = (
-  homey: Homey.App['homey'],
-  request: MainMeterSaveRequest,
-  activation: MultiHomeActivationRead,
-): SettingsUiHomesSaveResponse => {
-  const read = createHomesStore(homey).read();
-  if (read.state === 'suspect') return { ok: false, reason: 'degraded' };
-  const config = read.state === 'present' ? read.value : { subHomes: [] };
-  const { subHomes } = config;
-  // The same requirement the area path enforces, from the other side: going
-  // back to Automatic while meter areas are RUNNING would leave no proven
-  // physical meter owner for the Main home. No power-source gate here, unlike
-  // the area path: this endpoint is only reachable from the Whole-home meter
-  // picker, which renders on the Homey Energy source alone.
-  //
-  // Only this branch consults activation, so picking an explicit meter — the
-  // remedy every other refusal names — can never itself be blocked.
-  if (request.meterDeviceId === null) {
-    const running = classifyAreasRunning(config, activation);
-    if (running === 'unknown') return { ok: false, reason: 'degraded' };
-    if (running === 'running') return { ok: false, reason: 'main_meter_required' };
-  }
-  const collision = findMainMeterCollision(request.meterDeviceId, subHomes);
-  if (collision !== null) {
-    return { ok: false, reason: 'meter_in_use', otherName: collision.name };
-  }
-  homey.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, request.meterDeviceId);
-  return { ok: true };
-};
-
-/**
  * Validate + persist the power source in the same serialized server turn as
  * area mutations, so "save an area" and "switch to Flow" cannot both land.
  * The exclusion the area path enforces, from the other side: a Flow reading
@@ -226,23 +173,52 @@ export const saveMainMeterSelection = (
  * receiving samples the moment the source flips. Dormancy discrimination is
  * `classifyAreasRunning`, shared with the Automatic refusal.
  *
- * Switching TO Homey Energy never consults the homes store: it is the
- * direction every refusal's remedy lives in, and for a legacy config whose
- * areas were saved under Flow it is the only road back to a working setup.
+ * Switching TO Homey Energy now carries the meter it will read, so it
+ * consults the homes store exactly as far as meter ownership requires (the
+ * collision check); the areas-running gate still applies only to Flow, so
+ * the remedy direction every refusal names is never itself blocked by it.
  */
+/** `true` only on a clean read of an already-homey_energy source; a throwing read reports `false`. */
+const readsAsHomeyEnergySource = (homey: Homey.App['homey']): boolean => {
+  try {
+    return homey.settings.get(POWER_SOURCE) === 'homey_energy';
+  } catch {
+    return false;
+  }
+};
+
 export const savePowerSourceSelection = (
   homey: Homey.App['homey'],
   request: PowerSourceSaveRequest,
   activation: MultiHomeActivationRead,
 ): SettingsUiHomesSaveResponse => {
+  const read = createHomesStore(homey).read();
+  if (read.state === 'suspect') return { ok: false, reason: 'degraded' };
+  const config = read.state === 'present' ? read.value : { subHomes: [] };
   if (request.source === 'flow') {
-    const read = createHomesStore(homey).read();
-    if (read.state === 'suspect') return { ok: false, reason: 'degraded' };
-    const config = read.state === 'present' ? read.value : { subHomes: [] };
     const running = classifyAreasRunning(config, activation);
     if (running === 'unknown') return { ok: false, reason: 'degraded' };
     if (running === 'running') return { ok: false, reason: 'homey_energy_required' };
+    homey.settings.set(POWER_SOURCE, 'flow');
+    return { ok: true };
   }
-  homey.settings.set(POWER_SOURCE, request.source);
+  // Homey Energy switches atomically with the meter it will read: validate
+  // the meter against area ownership, then write the meter key FIRST and the
+  // source second — so `power_source = homey_energy` never exists persisted
+  // without a meter id, even across a crash between the two writes.
+  const collision = findMainMeterCollision(request.meterDeviceId, config.subHomes);
+  if (collision !== null) {
+    return { ok: false, reason: 'meter_in_use', otherName: collision.name };
+  }
+  // The source is read BEFORE the first write, so a throwing read cannot
+  // leave a half-applied save reported as a failure; if the read itself
+  // throws, the source is rewritten unconditionally (idempotent).
+  const sourceAlreadyHomeyEnergy = readsAsHomeyEnergySource(homey);
+  homey.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, request.meterDeviceId);
+  // Skip rewriting an unchanged source: a meter change while already on Homey
+  // Energy stays a single-key write (one settings event, one poll restart).
+  if (!sourceAlreadyHomeyEnergy) {
+    homey.settings.set(POWER_SOURCE, 'homey_energy');
+  }
   return { ok: true };
 };

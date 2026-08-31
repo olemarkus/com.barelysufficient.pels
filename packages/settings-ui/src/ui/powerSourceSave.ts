@@ -13,6 +13,7 @@ import {
 import {
   composePowerSourceSaveRefusalLine,
   HOMES_POWER_SOURCE_SAVE_FAILED,
+  POWER_SOURCE_PICK_METER_PROMPT,
 } from '../../../shared-domain/src/homeAreaConfigRulesCopy.ts';
 import {
   normalizePowerSource,
@@ -22,7 +23,7 @@ import {
   supersedeCapacityPowerSourcePaints,
   type PowerSource,
 } from './capacity.ts';
-import { syncHomeyEnergyMeterVisibility } from './homeyEnergyMeter.ts';
+import { getChosenWholeHomeMeterId, syncHomeyEnergyMeterVisibility } from './homeyEnergyMeter.ts';
 import { logSettingsError } from './logging.ts';
 import { ERROR_DURATION_MS, showToast, showToastError } from './toast.ts';
 
@@ -99,6 +100,55 @@ const resolveSuccessfulPowerSourcePaint = async (next: PowerSource): Promise<Pow
   }
 };
 
+/** The atomic pair for Homey Energy (the draft guard proved a chosen meter). */
+/**
+ * The request is proven before it is built: the Homey Energy arm carries the
+ * guard-resolved meter id, so this builder has no "no meter yet" arm — that
+ * state never posts (it stays a draft at `savePowerSourceSetting`'s guard).
+ */
+type PowerSourceSaveRequest = { source: 'flow' } | { source: 'homey_energy'; meterDeviceId: string };
+
+const buildPowerSourceSaveBody = (request: PowerSourceSaveRequest): Record<string, unknown> => (
+  { op: 'set_power_source', ...request }
+);
+
+const paintSavedPowerSource = (savedSource: PowerSource): void => {
+  applySettingsPatch({ [POWER_SOURCE]: savedSource });
+  setPowerSourceConfigured(true);
+  if (settingsPowerSourceSelect) settingsPowerSourceSelect.value = savedSource;
+  syncHomeyEnergyMeterVisibility(savedSource);
+  refreshStaleDataBanner();
+};
+
+const startHomeyEnergyDraft = async (): Promise<void> => {
+  syncHomeyEnergyMeterVisibility('homey_energy');
+  await showToast(POWER_SOURCE_PICK_METER_PROMPT, 'default');
+};
+
+/**
+ * A typed refusal settles like a failure — roll back only to a source the
+ * user confirmed (with no anchor, show the explicit unavailable state instead
+ * of leaving the refused proposal selected as if it saved) — plus the one
+ * refusal-specific posture: `meter_in_use`'s remedy is picking a DIFFERENT
+ * meter, so the picker is re-revealed (draft posture) even though the select
+ * itself rolled back. Error dwell: a refusal is an instruction to read.
+ */
+const settleRefusedPowerSourceSave = async (
+  refusal: SettingsUiHomesSaveRefusal,
+  previous: PowerSource | null,
+  confirmedPaintGeneration: number,
+): Promise<void> => {
+  settleFailedPowerSourceSave(previous, confirmedPaintGeneration);
+  if (refusal.reason === 'meter_in_use') {
+    syncHomeyEnergyMeterVisibility('homey_energy');
+  }
+  await showToast(
+    composePowerSourceSaveRefusalLine(refusal),
+    'warn',
+    { durationMs: ERROR_DURATION_MS },
+  );
+};
+
 /**
  * Persist the Power source select through the guarded `ui_homes_save` seam.
  * The runtime refuses `flow` while meter areas are running (the same mutual
@@ -110,6 +160,19 @@ export const savePowerSourceSetting = async (): Promise<void> => {
   const select = settingsPowerSourceSelect;
   if (!select || powerSourceWriteInFlight) return;
   const next = normalizePowerSource(select.value);
+  // Homey Energy persists atomically WITH the meter it will read. With no
+  // meter chosen yet, the switch stays a DRAFT: reveal the picker and say
+  // what finishes the switch — nothing is posted, nothing patched, and the
+  // meter pick below posts the atomic pair. Navigating away leaves the
+  // persisted source untouched.
+  const chosenMeterDeviceId = next === 'homey_energy' ? getChosenWholeHomeMeterId() : null;
+  if (next === 'homey_energy' && chosenMeterDeviceId === null) {
+    await startHomeyEnergyDraft();
+    return;
+  }
+  const request: PowerSourceSaveRequest = next === 'homey_energy' && chosenMeterDeviceId !== null
+    ? { source: 'homey_energy', meterDeviceId: chosenMeterDeviceId }
+    : { source: 'flow' };
   powerSourceWriteInFlight = true;
   select.disabled = true;
   // Fence every source read that started before this write. Reads started
@@ -129,7 +192,7 @@ export const savePowerSourceSetting = async (): Promise<void> => {
     const response = await callApi<unknown>(
       'POST',
       SETTINGS_UI_HOMES_SAVE_PATH,
-      { op: 'set_power_source', source: next },
+      buildPowerSourceSaveBody(request),
     );
     const responseRecord = typeof response === 'object' && response !== null
       ? response as Record<string, unknown>
@@ -138,24 +201,15 @@ export const savePowerSourceSetting = async (): Promise<void> => {
       throw new Error('Invalid power-source save response.');
     }
     if (!responseRecord.ok) {
-      // Same anchor discipline as the catch below: roll back only to a source
-      // the user confirmed. With no anchor, show the explicit empty/unavailable
-      // state instead of leaving the refused proposal selected as if it saved.
-      settleFailedPowerSourceSave(previous, confirmedPaintGeneration);
-      // Error dwell: a refusal is an instruction to read, not an acknowledgement.
-      await showToast(
-        composePowerSourceSaveRefusalLine(responseRecord as SettingsUiHomesSaveRefusal),
-        'warn',
-        { durationMs: ERROR_DURATION_MS },
+      await settleRefusedPowerSourceSave(
+        responseRecord as SettingsUiHomesSaveRefusal,
+        previous,
+        confirmedPaintGeneration,
       );
       return;
     }
     const savedSource = await resolveSuccessfulPowerSourcePaint(next);
-    applySettingsPatch({ [POWER_SOURCE]: savedSource });
-    setPowerSourceConfigured(true);
-    select.value = savedSource;
-    syncHomeyEnergyMeterVisibility(savedSource);
-    refreshStaleDataBanner();
+    paintSavedPowerSource(savedSource);
     await showToast('Power source saved.', 'ok');
   } catch (error) {
     // Roll the select back so the screen never shows an unsaved choice as

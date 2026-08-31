@@ -451,7 +451,7 @@ describe('savePowerSourceSetting', () => {
     resolveMeterRead(null);
     await staleLoad;
     expect(select.value).toBe('homey_energy');
-    expect(document.querySelector('#stale-data-text')!.textContent).toContain('Homey Energy');
+    expect(document.querySelector('#stale-data-text')!.textContent).toContain('Pick a whole-home meter');
 
     resolveSave({ ok: true });
     await save;
@@ -602,7 +602,7 @@ describe('savePowerSourceSetting', () => {
       persistedSource: undefined,
       saveResult: async () => ({ ok: false, reason: 'degraded' }),
     });
-    select.value = 'homey_energy';
+    select.value = 'flow';
 
     await capacity.savePowerSourceSetting();
 
@@ -619,7 +619,7 @@ describe('savePowerSourceSetting', () => {
       persistedSource: null,
       saveResult: async () => { throw new Error('api down'); },
     });
-    select.value = 'homey_energy';
+    select.value = 'flow';
 
     await capacity.savePowerSourceSetting();
 
@@ -631,11 +631,13 @@ describe('savePowerSourceSetting', () => {
 
   it('rolls back and surfaces the failure toast when the seam call throws', async () => {
     const {
-      capacity, select, applySettingsPatch, showToastError,
+      capacity, select, applySettingsPatch, showToastError, homeyEnergyMeter,
     } = await loadCapacityModule({
       persistedSource: 'flow',
       saveResult: async () => { throw new Error('api down'); },
     });
+    // A chosen meter makes the Homey Energy switch a real (atomic) save.
+    homeyEnergyMeter.syncHomeyEnergyMeterSelection('meter-x');
     select.value = 'homey_energy';
 
     await capacity.savePowerSourceSetting();
@@ -644,5 +646,51 @@ describe('savePowerSourceSetting', () => {
     expect(select.disabled).toBe(false);
     expect(applySettingsPatch).not.toHaveBeenCalled();
     expect(showToastError).toHaveBeenCalledWith(expect.any(Error), HOMES_POWER_SOURCE_SAVE_FAILED);
+  });
+
+  it('drafts a Homey Energy switch with no meter chosen: no post, picker revealed, prompt shown', async () => {
+    const {
+      capacity, select, callApi, applySettingsPatch, showToast,
+    } = await loadCapacityModule({
+      persistedSource: 'flow',
+      saveResult: async () => ({ ok: true }),
+    });
+    const meterField = document.querySelector('#settings-homey-energy-meter-field') as HTMLElement;
+    select.value = 'homey_energy';
+
+    await capacity.savePowerSourceSetting();
+
+    // Nothing persisted, nothing patched — the meter pick below completes the
+    // switch through the atomic op. The picker is revealed and the prompt
+    // names what finishes the switch.
+    expect(callApi).not.toHaveBeenCalledWith('POST', '/ui_homes_save', expect.anything());
+    expect(applySettingsPatch).not.toHaveBeenCalled();
+    expect(meterField.hidden).toBe(false);
+    expect(select.disabled).toBe(false);
+    expect(showToast).toHaveBeenCalledWith(
+      'Pick a whole-home meter to finish switching to “Power meter”.',
+      'default',
+    );
+  });
+
+  it('posts the atomic source+meter pair when a meter is already chosen', async () => {
+    const {
+      capacity, select, callApi, applySettingsPatch, homeyEnergyMeter,
+    } = await loadCapacityModule({
+      persistedSource: 'flow',
+      saveResult: async () => ({ ok: true }),
+    });
+    homeyEnergyMeter.syncHomeyEnergyMeterSelection('meter-x');
+    select.value = 'homey_energy';
+
+    await capacity.savePowerSourceSetting();
+
+    expect(callApi).toHaveBeenCalledWith(
+      'POST',
+      '/ui_homes_save',
+      { op: 'set_power_source', source: 'homey_energy', meterDeviceId: 'meter-x' },
+    );
+    expect(applySettingsPatch).toHaveBeenCalledWith({ power_source: 'homey_energy' });
+    expect(select.value).toBe('homey_energy');
   });
 });

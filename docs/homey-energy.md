@@ -59,14 +59,11 @@ Homey Energy already knows your total home consumption. Instead of creating a Fl
 
 PELS starts polling every 10 seconds. The Overview tab should show live power data within moments.
 
-By default, **Automatic** starts with the sole readable meter marked **Tracks
-total home energy consumption** in Homey Energy. If more marked meters appear
-later during the current app session, PELS keeps using that established meter.
-If several are already present before one has been established, choose the right one in the **Whole-home
-meter** selector below **Power source**; PELS does not guess between them. You
-can also select a specific meter when none carries the marking. Automatic can be
-used only when there are no [meter areas](/meter-areas). Before adding one,
-select the Main home's **Whole-home meter** explicitly.
+PELS always reads one named meter. If your Homey lists exactly one whole-home
+meter, PELS picks it for you on first start; otherwise choose the right one in
+the **Whole-home meter** selector below **Power source** — PELS does not guess
+between meters. A selection does not need Homey's **Tracks total home energy
+consumption** marking.
 
 ### Per-device energy reporting
 
@@ -76,13 +73,12 @@ If a device's energy data looks off, the canonical fix is in Homey's **Energy** 
 
 ### Requirements
 
-Your power meter must be paired with Homey. With **Whole-home meter** on
-**Automatic** can establish the source when one readable meter has **Tracks
-total home energy consumption** enabled in its device settings — the same
-cumulative reading Homey shows as "Total home consumption" in the Energy
-dashboard. It retains that meter if more appear later during the current app
-session. If several are present before one has been established, select the
-correct meter directly; the marking is then not required.
+Your power meter must be paired with Homey and appear in Homey Energy — either
+marked **Tracks total home energy consumption** in its device settings (the
+same cumulative reading Homey shows as "Total home consumption" in the Energy
+dashboard) or as a sensor-class power meter. PELS reads the one meter chosen
+under **Whole-home meter**; with exactly one whole-home meter present, PELS
+chooses it for you on first start.
 
 Common meters that work: Tibber Pulse, P1/HAN readers, Shelly EM, or any device Homey recognizes as a whole-home energy tracker.
 

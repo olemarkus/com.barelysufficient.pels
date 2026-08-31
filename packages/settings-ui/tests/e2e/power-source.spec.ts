@@ -37,29 +37,44 @@ test.describe('Power source setting', () => {
     await expect(page.locator('#settings-power-source')).toHaveJSProperty('value', 'homey_energy');
   });
 
-  test('saves power source change and shows toast', async ({ page }) => {
+  test('switching to Power meter is a two-step save: pick the meter to finish', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await openLimitsAndSafety(page);
 
     const select = page.locator('#settings-power-source');
     await expect(select).toHaveJSProperty('value', 'flow');
 
+    // Step 1: the switch is a DRAFT — nothing persists, the picker is
+    // revealed, and the prompt names what finishes the switch.
     await setMaterialSelectValue(page, '#settings-power-source', 'homey_energy');
-    await expect(page.locator('#toast')).toContainText('Power source saved');
+    await expect(page.locator('#toast')).toContainText('Pick a whole-home meter to finish switching');
+    await expect(page.locator('#settings-homey-energy-meter-field')).toBeVisible();
+    const draftStored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
+      (window as unknown as StubWindow).Homey.get(
+        'power_source',
+        (error: Error | null, value?: unknown) => (error ? reject(error) : resolve(value)),
+      );
+    }));
+    expect(draftStored).not.toBe('homey_energy');
 
-    // Verify the setting was persisted in the Homey stub
-    const stored = await page.evaluate(() => {
-      return new Promise<unknown>((resolve, reject) => {
-        (window as unknown as StubWindow).Homey.get(
-          'power_source',
-          (error: Error | null, value?: unknown) => {
-            if (error) reject(error);
-            else resolve(value);
-          },
-        );
-      });
-    });
-    expect(stored).toBe('homey_energy');
+    // Step 2: picking the meter posts the atomic pair and persists both keys.
+    await setMaterialSelectValue(page, '#settings-homey-energy-meter', 'dev_han');
+    await expect(page.locator('#toast')).toContainText('Whole-home meter saved');
+    const stored = await page.evaluate(() => new Promise<unknown[]>((resolve, reject) => {
+      (window as unknown as StubWindow).Homey.get(
+        'power_source',
+        (sourceError: Error | null, source?: unknown) => {
+          if (sourceError) { reject(sourceError); return; }
+          (window as unknown as StubWindow).Homey.get(
+            'homey_energy_meter_device_id',
+            (meterError: Error | null, meter?: unknown) => (
+              meterError ? reject(meterError) : resolve([source, meter])
+            ),
+          );
+        },
+      );
+    }));
+    expect(stored).toEqual(['homey_energy', 'dev_han']);
   });
 
   test('switching back to "flow" persists correctly', async ({ page }) => {
@@ -149,7 +164,8 @@ test.describe('Power source setting', () => {
 
     const meterSelect = page.locator('#settings-homey-energy-meter');
     await expect(meterSelect).toBeVisible();
-    // Automatic + both resolved meters (the sub-meter included).
+    // The placeholder (nothing chosen in this fixture) + both resolved meters
+    // (the sub-meter included).
     await expect(meterSelect.locator('md-select-option')).toHaveCount(3);
     const subpanel = meterSelect.locator('md-select-option[value="dev_subpanel"]');
     await expect(subpanel).toContainText('Garage submeter');
@@ -192,11 +208,11 @@ test.describe('Power source setting', () => {
     await openLimitsAndSafety(page);
 
     const meterSelect = page.locator('#settings-homey-energy-meter');
-    await expect(meterSelect).toHaveJSProperty('value', '');
+    await expect(meterSelect).toHaveJSProperty('value', '__pels_no_meter__');
     await setMaterialSelectValue(page, '#settings-homey-energy-meter', 'dev_subpanel');
 
     await expect(page.locator('#toast')).toContainText('“Rental unit” already uses this meter.');
-    await expect(meterSelect).toHaveJSProperty('value', '');
+    await expect(meterSelect).toHaveJSProperty('value', '__pels_no_meter__');
     const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
       (window as unknown as StubWindow).Homey.get(
         'homey_energy_meter_device_id',
@@ -217,10 +233,11 @@ test.describe('Power source setting', () => {
     await setMaterialSelectValue(page, '#settings-power-source', 'homey_energy');
     const meterSelect = page.locator('#settings-homey-energy-meter');
     await expect(meterSelect).toBeVisible();
-    // Automatic + exactly the meters the Homey Energy report exposes (here the
-    // single whole-home HAN) — not a capability/class-filtered device list.
+    // The placeholder + exactly the meters the Homey Energy report exposes
+    // (here the single whole-home HAN) — not a capability/class-filtered
+    // device list, and no Automatic.
     await expect(meterSelect.locator('md-select-option')).toHaveCount(2);
-    await expect(meterSelect.locator('md-select-option').nth(0)).toContainText('Automatic');
+    await expect(meterSelect.locator('md-select-option').nth(0)).toContainText('Choose a meter');
     await expect(meterSelect.locator('md-select-option').nth(1)).toContainText('HAN power meter');
   });
 
@@ -257,6 +274,6 @@ test.describe('Power source setting', () => {
       stub.emitSettingsSet('pels_status');
     });
 
-    await expect(banner).toContainText('Homey Energy');
+    await expect(banner).toContainText('Pick a whole-home meter');
   });
 });

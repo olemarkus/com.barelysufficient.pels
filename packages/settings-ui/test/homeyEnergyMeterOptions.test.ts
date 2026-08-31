@@ -1,4 +1,4 @@
-import { buildMeterSelectEntries, toMeterDeviceOptions } from '../src/ui/homeyEnergyMeter.ts';
+import { buildMeterSelectEntries, METER_NOT_CHOSEN_VALUE, toMeterDeviceOptions } from '../src/ui/homeyEnergyMeter.ts';
 import { resolveStaleDataBannerContent, resolveStaleDataHint } from '../src/ui/capacity.ts';
 
 describe('toMeterDeviceOptions', () => {
@@ -27,26 +27,28 @@ describe('buildMeterSelectEntries', () => {
     { value: 'han', label: 'HAN meter' },
   ];
 
-  it('puts Automatic first', () => {
+  it('leads with the placeholder while no meter is chosen yet', () => {
     expect(buildMeterSelectEntries(options, null, true)).toEqual([
-      { value: '', label: 'Automatic' },
+      { value: METER_NOT_CHOSEN_VALUE, label: 'Choose a meter' },
       ...options,
     ]);
   });
 
-  it('keeps a selection that is in the list untouched', () => {
-    expect(buildMeterSelectEntries(options, 'han', true)).toEqual([
-      { value: '', label: 'Automatic' },
-      ...options,
+  it('says No meters found when the loaded list is empty and nothing is chosen', () => {
+    expect(buildMeterSelectEntries([], null, true)).toEqual([
+      { value: METER_NOT_CHOSEN_VALUE, label: 'No meters found' },
     ]);
+  });
+
+  it('drops the placeholder once a meter is chosen (there is no un-choose)', () => {
+    expect(buildMeterSelectEntries(options, 'han', true)).toEqual(options);
   });
 
   it('appends a not-found entry for a saved id missing from the loaded list', () => {
     // A removed meter must stay visibly configured instead of silently
-    // snapping the select back to Automatic; the label carries the
-    // consequence, not the raw device id.
+    // reading as broken; the label carries the consequence, not the raw
+    // device id.
     expect(buildMeterSelectEntries(options, 'gone', true)).toEqual([
-      { value: '', label: 'Automatic' },
       ...options,
       { value: 'gone', label: 'Previously selected meter (not found in Homey)' },
     ]);
@@ -56,7 +58,6 @@ describe('buildMeterSelectEntries', () => {
     // A valid saved meter must never flash as broken on panel open while the
     // lazy report fetch is still in flight (or has failed and will retry).
     expect(buildMeterSelectEntries([], 'han', false)).toEqual([
-      { value: '', label: 'Automatic' },
       { value: 'han', label: 'Selected meter (loading…)' },
     ]);
   });
@@ -69,9 +70,9 @@ describe('resolveStaleDataHint', () => {
     );
   });
 
-  it('points at the Homey Energy whole-home marking on Automatic', () => {
+  it('points at the picker while no whole-home meter is chosen yet', () => {
     expect(resolveStaleDataHint('homey_energy', false)).toBe(
-      'Check that a device with "Tracks total home energy consumption" is enabled in Homey Energy.',
+      'Pick a whole-home meter under Limits & safety.',
     );
   });
 

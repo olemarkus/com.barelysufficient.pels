@@ -602,9 +602,12 @@
         <div class="field" id="settings-homey-energy-meter-field" hidden>
           <span class="field__label pels-text-settings-label" id="settings-homey-energy-meter-label">Whole-home meter</span>
           <md-filled-select id="settings-homey-energy-meter" name="settings_homey_energy_meter" aria-labelledby="settings-homey-energy-meter-label">
-            <md-select-option value="" selected><div slot="headline">Automatic</div></md-select-option>
+            <!-- Placeholder value must match METER_NOT_CHOSEN_VALUE in homeyEnergyMeter.ts:
+                 md-filled-select renders an empty closed field for value="", and PELS field
+                 labels sit outside the control (same sentinel discipline as GRID_COMPANY_NONE). -->
+            <md-select-option value="__pels_no_meter__" selected><div slot="headline">Choose a meter</div></md-select-option>
           </md-filled-select>
-          <small class="field__hint">Automatic uses the meter marked &ldquo;Tracks total home energy consumption&rdquo; in Homey Energy; pick a meter to read it directly.</small>
+          <small class="field__hint" id="settings-homey-energy-meter-hint">The meter that measures your whole home&rsquo;s power use.</small>
         </div>
       </div>
     </section>

@@ -24,7 +24,6 @@ import {
 import {
   areaRootsAtForestRoot,
   findComposedHomeInvariantViolation,
-  saveMainMeterSelection,
   savePowerSourceSelection,
   type MultiHomeActivationRead,
 } from './homeMeterOwnership';
@@ -203,19 +202,19 @@ const parseUpsertArea = (value: unknown): ParsedUpsertArea | null => {
 const parseHomesSaveRequest = (body: unknown): SettingsUiHomesSaveRequest | null => {
   const record = asSaveRecord(body);
   if (!record) return null;
-  if (record.op === 'set_main_meter') {
-    const meterRaw = record.meterDeviceId;
-    if (meterRaw === null) return { op: 'set_main_meter', meterDeviceId: null };
-    const meterDeviceId = resolveExplicitMainMeterDeviceId(meterRaw);
-    return meterDeviceId === null ? null : { op: 'set_main_meter', meterDeviceId };
-  }
   if (record.op === 'set_power_source') {
     // Strict closed union: anything else is a malformed payload, never a
     // coerced default (the runtime treats unset as Flow, so a junk write
-    // slipping through as Flow would flip the sampling mode).
-    return record.source === 'homey_energy' || record.source === 'flow'
-      ? { op: 'set_power_source', source: record.source }
-      : null;
+    // slipping through as Flow would flip the sampling mode). Homey Energy
+    // must carry the meter it will read (the atomic pair the seam persists).
+    if (record.source === 'flow') return { op: 'set_power_source', source: 'flow' };
+    if (record.source === 'homey_energy') {
+      const meterDeviceId = resolveExplicitMainMeterDeviceId(record.meterDeviceId);
+      return meterDeviceId === null
+        ? null
+        : { op: 'set_power_source', source: 'homey_energy', meterDeviceId };
+    }
+    return null;
   }
   if (record.op === 'delete') {
     const homeId = toSaveNonEmptyString(record.homeId);
@@ -294,11 +293,6 @@ const saveAreaMutation = (
       subHomes: next,
       upserted: composed.upserted,
       growsList: next.length > currentConfig.subHomes.length,
-      // The degraded gate above proved a wired, vouched-for service, so the
-      // latched arrangement is readable here; `unknown` (nothing proven yet)
-      // keeps the ordinary main_meter_required remedy.
-      mainMeterArrangement: getHomeMembership(homey)?.getDiagnostics().mainMeterArrangement
-        ?? 'unknown',
       zoneTree,
     });
     if (refusal !== null) return refusal;
@@ -321,9 +315,6 @@ const routeHomesSaveRequest = (
   homey: Homey.App['homey'],
   request: SettingsUiHomesSaveRequest,
 ): SettingsUiHomesSaveResponse => {
-  if (request.op === 'set_main_meter') {
-    return saveMainMeterSelection(homey, request, readMultiHomeActivation(homey));
-  }
   if (request.op === 'set_power_source') {
     return savePowerSourceSelection(homey, request, readMultiHomeActivation(homey));
   }

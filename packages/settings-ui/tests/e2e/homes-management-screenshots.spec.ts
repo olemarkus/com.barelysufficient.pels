@@ -44,8 +44,8 @@ const prepareState = async (page: Page, state: StateName): Promise<void> => {
   if (state === 'list' || state === 'warning' || state === 'notice' || state === 'confirm') {
     await seedRentalArea(page);
   }
-  // The notice captures the invalid/legacy "areas exist, Main home still on
-  // Automatic" recovery state, so clear the fixture's default meter again.
+  // The notice captures the invalid/legacy "areas exist, no whole-home meter
+  // chosen" recovery state, so clear the fixture's default meter again.
   if (state === 'notice') {
     await seedStubSetting(page, 'power_source', 'homey_energy');
     await seedStubSetting(page, 'homey_energy_meter_device_id', null);

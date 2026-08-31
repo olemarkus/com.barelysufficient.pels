@@ -1434,15 +1434,17 @@ rather than a generic failure. Three of them pin vocabulary:
   reserved** — deliberate, but check the refusal copy still reads correctly.
 - **Two caps are user-visible:** at most **8 meter areas** and at most **40
   characters** in an area name. Both refusals state the number and the way out.
-- **The whole-home-meter requirement runs both directions** (saving an area,
-  and choosing Automatic while areas run) and always names the same control:
-  **Whole-home meter**, under **Limits & safety**. Name it as a setting to
-  change, never as an option to pick — the picker's options are device names
-  plus `Automatic`. This is an enforced configuration invariant, not guidance the owner may ignore:
-  normal user-facing copy must never describe Main-on-Automatic plus running meter areas as a valid
-  steady state. A defensive sampled-meter fence is an internal response to untrusted sample
-  provenance, legacy state, or an in-flight repair; do not turn it into a normal setup story or say
-  PELS "confused" two configured meters.
+- **The whole-home-meter requirement fires from the area save** (there is no
+  Automatic to choose, so the picker cannot violate it) and always names the
+  same control: **Whole-home meter**, under **Limits & safety**. Name it as a
+  setting to change, never as an option to pick — the picker's options are
+  device names plus a `Choose a meter` placeholder. This is an enforced
+  configuration invariant, not guidance the owner may ignore: normal
+  user-facing copy must never describe running meter areas with no Main meter
+  as a valid steady state. A defensive sampled-meter fence is an internal
+  response to untrusted sample provenance, legacy state, or an in-flight
+  repair; do not turn it into a normal setup story or say PELS "confused" two
+  configured meters.
 - **The Homey Energy requirement also runs both directions** (saving an area
   on the Flow source, and switching the source to Flow while areas run), and
   each side names the OTHER side's control: the area save points at
@@ -1451,14 +1453,12 @@ rather than a generic failure. Three of them pin vocabulary:
   removal on purpose — deleting an area works on any source, so the
   instruction can always be followed. Internal terms (`mutual exclusion`,
   `homey_energy_required`) stay internal.
-- **An id-less whole-home aggregate gets the honest-state refusal, not the
-  remedy.** Some Homey setups read the whole home through an aggregate that
-  carries no device id, so the Whole-home meter picker has nothing to offer
-  and the requirement above can never be satisfied there. The copy
-  (`HOMES_METER_UNNAMEABLE`) names the situation — "Your whole-home meter
-  doesn't report a device id" — and says "Not supported for meter areas yet";
-  it never points at the picker. Internal terms (`cumulative item`,
-  `aggregate`, `arrangement`) stay internal.
+- **Retired: the id-less aggregate refusal** (`HOMES_METER_UNNAMEABLE`,
+  "Your whole-home meter doesn't report a device id"). It described the
+  Automatic selection reading an aggregate no picker could name; with the
+  explicit-meter world there is no Automatic read to refuse — such a home
+  runs on the Flow source, and the area save's remedy line points at the
+  Whole-home meter setting. Do not resurrect the string.
 
 ## Mode label
 

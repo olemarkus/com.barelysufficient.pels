@@ -7,7 +7,7 @@ import {
   vi,
 } from 'vitest';
 import { SETTINGS_UI_HOMES_SAVE_PATH } from '../../contracts/src/settingsUiHomes.ts';
-import { HOMEY_ENERGY_METER_DEVICE_ID } from '../../contracts/src/settingsKeys.ts';
+import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE } from '../../contracts/src/settingsKeys.ts';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -60,7 +60,7 @@ beforeEach(() => {
     '</div>',
   ].join('');
   const select = selectElement();
-  select.value = '';
+  select.value = '__pels_no_meter__';
   select.disabled = false;
   select.open = false;
 });
@@ -86,7 +86,7 @@ describe('Whole-home meter write lock', () => {
     expect(callApiMock).toHaveBeenCalledWith(
       'POST',
       SETTINGS_UI_HOMES_SAVE_PATH,
-      { op: 'set_main_meter', meterDeviceId: 'meter-a' },
+      { op: 'set_power_source', source: 'homey_energy', meterDeviceId: 'meter-a' },
     );
 
     // A disabled Material select cannot produce this through normal input, but
@@ -102,6 +102,7 @@ describe('Whole-home meter write lock', () => {
     });
     expect(applySettingsPatchMock).toHaveBeenCalledWith({
       [HOMEY_ENERGY_METER_DEVICE_ID]: 'meter-a',
+      [POWER_SOURCE]: 'homey_energy',
     });
 
     // Once the first write is confirmed, a later failure rolls back to A—not
@@ -136,7 +137,7 @@ describe('Whole-home meter write lock', () => {
     // stay gated for the dwell.
     await vi.waitFor(() => { expect(showToastMock).toHaveBeenCalledOnce(); });
     expect(select.disabled).toBe(false);
-    expect(select.value).toBe('');
+    expect(select.value).toBe('__pels_no_meter__');
 
     // Acting on that instruction DURING the dwell starts the next write.
     select.value = 'meter-b';
@@ -146,7 +147,7 @@ describe('Whole-home meter write lock', () => {
     expect(callApiMock).toHaveBeenLastCalledWith(
       'POST',
       SETTINGS_UI_HOMES_SAVE_PATH,
-      { op: 'set_main_meter', meterDeviceId: 'meter-b' },
+      { op: 'set_power_source', source: 'homey_energy', meterDeviceId: 'meter-b' },
     );
 
     // The first handler's dwell ending must not un-gate the lock the second
@@ -162,43 +163,21 @@ describe('Whole-home meter write lock', () => {
     });
     expect(applySettingsPatchMock).toHaveBeenCalledWith({
       [HOMEY_ENERGY_METER_DEVICE_ID]: 'meter-b',
+      [POWER_SOURCE]: 'homey_energy',
     });
   });
 
-  it('explains a refused Automatic selection instead of a generic failure', async () => {
-    callApiMock
-      .mockResolvedValueOnce({ ok: true })
-      .mockResolvedValueOnce({ ok: false, reason: 'main_meter_required' });
-    const { initHomeyEnergyMeterHandlers } = await import('../src/ui/homeyEnergyMeter.ts');
+  it('treats the placeholder as no choice: no write, no patch', async () => {
+    const { initHomeyEnergyMeterHandlers, METER_NOT_CHOSEN_VALUE } = await import('../src/ui/homeyEnergyMeter.ts');
     const select = selectElement();
     initHomeyEnergyMeterHandlers();
-    // Start from a confirmed explicit meter so Automatic is a real change.
-    select.value = 'meter-a';
-    select.dispatchEvent(new Event('change'));
-    await vi.waitFor(() => { expect(select.disabled).toBe(false); });
-    applySettingsPatchMock.mockClear();
 
-    select.value = '';
+    select.value = METER_NOT_CHOSEN_VALUE;
     select.dispatchEvent(new Event('change'));
 
-    await vi.waitFor(() => {
-      expect(showToastMock).toHaveBeenCalledWith(
-        'While meter areas exist, the Main home needs its own meter. '
-        + 'Pick one, or remove your areas under Multiple meters first.',
-        'warn',
-        // Error dwell, not the 1.8 s acknowledgement default: a two-sentence
-        // instruction is unreadable at that speed, and a typed refusal is not
-        // an Error so `showToastError` (which applies it) does not fit.
-        { durationMs: 5000 },
-      );
-    });
-    expect(callApiMock).toHaveBeenLastCalledWith(
-      'POST',
-      SETTINGS_UI_HOMES_SAVE_PATH,
-      { op: 'set_main_meter', meterDeviceId: null },
-    );
-    // Refused: the confirmed selection stands and nothing is patched.
+    await flushAsync();
+    expect(callApiMock).not.toHaveBeenCalled();
     expect(applySettingsPatchMock).not.toHaveBeenCalled();
-    expect(select.value).toBe('meter-a');
+    expect(select.disabled).toBe(false);
   });
 });
