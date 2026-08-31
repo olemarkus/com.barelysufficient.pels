@@ -34,18 +34,27 @@ export type SettingsUiHomesSaveRequest =
   }
   | { op: 'delete'; homeId: string }
   | {
-    op: 'set_main_meter';
-    /** `null` selects Automatic; a string selects Main's explicit meter. */
-    meterDeviceId: string | null;
+    op: 'set_power_source';
+    /**
+     * Switch whole-home readings to the Flow card. Routed through this seam
+     * (not a bare settings write) because `flow` must be refused while meter
+     * areas are running, and this seam is where area mutations serialize.
+     */
+    source: 'flow';
   }
   | {
     op: 'set_power_source';
     /**
-     * Where PELS reads whole-home power. Routed through this seam (not a bare
-     * settings write) because `flow` must be refused while meter areas are
-     * running, and this seam is where area mutations serialize.
+     * Homey Energy readings, from this named meter. One op covers both the
+     * source switch and a meter change while already on Homey Energy (the
+     * seam skips rewriting an unchanged source), so the persisted invariant
+     * `power_source = homey_energy ⇒ a meter id is persisted` is established
+     * where the keys are written: meter first, then source, and neither a
+     * source switch without a meter nor an Automatic selection is
+     * expressible. There is no separate set_main_meter op.
      */
-    source: 'homey_energy' | 'flow';
+    source: 'homey_energy';
+    meterDeviceId: string;
   };
 
 /**
@@ -57,16 +66,11 @@ export type SettingsUiHomesSaveRequest =
  *   would swallow the whole home.
  * - `meter_in_use` — identifies the meter area that already owns a requested
  *   Main-home meter.
- * - `main_meter_required` — Automatic cannot prove which meter belongs to the
- *   Main home once meter areas exist, so the Main home must name its own
- *   whole-home meter (both directions: saving an area, and selecting Automatic
- *   while areas exist).
- * - `meter_unnameable` — the same requirement on a home where it can never be
- *   satisfied: the whole-home reading comes from an id-less aggregate (the
- *   report's only cumulative item carries no device id), so no whole-home
- *   meter can be selected and meter areas are not supported yet. Honest-state
- *   refusal — chosen only from the producer's latched arrangement, never from
- *   a transient read miss.
+ * - `main_meter_required` — the Main home has no whole-home meter persisted
+ *   (a legacy shape the boot-time migration defers on, or a degraded read of
+ *   it), so an area save cannot prove which meter belongs to Main. One
+ *   direction only: the picker can no longer express "no meter", so only the
+ *   area save path produces this.
  * - `homey_energy_required` — meter areas and the Flow power source are
  *   mutually exclusive: a Flow reading carries no meter identity, so an area
  *   under Flow gets no samples and is never limited. Refused in both
@@ -82,7 +86,7 @@ export type SettingsUiHomesSaveResponse =
   | { ok: true }
   | {
     ok: false;
-    reason: 'degraded' | 'invalid' | 'main_meter_required' | 'meter_unnameable' | 'homey_energy_required';
+    reason: 'degraded' | 'invalid' | 'main_meter_required' | 'homey_energy_required';
   }
   | { ok: false; reason: 'meter_in_use'; otherName: string }
   | { ok: false; reason: 'area_limit_reached'; maxCount: number }

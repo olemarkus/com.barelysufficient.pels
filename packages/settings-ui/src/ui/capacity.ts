@@ -138,7 +138,9 @@ export const resolveStaleDataHint = (source: string | undefined, meterSelected: 
   if (source === 'homey_energy') {
     return meterSelected
       ? 'Check that the selected whole-home meter is available and reporting power in Homey Energy.'
-      : 'Check that a device with "Tracks total home energy consumption" is enabled in Homey Energy.';
+      // No meter chosen yet (a drafted source switch, or a legacy shape the
+      // boot migration deferred on): the remedy is the picker, not Homey.
+      : 'Pick a whole-home meter under Limits & safety.';
   }
   return 'Check your Flow that reports power usage.';
 };

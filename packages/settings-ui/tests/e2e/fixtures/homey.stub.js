@@ -1527,9 +1527,8 @@
   // op to the persisted settings blob (create allocates an `h_` + 8-hex id),
   // so the UI's save → refetch round-trip behaves like production.
   // The area name/count rules the runtime also enforces (non-empty, unique,
-  // length- and count-capped, "Main home" reserved), and the id-less-aggregate
-  // unnameable-meter refusal (which needs the producer's latched arrangement,
-  // absent from this stub), are deliberately NOT re-spelled here: their constants live in TypeScript shared-domain, this
+  // length- and count-capped, "Main home" reserved) are deliberately NOT
+  // re-spelled here: their constants live in TypeScript shared-domain, this
   // fixture cannot import them, and a hand-copied cap would drift silently.
   // They are covered by test/integration/homeMembershipService.test.ts. The
   // whole-home meter requirement below is structural, so it does mirror.
@@ -1537,43 +1536,36 @@
     const raw = settings.homes_config;
     const current = raw && Array.isArray(raw.subHomes) ? raw.subHomes : [];
     if (!body || typeof body !== 'object') return { ok: false, reason: 'invalid' };
-    if (body.op === 'set_main_meter') {
-      if (body.meterDeviceId !== null && typeof body.meterDeviceId !== 'string') {
-        return { ok: false, reason: 'invalid' };
-      }
-      const meterDeviceId = body.meterDeviceId === null ? null : body.meterDeviceId.trim();
-      if (body.meterDeviceId !== null && meterDeviceId.length === 0) {
-        return { ok: false, reason: 'invalid' };
-      }
-      // Automatic while meter areas are RUNNING cannot prove which physical
-      // meter belongs to Main. Same activation term as production (a dormant
-      // pre-GA config is not running, so it must not block Automatic).
-      const areasRunning = current.length > 0
-        && (raw?.activationVersion === 1 || settings.multi_home_enabled === true);
-      if (meterDeviceId === null && areasRunning) {
-        return { ok: false, reason: 'main_meter_required' };
-      }
-      const collision = meterDeviceId === null
-        ? null
-        : current.find((area) => area.meterDeviceId === meterDeviceId);
-      if (collision) {
-        return { ok: false, reason: 'meter_in_use', otherName: collision.name };
-      }
-      settings.homey_energy_meter_device_id = meterDeviceId;
-      return { ok: true };
-    }
     if (body.op === 'set_power_source') {
       if (body.source !== 'homey_energy' && body.source !== 'flow') {
         return { ok: false, reason: 'invalid' };
       }
-      // Flow and RUNNING meter areas are mutually exclusive. Same activation
-      // term as production; a dormant pre-GA config never blocks the switch.
-      const areasRunning = current.length > 0
-        && (raw?.activationVersion === 1 || settings.multi_home_enabled === true);
-      if (body.source === 'flow' && areasRunning) {
-        return { ok: false, reason: 'homey_energy_required' };
+      if (body.source === 'flow') {
+        // Flow and RUNNING meter areas are mutually exclusive. Same activation
+        // term as production; a dormant pre-GA config never blocks the switch.
+        const areasRunning = current.length > 0
+          && (raw?.activationVersion === 1 || settings.multi_home_enabled === true);
+        if (areasRunning) {
+          return { ok: false, reason: 'homey_energy_required' };
+        }
+        settings.power_source = 'flow';
+        return { ok: true };
       }
-      settings.power_source = body.source;
+      // Homey Energy carries the meter it will read (the atomic pair — there
+      // is no set_main_meter op and no Automatic): meter key first, source
+      // only when it is not already homey_energy, mirroring the producer.
+      const meterDeviceId = typeof body.meterDeviceId === 'string' ? body.meterDeviceId.trim() : '';
+      if (meterDeviceId.length === 0) {
+        return { ok: false, reason: 'invalid' };
+      }
+      const collision = current.find((area) => area.meterDeviceId === meterDeviceId);
+      if (collision) {
+        return { ok: false, reason: 'meter_in_use', otherName: collision.name };
+      }
+      settings.homey_energy_meter_device_id = meterDeviceId;
+      if (settings.power_source !== 'homey_energy') {
+        settings.power_source = 'homey_energy';
+      }
       return { ok: true };
     }
     if (body.op === 'delete') {

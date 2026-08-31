@@ -2243,9 +2243,8 @@ What remains open is below.*
 - [ ] **A one-meter home can cycle between two meter-area refusals with no diagnosis.** An area needs
       its own meter and the Main home needs its own, so a home whose Homey Energy report lists a
       single meter cannot use meter areas at all. Today it discovers that by bouncing: saving an area
-      refuses with `main_meter_required`, assigning that one meter to the Main home makes the area
-      editor refuse inline with "'Main home' already uses this meter", and going back to Automatic is
-      allowed again because nothing was persisted. The rules are each correct; what is missing is the
+      refuses with `main_meter_required`, and assigning that one meter to the Main home makes the area
+      editor refuse inline with "'Main home' already uses this meter". The rules are each correct; what is missing is the
       one line that says the home has no second meter to split. Detect "no report meter is assignable
       to the Main home" on the Multiple meters page and say so. Overlaps the empty-meter-list hint
       item above. Persona: owner with a single HAN meter who tries to add a rental. Source: multi-home
@@ -2334,15 +2333,6 @@ What remains open is below.*
       producer should classify it instead. Extract one field-level status resolver (the
       `asRecord` + `toFiniteNumber` pattern `managerEnergy.ts` cites) and use it from both readers. P3.
       Source: adversarial review (typing lens) of multi-home PR 5b, 2026-07-27.
-
-- [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
-      Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
-      meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still
-      says "pick a meter to read it directly." Soften the hint to the Automatic-only case when the
-      loaded option list is empty (needs a small conditional in homeyEnergyMeter.ts, since the hint
-      is static markup today). Persona: Power-meter user with a single tracked meter; hypothesis:
-      an instruction to pick from an empty list reads as something being broken. Source: pels-ux-fit
-      review of the meter-picker PR (2026-07-19). [P2]
 
 - [ ] **Make the strict sub-home tracker validator compile-time exhaustive.**
       `isPlausiblePowerTrackerState` validates every current `PowerTrackerState` field and nested

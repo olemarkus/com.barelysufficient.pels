@@ -48,6 +48,7 @@ import {
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
   HOMEY_ENERGY_METER_DEVICE_ID,
+  POWER_SOURCE,
 } from '../../../contracts/src/settingsKeys.ts';
 import type { HomeySettingsClient } from '../../src/ui/homey.ts';
 
@@ -401,9 +402,16 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('POST', SETTINGS_UI_HOMES_SAVE_PATH)]: (homey) => async ({ body }) => {
     const override = getUiOverride(homey, 'homesSave');
     if (override !== undefined) return override;
-    const request = body as { op?: unknown; meterDeviceId?: unknown } | undefined;
-    if (request?.op === 'set_main_meter') {
+    const request = body as { op?: unknown; source?: unknown; meterDeviceId?: unknown } | undefined;
+    // Mirrors the runtime seam (`savePowerSourceSelection`): the Homey Energy
+    // arm persists the meter first and then the source, the Flow arm only the
+    // source — so specs observe the same store the runtime would leave.
+    if (request?.op === 'set_power_source' && request.source === 'homey_energy') {
       homey.__settingsStore[HOMEY_ENERGY_METER_DEVICE_ID] = request.meterDeviceId;
+      homey.__settingsStore[POWER_SOURCE] = 'homey_energy';
+    }
+    if (request?.op === 'set_power_source' && request.source === 'flow') {
+      homey.__settingsStore[POWER_SOURCE] = 'flow';
     }
     return { ok: true };
   },

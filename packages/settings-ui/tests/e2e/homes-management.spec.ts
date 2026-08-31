@@ -138,14 +138,15 @@ test('saving an area without a whole-home meter is refused with the remedy', asy
   await installRentalMeterDeviceList(page);
   await gotoApp(page);
   await seedRentalMeterSnapshot(page);
-  // Invalid steady state: Automatic cannot prove which meter belongs to Main.
+  // Invalid steady state: no whole-home meter persisted (a legacy shape the
+  // boot-time migration defers on).
   await seedStubSetting(page, 'homey_energy_meter_device_id', null);
   await openHomesPanel(page);
   await page.locator('#homes-add-button').click();
   await page.selectOption('#homes-meter-select', 'dev_rental_meter');
   await page.locator('#homes-editor-save').click();
   // Reason first, then the control named as a setting to change.
-  await expect(page.locator('#toast')).toContainText('Automatic can’t prove which meter belongs');
+  await expect(page.locator('#toast')).toContainText('so PELS can tell the homes apart');
   await expect(page.locator('#toast')).toContainText('Set “Whole-home meter” under Limits & safety');
   await expect(page.locator('.homes-settings__row')).toHaveCount(0);
 });

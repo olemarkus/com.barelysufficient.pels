@@ -997,36 +997,23 @@ describe('ui_homes payload', () => {
     })).toEqual({ ok: true });
   });
 
-  it('refuses honestly when the whole-home meter is a proven id-less aggregate', () => {
-    // The membership service latched the transport's proof that the report's
-    // only cumulative item carries no id: main_meter_required would name a
-    // remedy the picker can never satisfy, so the refusal states the situation.
+  it('asks for the picker regardless of the latched meter arrangement', () => {
+    // The id-less-aggregate honest-state refusal (`meter_unnameable`) is
+    // retired with Automatic: an id-less-aggregate home runs on Flow after
+    // the boot-time meter-authority migration, so an unset Main meter under
+    // Homey Energy always gets the ordinary picker remedy — whatever the
+    // membership service latched about the arrangement.
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, null);
     const homeyWired = makeWiredHealthyHomey();
-    homeyWired.app.homeMembership.noteHomeMeterArrangement('idless_aggregate_only');
-
-    expect(saveSettingsUiHomesConfig({
-      homey: homeyWired,
-      body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' } },
-    })).toEqual({ ok: false, reason: 'meter_unnameable' });
+    for (const arrangement of ['idless_aggregate_only', 'unproven', 'identified'] as const) {
+      homeyWired.app.homeMembership.noteHomeMeterArrangement(arrangement);
+      expect(saveSettingsUiHomesConfig({
+        homey: homeyWired,
+        body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' } },
+      })).toEqual({ ok: false, reason: 'main_meter_required' });
+    }
     expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
-
-    // An SDK miss or ambiguous read must never flip the proven arrangement in
-    // either direction: the honest refusal stands.
-    homeyWired.app.homeMembership.noteHomeMeterArrangement('unproven');
-    expect(saveSettingsUiHomesConfig({
-      homey: homeyWired,
-      body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' } },
-    })).toEqual({ ok: false, reason: 'meter_unnameable' });
-
-    // A later read proving an id-bearing whole-home meter restores the
-    // ordinary remedy — the picker can offer it now.
-    homeyWired.app.homeMembership.noteHomeMeterArrangement('identified');
-    expect(saveSettingsUiHomesConfig({
-      homey: homeyWired,
-      body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' } },
-    })).toEqual({ ok: false, reason: 'main_meter_required' });
   });
 
   it('refuses an area save on the Flow source, whatever the Main meter says', () => {
@@ -1130,16 +1117,19 @@ describe('ui_homes payload', () => {
     })).toEqual({ ok: true });
     expect(mockHomeyInstance.settings.get(POWER_SOURCE)).toBe('flow');
 
-    // Switching TO Homey Energy is the remedy direction: allowed even while
-    // areas are running (a legacy Flow-saved config's only road back).
+    // Switching TO Homey Energy is the remedy direction: never gated on
+    // activation, allowed even while areas are running (a legacy Flow-saved
+    // config's only road back). It carries the meter it will read.
     createHomesStore(homeyLike).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
     expect(saveSettingsUiHomesConfig({
-      homey: homeyWired, body: { op: 'set_power_source', source: 'homey_energy' },
+      homey: homeyWired,
+      body: { op: 'set_power_source', source: 'homey_energy', meterDeviceId: MAIN_METER_ID },
     })).toEqual({ ok: true });
     expect(mockHomeyInstance.settings.get(POWER_SOURCE)).toBe('homey_energy');
+    expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe(MAIN_METER_ID);
   });
 
   it('still refuses Flow when a marker-less config is running via the latched legacy flag', () => {
@@ -1177,10 +1167,13 @@ describe('ui_homes payload', () => {
     })).toEqual({ ok: false, reason: 'degraded' });
     expect(mockHomeyInstance.settings.get(POWER_SOURCE)).toBe('homey_energy');
 
-    // Homey Energy needs no area answer, so the boot window never blocks it.
+    // Homey Energy needs no ACTIVATION answer, so the boot window never
+    // blocks it; it names the meter it will read (no collision here).
     expect(saveSettingsUiHomesConfig({
-      homey: homeyNoService, body: { op: 'set_power_source', source: 'homey_energy' },
+      homey: homeyNoService,
+      body: { op: 'set_power_source', source: 'homey_energy', meterDeviceId: MAIN_METER_ID },
     })).toEqual({ ok: true });
+    expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe(MAIN_METER_ID);
   });
 
   it('refuses the Flow switch as degraded when the homes store reads suspect', () => {
@@ -1219,52 +1212,23 @@ describe('ui_homes payload', () => {
     expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
   });
 
-  it('refuses going back to Automatic while meter areas exist', () => {
-    createHomesStore(homeyLike).write({
-      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
-      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
-    });
+  it('refuses the retired set_main_meter op as malformed — Automatic is not expressible', () => {
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, MAIN_METER_ID);
     const homeyWired = makeWiredHealthyHomey();
 
+    // Neither arm of the retired op parses: null (the old Automatic) and a
+    // valid id alike — the atomic set_power_source pair is the only meter
+    // writer now.
     expect(saveSettingsUiHomesConfig({
       homey: homeyWired, body: { op: 'set_main_meter', meterDeviceId: null },
-    })).toEqual({ ok: false, reason: 'main_meter_required' });
-    expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe(MAIN_METER_ID);
-
-    // Removing the last area makes Automatic selectable again.
+    })).toEqual({ ok: false, reason: 'invalid' });
     expect(saveSettingsUiHomesConfig({
-      homey: homeyWired, body: { op: 'delete', homeId: SUB_HOME_A.homeId },
-    })).toEqual({ ok: true });
-    expect(saveSettingsUiHomesConfig({
-      homey: homeyWired, body: { op: 'set_main_meter', meterDeviceId: null },
-    })).toEqual({ ok: true });
-    expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBeNull();
-  });
-
-  it('still refuses Automatic when the legacy activation flag read throws', () => {
-    // A legacy-enabled pre-GA config (flag true, areas present, no
-    // activationVersion) IS running. Re-reading `multi_home_enabled` here would
-    // fail closed to false and silently permit the save; the answer comes from
-    // the membership service, which latched it at wiring time.
-    createHomesStore(homeyLike).write({
-      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
-    });
-    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
-    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, MAIN_METER_ID);
-    const homeyWired = makeWiredHealthyHomey(true);
-    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
-    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => {
-      if (key === LEGACY_MULTI_HOME_ENABLED) throw new Error('settings read failed');
-      return originalGet(key);
-    });
-
-    expect(saveSettingsUiHomesConfig({
-      homey: homeyWired, body: { op: 'set_main_meter', meterDeviceId: null },
-    })).toEqual({ ok: false, reason: 'main_meter_required' });
+      homey: homeyWired, body: { op: 'set_main_meter', meterDeviceId: 'm-other' },
+    })).toEqual({ ok: false, reason: 'invalid' });
     expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe(MAIN_METER_ID);
   });
+
 
   it('logs every refusal with its op and reason so a support report is diagnosable', () => {
     const info = vi.fn();
@@ -1305,136 +1269,35 @@ describe('ui_homes payload', () => {
       .toEqual({ ok: false, reason: 'invalid' });
   });
 
-  it('answers Automatic from the fresh read while no membership service is wired', () => {
-    // A marker-activated config proves "areas are running" atomically with the
-    // subHomes read itself, so even the boot window refuses with the specific
-    // remedy rather than punting to degraded.
+  it('answers the atomic Homey Energy switch in the boot window without an activation guess', () => {
+    // The meter direction is never gated on activation, so even the boot
+    // window (no membership service wired) answers from the fresh store read
+    // alone: an area's own meter loses to ownership, any other meter saves.
     createHomesStore(homeyLike).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, MAIN_METER_ID);
     expect(saveSettingsUiHomesConfig({
-      homey: homeyNoService, body: { op: 'set_main_meter', meterDeviceId: null },
-    })).toEqual({ ok: false, reason: 'main_meter_required' });
-
-    // Without the marker, activation may still come from the retired legacy
-    // flag — that answer is the membership service's, and it is not wired, so
-    // neither yes nor no may be guessed.
-    createHomesStore(homeyLike).write({
-      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
-    });
-    expect(saveSettingsUiHomesConfig({
-      homey: homeyNoService, body: { op: 'set_main_meter', meterDeviceId: null },
-    })).toEqual({ ok: false, reason: 'degraded' });
-    // Picking an explicit meter — the remedy every refusal names — still works.
-    expect(saveSettingsUiHomesConfig({
-      homey: homeyNoService, body: { op: 'set_main_meter', meterDeviceId: 'm-other' },
-    })).toEqual({ ok: true });
-  });
-
-  it('refuses Automatic from the fresh read while the activation snapshot is degraded', () => {
-    // The service's only recompute saw a suspect homes read, so `runtimeActive`
-    // is still the field's initial `false` while `configDegraded` is true. That
-    // `false` is a stale non-answer, not "areas are not running".
-    createHomesStore(homeyLike).write({
-      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
-      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
-    });
-    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
-    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, MAIN_METER_ID);
-    mockHomeyInstance.settings.set(HOMES_CONFIG, 'not-a-homes-config');
-    const service = makeStaticService({ getZoneTree: () => ZONES, devices: [] });
-    service.recompute();
-    expect(service.getDiagnostics()).toMatchObject({ configDegraded: true, runtimeActive: false });
-    const homeyWired = {
-      app: { homeMembership: service, getApiStructuredLogger: () => silentApiLogger },
-      settings: mockHomeyInstance.settings,
-    } as unknown as Homey.App['homey'];
-
-    // The store recovers before the next recompute, so the save seam's own
-    // fresh read sees an ACTIVATED (marker-carrying) config with an area while
-    // the cached activation snapshot still reads "not running". The marker
-    // rides the same fresh read as the area list, so the refusal is the
-    // specific one, not a degraded punt.
-    createHomesStore(homeyLike).write({
-      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
-      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
-    });
-    expect(service.getDiagnostics().runtimeActive).toBe(false);
-
-    expect(saveSettingsUiHomesConfig({
-      homey: homeyWired, body: { op: 'set_main_meter', meterDeviceId: null },
-    })).toEqual({ ok: false, reason: 'main_meter_required' });
+      homey: homeyNoService,
+      body: { op: 'set_power_source', source: 'homey_energy', meterDeviceId: 'm-sub' },
+    })).toEqual({ ok: false, reason: 'meter_in_use', otherName: SUB_HOME_A.name });
     expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe(MAIN_METER_ID);
 
-    // A markerless (legacy-activation-candidate) config cannot be answered
-    // from the fresh read; the degraded snapshot then refuses as degraded.
+    // A markerless (legacy-activation-candidate) config blocks nothing here:
+    // activation is a Flow-switch question, not a meter question.
     createHomesStore(homeyLike).write({
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
     });
     expect(saveSettingsUiHomesConfig({
-      homey: homeyWired, body: { op: 'set_main_meter', meterDeviceId: null },
-    })).toEqual({ ok: false, reason: 'degraded' });
-    expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe(MAIN_METER_ID);
-
-    // Picking an explicit meter is never gated on activation: the remedy every
-    // other refusal names must stay reachable while diagnostics are degraded.
-    expect(saveSettingsUiHomesConfig({
-      homey: homeyWired, body: { op: 'set_main_meter', meterDeviceId: 'm-other' },
+      homey: homeyNoService,
+      body: { op: 'set_power_source', source: 'homey_energy', meterDeviceId: 'm-other' },
     })).toEqual({ ok: true });
     expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe('m-other');
   });
 
-  it('refuses Automatic in the window between an activating upsert and its recompute', () => {
-    // The exact TOCTOU: a dormant config is activated by Edit → Save (every
-    // upsert stamps the activation marker), and a set_main_meter arrives while
-    // the recompute that upsert queued is still pending — the latched snapshot
-    // is HEALTHY and still says "not running". The static service here never
-    // recomputes on settings changes, which models that window exactly.
-    createHomesStore(homeyLike).write({
-      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
-    });
-    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
-    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, MAIN_METER_ID);
-    const service = makeStaticService({
-      getZoneTree: () => ZONES, devices: [], legacyMultiHomeEnabled: false,
-    });
-    service.recompute();
-    expect(service.getDiagnostics()).toMatchObject({ configDegraded: false, runtimeActive: false });
-    const homeyWired = {
-      app: { homeMembership: service, getApiStructuredLogger: () => silentApiLogger },
-      settings: mockHomeyInstance.settings,
-    } as unknown as Homey.App['homey'];
 
-    // Edit → Save activates the held config through the real seam.
-    expect(saveSettingsUiHomesConfig({
-      homey: homeyWired,
-      body: { op: 'upsert', area: { ...SUB_HOME_A, meterDeviceId: 'm-sub' } },
-    })).toEqual({ ok: true });
-    // The race window: the store carries the marker, the snapshot does not.
-    expect(service.getDiagnostics().runtimeActive).toBe(false);
 
-    expect(saveSettingsUiHomesConfig({
-      homey: homeyWired, body: { op: 'set_main_meter', meterDeviceId: null },
-    })).toEqual({ ok: false, reason: 'main_meter_required' });
-    expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe(MAIN_METER_ID);
-  });
-
-  it('still allows Automatic while a pre-GA area config is held dormant', () => {
-    // No activationVersion and no legacy flag: multi-home is not running, so
-    // the combined total IS the whole home and Automatic is the right answer.
-    createHomesStore(homeyLike).write({
-      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
-    });
-    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
-    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, MAIN_METER_ID);
-
-    expect(saveSettingsUiHomesConfig({
-      homey: makeWiredHealthyHomey(false), body: { op: 'set_main_meter', meterDeviceId: null },
-    })).toEqual({ ok: true });
-    expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBeNull();
-  });
 
   it('judges the name of the area being written, not a legacy name elsewhere', () => {
     // Names that predate the rules (nothing enforced them before) must not
@@ -1589,27 +1452,29 @@ describe('ui_homes payload', () => {
 
     await expect(api.ui_homes_save({
       homey: homeyWired,
-      body: { op: 'set_main_meter', meterDeviceId: 'm-shared' },
+      body: { op: 'set_power_source', source: 'homey_energy', meterDeviceId: 'm-shared' },
     })).resolves.toEqual({ ok: false, reason: 'meter_in_use', otherName: 'Upstairs' });
     expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe('m-original');
 
     expect(saveSettingsUiHomesConfig({
       homey: homeyWired,
-      body: { op: 'set_main_meter', meterDeviceId: '  m-main  ' },
+      body: { op: 'set_power_source', source: 'homey_energy', meterDeviceId: '  m-main  ' },
     })).toEqual({ ok: true });
     expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe('m-main');
 
     expect(saveSettingsUiHomesConfig({
       homey: homeyWired,
-      body: { op: 'set_main_meter', meterDeviceId: '   ' },
+      body: { op: 'set_power_source', source: 'homey_energy', meterDeviceId: '   ' },
     })).toEqual({ ok: false, reason: 'invalid' });
     expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe('m-main');
 
     expect(saveSettingsUiHomesConfig({
       homey: homeyWired,
-      body: { op: 'set_main_meter', meterDeviceId: 'meter|other' },
+      body: { op: 'set_power_source', source: 'homey_energy', meterDeviceId: 'meter|other' },
     })).toEqual({ ok: false, reason: 'invalid' });
     expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe('m-main');
+    // A meter change while already on Homey Energy stays a single-key write.
+    expect(mockHomeyInstance.settings.get(POWER_SOURCE)).toBe('homey_energy');
   });
 
   it('clears tracker freshness before committing a meter reassignment and keeps accounting', () => {

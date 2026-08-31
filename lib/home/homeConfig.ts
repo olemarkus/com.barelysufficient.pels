@@ -85,8 +85,10 @@ export const hasUniqueSubHomeMeters = (
 
 /**
  * Normalize the explicit Main-home meter setting at its settings boundary.
- * `null` means Automatic; padded/empty/non-string values never become a meter
- * identity that can silently miss (or spuriously collide with) a live report.
+ * `null` means "no usable meter identity" — the caller classifies it
+ * (unavailable read, suspect stored value); padded/empty/non-string values
+ * never become a meter identity that can silently miss (or spuriously
+ * collide with) a live report.
  */
 export const resolveExplicitMainMeterDeviceId = (raw: unknown): string | null => {
   const trimmed = typeof raw === 'string' ? raw.trim() : '';
@@ -94,9 +96,8 @@ export const resolveExplicitMainMeterDeviceId = (raw: unknown): string | null =>
 };
 
 /**
- * Find the sub-home that owns Main's explicitly selected meter, if any. Main's
- * Automatic/combined fallback (`null`) is intentionally outside this identity
- * check; only an explicit device id can be compared across the two stores.
+ * Find the sub-home that owns Main's explicitly selected meter, if any. Only
+ * an explicit device id can be compared across the two stores.
  */
 export const findMainMeterCollision = (
   mainMeterDeviceId: string | null,

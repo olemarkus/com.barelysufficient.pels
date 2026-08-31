@@ -8,7 +8,6 @@ import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE, POWER_TRACKER_STATE } from 
 import { resolveExplicitMainMeterDeviceId } from '../lib/home/homeConfig';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import {
-  saveMainMeterSelection,
   savePowerSourceSelection,
   type MultiHomeActivationRead,
 } from './homeMeterOwnership';
@@ -167,7 +166,14 @@ const persistResolvedMeter = (
   meterDeviceId: string,
   activation: MultiHomeActivationRead,
 ): PersistMeterResult => {
-  const saved = saveMainMeterSelection(homey, { op: 'set_main_meter', meterDeviceId }, activation);
+  // The one atomic seam op: meter written first, source only when it is not
+  // already homey_energy — so `homey_energy` never exists persisted without a
+  // meter id, and an already-homey_energy home gets a single-key write.
+  const saved = savePowerSourceSelection(
+    homey,
+    { op: 'set_power_source', source: 'homey_energy', meterDeviceId },
+    activation,
+  );
   if (saved.ok) {
     return { persisted: 'done', step: { result: 'done', outcome: 'meter_persisted', meterDeviceId } };
   }
@@ -180,25 +186,6 @@ const persistResolvedMeter = (
   return saved.reason === 'meter_in_use'
     ? { persisted: 'fallthrough_flow' }
     : { persisted: 'retry', step: { result: 'retry', reasonCode: `meter_save_${saved.reason}` } };
-};
-
-const adoptDetectedMeter = (
-  homey: Homey.App['homey'],
-  meterDeviceId: string,
-  activation: MultiHomeActivationRead,
-): MigrationStepResult => {
-  const persisted = persistResolvedMeter(homey, meterDeviceId, activation);
-  if (persisted.persisted === 'fallthrough_flow') return demoteToFlow(homey, activation);
-  if (persisted.persisted === 'retry' || persisted.step.result !== 'done') return persisted.step;
-  // Meter first, then the source — so `homey_energy` never exists persisted
-  // without a meter id, even across a crash between writes.
-  const savedSource = savePowerSourceSelection(
-    homey,
-    { op: 'set_power_source', source: 'homey_energy' },
-    activation,
-  );
-  if (savedSource.ok) return persisted.step;
-  return { result: 'retry', reasonCode: `source_save_${savedSource.reason}` };
 };
 
 /**
@@ -233,13 +220,11 @@ const concludeAttempt = (
 
 const executeDecision = (
   homey: Homey.App['homey'],
-  migrationCase: AsyncMigrationCase,
   decision: MigrationDecision,
   activation: MultiHomeActivationRead,
 ): MigrationStepResult => {
   if (decision === 'demote_flow' || decision === 'none') return demoteToFlow(homey, activation);
   const meterDeviceId = decision.slice('persist:'.length);
-  if (migrationCase === 'detect_fresh_install') return adoptDetectedMeter(homey, meterDeviceId, activation);
   const persisted = persistResolvedMeter(homey, meterDeviceId, activation);
   return persisted.persisted === 'fallthrough_flow' ? demoteToFlow(homey, activation) : persisted.step;
 };
@@ -263,7 +248,7 @@ const runAsyncMigrationAttempt = async (
   const conclusion = concludeAttempt(homey, migrationCase, sole);
   if (conclusion.result !== 'propose') return conclusion;
   if (conclusion.decision !== confirmedDecision) return conclusion;
-  return executeDecision(homey, migrationCase, conclusion.decision, readBootActivation(homey));
+  return executeDecision(homey, conclusion.decision, readBootActivation(homey));
 };
 
 export type MainMeterAuthorityMigrationParams = {
@@ -283,8 +268,8 @@ export type MainMeterAuthorityMigrationParams = {
  * This deliberately supersedes the "runtime never writes a default
  * power_source" rule (commit 69076d54c) for this marker-gated migration
  * alone; the settings-UI bulk save keeps its half of that rule. Writes go
- * through `saveMainMeterSelection` / `savePowerSourceSelection` — the two
- * keys' only writers — on the same event loop as `ui_homes_save`, so the
+ * through `savePowerSourceSelection` — the two keys' only writer — on the
+ * same event loop as `ui_homes_save`, so the
  * single-writer serialization and every ownership invariant apply unchanged.
  *
  * Marker (`main_meter_authority_migration_v1_done`) is set only on a decisive

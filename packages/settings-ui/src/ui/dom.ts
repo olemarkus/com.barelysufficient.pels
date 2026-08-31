@@ -111,6 +111,9 @@ export const settingsHomeyEnergyMeterField = document.querySelector<HTMLElement>
 export const settingsHomeyEnergyMeterSelect = document.querySelector<MdFilledSelectElement>(
   '#settings-homey-energy-meter',
 );
+export const settingsHomeyEnergyMeterHint = document.querySelector<HTMLElement>(
+  '#settings-homey-energy-meter-hint',
+);
 export const settingsSimulationModeInput = document.querySelector<MdSwitchElement>(
   '#settings-simulation-mode',
 );
