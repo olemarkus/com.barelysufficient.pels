@@ -231,6 +231,7 @@ const allocatorPass = (params: {
   )),
   state: params.state,
   signedNetKw: (params.powerKnown ?? true) ? params.signedNetKw : null,
+  inferredSurplusKw: 0,
   excludeIds: params.excludeIds,
   getConfig: (deviceId) => params.configs?.[deviceId],
   nowTs: params.nowTs,

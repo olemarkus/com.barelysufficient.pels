@@ -94,8 +94,10 @@ export type HomeScope = {
   // Both current-hour price flags from ONE combined-series build; see
   // `PriceService.getCurrentHourPriceLevel`.
   getCurrentHourPriceLevel: () => PriceLevel;
-  /** Inferred curtailed-surplus term for the surplus allocator; null disables. */
-  getInferredSurplusKw: () => number | null;
+  /** Inferred curtailed-surplus term (kW, >= 0) for the surplus allocator. 0 is
+   *  the whole of "nothing to absorb": a home with no estimator, an estimator
+   *  declining to claim, and a measured nothing spare are one answer here. */
+  getInferredSurplusKw: () => number;
   // Policy stragglers lifted onto the scope so a sub-home's capacity-only engine
   // no longer inherits MAIN's raw ctx reads. Main binds the identical current
   // reads (byte-identical); sub-home scopes bind neutral constants for the
@@ -276,15 +278,11 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
     getCurrentHourPriceLevel: () => ctx.getCurrentHourPriceLevel(),
     // Late-bound closure: the curtailment estimator is wired post-startup
-    // (`wireCurtailmentSurplus`), after the engine exists. This is the seam that
-    // spends the estimator's `suppressed` member on the planner's `null` — a
-    // suppressed term and a not-yet-wired estimator are the same fail-closed
-    // "no inferred surplus" to the planner, and the choice is made HERE rather
-    // than by a producer handing out a number it never measured.
-    getInferredSurplusKw: () => {
-      const read = ctx.getCurtailedSurplusKw?.();
-      return read !== undefined && read.kind === 'term' ? read.kw : null;
-    },
+    // (`wireCurtailmentSurplus`), after the engine exists. A home whose
+    // estimator has not been wired yet has 0 kW of inferred surplus, which is
+    // the same fail-closed nothing the estimator itself reports when it
+    // declines to claim a term.
+    getInferredSurplusKw: () => ctx.getCurtailedSurplusKw?.() ?? 0,
     // Policy stragglers — the EXACT ctx reads `createPlanEngine`/`toPlanDevice`
     // hardwired before this lift. Byte-identical for the main home.
     getPriceOptimizationSettings: () => ctx.priceOptimizationSettings,

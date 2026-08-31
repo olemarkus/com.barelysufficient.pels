@@ -139,6 +139,7 @@ const emptyRestoreResult: RestorePlanResult = {
 };
 
 const defaultDeps: PlanDevicesDeps = {
+  getInferredSurplusKw: () => 0,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
@@ -194,6 +195,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       devices: [solarInputDevice()],
       state,
       signedNetKw: -3,
+      inferredSurplusKw: 0,
       getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
       nowTs: Date.UTC(2025, 0, 1, 12, 0, 0),
     });

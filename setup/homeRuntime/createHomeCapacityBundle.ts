@@ -375,7 +375,7 @@ function buildSubHomeScope(params: {
     // dynamic-soft-limit override.
     getPriceOptimizationEnabled: () => false,
     getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-    getInferredSurplusKw: () => null,
+    getInferredSurplusKw: () => 0,
     getPriceOptimizationSettings: () => ({}),
     getDynamicSoftLimitOverride: () => null,
     // Mode targets are the RESTORE ANCHOR, not a price/budget policy, so they

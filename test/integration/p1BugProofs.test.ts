@@ -299,6 +299,7 @@ describe('P1 bug proofs', () => {
       shedStepTargets: new Map(),
       guardInShortfall: false,
       deps: {
+        getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),

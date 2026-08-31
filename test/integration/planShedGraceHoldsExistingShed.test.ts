@@ -82,6 +82,7 @@ describe('shed grace', () => {
   function buildBuilder(state: ReturnType<typeof createPlanEngineState>): PlanBuilder {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     return new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard,

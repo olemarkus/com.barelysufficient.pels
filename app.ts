@@ -40,7 +40,6 @@ import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { createHomePowerPipeline } from './setup/homeRuntime/createHomePowerPipeline';
 import type { PvForecastController } from './setup/appInit/createPvForecastService';
 import type { HomeySolarForecastLifecycle } from './lib/solar/homeySolarForecastController';
-import type { CurtailedSurplusRead } from './lib/solar/curtailmentSurplus';
 import type { WeatherCollector } from './lib/weather/weatherCollector';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
 import { SettingsRepository } from './setup/settingsRepository';
@@ -189,7 +188,7 @@ class PelsApp extends PelsAppBase implements AppContext {
   // Curtailment-surplus estimator seams (optional AppContext members) —
   // ASSIGNED by `wireCurtailmentSurplus` post-startup; declared here so the
   // main pipeline's field-initializer tap below can reference them on `this`.
-  public getCurtailedSurplusKw?: () => CurtailedSurplusRead;
+  public getCurtailedSurplusKw?: () => number;
   public recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   public canContributeCurtailmentSurplus?: () => boolean;
   public defaultComputeDynamicSoftLimit: (() => number) | undefined = undefined;

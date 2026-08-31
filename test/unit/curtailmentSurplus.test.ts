@@ -70,26 +70,15 @@ const ticks = (
 const eventNames = (h: Harness): string[] => h.events.map((e) => String(e.event));
 
 // The estimator answers `{ kind: 'suppressed' }` where it used to answer null.
-const SUPPRESSED = { kind: 'suppressed' } as const;
-
-// The term's kW, or a failed test when the estimator suppresses it — keeps the
-// numeric assertions reading about kW rather than about the discriminant. The
-// distinction matters: a `term` of 0 kW is a measured "nothing spare", which the
-// suppressed member deliberately does NOT mean.
-const termKw = (estimator: CurtailmentSurplusEstimator, nowMs: number): number => {
-  const read = estimator.getCurtailedSurplusKw(nowMs);
-  if (read.kind !== 'term') throw new Error('expected a term, got: suppressed');
-  return read.kw;
-};
 
 describe('CurtailmentSurplusEstimator — term math and gates', () => {
   it('stays dormant (term suppressed) until the first POSITIVE generation sample', () => {
     const h = build();
     h.estimator.recordSample(0, 0, T0);
-    expect(h.estimator.getCurtailedSurplusKw(T0)).toEqual(SUPPRESSED);
+    expect(h.estimator.getCurtailedSurplusKw(T0)).toBe(0);
     h.estimator.recordSample(0, 500, T0 + TICK_MS);
     // 0.9 × 3 kW potential − 0.5 kW generation = 2.2 kW
-    expect(termKw(h.estimator, T0 + TICK_MS)).toBeCloseTo(2.2, 6);
+    expect(h.estimator.getCurtailedSurplusKw(T0 + TICK_MS)).toBeCloseTo(2.2, 6);
   });
 
   it('stays suppressed forever for flow-source homes (generationW undefined never arms)', () => {
@@ -97,7 +86,7 @@ describe('CurtailmentSurplusEstimator — term math and gates', () => {
     for (let i = 0; i < 10; i += 1) {
       h.estimator.recordSample(0, undefined, T0 + i * TICK_MS);
     }
-    expect(h.estimator.getCurtailedSurplusKw(T0 + 9 * TICK_MS)).toEqual(SUPPRESSED);
+    expect(h.estimator.getCurtailedSurplusKw(T0 + 9 * TICK_MS)).toBe(0);
     expect(h.events).toHaveLength(0); // and never logs — non-solar byte-identical
   });
 
@@ -131,12 +120,12 @@ describe('CurtailmentSurplusEstimator — term math and gates', () => {
       const h = build();
       h.estimator.recordSample(0, 500, T0);
       const stale = T0 + CURTAIL_SAMPLE_FRESH_MS + 1;
-      expect(h.estimator.getCurtailedSurplusKw(stale)).toEqual(SUPPRESSED);
+      expect(h.estimator.getCurtailedSurplusKw(stale)).toBe(0);
       expect(h.estimator.canContributeSurplus()).toBe(true);
 
       // So does the sticky import latch.
       h.estimator.recordSample((CURTAIL_NET_GATE_KW + 1) * 1000, 500, T0 + TICK_MS);
-      expect(h.estimator.getCurtailedSurplusKw(T0 + TICK_MS)).toEqual(SUPPRESSED);
+      expect(h.estimator.getCurtailedSurplusKw(T0 + TICK_MS)).toBe(0);
       expect(h.estimator.canContributeSurplus()).toBe(true);
     });
   });
@@ -145,43 +134,60 @@ describe('CurtailmentSurplusEstimator — term math and gates', () => {
     const h = build();
     h.estimator.recordSample(0, 500, T0);
     h.ctl.battery = true;
-    expect(h.estimator.getCurtailedSurplusKw(T0)).toEqual(SUPPRESSED);
+    expect(h.estimator.getCurtailedSurplusKw(T0)).toBe(0);
     h.ctl.battery = false;
-    expect(termKw(h.estimator, T0)).toBeCloseTo(2.2, 6);
+    expect(h.estimator.getCurtailedSurplusKw(T0)).toBeCloseTo(2.2, 6);
   });
 
   it('expires the term when the co-sample goes stale (freshness window)', () => {
     const h = build();
     h.estimator.recordSample(0, 500, T0);
-    expect(termKw(h.estimator, T0 + CURTAIL_SAMPLE_FRESH_MS)).toBeCloseTo(2.2, 6);
-    expect(h.estimator.getCurtailedSurplusKw(T0 + CURTAIL_SAMPLE_FRESH_MS + 1)).toEqual(SUPPRESSED);
+    expect(h.estimator.getCurtailedSurplusKw(T0 + CURTAIL_SAMPLE_FRESH_MS)).toBeCloseTo(2.2, 6);
+    expect(h.estimator.getCurtailedSurplusKw(T0 + CURTAIL_SAMPLE_FRESH_MS + 1)).toBe(0);
   });
 
   it('suppresses the term when the potential is unresolvable (no fit / no forecast hour)', () => {
     const h = build({ kind: 'unresolvable' });
     h.estimator.recordSample(0, 500, T0);
-    expect(h.estimator.getCurtailedSurplusKw(T0)).toEqual(SUPPRESSED);
+    expect(h.estimator.getCurtailedSurplusKw(T0)).toBe(0);
   });
 
   it('suppresses the term on a non-finite potential (boundary guard on the injected dep)', () => {
     const h = build({ kind: 'resolved', potential: { kw: Number.NaN, confidence: 'high' } });
     h.estimator.recordSample(0, 500, T0);
-    expect(h.estimator.getCurtailedSurplusKw(T0)).toEqual(SUPPRESSED);
+    expect(h.estimator.getCurtailedSurplusKw(T0)).toBe(0);
   });
 
   it('applies the low-confidence discount (0.8) vs the medium/high discount (0.9)', () => {
     const low = build({ kind: 'resolved', potential: { kw: 3, confidence: 'low' } });
     low.estimator.recordSample(0, 500, T0);
-    expect(termKw(low.estimator, T0)).toBeCloseTo(0.8 * 3 - 0.5, 6);
+    expect(low.estimator.getCurtailedSurplusKw(T0)).toBeCloseTo(0.8 * 3 - 0.5, 6);
     const medium = build({ kind: 'resolved', potential: { kw: 3, confidence: 'medium' } });
     medium.estimator.recordSample(0, 500, T0);
-    expect(termKw(medium.estimator, T0)).toBeCloseTo(0.9 * 3 - 0.5, 6);
+    expect(medium.estimator.getCurtailedSurplusKw(T0)).toBeCloseTo(0.9 * 3 - 0.5, 6);
   });
 
   it('clamps the term at zero when actual generation meets the discounted potential', () => {
     const h = build();
     h.estimator.recordSample(0, 5_000, T0); // 5 kW generation > 0.9 × 3 kW
-    expect(termKw(h.estimator, T0)).toBe(0);
+    expect(h.estimator.getCurtailedSurplusKw(T0)).toBe(0);
+  });
+
+  // Guard against reintroducing a named absence here. The term was briefly a
+  // `term | suppressed` union; nothing could tell the arms apart, because the
+  // only control consumer adds the value into the surplus pool and the verify
+  // window needs it strictly above 0. Both routes below are 0 kW spare, and the
+  // read is always a finite number.
+  it('answers the same finite 0 whether it declines to claim or measured nothing spare', () => {
+    const declined = build();
+    declined.estimator.recordSample(0, 500, T0);
+    const stale = T0 + CURTAIL_SAMPLE_FRESH_MS + 1; // co-sample too old to trust
+    const measuredNothing = build();
+    measuredNothing.estimator.recordSample(0, 5_000, T0); // generation covers the potential
+
+    expect(declined.estimator.getCurtailedSurplusKw(stale)).toBe(0);
+    expect(measuredNothing.estimator.getCurtailedSurplusKw(T0)).toBe(0);
+    expect(Number.isFinite(declined.estimator.getCurtailedSurplusKw(stale))).toBe(true);
   });
 
   it('drops a junk co-sample whole: no state write, no freshness bump', () => {
@@ -190,7 +196,7 @@ describe('CurtailmentSurplusEstimator — term math and gates', () => {
     h.estimator.recordSample(Number.NaN, 500, T0 + 40_000);
     h.estimator.recordSample(0, Number.POSITIVE_INFINITY, T0 + 41_000);
     // Freshness still anchored at T0 — the junk samples must not extend it.
-    expect(h.estimator.getCurtailedSurplusKw(T0 + CURTAIL_SAMPLE_FRESH_MS + 1)).toEqual(SUPPRESSED);
+    expect(h.estimator.getCurtailedSurplusKw(T0 + CURTAIL_SAMPLE_FRESH_MS + 1)).toBe(0);
   });
 });
 
@@ -206,15 +212,15 @@ describe('CurtailmentSurplusEstimator — sticky import latch', () => {
       t += TICK_MS;
       h.estimator.recordSample(0, 500, t);
       const withinLatch = t < latchAt + CURTAIL_IMPORT_HOLD_DOWN_MS;
-      if (withinLatch) expect(h.estimator.getCurtailedSurplusKw(t)).toEqual(SUPPRESSED);
+      if (withinLatch) expect(h.estimator.getCurtailedSurplusKw(t)).toBe(0);
     }
-    expect(termKw(h.estimator, t)).toBeCloseTo(2.2, 6);
+    expect(h.estimator.getCurtailedSurplusKw(t)).toBeCloseTo(2.2, 6);
   });
 
   it('does not latch at the gate value itself (strictly above)', () => {
     const h = build();
     h.estimator.recordSample(CURTAIL_NET_GATE_KW * 1000, 500, T0);
-    expect(termKw(h.estimator, T0)).toBeCloseTo(2.2, 6);
+    expect(h.estimator.getCurtailedSurplusKw(T0)).toBeCloseTo(2.2, 6);
   });
 });
 
@@ -260,7 +266,7 @@ describe('CurtailmentSurplusEstimator — outcome-based verification', () => {
     // And the term is on the hold ladder, not merely latched: it stays suppressed past
     // the 90 s import latch, out to the 15-min hold.
     h.estimator.recordSample(0, 500, last + TICK_MS + CURTAIL_IMPORT_HOLD_DOWN_MS + TICK_MS);
-    expect(h.estimator.getCurtailedSurplusKw(last + TICK_MS + CURTAIL_IMPORT_HOLD_DOWN_MS + TICK_MS)).toEqual(SUPPRESSED);
+    expect(h.estimator.getCurtailedSurplusKw(last + TICK_MS + CURTAIL_IMPORT_HOLD_DOWN_MS + TICK_MS)).toBe(0);
   });
 
   it('does not open a window if a lift was already engaged before the estimator armed (no spurious edge)', () => {
@@ -303,12 +309,12 @@ describe('CurtailmentSurplusEstimator — outcome-based verification', () => {
       observedHoldsMs.push(holdMs);
       // Term is zeroed through the whole hold.
       h.estimator.recordSample(0, 500, refuteAt + TICK_MS);
-      expect(h.estimator.getCurtailedSurplusKw(refuteAt + TICK_MS)).toEqual(SUPPRESSED);
+      expect(h.estimator.getCurtailedSurplusKw(refuteAt + TICK_MS)).toBe(0);
       // Re-arm: drop the lift, wait out the hold with clean samples, term returns.
       h.ctl.lift = false;
       const holdEndsAt = refuteAt + holdMs;
       h.estimator.recordSample(0, 500, holdEndsAt + TICK_MS);
-      expect(termKw(h.estimator, holdEndsAt + TICK_MS)).toBeCloseTo(2.2, 6);
+      expect(h.estimator.getCurtailedSurplusKw(holdEndsAt + TICK_MS)).toBeCloseTo(2.2, 6);
       at = holdEndsAt + 2 * TICK_MS;
     }
     expect(observedHoldsMs).toEqual([
@@ -478,11 +484,11 @@ describe('CurtailmentSurplusEstimator — two-channel ingest (gen outage)', () =
     h.estimator.recordSample(400, undefined, T0 + TICK_MS);
     // Gen returns with net clean — the latch from the outage tick must hold.
     h.estimator.recordSample(0, 500, T0 + 2 * TICK_MS);
-    expect(h.estimator.getCurtailedSurplusKw(T0 + 2 * TICK_MS)).toEqual(SUPPRESSED);
+    expect(h.estimator.getCurtailedSurplusKw(T0 + 2 * TICK_MS)).toBe(0);
     // ...and expire on schedule.
     const latchEndsAt = T0 + TICK_MS + CURTAIL_IMPORT_HOLD_DOWN_MS;
     h.estimator.recordSample(0, 500, latchEndsAt + TICK_MS);
-    expect(termKw(h.estimator, latchEndsAt + TICK_MS)).toBeCloseTo(2.2, 6);
+    expect(h.estimator.getCurtailedSurplusKw(latchEndsAt + TICK_MS)).toBeCloseTo(2.2, 6);
   });
 
   it('an open verify window refutes on a gen-outage import tick', () => {
@@ -498,7 +504,7 @@ describe('CurtailmentSurplusEstimator — two-channel ingest (gen outage)', () =
     // Net-only ticks keep arriving well past the freshness window.
     h.estimator.recordSample(0, undefined, T0 + CURTAIL_SAMPLE_FRESH_MS);
     h.estimator.recordSample(0, undefined, T0 + CURTAIL_SAMPLE_FRESH_MS + TICK_MS);
-    expect(h.estimator.getCurtailedSurplusKw(T0 + CURTAIL_SAMPLE_FRESH_MS + TICK_MS)).toEqual(SUPPRESSED);
+    expect(h.estimator.getCurtailedSurplusKw(T0 + CURTAIL_SAMPLE_FRESH_MS + TICK_MS)).toBe(0);
   });
 });
 
@@ -667,9 +673,9 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     const { store } = fakeStore(loaded({ holdLevel: 2, holdUntilMs, importLatchUntilMs: null }));
     const h = build(undefined, store); // "restarted" estimator
     h.estimator.recordSample(0, 500, T0); // arms (dormancy is not persisted)
-    expect(h.estimator.getCurtailedSurplusKw(T0)).toEqual(SUPPRESSED); // hold live across the restart
+    expect(h.estimator.getCurtailedSurplusKw(T0)).toBe(0); // hold live across the restart
     h.estimator.recordSample(0, 500, holdUntilMs + TICK_MS);
-    expect(termKw(h.estimator, holdUntilMs + TICK_MS)).toBeCloseTo(2.2, 6); // expiry honored
+    expect(h.estimator.getCurtailedSurplusKw(holdUntilMs + TICK_MS)).toBeCloseTo(2.2, 6); // expiry honored
   });
 
   it('a rehydrated ladder keeps escalating: the next refute jumps past the restart level', () => {
@@ -692,16 +698,16 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     const { store } = fakeStore(loaded({ holdLevel: 0, holdUntilMs: null, importLatchUntilMs: latchUntilMs }));
     const h = build(undefined, store);
     h.estimator.recordSample(0, 500, T0);
-    expect(h.estimator.getCurtailedSurplusKw(T0)).toEqual(SUPPRESSED); // latched
+    expect(h.estimator.getCurtailedSurplusKw(T0)).toBe(0); // latched
     h.estimator.recordSample(0, 500, latchUntilMs + TICK_MS);
-    expect(termKw(h.estimator, latchUntilMs + TICK_MS)).toBeCloseTo(2.2, 6);
+    expect(h.estimator.getCurtailedSurplusKw(latchUntilMs + TICK_MS)).toBeCloseTo(2.2, 6);
   });
 
   it('an ABSENT store read (unset key or junk blob condemned upstream) starts fresh', () => {
     const { store } = fakeStore({ state: 'absent' });
     const h = build(undefined, store);
     h.estimator.recordSample(0, 500, T0);
-    expect(termKw(h.estimator, T0)).toBeCloseTo(2.2, 6);
+    expect(h.estimator.getCurtailedSurplusKw(T0)).toBeCloseTo(2.2, 6);
   });
 
   it('persists on transitions only: arming and latch onset write once each, re-extensions do not', () => {
@@ -752,7 +758,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     h.estimator.recordSample((CURTAIL_NET_GATE_KW + 1) * 1000, 500, T0 + TICK_MS); // latch ONSET
     expect(writes).toHaveLength(0);
     // The latch itself still guards the term in memory.
-    expect(h.estimator.getCurtailedSurplusKw(T0 + TICK_MS)).toEqual(SUPPRESSED);
+    expect(h.estimator.getCurtailedSurplusKw(T0 + TICK_MS)).toBe(0);
 
     // The store recovers: the RETAINED ladder is adopted (level 3), and every
     // write from here carries it — never this instance's blank 0.
@@ -805,11 +811,11 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
     failing = false;
     h.estimator.recordSample(0, 500, spikeAt + TICK_MS); // import ceased; store recovers
     // Still inside the LOCAL hold-down: the adopted blank latch must not lift it.
-    expect(h.estimator.getCurtailedSurplusKw(spikeAt + 2 * TICK_MS)).toEqual(SUPPRESSED);
+    expect(h.estimator.getCurtailedSurplusKw(spikeAt + 2 * TICK_MS)).toBe(0);
     // ...and the local deadline still expires on its own clock.
     const afterHoldDown = spikeAt + CURTAIL_IMPORT_HOLD_DOWN_MS + TICK_MS;
     h.estimator.recordSample(0, 500, afterHoldDown);
-    expect(termKw(h.estimator, afterHoldDown)).toBeCloseTo(2.2, 6);
+    expect(h.estimator.getCurtailedSurplusKw(afterHoldDown)).toBeCloseTo(2.2, 6);
   });
 
   it('persists the merged latch when adoption keeps a LATER in-memory deadline than the disk', () => {
@@ -847,7 +853,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
       write: () => true,
     });
     restarted.estimator.recordSample(0, 500, spikeAt + 3 * TICK_MS);
-    expect(restarted.estimator.getCurtailedSurplusKw(spikeAt + 3 * TICK_MS)).toEqual(SUPPRESSED);
+    expect(restarted.estimator.getCurtailedSurplusKw(spikeAt + 3 * TICK_MS)).toBe(0);
   });
 
   it('an ABSENT resolution persists suppressed local progress (armed + live latch) at once', () => {

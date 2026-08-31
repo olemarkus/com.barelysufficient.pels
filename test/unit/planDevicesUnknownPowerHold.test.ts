@@ -53,6 +53,7 @@ const buildContext = (devices: PlanContext['devices']): PlanContext => ({
 });
 
 const defaultDeps: PlanDevicesDeps = {
+  getInferredSurplusKw: () => 0,
   getShedBehavior: () => ({ action: 'turn_off' }),
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),

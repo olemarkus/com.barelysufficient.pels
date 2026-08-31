@@ -49,6 +49,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     const lastPowerW = 2.5 * 1000;
 
     const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
@@ -122,6 +123,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -196,6 +198,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -279,6 +282,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -342,6 +346,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -395,6 +400,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     lastPowerW = (4.8) * 1000;
 
     const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
@@ -453,6 +459,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     lastPowerW = (2.5) * 1000;
 
     const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
@@ -514,6 +521,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     lastPowerW = (0.5) * 1000;
 
     const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
@@ -567,6 +575,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       lastPowerW = (4.8) * 1000;
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -634,6 +643,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -699,6 +709,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -770,6 +781,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -852,6 +864,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       lastPowerW = (0.8) * 1000;
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -914,6 +927,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -991,6 +1005,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -1071,6 +1086,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -1177,6 +1193,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -1288,6 +1305,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -1398,6 +1416,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
@@ -1481,6 +1500,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const powerTracker = { lastTimestamp: start, lastPowerW: 4_351 };
 
       const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),

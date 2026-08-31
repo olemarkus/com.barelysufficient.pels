@@ -65,6 +65,7 @@ const makeBuilder = (params: {
   // capacity guard's own hour-average projection is not steerable from a single power report.
   let softLimitKw = params.softLimitKw ?? null;
   const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
     capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),

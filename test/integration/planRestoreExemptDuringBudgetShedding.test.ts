@@ -353,6 +353,7 @@ const buildBuilder = (params: {
   tracker: { lastTimestamp: number; lastPowerW?: number };
   state: ReturnType<typeof createPlanEngineState>;
 }): PlanBuilder => new PlanBuilder({
+      getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
   capacityGuard: params.capacityGuard,
   setCapacityInShortfall: vi.fn(),
