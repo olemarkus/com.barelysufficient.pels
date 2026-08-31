@@ -87,6 +87,49 @@ export const resolveAutomaticHomePowerReading = (
   return { state: 'ambiguous', cumulativeItemCount };
 };
 
+/** The sole-cumulative-meter census over one live energy report. */
+export type SoleCumulativeMeterResolution =
+  | { state: 'resolved'; meterDeviceId: string }
+  | { state: 'unresolvable'; verdict: 'decisive'; reason: 'ambiguous' | 'idless_sole' }
+  | { state: 'unresolvable'; verdict: 'retryable'; reason: 'none_found' };
+
+/**
+ * The one detection the explicit-meter world keeps: does this report carry
+ * exactly one usable cumulative meter, and does it carry an id PELS can
+ * persist? Consumed by the boot-time meter-authority migration — upgrading a
+ * stored Automatic selection to the meter it was in fact reading, and
+ * fresh-install detection. Several usable candidates or a sole id-less
+ * aggregate are `unresolvable` and `decisive`: there is nothing nameable to
+ * persist, and guessing is how the wrong meter's watts become the whole
+ * home's. No usable candidate at all is `unresolvable` but `retryable`: an
+ * empty or malformed report and a meter that has not published finite watts
+ * yet are what Homey Energy looks like while warming up after a reboot —
+ * exactly when the migration runs — so that shape must never seal a
+ * permanent answer on one read.
+ */
+export const resolveSoleCumulativeMeter = (
+  liveReport: unknown,
+): SoleCumulativeMeterResolution => {
+  const report = asRecord(liveReport);
+  if (!report || !Array.isArray(report.items)) {
+    return { state: 'unresolvable', verdict: 'retryable', reason: 'none_found' };
+  }
+  const candidates: CumulativeMeterReading[] = [];
+  const seenDeviceIds = new Set<string>();
+  for (const rawItem of report.items) {
+    const item = asRecord(rawItem);
+    if (item === null || item.type !== 'cumulative') continue;
+    const candidate = resolveCumulativeMeterReading(item, seenDeviceIds);
+    if (candidate !== null) candidates.push(candidate);
+  }
+  const [sole, ...further] = candidates;
+  if (sole === undefined) return { state: 'unresolvable', verdict: 'retryable', reason: 'none_found' };
+  if (further.length > 0) return { state: 'unresolvable', verdict: 'decisive', reason: 'ambiguous' };
+  return sole.deviceId === null
+    ? { state: 'unresolvable', verdict: 'decisive', reason: 'idless_sole' }
+    : { state: 'resolved', meterDeviceId: sole.deviceId };
+};
+
 /**
  * Net grid power (W) for an explicitly selected whole-home meter, resolved
  * from the same `manager/energy/live` payload. A device marked "Tracks total

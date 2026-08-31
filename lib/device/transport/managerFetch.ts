@@ -13,6 +13,8 @@ import {
   extractLivePowerWattsByDeviceId,
   type LiveDevicePowerWatts,
   type LiveMeterItem,
+  resolveSoleCumulativeMeter,
+  type SoleCumulativeMeterResolution,
 } from '../managerEnergy';
 import {
   DEVICES_API_PATH,
@@ -421,6 +423,29 @@ export async function fetchLivePowerReport(params: {
   } catch (error) {
     logDeviceTransportRuntimeError(logger, { event: 'energy_live_report_fetch_failed' }, error);
     return buildEmptyLivePowerReport();
+  }
+}
+
+/**
+ * The sole-cumulative-meter census over one LIVE energy report, resolved at
+ * this adapter so no raw payload crosses the boundary: `unavailable` covers
+ * both a not-yet-initialised REST client and a failed fetch (retry later);
+ * the census arms are `resolveSoleCumulativeMeter`'s own. Exists for the
+ * boot-time meter-authority migration, which must tell "the fetch failed"
+ * apart from "the report genuinely lists no meters" — a distinction
+ * `fetchLiveMeterItems`'s []-on-failure contract erases.
+ */
+export type LiveSoleCumulativeMeterCensus =
+  | SoleCumulativeMeterResolution
+  | { readonly state: 'unavailable' };
+
+export async function censusLiveSoleCumulativeMeter(): Promise<LiveSoleCumulativeMeterCensus> {
+  try {
+    const report = await getEnergyLiveReport();
+    return report === null ? { state: 'unavailable' } : resolveSoleCumulativeMeter(report);
+  } catch (error) {
+    moduleLogger.error({ event: 'energy_live_report_read_failed', err: normalizeError(error) });
+    return { state: 'unavailable' };
   }
 }
 

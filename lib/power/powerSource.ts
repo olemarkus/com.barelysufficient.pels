@@ -5,8 +5,14 @@
  *
  * `normalizePowerSource` resolves the raw persisted value to the closed union —
  * only the exact string `'homey_energy'` selects Homey Energy; anything else
- * (including unset/garbage) is treated as `flow`, preserving the historical
- * `settings.get('power_source') !== 'homey_energy'` read semantics.
+ * resolves to `flow`. A garbage string is `flow` for good: the boot-time
+ * meter-authority migration classifies it as a conformant Flow source and
+ * seals the marker. An UNSET key is not a lasting state at all — the
+ * migration (`setup/mainMeterAuthorityMigration.ts`) persists an explicit
+ * source on every install, so unset exists only inside the pre-marker boot
+ * window (and the deferred legacy cohort the migration retries each boot);
+ * resolving it as `flow` there keeps that window behaviorally identical to
+ * the persisted outcome the sync `write_flow` arm would reach.
  */
 export type PowerSource = 'homey_energy' | 'flow';
 
@@ -41,9 +47,13 @@ export type PowerSourceSettingClassification =
 
 /**
  * Pure classification of one persisted `power_source` read plus key-list
- * evidence. Explicit values resolve directly; malformed non-null values keep
- * the historical Flow fallback. An absent value is only the genuine default
- * when a healthy, non-empty key list confirms the source key was never written.
+ * evidence. Explicit values resolve directly; malformed non-null values
+ * resolve to Flow (the same answer the migration seals for them). An absent
+ * value resolves to `flow` only when a healthy, non-empty key list confirms
+ * the source key was never written — and post-migration that is a
+ * boot-window state, not a configuration: the marker-gated migration
+ * persists an explicit source on every install, so "never written" survives
+ * only until its first decisive boot.
  */
 export const classifyPowerSourceSetting = (evidence: {
   raw: unknown;
