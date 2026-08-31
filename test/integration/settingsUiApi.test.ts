@@ -7,6 +7,7 @@ import {
   getSettingsUiPlanPayload,
   getSettingsUiPowerPayload,
   getSettingsUiPricesPayload,
+  getSettingsUiWeatherAdvisorReadout,
   logSettingsUiMessage,
   applySettingsUiDailyBudgetModel,
   previewSettingsUiDailyBudgetModel,
@@ -103,13 +104,17 @@ describe('settingsUiApi', () => {
       });
       persistPowerTrackerState();
     });
-    const getDailyBudgetUiPayload = vi.fn().mockReturnValue({ days: {}, todayKey: '2026-03-03' });
+    const getDailyBudgetUiPayload = vi.fn().mockReturnValue({
+      kind: 'budget', payload: { days: {}, todayKey: '2026-03-03' },
+    });
     const previewDailyBudgetModel = vi.fn().mockImplementation((settings: Record<string, unknown>) => ({
-      active: { days: {}, todayKey: '2026-03-03' },
+      active: { kind: 'budget', payload: { days: {}, todayKey: '2026-03-03' } },
       candidate: { days: {}, todayKey: '2026-03-03', tomorrowKey: '2026-03-04' },
       settings,
     }));
-    const applyDailyBudgetModel = vi.fn().mockReturnValue({ days: {}, todayKey: '2026-03-03' });
+    const applyDailyBudgetModel = vi.fn().mockReturnValue({
+      kind: 'budget', payload: { days: {}, todayKey: '2026-03-03' },
+    });
     const getDeviceDiagnosticsUiPayload = vi.fn().mockReturnValue({
       generatedAt: 123456,
       windowDays: 21,
@@ -255,7 +260,7 @@ describe('settingsUiApi', () => {
     // are absent by reading them through an index view.
     expect((result.settings as Record<string, unknown>).target_devices_snapshot).toBeUndefined();
     expect((result.settings as Record<string, unknown>).combined_prices).toBeUndefined();
-    expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });
+    expect(result.dailyBudget).toEqual({ kind: 'budget', payload: { days: {}, todayKey: '2026-03-03' } });
     expect((result as unknown as Record<string, unknown>).devices).toBeUndefined();
     expect(result.plan).toEqual({
       devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: fixtureDeviceReason('keep')! }],
@@ -397,7 +402,7 @@ describe('settingsUiApi', () => {
       exportDailyTotals: {},
       unreliablePeriods: [],
     });
-    expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });
+    expect(result.dailyBudget).toEqual({ kind: 'budget', payload: { days: {}, todayKey: '2026-03-03' } });
   });
 
   it('routes daily budget model preview and apply requests through the app', () => {
@@ -415,8 +420,22 @@ describe('settingsUiApi', () => {
 
     expect(homey.previewDailyBudgetModel).toHaveBeenCalledWith(body);
     expect(homey.applyDailyBudgetModel).toHaveBeenCalledWith(body);
-    expect(preview?.candidate?.tomorrowKey).toBe('2026-03-04');
-    expect(applied?.todayKey).toBe('2026-03-03');
+    expect(preview.candidate.tomorrowKey).toBe('2026-03-04');
+    expect(applied).toMatchObject({ kind: 'budget', payload: { todayKey: '2026-03-03' } });
+  });
+
+  it('answers the named absence — and refuses budget writes — while the app is unwired', async () => {
+    // The restart window: `homey.app` is present but carries none of the host
+    // API. Reads degrade to their named member; the two user-initiated writes
+    // fail loudly rather than reporting a success they did not perform.
+    const homey = { ...createHomey(), app: {} };
+
+    const bootstrap = await buildSettingsUiBootstrap({ homey: homey as never });
+    expect(bootstrap.dailyBudget).toEqual({ kind: 'unavailable' });
+    await expect(getSettingsUiWeatherAdvisorReadout({ homey: homey as never }))
+      .resolves.toEqual({ kind: 'inactive' });
+    expect(() => previewSettingsUiDailyBudgetModel({ homey: homey as never, body: {} })).toThrow();
+    expect(() => applySettingsUiDailyBudgetModel({ homey: homey as never, body: {} })).toThrow();
   });
 
   it('builds dedicated read payloads for the remaining volatile UI models', () => {

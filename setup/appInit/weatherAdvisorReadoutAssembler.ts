@@ -1,5 +1,5 @@
 import type { AppContext } from '../../lib/app/appContext';
-import type { WeatherAdvisorReadoutPayload } from '../../packages/contracts/src/weatherAdvisorTypes';
+import type { WeatherAdvisorReadout } from '../../packages/contracts/src/weatherAdvisorTypes';
 import type { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { buildWeatherAdvisorReadout } from '../../lib/weather/weatherAdvisorReadout';
 import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
@@ -15,16 +15,16 @@ import { DAILY_BUDGET_ENABLED, DAILY_BUDGET_KWH } from '../../lib/utils/settings
  * lets the Settings picker validity line confirm a just-picked device
  * immediately — the collector's cached sample is cleared on the restart a
  * selection change triggers, so it can't be trusted right after a pick.
- * Returns null when the flag is off or the collector is not wired — the
- * settings UI treats null as structural absence.
+ * Answers `inactive` when the flag is off or the collector is not wired — the
+ * settings UI renders no weather surface for that member.
  */
 export async function assembleWeatherAdvisorReadout(params: {
   ctx: Pick<AppContext, 'homey' | 'getNow' | 'getTimeZone' | 'capacitySettings'>;
   collector: WeatherCollector | undefined;
-}): Promise<WeatherAdvisorReadoutPayload | null> {
+}): Promise<WeatherAdvisorReadout> {
   const { ctx, collector } = params;
   const settings = buildWeatherAdvisorSettings({ settings: ctx.homey.settings });
-  if (!settings.enabled || !collector) return null;
+  if (!settings.enabled || !collector) return { kind: 'inactive' };
   // The forecast comes from a direct MET Norway fetch, not a device — only the
   // outdoor (historical) device is read here, for its name + live validity line.
   const outdoor = await readDevice(settings.outdoorDeviceId);

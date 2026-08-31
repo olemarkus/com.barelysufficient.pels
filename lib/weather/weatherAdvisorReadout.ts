@@ -2,6 +2,7 @@ import type {
   EnergySignatureFit,
   EnergySignatureSuggestion,
   WeatherAdvisorPrediction,
+  WeatherAdvisorReadout,
   WeatherAdvisorReadoutPayload,
   WeatherAdvisorReadoutState,
   WeatherAdvisorSettings,
@@ -80,12 +81,12 @@ function resolveAutoApplyEcho(input: WeatherAdvisorReadoutInput): AutoApplyEcho 
   };
 }
 
-/** Null = feature flag off → structural absence in the UI. */
+/** `inactive` = feature flag off → the UI renders no weather surface at all. */
 export function buildWeatherAdvisorReadout(
   input: WeatherAdvisorReadoutInput,
-): WeatherAdvisorReadoutPayload | null {
+): WeatherAdvisorReadout {
   const { settings, state } = input;
-  if (!settings.enabled) return null;
+  if (!settings.enabled) return { kind: 'inactive' };
 
   const settingsEcho = resolveSettingsEcho(input);
   const todayKey = getDateKeyInTimeZone(new Date(input.nowMs), input.timeZone);
@@ -104,7 +105,7 @@ export function buildWeatherAdvisorReadout(
   // setup card as if they described the current configuration.
   const autoApplyEcho = resolveAutoApplyEcho(input);
   if (!settings.outdoorDeviceId) {
-    return buildNeedsDevicePayload({
+    const needsDevice = buildNeedsDevicePayload({
       settingsEcho,
       forecastStatus: resolvePayloadForecastStatus(state, tomorrowKey),
       outdoorReading,
@@ -112,6 +113,7 @@ export function buildWeatherAdvisorReadout(
       autoApplyEcho,
       nowMs: input.nowMs,
     });
+    return { kind: 'readout', payload: needsDevice };
   }
   const fit = state.latestFit ?? null;
   const readoutState = resolveReadoutState(input.backfillRunning, fit);
@@ -124,7 +126,7 @@ export function buildWeatherAdvisorReadout(
   const tomorrow = fit ? resolveTomorrowOutlook(input, fit, todayKey) : null;
   const forecastStatus = resolveOutlookForecastStatus(tomorrow, state, tomorrowKey);
 
-  return {
+  const payload: WeatherAdvisorReadoutPayload = {
     state: readoutState,
     driftSuspected: fit?.driftSuspected ?? false,
     driftDeviationKwh: resolveDriftDeviationKwh(fit, usableYearRecords),
@@ -145,6 +147,7 @@ export function buildWeatherAdvisorReadout(
     suppressedDaysExcluded: fit?.suppressedDaysExcluded ?? 0,
     generatedAtMs: input.nowMs,
   };
+  return { kind: 'readout', payload };
 }
 
 function resolveSettingsEcho(input: WeatherAdvisorReadoutInput): WeatherAdvisorReadoutPayload['settings'] {

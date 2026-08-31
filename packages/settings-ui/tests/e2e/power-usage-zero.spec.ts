@@ -160,17 +160,21 @@ test.describe('Usage follows the shown home', () => {
           __stub: { setDailyBudgetPayload: (payload: unknown) => void };
         };
       }).Homey;
-      const payload = await new Promise<{
-        days: Record<string, {
-          budget: { dailyBudgetKWh: number };
-          buckets: { actualKWh: number[] };
-        }>;
-        todayKey: string;
+      const read = await new Promise<{
+        kind: string;
+        payload: {
+          days: Record<string, {
+            budget: { dailyBudgetKWh: number };
+            buckets: { actualKWh: number[] };
+          }>;
+          todayKey: string;
+        };
       }>((resolve, reject) => {
         homey.api('GET', '/daily_budget', (err, res) => (
           err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(res as never)
         ));
       });
+      const { payload } = read;
       const today = payload.days[payload.todayKey];
       today.budget.dailyBudgetKWh = 1;
       today.buckets.actualKWh = today.buckets.actualKWh.map(() => 0);

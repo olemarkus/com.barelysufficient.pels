@@ -1,4 +1,4 @@
-import type { DailyBudgetUiPayload } from './dailyBudgetTypes.js';
+import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from './deferredObjectivePlanHistory.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
@@ -147,7 +147,7 @@ export type SettingsUiSettingsPatch = {
 };
 
 export type SettingsUiBootstrap = SettingsUiSettingsPatch & {
-  dailyBudget: DailyBudgetUiPayload | null;
+  dailyBudget: DailyBudgetUiRead;
   deferredObjectiveActivePlans: ResolvedDeferredObjectiveActivePlansV1 | null;
   plan: SettingsUiPlanSnapshot | null;
   power: SettingsUiPowerPayload;
@@ -534,5 +534,5 @@ export type SettingsUiDeviceDiagnosticsResponse = SettingsUiDeviceDiagnosticsPay
 
 export type SettingsUiResetPowerStatsResponse = {
   power: SettingsUiPowerPayload;
-  dailyBudget: DailyBudgetUiPayload | null;
+  dailyBudget: DailyBudgetUiRead;
 };

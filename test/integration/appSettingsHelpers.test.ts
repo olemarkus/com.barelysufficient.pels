@@ -111,7 +111,7 @@ const buildContext = (): AppContext => {
     getDynamicSoftLimitOverride: vi.fn(() => null),
     evaluateHeadroomForDevice: vi.fn(() => null),
     getCombinedHourlyPrices: vi.fn(() => []),
-    getDailyBudgetUiPayload: vi.fn(() => null),
+    getDailyBudgetUiPayload: vi.fn(() => ({ kind: 'unavailable' as const })),
     getLatestPlanSnapshotForUi: vi.fn(() => null),
     get powerTracker() { return {}; },
     set powerTracker(_value) {},

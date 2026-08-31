@@ -2,6 +2,7 @@ import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetModelSettings,
   DailyBudgetUiPayload,
+  DailyBudgetUiRead,
 } from '../../../contracts/src/dailyBudgetTypes.ts';
 import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
@@ -100,7 +101,7 @@ let pendingPreview: DailyBudgetModelPreviewResponse | null = null;
 let busy = false;
 let draftRevision = 0;
 let renderRequested: () => void = () => {};
-type RefreshArgs = { payload?: DailyBudgetUiPayload | null; appliedSettings?: DailyBudgetModelSettings };
+type RefreshArgs = { payload?: DailyBudgetUiRead; appliedSettings?: DailyBudgetModelSettings };
 let refreshActivePlan: (args?: RefreshArgs) => Promise<void> = async () => {};
 
 export const setBudgetAdjustRenderer = (render: () => void): void => {
@@ -204,8 +205,10 @@ export const getBudgetAdjustCandidatePayload = (): DailyBudgetUiPayload | null =
   pendingPreview?.candidate ?? null
 );
 
+// `null` here is "no preview is pending" (the comparison is off) — the preview
+// response's own `active` read is discriminated on the way past.
 export const getBudgetAdjustActivePayload = (): DailyBudgetUiPayload | null => (
-  pendingPreview?.active ?? null
+  pendingPreview?.active.kind === 'budget' ? pendingPreview.active.payload : null
 );
 
 export const updateBudgetAdjustField = (patch: Partial<BudgetAdjustDraft>): void => {
@@ -229,7 +232,7 @@ export const previewBudgetAdjust = async (): Promise<void> => {
   const requestRevision = draftRevision;
   renderRequested();
   try {
-    const response = await callApi<DailyBudgetModelPreviewResponse | null>(
+    const response = await callApi<DailyBudgetModelPreviewResponse>(
       'POST',
       SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
       toModelSettings(workingDraft),
@@ -258,7 +261,7 @@ const undoBudgetApply = async (snapshot: BudgetAdjustDraft): Promise<void> => {
   renderRequested();
   try {
     const settings = toModelSettings(snapshot);
-    const payload = await callApi<DailyBudgetUiPayload | null>(
+    const payload = await callApi<DailyBudgetUiRead>(
       'POST',
       SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
       settings,
@@ -292,7 +295,7 @@ export const applyBudgetAdjust = async (): Promise<void> => {
   renderRequested();
   try {
     const settings = pendingPreview?.settings ?? toModelSettings(workingDraft);
-    const payload = await callApi<DailyBudgetUiPayload | null>(
+    const payload = await callApi<DailyBudgetUiRead>(
       'POST',
       SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
       settings,

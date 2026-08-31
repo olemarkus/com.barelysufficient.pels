@@ -136,7 +136,7 @@ describe('budgetAdjustController', () => {
 
   it('previews via API and exposes candidate + payload', async () => {
     const previewHandler = vi.fn<(body: unknown) => unknown>(() => ({
-      active: { days: {}, todayKey: 't' },
+      active: { kind: 'budget', payload: { days: {}, todayKey: 't' } },
       candidate: { days: {}, todayKey: 't' },
       settings: {
         enabled: true,
@@ -276,7 +276,7 @@ describe('budgetAdjustController', () => {
       (method, uri) => {
         if (method === 'POST' && uri === SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH) {
           return {
-            active: { days: {}, todayKey: 't' },
+            active: { kind: 'budget', payload: { days: {}, todayKey: 't' } },
             candidate: { days: {}, todayKey: 't' },
             settings: {
               enabled: true,
@@ -396,7 +396,7 @@ describe('budgetAdjustController', () => {
       },
       (method, uri) => {
         if (method === 'POST' && uri === SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH) {
-          return { active: null, candidate: null, settings: null };
+          return { active: { kind: 'unavailable' }, candidate: null, settings: null };
         }
         throw new Error(`unexpected ${method} ${uri}`);
       },
@@ -433,7 +433,7 @@ describe('budgetAdjustController', () => {
     // user edits while preview is still in flight
     controller.updateBudgetAdjustField({ dailyBudgetKWh: 90 });
     resolveCall({
-      active: { days: {}, todayKey: 't' },
+      active: { kind: 'budget', payload: { days: {}, todayKey: 't' } },
       candidate: { days: {}, todayKey: 't' },
       settings: {
         enabled: true,
@@ -511,7 +511,7 @@ describe('budgetAdjustController', () => {
     await installHomey(settings, (method, uri) => {
       if (method === 'POST' && uri === SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH) {
         return {
-          active: { days: {}, todayKey: 't' },
+          active: { kind: 'budget', payload: { days: {}, todayKey: 't' } },
           candidate: { days: {}, todayKey: 't' },
           settings: {
             enabled: true,
@@ -586,7 +586,7 @@ describe('budgetAdjustController', () => {
     const previewPromise = controller.previewBudgetAdjust();
     controller.discardBudgetAdjust();
     resolveCall({
-      active: { days: {}, todayKey: 't' },
+      active: { kind: 'budget', payload: { days: {}, todayKey: 't' } },
       candidate: { days: {}, todayKey: 't' },
       settings: {
         enabled: true,
@@ -625,7 +625,7 @@ describe('budgetAdjustController', () => {
     settings.daily_budget_kwh = 60;
     await controller.refreshBudgetAdjust();
     resolveCall({
-      active: { days: {}, todayKey: 't' },
+      active: { kind: 'budget', payload: { days: {}, todayKey: 't' } },
       candidate: { days: {}, todayKey: 't' },
       settings: {
         enabled: true,
@@ -656,7 +656,7 @@ describe('budgetAdjustController', () => {
       (method, uri) => {
         if (method === 'POST' && uri === SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH) {
           return {
-            active: activePayload,
+            active: { kind: 'budget', payload: activePayload },
             candidate: candidatePayload,
             settings: {
               enabled: true,

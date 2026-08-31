@@ -1,6 +1,7 @@
 import type {
   EnergySignatureFit,
   MetDaySummary,
+  WeatherAdvisorReadoutPayload,
   WeatherDailyRecord,
   WeatherHistoryState,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
@@ -85,13 +86,21 @@ const SETTINGS_OUTDOOR_ONLY = {
   enabled: true, outdoorDeviceId: 'dev-outdoor',
 };
 
+// The builder answers a discriminated read; every assertion below is about the
+// `readout` arm, so unwrap it once here rather than at each call site.
+const payloadFor = (input: WeatherAdvisorReadoutInput): WeatherAdvisorReadoutPayload | null => {
+  const read = buildWeatherAdvisorReadout(input);
+  return read.kind === 'readout' ? read.payload : null;
+};
+
 describe('buildWeatherAdvisorReadout', () => {
-  it('returns null when the flag is off (structural absence)', () => {
-    expect(buildWeatherAdvisorReadout(baseInput({ settings: { enabled: false } }))).toBeNull();
+  it('answers inactive when the flag is off (structural absence)', () => {
+    expect(buildWeatherAdvisorReadout(baseInput({ settings: { enabled: false } })))
+      .toEqual({ kind: 'inactive' });
   });
 
   it('resolves needs_device with empty data when no outdoor device is picked', () => {
-    const payload = buildWeatherAdvisorReadout(baseInput({ settings: { enabled: true } }));
+    const payload = payloadFor(baseInput({ settings: { enabled: true } }));
     expect(payload).toMatchObject({
       state: 'needs_device', fit: null, prediction: null, suggestion: null, usableDays: 0,
     });
@@ -100,7 +109,7 @@ describe('buildWeatherAdvisorReadout', () => {
   });
 
   it('echoes the auto-apply state (and last-applied) in both ready and needs_device payloads', () => {
-    const ready = buildWeatherAdvisorReadout(withState(
+    const ready = payloadFor(withState(
       { records: recentDays(30), latestFit: fit(), lastAutoApply: { dateKey: '2026-06-12', kwh: 44, appliedAtMs: NOW_MS } },
       { settings: { enabled: true, outdoorDeviceId: 'dev-outdoor', autoApplyDailyBudget: true }, dailyBudgetEnabled: true },
     ));
@@ -110,7 +119,7 @@ describe('buildWeatherAdvisorReadout', () => {
       lastAutoApply: { dateKey: '2026-06-12', kwh: 44 },
     });
 
-    const needsDevice = buildWeatherAdvisorReadout(baseInput({
+    const needsDevice = payloadFor(baseInput({
       settings: { enabled: true, autoApplyDailyBudget: true }, dailyBudgetEnabled: false,
     }));
     expect(needsDevice).toMatchObject({
@@ -119,16 +128,16 @@ describe('buildWeatherAdvisorReadout', () => {
   });
 
   it('defaults the auto-apply echo to false/null when unset', () => {
-    const payload = buildWeatherAdvisorReadout(withState({ records: recentDays(30), latestFit: fit() }));
+    const payload = payloadFor(withState({ records: recentDays(30), latestFit: fit() }));
     expect(payload).toMatchObject({
       autoApplyDailyBudget: false, dailyBudgetEnabled: false, lastAutoApply: null,
     });
   });
 
   it('resolves backfilling only while no fit exists yet', () => {
-    const learning = buildWeatherAdvisorReadout(baseInput({ backfillRunning: true }));
+    const learning = payloadFor(baseInput({ backfillRunning: true }));
     expect(learning?.state).toBe('backfilling');
-    const ready = buildWeatherAdvisorReadout(
+    const ready = payloadFor(
       withState({ records: recentDays(30), latestFit: fit() }, { backfillRunning: true }),
     );
     expect(ready?.state).toBe('ready');
@@ -138,13 +147,13 @@ describe('buildWeatherAdvisorReadout', () => {
     // No fit yet (learning) → the footer status comes from resolvePayloadForecastStatus.
     // A partial cached tomorrow is rejected by the suggestion path, so it must not be
     // labeled `forecast` here either (else the footer credits MET the numbers won't use).
-    const partial = buildWeatherAdvisorReadout(withState({
+    const partial = payloadFor(withState({
       records: recentDays(5),
       metForecast: { byDay: { [TOMORROW]: metDay(TOMORROW, { fullDayCoverage: false, hourCount: 9 }) }, fetchedAtMs: NOW_MS },
     }));
     expect(partial?.prediction).toBeNull();
     expect(partial?.forecastStatus).toBe('recent_days');
-    const full = buildWeatherAdvisorReadout(withState({
+    const full = payloadFor(withState({
       records: recentDays(5),
       metForecast: { byDay: { [TOMORROW]: metDay(TOMORROW) }, fetchedAtMs: NOW_MS },
     }));
@@ -157,13 +166,13 @@ describe('buildWeatherAdvisorReadout', () => {
       record(shiftDateKey(TODAY, -40), { quality: { partialTemp: true, missingKwh: false, unreliablePower: false, backfilled: false } }),
       record(shiftDateKey(TODAY, -41), { kwhTotal: undefined as unknown as number, quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: false } }),
     ];
-    const payload = buildWeatherAdvisorReadout(withState({ records }));
+    const payload = payloadFor(withState({ records }));
     expect(payload?.state).toBe('learning');
     expect(payload?.usableDays).toBe(8);
   });
 
   it('reuses the stored suggestion when it already targets tomorrow', () => {
-    const payload = buildWeatherAdvisorReadout(withState({
+    const payload = payloadFor(withState({
       records: recentDays(30),
       latestFit: fit(),
       latestSuggestion: {
@@ -187,7 +196,7 @@ describe('buildWeatherAdvisorReadout', () => {
   });
 
   it('recomputes for tomorrow from the MET cache when the stored suggestion targets the running day', () => {
-    const payload = buildWeatherAdvisorReadout(withState({
+    const payload = payloadFor(withState({
       records: recentDays(30),
       latestFit: fit(),
       metForecast: {
@@ -220,7 +229,7 @@ describe('buildWeatherAdvisorReadout', () => {
   it('reads the TOMORROW day from a cache that also holds today (card is forward-looking)', () => {
     // The per-day cache carries both today and tomorrow; the readout card must
     // resolve TOMORROW (warm), not today (cold) — the opposite of the auto-apply path.
-    const payload = buildWeatherAdvisorReadout(withState({
+    const payload = payloadFor(withState({
       records: recentDays(30),
       latestFit: fit(),
       metForecast: {
@@ -239,7 +248,7 @@ describe('buildWeatherAdvisorReadout', () => {
   it('filters a persisted null out of a reused stored suggestion (tempMin/Max round-trip)', () => {
     // A suggestion that round-tripped through JSON can carry null where the field
     // is optional; `!= null` must keep it out of the number-typed prediction field.
-    const payload = buildWeatherAdvisorReadout(withState({
+    const payload = payloadFor(withState({
       records: recentDays(30),
       latestFit: fit(),
       latestSuggestion: {
@@ -267,7 +276,7 @@ describe('buildWeatherAdvisorReadout', () => {
   });
 
   it('falls back to persistence with recent_days when there is no MET cache for tomorrow', () => {
-    const payload = buildWeatherAdvisorReadout(withState({
+    const payload = payloadFor(withState({
       records: recentDays(30),
       latestFit: fit(),
     }));
@@ -276,7 +285,7 @@ describe('buildWeatherAdvisorReadout', () => {
   });
 
   it('reports forecast (met_api) when the MET cache covers tomorrow', () => {
-    const payload = buildWeatherAdvisorReadout(withState({
+    const payload = payloadFor(withState({
       records: recentDays(30),
       latestFit: fit(),
       metForecast: {
@@ -291,7 +300,7 @@ describe('buildWeatherAdvisorReadout', () => {
   });
 
   it('surfaces coldEveningSuspected from a mild-day MET cache with a cold evening', () => {
-    const payload = buildWeatherAdvisorReadout(withState({
+    const payload = payloadFor(withState({
       records: recentDays(30),
       latestFit: fit(), // balancePointC 13
       metForecast: {
@@ -308,7 +317,7 @@ describe('buildWeatherAdvisorReadout', () => {
     // them 'recent_days' would present device-derived values as recent weather, so
     // it is DISCARDED and recomputed — here a MET cache for tomorrow wins (forecast),
     // proving the stale device numbers (50 / −2) are not shown.
-    const payload = buildWeatherAdvisorReadout(withState({
+    const payload = payloadFor(withState({
       records: recentDays(30),
       latestFit: fit(),
       metForecast: {
@@ -329,7 +338,7 @@ describe('buildWeatherAdvisorReadout', () => {
   });
 
   it('resolves the outdoor reading from the on-demand read (forecast has no device reading now)', () => {
-    const reading = buildWeatherAdvisorReadout(withState(
+    const reading = payloadFor(withState(
       { records: recentDays(30), latestFit: fit() },
       { settings: SETTINGS_OUTDOOR_ONLY, currentOutdoorTempC: 3.4 },
     ));
@@ -338,7 +347,7 @@ describe('buildWeatherAdvisorReadout', () => {
     expect(reading).not.toHaveProperty('forecastReading');
 
     // Outdoor configured but nothing readable → unreadable.
-    const unreadable = buildWeatherAdvisorReadout(withState(
+    const unreadable = payloadFor(withState(
       { records: recentDays(30), latestFit: fit() },
       { settings: SETTINGS_OUTDOOR_ONLY },
     ));
@@ -346,7 +355,7 @@ describe('buildWeatherAdvisorReadout', () => {
   });
 
   it('resolves forecastStatus even in the needs_device state (no outdoor device)', () => {
-    const payload = buildWeatherAdvisorReadout(baseInput({
+    const payload = payloadFor(baseInput({
       settings: { enabled: true },
     }));
     expect(payload?.state).toBe('needs_device');
@@ -355,14 +364,14 @@ describe('buildWeatherAdvisorReadout', () => {
   });
 
   it('surfaces the active daily budget (null when disabled) for the setup-card hint', () => {
-    expect(buildWeatherAdvisorReadout(baseInput({ settings: { enabled: true } }))?.dailyBudgetKwh)
+    expect(payloadFor(baseInput({ settings: { enabled: true } }))?.dailyBudgetKwh)
       .toBeNull();
-    expect(buildWeatherAdvisorReadout(baseInput({ currentDailyBudgetKwh: 50 }))?.dailyBudgetKwh)
+    expect(payloadFor(baseInput({ currentDailyBudgetKwh: 50 }))?.dailyBudgetKwh)
       .toBe(50);
   });
 
   it('marks the suggestion as capacity-capped when expected demand exceeds cap × 24h', () => {
-    const payload = buildWeatherAdvisorReadout(withState(
+    const payload = payloadFor(withState(
       { records: recentDays(30), latestFit: fit() },
       { capacityLimitKw: 1, currentDailyBudgetKwh: 20 },
     ));
@@ -375,7 +384,7 @@ describe('buildWeatherAdvisorReadout', () => {
   it('does NOT flag capacity-capped when expected demand fits under a tiny cap (floor clamps, not demand)', () => {
     // A 0.5 kW cap (12 kWh/day) clamps the [20,360] suggestion floor below the cap,
     // but tomorrow's predicted demand (8 kWh, uncorrelated) fits — so not over-cap.
-    const payload = buildWeatherAdvisorReadout(withState(
+    const payload = payloadFor(withState(
       { records: recentDays(30), latestFit: fit({ model: 'uncorrelated', medianDayKwh: 8 }) },
       { capacityLimitKw: 0.5 },
     ));
@@ -393,7 +402,7 @@ describe('buildWeatherAdvisorReadout', () => {
         quality: { partialTemp: true, missingKwh: false, unreliablePower: false, backfilled: false },
       }),
     ];
-    const payload = buildWeatherAdvisorReadout(withState({ records }));
+    const payload = payloadFor(withState({ records }));
     // Partial-temp day is excluded from the bins but still plotted raw.
     expect(payload?.scatter).toEqual([
       { tempBinC: 1, kwhMedian: 42, kwhQ1: 41, kwhQ3: 43, count: 2 },
@@ -407,7 +416,7 @@ describe('buildWeatherAdvisorReadout', () => {
       record(shiftDateKey(TODAY, -(index + 2)), { tempMeanC: -7 })
     ));
     const warm = [record(shiftDateKey(TODAY, -20), { tempMeanC: 6 })];
-    const payload = buildWeatherAdvisorReadout(withState({ records: [...warm, ...cold] }));
+    const payload = payloadFor(withState({ records: [...warm, ...cold] }));
     expect(payload?.coverage).toEqual([
       { fromC: -10, toC: -5, days: 14, sufficient: true },
       { fromC: -5, toC: 0, days: 0, sufficient: false },
@@ -424,19 +433,19 @@ describe('buildWeatherAdvisorReadout', () => {
       ...older,
       record(YESTERDAY, { tempMeanC: 3, kwhTotal: 47 }),
     ].sort((a, b) => a.dateKey.localeCompare(b.dateKey));
-    const payload = buildWeatherAdvisorReadout(withState({ records, latestFit: fit() }));
+    const payload = payloadFor(withState({ records, latestFit: fit() }));
     // Typical at 3 °C = 23 + 1.8 × 10 = 41 → deviation +6.
     expect(payload?.yesterday).toMatchObject({ dateKey: YESTERDAY, kwhTotal: 47 });
     expect(payload?.yesterday?.deviationKwh).toBeCloseTo(6, 5);
   });
 
   it('surfaces the drift magnitude only while drift is suspected', () => {
-    const calm = buildWeatherAdvisorReadout(withState({ records: recentDays(30), latestFit: fit() }));
+    const calm = payloadFor(withState({ records: recentDays(30), latestFit: fit() }));
     expect(calm?.driftSuspected).toBe(false);
     expect(calm?.driftDeviationKwh).toBeNull();
 
     const driftRecords = recentDays(30).map((entry) => ({ ...entry, tempMeanC: 13, kwhTotal: 28 }));
-    const drifted = buildWeatherAdvisorReadout(withState({
+    const drifted = payloadFor(withState({
       records: driftRecords,
       latestFit: fit({ driftSuspected: true }),
     }));

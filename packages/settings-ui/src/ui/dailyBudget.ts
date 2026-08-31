@@ -1,4 +1,4 @@
-import type { DailyBudgetUiPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
+import type { DailyBudgetUiPayload, DailyBudgetUiRead } from '../../../contracts/src/dailyBudgetTypes.ts';
 import { callApi, getSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { type CostDisplay } from './dailyBudgetCost.ts';
@@ -15,7 +15,7 @@ import { normalizeCombinedPrices, type CombinedPriceRow } from './combinedPrices
 import { setActiveDailyBudgetFromPayload } from './activeDailyBudget.ts';
 
 let currentDailyBudgetView: BudgetDayView = 'today';
-let latestDailyBudgetPayload: DailyBudgetUiPayload | null = null;
+let latestDailyBudgetRead: DailyBudgetUiRead = { kind: 'unavailable' };
 let costDisplay: CostDisplay = resolveCostDisplayFromCombinedPrices(null);
 // Normalized combined-price rows for the hero's "Export price now" subline —
 // refreshed alongside costDisplay from the same prices read-model fetch.
@@ -35,8 +35,25 @@ export const gateExportPriceRows = (
   exportEnabled ? rows : rows.map((row) => ({ ...row, budgetPrice: undefined, exportPrice: undefined }))
 );
 
-const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
-  latestDailyBudgetPayload = payload;
+// The Homey API bridge is an untrusted transport, so the wire value is
+// shape-guarded HERE and nowhere else (AGENTS.md, "Clean and trusted
+// interfaces"): the `budget` discriminant alone is a compile-time claim, and a
+// partial `{ kind: 'budget' }` off the bridge would hand the render tree an
+// `undefined` to index. Guarded are exactly the two fields this adapter and its
+// render tree dereference — `days` and `todayKey`; anything short of that reads
+// as `unavailable`, which the surface already draws.
+export const asBudgetPayload = (read: unknown): DailyBudgetUiPayload | null => {
+  if (typeof read !== 'object' || read === null) return null;
+  const { kind, payload } = read as { kind?: unknown; payload?: unknown };
+  if (kind !== 'budget' || typeof payload !== 'object' || payload === null) return null;
+  const { days, todayKey } = payload as { days?: unknown; todayKey?: unknown };
+  if (typeof days !== 'object' || days === null || typeof todayKey !== 'string') return null;
+  return payload as DailyBudgetUiPayload;
+};
+
+const renderDailyBudget = (read: DailyBudgetUiRead) => {
+  const payload = asBudgetPayload(read);
+  latestDailyBudgetRead = payload === null ? { kind: 'unavailable' } : { kind: 'budget', payload };
   // Keep the chart-overlay budget source in lockstep with what the Budget
   // hero renders (see `activeDailyBudget.ts` for why the budget-adjust draft
   // is not a valid source).
@@ -54,29 +71,29 @@ export const updateBudgetPower = (
   updateBudgetPriceLevel(power?.priceLevel ?? null);
 };
 
-export const refreshDailyBudgetPlan = async (payloadOverride?: DailyBudgetUiPayload | null) => {
+export const refreshDailyBudgetPlan = async (readOverride?: DailyBudgetUiRead) => {
   try {
-    const hasExplicitPayload = payloadOverride !== undefined;
-    const [payload, combinedPrices, exportEnabled] = await Promise.all([
+    const hasExplicitPayload = readOverride !== undefined;
+    const [read, combinedPrices, exportEnabled] = await Promise.all([
       hasExplicitPayload
-        ? Promise.resolve(payloadOverride)
-        : callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget'),
+        ? Promise.resolve(readOverride)
+        : callApi<DailyBudgetUiRead>('GET', '/daily_budget'),
       getPricesReadModel().then((prices) => prices.combinedPrices).catch(() => null),
       getSetting('export_price_enabled').then((value) => value === true).catch(() => false),
     ]);
     costDisplay = resolveCostDisplayFromCombinedPrices(combinedPrices);
     latestPriceRows = gateExportPriceRows(normalizeCombinedPrices(combinedPrices), exportEnabled);
-    renderDailyBudget(payload);
+    renderDailyBudget(read);
   } catch (error) {
     await logSettingsError('Failed to load daily budget plan', error, 'refreshDailyBudgetPlan');
-    renderDailyBudget(null);
+    renderDailyBudget({ kind: 'unavailable' });
   }
 };
 
 const setDailyBudgetView = (view: BudgetDayView) => {
   if (currentDailyBudgetView === view) return;
   currentDailyBudgetView = view;
-  renderDailyBudget(latestDailyBudgetPayload);
+  renderDailyBudget(latestDailyBudgetRead);
 };
 
 export const initDailyBudgetHandlers = () => {

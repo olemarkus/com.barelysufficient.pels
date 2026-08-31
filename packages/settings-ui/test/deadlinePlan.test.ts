@@ -113,7 +113,7 @@ const buildBootstrap = (
   activePlan: DeferredObjectiveActivePlanV1 | null = null,
 ): SettingsUiBootstrap => ({
   settings,
-  dailyBudget: null,
+  dailyBudget: { kind: 'unavailable' },
   deferredObjectiveActivePlans: buildActivePlans(activePlan),
   plan: null,
   power: {
