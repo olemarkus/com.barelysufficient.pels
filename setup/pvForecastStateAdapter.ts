@@ -9,6 +9,10 @@
 // days of learned generation history (notes/persisted-settings-state.md).
 
 import { PV_FORECAST_STATE, PV_FORECAST_STATE_INITIALIZED } from '../lib/utils/settingsKeys';
+import type {
+  PvForecastStateRead,
+  PvForecastStore,
+} from '../lib/solar/pvForecastStore';
 import { isFiniteNumber } from '../lib/utils/appTypeGuards';
 import type { PvForecastServiceState } from '../lib/solar/pvForecastService';
 import type { PvGenerationHistory, PvHourBucket } from '../packages/shared-domain/src/solar/pvGenerationHistory';
@@ -141,11 +145,6 @@ export const normalizePvForecastState = (raw: unknown): PvForecastStateParse => 
  *                    marker/key-list probes threw, disagreed, or contradicted
  *                    the empty read — e.g. the key list still lists the blob).
  */
-export type PvForecastStateRead =
-  | { kind: 'loaded'; state: PvForecastServiceState }
-  | { kind: 'absent' }
-  | { kind: 'marker_only' }
-  | { kind: 'unreadable'; reason: 'read_threw' | 'malformed' | 'absence_unproven' };
 
 /** The settings surface the store binds. `getKeys` is typed as the untrusted
  *  boundary it is (the `readTemperatureControlDisabledDevicesSetting`
@@ -156,10 +155,6 @@ export type PvForecastStoreSettings = {
   getKeys: () => unknown;
 };
 
-export type PvForecastStore = {
-  read: () => PvForecastStateRead;
-  write: (state: PvForecastServiceState) => void;
-};
 
 export const createPvForecastStore = (
   homey: { settings: PvForecastStoreSettings },
@@ -274,3 +269,5 @@ export const createPvForecastStore = (
 
   return { read, write };
 };
+
+export type { PvForecastStateRead, PvForecastStore } from '../lib/solar/pvForecastStore';

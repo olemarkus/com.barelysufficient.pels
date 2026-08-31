@@ -817,20 +817,6 @@ What remains open is below.*
       changed their mind. *Hypothesis:* the instant-on after toggle-off reads as PELS ignoring the toggle.
       P2. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
-- [ ] **`steppedLoadLastBinaryOnByDeviceId` is an observation cached in the executor.**
-      The last remaining member of `DeviceControlRuntimeState` that is not commanded-axis state
-      (`lib/executor/steppedCommandState.ts:56`). It exists so
-      `expireConfirmedDesiredStepOnBinaryOff` can spot the on→off EDGE, which needs a previous
-      value the observer projection does not carry — the projection holds the current fold only.
-      The repo expresses edges properly elsewhere: `ObservedBinaryChange` +
-      `sawOnToOffTransition` (`setup/externalOffHoldDetection.ts:65,121`), fed by the
-      observed-state event stream. Now that the lifecycle runs in `syncSteppedCommands` rather
-      than during decoration, the sweep is a place a change set could reach. Change: feed the
-      sweep the observed binary CHANGES rather than a per-device fold, and delete the latch.
-      Done when `grep -n steppedLoadLastBinaryOnByDeviceId lib/` is empty and the two-sample edge
-      test in `test/unit/syncSteppedCommands.test.ts` still passes against the change-set input.
-      Found 2026-08-31.
-
 ## P2 Product, Observability, and Maintainability
 
 - [ ] **The zone tree is refetched on every snapshot refresh — 538 Homey round-trips per 12 h for

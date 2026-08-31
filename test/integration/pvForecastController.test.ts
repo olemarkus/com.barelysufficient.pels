@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PvForecastController, type PvForecastControllerCtx } from '../../setup/appInit/createPvForecastService';
+import { PvForecastController } from '../../setup/appInit/createPvForecastService';
+import type { PvForecastControllerCtx } from '../../lib/solar/pvForecastController';
+import {
+  createPvForecastStore,
+  type PvForecastStoreSettings,
+} from '../../setup/pvForecastStateAdapter';
 import { PV_FORECAST_STATE, PV_FORECAST_STATE_INITIALIZED } from '../../lib/utils/settingsKeys';
 
 const HOUR_MS = 3_600_000;
@@ -10,13 +15,19 @@ const flushMicro = async (): Promise<void> => {
 
 const radiationOk = { ok: true, json: async () => ({ hourly: { time: [], shortwave_radiation: [] } }) };
 
-const makeCtx = (overrides: Partial<PvForecastControllerCtx> = {}): PvForecastControllerCtx => ({
-  homey: {
+type CtxOverrides = Partial<Omit<PvForecastControllerCtx, 'store'>> & {
+  /** The settings fake; wrapped in the REAL adapter, since classifying the
+   *  boot read is the adapter's job and these tests are about that. */
+  homey?: { settings: PvForecastStoreSettings };
+};
+
+const makeCtx = ({ homey, ...overrides }: CtxOverrides = {}): PvForecastControllerCtx => ({
+  store: createPvForecastStore(homey ?? {
     // No blob, no marker, and an EMPTY key list: classified `unreadable` (an
     // empty list proves nothing), so persistence-agnostic tests run with the
     // grace armed and never write.
     settings: { get: () => undefined, set: () => {}, getKeys: () => [] },
-  },
+  }),
   userAgent: 'pels-test',
   getNowMs: () => 0,
   readCoordinates: async () => ({

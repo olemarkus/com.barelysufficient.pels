@@ -1,12 +1,12 @@
 import { getRawFromHomeyApi } from '../lib/device/transport/managerHomeyApi';
+import type { HubCoordinatesResult } from '../lib/solar/pvForecastStore';
 
 export const HOMEY_LOCATION_API_PATH = 'manager/geolocation/option/location';
 
-export type HubCoordinates = { latitude: number; longitude: number };
-
-export type HubCoordinatesResult =
-  | { kind: 'resolved'; coordinates: HubCoordinates }
-  | { kind: 'unavailable'; outcome: 'failed' | 'no_location' };
+// The contract is the domain's; this adapter only implements it. Re-exported
+// for existing importers so there is one definition, not two that happen to
+// agree today (`setup/AGENTS.md` § "Adapter naming").
+export type { HubCoordinates, HubCoordinatesResult } from '../lib/solar/pvForecastStore';
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
