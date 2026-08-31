@@ -50,9 +50,23 @@ export type DeviceControlRuntimeState = {
   // separate from `steppedLoadDesiredByDeviceId`, which may contain preserved
   // planner intent that was never issued.
   steppedLoadStepCommandIssuedByDeviceId: Set<string>;
-  // Last observed raw binary on/off per stepped device, kept only to detect the
-  // on→off transition that expires command-axis state from the ended on-session
-  // (see `expireConfirmedDesiredStepOnBinaryOff`).
+  /**
+   * The settle cursor for the binary axis: the on/off state this layer last
+   * SETTLED against, per device. Not a copy of the observer's state — the
+   * observer serves what a device is now, and only the settler needs what it
+   * was when the last conclusion was drawn.
+   *
+   * It exists because ending a command session is an EDGE (`expireConfirmedDesiredStepOnBinaryOff`):
+   * a device that went on→off has ended the session its command belonged to,
+   * while a command issued while the device was already off is a preparation
+   * and must survive. Telling those apart needs a previous value, and the only
+   * layer that can hold one honestly is the one drawing the conclusion — the
+   * same reason `PendingBinaryCommandStore` keeps `recentConfirmedOffByDevice`.
+   *
+   * Deliberately NOT sourced from the observed-change event: that path is
+   * push-only, and a missed event would leave a command session alive past its
+   * on-session. The settle sweep is a pull, so it cannot miss the edge.
+   */
   steppedLoadLastBinaryOnByDeviceId: Map<string, boolean>;
 };
 
