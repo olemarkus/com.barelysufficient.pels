@@ -88,6 +88,7 @@ const createLogger = (): Logger => ({
 const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   logger,
   providers: {
+    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
     getNativeEvWiringEnabled: () => true,
     // The prod charger runs the 1-phase EV preset (steps 6 A → 16 A, 230 V).
     getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_1_phase' as const }),

@@ -62,7 +62,7 @@ describe('resolveMeterDailyKwh', () => {
   it('adopts the meter whose daily diffs match the tracker and reconstructs pre-tracker days', async () => {
     const fetchFromHomeyApi = buildFetch();
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -82,7 +82,7 @@ describe('resolveMeterDailyKwh', () => {
       'manager/devices/device': () => ({ 'thermo-1': DEVICES['thermo-1'] }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'thermo-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result).toEqual({ outcome: 'no_comparable_source', candidatesChecked: 1, probeFailures: 0 });
   });
@@ -94,9 +94,9 @@ describe('resolveMeterDailyKwh', () => {
       },
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
-    expect(result).toEqual({ outcome: 'no_comparable_source', candidatesChecked: 2, probeFailures: 2 });
+    expect(result).toEqual({ outcome: 'no_comparable_source', candidatesChecked: 1, probeFailures: 1 });
   });
 
   it('reports no_candidates when no device exposes a cumulative meter', async () => {
@@ -104,7 +104,7 @@ describe('resolveMeterDailyKwh', () => {
       'manager/devices/device': () => ({ lamp: DEVICES.lamp }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result).toEqual({ outcome: 'no_candidates' });
   });
@@ -115,9 +115,9 @@ describe('resolveMeterDailyKwh', () => {
       dateKey >= dateKeyOf(25) ? trackerKwh(dateKey) : {}
     );
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: fiveDayTracker, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: fiveDayTracker, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
-    expect(result).toEqual({ outcome: 'no_comparable_source', candidatesChecked: 2, probeFailures: 0 });
+    expect(result).toEqual({ outcome: 'no_comparable_source', candidatesChecked: 1, probeFailures: 0 });
   });
 
   it('drops only the reset day on a counter swap and the surrounding days on a sample gap', async () => {
@@ -133,7 +133,7 @@ describe('resolveMeterDailyKwh', () => {
       }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -153,7 +153,7 @@ describe('resolveMeterDailyKwh', () => {
       },
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -166,7 +166,7 @@ describe('resolveMeterDailyKwh', () => {
       'resolution=lastYear': () => ({ step: 24 * HOUR_MS, values: counterValues() }),
     });
     const coarse = await resolveMeterDailyKwh({
-      fetchFromHomeyApi: tooCoarse, getDailyKwh: trackerKwh, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi: tooCoarse, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(coarse.outcome).toBe('resolved');
     if (coarse.outcome === 'resolved') expect(coarse.complete).toBe(false);
@@ -175,25 +175,28 @@ describe('resolveMeterDailyKwh', () => {
       'resolution=lastYear': () => ({ step: 6 * HOUR_MS, values: [] }),
     });
     const empty = await resolveMeterDailyKwh({
-      fetchFromHomeyApi: legitimatelyEmpty, getDailyKwh: trackerKwh, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi: legitimatelyEmpty, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(empty.outcome).toBe('resolved');
     if (empty.outcome === 'resolved') expect(empty.complete).toBe(true);
   });
 
-  it('blocks the latch when any candidate probe failed its election round', async () => {
+  it('never probes outside the restricted meter — other devices cannot fail the election', async () => {
+    // The open election died with Automatic: a sibling device's broken insight
+    // log is simply never read, so it can neither fail nor incomplete-flag the
+    // selected meter's round.
     const fetchFromHomeyApi = buildFetch({
       'thermo-1:meter_power': () => {
         throw new Error('probe timeout');
       },
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
     expect(result.deviceId).toBe('han-1');
-    expect(result.complete).toBe(false);
+    expect(result.complete).toBe(true);
   });
 
   it('adopts an import meter whose export log is conclusively empty (gross = net)', async () => {
@@ -201,7 +204,7 @@ describe('resolveMeterDailyKwh', () => {
       'han-1:meter_power.exported': () => ({ step: 6 * HOUR_MS, values: [] }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -216,11 +219,11 @@ describe('resolveMeterDailyKwh', () => {
       },
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     // The probe cannot net without the export counter: the candidate is
     // skipped and the verdict is flagged as resting on unread evidence.
-    expect(result).toEqual({ outcome: 'no_comparable_source', candidatesChecked: 2, probeFailures: 1 });
+    expect(result).toEqual({ outcome: 'no_comparable_source', candidatesChecked: 1, probeFailures: 1 });
   });
 
   it('falls back to gross import when an import window fails but the export log is conclusively empty', async () => {
@@ -231,7 +234,7 @@ describe('resolveMeterDailyKwh', () => {
       'han-1:meter_power.exported': () => ({ step: 6 * HOUR_MS, values: [] }),
     });
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: trackerKwh, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: trackerKwh, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -261,7 +264,7 @@ describe('resolveMeterDailyKwh', () => {
       return gross === undefined ? {} : { total: gross - EXPORT_PER_DAY };
     };
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: netTracker, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: netTracker, restrictToDeviceId: 'bidi-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;
@@ -286,7 +289,7 @@ describe('resolveMeterDailyKwh', () => {
       return gross === undefined ? {} : { total: gross - EXPORT_PER_DAY };
     };
     const result = await resolveMeterDailyKwh({
-      fetchFromHomeyApi, getDailyKwh: netTracker, timeZone: OSLO, nowMs: NOW_MS,
+      fetchFromHomeyApi, getDailyKwh: netTracker, restrictToDeviceId: 'han-1', timeZone: OSLO, nowMs: NOW_MS,
     });
     expect(result.outcome).toBe('resolved');
     if (result.outcome !== 'resolved') return;

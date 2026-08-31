@@ -13,17 +13,6 @@ const toFiniteNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
 
-/** Automatic whole-home resolution at the untrusted Homey Energy boundary. */
-export type AutomaticHomePowerResolution =
-  | {
-    state: 'resolved';
-    watts: number;
-    deviceId: string | null;
-    cumulativeItemCount: number;
-  }
-  | { state: 'ambiguous'; cumulativeItemCount: number }
-  | { state: 'unavailable'; cumulativeItemCount: number };
-
 const toNonEmptyString = (value: unknown): string | null => (
   typeof value === 'string' && value.trim() !== '' ? value.trim() : null
 );
@@ -43,48 +32,6 @@ const resolveCumulativeMeterReading = (
   if (deviceId !== null && seenDeviceIds.has(deviceId)) return null;
   if (deviceId !== null) seenDeviceIds.add(deviceId);
   return { watts, deviceId };
-};
-
-/**
- * Resolve Automatic without letting Homey's report order choose control
- * authority. A sole finite cumulative item is authoritative. When several are
- * usable, only a previously resolved id may break the tie; otherwise the read
- * is explicitly ambiguous and no whole-home sample is produced.
- *
- * `preferredDeviceId` is session evidence supplied by the transport owner. An
- * id-less aggregate can be accepted only when it is the sole usable candidate,
- * because it cannot be matched safely once several cumulative items exist.
- */
-export const resolveAutomaticHomePowerReading = (
-  liveReport: unknown,
-  preferredDeviceId: string | null,
-): AutomaticHomePowerResolution => {
-  const report = asRecord(liveReport);
-  if (!report || !Array.isArray(report.items)) {
-    return { state: 'unavailable', cumulativeItemCount: 0 };
-  }
-  const cumulativeItems = report.items
-    .map(asRecord)
-    .filter((item): item is UnknownRecord => item !== null && item.type === 'cumulative');
-  const cumulativeItemCount = cumulativeItems.length;
-  const candidates: CumulativeMeterReading[] = [];
-  const seenDeviceIds = new Set<string>();
-  for (const item of cumulativeItems) {
-    const candidate = resolveCumulativeMeterReading(item, seenDeviceIds);
-    if (candidate !== null) candidates.push(candidate);
-  }
-  const [soleCandidate, ...furtherCandidates] = candidates;
-  if (soleCandidate === undefined) return { state: 'unavailable', cumulativeItemCount };
-  if (furtherCandidates.length === 0) {
-    return { state: 'resolved', ...soleCandidate, cumulativeItemCount };
-  }
-  if (preferredDeviceId !== null) {
-    const [match, ...furtherMatches] = candidates.filter(({ deviceId }) => deviceId === preferredDeviceId);
-    if (match !== undefined && furtherMatches.length === 0) {
-      return { state: 'resolved', ...match, cumulativeItemCount };
-    }
-  }
-  return { state: 'ambiguous', cumulativeItemCount };
 };
 
 /** The sole-cumulative-meter census over one live energy report. */
@@ -137,7 +84,7 @@ export const resolveSoleCumulativeMeter = (
  * carrying its real device id (and NOT as a `device` item); every other
  * power-reporting device appears as a `device` item. So the selection matches
  * `deviceId` across BOTH item types. Negative watts pass through (export —
- * same net semantics as `resolveAutomaticHomePowerReading`). Returns `null` when the
+ * net semantics). Returns `null` when the
  * id is absent or its reading is non-finite — it NEVER falls back to the first
  * cumulative item, because a silent fallback would mask a wrong or missing
  * selection with another meter's data.
@@ -168,8 +115,8 @@ export type LiveMeterItem = { id: string; type: LiveMeterItemType };
  * lists exactly those. Order and duplicates from the report are preserved-then-
  * deduped by id (first wins). An id-less cumulative item (some Homey setups
  * emit the whole-home aggregate without an id) is intentionally omitted: it
- * can't be pinned to a selection and is covered by Automatic only when it is
- * the sole usable cumulative item. Names are NOT carried here — the report has none;
+ * can't be pinned to a selection, so PELS cannot read it — such a home runs
+ * on the Flow source. Names are NOT carried here — the report has none;
  * the adapter joins id→name from the device list.
  */
 export const extractLiveMeterItems = (liveReport: unknown): LiveMeterItem[] => {

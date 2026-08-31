@@ -146,7 +146,7 @@ const makeStaticService = (params: {
   getZoneTree: params.getZoneTree,
   getDevices: () => params.devices,
   getLogger: () => params.logger,
-  getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+  getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
   // Most pre-existing scenarios model the formerly enabled feature. Upgrade
   // hold cases opt out explicitly below.
   legacyMultiHomeEnabled: params.legacyMultiHomeEnabled ?? true,
@@ -236,7 +236,9 @@ describe('post-refresh recompute through the transport seam', () => {
   // assembles it (both notification seams subscribed).
   const buildTransportChain = (logger?: PinoLogger) => {
     const emitter = new ObservedStateEmitter();
-    const transport = new DeviceTransport(homeyApp, loggerMock, {}, undefined, {
+    const transport = new DeviceTransport(homeyApp, loggerMock, {
+      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+    }, undefined, {
       observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
     });
     const wiring = createHomeMembershipService({
@@ -271,7 +273,7 @@ describe('post-refresh recompute through the transport seam', () => {
 
     // At the refresh-dispatch instant the detached tree fetch has not landed:
     // no tree seen yet, so the device fail-safes to main, visibly.
-    await transport.refreshSnapshot();
+    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     expect(service.getHomeIdForDevice('dev1')).toBe('main');
     expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('fallback');
 
@@ -288,7 +290,7 @@ describe('post-refresh recompute through the transport seam', () => {
     // refresh recomputes membership back to the main-home complement (the
     // refresh dispatch joins against the already-cached tree synchronously).
     device.setZone('z3');
-    await transport.refreshSnapshot();
+    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     expect(service.getHomeIdForDevice('dev1')).toBe('main');
     expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('zone');
   });
@@ -300,7 +302,9 @@ describe('post-refresh recompute through the transport seam', () => {
       subHomes: [SUB_HOME_A],
     });
     const emitter = new ObservedStateEmitter();
-    const transport = new DeviceTransport(homeyApp, loggerMock, {}, undefined, {
+    const transport = new DeviceTransport(homeyApp, loggerMock, {
+      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+    }, undefined, {
       observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
     });
     // Stub ctx exposing ONLY the members `wireHomeMembership` may touch. The
@@ -320,7 +324,7 @@ describe('post-refresh recompute through the transport seam', () => {
     } as unknown as AppContext;
     const wiring = wireHomeMembership(ctxStub, emitter);
 
-    await transport.refreshSnapshot();
+    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     await settleDetachedZoneFetch();
     expect(wiring.service.getMembershipMap()).toEqual({ dev1: 'h_a' });
   });
@@ -333,7 +337,9 @@ describe('post-refresh recompute through the transport seam', () => {
     });
     const { warn, error, logger } = makeLoggerSpy();
     const emitter = new ObservedStateEmitter();
-    const transport = new DeviceTransport(homeyApp, loggerMock, {}, undefined, {
+    const transport = new DeviceTransport(homeyApp, loggerMock, {
+      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+    }, undefined, {
       observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
     });
     // Wiring-order regression stub: membership seams present, planService
@@ -355,7 +361,7 @@ describe('post-refresh recompute through the transport seam', () => {
     // change, so the invalidation fires with no plan service wired: the skip
     // must be logged, never silent, and nothing may throw (a contained throw
     // would surface as home_membership_recompute_failed on the error spy).
-    await transport.refreshSnapshot();
+    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     await settleDetachedZoneFetch();
     expect(wiring.service.getHomeIdForDevice('dev1')).toBe('h_a');
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({
@@ -373,7 +379,7 @@ describe('post-refresh recompute through the transport seam', () => {
     });
     const { transport, service } = buildTransportChain();
 
-    await transport.refreshSnapshot();
+    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     await settleDetachedZoneFetch();
     expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
 
@@ -402,7 +408,7 @@ describe('post-refresh recompute through the transport seam', () => {
       subHomes: [SUB_HOME_A],
     });
     const { transport, service, teardown } = buildTransportChain();
-    await transport.refreshSnapshot();
+    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     await settleDetachedZoneFetch();
     expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
 
@@ -412,7 +418,7 @@ describe('post-refresh recompute through the transport seam', () => {
     // tree commit) completes — a live subscription would recompute dev1 to
     // main. The map staying put proves NEITHER trigger reached the service.
     device.setZone('z3');
-    await transport.refreshSnapshot();
+    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     await settleDetachedZoneFetch();
     expect(service.getMembershipMap()).toEqual({ dev1: 'h_a' });
 
@@ -431,7 +437,7 @@ describe('post-refresh recompute through the transport seam', () => {
     });
     const { error, logger } = makeLoggerSpy();
     const { transport, service } = buildTransportChain(logger);
-    await transport.refreshSnapshot();
+    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     await settleDetachedZoneFetch();
     expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
 
@@ -441,7 +447,7 @@ describe('post-refresh recompute through the transport seam', () => {
     device.setZone('z3');
     // The refresh emit chain must complete (an uncontained throw would reject
     // refreshSnapshot and break the live-feed/mutation listeners riding it)...
-    await transport.refreshSnapshot();
+    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     // ...and the detached tree-commit chain must settle without an unhandled
     // rejection (its recompute throws too).
     await settleDetachedZoneFetch();
@@ -555,7 +561,7 @@ describe('settings-change recompute triggers', () => {
       getZoneTree: () => ZONES,
       getDevices: () => devices,
       getLogger: () => undefined,
-      getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+      getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       legacyMultiHomeEnabled: true,
       onMembershipChanged,
     });
@@ -667,7 +673,7 @@ describe('last-known zone retention', () => {
     getZoneTree: () => ZONES,
     getDevices: params.getDevices,
     getLogger: () => params.logger,
-    getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+    getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
     legacyMultiHomeEnabled: true,
   });
 
@@ -943,23 +949,41 @@ describe('ui_homes payload', () => {
     expect(setSpy).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['an existing Main meter key returns undefined', false],
-    ['the settings key list is transiently empty', true],
-  ])('refuses an area upsert as degraded before side effects when %s', (_label, emptyKeyList) => {
+  it('answers a transiently missing Main meter read with the picker remedy, before side effects', () => {
+    // `unavailable` no longer distinguishes a transient miss from the legacy
+    // no-meter shape (absence stopped being a value), and the picker remedy
+    // is actionable in both — re-picking shows the truth on a transient miss,
+    // where a degraded "try again" would loop forever on the legacy shape.
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
     const homeyWired = makeWiredHealthyHomey();
     const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
-    const originalGetKeys = mockHomeyInstance.settings.getKeys.bind(mockHomeyInstance.settings);
     vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => (
       key === HOMEY_ENERGY_METER_DEVICE_ID ? undefined : originalGet(key)
     ));
-    if (emptyKeyList) {
-      vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockReturnValue([]);
-    } else {
-      vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockImplementation(originalGetKeys);
-    }
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: {
+        op: 'upsert',
+        area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' },
+      },
+    })).toEqual({ ok: false, reason: 'main_meter_required' });
+
+    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+    expect(setSpy).not.toHaveBeenCalled();
+  });
+
+  it('refuses an area upsert as degraded before side effects on a transiently empty key list', () => {
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
+    const homeyWired = makeWiredHealthyHomey();
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => (
+      key === HOMEY_ENERGY_METER_DEVICE_ID ? undefined : originalGet(key)
+    ));
+    vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockReturnValue([]);
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
     expect(saveSettingsUiHomesConfig({
@@ -970,13 +994,11 @@ describe('ui_homes payload', () => {
       },
     })).toEqual({ ok: false, reason: 'degraded' });
 
-    expect(createHomesStore(homeyLike).read()).toEqual({
-      state: emptyKeyList ? 'suspect' : 'unwritten',
-    });
+    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'suspect' });
     expect(setSpy).not.toHaveBeenCalled();
   });
 
-  it('refuses an area upsert while the Main home is still on Automatic (Homey Energy)', () => {
+  it('refuses an area upsert while the Main home has no meter persisted (Homey Energy)', () => {
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, null);
     const homeyWired = makeWiredHealthyHomey();
@@ -995,25 +1017,6 @@ describe('ui_homes payload', () => {
       homey: homeyWired,
       body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' } },
     })).toEqual({ ok: true });
-  });
-
-  it('asks for the picker regardless of the latched meter arrangement', () => {
-    // The id-less-aggregate honest-state refusal (`meter_unnameable`) is
-    // retired with Automatic: an id-less-aggregate home runs on Flow after
-    // the boot-time meter-authority migration, so an unset Main meter under
-    // Homey Energy always gets the ordinary picker remedy — whatever the
-    // membership service latched about the arrangement.
-    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
-    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, null);
-    const homeyWired = makeWiredHealthyHomey();
-    for (const arrangement of ['idless_aggregate_only', 'unproven', 'identified'] as const) {
-      homeyWired.app.homeMembership.noteHomeMeterArrangement(arrangement);
-      expect(saveSettingsUiHomesConfig({
-        homey: homeyWired,
-        body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' } },
-      })).toEqual({ ok: false, reason: 'main_meter_required' });
-    }
-    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
   });
 
   it('refuses an area save on the Flow source, whatever the Main meter says', () => {
@@ -2198,22 +2201,19 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
           warn, info: vi.fn(), debug: vi.fn(), error: vi.fn(),
         }) as never,
         // Automatic.
-        getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+        getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
         legacyMultiHomeEnabled: true,
       });
       service.recompute();
       return service;
     };
 
-    it('does NOT fence on an unknown sampled identity', () => {
-      // Unknown is not a collision: an area meter always reports under its own
-      // id, so a missing id cannot be one. Fencing here would close the seam for
+    it('does NOT fence before any sample has been ingested', () => {
+      // Unknown is not a collision. Fencing here would close the seam for
       // the whole boot window — and this fence is shared with smart-task
       // authority, so it would report tasks unavailable on every start.
       const service = buildAutomaticService();
       expect(service.hasSeenZoneTreeCommit()).toBe(true);
-      expect(service.isMainHomeActuationFenced()).toBe(false);
-      service.noteResolvedHomeMeter(null, Date.now());
       expect(service.isMainHomeActuationFenced()).toBe(false);
     });
 
@@ -2260,58 +2260,23 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
         service.noteResolvedHomeMeter('m-area', Date.now());
         expect(service.isMainHomeActuationFenced()).toBe(true);
 
-        // One millisecond before the sample stops being fresh, still fenced.
+        // One millisecond before the sample stops being fresh, still fenced —
+        // expiry is judged at READ time, no further ingest required.
         vi.advanceTimersByTime(POWER_SAMPLE_STALE_THRESHOLD_MS - 1);
-        service.noteResolvedHomeMeter(null, Date.now());
         expect(service.isMainHomeActuationFenced()).toBe(true);
 
-        // At the threshold the sample is no longer fresh (`hasLivePowerSample`
-        // false, synthetic headroom), so the collision it proved can no longer
-        // reach a decision and the identity may be dropped.
+        // At the threshold the raw fence expires with its sample — but a
+        // LATCHED actuation episode stays closed until a replacement ingest
+        // hands it to fresh-plan recovery (watts-before-fence).
         vi.advanceTimersByTime(1);
-        service.noteResolvedHomeMeter(null, Date.now());
+        expect(service.isMainHomeActuationFenced()).toBe(true);
+        service.noteResolvedHomeMeter('m-main', Date.now());
         expect(service.isMainHomeActuationFenced()).toBe(false);
       } finally {
         vi.useRealTimers();
       }
     });
 
-    it('retains a PROVEN collision across id-less ingests until its own sample expires', () => {
-      // An unknown identity arrives on any admitted sample whose payload could
-      // not attribute the watts (e.g. an id-less cumulative aggregate).
-      // Overwriting a proven identity with it would release Main's write seam
-      // on a payload quirk.
-      //
-      // The window is elapsed TIME on purpose, anchored to the proven sample's
-      // ingest stamp: a burst of unknown-identity ingests must not spend the
-      // retention in report counts during exactly the shedding episode it
-      // exists to protect.
-      vi.useFakeTimers();
-      try {
-        vi.setSystemTime(new Date('2026-07-27T10:00:00Z'));
-        const service = buildAutomaticService();
-        service.noteResolvedHomeMeter('m-area', Date.now());
-        expect(service.isMainHomeActuationFenced()).toBe(true);
-
-        // A burst of unreadable reads inside one second cannot release it.
-        for (let i = 0; i < 10; i += 1) {
-          vi.advanceTimersByTime(100);
-          service.noteResolvedHomeMeter(null, Date.now());
-          expect(service.isMainHomeActuationFenced()).toBe(true);
-        }
-
-        vi.advanceTimersByTime(POWER_SAMPLE_STALE_THRESHOLD_MS - 2_000);
-        service.noteResolvedHomeMeter(null, Date.now());
-        expect(service.isMainHomeActuationFenced()).toBe(true);
-
-        // Sustained unreadability finally abandons the identity.
-        vi.advanceTimersByTime(2_000);
-        service.noteResolvedHomeMeter(null, Date.now());
-        expect(service.isMainHomeActuationFenced()).toBe(false);
-      } finally {
-        vi.useRealTimers();
-      }
-    });
 
     it('a re-proven collision re-anchors the retention, so flapping never releases the fence', () => {
       vi.useFakeTimers();
@@ -2320,8 +2285,6 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
         const service = buildAutomaticService();
         service.noteResolvedHomeMeter('m-area', Date.now());
         for (let i = 0; i < 10; i += 1) {
-          vi.advanceTimersByTime(POWER_SAMPLE_STALE_THRESHOLD_MS - 1_000);
-          service.noteResolvedHomeMeter(null, Date.now());
           vi.advanceTimersByTime(POWER_SAMPLE_STALE_THRESHOLD_MS - 1_000);
           service.noteResolvedHomeMeter('m-area', Date.now());
           expect(service.isMainHomeActuationFenced()).toBe(true);
@@ -2368,7 +2331,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
             warn, info: vi.fn(), debug: vi.fn(), error: vi.fn(),
           }) as never,
           // Automatic.
-          getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+          getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
           getConfiguredPowerSource,
           getRestoredSampleAtMs,
           legacyMultiHomeEnabled: true,
@@ -2395,10 +2358,9 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
           expect(service.isMainHomeActuationFenced()).toBe(true);
           expect(warn).not.toHaveBeenCalled();
 
-          // The first ADMITTED ingest re-proves provenance even when the payload
-          // could not attribute it: an area meter always reports under its own
-          // id, so an id-less sample this process admitted is not the hazard.
-          service.noteResolvedHomeMeter(null, Date.now());
+          // The first ADMITTED ingest re-proves provenance: every admitted
+          // Homey-Energy sample names its meter now.
+          service.noteResolvedHomeMeter('m-main', Date.now());
           expect(service.isMainHomeActuationFenced()).toBe(false);
         } finally {
           vi.useRealTimers();
@@ -2490,7 +2452,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
             getZoneTree: () => ZONES,
             getDevices: () => [],
             getLogger: () => undefined,
-            getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+            getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
             getRestoredSampleAtMs: () => restoredAtMs,
             legacyMultiHomeEnabled: true,
             onMainAuthorityReopened,
@@ -2558,7 +2520,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
         getZoneTree: () => ZONES,
         getDevices: () => [],
         getLogger: () => undefined,
-        getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+        getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
         legacyMultiHomeEnabled: true,
       });
       service.recompute();
@@ -2598,7 +2560,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
               warn: overrides.warn, info: vi.fn(), debug: vi.fn(), error: vi.fn(),
             }) as never),
           getMainMeterSelection: () => (
-            overrides.mainMeterSelection ?? { state: 'resolved', meterDeviceId: null }
+            overrides.mainMeterSelection ?? { state: 'resolved', meterDeviceId: 'm-main' }
           ),
           getConfiguredPowerSource: overrides.getConfiguredPowerSource ?? homeyEnergyPowerSource,
           legacyMultiHomeEnabled: true,
@@ -2630,10 +2592,9 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
         expect(onMainAuthorityReopened).toHaveBeenCalledTimes(1);
       });
 
-      it('requests recovery when an id-less ingest replaces an expired collision', () => {
-        // Sustained id-less ingests never re-anchor the identity, so it expires
-        // on its own sample's horizon. The later admitted ingest replaces those
-        // watts and hands the latched episode to recovery.
+      it('requests recovery when a later ingest lands after the collision expired', () => {
+        // The identity expires on its own sample's horizon; the later admitted
+        // ingest replaces those watts and hands the latched episode to recovery.
         const onMainAuthorityReopened = vi.fn();
         vi.useFakeTimers();
         try {
@@ -2641,14 +2602,10 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
           const service = buildWithReopen(onMainAuthorityReopened);
 
           service.noteResolvedHomeMeter('m-area', Date.now());
-          vi.advanceTimersByTime(10_000);
-          service.noteResolvedHomeMeter(null, Date.now());
-          vi.advanceTimersByTime(10_000);
-          service.noteResolvedHomeMeter(null, Date.now());
           expect(onMainAuthorityReopened).not.toHaveBeenCalled();
 
-          vi.advanceTimersByTime(POWER_SAMPLE_STALE_THRESHOLD_MS);
-          service.noteResolvedHomeMeter(null, Date.now());
+          vi.advanceTimersByTime(POWER_SAMPLE_STALE_THRESHOLD_MS + 20_000);
+          service.noteResolvedHomeMeter('m-main', Date.now());
           expect(service.isMainHomeActuationFenced()).toBe(false);
           expect(onMainAuthorityReopened).toHaveBeenCalledTimes(1);
         } finally {
@@ -2661,7 +2618,6 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
         const service = buildWithReopen(onMainAuthorityReopened);
 
         service.noteResolvedHomeMeter('m-main', Date.now());
-        service.noteResolvedHomeMeter(null, Date.now());
         service.noteResolvedHomeMeter('m-other', Date.now());
         expect(onMainAuthorityReopened).not.toHaveBeenCalled();
       });
@@ -2888,9 +2844,9 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
           expect(service.isMainHomeActuationFenced()).toBe(true);
           expect(onMainAuthorityReopened).not.toHaveBeenCalled();
 
-          // Data resumes with an unattributable sample: still settles the
-          // episode — committed-but-unactuated sheds must reach recovery.
-          service.noteResolvedHomeMeter(null, Date.now());
+          // Data resumes: the next admitted sample settles the episode —
+          // committed-but-unactuated sheds must reach recovery.
+          service.noteResolvedHomeMeter('m-main', Date.now());
           expect(onMainAuthorityReopened).toHaveBeenCalledTimes(1);
         } finally {
           vi.useRealTimers();
@@ -2920,7 +2876,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
             getZoneTree: () => ZONES,
             getDevices: () => [],
             getLogger: () => undefined,
-            getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+            getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
             legacyMultiHomeEnabled: true,
             onMainAuthorityReopened,
           });
@@ -3087,7 +3043,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       getZoneTree: () => ZONES,
       getDevices: () => [{ deviceId: 'd-moving', zoneId: 'z2' }],
       getLogger: () => undefined,
-      getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+      getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       legacyMultiHomeEnabled: true,
     });
     service.recompute();
@@ -3261,7 +3217,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       getZoneTree: () => null,
       getDevices: () => [{ deviceId: 'd-main', zoneId: null }],
       getLogger: () => undefined,
-      getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+      getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       legacyMultiHomeEnabled: true,
     });
     singleHomeService.recompute();
@@ -3508,7 +3464,9 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     });
     createDeviceHomeAssignmentsStore(homeyLike).write({});
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
-    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, null);
+    // An authoritative EXPLICIT selection: an unavailable read never arms the
+    // sampled fence (nothing proven to defend), and null is no longer a value.
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
 
     const rebuildPlanFromCache = vi.fn()
       .mockResolvedValueOnce({ failed: true })
@@ -3947,7 +3905,7 @@ describe('HomeMembershipService — zone-tree-commit readiness edge', () => {
     getZoneTree: params.getZoneTree,
     getDevices: () => [],
     getLogger: () => undefined,
-    getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+    getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
     legacyMultiHomeEnabled: true,
     onZoneTreeCommitReady: params.onZoneTreeCommitReady,
   });

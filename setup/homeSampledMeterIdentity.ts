@@ -126,25 +126,12 @@ export class SampledMeterIdentity {
   /**
    * Record what one ADMITTED sample ingest resolved. `sampleAtMs` is the
    * ingest's own timestamp — the identity and the watts share one clock by
-   * construction.
-   *
-   * A `null` identity (the admitted sample's provenance is unknown — e.g. an
-   * id-less cumulative aggregate) deliberately leaves the stored identity alone:
-   * overwriting a proven identity with it would release whatever the identity
-   * gates on a payload quirk, and re-anchoring on it would retain the fence
-   * past the proven sample's lifetime on evidence that proves nothing
-   * (`feedback_homey_sdk_unreliable`, `notes/persisted-settings-state.md`: a
-   * transient unknown never clears proven state). The proven identity instead
-   * ages out on its own sample's horizon via {@link resolveFor}.
+   * construction. Every admitted Homey-Energy sample names its meter now (a
+   * sample cannot exist without one), so the old id-less-retention rule is
+   * gone with the id-less samples themselves.
    */
-  note(deviceId: string | null, sampleAtMs: number): void {
-    // Ordered BEFORE the id check: an admitted ingest replaces the restored
-    // watts with watts this process produced, whether or not the payload could
-    // attribute them. Only the restart window is fail-closed; from here the
-    // documented live-sample rule owns the answer (an id-less sample is not a
-    // collision, because an area meter always reports under its own id).
+  note(deviceId: string, sampleAtMs: number): void {
     this.awaitingFirstIngest = false;
-    if (deviceId === null) return;
     this.deviceId = deviceId;
     this.sampleAtMs = sampleAtMs;
   }

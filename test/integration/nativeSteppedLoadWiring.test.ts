@@ -365,6 +365,7 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
         getNativeEvWiringEnabled: () => true,
       },
     );
@@ -388,7 +389,7 @@ describe('native stepped-load wiring', () => {
     const deviceManager = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
-      { getNativeEvWiringEnabled: () => true },
+      { getNativeEvWiringEnabled: () => true, getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
     );
 
     const [parsed] = deviceManager.parseDeviceListForTests([buildHoiaxDevice()]);
@@ -403,7 +404,7 @@ describe('native stepped-load wiring', () => {
     const deviceManager = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
-      { getNativeEvWiringEnabled: () => false },
+      { getNativeEvWiringEnabled: () => false, getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
     );
 
     const [parsed] = deviceManager.parseDeviceListForTests([buildHoiaxDevice()]);
@@ -419,6 +420,7 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
+      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
       },
     );
 
@@ -446,6 +448,7 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
         getDeviceTargetPowerConfig: (deviceId) => (
           deviceId === 'target-power-1'
             ? { enabled: true, preset: 'ev_charger_3_phase' }
@@ -488,7 +491,7 @@ describe('native stepped-load wiring', () => {
     const deviceManager = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
-      { getDeviceTargetPowerConfig: () => ({ min: 0, max: 3_000, step: 1_000 }) },
+      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }), getDeviceTargetPowerConfig: () => ({ min: 0, max: 3_000, step: 1_000 }) },
     );
 
     const [parsed] = deviceManager.parseDeviceListForTests([{
@@ -532,6 +535,7 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
         getDeviceTargetPowerConfig: () => config,
         getNativeEvWiringEnabled: () => true,
       },
@@ -567,6 +571,7 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
         getDeviceTargetPowerConfig: (deviceId) => (
           deviceId === 'synthetic-target-power-1'
             ? { enabled: true, preset: 'ev_charger_1_phase' }
@@ -605,6 +610,7 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
+      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
       },
     );
 
@@ -661,11 +667,12 @@ describe('native stepped-load wiring', () => {
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
+          getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
           getNativeEvWiringEnabled: () => true,
         },
       );
 
-      await deviceManager.refreshSnapshot({ includeLivePower: false });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
 
       await expect(setObservedNativeSteppedLoadStep({
         owner: deviceManager,
@@ -694,6 +701,7 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
         getNativeEvWiringEnabled: () => true,
         getDeviceControlProfile: () => steppedProfile,
       },
@@ -715,6 +723,7 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
         getNativeEvWiringEnabled: () => false,
       },
     );
@@ -800,6 +809,7 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
         getNativeEvWiringEnabled: () => false,
       },
     );
@@ -815,6 +825,7 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
         getNativeEvWiringEnabled: () => true,
       },
     );
@@ -1466,6 +1477,7 @@ describe('native stepped-load wiring', () => {
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
+          getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
           getNativeEvWiringEnabled: () => true,
           getDeviceControlProfile: () => steppedProfile,
         },
@@ -1473,7 +1485,7 @@ describe('native stepped-load wiring', () => {
         { debugStructured },
       );
 
-      await deviceManager.refreshSnapshot({ includeLivePower: false });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
       // The refresh cycle owns its GETs (device list + the piggybacked zone
       // tree); the invariant under test is that the COMMAND path below adds
       // none, so anchor on the post-refresh count. The exact-budget pin makes
@@ -1606,9 +1618,9 @@ describe('native stepped-load wiring', () => {
       const deviceManager = new DeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
-        { getNativeEvWiringEnabled: () => true, getDeviceControlProfile: () => steppedProfile },
+        { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }), getNativeEvWiringEnabled: () => true, getDeviceControlProfile: () => steppedProfile },
       );
-      await deviceManager.refreshSnapshot({ includeLivePower: false });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
 
       const observed = vi.fn();
       const reconcile = vi.fn();
@@ -1708,6 +1720,7 @@ describe('native stepped-load wiring', () => {
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
+          getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
           getNativeEvWiringEnabled: () => false,
           getDeviceControlProfile: () => steppedProfile,
         },
@@ -1715,7 +1728,7 @@ describe('native stepped-load wiring', () => {
         { getFlowTriggerCard: (cardId) => mockHomeyInstance.flow.getTriggerCard(cardId) },
       );
 
-      await deviceManager.refreshSnapshot({ includeLivePower: false });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
 
       await expect(deviceManager.requestSteppedLoadStep({
         deviceId: 'hoiax-1',
@@ -1866,12 +1879,13 @@ describe('native stepped-load wiring', () => {
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
+          getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
           getNativeEvWiringEnabled: () => true,
           getDeviceControlProfile: () => steppedProfile,
         },
       );
 
-      await deviceManager.refreshSnapshot({ includeLivePower: false });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
 
       const liveStateObserved = vi.fn();
       const realtimeReconcile = vi.fn();
@@ -1922,17 +1936,18 @@ describe('native stepped-load wiring', () => {
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
+          getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
           getNativeEvWiringEnabled: () => true,
           getDeviceControlProfile: () => steppedProfile,
         },
       );
 
-      await deviceManager.refreshSnapshot({ includeLivePower: false });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
       expect(deviceManager.getSnapshot().map((d) => d.id)).toEqual(['hoiax-1']);
 
       // Transient empty read: the SDK returns no devices for one refresh.
       devicePayload = {};
-      await deviceManager.refreshSnapshot({ includeLivePower: false });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
 
       // The abandon-grace guard preserves the snapshot...
       expect(deviceManager.getSnapshot().map((d) => d.id)).toEqual(['hoiax-1']);
@@ -1974,12 +1989,13 @@ describe('native stepped-load wiring', () => {
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
+          getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
           getNativeEvWiringEnabled: () => true,
           getDeviceControlProfile: () => steppedProfile,
         },
       );
 
-      await deviceManager.refreshSnapshot({ includeLivePower: false });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
         binaryControl: { on: false },
         reportedStepId: 'off',
@@ -2026,6 +2042,7 @@ describe('native stepped-load wiring', () => {
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
+          getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
           getNativeEvWiringEnabled: () => true,
           getDeviceControlProfile: () => steppedProfile,
           getDeviceDriverIdOverride: (deviceId) => (
@@ -2034,7 +2051,7 @@ describe('native stepped-load wiring', () => {
         },
       );
 
-      await deviceManager.refreshSnapshot({ includeLivePower: false });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
 
       await expect(setObservedNativeSteppedLoadStep({
         owner: deviceManager,
@@ -2063,6 +2080,7 @@ describe('native stepped-load wiring', () => {
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
+          getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
           // Malformed config: min > 0 violates the contract.
           getDeviceTargetPowerConfig: () => ({ min: 1380, max: 3680, step: 460 }),
         },
@@ -2094,7 +2112,7 @@ describe('native stepped-load wiring', () => {
       const deviceManager = new DeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         logger,
-        {},
+        { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
       );
       const buildMalformedDevice = () => buildTargetPowerDevice({
         capabilities: ['measure_power', 'evcharger_charging', 'target_power'],

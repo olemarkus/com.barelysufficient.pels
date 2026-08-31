@@ -255,13 +255,13 @@ export class WeatherBackfillChain {
       this.handleMeterNoSource({ outcome: 'flow_source' });
       return;
     }
-    // The election is bound to Main's CURRENT meter selection: with an
-    // explicit selection only that meter may win (an open probe would
-    // re-admit a still-installed previous meter — its pre-switch days match
-    // the retained tracker history strongest — and re-vouch old-scope kWh
-    // right after a scope invalidation). Automatic keeps the open probe. An
-    // unavailable read defers the launch (marker stays unset, so the next
-    // start() retries): a failed read must not widen the election.
+    // The election is bound to Main's CURRENT meter selection: only that
+    // meter may win (an open probe would re-admit a still-installed previous
+    // meter — its pre-switch days match the retained tracker history
+    // strongest — and re-vouch old-scope kWh right after a scope
+    // invalidation). An unavailable read defers the launch (marker stays
+    // unset, so the next start() retries): a failed read must not widen the
+    // election.
     const mainMeter = this.deps.readMainMeterSelection();
     if (mainMeter.state === 'unavailable') {
       this.deps.logger.info({ event: 'weather_meter_backfill_deferred_selection_unavailable' });
@@ -273,7 +273,7 @@ export class WeatherBackfillChain {
     void resolveMeterDailyKwh({
       fetchFromHomeyApi: this.deps.fetchInsights,
       getDailyKwh: (dateKey) => this.readScopeDailyKwh(dateKey),
-      ...(mainMeter.meterDeviceId === null ? {} : { restrictToDeviceId: mainMeter.meterDeviceId }),
+      restrictToDeviceId: mainMeter.meterDeviceId,
       timeZone: this.deps.getTimeZone(),
       nowMs: this.deps.getNowMs(),
     }).then((result) => {

@@ -17,9 +17,8 @@ import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/sched
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 
 const buildPipeline = (
-  noteResolvedHomeMeter?: (deviceId: string | null, sampleAtMs: number) => void,
+  noteResolvedHomeMeter?: (deviceId: string, sampleAtMs: number) => void,
   savedStates: PowerTrackerState[] = [],
-  noteHomeMeterArrangement?: (observation: string, sampleAtMs: number) => void,
   onRebuildRequest?: () => void,
 ) => {
   const powerTracker: PowerTrackerState = {};
@@ -65,7 +64,6 @@ const buildPipeline = (
     savePowerTracker: (state) => { savedStates.push(state); },
     getStructuredDebugEmitter: () => vi.fn(),
     ...(noteResolvedHomeMeter === undefined ? {} : { noteResolvedHomeMeter }),
-    ...(noteHomeMeterArrangement === undefined ? {} : { noteHomeMeterArrangement }),
   });
 };
 
@@ -81,7 +79,7 @@ describe('PowerSamplePipeline resolved-meter identity publication', () => {
     });
     const pipeline = buildPipeline(note, savedStates);
 
-    await pipeline.recordPowerSample(4_200, T0, { resolvedHomeMeterDeviceId: 'm-area' });
+    await pipeline.recordPowerSample(4_200, T0, { meterDeviceId: 'm-area' });
 
     expect(note).toHaveBeenCalledTimes(1);
     expect(note).toHaveBeenCalledWith('m-area', T0);
@@ -97,22 +95,12 @@ describe('PowerSamplePipeline resolved-meter identity publication', () => {
     const pipeline = buildPipeline(
       () => { order.push('note'); },
       [],
-      undefined,
       () => { order.push('rebuild'); },
     );
 
-    await pipeline.recordPowerSample(4_200, T0, { resolvedHomeMeterDeviceId: 'm-area' });
+    await pipeline.recordPowerSample(4_200, T0, { meterDeviceId: 'm-area' });
 
     expect(order).toEqual(['note', 'rebuild']);
-  });
-
-  it('publishes a NULL identity (unknown provenance) on the same terms', async () => {
-    const note = vi.fn();
-    const pipeline = buildPipeline(note);
-
-    await pipeline.recordPowerSample(4_200, T0 + 10_000, { resolvedHomeMeterDeviceId: null });
-
-    expect(note).toHaveBeenCalledWith(null, T0 + 10_000);
   });
 
   it('never publishes meter identity for samples that carry no identity field', async () => {
@@ -132,9 +120,9 @@ describe('PowerSamplePipeline resolved-meter identity publication', () => {
     // Three synchronous requests: the first starts the loop; the second is
     // queued then REPLACED by the third before the loop reruns. The replaced
     // request's identity must never publish — its watts never landed either.
-    const first = pipeline.recordPowerSample(4_000, T0, { resolvedHomeMeterDeviceId: 'm-first' });
-    const superseded = pipeline.recordPowerSample(4_100, T0 + 100, { resolvedHomeMeterDeviceId: 'm-superseded' });
-    const last = pipeline.recordPowerSample(4_200, T0 + 200, { resolvedHomeMeterDeviceId: 'm-last' });
+    const first = pipeline.recordPowerSample(4_000, T0, { meterDeviceId: 'm-first' });
+    const superseded = pipeline.recordPowerSample(4_100, T0 + 100, { meterDeviceId: 'm-superseded' });
+    const last = pipeline.recordPowerSample(4_200, T0 + 200, { meterDeviceId: 'm-last' });
     const outcomes = await Promise.all([first, superseded, last]);
 
     expect(note.mock.calls).toEqual([
@@ -148,35 +136,12 @@ describe('PowerSamplePipeline resolved-meter identity publication', () => {
     ]);
   });
 
-  it('publishes the arrangement with the identity, same stamp, same admitted ingest', async () => {
-    const calls: Array<[string, number]> = [];
-    const pipeline = buildPipeline(vi.fn(), [], (observation, sampleAtMs) => {
-      calls.push([observation, sampleAtMs]);
-    });
-
-    await pipeline.recordPowerSample(4_200, T0, {
-      resolvedHomeMeterDeviceId: null,
-      homeMeterArrangement: 'idless_aggregate_only',
-    });
-
-    expect(calls).toEqual([['idless_aggregate_only', T0]]);
-  });
-
-  it('never publishes an arrangement for samples that carry none', async () => {
-    const note = vi.fn();
-    const pipeline = buildPipeline(vi.fn(), [], note);
-
-    await pipeline.recordPowerSample(4_200, T0, { resolvedHomeMeterDeviceId: 'm-1' });
-
-    expect(note).not.toHaveBeenCalled();
-  });
-
   it('contains a publisher throw so it can never break the sample loop', async () => {
     const note = vi.fn(() => { throw new Error('membership exploded'); });
     const pipeline = buildPipeline(note);
 
     await expect(
-      pipeline.recordPowerSample(4_200, T0 + 20_000, { resolvedHomeMeterDeviceId: 'm-area' }),
+      pipeline.recordPowerSample(4_200, T0 + 20_000, { meterDeviceId: 'm-area' }),
     ).resolves.toEqual({ state: 'admitted', revision: 1 });
     expect(pipeline.getStableSampleRevision()).toEqual({ state: 'stable', revision: 1 });
   });

@@ -12,7 +12,6 @@ import {
   type ZoneTree,
 } from '../lib/home/homeConfig';
 import { resolveDeviceHome, type HomeMembership, type HomeMembershipPort } from '../lib/home/membership';
-import type { HomeMeterArrangementObservation } from '../lib/device/transport/managerFetch';
 import { normalizeError } from '../lib/utils/errorUtils';
 import {
   DEVICE_HOME_ASSIGNMENTS,
@@ -165,15 +164,6 @@ export type HomeMembershipDiagnostics = {
    */
   runtimeActive: boolean;
   /**
-   * The last PROVEN answer to "can the whole-home meter be named?", latched
-   * from the transport's per-read observation (`noteHomeMeterArrangement`).
-   * `unknown` until a read proves either way (boot, flow source). CONFIG
-   * SURFACE ONLY: the save seam uses `idless_aggregate_only` to give an
-   * id-less-aggregate home an honest refusal instead of a remedy its picker
-   * can never satisfy; control paths must not branch on it.
-   */
-  mainMeterArrangement: 'unknown' | 'identified' | 'idless_aggregate_only';
-  /**
    * True while the latest recompute classified either persisted store read
    * (`homes_config` / `device_home_assignments`) as `'suspect'` — the served
    * `subHomes` may then be a stale cache of an unknown persisted truth.
@@ -233,7 +223,6 @@ export class HomeMembershipService implements HomeMembershipPort {
   private lastNotifiedRuntimeActive = false;
 
   /** Last proven meter-arrangement observation; see the diagnostics field doc. */
-  private mainMeterArrangement: 'unknown' | 'identified' | 'idless_aggregate_only' = 'unknown';
 
   private lastRecomputeFingerprint: string | null = null;
   private lastPlanRelevantFingerprint: string | null = null;
@@ -400,24 +389,13 @@ export class HomeMembershipService implements HomeMembershipPort {
   }
 
   /** Admitted-ingest push seam: which meter the tracker's sample came from. */
-  noteResolvedHomeMeter(deviceId: string | null, sampleAtMs: number): void {
+  noteResolvedHomeMeter(deviceId: string, sampleAtMs: number): void {
     this.meterAuthority.noteResolvedHomeMeter(deviceId, sampleAtMs, this.authorityContext());
   }
 
   /** Admitted Flow sample: the tracker no longer serves retained meter watts. */
   noteAdmittedFlowHomeSample(): void {
     this.meterAuthority.noteAdmittedFlowHomeSample();
-  }
-
-  /**
-   * Read push seam (`noteHomeMeterArrangement`): whether the whole-home meter
-   * can be named. Latches the last PROVEN observation; `unproven` (an SDK miss
-   * or an ambiguous multi-cumulative pick) never overwrites it — a transient
-   * failure must not select, nor deselect, the unnameable-meter refusal.
-   */
-  noteHomeMeterArrangement(observation: HomeMeterArrangementObservation): void {
-    if (observation === 'unproven') return;
-    this.mainMeterArrangement = observation;
   }
 
   hasSubHomes(): boolean {
@@ -575,7 +553,6 @@ export class HomeMembershipService implements HomeMembershipPort {
       // held all-main for legacy compatibility.
       hasSubHomes: this.subHomes.length > 0,
       runtimeActive: this.runtimeActive,
-      mainMeterArrangement: this.mainMeterArrangement,
       configDegraded: this.suspectByStoreKey[HOMES_CONFIG]
         || this.suspectByStoreKey[DEVICE_HOME_ASSIGNMENTS],
     };

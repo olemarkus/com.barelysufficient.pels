@@ -29,15 +29,12 @@ import {
 
 export type DeviceTransportParseProviders = {
     /**
-     * Producer-resolved Main selection; `unavailable` must never fall back to
-     * Automatic. Optional only because this bag is assembled piecemeal by tests
-     * that have no meter opinion — an absent provider is classified ONCE, where
-     * the transport builds its context, and it classifies as `unavailable`
-     * (no authority wired, so none can be claimed). Read it through
-     * `ctx.resolveMainMeterSelection`, never directly: the read paths must not
-     * re-answer what absence means, and they must never answer it "Automatic".
+     * Producer-resolved Main selection. REQUIRED: the transport's live-power
+     * paths may not invent an authority, and `unavailable` is a real answer a
+     * wired producer gives — never a default anything falls back to. Read it
+     * through `ctx.resolveMainMeterSelection`, never directly.
      */
-    getHomeyEnergyMeterSelection?: () => MainMeterSelection;
+    getHomeyEnergyMeterSelection: () => MainMeterSelection;
     /**
      * Additional per-meter reading requests for the SAME `manager/energy/live`
      * payload (multi-home R7b: each sub-home's own meter device). Read fresh

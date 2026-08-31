@@ -92,6 +92,7 @@ const createLogger = (): Logger => ({
 const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   logger,
   providers: {
+    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
     // Load-bearing: enables the native stepped-load overlay for Høiax devices.
     getNativeEvWiringEnabled: () => true,
   },

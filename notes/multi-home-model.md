@@ -28,16 +28,19 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   allowed in an id** because `:` is the settings-key suffix separator (below).
 - **Saved ownership:** an explicit meter device id has exactly one owner across the Main home and
   every meter area. The serialized `ui_homes_save` seam requires an explicit Main meter before an
-  area can run, refuses assigning that meter to an area, and refuses switching Main back to
-  Automatic while areas run. Those rules shipped with the generally available feature, so a valid
-  current configuration cannot be "Main on Automatic plus active areas" and cannot assign one
-  explicit meter to both Main and an area. Legacy, stale, or externally malformed cross-store state
+  area can run and refuses assigning that meter to an area. There is no Automatic selection any
+  more — the save seam cannot express one (`set_power_source` persists a named meter or the Flow
+  source, nothing else), and the boot-time meter-authority migration retired the persisted-null
+  legacy shape — so a valid current configuration cannot assign one explicit meter to both Main
+  and an area, and "Main with no resolvable meter plus active areas" is only the deferred-legacy
+  shape the migration retries each boot. Legacy, stale, or externally malformed cross-store state
   still fails closed at the producer-owned Main actuation predicate until repaired.
-- **Sample provenance:** Main's `null`/Automatic fallback remains valid when no meter areas run. It
-  is not a combined total: the reader accepts the sole finite `cumulative` item in the Homey Energy
-  payload. If several exist, it retains the candidate proven during the current process while that
-  candidate remains present; otherwise the read is ambiguous and produces no Main sample. A sole
-  candidate may be a superset of Main. Independently of the saved selection, the identity of every
+- **Sample provenance:** a Main whole-home sample exists only for the explicitly persisted meter:
+  the producer extracts that device's reading from the Homey Energy payload and stamps the sample
+  with the configured id — there is no candidate ranking, no session-sticky preference, and no
+  ambiguous arm (all retired with the Automatic selection). An unavailable selection or a
+  non-finite reading produces no Main sample this poll, and carry-forward holds (a transient miss
+  is a no-op). Independently of the saved selection, the identity of every
   admitted sample is resolved with the reading and rides into the power ingest
   (`setup/powerSamplePipeline.ts` publishes it atomically with the watts), and
   a proven collision with an area meter starts a Main-actuation fence episode
@@ -77,11 +80,14 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   `setup/mainMeterSettings.ts` owns `get`/`getKeys`, including
   `undefined`, `null`, an empty key list, malformed values, and thrown SDK
   errors. Every downstream consumer sees only the semantic
-  `MainMeterSelection` contract: a resolved explicit id/Automatic selection,
-  or `unavailable`. `unavailable` must never degrade to Automatic. A known violation remains in
-  `readMainMeterSelection`: Homey's transient `null` can currently take the legitimate stored-null
-  branch and temporarily classify an explicit selection as Automatic. The P1 settings-reader entry
-  in `TODO.md` owns that fix; the sampled-identity fence limits its control impact in the meantime.
+  `MainMeterSelection` contract: a resolved explicit meter id, or
+  `unavailable`. Absence is no longer a value — every non-string read
+  (including Homey's transient `null`) classifies as `unavailable`, which
+  consumers treat as a no-op, never as a different selection. The old P1
+  (a transient `null` momentarily read as the stored-Automatic arm) dissolved
+  with the Automatic selection itself; only the boot-time migration still
+  discriminates stored-null, and it does so behind its own confirm-twice
+  guards (`setup/mainMeterAuthorityMigration.ts`).
 - Constructor defaults are not ownership evidence. Main and sub-home control
   stay fenced until both homes and pin stores have each produced a
   non-suspect read; active meter areas additionally require a committed zone
@@ -332,7 +338,8 @@ enforced at the one serialized `ui_homes_save` seam: saving (creating or
 editing) an area is refused while the configured source resolves to Flow (a
 Flow sample carries no meter identity), and switching the source to Flow is
 refused while areas are RUNNING (a dormant pre-GA config does not block the
-switch; activation discrimination is shared with the Automatic-meter refusal).
+switch; activation discrimination is shared with the unresolvable-meter
+refusal, `main_meter_required`).
 Deleting an area stays allowed on any source, and switching TO Homey Energy
 never consults the homes store — the remedy direction must always work. The
 settings UI persists the Power source select through the seam (typed refusal →

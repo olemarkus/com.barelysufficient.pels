@@ -86,7 +86,6 @@ const createMembershipPort = (options: {
   isMainHomeActuationFenced: () => false,
   noteResolvedHomeMeter: () => undefined,
   noteAdmittedFlowHomeSample: () => undefined,
-  noteHomeMeterArrangement: () => undefined,
   recompute: () => undefined,
 });
 

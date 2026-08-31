@@ -136,6 +136,7 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
     vi.setSystemTime(new Date(DAY + 30 * 60 * 1000));
     mockHomeyInstance.settings.set(DEBUG_LOGGING_TOPICS, ['plan', 'diagnostics', 'deferred_objectives']);
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, CAPACITY_LIMIT);
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
@@ -171,7 +172,7 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
     // Both tanks at their low step → 3.0 kW total reported through the SDK energy poll.
     const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
     vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
-      if (path === 'manager/energy/live') return { items: [{ type: 'cumulative', values: { W: 2 * STEP_LOW_W } }] };
+      if (path === 'manager/energy/live') return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: 2 * STEP_LOW_W } }] };
       return originalGet(path);
     });
 

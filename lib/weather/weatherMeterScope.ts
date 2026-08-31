@@ -7,8 +7,6 @@ type MeterScopeMarkers = Pick<WeatherHistoryState, 'meterScopeSignature' | 'mete
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const FLOW_SIGNATURE = 'source:flow';
 const HOMEY_ENERGY_EXPLICIT_SIGNATURE_PREFIX = 'source:homey_energy|main:';
-const HOMEY_ENERGY_AUTOMATIC_SIGNATURE
-  = /^source:homey_energy\|main:automatic\|areas:(active|dormant)$/;
 
 const isValidDateKey = (value: unknown): value is string => {
   if (typeof value !== 'string' || !DATE_KEY_PATTERN.test(value)) return false;
@@ -18,7 +16,10 @@ const isValidDateKey = (value: unknown): value is string => {
 
 const isValidMeterScopeSignature = (value: unknown): value is string => {
   if (typeof value !== 'string') return false;
-  if (value === FLOW_SIGNATURE || HOMEY_ENERGY_AUTOMATIC_SIGNATURE.test(value)) return true;
+  if (value === FLOW_SIGNATURE) return true;
+  // A persisted signature from the retired `main:automatic|areas:*` arm fails
+  // this check on purpose: the documented invalid-pair policy then adopts the
+  // live explicit signature WITHOUT forgetting kWh history — the upgrade path.
   if (!value.startsWith(HOMEY_ENERGY_EXPLICIT_SIGNATURE_PREFIX)) return false;
   return isCanonicalHomeyDeviceId(value.slice(HOMEY_ENERGY_EXPLICIT_SIGNATURE_PREFIX.length));
 };

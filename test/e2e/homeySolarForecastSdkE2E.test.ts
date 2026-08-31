@@ -113,6 +113,7 @@ describe('PV-forecast source selection (SDK-boundary e2e)', () => {
     setMockDrivers({ d: new MockDriver('d', [new MockDevice('h', 'Heater', ['onoff', 'measure_power'])]) });
     setEnergyPrices();
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');

@@ -13,36 +13,28 @@
  * mid-flight selection change) publishes nothing, and the ownership fence can
  * only ever move together with the watts it governs.
  */
+import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { TransportContext } from './transportContext';
-import {
-  deriveHomeMeterArrangement,
-  type HomeMeterArrangementObservation,
-  type LivePowerReport,
-} from './managerFetch';
+import type { LivePowerReport } from './managerFetch';
 
 /** One whole-home power sample, carrying the identity of the meter it came from. */
 export type HomePowerSampleWithIdentity = {
   powerW: number;
   generationW?: number;
   /**
-   * Identity of the meter `powerW` was read from; `null` = unknown (the item
-   * carried no id) — never proof of non-collision. Consumers that record this
-   * sample hand the field to the ingest seam; consumers that discard the
-   * sample thereby discard the identity claim with it.
+   * Identity of the meter `powerW` was read from — by construction the
+   * resolved selection's configured id, stamped where the sample is produced.
+   * Always present: a sample cannot exist without a named meter any more.
+   * Consumers that record this sample hand the field to the ingest seam;
+   * consumers that discard the sample discard the identity claim with it.
    */
-  resolvedHomeMeterDeviceId: string | null;
-  /**
-   * The report's meter-arrangement observation (id-bearing, id-less-aggregate-
-   * only, or unproven), derived where the sample is produced and riding it to
-   * the same admitted ingest as the identity — so the two claims can never be
-   * published on different clocks or admission decisions.
-   */
-  homeMeterArrangement: HomeMeterArrangementObservation;
+  meterDeviceId: string;
 };
 
 export function updateHomePowerFromReport(
     ctx: TransportContext,
     report: LivePowerReport,
+    selection: MainMeterSelection,
 ): HomePowerSampleWithIdentity | null {
     // PR2a of the observer/transport split: observer owns the home-power
     // read. Transport produces the scalar from the Homey SDK energy report
@@ -66,18 +58,19 @@ export function updateHomePowerFromReport(
     if (report.reportAvailable) {
       ctx.observedStateDispatcher?.setGenerationW(report.generationW, Date.now());
     }
-    if (report.homePowerW === null) return null;
-    const homeMeterArrangement = deriveHomeMeterArrangement(report);
+    // A whole-home reading only exists for a resolved selection (an
+    // `unavailable` selection nulls `homePowerW` in `resolveHomeReading`), so
+    // the sample's identity is the configured id — checked here so the
+    // invariant is structural, not assumed.
+    if (report.homePowerW === null || selection.state !== 'resolved') return null;
     return report.generationW === null
         ? {
             powerW: report.homePowerW,
-            resolvedHomeMeterDeviceId: report.resolvedHomeMeterDeviceId,
-            homeMeterArrangement,
+            meterDeviceId: selection.meterDeviceId,
         }
         : {
             powerW: report.homePowerW,
             generationW: report.generationW,
-            resolvedHomeMeterDeviceId: report.resolvedHomeMeterDeviceId,
-            homeMeterArrangement,
+            meterDeviceId: selection.meterDeviceId,
         };
 }

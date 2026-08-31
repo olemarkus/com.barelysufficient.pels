@@ -11,18 +11,7 @@
  * and `readMainMeterSelection` is side-effecting (latches + an authority-
  * unresolved callback), so it fired twice per gate evaluation.
  *
- * Why Automatic needs the sampled identity at all: a valid current save never
- * leaves Main on Automatic while meter areas run. The fence still has to cover
- * legacy or externally malformed state, and a transient adapter miss can
- * temporarily misclassify an explicit selection as Automatic (tracked in
- * TODO.md). In those states the CONFIGURED id is `null` and proves nothing,
- * while the whole-home reading comes from a sole readable `cumulative` item or
- * a meter proven by an earlier unambiguous Automatic poll. If that item is an
- * area's meter, it would drive two independent controllers from ONE physical
- * sample over disjoint device sets — the invariant `notes/multi-home-model.md`
- * forbids.
- *
- * An EXPLICIT selection needs it too, for the switchover window: the moment the
+ * The sampled identity exists for the switchover window: the moment the
  * user picks a non-colliding Main meter the configured id is proven clean, but
  * the tracker and capacity guard still serve the watts of whatever meter the
  * LAST admitted sample came from — the replacement poll is started without
@@ -115,11 +104,11 @@ type SampledFenceReason = SampledFence['reason'];
 
 export class MainMeterAuthority {
   /**
-   * `undefined` means no authoritative Main-meter selection has been observed;
-   * `null` is the authoritative Automatic selection. A transient unavailable read
-   * retains the last-good identity but closes every control consumer.
+   * `undefined` means no authoritative Main-meter selection has been observed.
+   * A transient unavailable read retains the last-good identity but closes
+   * every control consumer.
    */
-  private lastResolvedMainMeterDeviceId: string | null | undefined;
+  private lastResolvedMainMeterDeviceId: string | undefined;
 
   private mainMeterUnavailableLogged = false;
 
@@ -184,7 +173,7 @@ export class MainMeterAuthority {
    * consequence — settling a fence episode into the rebuild+reconcile recovery.
    */
   noteResolvedHomeMeter(
-    deviceId: string | null,
+    deviceId: string,
     sampleAtMs: number,
     ctx: MainMeterAuthorityContext,
   ): void {
@@ -422,7 +411,7 @@ export class MainMeterAuthority {
   private knownConfiguredMeterDeviceIds(ctx: MainMeterAuthorityContext): ReadonlySet<string> {
     const main = this.lastResolvedMainMeterDeviceId;
     return new Set([
-      ...(main === undefined || main === null ? [] : [main]),
+      ...(main === undefined ? [] : [main]),
       ...(ctx.runtimeActive
         ? ctx.subHomes.flatMap((home) => (home.meterDeviceId === null ? [] : [home.meterDeviceId]))
         : []),

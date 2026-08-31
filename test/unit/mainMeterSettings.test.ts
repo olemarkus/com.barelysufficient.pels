@@ -1,42 +1,29 @@
 import { describe, expect, it, vi } from 'vitest';
-import { HOMEY_ENERGY_METER_DEVICE_ID } from '../../lib/utils/settingsKeys';
 import {
   readMainMeterSelection,
 } from '../../setup/mainMeterSettings';
 
 describe('Main meter settings boundary', () => {
-  it('normalizes an explicit id and accepts a truly absent setting as Automatic', () => {
+  it('normalizes an explicit id', () => {
     expect(readMainMeterSelection({
       get: () => '  meter-main  ',
-      getKeys: () => [HOMEY_ENERGY_METER_DEVICE_ID],
     })).toEqual({ state: 'resolved', meterDeviceId: 'meter-main' });
-    expect(readMainMeterSelection({
-      get: () => undefined,
-      getKeys: () => ['power_source'],
-    })).toEqual({ state: 'resolved', meterDeviceId: null });
   });
 
-  it('classifies listed-but-undefined, an empty key list, and malformed values as suspect', () => {
-    expect(readMainMeterSelection({
-      get: () => undefined,
-      getKeys: () => [HOMEY_ENERGY_METER_DEVICE_ID],
-    }).state).toBe('unavailable');
-    expect(readMainMeterSelection({
-      get: () => undefined,
-      getKeys: () => [],
-    }).state).toBe('unavailable');
-    expect(readMainMeterSelection({
-      get: () => 42,
-      getKeys: () => [HOMEY_ENERGY_METER_DEVICE_ID],
-    }).state).toBe('unavailable');
-    expect(readMainMeterSelection({
-      get: () => 'automatic',
-      getKeys: () => [HOMEY_ENERGY_METER_DEVICE_ID],
-    }).state).toBe('unavailable');
-    expect(readMainMeterSelection({
-      get: () => 'meter-main|areas:active',
-      getKeys: () => [HOMEY_ENERGY_METER_DEVICE_ID],
-    }).state).toBe('unavailable');
+  it('classifies every non-string read as unavailable — absence is never a value', () => {
+    // Stored null (the retired Automatic), a never-written key, and a
+    // transient miss are indistinguishable and all honestly unavailable; the
+    // boot-time migration is what guarantees a configured install reads a
+    // string here.
+    expect(readMainMeterSelection({ get: () => null }).state).toBe('unavailable');
+    expect(readMainMeterSelection({ get: () => undefined }).state).toBe('unavailable');
+    expect(readMainMeterSelection({ get: () => 42 }).state).toBe('unavailable');
+  });
+
+  it('classifies malformed stored strings as unavailable', () => {
+    expect(readMainMeterSelection({ get: () => 'automatic' }).state).toBe('unavailable');
+    expect(readMainMeterSelection({ get: () => 'meter-main|areas:active' }).state).toBe('unavailable');
+    expect(readMainMeterSelection({ get: () => '   ' }).state).toBe('unavailable');
   });
 
   it('contains read failures as semantic unavailable authority', () => {
@@ -44,7 +31,6 @@ describe('Main meter settings boundary', () => {
       get: vi.fn(() => {
         throw new Error('settings unavailable');
       }),
-      getKeys: vi.fn(() => []),
     };
     expect(readMainMeterSelection(settings)).toEqual({ state: 'unavailable' });
   });

@@ -52,14 +52,12 @@ export type WeatherCollectorDeps = {
    * Main's meter selection, resolved by the setup layer
    * (`setup/mainMeterSettings.ts`) — the same read the scope fingerprint is
    * composed from; `lib/weather` must not read settings itself. Constrains the
-   * historical-kWh election (`resolveMeterDailyKwh`): with an EXPLICIT
-   * selection only that meter may win — the open probe would otherwise
-   * re-admit a still-installed previous meter whose pre-switch days match the
-   * retained power-tracker history strongest, re-vouching old-scope kWh right
-   * after a scope invalidation. `null` (Automatic) keeps the open probe: the
-   * Automatic pick's resolved identity is structurally unavailable at this
-   * seam (the fingerprint's documented limitation). `unavailable` defers the
-   * election — a failed read must not widen it back to every installed meter.
+   * historical-kWh election (`resolveMeterDailyKwh`): only the selected
+   * meter may win — an open probe would re-admit a still-installed previous
+   * meter whose pre-switch days match the retained power-tracker history
+   * strongest, re-vouching old-scope kWh right after a scope invalidation.
+   * `unavailable` defers the election — a failed read must not widen it back
+   * to every installed meter.
    */
   readMainMeterSelection: () => MainMeterSelection;
   /**

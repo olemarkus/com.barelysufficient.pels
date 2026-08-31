@@ -64,7 +64,6 @@ import { syncNativeSteppedLoadCommandAdapters } from './managerNativeSteppedComm
 import type { DeviceObservation } from './deviceObservation';
 import type { SnapshotRefreshOptions, TransportContext } from './transport/transportContext';
 import type { HomePowerSampleWithIdentity } from './transport/resolvedHomeMeterDispatch';
-import type { PolledHomePowerSample } from './transport/homePowerPoll';
 import {
   cloneBinaryControlObservation,
   createEstimateDecisionLogState,
@@ -172,8 +171,12 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private observationState: DeviceTransportObservationState = createObservationState();
     private observationSeqByDeviceId: Map<string, number> = new Map();
     private recentRealtimeCapabilityEventLogByKey: Map<string, number> = new Map();
-    private readonly automaticHomeMeterState = { preferredDeviceId: null as string | null };
-    private providers: DeviceTransportParseProviders = {};
+    // Pre-wiring boot placeholder only: `initializeDeviceApi` wiring always
+    // replaces it. `unavailable` is the honest pre-wiring answer — never a
+    // fabricated selection.
+    private providers: DeviceTransportParseProviders = {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+    };
     private getFlowTriggerCard: DeviceTransportOptions['getFlowTriggerCard'] | undefined;
     private onSnapshotMutated: DeviceTransportOptions['onSnapshotMutated'] | undefined;
     private debugStructured: StructuredDebugEmitter | undefined;
@@ -274,7 +277,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             observationState: t.observationState,
             recentLocalCapabilityWrites: t.recentLocalCapabilityWrites,
             recentRealtimeCapabilityEventLogByKey: t.recentRealtimeCapabilityEventLogByKey,
-            automaticHomeMeterState: t.automaticHomeMeterState,
             observationProducers: t.observationProducers,
             getFlowTriggerCard: t.getFlowTriggerCard,
             nextObservationCursor: (deviceId, nowMs) => t.nextObservationCursor(deviceId, nowMs),
@@ -295,9 +297,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             ),
             refreshSnapshot: (options) => t.refreshSnapshot(options),
             providers: t.providers,
-            resolveMainMeterSelection: () => (
-                t.providers.getHomeyEnergyMeterSelection?.() ?? { state: 'unavailable' }
-            ),
+            resolveMainMeterSelection: () => t.providers.getHomeyEnergyMeterSelection(),
             powerState: t.powerState,
             measuredPowerResolver: t.measuredPowerResolver,
             observedStateDispatcher: t.observedStateDispatcher,
@@ -373,7 +373,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     // out-of-order sub-meter sample.
     async pollHomePowerW(
         authorizeFanOut?: () => boolean,
-    ): Promise<PolledHomePowerSample | null> {
+    ): Promise<HomePowerSampleWithIdentity | null> {
         return runPollHomePowerWithMeterFanOut(this.ctx, authorizeFanOut);
     }
     /**
@@ -489,14 +489,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     async refreshSnapshot(
-        options: SnapshotRefreshOptions = {},
+        options: SnapshotRefreshOptions,
     ): Promise<HomePowerSampleWithIdentity | null> {
         return runRefreshSnapshot(this.ctx, options);
-    }
-
-    /** Trust an Automatic meter identity only after the app admits its sample. */
-    noteAdmittedAutomaticHomeMeter(deviceId: string | null): void {
-        if (deviceId !== null) this.automaticHomeMeterState.preferredDeviceId = deviceId;
     }
 
     getPeriodicStatusMetrics(): ({ devicesTotal: number } & SnapshotRefreshMetrics) | null {

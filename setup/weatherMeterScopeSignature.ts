@@ -1,8 +1,6 @@
 import type Homey from 'homey';
-import { createHomesStore } from './homeRegistryAdapter';
 import { readMainMeterSelection } from './mainMeterSettings';
 import { readConfiguredPowerSource } from './powerSourceSettings';
-import { readHomeConfigRuntimeActivation } from './multiHomeActivation';
 
 /**
  * Composes the whole-home metering-arrangement fingerprint the weather
@@ -37,25 +35,11 @@ import { readHomeConfigRuntimeActivation } from './multiHomeActivation';
  * - area names, root zones, and device pins — membership cosmetics that do
  *   not change which meter measures what.
  *
- * Known limitation — the Automatic arm is the constant `main:automatic`, not
- * the device it resolves to: Automatic retains a previously proven cumulative
- * meter while it remains present, but a change to the sole usable candidate
- * (or a roster edit that re-fences the elected device) can still change the
- * physical scope without changing this signature.
- * Bounded, not open-ended: `homeMeterOwnership.ts` refuses any Homey-Energy
- * save that leaves Main on Automatic while meter areas exist, so the
- * areas-plus-Automatic shape survives only on legacy configs saved before
- * that invariant.
- * The RESOLVED identity does exist — membership publishes it via
- * `noteResolvedHomeMeter` into `SampledMeterIdentity` — but it is proven only
- * after the first admitted sample and expires on that sample's freshness
- * horizon, so it is structurally unavailable at the collector's boot-time
- * `start()` reconcile (the primary invalidation edge). Consuming it here
- * would either compose to `undefined` at every boot (skipping the boot
- * reconcile for Automatic homes entirely) or flip-flop against a constant
- * fallback arm (spurious forgets). The sound fix is a mid-run
- * identity-proven reconcile edge with restart semantics; tracked in TODO.md
- * ("weather meter-scope fingerprint: resolve the Automatic arm").
+ * A persisted `main:automatic|areas:*` signature from the retired Automatic
+ * selection classifies INVALID in `weatherMeterScope.ts`; the documented
+ * invalid-pair policy makes the collector adopt the live explicit signature
+ * without forgetting kWh history — the deliberate upgrade path, since the
+ * Automatic arm never named the physical meter anyway.
  *
  * Returns `undefined` when a read needed for the selected branch is
  * unavailable. A genuinely unwritten homes registry is the normal
@@ -72,19 +56,7 @@ export const readWholeHomeMeterScopeSignature = (
 
   const mainMeter = readMainMeterSelection(homey.settings);
   if (mainMeter.state === 'unavailable') return undefined;
-  if (mainMeter.meterDeviceId !== null) {
-    return `source:homey_energy|main:${mainMeter.meterDeviceId}`;
-  }
-
-  const homesRead = createHomesStore(homey).read();
-  if (homesRead.state === 'suspect') return undefined;
-  if (homesRead.state === 'unwritten') {
-    return 'source:homey_energy|main:automatic|areas:active';
-  }
-  const activation = readHomeConfigRuntimeActivation(homesRead.value, homey.settings);
-  if (activation.state === 'suspect') return undefined;
-  // The source and posture values are closed enums and meter ids are Homey
-  // device UUIDs, so the separators cannot collide.
-  const posture = activation.active ? 'active' : 'dormant';
-  return `source:homey_energy|main:automatic|areas:${posture}`;
+  // The source value is a closed enum and meter ids are Homey device UUIDs,
+  // so the separators cannot collide.
+  return `source:homey_energy|main:${mainMeter.meterDeviceId}`;
 };

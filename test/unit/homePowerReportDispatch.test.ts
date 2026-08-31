@@ -33,19 +33,19 @@ const resolvedReport = (overrides: Partial<LivePowerReport>): LivePowerReport =>
 describe('updateHomePowerFromReport generation publication', () => {
   it('publishes generation from a successful report', () => {
     const { ctx, dispatcher } = buildCtx();
-    updateHomePowerFromReport(ctx, resolvedReport({ generationW: 4_200 }));
+    updateHomePowerFromReport(ctx, resolvedReport({ generationW: 4_200 }), { state: 'resolved', meterDeviceId: 'meter-main' });
     expect(dispatcher.setGenerationW).toHaveBeenCalledWith(4_200, expect.any(Number));
   });
 
   it('publishes a null generation from a successful report — "no generator" is an observation', () => {
     const { ctx, dispatcher } = buildCtx();
-    updateHomePowerFromReport(ctx, resolvedReport({ generationW: null }));
+    updateHomePowerFromReport(ctx, resolvedReport({ generationW: null }), { state: 'resolved', meterDeviceId: 'meter-main' });
     expect(dispatcher.setGenerationW).toHaveBeenCalledWith(null, expect.any(Number));
   });
 
   it('publishes NOTHING from a failed read, leaving the held value to age out', () => {
     const { ctx, dispatcher } = buildCtx();
-    updateHomePowerFromReport(ctx, buildEmptyLivePowerReport());
+    updateHomePowerFromReport(ctx, buildEmptyLivePowerReport(), { state: 'resolved', meterDeviceId: 'meter-main' });
     expect(dispatcher.setGenerationW).not.toHaveBeenCalled();
   });
 });

@@ -770,7 +770,7 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
       getZoneTree,
       getDevices: () => [{ deviceId: 'vt-1', zoneId: 'z2' }],
       getLogger: () => undefined,
-      getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+      getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       getConfiguredPowerSource: () => ({ state: 'resolved', value: 'homey_energy' }),
       legacyMultiHomeEnabled: true,
       onOwnershipReadyBeforePlanWork,

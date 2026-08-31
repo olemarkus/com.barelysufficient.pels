@@ -12,10 +12,7 @@ import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 export type HomeyEnergyPollSourceHost = {
   readonly timers: TimerRegistry;
   getPowerSource(): PowerSource;
-  readonly deviceManager?: Pick<
-    DeviceTransport,
-    'pollHomePowerW' | 'noteAdmittedAutomaticHomeMeter'
-  >;
+  readonly deviceManager?: Pick<DeviceTransport, 'pollHomePowerW'>;
   getStructuredDebugEmitter(component: 'devices', debugTopic: 'devices'): StructuredDebugEmitter;
   error(...args: unknown[]): void;
 };
@@ -39,10 +36,7 @@ export const createHomeyEnergyPollSource = (
   timers: host.timers,
   pollHomePower: async (authorizeFanOut) => (await host.deviceManager?.pollHomePowerW(authorizeFanOut)) ?? null,
   recordPowerSample: async (sample) => {
-    const admission = await pipeline.recordPowerSample(sample.powerW, undefined, sample);
-    if (admission.state === 'admitted' && sample.automaticHomeMeterDeviceId != null) {
-      host.deviceManager?.noteAdmittedAutomaticHomeMeter(sample.automaticHomeMeterDeviceId);
-    }
+    await pipeline.recordPowerSample(sample.powerW, undefined, sample);
   },
   debugStructured: host.getStructuredDebugEmitter('devices', 'devices'),
   error: (...args) => host.error(...args),

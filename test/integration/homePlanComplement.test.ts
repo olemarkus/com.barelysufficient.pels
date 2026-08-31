@@ -68,7 +68,7 @@ const subDevice = {
 
 const makeMembershipService = (
   devices: readonly HomeMembershipDeviceInput[],
-  mainMeterDeviceId: string | null = null,
+  mainMeterDeviceId: string = 'meter-main',
   powerSource: 'homey_energy' | 'flow' = 'homey_energy',
 ): HomeMembershipService => {
   const service = new HomeMembershipService({
@@ -103,7 +103,10 @@ beforeEach(() => {
 
 describe('filterDevicesForHome identity guard', () => {
   it('returns the SAME array reference with no sub-homes configured, and when the service is unwired', () => {
-    const service = makeMembershipService(membershipInputs);
+    // Flow: no configured meter sources, so the meter-exclusion arm has
+    // nothing to filter. Under homey_energy a named Main meter always exists
+    // now, and its exclusion filter legitimately allocates.
+    const service = makeMembershipService(membershipInputs, 'meter-main', 'flow');
     const devices = [mainDevice, subDevice];
     expect(service.hasSubHomes()).toBe(false);
     expect(filterDevicesForHome(service, devices, MAIN_HOME_ID)).toBe(devices);

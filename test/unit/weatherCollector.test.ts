@@ -9,7 +9,7 @@ const OSLO = 'Europe/Oslo';
 // 2026-01-10T10:00:00Z = 11:00 in Oslo (UTC+1, winter): local dateKey 2026-01-10.
 const START_MS = Date.UTC(2026, 0, 10, 10, 0, 0);
 const HOUR_MS = 60 * 60 * 1000;
-const DEFAULT_METER_SCOPE_SIGNATURE = 'source:homey_energy|main:automatic|areas:active';
+const DEFAULT_METER_SCOPE_SIGNATURE = 'source:homey_energy|main:meter-1';
 
 type Harness = {
   collector: WeatherCollector;
@@ -50,7 +50,7 @@ const buildHarness = (overrides: Partial<WeatherCollectorDeps> = {}): Harness =>
     // admitted scope; unavailable-read recovery has its own regression below.
     readMeterScopeSignature: vi.fn(() => DEFAULT_METER_SCOPE_SIGNATURE),
     // Automatic by default: the open election the pre-existing specs drive.
-    readMainMeterSelection: vi.fn((): MainMeterSelection => ({ state: 'resolved', meterDeviceId: null })),
+    readMainMeterSelection: vi.fn((): MainMeterSelection => ({ state: 'resolved', meterDeviceId: 'meter-1' })),
     // Homey Energy by default: the meter election the pre-existing specs
     // drive exists only for that producer; the Flow gate has its own specs.
     readPowerSource: vi.fn((): ReturnType<WeatherCollectorDeps['readPowerSource']> => (

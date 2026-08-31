@@ -36,7 +36,6 @@ const AREA_METER = 'meter-area-1';
 // exercised by the source-switch spec below.
 const STAMPED_SIGNATURE = `source:homey_energy|main:${MAIN_METER}`;
 const AUTOMATIC_ACTIVE_SIGNATURE = 'source:homey_energy|main:automatic|areas:active';
-const AUTOMATIC_DORMANT_SIGNATURE = 'source:homey_energy|main:automatic|areas:dormant';
 
 const areaConfig = (meterDeviceId: string, name = 'Annex') => ({
   activationVersion: 1,
@@ -213,55 +212,23 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     harness.stop();
   });
 
-  it('forgets in memory AND the store when a dormant pre-GA roster activates under Automatic', async () => {
-    // A populated legacy config without the activation marker is runtime-inert;
-    // the UI save that activates it brings the area fence live, which changes
-    // what Main's tracker records — the one roster edge that still forgets.
+  it('adopts the live explicit signature over a persisted legacy Automatic stamp WITHOUT forgetting', async () => {
+    // The upgrade path for installs stamped under the retired
+    // `main:automatic|areas:*` arm: that stamp now classifies INVALID in the
+    // persisted state, and the documented invalid-pair policy adopts the live
+    // explicit signature while keeping every learned record and marker.
     const harness = buildHarness(
-      learnedHistory({ meterScopeSignature: AUTOMATIC_DORMANT_SIGNATURE }),
-      {},
-      { homesConfig: dormantAreaConfig(AREA_METER), mainMeter: null },
+      learnedHistory({ meterScopeSignature: AUTOMATIC_ACTIVE_SIGNATURE }),
     );
     await vi.advanceTimersByTimeAsync(0);
-    // Sanity: the dormant posture matches the stamp — nothing forgotten.
-    expect(harness.collector.getHistoryStateSnapshot().meterKwhBackfillDone).toBe(true);
-
-    harness.homey.settings.set(HOMES_CONFIG, areaConfig(AREA_METER));
-    await harness.handle(HOMES_CONFIG);
 
     const memory = harness.collector.getHistoryStateSnapshot();
-    expect(memory.meterKwhBackfillDone).toBeUndefined();
-    expect(memory.meterKwhDeviceId).toBeUndefined();
-    expect(memory.kwhPurgeVersion).toBeUndefined();
-    expect(memory.controlledBackfillVersion).toBeUndefined();
-    expect(memory.latestFit).toBeUndefined();
-    expect(memory.meterScopeSignature).toBe(AUTOMATIC_ACTIVE_SIGNATURE);
-    expect(memory.meterScopeSinceDateKey).toBe('2026-01-10');
-    // The forget is scoped: temperature history and its markers survive —
-    // but the retained day's OLD-SCOPE kWh does not. A kept value would let
-    // the immediate refit reproduce the old-scope signature and count as
-    // pre-validated evidence the new scope never vouched for.
-    expect(memory.records).toHaveLength(1);
-    expect(memory.records[0].kwhTotal).toBeUndefined();
-    expect(memory.records[0].quality.missingKwh).toBe(true);
-    expect(memory.records[0].tempMeanC).toBe(-5);
-    expect(memory.backfilledDeviceId).toBe('out-1');
-    // The store is reset on the same restart edge — no debounce window.
-    const persisted = persistedState(harness.homey);
-    expect(persisted.meterKwhBackfillDone).toBeUndefined();
-    expect(persisted.kwhPurgeVersion).toBeUndefined();
-    expect(persisted.latestFit).toBeUndefined();
-    expect(persisted.meterScopeSignature).toBe(AUTOMATIC_ACTIVE_SIGNATURE);
-    expect(persisted.meterScopeSinceDateKey).toBe('2026-01-10');
-    expect(persisted.records[0].kwhTotal).toBeUndefined();
-    expect(persisted.records[0].tempMeanC).toBe(-5);
-    // Forgetting the markers re-arms the meter-kWh backfill for the new scope.
-    expect(harness.collector.isBackfillRunning()).toBe(true);
-    expect(harness.weatherLogger.info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(memory.meterScopeSignature).toBe(STAMPED_SIGNATURE);
+    expect(memory.meterKwhBackfillDone).toBe(true);
+    expect(memory.latestFit).toBeDefined();
+    expect(memory.records[0].kwhTotal).toBe(30);
+    expect(harness.weatherLogger.info).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'weather_meter_scope_invalidated',
-      reason: 'meter_scope_changed',
-      previousSignature: AUTOMATIC_DORMANT_SIGNATURE,
-      currentSignature: AUTOMATIC_ACTIVE_SIGNATURE,
     }));
     harness.stop();
   });
@@ -385,11 +352,11 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     harness.stop();
   });
 
-  it('invalidates Homey Energy → Flow → Homey Energy for a normal single-home Automatic setup', async () => {
+  it('invalidates Homey Energy → Flow → Homey Energy for a normal single-home setup', async () => {
     const harness = buildHarness(
-      learnedHistory({ meterScopeSignature: AUTOMATIC_ACTIVE_SIGNATURE }),
+      learnedHistory(),
       {},
-      { mainMeter: null, omitHomesConfig: true },
+      { omitHomesConfig: true },
     );
     await vi.advanceTimersByTimeAsync(0);
 
@@ -405,13 +372,13 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     await harness.handle(POWER_SOURCE);
     await vi.advanceTimersByTimeAsync(0);
     expect(harness.collector.getHistoryStateSnapshot()).toMatchObject({
-      meterScopeSignature: AUTOMATIC_ACTIVE_SIGNATURE,
+      meterScopeSignature: STAMPED_SIGNATURE,
       meterScopeSinceDateKey: '2026-01-10',
     });
     expect(harness.weatherLogger.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'weather_meter_scope_invalidated',
       previousSignature: 'source:flow',
-      currentSignature: AUTOMATIC_ACTIVE_SIGNATURE,
+      currentSignature: STAMPED_SIGNATURE,
     }));
     harness.stop();
   });
@@ -464,53 +431,22 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     harness.stop();
   });
 
-  it('never forgets on a transiently unreadable homes config — failed read is not change evidence', async () => {
-    const harness = buildHarness(
-      learnedHistory({ meterScopeSignature: AUTOMATIC_ACTIVE_SIGNATURE }),
-      {},
-      { mainMeter: null },
-    );
+  it('never forgets on a transiently unreadable Main selection — failed read is not change evidence', async () => {
+    const harness = buildHarness(learnedHistory());
     await vi.advanceTimersByTimeAsync(0);
 
-    // Junk blob → the homes store classifies 'suspect' → signature unavailable.
-    harness.homey.settings.set(HOMES_CONFIG, { subHomes: 'corrupted' });
-    await harness.handle(HOMES_CONFIG);
+    // A nulled meter read classifies the selection unavailable → the
+    // signature composes to undefined, and ambiguity never forgets.
+    harness.homey.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, null);
+    await harness.handle(HOMEY_ENERGY_METER_DEVICE_ID);
 
     const memory = harness.collector.getHistoryStateSnapshot();
     expect(memory.meterKwhBackfillDone).toBe(true);
     expect(memory.latestFit).toBeDefined();
-    expect(memory.meterScopeSignature).toBe(AUTOMATIC_ACTIVE_SIGNATURE);
+    expect(memory.meterScopeSignature).toBe(STAMPED_SIGNATURE);
     harness.stop();
   });
 
-  it('preserves dormant Automatic history when a failed marker backfill makes a miss look unwritten', async () => {
-    const harness = buildHarness(
-      learnedHistory({ meterScopeSignature: AUTOMATIC_DORMANT_SIGNATURE }),
-      {},
-      {
-        failHomesMarkerBackfill: true,
-        homesConfig: dormantAreaConfig(AREA_METER),
-        mainMeter: null,
-      },
-    );
-    await vi.advanceTimersByTimeAsync(0);
-    expect(harness.collector.getHistoryStateSnapshot().meterKwhBackfillDone).toBe(true);
-
-    harness.homey.settings.set(HOMES_CONFIG, undefined);
-    await harness.handle(HOMES_CONFIG);
-
-    const memory = harness.collector.getHistoryStateSnapshot();
-    expect(memory.meterScopeSignature).toBe(AUTOMATIC_DORMANT_SIGNATURE);
-    expect(memory.meterScopeSinceDateKey).toBeUndefined();
-    expect(memory.meterKwhBackfillDone).toBe(true);
-    expect(memory.latestFit).toBeDefined();
-    expect(memory.records[0].kwhTotal).toBe(30);
-    expect(persistedState(harness.homey).records[0].kwhTotal).toBe(30);
-    expect(harness.weatherLogger.info).not.toHaveBeenCalledWith(expect.objectContaining({
-      event: 'weather_meter_scope_invalidated',
-    }));
-    harness.stop();
-  });
 
   it('defers the meter election while the Main selection is unreadable', async () => {
     const fetchInsights = vi.fn(async () => ({ step: 6 * 60 * 60 * 1000, values: [] }));

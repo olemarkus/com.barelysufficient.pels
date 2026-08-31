@@ -115,7 +115,6 @@ describe('explicit Main meter ownership', () => {
   it('finds only an explicit meter that a sub-home already owns', () => {
     expect(findMainMeterCollision('meter-annex', [meteredHome])).toBe(meteredHome);
     expect(findMainMeterCollision('meter-main', [meteredHome])).toBeNull();
-    expect(findMainMeterCollision(null, [meteredHome])).toBeNull();
   });
 });
 

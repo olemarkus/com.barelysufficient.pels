@@ -21,7 +21,7 @@ describe('HomeyEnergyPollSource', () => {
   });
 
   it('starts polling only when Homey Energy is the configured power source', async () => {
-    const pollHomePower = vi.fn().mockResolvedValue({ powerW: 2100 });
+    const pollHomePower = vi.fn().mockResolvedValue({ powerW: 2100, meterDeviceId: 'meter-main' });
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
@@ -41,7 +41,7 @@ describe('HomeyEnergyPollSource', () => {
     await Promise.resolve();
 
     expect(pollHomePower).toHaveBeenCalledTimes(1);
-    expect(recordPowerSample).toHaveBeenCalledWith({ powerW: 2100 });
+    expect(recordPowerSample).toHaveBeenCalledWith({ powerW: 2100, meterDeviceId: 'meter-main' });
     expect(vi.getTimerCount()).toBe(1);
 
     await vi.advanceTimersByTimeAsync(10_000);
@@ -77,7 +77,7 @@ describe('HomeyEnergyPollSource', () => {
   });
 
   it('retries a restart after transient power-source reads fail', async () => {
-    const pollHomePower = vi.fn().mockResolvedValue({ powerW: 2100 });
+    const pollHomePower = vi.fn().mockResolvedValue({ powerW: 2100, meterDeviceId: 'meter-main' });
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
     const error = vi.fn();
     let sourceReads = 0;
@@ -105,7 +105,7 @@ describe('HomeyEnergyPollSource', () => {
     // `pollNow()` reads again at its post-SDK stale-source fence.
     expect(sourceReads).toBe(4);
     expect(pollHomePower).toHaveBeenCalledOnce();
-    expect(recordPowerSample).toHaveBeenCalledWith({ powerW: 2100 });
+    expect(recordPowerSample).toHaveBeenCalledWith({ powerW: 2100, meterDeviceId: 'meter-main' });
     expect(vi.getTimerCount()).toBe(1);
     expect(error).toHaveBeenCalledTimes(2);
 
@@ -115,7 +115,7 @@ describe('HomeyEnergyPollSource', () => {
 
   it('retries and resumes when the persisted source key transiently reads undefined', async () => {
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
-    const pollHomePower = vi.fn().mockResolvedValue({ powerW: 2_100 });
+    const pollHomePower = vi.fn().mockResolvedValue({ powerW: 2_100, meterDeviceId: 'meter-main' });
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
     const error = vi.fn();
     const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
@@ -144,7 +144,7 @@ describe('HomeyEnergyPollSource', () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect(pollHomePower).toHaveBeenCalledOnce();
-    expect(recordPowerSample).toHaveBeenCalledWith({ powerW: 2_100 });
+    expect(recordPowerSample).toHaveBeenCalledWith({ powerW: 2_100, meterDeviceId: 'meter-main' });
     expect(vi.getTimerCount()).toBe(1);
   });
 
@@ -173,8 +173,8 @@ describe('HomeyEnergyPollSource', () => {
     // restart (e.g. the whole-home meter changed) must fence it out so the old
     // meter's watts are never recorded over the new selection's sample.
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
-    const pollResolvers: Array<(value: { powerW: number }) => void> = [];
-    const pollHomePower = vi.fn(() => new Promise<{ powerW: number }>((resolve) => {
+    const pollResolvers: Array<(value: { powerW: number; meterDeviceId: string }) => void> = [];
+    const pollHomePower = vi.fn(() => new Promise<{ powerW: number; meterDeviceId: string }>((resolve) => {
       pollResolvers.push(resolve);
     }));
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
@@ -195,21 +195,21 @@ describe('HomeyEnergyPollSource', () => {
     expect(pollHomePower).toHaveBeenCalledTimes(2);
 
     // The pre-restart poll resolves late with the OLD meter's watts.
-    pollResolvers[0]({ powerW: 9999 });
+    pollResolvers[0]({ powerW: 9999, meterDeviceId: 'meter-main' });
     await Promise.resolve();
     expect(recordPowerSample).not.toHaveBeenCalled();
     expect(debugStructured).toHaveBeenCalledWith({ event: 'homey_energy_poll_discarded_stale' });
 
     // The post-restart poll still records normally.
-    pollResolvers[1]({ powerW: 2100 });
+    pollResolvers[1]({ powerW: 2100, meterDeviceId: 'meter-main' });
     await Promise.resolve();
-    expect(recordPowerSample).toHaveBeenCalledWith({ powerW: 2100 });
+    expect(recordPowerSample).toHaveBeenCalledWith({ powerW: 2100, meterDeviceId: 'meter-main' });
   });
 
   it('drops an in-flight old-meter reading when synchronously invalidated before restart', async () => {
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
-    let resolvePoll: (value: { powerW: number }) => void = () => undefined;
-    const pollHomePower = vi.fn(() => new Promise<{ powerW: number }>((resolve) => {
+    let resolvePoll: (value: { powerW: number; meterDeviceId: string }) => void = () => undefined;
+    const pollHomePower = vi.fn(() => new Promise<{ powerW: number; meterDeviceId: string }>((resolve) => {
       resolvePoll = resolve;
     }));
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
@@ -225,7 +225,7 @@ describe('HomeyEnergyPollSource', () => {
 
     source.start();
     source.invalidate();
-    resolvePoll({ powerW: 9_999 });
+    resolvePoll({ powerW: 9_999, meterDeviceId: 'meter-main' });
     await Promise.resolve();
 
     expect(recordPowerSample).not.toHaveBeenCalled();
@@ -244,10 +244,10 @@ describe('HomeyEnergyPollSource', () => {
     // The stub plays the transport's role: it dispatches the sub-meter fan-out ONLY
     // when the source authorizes it (mirrors `pollHomePowerWithMeterFanOut`).
     const pollHomePower = vi.fn((authorizeFanOut: () => boolean) => (
-      new Promise<{ powerW: number }>((resolve) => {
+      new Promise<{ powerW: number; meterDeviceId: string }>((resolve) => {
         pollResolvers.push(() => {
           if (authorizeFanOut()) routeMeterReadings({ 'm-a': 1000 });
-          resolve({ powerW: 2100 });
+          resolve({ powerW: 2100, meterDeviceId: 'meter-main' });
         });
       })
     ));
@@ -276,8 +276,8 @@ describe('HomeyEnergyPollSource', () => {
 
   it('drops an in-flight reading when the source switches away from Homey Energy', async () => {
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
-    let resolvePoll: (value: { powerW: number }) => void = () => undefined;
-    const pollHomePower = vi.fn(() => new Promise<{ powerW: number }>((resolve) => {
+    let resolvePoll: (value: { powerW: number; meterDeviceId: string }) => void = () => undefined;
+    const pollHomePower = vi.fn(() => new Promise<{ powerW: number; meterDeviceId: string }>((resolve) => {
       resolvePoll = resolve;
     }));
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
@@ -295,44 +295,36 @@ describe('HomeyEnergyPollSource', () => {
 
     mockHomeyInstance.settings.set('power_source', 'flow');
     source.restart();
-    resolvePoll({ powerW: 2100 });
+    resolvePoll({ powerW: 2100, meterDeviceId: 'meter-main' });
     await Promise.resolve();
 
     expect(recordPowerSample).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it.each([
-    ['admitted', true],
-    ['superseded', false],
-  ] as const)('retains an Automatic meter only when its poll sample is %s', async (state, retained) => {
-    const noteAdmittedAutomaticHomeMeter = vi.fn();
+  it('hands the identity-carrying sample to the pipeline as one object', async () => {
+    // The session-sticky Automatic retention is gone: the identity rides the
+    // sample into `recordPowerSample`, and the pipeline's admission decides
+    // whether it publishes — no second decision at this source.
+    const recordPowerSample = vi.fn().mockResolvedValue({ state: 'admitted', revision: 1 });
     const source = createHomeyEnergyPollSource({
       getPowerSource: () => 'homey_energy',
       timers: new TimerRegistry(),
       deviceManager: {
         pollHomePowerW: vi.fn().mockResolvedValue({
           powerW: 2_100,
-          resolvedHomeMeterDeviceId: 'meter-main',
-          automaticHomeMeterDeviceId: 'meter-main',
-          homeMeterArrangement: 'identified',
+          meterDeviceId: 'meter-main',
         }),
-        noteAdmittedAutomaticHomeMeter,
       },
       getStructuredDebugEmitter: () => vi.fn(),
       error: vi.fn(),
-    }, {
-      recordPowerSample: vi.fn().mockResolvedValue(state === 'admitted'
-        ? { state: 'admitted', revision: 1 }
-        : { state: 'superseded', revision: 1, latestRevision: 2 }),
-    });
+    }, { recordPowerSample });
 
     await source.pollNow();
 
-    if (retained) {
-      expect(noteAdmittedAutomaticHomeMeter).toHaveBeenCalledWith('meter-main');
-    } else {
-      expect(noteAdmittedAutomaticHomeMeter).not.toHaveBeenCalled();
-    }
+    expect(recordPowerSample).toHaveBeenCalledWith(2_100, undefined, {
+      powerW: 2_100,
+      meterDeviceId: 'meter-main',
+    });
   });
 });

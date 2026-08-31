@@ -103,25 +103,16 @@ export type HomeMembershipPort = {
    * from, stamped with that sample's own ingest timestamp. Called by the
    * power-sample pipeline atomically with ingest — never from a raw read — so
    * the sampled-meter ownership fence can only ever move together with the
-   * watts it governs. `null` identity = the admitted sample's provenance is
-   * unknown; never proof of non-collision.
+   * watts it governs. Always a named meter: a whole-home sample cannot exist
+   * without one any more.
    */
-  noteResolvedHomeMeter(deviceId: string | null, sampleAtMs: number): void;
+  noteResolvedHomeMeter(deviceId: string, sampleAtMs: number): void;
   /**
    * Admit a Flow-card sample after it has replaced the tracker watts. This is
    * the only safe point for a pending Homey-Energy sampled-meter fence to hand
    * control to fresh-plan recovery after a source switch.
    */
   noteAdmittedFlowHomeSample(): void;
-  /**
-   * The sampled report's meter-arrangement observation, riding the same
-   * admitted ingest as the identity above. Primitive union re-declared here
-   * (not imported) because `lib/home` may not import `lib/device` —
-   * `no-home-to-peer`; the producer's type in
-   * `lib/device/transport/managerFetch.ts` is the source of truth and the
-   * service latches only proven values (`unproven` never overwrites).
-   */
-  noteHomeMeterArrangement(observation: 'identified' | 'idless_aggregate_only' | 'unproven'): void;
   /** Re-resolve from the cached inputs; cheap, never throws destructively. */
   recompute(): void;
 };

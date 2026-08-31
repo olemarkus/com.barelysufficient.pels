@@ -26,7 +26,7 @@ setup/appNativeWiring.ts 1
 setup/appDeviceSupport.ts 1
 
 # --- Home lane (→ lib/home; the meter-provenance pair may need lib/power) ---
-setup/homeMembership.ts 16
+setup/homeMembership.ts 15
 setup/homeMainMeterAuthority.ts 7
 setup/homeSampledMeterIdentity.ts 3
 setup/homeRuntime/homeModeOwnershipTransfer.ts 2

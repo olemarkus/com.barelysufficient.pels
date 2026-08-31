@@ -30,6 +30,7 @@ const loggerMock: Logger = {
 // The structural parse stamp must override them for a battery, proving the stamp is
 // settings-independent (the realtime/boot timing window).
 const adversarialProviders = {
+  getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
   getControllable: () => true,
   getManaged: () => true,
   isManagedFilterActive: () => true,
