@@ -129,7 +129,6 @@ describe('buildSwapCandidates', () => {
 
     expect(result.ready).toBe(false);
     expect(result.toShed).toHaveLength(1);
-    expect(result.decisionText).toContain('insufficient headroom');
   });
 
   it('explains swap failures caused by post-reserve margin after swap reserve', () => {
@@ -149,13 +148,13 @@ describe('buildSwapCandidates', () => {
       restoredThisCycle: new Set(),
     });
 
+    // The numbers the rejection turns on, asserted as numbers. They used to be
+    // read out of a formatted sentence, which meant this test passed or failed on
+    // the wording as much as on the arithmetic.
     expect(result.ready).toBe(false);
-    // The reject text no longer names the swap target: `insufficient_headroom` lost
-    // its `swapTargetName` slot (no device-attached producer ever set it), and the
-    // enclosing debug payload already logs the same device as `deviceName`.
-    expect(result.decisionText).toContain('insufficient headroom to restore after reserves');
-    expect(result.decisionText).toContain('effective 1.30kW after 0.30kW swap reserve');
-    expect(result.decisionText).toContain('post-reserve margin 0.050kW < 0.250kW');
+    expect(result.displayEffectiveHeadroomKw).toBeCloseTo(1.30, 6);
+    expect(result.displayPostReserveMarginKw).toBeCloseTo(0.05, 6);
+    expect(result.reserveKw).toBeCloseTo(0.30, 6);
   });
 
   it('keeps swap restores blocked until the swap and admission reserves are both satisfied', () => {
@@ -206,7 +205,9 @@ describe('buildSwapCandidates', () => {
     expect(result.potentialHeadroom).toBeCloseTo(1.6, 6);
     expect(result.effectiveHeadroom).toBeCloseTo(1.3, 6);
     expect(result.ready).toBe(true);
-    expect(result.decisionText).toBe('swapped out for Device');
+    // Names the device being shed to make room, which is what the removed
+    // `decisionText` sentence ("swapped out for ...") reported about this case.
+    expect(result.shedNames).toBe('Candidate');
   });
 
   it('treats explicit zero expected or configured power as zero instead of falling back to 1kW', () => {

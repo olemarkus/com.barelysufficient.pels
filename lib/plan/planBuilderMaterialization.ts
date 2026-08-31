@@ -258,8 +258,9 @@ export class PlanMaterializationStages {
           deviceId: issue.deviceId,
           deviceName: issue.deviceName,
           plannedState: issue.plannedState,
-          reason: issue.reason,
-          allowedReasonKinds: issue.allowedReasonKinds,
+          reasonCode: issue.reasonCode,
+          allowedReasonCodes: issue.allowedReasonCodes,
+          ...(issue.requiredFlags ? { requiredFlags: issue.requiredFlags } : {}),
         });
       },
     }));

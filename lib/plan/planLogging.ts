@@ -6,9 +6,7 @@ import {
 } from '../power/capacityStateSummary';
 import {
   buildComparableDeviceReason,
-  getPlanReasonLabel,
   PLAN_REASON_CODES,
-  type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isPlanDeviceObservedOn, isSteppedLoadDevice } from './planSteppedLoad';
@@ -352,7 +350,11 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
 }
 
 export type PlanReasonGroup = {
-  reason: string;
+  reasonCode: string;
+  // Only the `inactive` code carries one, and it is shared-domain copy the device
+  // card renders (`commandableNowReason.ts`) — it discriminates WHICH
+  // commandability cause, which the code alone cannot.
+  detail?: string;
   count: number;
 };
 
@@ -391,21 +393,25 @@ export function buildPlanDebugSummarySignatureFromEvent(event: PlanDebugSummaryE
   return JSON.stringify(event);
 }
 
+// Grouped by the reason CODE. This used to group by a rendered label
+// (`getPlanReasonLabel`), which put prose in a structured field and made the
+// group key un-joinable against the `reasonCode` every other plan event carries.
 function buildPlanReasonGroups(devices: DevicePlanDevice[]): PlanReasonGroup[] {
   const counts = new Map<string, number>();
   for (const device of devices) {
-    const reason = normalizePlanReason(device.reason);
-    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+    const { reason } = device;
+    const detail = reason.code === PLAN_REASON_CODES.inactive ? reason.detail : undefined;
+    const key = detail ? `${reason.code}\u0000${detail}` : reason.code;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return Array.from(counts.entries())
-    .map(([reason, count]) => ({ reason, count }))
-    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
-}
-
-export function normalizePlanReason(reason: DeviceReason): string {
-  if (reason.code === PLAN_REASON_CODES.inactive && reason.detail) return reason.detail;
-  if (reason.code === PLAN_REASON_CODES.insufficientHeadroom) return 'insufficient headroom';
-  return getPlanReasonLabel(reason.code);
+    .map(([key, count]) => {
+      const [reasonCode, detail] = key.split('\u0000');
+      return detail === undefined
+        ? { reasonCode: reasonCode ?? '', count }
+        : { reasonCode: reasonCode ?? '', detail, count };
+    })
+    .sort((a, b) => b.count - a.count || a.reasonCode.localeCompare(b.reasonCode));
 }
 
 function categorizePlanDebugDevices(devices: DevicePlanDevice[]): {

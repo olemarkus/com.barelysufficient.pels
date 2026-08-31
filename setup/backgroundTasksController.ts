@@ -56,10 +56,7 @@ export class BackgroundTasksController {
 
   startResourceWarningListeners(): void {
     if (this.stopResourceWarnings) this.stopResourceWarnings();
-    this.stopResourceWarnings = startResourceWarnings({
-      homey: this.deps.homey,
-      error: (...args: unknown[]) => this.deps.error(...args),
-    });
+    this.stopResourceWarnings = startResourceWarnings({ homey: this.deps.homey });
   }
 
   installHeapSnapshotHandler(structuredLogger: PinoLogger): void {

@@ -1,7 +1,6 @@
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { DevicePlanDevice } from './planTypes';
 import {
-  formatDeviceReason,
   PLAN_REASON_CODES,
   type PlanReasonCode,
 } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -12,53 +11,56 @@ export type PlanReasonPairValidationIssue = {
   deviceId: string;
   deviceName: string;
   plannedState: string;
-  reason: string;
-  allowedReasonKinds: string[];
+  reasonCode: string;
+  allowedReasonCodes: string[];
+  // Set instead of a prose label when the code IS allowed for the state but the
+  // device lacks the posture flag the code asserts. Naming the flags is the fact;
+  // the sentence that used to sit here restated them.
+  requiredFlags?: readonly string[];
 };
 
 type ReasonCodeRule = {
   code: PlanReasonCode;
-  label: string;
 };
 
 const KEEP_REASON_RULES: readonly ReasonCodeRule[] = [
-  { code: PLAN_REASON_CODES.keep, label: 'keep' },
-  { code: PLAN_REASON_CODES.restoreNeed, label: 'stepped restore admission' },
-  { code: PLAN_REASON_CODES.cooldownShedding, label: 'shedding cooldown' },
-  { code: PLAN_REASON_CODES.cooldownRestore, label: 'restore cooldown' },
-  { code: PLAN_REASON_CODES.meterSettling, label: 'meter settling' },
-  { code: PLAN_REASON_CODES.restoreThrottled, label: 'restore throttle' },
-  { code: PLAN_REASON_CODES.waitingForOtherDevices, label: 'recovery gate' },
-  { code: PLAN_REASON_CODES.activationBackoff, label: 'activation backoff' },
-  { code: PLAN_REASON_CODES.insufficientHeadroom, label: 'insufficient headroom' },
-  { code: PLAN_REASON_CODES.restorePending, label: 'restore pending' },
-  { code: PLAN_REASON_CODES.swapPending, label: 'swap pending' },
-  { code: PLAN_REASON_CODES.shedInvariant, label: 'shed invariant' },
-  { code: PLAN_REASON_CODES.reservedForStart, label: 'startup power reserved' },
-  { code: PLAN_REASON_CODES.startupStabilization, label: 'startup stabilization' },
-  { code: PLAN_REASON_CODES.capacityControlOff, label: 'capacity control off' },
+  { code: PLAN_REASON_CODES.keep },
+  { code: PLAN_REASON_CODES.restoreNeed },
+  { code: PLAN_REASON_CODES.cooldownShedding },
+  { code: PLAN_REASON_CODES.cooldownRestore },
+  { code: PLAN_REASON_CODES.meterSettling },
+  { code: PLAN_REASON_CODES.restoreThrottled },
+  { code: PLAN_REASON_CODES.waitingForOtherDevices },
+  { code: PLAN_REASON_CODES.activationBackoff },
+  { code: PLAN_REASON_CODES.insufficientHeadroom },
+  { code: PLAN_REASON_CODES.restorePending },
+  { code: PLAN_REASON_CODES.swapPending },
+  { code: PLAN_REASON_CODES.shedInvariant },
+  { code: PLAN_REASON_CODES.reservedForStart },
+  { code: PLAN_REASON_CODES.startupStabilization },
+  { code: PLAN_REASON_CODES.capacityControlOff },
 ] as const;
 
 const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
-  { code: PLAN_REASON_CODES.capacity, label: 'capacity shed' },
-  { code: PLAN_REASON_CODES.hourlyBudget, label: 'hourly budget shed' },
-  { code: PLAN_REASON_CODES.dailyBudget, label: 'daily budget shed' },
-  { code: PLAN_REASON_CODES.deferredObjectiveAvoid, label: 'deferred objective avoid' },
-  { code: PLAN_REASON_CODES.awaitingSolarSurplus, label: 'awaiting solar surplus' },
-  { code: PLAN_REASON_CODES.neutralStartupHold, label: 'neutral hold' },
-  { code: PLAN_REASON_CODES.shortfall, label: 'shortfall shed' },
-  { code: PLAN_REASON_CODES.cooldownShedding, label: 'shedding cooldown' },
-  { code: PLAN_REASON_CODES.cooldownRestore, label: 'restore cooldown' },
-  { code: PLAN_REASON_CODES.meterSettling, label: 'meter settling' },
-  { code: PLAN_REASON_CODES.restoreThrottled, label: 'restore throttle' },
-  { code: PLAN_REASON_CODES.restorePending, label: 'restore pending' },
-  { code: PLAN_REASON_CODES.waitingForOtherDevices, label: 'recovery gate' },
-  { code: PLAN_REASON_CODES.activationBackoff, label: 'activation backoff' },
-  { code: PLAN_REASON_CODES.insufficientHeadroom, label: 'insufficient headroom' },
-  { code: PLAN_REASON_CODES.swapPending, label: 'swap pending' },
-  { code: PLAN_REASON_CODES.swappedOut, label: 'swapped out' },
-  { code: PLAN_REASON_CODES.reservedForStart, label: 'startup power reserved' },
-  { code: PLAN_REASON_CODES.startupStabilization, label: 'startup stabilization' },
+  { code: PLAN_REASON_CODES.capacity },
+  { code: PLAN_REASON_CODES.hourlyBudget },
+  { code: PLAN_REASON_CODES.dailyBudget },
+  { code: PLAN_REASON_CODES.deferredObjectiveAvoid },
+  { code: PLAN_REASON_CODES.awaitingSolarSurplus },
+  { code: PLAN_REASON_CODES.neutralStartupHold },
+  { code: PLAN_REASON_CODES.shortfall },
+  { code: PLAN_REASON_CODES.cooldownShedding },
+  { code: PLAN_REASON_CODES.cooldownRestore },
+  { code: PLAN_REASON_CODES.meterSettling },
+  { code: PLAN_REASON_CODES.restoreThrottled },
+  { code: PLAN_REASON_CODES.restorePending },
+  { code: PLAN_REASON_CODES.waitingForOtherDevices },
+  { code: PLAN_REASON_CODES.activationBackoff },
+  { code: PLAN_REASON_CODES.insufficientHeadroom },
+  { code: PLAN_REASON_CODES.swapPending },
+  { code: PLAN_REASON_CODES.swappedOut },
+  { code: PLAN_REASON_CODES.reservedForStart },
+  { code: PLAN_REASON_CODES.startupStabilization },
 ] as const;
 
 /**
@@ -73,22 +75,19 @@ const REASON_REQUIRED_FLAGS = [
     // off rung. A tracking device under the `'minimum'` floor is limited rather
     // than held, so it never carries this code in the first place.
     flags: ['surplusOnly', 'surplusTracking'],
-    label: 'awaiting solar surplus requires surplusOnly or surplusTracking',
   },
   {
     code: PLAN_REASON_CODES.externalOffHold,
     flags: ['externalOffHoldActive'],
-    label: 'external off hold requires externalOffHoldActive',
   },
 ] as const satisfies readonly {
   code: PlanReasonCode;
   flags: readonly (keyof DevicePlanDevice)[];
-  label: string;
 }[];
 
 const INACTIVE_REASON_RULES: readonly ReasonCodeRule[] = [
-  { code: PLAN_REASON_CODES.inactive, label: 'inactive' },
-  { code: PLAN_REASON_CODES.externalOffHold, label: 'external off hold' },
+  { code: PLAN_REASON_CODES.inactive },
+  { code: PLAN_REASON_CODES.externalOffHold },
 ] as const;
 
 function getAllowedReasonRules(plannedState: string): readonly ReasonCodeRule[] {
@@ -106,18 +105,17 @@ function getAllowedReasonRules(plannedState: string): readonly ReasonCodeRule[] 
 
 function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidationIssue | null {
   const plannedState = typeof dev.plannedState === 'string' ? dev.plannedState.trim() : '';
-  const reason = formatDeviceReason(dev.reason).trim();
   const reasonCode = dev.reason.code;
   const allowedReasonRules = getAllowedReasonRules(plannedState);
-  const allowedReasonKinds = allowedReasonRules.map((rule) => rule.label);
+  const allowedReasonCodes = allowedReasonRules.map((rule) => rule.code);
 
   if (!plannedState || allowedReasonRules.length === 0) {
     return {
       deviceId: dev.id,
       deviceName: dev.name,
       plannedState: plannedState || '<empty>',
-      reason: reason || '<empty>',
-      allowedReasonKinds,
+      reasonCode,
+      allowedReasonCodes,
     };
   }
 
@@ -126,8 +124,8 @@ function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidation
       deviceId: dev.id,
       deviceName: dev.name,
       plannedState,
-      reason,
-      allowedReasonKinds,
+      reasonCode,
+      allowedReasonCodes,
     };
   }
 
@@ -143,18 +141,23 @@ function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidation
       deviceId: dev.id,
       deviceName: dev.name,
       plannedState,
-      reason,
-      allowedReasonKinds: [requiredFlag.label],
+      reasonCode,
+      allowedReasonCodes,
+      requiredFlags: requiredFlag.flags,
     };
   }
 
   return null;
 }
 
+// The message of a thrown developer error, not a log field — it is read by a
+// human reading a stack trace, and carries codes rather than rendered labels so
+// it says the same thing the structured `plan_reason_pair_invalid` event does.
 function formatPlanReasonPairIssue(issue: PlanReasonPairValidationIssue): string {
-  const allowedKinds = issue.allowedReasonKinds.join(', ') || '<none>';
+  const allowed = issue.allowedReasonCodes.join(', ') || '<none>';
+  const required = issue.requiredFlags ? `, requiredFlags=${issue.requiredFlags.join('|')}` : '';
   return `Invalid plan reason pair for ${issue.deviceName} (${issue.deviceId}): `
-    + `plannedState=${issue.plannedState}, reason=${issue.reason}, allowed=${allowedKinds}`;
+    + `plannedState=${issue.plannedState}, reasonCode=${issue.reasonCode}, allowed=${allowed}${required}`;
 }
 
 export function finalizePlanDevices(

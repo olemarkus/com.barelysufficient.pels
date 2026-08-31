@@ -1,5 +1,4 @@
 import {
-  formatDeviceReason,
   PLAN_REASON_CODES,
   type CountdownReasonTiming,
   type DeviceReason,
@@ -9,7 +8,6 @@ import {
 export type ClassifiedPlanReason = {
   code: PlanReasonCode;
   reason: DeviceReason | undefined;
-  text: string | undefined;
 };
 
 export type PlanReasonDecision =
@@ -34,11 +32,9 @@ function assertNever(value: never): never {
 }
 
 export function classifyPlanReason(reason: DeviceReason | undefined): ClassifiedPlanReason {
-  const text = reason ? formatDeviceReason(reason) : undefined;
   return {
     code: reason?.code ?? PLAN_REASON_CODES.none,
     reason,
-    text: text || undefined,
   };
 }
 

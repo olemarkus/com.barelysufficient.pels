@@ -225,35 +225,4 @@ export type DeviceReason =
   // `string`.
   | { code: typeof PLAN_REASON_CODES.reservedForStart; targetName: string };
 
-const REASON_LABELS = {
-  [PLAN_REASON_CODES.none]: 'unknown',
-  [PLAN_REASON_CODES.keep]: 'keep',
-  [PLAN_REASON_CODES.restoreNeed]: 'restore',
-  [PLAN_REASON_CODES.swapPending]: 'swap pending',
-  [PLAN_REASON_CODES.swappedOut]: 'swapped out',
-  [PLAN_REASON_CODES.hourlyBudget]: 'hourly budget',
-  [PLAN_REASON_CODES.dailyBudget]: 'daily budget',
-  [PLAN_REASON_CODES.shortfall]: 'shortfall',
-  [PLAN_REASON_CODES.cooldownShedding]: 'cooldown (shedding)',
-  [PLAN_REASON_CODES.cooldownRestore]: 'cooldown (restore)',
-  [PLAN_REASON_CODES.meterSettling]: 'meter settling',
-  [PLAN_REASON_CODES.activationBackoff]: 'activation backoff',
-  [PLAN_REASON_CODES.restorePending]: 'restore pending',
-  [PLAN_REASON_CODES.restoreThrottled]: 'restore throttled',
-  [PLAN_REASON_CODES.waitingForOtherDevices]: 'waiting for other devices',
-  [PLAN_REASON_CODES.insufficientHeadroom]: 'insufficient headroom',
-  [PLAN_REASON_CODES.inactive]: 'inactive',
-  [PLAN_REASON_CODES.capacity]: 'capacity',
-  [PLAN_REASON_CODES.deferredObjectiveAvoid]: 'waiting for cheaper hours',
-  [PLAN_REASON_CODES.awaitingSolarSurplus]: 'waiting for solar surplus',
-  [PLAN_REASON_CODES.externalOffHold]: 'staying off until turned on again',
-  [PLAN_REASON_CODES.neutralStartupHold]: 'left off',
-  [PLAN_REASON_CODES.startupStabilization]: 'startup stabilization',
-  [PLAN_REASON_CODES.capacityControlOff]: 'capacity control off',
-  [PLAN_REASON_CODES.shedInvariant]: 'shed invariant',
-  [PLAN_REASON_CODES.reservedForStart]: 'reserved for start',
-} as const satisfies Record<PlanReasonCode, string>;
 
-export function getPlanReasonLabel(code: PlanReasonCode): string {
-  return REASON_LABELS[code];
-}
