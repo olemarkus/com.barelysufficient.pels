@@ -1,9 +1,6 @@
 import type { PowerSource } from './powerSource';
 import type { TimerRegistry } from '../utils/timerRegistry';
-import {
-  POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
-  POWER_SAMPLE_STALE_THRESHOLD_MS,
-} from '../../packages/shared-domain/src/powerFreshness';
+import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
 
 const FLOW_POWER_SAMPLE_HOLD_REBUILD_INTERVAL_MS = 10 * 1000;
 const FLOW_POWER_SAMPLE_FRESHNESS_TIMER = 'flowPowerSampleFreshness';
@@ -49,24 +46,25 @@ export function syncFlowPowerSampleFreshnessClock(
 }
 
 /**
- * Flow-source planning clock for the "hold last real sample" freshness policy.
+ * Flow-source planning clock: the 10-second re-decide heartbeat while the last
+ * Flow sample is still fresh (<60 s).
  *
- * It never records power samples. It only asks the existing plan scheduler to
- * re-evaluate the current soft limit against the last real Flow sample while
- * that sample remains fresh, then emits the stale-hold and fail-closed
- * transition rebuilds if silence continues.
+ * It never records power samples, and it no longer owns any staleness
+ * escalation: past the freshness threshold it simply keeps its schedule and
+ * asks for nothing (the last reading carries forward), and the 10-minute mark
+ * belongs to the unified silence policy — `installMainFreshnessEscalation`
+ * runs for BOTH sources now, and `lib/power/meterSilence.ts` blocks planning
+ * after its one fail-closed pass.
  */
 export class FlowPowerSampleFreshnessClock {
   private lastSampleAtMs: number | null = null;
-
-  private failClosedRebuildRequested = false;
 
   private sourceReadRetryAttempt = 0;
 
   constructor(private readonly deps: FlowPowerSampleFreshnessClockDeps) {}
 
   noteSample(sampleAtMs: number): void {
-    this.trackSample(sampleAtMs, { requestElapsedTransitions: false });
+    this.trackSample(sampleAtMs);
   }
 
   syncLatestSample(sampleAtMs: number | null | undefined): void {
@@ -75,13 +73,10 @@ export class FlowPowerSampleFreshnessClock {
       return;
     }
 
-    this.trackSample(sampleAtMs, { requestElapsedTransitions: true });
+    this.trackSample(sampleAtMs);
   }
 
-  private trackSample(
-    sampleAtMs: number,
-    options: { requestElapsedTransitions: boolean },
-  ): void {
+  private trackSample(sampleAtMs: number): void {
     if (!Number.isFinite(sampleAtMs)) return;
     const powerSource = this.tryReadPowerSource();
     if (powerSource === null) {
@@ -96,15 +91,12 @@ export class FlowPowerSampleFreshnessClock {
     }
     if (!this.adoptSample(sampleAtMs)) return;
 
-    if (options.requestElapsedTransitions && this.requestElapsedTransitions()) return;
-
     this.scheduleNext();
   }
 
   stop(): void {
     clearFlowPowerSampleFreshnessTimer(this.deps.timers);
     this.lastSampleAtMs = null;
-    this.failClosedRebuildRequested = false;
     this.sourceReadRetryAttempt = 0;
   }
 
@@ -129,33 +121,13 @@ export class FlowPowerSampleFreshnessClock {
       return;
     }
 
-    // Between the freshness threshold and the shed timeout the clock keeps its
-    // schedule but asks for nothing: the last reading carries forward, and there
-    // is no new decision to take. It used to request a `stale_hold` rebuild here,
-    // which re-planned on the strength of a sample merely being a minute old.
-    if (ageMs < POWER_SAMPLE_STALE_SHED_TIMEOUT_MS) {
-      this.scheduleNext();
-      return;
-    }
-
-    if (!this.failClosedRebuildRequested) {
-      this.failClosedRebuildRequested = true;
-      this.deps.requestPlanRebuild('flow_power_sample_fail_closed');
-    }
+    // Past the freshness threshold the clock keeps its schedule but asks for
+    // nothing: the last reading carries forward, and there is no new decision
+    // to take. The 10-minute silence mark is the unified escalation's job —
+    // this clock owns only the fresh-window re-decide cadence.
+    this.scheduleNext();
   }
 
-  private requestElapsedTransitions(): boolean {
-    if (this.lastSampleAtMs === null) return false;
-
-    const ageMs = Math.max(0, this.deps.getNowMs() - this.lastSampleAtMs);
-    if (ageMs >= POWER_SAMPLE_STALE_SHED_TIMEOUT_MS) {
-      this.failClosedRebuildRequested = true;
-      this.deps.requestPlanRebuild('flow_power_sample_fail_closed');
-      return true;
-    }
-
-    return false;
-  }
 
   private scheduleNext(): void {
     if (this.lastSampleAtMs === null) return;
@@ -172,7 +144,6 @@ export class FlowPowerSampleFreshnessClock {
   private adoptSample(sampleAtMs: number): boolean {
     if (this.lastSampleAtMs !== null && sampleAtMs < this.lastSampleAtMs) return false;
     this.lastSampleAtMs = sampleAtMs;
-    this.failClosedRebuildRequested = false;
     return true;
   }
 
@@ -211,9 +182,7 @@ export class FlowPowerSampleFreshnessClock {
         POWER_SAMPLE_STALE_THRESHOLD_MS - ageMs,
       ));
     }
-    if (ageMs < POWER_SAMPLE_STALE_SHED_TIMEOUT_MS && !this.failClosedRebuildRequested) {
-      return Math.max(0, POWER_SAMPLE_STALE_SHED_TIMEOUT_MS - ageMs);
-    }
+    // Past the fresh window there is nothing left for this clock to wake for.
     return null;
   }
 }

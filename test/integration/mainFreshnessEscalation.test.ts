@@ -17,9 +17,11 @@ import { drainPending } from '../utils/asyncDrain';
 import type { AppContext } from '../../lib/app/appContext';
 import type { PlanService } from '../../lib/plan/planService';
 
-const okOutcome = { failed: false, isDryRun: false, gated: false, appliedActions: true };
+const okOutcome = {
+  failed: false, isDryRun: false, gated: false, appliedActions: true, deviceApplyFailureCount: 0,
+};
 
-const buildCtx = (params: { lastTimestamp?: number; powerSource?: string } = {}) => {
+const buildCtx = (params: { lastTimestamp?: number; powerSource?: string; armAdmitted?: boolean } = {}) => {
   const rebuildPlanFromCache = vi.fn().mockResolvedValue(okOutcome);
   const ctx = createAppContextMock({
     planService: { rebuildPlanFromCache } as unknown as PlanService,
@@ -34,6 +36,10 @@ const buildCtx = (params: { lastTimestamp?: number; powerSource?: string } = {})
     ...ctx.powerTracker,
     lastTimestamp: params.lastTimestamp ?? Date.now(),
   } as AppContext['powerTracker'];
+  // Production arms the silence policy from the pipeline's admitted ingest;
+  // these scenarios model a live process whose meter then goes silent.
+  // (The restored-silence case below deliberately skips this.)
+  if (params.armAdmitted !== false) ctx.meterSilenceMonitor.noteSampleAdmitted();
   return { ctx, rebuildPlanFromCache };
 };
 
@@ -74,14 +80,51 @@ describe('main silent-meter escalation', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 
-  it('suspends under power_source = flow, where the Flow clock owns the escalation', async () => {
+  it('keeps the pass owed while device writes fail — the block must not engage unshed', async () => {
+    const { ctx, rebuildPlanFromCache } = buildCtx();
+    // Every write throws (caught per-device by the executor): the build
+    // "succeeds" but the fail-closed shed took no effect.
+    rebuildPlanFromCache.mockResolvedValue({ ...okOutcome, deviceApplyFailureCount: 2 });
+    installMainFreshnessEscalation(ctx, () => false);
+
+    await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 90_000);
+    await drainPending();
+    // The pass is NOT latched: every tick retries (unlike the escalate-once
+    // case above) and the block stays disengaged while load may still run.
+    expect(rebuildPlanFromCache.mock.calls.length).toBeGreaterThan(1);
+    expect(ctx.meterSilenceMonitor.isBlocked()).toBe(false);
+
+    // Writes recover: the pass lands, latches, and the block engages.
+    rebuildPlanFromCache.mockResolvedValue(okOutcome);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await drainPending();
+    expect(ctx.meterSilenceMonitor.isBlocked()).toBe(true);
+  });
+
+  it('escalates under power_source = flow too — the silence policy is source-agnostic', async () => {
+    // Owner ruling 2026-08-31: a silent Flow and a dead meter are the same
+    // absence. The Flow clock no longer owns any escalation.
     const { ctx, rebuildPlanFromCache } = buildCtx({ powerSource: 'flow' });
     installMainFreshnessEscalation(ctx, () => false);
 
     await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 60_000);
     await drainPending();
 
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('owes NO shed pass to silence restored across a restart — it blocks instead', async () => {
+    const { ctx, rebuildPlanFromCache } = buildCtx({
+      lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS - 60_000,
+      armAdmitted: false,
+    });
+    installMainFreshnessEscalation(ctx, () => false);
+
+    await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
+    await drainPending();
+
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+    expect(ctx.meterSilenceMonitor.isBlocked()).toBe(true);
   });
 
   it('skips a home that has never sampled — there is no reading to have lost', async () => {

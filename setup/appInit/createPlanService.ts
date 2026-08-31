@@ -101,13 +101,29 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     snapshotWarmupGate: ctx.snapshotWarmupGate,
     // Scope-owned, so each home gates on ITS OWN meter: a sub-home whose area
     // meter has never reported must not ride the main home's first sample.
-    planBuildGate: new PowerMeasurementGate({
-      homeId: scope.homeId,
-      getPowerTracker: scope.getPowerTracker,
-      logger: () => ctx.getStructuredLogger('power/measurement-gate'),
-      warnAfterMs: NO_POWER_SAMPLE_WARN_MS,
-      nowMs: () => Date.now(),
-      getPowerSource: () => readConfiguredPowerSource(ctx.homey.settings),
-    }),
+    // ONE composed boolean, composed here in the wiring: the planner asks a
+    // single question and learns no reason (`planServiceDeps.ts`). The
+    // measurement gate owns "never reported"; the silence monitor owns
+    // "reported, then went silent past the shed timeout" — including letting
+    // the escalation's one fail-closed pass through before the block latches.
+    planBuildGate: composePlanBuildGate(
+      new PowerMeasurementGate({
+        homeId: scope.homeId,
+        getPowerTracker: scope.getPowerTracker,
+        logger: () => ctx.getStructuredLogger('power/measurement-gate'),
+        warnAfterMs: NO_POWER_SAMPLE_WARN_MS,
+        nowMs: () => Date.now(),
+        getPowerSource: () => readConfiguredPowerSource(ctx.homey.settings),
+      }),
+      scope.getMeterSilenceMonitor(),
+    ),
   });
+}
+
+/** The one plan-build boolean: measured at least once, and not silence-blocked. */
+function composePlanBuildGate(
+  measurementGate: PowerMeasurementGate,
+  meterSilence: ReturnType<HomeScope['getMeterSilenceMonitor']>,
+): { isOpen: () => boolean } {
+  return { isOpen: () => measurementGate.isOpen() && !meterSilence.isBlocked() };
 }

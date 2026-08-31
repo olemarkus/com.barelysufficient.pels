@@ -474,7 +474,9 @@ describe('PlanExecutor declined actuator requests', () => {
       deviceId: 'dev-1',
       desired: false,
     });
-    expect(result).toEqual({ deviceWriteCount: 0, commandRequestCount: 0, writtenDeviceIds: [] });
+    expect(result).toEqual({
+      deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, writtenDeviceIds: [],
+    });
     expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
     expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
     expect(state.lastDeviceControlledMs['dev-1']).toBeUndefined();
@@ -514,7 +516,9 @@ describe('PlanExecutor declined actuator requests', () => {
       target: 'temperature',
       value: 23,
     });
-    expect(result).toEqual({ deviceWriteCount: 0, commandRequestCount: 0, writtenDeviceIds: [] });
+    expect(result).toEqual({
+      deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, writtenDeviceIds: [],
+    });
     expect(state.pendingTargetCommands['dev-1']).toBeUndefined();
     expect(state.lastDeviceRestoreMs['dev-1']).toBeUndefined();
     expect(state.lastDeviceControlledMs['dev-1']).toBeUndefined();
@@ -586,6 +590,9 @@ describe('PlanExecutor restore logging', () => {
     })).resolves.toEqual({
       deviceWriteCount: 1,
       commandRequestCount: 0,
+      // The thrown projection counts as an apply failure — the silence
+      // escalation reads this to keep its fail-closed pass owed.
+      deviceApplyFailureCount: 1,
       // Names the device actually written, not the one that threw and not both.
       // The realtime circuit breaker charges a strike per id in this list, so a
       // wrong id here suppresses an innocent device's observations for 60 s.

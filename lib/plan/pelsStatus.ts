@@ -265,7 +265,7 @@ function resolveDailyLimited(params: DailyLimitParams): boolean {
 
 function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): 'none' | 'hourly' | 'daily' | 'both' {
   // Both claims require a MEASUREMENT this cycle: `headroomKw` is synthesized
-  // when there is none (stale_hold → 0, stale_fail_closed → −1), and the −1
+  // when there is none (silent meter → −1 for the fail-closed pass), and the −1
   // sentinel would otherwise read as a real negative headroom. `powerNowKw` is
   // null in exactly those cycles, so its absence is the gate.
   const measured = plan.meta.powerNowKw !== null && plan.meta.powerNowKw !== undefined;

@@ -529,12 +529,12 @@ describe('EV charger integration', { retry: 2 }, () => {
     appState.computeDynamicSoftLimit = () => 10.0;
     appState.powerTracker.lastPowerW = 400;
     appState.powerTracker.lastTimestamp = currentTimeMs - 10 * 60 * 1000;
-    // PELS has been up longer than the shed timeout, so the producer is past its
-    // startup grace and escalates on the aged sample. Without this the reading
-    // holds instead: a restart reloads a timestamp that is already old, and
-    // escalating on it would shed the whole house blind at boot.
-    (appState as unknown as { planEngine: { state: { appStartedAtMs: number } } })
-      .planEngine.state.appStartedAtMs = currentTimeMs - 30 * 60 * 1000;
+    // Arm the silence policy as a live process (the pipeline's admitted ingest
+    // does this in production): the rebuild below is then the escalation's one
+    // fail-closed pass — a restored pre-restart silence would instead be
+    // BLOCKED outright, with no pass owed.
+    (appState as unknown as { meterSilenceMonitor: { noteSampleAdmitted: () => void } })
+      .meterSilenceMonitor.noteSampleAdmitted();
     await appState.planService.rebuildPlanFromCache('ev_deadline_stale_power_test');
     await flushPromises();
 

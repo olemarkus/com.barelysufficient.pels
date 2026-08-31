@@ -26,7 +26,7 @@ import CapacityGuard from '../power/capacityGuard';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import type { PowerTrackerState } from '../power/tracker';
 import { PriceLevel } from '../price/priceLevels';
-import { PowerFreshnessMonitor, type PowerCycleDisplay } from '../power/powerCycleReading';
+import { resolvePowerCycleReading, type PowerCycleDisplay } from '../power/powerCycleReading';
 import type { DevicePlan, PlanInputDevice, ShedBehavior } from './planTypes';
 import type { PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
@@ -133,12 +133,10 @@ export class PlanBuilder {
    * Per builder, so a main home and its meter areas keep separate freshness
    * histories. Owned by `lib/power`; the builder only drives it once per cycle.
    */
-  private readonly powerFreshnessMonitor: PowerFreshnessMonitor;
 
   constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) {
     this.overshootTracker = new OvershootTracker(state, deps);
     this.stages = new PlanMaterializationStages(deps, state);
-    this.powerFreshnessMonitor = new PowerFreshnessMonitor(deps.structuredLog, () => state.appStartedAtMs);
   }
 
   private get capacityGuard(): CapacityGuard { return this.deps.capacityGuard; }
@@ -425,10 +423,10 @@ export class PlanBuilder {
     const softLimit = dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit;
     const softLimitSource = this.resolveSoftLimitSource(capacitySoftLimit, dailySoftLimit);
 
-    // One reading per build, resolved by `lib/power`. It also owns the freshness
-    // state machine, so the transition logs fire here as a side effect of asking
-    // — the planner no longer holds a `lastPowerFreshnessState` to compare.
-    const power = this.powerFreshnessMonitor.observe({
+    // One reading per build, resolved by `lib/power` — pure: the silence
+    // policy (block + one shed pass) lives in the wiring's composed gate and
+    // `lib/power/meterSilence.ts`, never in a planner-held state machine.
+    const power = resolvePowerCycleReading({
       powerTracker: this.powerTracker,
       totalKw: resolveLastTotalPowerKw(this.powerTracker),
       nowMs: Date.now(),

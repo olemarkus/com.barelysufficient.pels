@@ -10,7 +10,7 @@
  * stays with the authority, next to the latches and the two side-effecting
  * reads it shares.
  */
-import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../packages/shared-domain/src/powerFreshness';
+import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../packages/shared-domain/src/powerFreshness';
 
 /**
  * What this process can say about the provenance of the watts the power tracker
@@ -50,17 +50,16 @@ export type SampledMeterIdentityDeps = {
  * Is a sample stamped `sampleAtMs` still able to reach a control decision?
  *
  * Expiry is DERIVED, not tuned: the anchor is the tracker's stamp for the
- * sample, and `POWER_SAMPLE_STALE_THRESHOLD_MS` is when that sample stops being
- * `fresh` (`resolvePowerSampleFreshness` — `hasLivePowerSample` goes false and
- * the planner falls back to synthetic headroom). Until that moment a price,
- * settings, or realtime rebuild can plan Main against those watts, so an
- * ownership fence built on their provenance must hold for the whole window;
- * past it, what the provenance proved can no longer reach a decision. The
- * `Math.max(0, …)` mirrors `resolvePowerSampleFreshness` exactly, so a backwards
- * clock jump keeps fence and freshness on the same side of the boundary.
+ * sample, and `POWER_SAMPLE_STALE_SHED_TIMEOUT_MS` is when the silence policy
+ * (`lib/power/meterSilence.ts`) blocks planning outright. Until that moment a
+ * price, settings, or realtime rebuild plans Main against those carried-forward
+ * watts AS MEASURED (the 60 s hold synthesis is gone — owner ruling
+ * 2026-08-31), so an ownership fence built on their provenance must hold for
+ * that whole window; past it, no build can spend them. The `Math.max(0, …)`
+ * keeps a backwards clock jump on the fence's side of the boundary.
  */
 const isWithinSampleLifetime = (nowMs: number, sampleAtMs: number): boolean => (
-  Math.max(0, nowMs - sampleAtMs) < POWER_SAMPLE_STALE_THRESHOLD_MS
+  Math.max(0, nowMs - sampleAtMs) < POWER_SAMPLE_STALE_SHED_TIMEOUT_MS
 );
 
 export class SampledMeterIdentity {

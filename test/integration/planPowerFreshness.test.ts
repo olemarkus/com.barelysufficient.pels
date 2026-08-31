@@ -1,6 +1,6 @@
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
-import { PowerFreshnessMonitor } from '../../lib/power/powerCycleReading';
+import { resolvePowerCycleReading } from '../../lib/power/powerCycleReading';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { buildPlanContext } from '../../lib/plan/planContext';
 import {
@@ -19,25 +19,16 @@ const emptyPendingStore = createPendingBinaryCommandStore({});
 
 // The producer resolves the reading; `buildPlanContext` receives answers. Tests
 // state the two real inputs — what the meter read and when it last sampled.
+// (In production a silent-past-timeout build only happens as the escalation's
+// one fail-closed pass — every other silent rebuild is blocked by the composed
+// gate; driving the builder directly here exercises exactly that pass.)
 const readingFor = (
   powerTracker: { lastTimestamp?: number; lastPowerW?: number },
-) => {
-  // Already watching: the producer will not escalate to fail-closed on its FIRST
-  // look (a restart reloads an aged timestamp, and escalating on it would shed
-  // the house blind at boot). These cases are about the LADDER, not the grace —
-  // the grace has its own tests in `test/unit/powerCycleReading.test.ts`.
-  const monitor = new PowerFreshnessMonitor();
-  monitor.observe({
-    powerTracker: {},
-    totalKw: null,
-    nowMs: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
-  });
-  return monitor.observe({
-    powerTracker,
-    totalKw: resolveLastTotalPowerKw(powerTracker),
-    nowMs: Date.now(),
-  });
-};
+) => resolvePowerCycleReading({
+  powerTracker,
+  totalKw: resolveLastTotalPowerKw(powerTracker),
+  nowMs: Date.now(),
+});
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
@@ -101,16 +92,16 @@ describe('power sample freshness policy', () => {
     expect(context.headroom).toBeCloseTo(1.8, 6);
   });
 
-  // The cached total (4.4) is deliberately NOT spent: an unmeasured cycle holds
-  // at 0 rather than reading a figure the meter has stopped confirming.
-  it('uses stale-hold fallback headroom 0 for short gaps and startup with no sample', () => {
-    const staleHoldContext = contextFor({
+  // Owner ruling 2026-08-31: a short gap is a no-op, not a hold — the last
+  // good value carries forward AS MEASURED until the 10-minute silence mark.
+  it('carries a minutes-old reading forward as measured; startup with no sample holds at 0', () => {
+    const carriedContext = contextFor({
       powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000), lastPowerW: 4.4 * 1000 },
     });
 
-    expect(staleHoldContext.powerIsMeasured).toBe(false);
-    expect(staleHoldContext.headroomRaw).toBe(0);
-    expect(staleHoldContext.headroom).toBe(0);
+    expect(carriedContext.powerIsMeasured).toBe(true);
+    expect(carriedContext.headroomRaw).toBeCloseTo(0.6, 6);
+    expect(carriedContext.headroom).toBeCloseTo(0.6, 6);
 
     const startupContext = contextFor({ powerTracker: {} });
 
@@ -171,14 +162,7 @@ describe('power sample freshness policy', () => {
       expect(context.budgetHeadroomKw).toBeNull();
     });
 
-    it('synthesizes 0 on both axes in stale-hold and -1 once fail-closed', () => {
-      const staleHold = contextFor({
-        ...perAxis,
-        powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000), lastPowerW: 1.85 * 1000 },
-      });
-      expect(staleHold.capacityHeadroomKw).toBe(0);
-      expect(staleHold.budgetHeadroomKw).toBe(0);
-
+    it('synthesizes -1 on both axes once the silence passes the shed timeout', () => {
       const failClosed = contextFor({
         ...perAxis,
         powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS },
@@ -214,24 +198,6 @@ describe('planner behavior under stale power freshness states', () => {
     vi.useRealTimers();
   });
 
-  /**
-   * Drive a builder to a genuine fail-closed: one real sample, then silence past
-   * the shed timeout. A builder cannot escalate on its FIRST look any more — the
-   * producer holds until it has watched for the timeout itself, because
-   * `lastTimestamp` survives a restart and escalating on it would shed the whole
-   * house blind at boot.
-   */
-  async function driveToFailClosed(
-    builder: PlanBuilder,
-    sampleNow: (nowMs: number) => void,
-    devices: PlanInputDevice[],
-  ) {
-    sampleNow(Date.now());
-    await builder.buildDevicePlanSnapshot(devices);
-    await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
-    return builder.buildDevicePlanSnapshot(devices);
-  }
-
   function buildBuilder(params: {
     tracker: { lastTimestamp?: number; lastPowerW?: number };
     structuredLog?: { info?: ReturnType<typeof vi.fn>; warn?: ReturnType<typeof vi.fn> };
@@ -258,45 +224,25 @@ describe('planner behavior under stale power freshness states', () => {
     }, params.state ?? createPlanEngineState());
   }
 
-  it('does not proactively shed solely because power data is in stale-hold', async () => {
+  it('does not proactively shed when a build runs with no total at all', async () => {
     const builder = buildBuilder({
       tracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
     });
 
     const plan = await builder.buildDevicePlanSnapshot([buildDevice()]);
 
-    expect(plan.meta.powerFreshnessState).toBe('stale_hold');
     expect(plan.meta.powerNowKw).toBeNull();
     expect(plan.meta.headroomKw).toBe(0);
     expect(plan.devices[0]?.plannedState).toBe('keep');
   });
 
-  it('logs stale-hold only on transition, not on every rebuild', async () => {
-    const structuredLog = {
-      info: vi.fn(),
-      warn: vi.fn(),
-    };
-    const builder = buildBuilder({
-      tracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
-      structuredLog,
-    });
-
-    await builder.buildDevicePlanSnapshot([buildDevice()]);
-    await builder.buildDevicePlanSnapshot([buildDevice()]);
-
-    expect(structuredLog.warn).toHaveBeenCalledTimes(1);
-    expect(structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'power_sample_stale_hold_entered',
-      syntheticHeadroomKw: 0,
-    }));
-  });
-
   // The shed grace buys time only when a deficit might be a restore PELS itself
   // is driving AND power is observable. Blind mode is the one place waiting is
-  // never right, so an open activation attempt must not soften a fail-closed
-  // shed. A first cut of the grace gated every deficit and delayed exactly this.
-  it('grants no shed grace while power is stale, even with a restore in flight', async () => {
-    const tracker: { lastTimestamp: number; lastPowerW?: number } = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS };
+  // never right, so an open activation attempt must not soften the escalation's
+  // fail-closed pass. A first cut of the grace gated every deficit and delayed
+  // exactly this.
+  it('grants no shed grace on the fail-closed pass, even with a restore in flight', async () => {
+    const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const state = createPlanEngineState();
     recordActivationAttemptStart({
       state,
@@ -306,43 +252,29 @@ describe('planner behavior under stale power freshness states', () => {
     });
 
     const builder = buildBuilder({ tracker, state });
-    const plan = await driveToFailClosed(builder, (ms) => { tracker.lastTimestamp = ms; }, [buildDevice()]);
+    const plan = await builder.buildDevicePlanSnapshot([buildDevice()]);
 
-    expect(plan.meta.powerFreshnessState).toBe('stale_fail_closed');
     expect(plan.devices[0]?.plannedState).toBe('shed');
   });
 
-  it('allows fail-closed shedding and clears once a fresh sample returns', async () => {
-    const tracker: { lastTimestamp: number; lastPowerW?: number } = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS };
-    const structuredLog = {
-      info: vi.fn(),
-      warn: vi.fn(),
+  it('sheds on the fail-closed pass and clears once a fresh sample returns', async () => {
+    const tracker: { lastTimestamp: number; lastPowerW?: number } = {
+      lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
+      lastPowerW: 2_000,
     };
-    const builder = buildBuilder({
-      tracker,
-      structuredLog,
-    });
+    const builder = buildBuilder({ tracker });
 
-    const failClosedPlan = await driveToFailClosed(builder, (ms) => { tracker.lastTimestamp = ms; }, [buildDevice()]);
-    expect(failClosedPlan.meta.powerFreshnessState).toBe('stale_fail_closed');
+    const failClosedPlan = await builder.buildDevicePlanSnapshot([buildDevice()]);
     expect(failClosedPlan.meta.headroomKw).toBe(-1);
     expect(failClosedPlan.devices[0]?.plannedState).toBe('shed');
-    expect(structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'power_sample_stale_fail_closed_entered',
-      syntheticHeadroomKw: -1,
-    }));
 
     tracker.lastTimestamp = Date.now();
     tracker.lastPowerW = 2 * 1000;
 
     const recoveredPlan = await builder.buildDevicePlanSnapshot([buildDevice()]);
-    expect(recoveredPlan.meta.powerFreshnessState).toBe('fresh');
     // A real difference again, not the synthesized -1. The exact figure moves
     // with the dynamic soft limit, which the 10 minutes spent reaching
     // fail-closed necessarily advanced.
     expect(recoveredPlan.meta.headroomKw).toBeGreaterThan(0);
-    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'power_sample_stale_fail_closed_cleared',
-    }));
   });
 });

@@ -1,6 +1,6 @@
-import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../lib/power/sampleFreshness';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { AppContext } from '../lib/app/appContext';
+import type { MeterSilenceMonitor } from '../lib/power/meterSilence';
 import type { PlanRebuildOutcome } from '../lib/plan/planTypes';
 import type { HomeId } from '../lib/utils/settingsKeys';
 
@@ -25,6 +25,12 @@ export type FreshnessEscalationParams = {
   timerKey: string;
   logger: () => ReturnType<AppContext['getStructuredLogger']>;
   rebuild: () => Promise<PlanRebuildOutcome>;
+  /**
+   * This home's silence policy: owns "is the one shed pass still owed" and
+   * the completed-pass latch, shared with the composed plan-build gate so the
+   * pass this clock runs is exactly the one the gate lets through.
+   */
+  meterSilence: MeterSilenceMonitor;
   getLastSampleAtMs: () => number | undefined;
   isTornDown: () => boolean;
   /**
@@ -51,25 +57,27 @@ export type FreshnessEscalationParams = {
  * a quiet install may see no settings write and no price hour for a long time.
  *
  * Bounded by design: an in-flight latch (no overlapping rebuild), and exactly one
- * rebuild per stale period, tracked by the sample timestamp the escalation was
- * taken against. It polls on an interval only to notice the window opening; the
- * escalation itself is the one-shot.
+ * rebuild per stale period, latched in the home's `MeterSilenceMonitor` against
+ * the sample timestamp the escalation was taken against — the same monitor the
+ * composed plan-build gate reads, so after the pass every further rebuild is
+ * blocked until an admitted sample returns. It polls on an interval only to
+ * notice the window opening; the escalation itself is the one-shot.
  */
 export function installPowerSampleFreshnessEscalation(params: FreshnessEscalationParams): void {
   const {
-    ctx, homeId, timerKey, logger, rebuild, getLastSampleAtMs, isTornDown, isMeterSampled,
+    ctx, homeId, timerKey, logger, rebuild, meterSilence, getLastSampleAtMs, isTornDown, isMeterSampled,
   } = params;
   let inFlight = false;
-  let escalatedForTs: number | null = null;
 
   const maybeEscalate = (): void => {
     if (isTornDown() || inFlight) return;
     if (!isMeterSampled()) return;
+    // The one-shot policy — silence past the timeout, exactly one owed pass,
+    // no pass for silence restored across a restart — lives in the monitor,
+    // shared with the composed plan-build gate.
+    if (!meterSilence.shouldRunShedPass()) return;
     const lastTs = getLastSampleAtMs();
     if (typeof lastTs !== 'number' || !Number.isFinite(lastTs)) return;
-    if (Date.now() - lastTs < POWER_SAMPLE_STALE_SHED_TIMEOUT_MS) return;
-    // Already escalated this stale period; do not re-run the same shed.
-    if (escalatedForTs === lastTs) return;
     inFlight = true;
     void rebuild()
       .then((outcome) => {
@@ -90,9 +98,22 @@ export function installPowerSampleFreshnessEscalation(params: FreshnessEscalatio
           logger()?.debug({ event: 'home_freshness_heartbeat_rebuild_gated_skipped', homeId });
           return;
         }
+        if (outcome.deviceApplyFailureCount > 0) {
+          // The build succeeded but one or more device writes threw (caught
+          // per-device by the executor): the fail-closed shed did not fully
+          // take effect, so the pass stays owed and the next tick retries —
+          // latching here would engage the block with load still running.
+          logger()?.warn({
+            event: 'home_freshness_heartbeat_apply_failed',
+            homeId,
+            deviceApplyFailureCount: outcome.deviceApplyFailureCount,
+          });
+          return;
+        }
         // Still stale on completion (a sample racing in would have moved the
-        // timestamp): mark this period escalated so it does not re-run.
-        if (getLastSampleAtMs() === lastTs) escalatedForTs = lastTs;
+        // timestamp): latch the pass, which also engages the block until data
+        // returns.
+        if (getLastSampleAtMs() === lastTs) meterSilence.noteShedPassCompleted(lastTs);
       })
       .catch((error: unknown) => {
         logger()?.error({ event: 'home_freshness_heartbeat_rebuild_failed', homeId, err: normalizeError(error) });

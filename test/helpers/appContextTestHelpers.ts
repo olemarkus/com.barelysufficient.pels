@@ -13,6 +13,7 @@ import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
 import { normalizePowerSource } from '../../lib/power/powerSource';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
+import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -241,6 +242,11 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getPowerCalibrationSnapshot: vi.fn(() => createEmptyPowerCalibrationSnapshot()),
     get powerTracker() { return powerTracker; },
     set powerTracker(value) { powerTracker = value; },
+    meterSilenceMonitor: new MeterSilenceMonitor({
+      getLastSampleAtMs: () => powerTracker.lastTimestamp,
+      nowMs: () => Date.now(),
+      structuredLog: () => undefined,
+    }),
     get capacitySettings() { return capacitySettings; },
     set capacitySettings(value) { capacitySettings = value; },
     get capacityDryRun() { return capacityDryRun; },

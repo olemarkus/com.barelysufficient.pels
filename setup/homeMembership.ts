@@ -222,8 +222,6 @@ export class HomeMembershipService implements HomeMembershipPort {
   private runtimeActive = false;
   private lastNotifiedRuntimeActive = false;
 
-  /** Last proven meter-arrangement observation; see the diagnostics field doc. */
-
   private lastRecomputeFingerprint: string | null = null;
   private lastPlanRelevantFingerprint: string | null = null;
 

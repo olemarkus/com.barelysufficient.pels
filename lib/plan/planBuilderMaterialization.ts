@@ -207,8 +207,8 @@ export class PlanMaterializationStages {
       //
       // Gated on a measurement (`powerIsMeasured`, resolved once by the
       // producer): whenever there is none the context synthesizes the headroom
-      // (stale_hold → 0, stale_fail_closed → −1, and a fresh tracker with a null
-      // total — e.g. right after an in-place meter swap — also synthesizes 0),
+      // (silent meter → −1 for the fail-closed pass, and a fresh tracker with a
+      // null total — e.g. right after an in-place meter swap — synthesizes 0),
       // so a gap computed from those axes would be fabricated —
       // the real recourse is a fresh meter reading, not freed power. No new
       // numbers while unknown; holds keep whatever the last known cycle

@@ -7,20 +7,12 @@ import { readConfiguredPowerSource } from './powerSourceSettings';
  * collector stamps into its persisted history (`meterScopeSignature`). It
  * includes only settings that can change the selected producer:
  * - Flow is self-contained (`source:flow`);
- * - Homey Energy with an explicit Main meter includes that meter;
- * - Homey Energy on Automatic additionally includes the roster's activation
- *   posture, because activating a dormant legacy roster changes Automatic's
- *   sampled scope.
+ * - Homey Energy includes the explicit Main meter it reads.
  *
  * The power source is part of the arrangement, not a modifier of it: Flow and
  * Homey Energy are different PRODUCERS of the same power-tracker buckets the
  * fit's kWh layer consumes, so switching sources splices two producers'
  * scopes into one retained history exactly like a meter swap does.
- *
- * The activation posture is relevant only on Automatic. An explicit Main
- * selection keeps sampling the same device when a dormant roster activates,
- * so including posture there would discard learned history without a producer
- * change.
  *
  * Deliberately excluded:
  * - per-area meter ids. The collector's kWh series is Main's own

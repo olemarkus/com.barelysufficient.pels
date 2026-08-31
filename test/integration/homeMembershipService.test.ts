@@ -49,7 +49,10 @@ import {
   type HomeMembershipDeviceInput,
 } from '../../setup/homeMembership';
 import { wireHomeMembership } from '../../setup/appInit/wireHomeMembership';
-import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
+import {
+  POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
+  POWER_SAMPLE_STALE_THRESHOLD_MS,
+} from '../../packages/shared-domain/src/powerFreshness';
 import type { ConfiguredPowerSourceRead } from '../../setup/powerSourceSettings';
 import type { StableSampleRevision } from '../../setup/powerSamplePipeline';
 import type { AppContext } from '../../lib/app/appContext';
@@ -2371,10 +2374,13 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
         vi.useFakeTimers();
         try {
           vi.setSystemTime(new Date('2026-07-27T10:00:00Z'));
-          // A long outage: the reloaded sample is no longer `fresh`, the planner
-          // is on synthetic headroom, and its provenance can reach no decision.
+          // A long outage: the reloaded sample is past the SILENCE timeout, so
+          // the composed plan-build gate blocks every build that could spend
+          // it — its provenance can reach no decision. (The lifetime anchor
+          // moved with the carry-forward ruling: a merely minutes-old restored
+          // sample IS still spendable now, and does fence.)
           const service = buildRestartedService(
-            () => Date.now() - POWER_SAMPLE_STALE_THRESHOLD_MS,
+            () => Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
           );
           expect(service.isMainHomeActuationFenced()).toBe(false);
         } finally {

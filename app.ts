@@ -37,7 +37,7 @@ import { createSteppedStores, type SteppedStores } from './setup/appInit/createS
 import { DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, MAIN_HOME_ID } from './lib/utils/settingsKeys';
 import type { PowerSampleRebuildState } from './lib/plan/rebuildScheduler/powerDriven';
 import { BackgroundTasksController } from './setup/backgroundTasksController';
-import { createHomePowerPipeline } from './setup/homeRuntime/createHomePowerPipeline';
+import { createHomePowerPipeline, createMeterSilenceMonitor } from './setup/homeRuntime/createHomePowerPipeline';
 import type { PvForecastController } from './setup/appInit/createPvForecastService';
 import type { HomeySolarForecastLifecycle } from './lib/solar/homeySolarForecastController';
 import type { WeatherCollector } from './lib/weather/weatherCollector';
@@ -222,9 +222,16 @@ class PelsApp extends PelsAppBase implements AppContext {
     onIntentCancelled: this.schedulerTelemetry.onIntentCancelled,
     onIntentError: this.schedulerTelemetry.onIntentError,
   });
+  public readonly meterSilenceMonitor = createMeterSilenceMonitor({
+    getLastSampleAtMs: () => this.powerTracker.lastTimestamp,
+    nowMs: () => Date.now(),
+    structuredLog: () => this.getStructuredLogger('power'),
+  });
+
   protected readonly powerSamplePipeline = createHomePowerPipeline({
     ctx: this,
     homeId: MAIN_HOME_ID,
+    noteSampleAdmitted: () => this.meterSilenceMonitor.noteSampleAdmitted(),
     planRebuildScheduler: this.planRebuildScheduler,
     getPlanEngine: () => this.planEngine,
     getPlanService: () => this.planService,

@@ -1,12 +1,9 @@
 import type { PlanContext } from '../../lib/plan/planContext';
 import {
-  PowerFreshnessMonitor,
+  resolvePowerCycleReading,
   type PowerCycleReading,
 } from '../../lib/power/powerCycleReading';
-import {
-  POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
-  POWER_SAMPLE_STALE_THRESHOLD_MS,
-} from '../../lib/power/sampleFreshness';
+import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/power/sampleFreshness';
 
 const FIXTURE_NOW_MS = Date.UTC(2026, 3, 18, 10, 0, 0);
 const FRESH_SAMPLE_AGE_MS = 1_000;
@@ -36,18 +33,16 @@ export const planContextPowerReading = (
   options: { measured?: boolean; failClosed?: boolean } = {},
 ): PowerCycleReading => {
   const measured = options.measured ?? (typeof totalKw === 'number' && Number.isFinite(totalKw));
-  // Age drives the producer's answer, so the fixture's intent is expressed as an
-  // age rather than as a state name it would otherwise have to keep in sync.
-  // Unmeasured defaults to the HOLD window (synthesized 0), not fail-closed:
-  // holding is the ordinary unmeasured cycle, and -1 is the escalation a fixture
-  // has to ask for.
-  const unmeasuredAgeMs = options.failClosed === true
-    ? POWER_SAMPLE_STALE_SHED_TIMEOUT_MS
-    : POWER_SAMPLE_STALE_THRESHOLD_MS;
-  const ageMs = measured && options.failClosed !== true ? FRESH_SAMPLE_AGE_MS : unmeasuredAgeMs;
-  return new PowerFreshnessMonitor().observe({
+  // Age drives the producer's answer, so the fixture's intent is expressed as
+  // production state rather than a label it would have to keep in sync.
+  // `failClosed` is the escalation's one silent-window pass (age past the shed
+  // timeout, synthesized -1); plain unmeasured is the gate-bypass hold (no
+  // total at all, synthesized 0) — the 60 s stale_hold synthesis is gone, so a
+  // minutes-old reading is simply measured now.
+  const ageMs = options.failClosed === true ? POWER_SAMPLE_STALE_SHED_TIMEOUT_MS : FRESH_SAMPLE_AGE_MS;
+  return resolvePowerCycleReading({
     powerTracker: { lastTimestamp: FIXTURE_NOW_MS - ageMs },
-    totalKw,
+    totalKw: measured || options.failClosed === true ? totalKw : null,
     nowMs: FIXTURE_NOW_MS,
   });
 };

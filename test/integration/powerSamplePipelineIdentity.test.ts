@@ -30,6 +30,7 @@ const buildPipeline = (
     lastRebuildPowerW: 0,
   };
   return new PowerSamplePipeline({
+    noteSampleAdmitted: () => {},
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({ limitKw: 12, marginKw: 0.5 }),

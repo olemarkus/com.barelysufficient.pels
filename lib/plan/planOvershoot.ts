@@ -75,8 +75,9 @@ export function resolveSoftOvershootDecision(params: {
    * an activation attempt is open, meaning a device was restored moments ago and
    * has not settled. The grace is deliberately scoped to that case.
    *
-   * It must NOT widen to every deficit. A stale-power `stale_fail_closed`
-   * headroom is a deliberate blind-mode shed, and delaying it is the one thing
+   * It must NOT widen to every deficit. A silent-meter fail-closed headroom
+   * (the one escalation shed pass, `lib/power/powerCycleReading.ts`) is a
+   * deliberate blind-mode shed, and delaying it is the one thing
    * that must never happen when PELS cannot see power; a sustained overshoot
    * with no pending activation is simply real and should be acted on at once.
    */
