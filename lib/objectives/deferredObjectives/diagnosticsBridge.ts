@@ -78,7 +78,7 @@ export { progressCurrentValue } from './diagnosticFields';
 // 500-line cap); re-exported so callers keep a single bridge import surface.
 export {
   emitDeferredObjectiveDiagnostics,
-  type DeferredObjectiveUnknownAnnounce,
+  type DeferredObjectiveAnnounce,
 } from './diagnosticAnnounce';
 
 export const buildDeferredObjectiveDiagnostics = (params: {
