@@ -23,7 +23,7 @@ import type {
 import { buildDeferredObjectiveDebugPayload } from '../../lib/objectives/deferredObjectives/diagnosticDebugPayload';
 import {
   emitDeferredObjectiveDiagnostics,
-  type DeferredObjectiveUnknownAnnounce,
+  type DeferredObjectiveAnnounce,
 } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives/planHistory';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -3896,10 +3896,12 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
 });
 
 // One prod night emitted 1199 identical `deferred_objective_unknown` lines for a
-// single charger whose car was not plugged in. A cause with no trajectory is
-// worth stating once; a resolved trajectory carries a live horizon and is new
-// information every tick.
-describe('emitDeferredObjectiveDiagnostics — a stuck cause announces once', () => {
+// single charger whose car was not plugged in. A resolved trajectory is no
+// better: over one 12 h window three objectives emitted 1201/1236/1303 lines
+// whose payloads changed 63/142/98 times. Both arms announce on a change of the
+// DECISION plus a heartbeat that samples the progress values the signature
+// deliberately ignores.
+describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick', () => {
   // 30 s apart, mirroring the lifecycle clock.
   const TICK_MS = 30_000;
   const emitAll = (
@@ -3907,13 +3909,13 @@ describe('emitDeferredObjectiveDiagnostics — a stuck cause announces once', ()
     ticks: number,
   ): Record<string, unknown>[] => {
     const emitted: Record<string, unknown>[] = [];
-    let announced: ReadonlyMap<string, DeferredObjectiveUnknownAnnounce> = new Map();
+    let announced: ReadonlyMap<string, DeferredObjectiveAnnounce> = new Map();
     for (let tick = 0; tick < ticks; tick += 1) {
       announced = emitDeferredObjectiveDiagnostics({
         diagnostics,
         debugStructured: (payload) => { emitted.push(payload); },
         nowMs: NOW_MS + tick * TICK_MS,
-        announcedUnknownCauses: announced,
+        announced,
       });
     }
     return emitted;
@@ -3940,20 +3942,20 @@ describe('emitDeferredObjectiveDiagnostics — a stuck cause announces once', ()
   });
 
   it('re-announces when the cause changes', () => {
-    let announced: ReadonlyMap<string, DeferredObjectiveUnknownAnnounce> = new Map();
+    let announced: ReadonlyMap<string, DeferredObjectiveAnnounce> = new Map();
     const emitted: Record<string, unknown>[] = [];
     const collect = (payload: Record<string, unknown>): void => { emitted.push(payload); };
 
     const unplugged = unpluggedDiagnostics();
     announced = emitDeferredObjectiveDiagnostics({
-      diagnostics: unplugged, debugStructured: collect, nowMs: NOW_MS, announcedUnknownCauses: announced,
+      diagnostics: unplugged, debugStructured: collect, nowMs: NOW_MS, announced,
     });
     const stale = unplugged.map((diagnostic) => ({
       ...diagnostic,
       trajectory: { kind: 'unavailable' as const, reasonCode: 'objective_progress_stale' as const },
     }));
     emitDeferredObjectiveDiagnostics({
-      diagnostics: stale, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announcedUnknownCauses: announced,
+      diagnostics: stale, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announced,
     });
 
     expect(emitted).toHaveLength(2);
@@ -3963,17 +3965,17 @@ describe('emitDeferredObjectiveDiagnostics — a stuck cause announces once', ()
   // independently of the cause, so suppressing on the cause alone would hide the
   // owner turning the device off outside PELS behind an unchanged reason code.
   it('re-announces when a payload bit moves under an unchanged cause', () => {
-    let announced: ReadonlyMap<string, DeferredObjectiveUnknownAnnounce> = new Map();
+    let announced: ReadonlyMap<string, DeferredObjectiveAnnounce> = new Map();
     const emitted: Record<string, unknown>[] = [];
     const collect = (payload: Record<string, unknown>): void => { emitted.push(payload); };
 
     const base = unpluggedDiagnostics();
     announced = emitDeferredObjectiveDiagnostics({
-      diagnostics: base, debugStructured: collect, nowMs: NOW_MS, announcedUnknownCauses: announced,
+      diagnostics: base, debugStructured: collect, nowMs: NOW_MS, announced,
     });
     const held = base.map((diagnostic) => ({ ...diagnostic, externalOffHoldActive: true as const }));
     emitDeferredObjectiveDiagnostics({
-      diagnostics: held, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announcedUnknownCauses: announced,
+      diagnostics: held, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announced,
     });
 
     expect(emitted).toHaveLength(2);
@@ -3992,17 +3994,75 @@ describe('emitDeferredObjectiveDiagnostics — a stuck cause announces once', ()
     expect(emitted[2]?.suppressedTicks).toBe(119);
   });
 
-  it('never suppresses a resolved trajectory — its horizon is new each tick', () => {
-    const diagnostics = buildDeferredObjectiveDiagnostics({
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
-      powerTracker: buildPowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
-    });
+  const plannedDiagnostics = (): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveDiagnostics({
+    nowMs: NOW_MS,
+    timeZone: 'UTC',
+    devices: [buildDevice()],
+    settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
+    powerTracker: buildPowerTracker(),
+    dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+    priceOptimizationEnabled: true,
+  });
+
+  // The premise this replaced — "a resolved trajectory is new information every
+  // tick" — held for the payload's shape but not its content.
+  it('emits one payload while a resolved trajectory holds its decision', () => {
+    const diagnostics = plannedDiagnostics();
     expect(resolvedTrajectoryStatus(diagnostics[0]!)).toBe('on_track');
-    expect(emitAll(diagnostics, 5)).toHaveLength(5);
+
+    // 5 ticks = 150 s, inside the 5 min planned heartbeat.
+    expect(emitAll(diagnostics, 5)).toHaveLength(1);
+  });
+
+  // The progress values (`currentTemperatureC`, `energyNeededKWh`) are outside
+  // the signature on purpose, so the heartbeat is the only thing that samples
+  // them. Without it a slow climb to target would be invisible.
+  it('re-announces a held trajectory on the 5 min heartbeat with the tick count', () => {
+    // 30 s ticks across just over 10 minutes.
+    const emitted = emitAll(plannedDiagnostics(), 22);
+    expect(emitted).toHaveLength(3);
+    expect(emitted[0]?.suppressedTicks).toBeUndefined();
+    expect(emitted[1]?.suppressedTicks).toBe(9);
+    expect(emitted[2]?.suppressedTicks).toBe(9);
+  });
+
+  // A plan can absorb an owner edit without moving a bucket, so the target is in
+  // the signature in its own right rather than trusted to show up in the schedule.
+  it('re-announces the tick the owner changes the target', () => {
+    let announced: ReadonlyMap<string, DeferredObjectiveAnnounce> = new Map();
+    const emitted: Record<string, unknown>[] = [];
+    const collect = (payload: Record<string, unknown>): void => { emitted.push(payload); };
+
+    const base = plannedDiagnostics();
+    announced = emitDeferredObjectiveDiagnostics({
+      diagnostics: base, debugStructured: collect, nowMs: NOW_MS, announced,
+    });
+    const retargeted = base.map((diagnostic) => ({
+      ...diagnostic,
+      targetValue: (diagnostic.targetValue ?? 0) + 5,
+    }));
+    emitDeferredObjectiveDiagnostics({
+      diagnostics: retargeted, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announced,
+    });
+
+    expect(emitted).toHaveLength(2);
+  });
+
+  it('re-announces a resolved trajectory the tick a decision bit moves', () => {
+    let announced: ReadonlyMap<string, DeferredObjectiveAnnounce> = new Map();
+    const emitted: Record<string, unknown>[] = [];
+    const collect = (payload: Record<string, unknown>): void => { emitted.push(payload); };
+
+    const base = plannedDiagnostics();
+    announced = emitDeferredObjectiveDiagnostics({
+      diagnostics: base, debugStructured: collect, nowMs: NOW_MS, announced,
+    });
+    const held = base.map((diagnostic) => ({ ...diagnostic, externalOffHoldActive: true as const }));
+    emitDeferredObjectiveDiagnostics({
+      diagnostics: held, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announced,
+    });
+
+    expect(emitted).toHaveLength(2);
+    expect(emitted[1]?.externalOffHoldActive).toBe(true);
   });
 });

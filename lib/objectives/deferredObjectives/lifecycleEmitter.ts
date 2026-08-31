@@ -9,7 +9,7 @@ import {
   buildDeferredObjectiveDiagnostics,
   emitDeferredObjectiveDiagnostics,
   type DeferredObjectiveDiagnostic,
-  type DeferredObjectiveUnknownAnnounce,
+  type DeferredObjectiveAnnounce,
 } from './diagnosticsBridge';
 import {
   emitDeferredObjectiveLifecycleTransitions,
@@ -133,10 +133,10 @@ export class DeferredObjectiveLifecycleEmitter {
   private readonly priorityAllocationTracker = new PriorityAllocationTracker();
   private lifecycleDeviceIds: ReadonlySet<string> = new Set();
 
-  // objectiveId -> the no-trajectory state already announced for it, so a stuck
-  // task states its cause once instead of every 30 s tick. Rebuilt each emission
-  // from the live diagnostics, so it cannot retain a dead objective.
-  private announcedUnknownCauses: ReadonlyMap<string, DeferredObjectiveUnknownAnnounce> = new Map();
+  // objectiveId -> the state already announced for it, so an unchanged task
+  // states itself on its heartbeat instead of every 30 s tick. Rebuilt each
+  // emission from the live diagnostics, so it cannot retain a dead objective.
+  private announced: ReadonlyMap<string, DeferredObjectiveAnnounce> = new Map();
 
   constructor(private readonly deps: DeferredObjectiveLifecycleEmitterDeps) {}
 
@@ -195,14 +195,14 @@ export class DeferredObjectiveLifecycleEmitter {
     // Emission to the UI / Flow buses + clock-owned terminal fallback/ending.
     const debugStructured = this.deps.getDeferredObjectiveDebugStructured?.();
     // Reset the announce memory whenever the topic is off, so enabling the
-    // debug topic to investigate a stuck task always yields its cause on the
+    // debug topic to investigate a task always yields its current state on the
     // next tick instead of silence left over from the last time it was on.
-    this.announcedUnknownCauses = debugStructured
+    this.announced = debugStructured
       ? emitDeferredObjectiveDiagnostics({
         diagnostics,
         debugStructured,
         nowMs,
-        announcedUnknownCauses: this.announcedUnknownCauses,
+        announced: this.announced,
       })
       : new Map();
     this.lifecycleDeviceIds = emitDeferredObjectiveLifecycleTransitions({
