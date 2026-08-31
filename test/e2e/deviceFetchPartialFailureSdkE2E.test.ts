@@ -102,7 +102,7 @@ describe('Targeted refresh with a single failing device id (SDK-boundary e2e)', 
     await app.onInit();
     await vi.advanceTimersByTimeAsync(1);
     expect(snapshotIds(app).sort()).toEqual([...DEVICE_IDS].sort());
-    expect(app.observedDeviceStateProjection.getObservedState(FAILING_ID)).toBeDefined();
+    expect(app['observedDeviceStateProjection'].getObservedState(FAILING_ID)).toBeDefined();
     expect(planDevice(app, FAILING_ID)).toBeDefined();
 
     // Make the SINGLE by-id read for dev-e fail (404), and count any bulk
@@ -135,7 +135,7 @@ describe('Targeted refresh with a single failing device id (SDK-boundary e2e)', 
     expect(missedPlanDevice).toBeDefined();
     expect(missedPlanDevice!.managed).not.toBe(false);
     // Observed state retained too.
-    expect(app.observedDeviceStateProjection.getObservedState(FAILING_ID)).toBeDefined();
+    expect(app['observedDeviceStateProjection'].getObservedState(FAILING_ID)).toBeDefined();
     // No cascade to the bulk full fetch on the targeted cycle.
     expect(fullFetchCalls).toBe(0);
     // Structured log records the partial outcome with the failure count.
@@ -166,7 +166,7 @@ describe('Targeted refresh with a single failing device id (SDK-boundary e2e)', 
     expect(snapshotIds(app)).not.toContain(FAILING_ID);
     expect(planDevice(app, FAILING_ID)).toBeUndefined();
     // ...and its projection entry is pruned (committed-snapshot prune).
-    expect(app.observedDeviceStateProjection.getObservedState(FAILING_ID)).toBeUndefined();
+    expect(app['observedDeviceStateProjection'].getObservedState(FAILING_ID)).toBeUndefined();
     // The grace-exceed transition is logged.
     expect(events.some((e) => e.event === 'targeted_device_miss_grace_exceeded' && e.deviceId === FAILING_ID))
       .toBe(true);

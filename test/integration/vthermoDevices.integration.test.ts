@@ -81,7 +81,7 @@ describe('VThermo device integration', () => {
       'vthermo-1': buildVThermoApiDevice(),
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests();
     const entry = snapshot.find((device) => device.id === 'vthermo-1');
@@ -114,12 +114,12 @@ describe('VThermo device integration', () => {
     });
     const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;
     expect(controllable['vthermo-1']).toBe(false);
 
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.planService.rebuildPlanFromCache('unknown');
     await flushPromises();
     expect(setCapSpy).toHaveBeenCalledWith(
       'manager/devices/device/vthermo-1/capability/target_temperature',

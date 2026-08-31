@@ -94,7 +94,7 @@ describe('Airtreatment device integration', () => {
       'airtreatment-1': buildTemperatureApiDevice(),
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshot = getLatestTargetSnapshotForTests();
     const entry = snapshot.find((device) => device.id === 'airtreatment-1');
@@ -120,7 +120,7 @@ describe('Airtreatment device integration', () => {
       'airtreatment-1': buildTemperatureApiDevice({ targetTemperature: 19 }),
     });
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const overshootBehaviors = mockHomeyInstance.settings.get('overshoot_behaviors') as Record<string, { action: string; temperature?: number }>;
     expect(overshootBehaviors['airtreatment-1']).toEqual({ action: 'set_temperature', temperature: 16 });
@@ -167,12 +167,12 @@ describe('Airtreatment device integration', () => {
       }),
     }));
 
-    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(async (path: string, body?: any) => {
+    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(async (path: string, body?: unknown) => {
       // Simulate Flexit accepting shed-temp writes but not persisting restore writes.
       const capMatch = path.match(/^manager\/devices\/device\/(.+?)\/capability\/(.+)$/);
       if (capMatch) {
         const [, deviceId, capabilityId] = capMatch;
-        const value = body?.value;
+        const value = (body as { value?: unknown } | undefined)?.value;
         if (capabilityId === 'target_temperature' && typeof value === 'number' && value <= 16) {
           reportedTargets[deviceId] = value;
         }
@@ -180,7 +180,7 @@ describe('Airtreatment device integration', () => {
     });
 
     const runCycle = async () => {
-      await (app as any).powerSamplePipeline.recordPowerSample(samplePowerW);
+      await app['powerSamplePipeline'].recordPowerSample(samplePowerW);
       vi.advanceTimersByTime(100);
       await flushPromises();
       return getLatestPlanSnapshotForTests() as {
@@ -188,56 +188,53 @@ describe('Airtreatment device integration', () => {
       };
     };
 
-    await (app as any).refreshTargetDevicesSnapshot();
-    (app as any).computeDynamicSoftLimit = () => 1;
-    (app as any).computeDynamicSoftLimit = () => 1;
+    await app.refreshTargetDevicesSnapshot();
+    app.computeDynamicSoftLimit = () => 1;
+    app.computeDynamicSoftLimit = () => 1;
     await runCycle();
     expect(reportedTargets['flexit-1']).toBe(16);
     expect(reportedTargets['flexit-2']).toBe(16);
 
     setCapSpy.mockClear();
-    (app as any).planEngine.state.lastInstabilityMs = Date.now() - 180000;
-    (app as any).planEngine.state.lastRecoveryMs = Date.now() - 180000;
-    (app as any).powerSampleRebuildState = { lastMs: 0 };
-    (app as any).computeDynamicSoftLimit = () => 10;
-    (app as any).computeDynamicSoftLimit = () => 10;
-    if ((app as any).capacityGuard?.setShortfallThresholdProvider) {
-      (app as any).capacityGuard.setShortfallThresholdProvider(() => 10);
-    }
-    (app as any).capacityGuard.isInShortfall = () => false;
-    (app as any).planEngine.state.inShortfall = false;
-    (app as any).planEngine.state.sheddingActive = false;
+    app.planEngine.state.lastInstabilityMs = Date.now() - 180000;
+    app.planEngine.state.lastRecoveryMs = Date.now() - 180000;
+    app.powerSampleRebuildState = { lastMs: 0 };
+    app.computeDynamicSoftLimit = () => 10;
+    app.computeDynamicSoftLimit = () => 10;
+    app.capacityGuard.isInShortfall = () => false;
+    app.planEngine.state.inShortfall = false;
+    app.planEngine.state.sheddingActive = false;
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
     await runCycle();
     const restoreCallsAfterFirstWindow = setCapSpy.mock.calls.filter(
       (call: unknown[]) => (
         typeof call[0] === 'string' && call[0].includes('/capability/target_temperature')
-        && (call[1] as any)?.value === 19
+        && (call[1] as { value?: unknown } | undefined)?.value === 19
       ),
     );
     expect(restoreCallsAfterFirstWindow).toHaveLength(1);
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
     await runCycle();
     const restoreCallsAfterCooldownWindow = setCapSpy.mock.calls.filter(
       (call: unknown[]) => (
         typeof call[0] === 'string' && call[0].includes('/capability/target_temperature')
-        && (call[1] as any)?.value === 19
+        && (call[1] as { value?: unknown } | undefined)?.value === 19
       ),
     );
     expect(restoreCallsAfterCooldownWindow).toHaveLength(1);
 
-    (app as any).planEngine.state.lastRestoreMs = Date.now() - 180000;
-    (app as any).planEngine.state.lastInstabilityMs = Date.now() - 180000;
+    app.planEngine.state.lastRestoreMs = Date.now() - 180000;
+    app.planEngine.state.lastInstabilityMs = Date.now() - 180000;
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
     await runCycle();
 
     const restoreCalls = setCapSpy.mock.calls.filter(
       (call: unknown[]) => (
         typeof call[0] === 'string' && call[0].includes('/capability/target_temperature')
-        && (call[1] as any)?.value === 19
+        && (call[1] as { value?: unknown } | undefined)?.value === 19
       ),
     );
 

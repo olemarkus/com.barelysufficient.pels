@@ -1,3 +1,11 @@
+import type { HomeyDeviceLike } from '../../lib/utils/types';
+import type { ComposedPlanEngine } from '../../setup/appInit/composedPlanEngine';
+import type { Actuator } from '../../lib/actuator/deviceActuator';
+import type { RebuildIntent } from '../../lib/plan/rebuildScheduler/scheduler';
+import type { Logger } from '../../lib/logging/logger';
+import type { PvForecastController } from '../../setup/appInit/createPvForecastService';
+import { partialDouble } from '../helpers/partialDouble';
+import type MyApp from '../../app.ts';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   getLatestPlanSnapshotForTests,
@@ -33,7 +41,7 @@ vi.mock('../../lib/device/liveFeed', () => {
   };
 });
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
-import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
+import { deviceTransportDouble } from '../utils/deviceObservationMock';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -102,7 +110,7 @@ const buildSteppedLoadProfiles = (deviceId: string) => ({
   },
 });
 
-const getPlanDeviceState = (plan: any, deviceId: string): string | undefined => {
+const getPlanDeviceState = (plan: { devices?: unknown } | null | undefined, deviceId: string): string | undefined => {
   if (!plan || !Array.isArray(plan.devices)) return undefined;
   for (const device of plan.devices) {
     if (device?.id === deviceId) return device.plannedState;
@@ -110,30 +118,30 @@ const getPlanDeviceState = (plan: any, deviceId: string): string | undefined => 
   return undefined;
 };
 
-const initApp = async (app: any) => {
-  const appInstance = app as any;
-  appInstance.updateDebugLoggingEnabled();
-  appInstance.initPriceCoordinator();
-  appInstance.runStartupSettingsMigrations();
-  appInstance.loadCapacitySettings();
-  appInstance.initDailyBudgetService();
-  appInstance.loadPowerTracker();
-  appInstance.loadPriceOptimizationSettings();
-  await appInstance.initDeviceManager();
-  appInstance.initCapacityGuard();
-  appInstance.initPlanEngine();
-  appInstance.initPlanService();
-  appInstance.subscribePlanObservedState();
-  appInstance.captureDefaultDynamicSoftLimit();
-  appInstance.initSettingsHandler();
-  appInstance.registerFlowCards();
-  await appInstance.refreshTargetDevicesSnapshot();
-  await appInstance.planService?.rebuildPlanFromCache?.();
-  appInstance.lastNotifiedOperatingMode = appInstance.operatingMode;
+const initApp = async (app: MyApp) => {
+  app['updateDebugLoggingEnabled']();
+  app['initPriceCoordinator']();
+  app['runStartupSettingsMigrations']();
+  app['loadCapacitySettings']();
+  app['initDailyBudgetService']();
+  app['loadPowerTracker']();
+  app['loadPriceOptimizationSettings']();
+  await app['initDeviceManager']();
+  app['initCapacityGuard']();
+  app['initPlanEngine']();
+  app['initPlanService']();
+  app['subscribePlanObservedState']();
+  app['captureDefaultDynamicSoftLimit']();
+  app['initSettingsHandler']();
+  app['registerFlowCards']();
+  await app.refreshTargetDevicesSnapshot();
+  await app.planService.rebuildPlanFromCache('unknown');
+  const initialized = app;
+  initialized['lastNotifiedOperatingMode'] = initialized['operatingMode'];
 };
 
-const clearRecentLocalCapabilityWrites = (app: any) => {
-  const deviceManager = (app as any).deviceManager as {
+const clearRecentLocalCapabilityWrites = (app: MyApp) => {
+  const deviceManager = app.deviceManager as unknown as {
     recentLocalCapabilityWrites?: Map<string, unknown>;
     pendingBinarySettleWindows?: Map<string, { timer?: ReturnType<typeof setTimeout> }>;
   } | undefined;
@@ -169,10 +177,10 @@ describe('MyApp initialization', () => {
 
   it('resolves native wiring: explicit user choice wins, else conflict-gated auto-decision', () => {
     const app = createApp();
-    (app as any).nativeEvWiringDevices = { 'user-on': true, 'user-off': false };
-    (app as any).autoNativeWiringDecisions = { 'auto-on': true };
+    app['nativeEvWiringDevices'] = { 'user-on': true, 'user-off': false };
+    app['autoNativeWiringDecisions'] = { 'auto-on': true };
 
-    const resolve = (id: string) => (app as any).resolveNativeWiringEnabled(id);
+    const resolve = (id: string) => app['resolveNativeWiringEnabled'](id);
 
     // Explicit user entries always win, even against an auto-decision.
     expect(resolve('user-on')).toBe(true);
@@ -211,21 +219,20 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const appAny = app as any;
     const freshMs = Date.parse('2026-03-21T12:00:00Z');
     let freshnessSeenBySync: number | undefined;
-    vi.spyOn(appAny.planService, 'syncLivePlanState').mockImplementation(() => {
-      freshnessSeenBySync = appAny.observedDeviceStateProjection
+    vi.spyOn(app.planService, 'syncLivePlanState').mockImplementation(async () => {
+      freshnessSeenBySync = app['observedDeviceStateProjection']
         .getObservedState('dev-1')?.lastFreshDataMs;
       return false;
     });
 
-    appAny.observedStateEmitter.emitObservedStateChanged({
+    app['observedStateEmitter'].emitObservedStateChanged({
       source: 'realtime_capability',
       deviceId: 'dev-1',
       observationSeq: 1_000_000,
       observedAtMs: freshMs,
-      observed: { id: 'dev-1', name: 'Heater', targets: [], lastFreshDataMs: freshMs },
+      observed: { id: 'dev-1', name: 'Heater', targets: [], available: true, lastFreshDataMs: freshMs },
     });
 
     expect(freshnessSeenBySync).toBe(freshMs);
@@ -242,7 +249,7 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const snapshotWrites = setSpy.mock.calls.filter(([key]) => key === 'target_devices_snapshot');
     expect(snapshotWrites).toHaveLength(0);
@@ -275,11 +282,11 @@ describe('MyApp initialization', () => {
       });
 
       const app = createApp();
-      (app as any).flowBacked.loadPersistedState();
+      app['flowBacked'].loadPersistedState();
 
-      expect((app as any).flowReportedCapabilities).toEqual({});
+      expect(app['flowReportedCapabilities']).toEqual({});
       expect(mockHomeyInstance.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES)).toEqual({});
-      expect((app as any).getFlowReportedDeviceIds()).toEqual([]);
+      expect(app.getFlowReportedDeviceIds()).toEqual([]);
     } finally {
       mockHomeyInstance.flow.getActionCard = originalGetActionCard;
       mockHomeyInstance.flow.getTriggerCard = originalGetTriggerCard;
@@ -300,15 +307,15 @@ describe('MyApp initialization', () => {
     };
 
     const app = createApp();
-    (app as any).flowReportedCapabilities = { ...existing };
+    app['flowReportedCapabilities'] = { ...existing };
 
     // Persisted setting is missing / empty — simulates a transient SDK miss.
     mockHomeyInstance.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, undefined);
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
-    (app as any).flowBacked.loadPersistedState();
+    app['flowBacked'].loadPersistedState();
 
-    expect((app as any).flowReportedCapabilities).toEqual(existing);
+    expect(app['flowReportedCapabilities']).toEqual(existing);
     // Must not persist anything — we don't know the state is really empty.
     const persistedWrites = setSpy.mock.calls.filter(([key]) => key === FLOW_REPORTED_DEVICE_CAPABILITIES);
     expect(persistedWrites).toHaveLength(0);
@@ -333,12 +340,12 @@ describe('MyApp initialization', () => {
     };
 
     const app = createApp();
-    (app as any).flowReportedCapabilities = { ...existing };
+    app['flowReportedCapabilities'] = { ...existing };
 
     mockHomeyInstance.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, incoming);
-    (app as any).flowBacked.loadPersistedState();
+    app['flowBacked'].loadPersistedState();
 
-    expect((app as any).flowReportedCapabilities).toEqual(incoming);
+    expect(app['flowReportedCapabilities']).toEqual(incoming);
   });
 
   it('emits realtime UI invalidation when devices refresh', async () => {
@@ -351,7 +358,7 @@ describe('MyApp initialization', () => {
     await initApp(app);
 
     await heater.setCapabilityValue('measure_power', 1500);
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     expect(mockHomeyInstance.api._realtimeEvents).toContainEqual(expect.objectContaining({
       event: 'devices_updated',
@@ -364,9 +371,9 @@ describe('MyApp initialization', () => {
     const childLogger = { info: vi.fn() };
     const child = vi.fn().mockReturnValue(childLogger);
 
-    (app as any).structuredLogger = { child };
+    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
 
-    const logger = (app as any).getStructuredLogger('reconcile');
+    const logger = app.getStructuredLogger('reconcile');
 
     expect(logger).toBe(childLogger);
     expect(child).toHaveBeenCalledWith({ component: 'reconcile' });
@@ -377,10 +384,10 @@ describe('MyApp initialization', () => {
     const childLogger = { debug: vi.fn() };
     const child = vi.fn().mockReturnValue(childLogger);
 
-    (app as any).structuredLogger = { child };
-    (app as any).debugLoggingTopics = new Set(['diagnostics']);
+    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
+    app.debugLoggingTopics = new Set(['diagnostics']);
 
-    const emitDebug = (app as any).getStructuredDebugEmitter('reconcile', 'diagnostics');
+    const emitDebug = app.getStructuredDebugEmitter('reconcile', 'diagnostics');
     emitDebug({ event: 'device_update_processed', deviceId: 'dev-1' });
 
     expect(child).toHaveBeenCalledWith({ component: 'reconcile' }, { level: 'debug' });
@@ -396,10 +403,10 @@ describe('MyApp initialization', () => {
     const childLogger = { debug: vi.fn() };
     const child = vi.fn().mockReturnValue(childLogger);
 
-    (app as any).structuredLogger = { child };
-    (app as any).debugLoggingTopics = new Set();
+    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
+    app.debugLoggingTopics = new Set();
 
-    const emitDebug = (app as any).getStructuredDebugEmitter('reconcile', 'diagnostics');
+    const emitDebug = app.getStructuredDebugEmitter('reconcile', 'diagnostics');
     emitDebug({ event: 'device_update_processed', deviceId: 'dev-1' });
 
     expect(child).not.toHaveBeenCalled();
@@ -411,20 +418,20 @@ describe('MyApp initialization', () => {
     const childLogger = { debug: vi.fn() };
     const child = vi.fn().mockReturnValue(childLogger);
 
-    (app as any).structuredLogger = { child };
-    (app as any).debugLoggingTopics = new Set(['plan']);
+    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
+    app.debugLoggingTopics = new Set(['plan']);
 
-    const previous = { kind: 'flow', reason: 'flow_card:first' };
-    const next = { kind: 'hardCap', reason: 'shortfall' };
-    (app as any).schedulerTelemetry.onPendingIntentReplaced(previous, next);
-    (app as any).schedulerTelemetry.onPendingIntentReplaced(previous, next);
+    const previous: RebuildIntent = { kind: 'flow', reason: 'flow_card' };
+    const next: RebuildIntent = { kind: 'hardCap', reason: 'shortfall' };
+    app['schedulerTelemetry'].onPendingIntentReplaced(previous, next);
+    app['schedulerTelemetry'].onPendingIntentReplaced(previous, next);
 
     expect(child).toHaveBeenCalledWith({ component: 'plan' }, { level: 'debug' });
     expect(childLogger.debug).toHaveBeenCalledTimes(1);
     expect(childLogger.debug).toHaveBeenCalledWith({
       event: 'plan_rebuild_scheduler_intent_replaced',
       previousKind: 'flow',
-      previousReason: 'flow_card:first',
+      previousReason: 'flow_card',
       nextKind: 'hardCap',
       nextReason: 'shortfall',
       debugTopic: 'plan',
@@ -436,15 +443,15 @@ describe('MyApp initialization', () => {
     const childLogger = { debug: vi.fn() };
     const child = vi.fn().mockReturnValue(childLogger);
 
-    (app as any).structuredLogger = { child };
-    (app as any).debugLoggingTopics = new Set(['plan']);
+    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
+    app.debugLoggingTopics = new Set(['plan']);
 
-    (app as any).schedulerTelemetry.onPendingIntentReplaced(
-      { kind: 'flow', reason: 'flow_card:first' },
+    app['schedulerTelemetry'].onPendingIntentReplaced(
+      { kind: 'flow', reason: 'flow_card' },
       { kind: 'hardCap', reason: 'shortfall' },
     );
-    (app as any).schedulerTelemetry.onPendingIntentReplaced(
-      { kind: 'flow', reason: 'flow_card:second' },
+    app['schedulerTelemetry'].onPendingIntentReplaced(
+      { kind: 'flow', reason: 'settings' },
       { kind: 'hardCap', reason: 'shortfall' },
     );
 
@@ -452,7 +459,7 @@ describe('MyApp initialization', () => {
     expect(childLogger.debug).toHaveBeenLastCalledWith(expect.objectContaining({
       event: 'plan_rebuild_scheduler_intent_replaced',
       previousKind: 'flow',
-      previousReason: 'flow_card:second',
+      previousReason: 'settings',
       nextKind: 'hardCap',
       nextReason: 'shortfall',
       debugTopic: 'plan',
@@ -464,19 +471,19 @@ describe('MyApp initialization', () => {
     const childLogger = { debug: vi.fn() };
     const child = vi.fn().mockReturnValue(childLogger);
 
-    (app as any).structuredLogger = { child };
-    (app as any).debugLoggingTopics = new Set(['plan']);
+    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
+    app.debugLoggingTopics = new Set(['plan']);
 
-    const dropped = { kind: 'flow', reason: 'flow_card:first' };
-    const kept = { kind: 'hardCap', reason: 'shortfall' };
-    (app as any).schedulerTelemetry.onIntentDropped(dropped, kept);
-    (app as any).schedulerTelemetry.onIntentDropped(dropped, kept);
+    const dropped: RebuildIntent = { kind: 'flow', reason: 'flow_card' };
+    const kept: RebuildIntent = { kind: 'hardCap', reason: 'shortfall' };
+    app['schedulerTelemetry'].onIntentDropped(dropped, kept);
+    app['schedulerTelemetry'].onIntentDropped(dropped, kept);
 
     expect(childLogger.debug).toHaveBeenCalledTimes(1);
     expect(childLogger.debug).toHaveBeenCalledWith({
       event: 'plan_rebuild_scheduler_intent_dropped',
       droppedKind: 'flow',
-      droppedReason: 'flow_card:first',
+      droppedReason: 'flow_card',
       keptKind: 'hardCap',
       keptReason: 'shortfall',
       debugTopic: 'plan',
@@ -487,24 +494,24 @@ describe('MyApp initialization', () => {
     const app = createApp();
     const childLogger = { debug: vi.fn() };
     const child = vi.fn().mockReturnValue(childLogger);
-    const map = (app as any).schedulerTelemetry.lastEmittedAtMsByKey as Map<string, number>;
+    const map = app['schedulerTelemetry']['lastEmittedAtMsByKey'] as Map<string, number>;
 
-    vi.spyOn(app as any, 'getPlanRebuildNowMs')
+    vi.spyOn(app as unknown as Record<'getPlanRebuildNowMs', () => number>, 'getPlanRebuildNowMs')
       .mockReturnValueOnce(0)
       .mockReturnValueOnce(60_000);
-    (app as any).structuredLogger = { child };
-    (app as any).debugLoggingTopics = new Set(['plan']);
+    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
+    app.debugLoggingTopics = new Set(['plan']);
 
-    const dropped = { kind: 'flow', reason: 'flow_card:first' };
-    const kept = { kind: 'hardCap', reason: 'shortfall' };
-    (app as any).schedulerTelemetry.onIntentDropped(dropped, kept);
+    const dropped: RebuildIntent = { kind: 'flow', reason: 'flow_card' };
+    const kept: RebuildIntent = { kind: 'hardCap', reason: 'shortfall' };
+    app['schedulerTelemetry'].onIntentDropped(dropped, kept);
     expect(map.size).toBe(1);
 
-    (app as any).schedulerTelemetry.onIntentDropped(dropped, kept);
+    app['schedulerTelemetry'].onIntentDropped(dropped, kept);
 
     expect(childLogger.debug).toHaveBeenCalledTimes(2);
     expect(map.size).toBe(1);
-    expect(map.get('dropped:flow:flow_card:first:hardCap:shortfall')).toBe(60_000);
+    expect(map.get('dropped:flow:flow_card:hardCap:shortfall')).toBe(60_000);
   });
 
   it('keeps devices disabled by default when no settings exist', async () => {
@@ -540,9 +547,9 @@ describe('MyApp initialization', () => {
     await waitForSnapshot();
 
     const infoSpy = vi.fn();
-    vi.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
+    vi.spyOn(app, 'getStructuredLogger').mockReturnValue(partialDouble<Logger>({ info: infoSpy as Logger['info'] }));
 
-    expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+    expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_feedback_reported',
       deviceId: 'dev-1',
@@ -568,15 +575,15 @@ describe('MyApp initialization', () => {
     await waitForSnapshot();
 
     const infoSpy = vi.fn();
-    vi.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
+    vi.spyOn(app, 'getStructuredLogger').mockReturnValue(partialDouble<Logger>({ info: infoSpy as Logger['info'] }));
 
-    (app as any).deviceControlHelpers.markSteppedLoadDesiredStepIssued({
+    app.deviceControlHelpers.markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
       desiredStepId: 'low',
       previousStepId: 'max',
     });
 
-    expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+    expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_feedback_confirmed',
       deviceId: 'dev-1',
@@ -604,14 +611,14 @@ describe('MyApp initialization', () => {
     await waitForSnapshot();
 
     const infoSpy = vi.fn();
-    vi.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
+    vi.spyOn(app, 'getStructuredLogger').mockReturnValue(partialDouble<Logger>({ info: infoSpy as Logger['info'] }));
 
-    (app as any).deviceControlHelpers.markSteppedLoadDesiredStepIssued({
+    app.deviceControlHelpers.markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
       desiredStepId: 'max',
       previousStepId: 'low',
     });
-    const runtimeState = (app as any).deviceControlHelpers.getRuntimeStateForTests();
+    const runtimeState = app.deviceControlHelpers.getRuntimeStateForTests();
     runtimeState.steppedLoadDesiredByDeviceId.set('dev-1', {
       ...runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')!,
       pending: false,
@@ -619,13 +626,13 @@ describe('MyApp initialization', () => {
     });
     // The prior report is the observer's to record — it builds the capability
     // and source itself, so the test states only what the device said and when.
-    (app as any).steppedReportedStore.record({
+    app.steppedReportedStore.record({
       deviceId: 'dev-1',
       stepId: 'low',
       reportedAtMs: Date.now() - 1000,
     });
 
-    expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+    expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_feedback_confirmed',
       deviceId: 'dev-1',
@@ -652,12 +659,12 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+    expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
 
     const infoSpy = vi.fn();
-    vi.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
+    vi.spyOn(app, 'getStructuredLogger').mockReturnValue(partialDouble<Logger>({ info: infoSpy as Logger['info'] }));
 
-    expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+    expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_feedback_external_change',
       deviceId: 'dev-1',
@@ -691,7 +698,7 @@ describe('MyApp initialization', () => {
     expect(mockHomeyInstance.settings.get(OPERATING_MODE_SETTING)).toBe('Away');
 
     // Verify internal state was updated
-    expect((app as any).operatingMode).toBe('Away');
+    expect(app.operatingMode).toBe('Away');
   });
 
   it('set_capacity_mode flow card throws if mode is empty', async () => {
@@ -726,7 +733,7 @@ describe('MyApp initialization', () => {
     // The settings write is the whole action now: the capacity scalars have one
     // owner, and the change listener reloads them.
     expect(mockHomeyInstance.settings.get('capacity_limit_kw')).toBe(5);
-    expect((app as any).capacitySettings.limitKw).toBe(5);
+    expect(app.capacitySettings.limitKw).toBe(5);
   });
 
   it('set_daily_budget_kwh flow card updates daily budget settings', async () => {
@@ -745,7 +752,7 @@ describe('MyApp initialization', () => {
     expect(result).toBe(true);
     expect(mockHomeyInstance.settings.get(DAILY_BUDGET_KWH)).toBe(40);
     expect(mockHomeyInstance.settings.get(DAILY_BUDGET_ENABLED)).toBe(true);
-    expect((app as any).dailyBudgetService.getSnapshot()).not.toBeNull();
+    expect(app.dailyBudgetService.getSnapshot()).not.toBeNull();
   });
 
   it('set_daily_budget_kwh flow card disables daily budget when set to 0', async () => {
@@ -779,7 +786,7 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
 
-    const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
     const setBudgetListener = mockHomeyInstance.flow._actionCardListeners['set_daily_budget_kwh'];
     const result = await setBudgetListener({ budget_kwh: 40 });
     expect(result).toBe(true);
@@ -796,9 +803,9 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
 
-    const loadSettingsSpy = vi.spyOn((app as any).dailyBudgetService, 'loadSettings');
-    const updateStateSpy = vi.spyOn((app as any).dailyBudgetService, 'updateState');
-    const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    const loadSettingsSpy = vi.spyOn(app.dailyBudgetService, 'loadSettings');
+    const updateStateSpy = vi.spyOn(app.dailyBudgetService, 'updateState');
+    const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
     loadSettingsSpy.mockClear();
     updateStateSpy.mockClear();
     rebuildSpy.mockClear();
@@ -880,20 +887,20 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
 
-    (app as any).powerSampleRebuildState = {
-      ...(app as any).powerSampleRebuildState,
-      lastMs: (app as any).getPlanRebuildNowMs(),
+    app.powerSampleRebuildState = {
+      ...app.powerSampleRebuildState,
+      lastMs: app['getPlanRebuildNowMs'](),
     };
-    let powerSampleRebuildState = (app as any).powerSampleRebuildState;
+    let powerSampleRebuildState = app.powerSampleRebuildState;
     const pending = schedulePlanRebuildFromPowerSample({
       limitKw: 10,
-      scheduler: (app as any).planRebuildScheduler,
+      scheduler: app['planRebuildScheduler'],
       getState: () => powerSampleRebuildState,
       setState: (next) => {
         powerSampleRebuildState = next;
-        (app as any).powerSampleRebuildState = next;
+        app.powerSampleRebuildState = next;
       },
-      getNowMs: () => (app as any).getPlanRebuildNowMs(),
+      getNowMs: () => app['getPlanRebuildNowMs'](),
       minIntervalMs: 1000,
       maxIntervalMs: 10_000,
       currentPowerW: 9500,
@@ -901,13 +908,13 @@ describe('MyApp initialization', () => {
       headroomKw: -0.5,
     });
 
-    expect((app as any).planRebuildScheduler.now().hasTimer).toBe(true);
+    expect(app['planRebuildScheduler'].now().hasTimer).toBe(true);
 
-    await (app as any).onUninit();
+    await app.onUninit();
 
     await expect(pending).resolves.toBe('app_uninit');
-    expect((app as any).planRebuildScheduler.now().hasTimer).toBe(false);
-    expect((app as any).powerSampleRebuildState.pending).toBeUndefined();
+    expect(app['planRebuildScheduler'].now().hasTimer).toBe(false);
+    expect(app.powerSampleRebuildState.pending).toBeUndefined();
   });
 
   it('enable_device_capacity_control flow card enables capacity control', async () => {
@@ -982,7 +989,7 @@ describe('MyApp initialization', () => {
     const hourStart = new Date(now);
     hourStart.setMinutes(0, 0, 0);
     const bucketKey = hourStart.toISOString();
-    (app as any).powerTracker = {
+    app.powerTracker = {
       buckets: {
         [bucketKey]: 1.3,
       },
@@ -990,7 +997,7 @@ describe('MyApp initialization', () => {
       lastPowerW: 2000,
     };
 
-    void (app as any).powerSamplePipeline.recordPowerSample(2000, now);
+    void app['powerSamplePipeline'].recordPowerSample(2000, now);
     await waitFor(() => {
       const planSnapshot = getLatestPlanSnapshotForTests();
       return Boolean(planSnapshot?.devices?.length);
@@ -1009,9 +1016,9 @@ describe('MyApp initialization', () => {
     devPlanState = getPlanDeviceState(plan, 'dev-1');
     expect(devPlanState).toBe('shed');
 
-    (app as any).planEngine.state.lastInstabilityMs = null;
-    if ((app as any).capacityGuard) {
-      (app as any).planEngine.state.sheddingActive = false;
+    app.planEngine.state.lastInstabilityMs = null;
+    if (app.capacityGuard) {
+      app.planEngine.state.sheddingActive = false;
     }
 
     void setLimitListener({ limit_kw: 4 });
@@ -1036,7 +1043,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.api.clearRealtimeEvents();
 
     const now = new Date('2026-03-03T10:20:00.000Z').getTime();
-    await (app as any).powerSamplePipeline.recordPowerSample(2000, now);
+    await app['powerSamplePipeline'].recordPowerSample(2000, now);
 
     const powerEvents = mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'power_updated');
     expect(powerEvents).toHaveLength(1);
@@ -1062,12 +1069,12 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
     const recordSample = vi.fn();
-    (app as any).pvForecast = { recordSample };
+    app['pvForecast'] = partialDouble<PvForecastController>({ recordSample });
 
     const now = new Date('2026-03-03T11:20:00.000Z').getTime();
     // Net is negative while exporting — it must reach the recorder unfloored,
     // before the capacity path runs.
-    await (app as any).powerSamplePipeline.recordPowerSample(-1200, now, { generationW: 900 });
+    await app['powerSamplePipeline'].recordPowerSample(-1200, now, { generationW: 900 });
     expect(recordSample).toHaveBeenCalledWith(900, now, -1200);
   });
 
@@ -1082,20 +1089,20 @@ describe('MyApp initialization', () => {
 
     const app = createApp();
     await initApp(app);
-    const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
     rebuildSpy.mockClear();
 
-    const nowMs = (app as any).getPlanRebuildNowMs();
-    (app as any).powerSampleRebuildState = {
-      ...(app as any).powerSampleRebuildState,
+    const nowMs = app['getPlanRebuildNowMs']();
+    app.powerSampleRebuildState = {
+      ...app.powerSampleRebuildState,
       lastMs: nowMs,
       lastRebuildPowerW: 5000,
       lastCapacityPaceKw: 9.5,
     };
-    (app as any).planEngine.state.lastRestoreMs = nowMs - 1_000;
-    (app as any).planEngine.state.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
+    app.planEngine.state.lastRestoreMs = nowMs - 1_000;
+    app.planEngine.state.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
 
-    await (app as any).powerSamplePipeline['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
+    await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
 
     expect(rebuildSpy).not.toHaveBeenCalled();
     rebuildSpy.mockRestore();
@@ -1118,8 +1125,10 @@ describe('MyApp initialization', () => {
 
     // Overshoot convergence bypasses the anti-storm guards only while the plan
     // still has something to act on — give the snapshot an on, drawing device.
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater',
         targets: [],
@@ -1130,21 +1139,21 @@ describe('MyApp initialization', () => {
         controllable: true,
       },
     ]);
-    await (app as any).planService.rebuildPlanFromCache();
+    await app.planService.rebuildPlanFromCache('unknown');
 
-    const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
     rebuildSpy.mockClear();
 
-    const nowMs = (app as any).getPlanRebuildNowMs();
-    (app as any).powerSampleRebuildState = {
-      ...(app as any).powerSampleRebuildState,
+    const nowMs = app['getPlanRebuildNowMs']();
+    app.powerSampleRebuildState = {
+      ...app.powerSampleRebuildState,
       lastMs: nowMs,
       lastRebuildPowerW: 5000,
       lastCapacityPaceKw: 9.5,
     };
-    (app as any).planEngine.state.wasOvershoot = true;
+    app.planEngine.state.wasOvershoot = true;
 
-    await (app as any).powerSamplePipeline['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
+    await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
 
     expect(rebuildSpy).toHaveBeenCalledWith('power_sample_convergence');
     rebuildSpy.mockRestore();
@@ -1166,21 +1175,21 @@ describe('MyApp initialization', () => {
 
     const app = createApp();
     await initApp(app);
-    const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
     rebuildSpy.mockClear();
 
-    const nowMs = (app as any).getPlanRebuildNowMs();
-    (app as any).powerSampleRebuildState = {
-      ...(app as any).powerSampleRebuildState,
+    const nowMs = app['getPlanRebuildNowMs']();
+    app.powerSampleRebuildState = {
+      ...app.powerSampleRebuildState,
       lastMs: nowMs,
       lastRebuildPowerW: 5000,
       lastCapacityPaceKw: 9.5,
     };
-    (app as any).planEngine.state.wasOvershoot = true;
+    app.planEngine.state.wasOvershoot = true;
 
     // ≥100 W jitter per sample — meaningful deltas that used to force a rebuild each time.
-    await (app as any).powerSamplePipeline['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
-    await (app as any).powerSamplePipeline['runPowerSample']({ currentPowerW: 5150, nowMs: nowMs + 2, revision: 0 });
+    await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
+    await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5150, nowMs: nowMs + 2, revision: 0 });
 
     expect(rebuildSpy).not.toHaveBeenCalled();
     rebuildSpy.mockRestore();
@@ -1196,14 +1205,14 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const clearSpy = vi.spyOn((app as any).planEngine, 'clearStartupRestoreStabilization');
+    const clearSpy = vi.spyOn(app.planEngine, 'clearStartupRestoreStabilization');
     const baseTs = new Date('2026-03-03T10:20:00.000Z').getTime();
 
-    (app as any).powerTracker.lastTimestamp = baseTs;
-    await (app as any).powerSamplePipeline.recordPowerSample(2000, baseTs);
+    app.powerTracker.lastTimestamp = baseTs;
+    await app['powerSamplePipeline'].recordPowerSample(2000, baseTs);
     expect(clearSpy).not.toHaveBeenCalled();
 
-    await (app as any).powerSamplePipeline.recordPowerSample(2100, baseTs + 1000);
+    await app['powerSamplePipeline'].recordPowerSample(2100, baseTs + 1000);
     expect(clearSpy).toHaveBeenCalledTimes(1);
     expect(clearSpy).toHaveBeenCalledWith(baseTs + 1000);
   });
@@ -1225,7 +1234,7 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    expect((app as any).planEngine.state.lastDeviceControlledMs).toEqual({ 'dev-1': controlledAt });
+    expect(app.planEngine.state.lastDeviceControlledMs).toEqual({ 'dev-1': controlledAt });
   });
 
   it('coalesces multiple power sample triggers into a single rerun', async () => {
@@ -1233,7 +1242,7 @@ describe('MyApp initialization', () => {
     const passes = [createDeferred(), createDeferred()];
     const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
     const beforePerf = getPerfSnapshot();
-    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (...args: unknown[]) => {
+    const runSpy = vi.spyOn(app['powerSamplePipeline'] as unknown as { runPowerSample: (...args: unknown[]) => Promise<void> }, 'runPowerSample').mockImplementation(async (...args: unknown[]) => {
       const [request] = args as [{ currentPowerW: number; nowMs: number }];
       calls.push({ currentPowerW: request.currentPowerW, nowMs: request.nowMs });
       const pass = passes[calls.length - 1];
@@ -1242,15 +1251,15 @@ describe('MyApp initialization', () => {
     });
 
     try {
-      const first = (app as any).powerSamplePipeline.recordPowerSample(1000, 1);
+      const first = app['powerSamplePipeline'].recordPowerSample(1000, 1);
       await flushPromises();
-      expect((app as any).powerSamplePipeline.getStableSampleRevision())
+      expect(app['powerSamplePipeline'].getStableSampleRevision())
         .toEqual({ state: 'pending' });
-      const second = (app as any).powerSamplePipeline.recordPowerSample(2000, 2);
-      const third = (app as any).powerSamplePipeline.recordPowerSample(3000, 3);
+      const second = app['powerSamplePipeline'].recordPowerSample(2000, 2);
+      const third = app['powerSamplePipeline'].recordPowerSample(3000, 3);
 
       await flushPromises();
-      expect((app as any).powerSamplePipeline.getStableSampleRevision())
+      expect(app['powerSamplePipeline'].getStableSampleRevision())
         .toEqual({ state: 'pending' });
       expect(runSpy).toHaveBeenCalledTimes(1);
       expect(calls).toEqual([{ currentPowerW: 1000, nowMs: 1 }]);
@@ -1260,12 +1269,12 @@ describe('MyApp initialization', () => {
 
       expect(runSpy).toHaveBeenCalledTimes(2);
       expect(calls[1]).toEqual({ currentPowerW: 3000, nowMs: 3 });
-      expect((app as any).powerSamplePipeline.getStableSampleRevision())
+      expect(app['powerSamplePipeline'].getStableSampleRevision())
         .toEqual({ state: 'pending' });
 
       passes[1].resolve();
       await Promise.all([first, second, third]);
-      expect((app as any).powerSamplePipeline.getStableSampleRevision())
+      expect(app['powerSamplePipeline'].getStableSampleRevision())
         .toEqual({ state: 'stable', revision: 3 });
 
       const afterPerf = getPerfSnapshot();
@@ -1285,7 +1294,7 @@ describe('MyApp initialization', () => {
     let active = 0;
     let maxActive = 0;
     let runIndex = 0;
-    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async () => {
+    const runSpy = vi.spyOn(app['powerSamplePipeline'] as unknown as { runPowerSample: (...args: unknown[]) => Promise<void> }, 'runPowerSample').mockImplementation(async () => {
       const pass = passes[runIndex];
       runIndex += 1;
       if (!pass) throw new Error(`Unexpected power sample pass ${runIndex}`);
@@ -1296,17 +1305,17 @@ describe('MyApp initialization', () => {
     });
 
     try {
-      const first = (app as any).powerSamplePipeline.recordPowerSample(1000, 1);
+      const first = app['powerSamplePipeline'].recordPowerSample(1000, 1);
       await flushPromises();
-      const second = (app as any).powerSamplePipeline.recordPowerSample(2000, 2);
-      const third = (app as any).powerSamplePipeline.recordPowerSample(3000, 3);
+      const second = app['powerSamplePipeline'].recordPowerSample(2000, 2);
+      const third = app['powerSamplePipeline'].recordPowerSample(3000, 3);
 
       await flushPromises();
       passes[0].resolve();
       await flushPromises();
 
-      const fourth = (app as any).powerSamplePipeline.recordPowerSample(4000, 4);
-      const fifth = (app as any).powerSamplePipeline.recordPowerSample(5000, 5);
+      const fourth = app['powerSamplePipeline'].recordPowerSample(4000, 4);
+      const fifth = app['powerSamplePipeline'].recordPowerSample(5000, 5);
       await flushPromises();
 
       passes[1].resolve();
@@ -1325,7 +1334,7 @@ describe('MyApp initialization', () => {
     const app = createApp();
     const passes = [createDeferred(), createDeferred()];
     const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
-    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (...args: unknown[]) => {
+    const runSpy = vi.spyOn(app['powerSamplePipeline'] as unknown as { runPowerSample: (...args: unknown[]) => Promise<void> }, 'runPowerSample').mockImplementation(async (...args: unknown[]) => {
       const [request] = args as [{ currentPowerW: number; nowMs: number }];
       calls.push({ currentPowerW: request.currentPowerW, nowMs: request.nowMs });
       const pass = passes[calls.length - 1];
@@ -1334,10 +1343,10 @@ describe('MyApp initialization', () => {
     });
 
     try {
-      const first = (app as any).powerSamplePipeline.recordPowerSample(1200, 10);
+      const first = app['powerSamplePipeline'].recordPowerSample(1200, 10);
       await flushPromises();
-      const second = (app as any).powerSamplePipeline.recordPowerSample(2200, 20);
-      const third = (app as any).powerSamplePipeline.recordPowerSample(3200, 30);
+      const second = app['powerSamplePipeline'].recordPowerSample(2200, 20);
+      const third = app['powerSamplePipeline'].recordPowerSample(3200, 30);
 
       passes[0].resolve();
       await flushPromises();
@@ -1356,10 +1365,10 @@ describe('MyApp initialization', () => {
   it('keeps normal single-sample behavior unchanged when no rerun is needed', async () => {
     const app = createApp();
     const beforePerf = getPerfSnapshot();
-    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockResolvedValue(undefined);
+    const runSpy = vi.spyOn(app['powerSamplePipeline'] as unknown as { runPowerSample: (...args: unknown[]) => Promise<void> }, 'runPowerSample').mockResolvedValue(undefined);
 
     try {
-      await (app as any).powerSamplePipeline.recordPowerSample(1500, 50);
+      await app['powerSamplePipeline'].recordPowerSample(1500, 50);
 
       const afterPerf = getPerfSnapshot();
       expect(runSpy).toHaveBeenCalledTimes(1);
@@ -1376,15 +1385,15 @@ describe('MyApp initialization', () => {
   it('starts a fresh power sample loop when a new request lands right after the previous loop completes', async () => {
     const app = createApp();
     const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
-    let trailingRequest: Promise<void> | undefined;
+    let trailingRequest: Promise<unknown> | undefined;
     const scheduleTrailingRequest = () => {
       void Promise.resolve()
         .then(() => Promise.resolve())
         .then(() => {
-          trailingRequest = (app as any).powerSamplePipeline.recordPowerSample(2400, 24);
+          trailingRequest = app['powerSamplePipeline'].recordPowerSample(2400, 24);
         });
     };
-    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (...args: unknown[]) => {
+    const runSpy = vi.spyOn(app['powerSamplePipeline'] as unknown as { runPowerSample: (...args: unknown[]) => Promise<void> }, 'runPowerSample').mockImplementation(async (...args: unknown[]) => {
       const [request] = args as [{ currentPowerW: number; nowMs: number }];
       calls.push({ currentPowerW: request.currentPowerW, nowMs: request.nowMs });
       if (calls.length === 1) {
@@ -1393,7 +1402,7 @@ describe('MyApp initialization', () => {
     });
 
     try {
-      await (app as any).powerSamplePipeline.recordPowerSample(1400, 14);
+      await app['powerSamplePipeline'].recordPowerSample(1400, 14);
       await waitFor(() => trailingRequest !== undefined);
       await trailingRequest;
 
@@ -1424,9 +1433,9 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
     clearRecentLocalCapabilityWrites(app);
-    const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
 
-    (app as any).deviceManager.injectDeviceUpdateForTest({
+    app.deviceManager.injectDeviceUpdateForTest({
       id: 'dev-1',
       name: 'Heater',
       class: 'heater',
@@ -1446,9 +1455,9 @@ describe('MyApp initialization', () => {
     // while, a re-plan, which still decided a capacity question from a
     // whole-home reading taken before the device moved. The reading that sees
     // it is what re-plans.
-    await waitFor(() => (app as any).latestTargetSnapshot
-      .find((device: { id: string }) => device.id === 'dev-1')
-      ?.targets?.some((t: { id: string; value: unknown }) => t.id === 'target_temperature' && t.value === 18));
+    await waitFor(() => app.latestTargetSnapshot
+      .find((device) => device.id === 'dev-1')
+      ?.targets?.some((t) => t.id === 'target_temperature' && t.value === 18) === true);
     await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
 
     expect(rebuildSpy).not.toHaveBeenCalled();
@@ -1462,8 +1471,10 @@ describe('MyApp initialization', () => {
 
     const app = createApp();
     await initApp(app);
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'ev-1',
         expectedPowerKw: 1,
         name: 'Garage Charger',
@@ -1472,9 +1483,9 @@ describe('MyApp initialization', () => {
         stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.now(), capabilityId: 'measure_battery' }),
       },
     ]);
-    const requestSpy = vi.spyOn((app as any).planRebuildScheduler, 'request');
+    const requestSpy = vi.spyOn(app['planRebuildScheduler'], 'request');
 
-    (app as any).deviceManager.injectDeviceUpdateForTest({
+    app.deviceManager.injectDeviceUpdateForTest({
       id: 'ev-1',
       name: 'Garage Charger',
       class: 'evcharger',
@@ -1575,10 +1586,10 @@ describe('MyApp initialization', () => {
       )).length;
       expect(targetWritesBeforeShedding).toBe(0);
 
-      (app as any).computeDynamicSoftLimit = () => 0.1;
-      (app as any).computeDynamicSoftLimit = () => 0.1;
+      app.computeDynamicSoftLimit = () => 0.1;
+      app.computeDynamicSoftLimit = () => 0.1;
 
-      await (app as any).powerSamplePipeline.recordPowerSample(1000);
+      await app['powerSamplePipeline'].recordPowerSample(1000);
       await waitFor(() => setCapabilitySpy.mock.calls.filter(([path, body]) => (
         path === 'manager/devices/device/dev-1/capability/onoff'
         && (body as { value?: unknown } | undefined)?.value === false
@@ -1589,7 +1600,7 @@ describe('MyApp initialization', () => {
         && (body as { value?: unknown } | undefined)?.value === 23
       )).length;
       expect(targetWritesAfterShedding).toBe(targetWritesBeforeShedding);
-      expect((app as any).planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
+      expect(app.planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
         id: 'dev-1',
         plannedState: 'shed',
         plannedTarget: 23,
@@ -1617,11 +1628,11 @@ describe('MyApp initialization', () => {
 
     const app = createApp();
     await initApp(app);
-    (app as any).powerSampleRebuildState = {
-      ...(app as any).powerSampleRebuildState, tightNoopStreak: 3, backoffUntilMs: 120_000,
+    app.powerSampleRebuildState = {
+      ...app.powerSampleRebuildState, tightNoopStreak: 3, backoffUntilMs: 120_000,
     };
 
-    (app as any).deviceManager.injectDeviceUpdateForTest({
+    app.deviceManager.injectDeviceUpdateForTest({
       id: 'dev-1',
       name: 'Heater',
       class: 'heater',
@@ -1641,11 +1652,11 @@ describe('MyApp initialization', () => {
     // external-off hold nor the suppression latches — the tight-noop backoff
     // stands. That filter is the producer's job, and it is what keeps a chatty
     // sensor from un-suppressing a rebuild every few seconds.
-    expect((app as any).powerSampleRebuildState).toMatchObject({
+    expect(app.powerSampleRebuildState).toMatchObject({
       tightNoopStreak: 3,
       backoffUntilMs: 120_000,
     });
-    expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
+    expect(app.latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
       temperature: {
         currentTemperature: 23,
         target: { id: 'target_temperature', value: 20 },
@@ -1671,7 +1682,7 @@ describe('MyApp initialization', () => {
       lastTimestamp: now,
       buckets: { [getHourBucketKey(now)]: 0 },
     };
-    (app as any).replacePowerTrackerForUi(nextState);
+    app.replacePowerTrackerForUi(nextState);
 
     const powerEvents = mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'power_updated');
     expect(powerEvents).toHaveLength(1);
@@ -1705,7 +1716,7 @@ describe('MyApp initialization', () => {
 
     // A tracker replacement with no measurement latch (import/backfill of
     // history only). The push must not resurrect the stored blob as live.
-    (app as any).replacePowerTrackerForUi({
+    app.replacePowerTrackerForUi({
       buckets: { [getHourBucketKey(Date.now())]: 0 },
     });
 
@@ -1733,15 +1744,15 @@ describe('MyApp initialization', () => {
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const beforeCounts = getPerfSnapshot().counts;
     const start = new Date('2026-03-03T10:05:00.000Z').getTime();
-    (app as any).powerTracker = { lastPowerW: 1000, lastTimestamp: start };
+    app.powerTracker = { lastPowerW: 1000, lastTimestamp: start };
     settingsSetSpy.mockClear();
 
-    (app as any).savePowerTracker({ lastPowerW: 1100, lastTimestamp: start + 1000 });
-    (app as any).savePowerTracker({ lastPowerW: 1200, lastTimestamp: start + 2000 });
-    (app as any).savePowerTracker({ lastPowerW: 1300, lastTimestamp: start + 3000 });
+    app['savePowerTracker']({ lastPowerW: 1100, lastTimestamp: start + 1000 });
+    app['savePowerTracker']({ lastPowerW: 1200, lastTimestamp: start + 2000 });
+    app['savePowerTracker']({ lastPowerW: 1300, lastTimestamp: start + 3000 });
 
     expect(settingsSetSpy.mock.calls.filter(([key]) => key === 'power_tracker_state')).toHaveLength(0);
-    expect((app as any).timers.has('powerTrackerSave')).toBe(true);
+    expect(app.timers.has('powerTrackerSave')).toBe(true);
 
     await vi.advanceTimersByTimeAsync(60 * 1000);
 
@@ -1770,18 +1781,18 @@ describe('MyApp initialization', () => {
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const beforeCounts = getPerfSnapshot().counts;
     const start = new Date('2026-03-03T10:59:58.000Z').getTime();
-    (app as any).powerTracker = { lastPowerW: 1000, lastTimestamp: start };
+    app.powerTracker = { lastPowerW: 1000, lastTimestamp: start };
     settingsSetSpy.mockClear();
 
-    (app as any).savePowerTracker({ lastPowerW: 1100, lastTimestamp: start + 1000 });
-    expect((app as any).timers.has('powerTrackerSave')).toBe(true);
+    app['savePowerTracker']({ lastPowerW: 1100, lastTimestamp: start + 1000 });
+    expect(app.timers.has('powerTrackerSave')).toBe(true);
 
-    (app as any).savePowerTracker({ lastPowerW: 1200, lastTimestamp: start + 3000 });
+    app['savePowerTracker']({ lastPowerW: 1200, lastTimestamp: start + 3000 });
 
     const powerTrackerWrites = settingsSetSpy.mock.calls.filter(([key]) => key === 'power_tracker_state');
     expect(powerTrackerWrites).toHaveLength(1);
     expect(powerTrackerWrites[0][1]).toMatchObject({ lastPowerW: 1200, lastTimestamp: start + 3000 });
-    expect((app as any).timers.has('powerTrackerSave')).toBe(false);
+    expect(app.timers.has('powerTrackerSave')).toBe(false);
     const afterCounts = getPerfSnapshot().counts;
     expect((afterCounts['settings_set.power_tracker_state_forced_hour_rollover_total'] || 0)
       - (beforeCounts['settings_set.power_tracker_state_forced_hour_rollover_total'] || 0)).toBe(1);
@@ -1806,7 +1817,7 @@ describe('MyApp initialization', () => {
     expect(result).toBe(true);
 
     expect(mockHomeyInstance.settings.get(OPERATING_MODE_SETTING)).toBe('Away');
-    expect((app as any).operatingMode).toBe('Away');
+    expect(app.operatingMode).toBe('Away');
   });
 
   it('triggers operating_mode_changed when mode changes', async () => {
@@ -1912,8 +1923,10 @@ describe('MyApp initialization', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    (app as any).deviceManager.setSnapshotForTests([
+    app.deviceManager.setSnapshotForTests([
       {
+        available: true,
+        expectedPowerSource: 'default',
         id: 'dev-1',
         name: 'Heater',
         temperature: { currentTemperature: 19, target: { id: 'target_temperature', value: 19, unit: '°C' } },
@@ -1924,7 +1937,7 @@ describe('MyApp initialization', () => {
       },
     ]);
 
-    (app as any).planService.rebuildPlanFromCache();
+    app.planService.rebuildPlanFromCache('unknown');
     await flushPromises();
 
     expect(putSpy).not.toHaveBeenCalled();
@@ -1953,14 +1966,14 @@ describe('MyApp initialization', () => {
       onApiWrite: { accept: true, updateActual: true, updateApi: false },
     });
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-    (app as any).modeDeviceTargets = { Home: { 'dev-1': 20 } };
+    app.modeDeviceTargets = { Home: { 'dev-1': 20 } };
 
     const nowSpy = vi.spyOn(Date, 'now');
     try {
       const baseNow = new Date('2026-03-12T11:00:00.000Z').getTime();
       nowSpy.mockReturnValue(baseNow);
 
-      await (app as any).planService.rebuildPlanFromCache();
+      await app.planService.rebuildPlanFromCache('unknown');
       expect(putSpy).toHaveBeenCalledTimes(1);
       expect(putSpy).toHaveBeenLastCalledWith(
         'manager/devices/device/dev-1/capability/target_temperature',
@@ -1969,13 +1982,13 @@ describe('MyApp initialization', () => {
       expect(heater.getActualCapabilityValue('target_temperature')).toBe(20);
 
       nowSpy.mockReturnValue(baseNow + 1_000);
-      await (app as any).refreshTargetDevicesSnapshot();
-      await (app as any).planService.rebuildPlanFromCache();
+      await app.refreshTargetDevicesSnapshot();
+      await app.planService.rebuildPlanFromCache('unknown');
 
       // The write is no longer treated as confirmed just because the API call
       // completed. The plan should keep waiting for a real observation.
       expect(putSpy).toHaveBeenCalledTimes(1);
-      expect((app as any).planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
+      expect(app.planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
         id: 'dev-1',
         plannedTarget: 20,
         pendingTargetCommand: expect.objectContaining({
@@ -1985,10 +1998,10 @@ describe('MyApp initialization', () => {
       });
       // A stale snapshot refresh must not clear the pending target.
       nowSpy.mockReturnValue(baseNow + 1_000);
-      await (app as any).refreshTargetDevicesSnapshot();
-      await (app as any).planService.rebuildPlanFromCache();
+      await app.refreshTargetDevicesSnapshot();
+      await app.planService.rebuildPlanFromCache('unknown');
       expect(putSpy).toHaveBeenCalledTimes(1);
-      expect((app as any).planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
+      expect(app.planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
         id: 'dev-1',
         pendingTargetCommand: expect.objectContaining({
           desired: 20,
@@ -2000,19 +2013,19 @@ describe('MyApp initialization', () => {
       // Simulate the API snapshot catching up to the actual value
       heater.syncActualToApi('target_temperature');
       nowSpy.mockReturnValue(baseNow + 2_000);
-      await (app as any).refreshTargetDevicesSnapshot();
-      await (app as any).planService.rebuildPlanFromCache();
+      await app.refreshTargetDevicesSnapshot();
+      await app.planService.rebuildPlanFromCache('unknown');
 
       expect(putSpy).toHaveBeenCalledTimes(1);
-      expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
+      expect(app.latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
         targets: [expect.objectContaining({ id: 'target_temperature', value: 20 })],
       });
-      expect((app as any).planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
+      expect(app.planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
         id: 'dev-1',
         currentTarget: 20,
         plannedTarget: 20,
       });
-      expect((app as any).planService.getLatestPlanSnapshot()?.devices[0].pendingTargetCommand).toBeUndefined();
+      expect(app.planService.getLatestPlanSnapshot()?.devices[0].pendingTargetCommand).toBeUndefined();
     } finally {
       nowSpy.mockRestore();
     }
@@ -2049,18 +2062,18 @@ describe('MyApp initialization', () => {
     await waitForSnapshot();
 
     heater.setApiCapabilityValue('target_temperature', 26.5);
-    (app as any).deviceManager.injectDeviceUpdateForTest(heater.toHomeyApiDevice());
+    app.deviceManager.injectDeviceUpdateForTest(heater.toHomeyApiDevice() as HomeyDeviceLike);
     await waitFor(() => (
-      (app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')
+      app.latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')
         ?.targets?.[0]?.value === 26.5
     ));
 
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
-    expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
+    expect(app.latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
       targets: [expect.objectContaining({ id: 'target_temperature', value: 26.5 })],
     });
-    expect((app as any).deviceManager.getDebugObservedSources('dev-1')?.snapshotRefresh).toEqual(expect.objectContaining({
+    expect(app.deviceManager.getDebugObservedSources('dev-1')?.snapshotRefresh).toEqual(expect.objectContaining({
       snapshot: expect.objectContaining({
         targets: [expect.objectContaining({ id: 'target_temperature', value: 26.5 })],
       }),
@@ -2087,8 +2100,9 @@ describe('MyApp initialization', () => {
     await waitForSnapshot();
 
     const nowMs = new Date('2026-03-20T06:00:00.000Z').getTime();
-    (app as any).planEngine.state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+    app.planEngine.state.pendingTargetCommands['dev-1'] = {
+      target: 'temperature',
+      pendingMs: 30_000,
       desired: 18,
       startedMs: nowMs - 5_000,
       lastAttemptMs: nowMs - 5_000,
@@ -2101,17 +2115,17 @@ describe('MyApp initialization', () => {
 
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     try {
-      (app as any).deviceManager.injectCapabilityUpdateForTest('dev-1', 'target_temperature', 18);
-      expect((app as any).planEngine.state.pendingTargetCommands['dev-1']).toBeDefined();
+      app.deviceManager.injectCapabilityUpdateForTest('dev-1', 'target_temperature', 18);
+      expect(app.planEngine.state.pendingTargetCommands['dev-1']).toBeDefined();
 
       heater.setApiCapabilityValue('target_temperature', 18);
-      (app as any).deviceManager.injectDeviceUpdateForTest(heater.toHomeyApiDevice());
-      await waitFor(() => (app as any).planEngine.state.pendingTargetCommands['dev-1'] === undefined);
+      app.deviceManager.injectDeviceUpdateForTest(heater.toHomeyApiDevice() as HomeyDeviceLike);
+      await waitFor(() => app.planEngine.state.pendingTargetCommands['dev-1'] === undefined);
     } finally {
       nowSpy.mockRestore();
     }
 
-    expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
+    expect(app.latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
       targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
     });
   });
@@ -2131,8 +2145,9 @@ describe('MyApp initialization', () => {
     await waitForSnapshot();
 
     const nowMs = new Date('2026-03-20T06:00:00.000Z').getTime();
-    (app as any).planEngine.state.pendingTargetCommands['dev-1'] = {
-      capabilityId: 'target_temperature',
+    app.planEngine.state.pendingTargetCommands['dev-1'] = {
+      target: 'temperature',
+      pendingMs: 30_000,
       desired: 16,
       startedMs: nowMs - TARGET_CONFIRMATION_STUCK_POLL_MS - 1,
       lastAttemptMs: nowMs - 5_000,
@@ -2142,10 +2157,10 @@ describe('MyApp initialization', () => {
       lastObservedValue: 23,
       lastObservedSource: 'snapshot_refresh',
     };
-    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     try {
-      await (app as any).snapshotHelpers.pollStuckTargetConfirmations();
+      await app.snapshotHelpers.pollStuckTargetConfirmations();
     } finally {
       nowSpy.mockRestore();
     }
@@ -2217,12 +2232,12 @@ describe('MyApp initialization', () => {
     expect(mockHomeyInstance.settings.get(OPERATING_MODE_SETTING)).toBe('Cozy');
 
     // Internal state should use the renamed mode and drop the old one
-    expect((app as any).operatingMode).toBe('Cozy');
-    expect((app as any).modeDeviceTargets.Cozy['dev-1']).toBe(20);
-    expect((app as any).modeDeviceTargets.Home).toBeUndefined();
-    expect((app as any).capacityPriorities.Home).toBeUndefined();
+    expect(app.operatingMode).toBe('Cozy');
+    expect(app.modeDeviceTargets.Cozy['dev-1']).toBe(20);
+    expect(app.modeDeviceTargets.Home).toBeUndefined();
+    expect(app.capacityPriorities.Home).toBeUndefined();
 
-    const modes = Array.from((app as any).getAllModes());
+    const modes = Array.from(app.getAllModes());
     expect(modes).toContain('Cozy');
     expect(modes).not.toContain('Home');
 
@@ -2285,7 +2300,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('mode_aliases', { home: 'Work', away: 'Home' });
     await flushPromises();
 
-    expect((app as any).operatingMode).toBe('Work');
+    expect(app.operatingMode).toBe('Work');
 
     const isModeListener = mockHomeyInstance.flow._conditionCardListeners['is_capacity_mode'];
 
@@ -2340,9 +2355,9 @@ describe('MyApp initialization', () => {
 
       // --- Phase 1: trigger overshoot and shed the device ---
       nowSpy.mockReturnValue(baseNow);
-      (app as any).computeDynamicSoftLimit = () => 2;
-      (app as any).computeDynamicSoftLimit = () => 2;
-      await (app as any).powerSamplePipeline.recordPowerSample(3000, baseNow);
+      app.computeDynamicSoftLimit = () => 2;
+      app.computeDynamicSoftLimit = () => 2;
+      await app['powerSamplePipeline'].recordPowerSample(3000, baseNow);
       await waitFor(() => (
         getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') === 'shed'
       ));
@@ -2354,12 +2369,12 @@ describe('MyApp initialization', () => {
       nowSpy.mockReturnValue(afterLongOvershoot);
 
       // --- Phase 3: power drops, system recovers ---
-      (app as any).computeDynamicSoftLimit = () => 5;
-      (app as any).computeDynamicSoftLimit = () => 5;
+      app.computeDynamicSoftLimit = () => 5;
+      app.computeDynamicSoftLimit = () => 5;
       await heater.setCapabilityValue('measure_power', 0);
-      await (app as any).refreshTargetDevicesSnapshot();
-      await (app as any).powerSamplePipeline.recordPowerSample(500, afterLongOvershoot);
-      await (app as any).planService.rebuildPlanFromCache();
+      await app.refreshTargetDevicesSnapshot();
+      await app['powerSamplePipeline'].recordPowerSample(500, afterLongOvershoot);
+      await app.planService.rebuildPlanFromCache('unknown');
 
       // The device should still be planned as 'shed' because the recovery
       // cooldown (lastRecoveryMs) has just started.
@@ -2370,7 +2385,7 @@ describe('MyApp initialization', () => {
       // --- Phase 4: after cooldown expires, the device is restored ---
       const afterCooldown = afterLongOvershoot + SHED_COOLDOWN_MS + 1000;
       nowSpy.mockReturnValue(afterCooldown);
-      await (app as any).powerSamplePipeline.recordPowerSample(500, afterCooldown);
+      await app['powerSamplePipeline'].recordPowerSample(500, afterCooldown);
       await waitFor(() => (
         getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') !== 'shed'
       ), 3000);
@@ -2427,12 +2442,12 @@ describe('computeDynamicSoftLimit', () => {
     vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
 
     // Mock the power tracker to simulate some usage
-    (app as any).powerTracker = {
+    app.powerTracker = {
       buckets: { [hourStart.toISOString()]: 0.5 },
     };
 
     // Call computeDynamicSoftLimit
-    const softLimit = (app as any).computeDynamicSoftLimit();
+    const softLimit = app.computeDynamicSoftLimit();
 
     // With 5 kWh budget, 0.5 used, 4.5 remaining, 5 minutes left:
     // - burstRate = 27 kW (remaining time floored to 10 min)
@@ -2460,7 +2475,7 @@ describe('computeDynamicSoftLimit', () => {
     await initApp(app);
 
     // Mock the power tracker
-    (app as any).powerTracker = {
+    app.powerTracker = {
       buckets: {},
     };
 
@@ -2470,9 +2485,9 @@ describe('computeDynamicSoftLimit', () => {
 
     // Set the bucket to have 4.9 kWh used (almost exhausted budget)
     const bucketKey = getHourBucketKey(nowMs);
-    (app as any).powerTracker.buckets[bucketKey] = 4.9;
+    (app.powerTracker.buckets ??= {})[bucketKey] = 4.9;
 
-    const softLimit = (app as any).computeDynamicSoftLimit();
+    const softLimit = app.computeDynamicSoftLimit();
 
     // With 5 kWh budget, 4.9 used, only 0.1 kWh remaining
     // The burst rate will be low (0.1 / remaining hours)
@@ -2501,11 +2516,11 @@ describe('computeDynamicSoftLimit', () => {
     vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
 
     // Mock the power tracker with empty bucket (start of hour)
-    (app as any).powerTracker = {
+    app.powerTracker = {
       buckets: {},
     };
 
-    const softLimit = (app as any).computeDynamicSoftLimit();
+    const softLimit = app.computeDynamicSoftLimit();
 
     // At start of hour with full budget:
     // burstRate = 5 kWh / 1 hour = 5 kW
@@ -2539,11 +2554,11 @@ describe('computeDynamicSoftLimit', () => {
     vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
 
     // Mock the power tracker - only used 1.5 kWh (should have used ~3.35 kWh by now)
-    (app as any).powerTracker = {
+    app.powerTracker = {
       buckets: { [hourStart.toISOString()]: 1.5 },
     };
 
-    const softLimit = (app as any).computeDynamicSoftLimit();
+    const softLimit = app.computeDynamicSoftLimit();
 
     // With 6.7 kWh budget, 1.5 used, 5.2 remaining, 0.5 hours left:
     // burstRate = 5.2 / 0.5 = 10.4 kW
@@ -2577,11 +2592,11 @@ describe('computeDynamicSoftLimit', () => {
     vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
 
     // Mock the power tracker - only used 3 kWh (under budget)
-    (app as any).powerTracker = {
+    app.powerTracker = {
       buckets: { [hourStart.toISOString()]: 3 },
     };
 
-    const softLimit = (app as any).computeDynamicSoftLimit();
+    const softLimit = app.computeDynamicSoftLimit();
 
     // With 6.7 kWh budget, 3 used, 3.7 remaining, remaining time floored to 10 min:
     // burstRate = 3.7 / (10/60) = 22.2 kW.
@@ -2615,11 +2630,11 @@ describe('computeDynamicSoftLimit', () => {
     vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
 
     // Mock the power tracker - only used 2 kWh (lots of remaining budget)
-    (app as any).powerTracker = {
+    app.powerTracker = {
       buckets: { [hourStart.toISOString()]: 2 },
     };
 
-    const softLimit = (app as any).computeDynamicSoftLimit();
+    const softLimit = app.computeDynamicSoftLimit();
 
     // With 6.7 kWh budget, 2 used, 4.7 remaining, remaining time floored to 10 min:
     // burstRate = 4.7 / (10/60) = 28.2 kW.
@@ -2822,9 +2837,9 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
+    const logSpy = vi.spyOn(app as unknown as Record<'logPeriodicStatus', () => void>, 'logPeriodicStatus').mockImplementation(() => {});
 
-    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
+    app.snapshotHelpers.startPeriodicSnapshotRefresh();
 
     // Advance to :25 — should fire
     await vi.advanceTimersByTimeAsync(25 * 60 * 1000);
@@ -2842,13 +2857,13 @@ describe('periodic snapshot refresh scheduling', () => {
     // device poll owns that, so the committed snapshot this reports on is never
     // more than one poll old.
     const app = createApp();
-    vi.spyOn(app as any, 'getNow').mockReturnValue(new Date('2026-03-21T10:00:00Z'));
+    vi.spyOn(app, 'getNow').mockReturnValue(new Date('2026-03-21T10:00:00Z'));
 
-    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
-    const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
-    const rescheduleSpy = vi.spyOn((app as any).snapshotHelpers, 'schedulePeriodicStatusLog');
+    const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const logSpy = vi.spyOn(app as unknown as Record<'logPeriodicStatus', () => void>, 'logPeriodicStatus').mockImplementation(() => {});
+    const rescheduleSpy = vi.spyOn(app.snapshotHelpers, 'schedulePeriodicStatusLog');
 
-    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
+    app.snapshotHelpers.startPeriodicSnapshotRefresh();
     refreshSpy.mockClear();
 
     await vi.advanceTimersByTimeAsync(25 * 60 * 1000);
@@ -2871,9 +2886,9 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
+    const logSpy = vi.spyOn(app as unknown as Record<'logPeriodicStatus', () => void>, 'logPeriodicStatus').mockImplementation(() => {});
 
-    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
+    app.snapshotHelpers.startPeriodicSnapshotRefresh();
 
     // Advance 10 minutes — no scheduled status log
     await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
@@ -2897,17 +2912,17 @@ describe('periodic snapshot refresh scheduling', () => {
 
       const app = createApp();
       await initApp(app);
-      (app as any).managedDevices = { 'dev-1': true };
-      (app as any).deviceManager.setSnapshotForTests(
-        (app as any).deviceManager.getSnapshot().map((device: any) => ({
+      app.managedDevices = { 'dev-1': true };
+      app.deviceManager.setSnapshotForTests(
+        app.deviceManager.getSnapshot().map((device) => ({
           ...device,
           lastFreshDataMs: new Date(lastDataAt).getTime(),
           lastUpdated: new Date(lastDataAt).getTime(),
         })),
       );
 
-      const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
-      (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
+      const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+      app.snapshotHelpers.startPeriodicSnapshotRefresh();
       // 25 minutes: five 5-minute polls, ending exactly on the :25 status log
       // (which no longer fetches, so it contributes nothing here).
       await vi.advanceTimersByTimeAsync(25 * 60 * 1000);
@@ -2925,15 +2940,15 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('does not reschedule the device poll after stop during an in-flight poll', async () => {
     const app = createApp();
-    vi.spyOn(app as any, 'getNow').mockReturnValue(new Date('2026-03-21T10:00:00Z'));
-    vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
+    vi.spyOn(app, 'getNow').mockReturnValue(new Date('2026-03-21T10:00:00Z'));
+    vi.spyOn(app as unknown as Record<'logPeriodicStatus', () => void>, 'logPeriodicStatus').mockImplementation(() => {});
 
     let resolveRefresh: (() => void) | undefined;
-    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
+    const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
       new Promise<void>((resolve) => { resolveRefresh = resolve; })
     ));
 
-    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
+    app.snapshotHelpers.startPeriodicSnapshotRefresh();
 
     vi.advanceTimersByTime(5 * 60 * 1000);
     await Promise.resolve();
@@ -2941,7 +2956,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
     // Stop mid-poll, then let the in-flight poll resolve: its `finally` must not
     // arm the next one.
-    (app as any).snapshotHelpers.stop();
+    app.snapshotHelpers.stop();
     resolveRefresh?.();
     await Promise.resolve();
     await Promise.resolve();
@@ -2958,9 +2973,9 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
+    const logSpy = vi.spyOn(app as unknown as Record<'logPeriodicStatus', () => void>, 'logPeriodicStatus').mockImplementation(() => {});
 
-    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
+    app.snapshotHelpers.startPeriodicSnapshotRefresh();
 
     // Should not fire during remaining 4 minutes of the hour
     await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
@@ -2979,11 +2994,11 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const recordSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'recordPowerSample').mockResolvedValue(undefined);
-    const getHomePowerSpy = vi.spyOn((app as any).observedHomePower, 'getHomePowerW').mockReturnValue(2100);
+    const recordSpy = vi.spyOn(app['powerSamplePipeline'], 'recordPowerSample').mockResolvedValue({ state: 'admitted', revision: 1 });
+    const getHomePowerSpy = vi.spyOn(app['observedHomePower'], 'getHomePowerW').mockReturnValue(2100);
 
     try {
-      await (app as any).refreshTargetDevicesSnapshot({ recordHomeyEnergySample: false });
+      await app.refreshTargetDevicesSnapshot({ recordHomeyEnergySample: false });
     } finally {
       getHomePowerSpy.mockRestore();
     }
@@ -2999,9 +3014,9 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const recordSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'recordPowerSample')
+    const recordSpy = vi.spyOn(app['powerSamplePipeline'], 'recordPowerSample')
       .mockResolvedValue({ state: 'admitted', revision: 1 });
-    const refreshSpy = vi.spyOn((app as any).deviceManager, 'refreshSnapshot')
+    const refreshSpy = vi.spyOn(app.deviceManager, 'refreshSnapshot')
       .mockResolvedValue({
         powerW: 2600,
         generationW: 900,
@@ -3010,7 +3025,7 @@ describe('periodic snapshot refresh scheduling', () => {
       });
 
     try {
-      await (app as any).refreshTargetDevicesSnapshot();
+      await app.refreshTargetDevicesSnapshot();
     } finally {
       refreshSpy.mockRestore();
     }
@@ -3026,17 +3041,17 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('does not arm multiple concurrent post-actuation refresh timers', async () => {
     const app = createApp();
-    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     const debugEmit = vi.fn();
-    vi.spyOn(app as any, 'getStructuredDebugEmitter').mockReturnValue(debugEmit);
+    vi.spyOn(app, 'getStructuredDebugEmitter').mockReturnValue(debugEmit);
 
-    (app as any).snapshotHelpers.schedulePostActuationRefresh();
-    expect((app as any).snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
-    (app as any).snapshotHelpers.schedulePostActuationRefresh();
+    app.snapshotHelpers.schedulePostActuationRefresh();
+    expect(app.snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
+    app.snapshotHelpers.schedulePostActuationRefresh();
 
     // Still exactly one armed: the second call took the skip branch below rather
     // than re-arming, which is what `post_actuation_refresh_skipped` proves.
-    expect((app as any).snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
+    expect(app.snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
     expect(refreshSpy).not.toHaveBeenCalled();
     expect(debugEmit).toHaveBeenCalledWith(expect.objectContaining({
       event: 'post_actuation_refresh_skipped',
@@ -3047,21 +3062,21 @@ describe('periodic snapshot refresh scheduling', () => {
   it('clears post-actuation timer state on stop so it can be armed again', () => {
     const app = createApp();
 
-    (app as any).snapshotHelpers.schedulePostActuationRefresh();
-    expect((app as any).snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
+    app.snapshotHelpers.schedulePostActuationRefresh();
+    expect(app.snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
 
-    (app as any).snapshotHelpers.stop();
-    expect((app as any).snapshotHelpers.hasPendingPostActuationRefresh()).toBe(false);
+    app.snapshotHelpers.stop();
+    expect(app.snapshotHelpers.hasPendingPostActuationRefresh()).toBe(false);
 
-    (app as any).snapshotHelpers.schedulePostActuationRefresh();
-    expect((app as any).snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
+    app.snapshotHelpers.schedulePostActuationRefresh();
+    expect(app.snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
   });
 
   it('runs post-actuation refresh without recording a Homey Energy sample', async () => {
     const app = createApp();
-    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
-    (app as any).snapshotHelpers.schedulePostActuationRefresh();
+    app.snapshotHelpers.schedulePostActuationRefresh();
     await vi.advanceTimersByTimeAsync(5_000);
 
     expect(refreshSpy).toHaveBeenCalledTimes(1);
@@ -3071,15 +3086,15 @@ describe('periodic snapshot refresh scheduling', () => {
   it('detaches the global post-actuation refresh from the scheduling home context', async () => {
     const app = createApp();
     const refreshContexts: Array<Record<string, unknown>> = [];
-    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot')
+    const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot')
       .mockImplementation(async () => { refreshContexts.push(getCurrentContext()); });
     const emitted: Array<{ event: string; context: Record<string, unknown> }> = [];
-    vi.spyOn(app as any, 'getStructuredDebugEmitter').mockImplementation(() => (
-      (payload: { event: string }) => { emitted.push({ event: payload.event, context: getCurrentContext() }); }
+    vi.spyOn(app, 'getStructuredDebugEmitter').mockImplementation(() => (
+      (payload: Record<string, unknown>) => { emitted.push({ event: String(payload.event), context: getCurrentContext() }); }
     ));
 
     runWithContext({ homeId: 'h_area', rebuildId: 'rb_test' }, () => {
-      (app as any).snapshotHelpers.schedulePostActuationRefresh();
+      app.snapshotHelpers.schedulePostActuationRefresh();
     });
     await vi.advanceTimersByTimeAsync(5_000);
 
@@ -3095,13 +3110,13 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
-    (app as any).homeyEnergyHelpers.start();
-    expect((app as any).homeyEnergyHelpers.pollInterval).toBeDefined();
+    app.homeyEnergyHelpers.start();
+    expect(app.homeyEnergyHelpers['pollInterval']).toBeDefined();
 
     mockHomeyInstance.settings.set('power_source', 'flow');
-    (app as any).homeyEnergyHelpers.start();
+    app.homeyEnergyHelpers.start();
 
-    expect((app as any).homeyEnergyHelpers.pollInterval).toBeUndefined();
+    expect(app.homeyEnergyHelpers['pollInterval']).toBeUndefined();
   });
 
   it('reuses a short-lived cache for flow-backed device autocomplete', async () => {
@@ -3110,10 +3125,10 @@ describe('periodic snapshot refresh scheduling', () => {
       { id: 'dev-1', name: 'Heater' },
       { id: 'dev-2', name: 'Garage Charger' },
     ]);
-    (app as any).deviceManager = { getDevicesForDebug };
+    app.deviceManager = partialDouble<MyApp['deviceManager']>({ getDevicesForDebug });
 
-    const first = await (app as any).getHomeyDevicesForFlow();
-    const second = await (app as any).getHomeyDevicesForFlow();
+    const first = await app.getHomeyDevicesForFlow();
+    const second = await app.getHomeyDevicesForFlow();
 
     expect(first).toEqual(second);
     expect(getDevicesForDebug).toHaveBeenCalledTimes(1);
@@ -3123,10 +3138,10 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const info = vi.fn();
     const warn = vi.fn();
-    (app as any).structuredLogger = {
-      child: vi.fn(() => ({ info, warn })),
-    };
-    (app as any).flowReportedCapabilities = {
+    app['structuredLogger'] = partialDouble<Logger>({
+      child: vi.fn(() => ({ info, warn })) as unknown as Logger['child'],
+    });
+    app['flowReportedCapabilities'] = {
       'dev-1': {
         onoff: { value: true, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
       },
@@ -3134,7 +3149,7 @@ describe('periodic snapshot refresh scheduling', () => {
         onoff: { value: false, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
       },
     };
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: vi.fn().mockReturnValue([]),
       getDevicesForDebug: vi.fn().mockResolvedValue([
         { id: 'dev-1', name: 'Relay 1', class: 'socket', capabilities: [] },
@@ -3151,7 +3166,7 @@ describe('periodic snapshot refresh scheduling', () => {
       registerArgumentAutocompleteListener: vi.fn(),
     }));
 
-    await expect((app as any).emitFlowBackedRefreshRequests(['dev-1', 'dev-2'])).resolves.toBeUndefined();
+    await expect(app.emitFlowBackedRefreshRequests(['dev-1', 'dev-2'])).resolves.toBeUndefined();
 
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({
       event: 'flow_backed_refresh_request_failed',
@@ -3172,8 +3187,8 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('does not emit flow-backed refresh requests for unmanaged Zaptec native-wiring candidates', async () => {
     const app = createApp();
-    (app as any).managedDevices = {};
-    (app as any).flowReportedCapabilities = {
+    app.managedDevices = {};
+    app['flowReportedCapabilities'] = {
       'zaptec-1': {
         evcharger_charging: { value: true, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
         'alarm_generic.car_connected': {
@@ -3188,7 +3203,7 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       },
     };
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: vi.fn().mockReturnValue([
         {
           id: 'zaptec-1',
@@ -3231,17 +3246,17 @@ describe('periodic snapshot refresh scheduling', () => {
       registerArgumentAutocompleteListener: vi.fn(),
     }));
 
-    await expect((app as any).emitFlowBackedRefreshRequests(['zaptec-1'])).resolves.toBeUndefined();
+    await expect(app.emitFlowBackedRefreshRequests(['zaptec-1'])).resolves.toBeUndefined();
 
     expect(trigger).not.toHaveBeenCalled();
   });
 
   it('does not emit flow-backed refresh requests when Zaptec already has native evcharger support', async () => {
     const app = createApp();
-    (app as any).managedDevices = {
+    app.managedDevices = {
       'zaptec-native-1': true,
     };
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'zaptec-native-1': {
         evcharger_charging: { value: false, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
         'alarm_generic.car_connected': {
@@ -3256,7 +3271,7 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       },
     };
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: vi.fn().mockReturnValue([
         {
           id: 'zaptec-native-1',
@@ -3302,17 +3317,17 @@ describe('periodic snapshot refresh scheduling', () => {
       registerArgumentAutocompleteListener: vi.fn(),
     }));
 
-    await expect((app as any).emitFlowBackedRefreshRequests(['zaptec-native-1'])).resolves.toBeUndefined();
+    await expect(app.emitFlowBackedRefreshRequests(['zaptec-native-1'])).resolves.toBeUndefined();
 
     expect(trigger).not.toHaveBeenCalled();
   });
 
   it('does not emit flow-backed refresh requests when Zaptec shim wiring is active', async () => {
     const app = createApp();
-    (app as any).managedDevices = {
+    app.managedDevices = {
       'zaptec-active-1': true,
     };
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'zaptec-active-1': {
         evcharger_charging: { value: false, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
         'alarm_generic.car_connected': {
@@ -3327,7 +3342,7 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       },
     };
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: vi.fn().mockReturnValue([
         {
           id: 'zaptec-active-1',
@@ -3371,7 +3386,7 @@ describe('periodic snapshot refresh scheduling', () => {
       registerArgumentAutocompleteListener: vi.fn(),
     }));
 
-    await expect((app as any).emitFlowBackedRefreshRequests(['zaptec-active-1'])).resolves.toBeUndefined();
+    await expect(app.emitFlowBackedRefreshRequests(['zaptec-active-1'])).resolves.toBeUndefined();
 
     expect(trigger).not.toHaveBeenCalled();
   });
@@ -3380,13 +3395,13 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const reportedAt = Date.parse('2026-03-20T09:00:00Z');
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'dev-1': {
         onoff: { value: true, reportedAt, source: 'flow' },
       },
     };
 
-    const result = (app as any).reportFlowBackedCapability({
+    const result = app.reportFlowBackedCapability({
       deviceId: 'dev-1',
       capabilityId: 'onoff',
       value: true,
@@ -3401,7 +3416,7 @@ describe('periodic snapshot refresh scheduling', () => {
       rebuildPlan: false,
     });
     expect(settingsSetSpy).not.toHaveBeenCalled();
-    expect((app as any).flowReportedCapabilities).toEqual({
+    expect(app['flowReportedCapabilities']).toEqual({
       'dev-1': {
         onoff: { value: true, reportedAt, source: 'flow' },
       },
@@ -3411,9 +3426,9 @@ describe('periodic snapshot refresh scheduling', () => {
   it('requests snapshot refresh and plan rebuild when flow-backed control state changes', async () => {
     const app = createApp();
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
-    (app as any).flowReportedCapabilities = {};
+    app['flowReportedCapabilities'] = {};
 
-    const result = (app as any).reportFlowBackedCapability({
+    const result = app.reportFlowBackedCapability({
       deviceId: 'dev-1',
       capabilityId: 'onoff',
       value: true,
@@ -3432,13 +3447,13 @@ describe('periodic snapshot refresh scheduling', () => {
   it('requests snapshot refresh without plan rebuild when flow-backed EV state of charge changes', async () => {
     const app = createApp();
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'ev-1': {
         measure_battery: { value: 62, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
       },
     };
 
-    const result = (app as any).reportFlowBackedCapability({
+    const result = app.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 63,
@@ -3462,10 +3477,10 @@ describe('periodic snapshot refresh scheduling', () => {
     async ({ previousPercent, nextPercent }) => {
       const app = createApp();
       const reportedAt = Date.parse('2026-03-20T09:05:00Z');
-      (app as any).evBoostSettings = {
+      app.evBoostSettings = {
         'ev-1': { enabled: true, boostBelowPercent: 40 },
       };
-      (app as any).deviceManager = withGetSnapshotByDeviceId({
+      app.deviceManager = deviceTransportDouble({
         getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
           {
             available: true,
@@ -3480,7 +3495,7 @@ describe('periodic snapshot refresh scheduling', () => {
           },
         ],
       });
-      (app as any).flowReportedCapabilities = {
+      app['flowReportedCapabilities'] = {
         'ev-1': {
           measure_battery: {
             value: previousPercent,
@@ -3490,7 +3505,7 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       };
 
-      const result = (app as any).reportFlowBackedCapability({
+      const result = app.reportFlowBackedCapability({
         deviceId: 'ev-1',
         capabilityId: 'measure_battery',
         value: nextPercent,
@@ -3510,10 +3525,10 @@ describe('periodic snapshot refresh scheduling', () => {
   it('does not request plan rebuild when changed EV state of charge is not flow-backed for the snapshot', async () => {
     const app = createApp();
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
-    (app as any).evBoostSettings = {
+    app.evBoostSettings = {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     };
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
         {
           available: true,
@@ -3528,13 +3543,13 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       ],
     });
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'ev-1': {
         measure_battery: { value: 42, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
       },
     };
 
-    const result = (app as any).reportFlowBackedCapability({
+    const result = app.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 39,
@@ -3553,7 +3568,7 @@ describe('periodic snapshot refresh scheduling', () => {
   it('does not request plan rebuild when EV state of charge changes without EV boost config', async () => {
     const app = createApp();
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
         {
           available: true,
@@ -3566,13 +3581,13 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       ],
     });
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'ev-1': {
         measure_battery: { value: 42, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
       },
     };
 
-    const result = (app as any).reportFlowBackedCapability({
+    const result = app.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 39,
@@ -3591,10 +3606,10 @@ describe('periodic snapshot refresh scheduling', () => {
   it('does not request plan rebuild for non-EV battery reports', async () => {
     const app = createApp();
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
-    (app as any).evBoostSettings = {
+    app.evBoostSettings = {
       'battery-1': { enabled: true, boostBelowPercent: 40 },
     };
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: (): (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] => [
         {
           available: true,
@@ -3607,13 +3622,13 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       ],
     });
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'battery-1': {
         measure_battery: { value: 42, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
       },
     };
 
-    const result = (app as any).reportFlowBackedCapability({
+    const result = app.reportFlowBackedCapability({
       deviceId: 'battery-1',
       capabilityId: 'measure_battery',
       value: 39,
@@ -3632,16 +3647,16 @@ describe('periodic snapshot refresh scheduling', () => {
   it('stores EV state of charge under the charger id', async () => {
     const app = createApp();
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
-    (app as any).flowReportedCapabilities = {};
+    app['flowReportedCapabilities'] = {};
 
-    (app as any).reportFlowBackedCapability({
+    app.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 62.04,
       reportedAt,
     });
 
-    expect((app as any).flowReportedCapabilities).toEqual({
+    expect(app['flowReportedCapabilities']).toEqual({
       'ev-1': {
         measure_battery: { value: 62.04, reportedAt, source: 'flow' },
       },
@@ -3653,13 +3668,13 @@ describe('periodic snapshot refresh scheduling', () => {
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'ev-1': {
         measure_battery: { value: 62, reportedAt: initialReportedAt, source: 'flow' },
       },
     };
 
-    const result = (app as any).reportFlowBackedCapability({
+    const result = app.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 62,
@@ -3687,7 +3702,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const previousReportedAt = Date.now() - 60 * 60 * 1000;
     const nextReportedAt = Date.now();
-    (app as any).evBoostSettings = {
+    app.evBoostSettings = {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     };
     const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
@@ -3701,16 +3716,16 @@ describe('periodic snapshot refresh scheduling', () => {
       targets: [],
       stateOfCharge: stateOfChargeFixture({ percent: 32, observedAtMs: previousReportedAt, unavailable: 'not_reported' }),
     }];
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
     });
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'ev-1': {
         measure_battery: { value: 32, reportedAt: previousReportedAt, source: 'flow' },
       },
     };
 
-    const result = (app as any).reportFlowBackedCapability({
+    const result = app.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 32,
@@ -3734,7 +3749,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const previousReportedAt = Date.now() - 60 * 60 * 1000;
     const nextReportedAt = Date.now();
-    (app as any).evBoostSettings = {
+    app.evBoostSettings = {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     };
     const snapshot: (TransportDeviceSnapshot & StateOfChargeObservedProbe)[] = [{
@@ -3748,16 +3763,16 @@ describe('periodic snapshot refresh scheduling', () => {
       targets: [],
       stateOfCharge: stateOfChargeFixture({ percent: 32, observedAtMs: previousReportedAt, unavailable: 'not_reported' }),
     }];
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
     });
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'ev-1': {
         measure_battery: { value: 32, reportedAt: previousReportedAt, source: 'flow' },
       },
     };
 
-    const result = (app as any).reportFlowBackedCapability({
+    const result = app.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 32,
@@ -3793,16 +3808,16 @@ describe('periodic snapshot refresh scheduling', () => {
       lastFreshDataMs: initialReportedAt,
       lastUpdated: initialReportedAt,
     }];
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
     });
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'dev-1': {
         onoff: { value: true, reportedAt: initialReportedAt, source: 'flow' },
       },
     };
 
-    const result = (app as any).reportFlowBackedCapability({
+    const result = app.reportFlowBackedCapability({
       deviceId: 'dev-1',
       capabilityId: 'onoff',
       value: true,
@@ -3817,7 +3832,7 @@ describe('periodic snapshot refresh scheduling', () => {
       rebuildPlan: false,
     });
     expect(settingsSetSpy).not.toHaveBeenCalled();
-    expect((app as any).flowReportedCapabilities).toEqual({
+    expect(app['flowReportedCapabilities']).toEqual({
       'dev-1': {
         onoff: { value: true, reportedAt: nextReportedAt, source: 'flow' },
       },
@@ -3846,17 +3861,17 @@ describe('periodic snapshot refresh scheduling', () => {
       lastUpdated: initialReportedAt,
     }];
     const dispatchObservedStateForDevice = vi.fn();
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
       dispatchObservedStateForDevice,
     });
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'dev-1': {
         onoff: { value: true, reportedAt: initialReportedAt, source: 'flow' },
       },
     };
 
-    (app as any).reportFlowBackedCapability({
+    app.reportFlowBackedCapability({
       deviceId: 'dev-1',
       capabilityId: 'onoff',
       value: true,
@@ -3886,19 +3901,19 @@ describe('periodic snapshot refresh scheduling', () => {
       stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: initialReportedAt }),
     }];
     const dispatchObservedStateForDevice = vi.fn();
-    (app as any).evBoostSettings = { 'ev-1': { enabled: true, boostBelowPercent: 40 } };
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.evBoostSettings = { 'ev-1': { enabled: true, boostBelowPercent: 40 } };
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
       dispatchObservedStateForDevice,
     });
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'ev-1': {
         measure_battery: { value: 80, reportedAt: initialReportedAt, source: 'flow' },
       },
     };
-    const rebuildSpy = vi.spyOn((app as any).planRebuildScheduler, 'request');
+    const rebuildSpy = vi.spyOn(app['planRebuildScheduler'], 'request');
 
-    (app as any).reportFlowBackedCapability({
+    app.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 80,
@@ -3929,16 +3944,16 @@ describe('periodic snapshot refresh scheduling', () => {
       lastFreshDataMs: initialReportedAt,
       lastUpdated: initialReportedAt,
     }];
-    (app as any).deviceManager = withGetSnapshotByDeviceId({
+    app.deviceManager = deviceTransportDouble({
       getSnapshot: () => snapshot,
     });
-    (app as any).flowReportedCapabilities = {
+    app['flowReportedCapabilities'] = {
       'ev-1': {
         pels_evcharger_resumable: { value: true, reportedAt: initialReportedAt, source: 'flow' },
       },
     };
 
-    const result = (app as any).reportFlowBackedCapability({
+    const result = app.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'pels_evcharger_resumable',
       value: true,
@@ -3953,7 +3968,7 @@ describe('periodic snapshot refresh scheduling', () => {
       rebuildPlan: false,
     });
     expect(settingsSetSpy).not.toHaveBeenCalled();
-    expect((app as any).flowReportedCapabilities).toEqual({
+    expect(app['flowReportedCapabilities']).toEqual({
       'ev-1': {
         pels_evcharger_resumable: { value: true, reportedAt: nextReportedAt, source: 'flow' },
       },
@@ -3972,17 +3987,17 @@ describe('periodic snapshot refresh scheduling', () => {
     await initApp(app);
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
-    const persistSpy = vi.spyOn(app as any, 'persistPowerTrackerState');
+    const persistSpy = vi.spyOn(app as unknown as Record<'persistPowerTrackerState', (...args: never[]) => unknown>, 'persistPowerTrackerState');
     const disposeReachabilitySpy = vi.spyOn(
-      (app as any).serviceWiring.mainHomeScope,
+      app['serviceWiring']['mainHomeScope'],
       'disposeBinaryCommandReachability',
     );
 
-    (app as any).startPowerTrackerPruning();
-    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
-    (app as any).snapshotHelpers.schedulePostActuationRefresh();
-    (app as any).homeyEnergyHelpers.start();
-    (app as any).savePowerTracker({ lastTimestamp: Date.now() });
+    app['startPowerTrackerPruning']();
+    app.snapshotHelpers.startPeriodicSnapshotRefresh();
+    app.snapshotHelpers.schedulePostActuationRefresh();
+    app.homeyEnergyHelpers.start();
+    app['savePowerTracker']({ lastTimestamp: Date.now() });
 
     expect(vi.getTimerCount()).toBeGreaterThan(0);
 
@@ -3998,18 +4013,16 @@ describe('periodic snapshot refresh scheduling', () => {
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     const app = createApp();
     await initApp(app);
-    const setCapability = vi.spyOn((app as any).deviceManager, 'setCapability');
+    const setCapability = vi.spyOn(app.deviceManager, 'setCapability');
     // Capture the exact actuator a recovery reconcile already in flight would
     // resume through after runUninit has detached membership.
-    const actuator = (app as any).planEngine.executor.deps.actuator;
+    const actuator = ((app.planEngine as ComposedPlanEngine)['executor'] as unknown as { deps: { actuator: Actuator } }).deps.actuator;
 
     await app.onUninit?.();
     const outcome = await actuator.apply({
       kind: 'binary',
       deviceId: 'dev-1',
-      control: 'onoff',
       desired: false,
-      flowBacked: false,
     });
 
     expect(outcome).toEqual({ requested: false });
@@ -4019,17 +4032,17 @@ describe('periodic snapshot refresh scheduling', () => {
   it('clears the one-shot prune timer registry entry after the initial prune fires', async () => {
     vi.useFakeTimers();
     const app = createApp();
-    const pruneSpy = vi.spyOn(app as any, 'prunePowerTrackerHistory').mockImplementation(() => {});
+    const pruneSpy = vi.spyOn(app as unknown as Record<'prunePowerTrackerHistory', (...args: never[]) => unknown>, 'prunePowerTrackerHistory').mockImplementation(() => {});
 
     try {
-      (app as any).startPowerTrackerPruning();
+      app['startPowerTrackerPruning']();
 
-      expect((app as any).timers.has('powerTrackerPruneInitial')).toBe(true);
+      expect(app.timers.has('powerTrackerPruneInitial')).toBe(true);
 
       await vi.advanceTimersByTimeAsync(10 * 1000);
 
       expect(pruneSpy).toHaveBeenCalledTimes(1);
-      expect((app as any).timers.has('powerTrackerPruneInitial')).toBe(false);
+      expect(app.timers.has('powerTrackerPruneInitial')).toBe(false);
     } finally {
       vi.useRealTimers();
     }

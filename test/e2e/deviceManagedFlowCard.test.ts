@@ -83,7 +83,7 @@ describe('Managed device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.setSnapshotForTests([{ id: 'dev-1', name: 'Heater', targets: [] }]);
+    app.deviceManager.setSnapshotForTests([{ available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [] }]);
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.is_device_managed;
     expect(runCondition).toBeDefined();

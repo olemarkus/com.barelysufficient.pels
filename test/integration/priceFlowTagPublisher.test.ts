@@ -1,9 +1,12 @@
+import type Homey from 'homey';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { PriceFlowTagPublisher, PRICE_FLOW_TAG_ID, PRICE_LIST_UPDATED_TRIGGER_ID } from '../../lib/price/priceFlowTags';
 import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
 import { mockHomeyInstance } from '../mocks/homey';
 import { captureLogger } from '../utils/loggerCapture';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
+
+const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
 const buildStore = (overrides: Partial<CombinedPricesV2> = {}): CombinedPricesV2 => ({
   version: 2,
@@ -39,9 +42,9 @@ const triggersFor = (id: string): { tokens: Record<string, unknown> }[] => (
 const tokenValue = (): string => (mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_ID] as { value: string }).value;
 
 const newPublisher = () => new PriceFlowTagPublisher({
-  homey: mockHomeyInstance as any,
+  homey: homeyLike,
   getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-  combinedPricesReader: createCombinedPricesReader({ homey: mockHomeyInstance as any, requestRefetch: () => {} }),
+  combinedPricesReader: createCombinedPricesReader({ homey: homeyLike, requestRefetch: () => {} }),
   log: () => {},
   debugStructured: () => {},
 });
@@ -169,9 +172,9 @@ describe('PriceFlowTagPublisher', () => {
             },
           }),
         },
-      } as any,
+      } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader({ homey: mockHomeyInstance as any, requestRefetch: () => {} }),
+      combinedPricesReader: createCombinedPricesReader({ homey: homeyLike, requestRefetch: () => {} }),
       log: () => {},
       debugStructured: () => {},
     });
@@ -195,9 +198,9 @@ describe('PriceFlowTagPublisher', () => {
             return mockHomeyInstance.flow.createToken(id, opts);
           },
         },
-      } as any,
+      } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader({ homey: mockHomeyInstance as any, requestRefetch: () => {} }),
+      combinedPricesReader: createCombinedPricesReader({ homey: homeyLike, requestRefetch: () => {} }),
       log: () => {},
       debugStructured: () => {},
     });
@@ -222,9 +225,9 @@ describe('PriceFlowTagPublisher', () => {
             setValue: async () => { throw new Error('tag-store-down'); },
           }),
         },
-      } as any,
+      } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader({ homey: mockHomeyInstance as any, requestRefetch: () => {} }),
+      combinedPricesReader: createCombinedPricesReader({ homey: homeyLike, requestRefetch: () => {} }),
       log: () => {},
       debugStructured: () => {},
     });
@@ -248,9 +251,9 @@ describe('PriceFlowTagPublisher', () => {
           ...mockHomeyInstance.flow,
           createToken: async () => { throw new Error('flow-down'); },
         },
-      } as any,
+      } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader({ homey: mockHomeyInstance as any, requestRefetch: () => {} }),
+      combinedPricesReader: createCombinedPricesReader({ homey: homeyLike, requestRefetch: () => {} }),
       log: () => {},
       debugStructured: () => {},
     });
@@ -280,9 +283,9 @@ describe('PriceFlowTagPublisher', () => {
             },
           }),
         },
-      } as any,
+      } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader({ homey: mockHomeyInstance as any, requestRefetch: () => {} }),
+      combinedPricesReader: createCombinedPricesReader({ homey: homeyLike, requestRefetch: () => {} }),
       log: () => {},
       debugStructured: () => {},
     });

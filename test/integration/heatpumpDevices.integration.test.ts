@@ -143,7 +143,7 @@ describe('Heatpump device integration', () => {
             }),
         });
 
-        await (app as any).refreshTargetDevicesSnapshot();
+        await app.refreshTargetDevicesSnapshot();
 
         const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string; powerCapable?: boolean }>;
         const entry = snapshot.find((device) => device.id === 'heatpump-a');

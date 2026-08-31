@@ -41,7 +41,7 @@ const findDumpSections = (capture: LoggerCapture): DumpSectionEvent[] => (
  * assertions read, and asserts along the way that the sections really do share
  * one `dumpId`.
  */
-const parseDumpPayload = (capture: LoggerCapture): Record<string, any> => {
+const parseDumpPayload = (capture: LoggerCapture): { homey: Record<string, unknown> } & Record<string, unknown> => {
   const sections = findDumpSections(capture);
   expect(sections.length).toBeGreaterThan(0);
   expect(new Set(sections.map((entry) => entry.dumpId)).size).toBe(1);

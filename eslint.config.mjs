@@ -478,7 +478,6 @@ export default tseslint.config(
       reportUnusedDisableDirectives: 'warn',
     },
     rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'off',
       '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       '@typescript-eslint/no-require-imports': 'off',
@@ -631,7 +630,6 @@ export default tseslint.config(
       },
     },
     rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'off',
       '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       '@typescript-eslint/no-require-imports': 'off',
@@ -716,24 +714,6 @@ export default tseslint.config(
     plugins: { 'import-x': importX },
     rules: {
       'import-x/max-dependencies': ['error', { max: 31, ignoreTypeImports: true }],
-    },
-  },
-  // AGENTS.md: "Use shared, type-safe mock helpers instead of ad-hoc `as any` casts so mocks stay
-  // in sync with the production API." The blanket `no-explicit-any: off` on the test blocks above
-  // is what made that advice unenforceable — and the worst offender was `test/mocks/homey.ts`
-  // itself, the very helper the rule points everyone to. Claimed back for the two tiers that can
-  // hold the line; `test/integration` and `test/e2e` remain opted out for now.
-  //
-  // This has to be `no-explicit-any` specifically: the test blocks set `parserOptions.project:
-  // false`, so the type-aware `no-unsafe-*` rules cannot run there at all. This one is syntactic,
-  // which makes it the only available lever.
-  //
-  // Placed last — flat config resolves overlapping blocks in order, so this wins over the `off`
-  // in the `test/**/*.ts` block above.
-  {
-    files: ['test/mocks/**/*.ts', 'test/unit/**/*.ts'],
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'error',
     },
   },
 );

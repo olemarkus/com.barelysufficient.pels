@@ -1,3 +1,5 @@
+import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import type { PlanEngine } from '../../lib/plan/planEngine';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -25,6 +27,8 @@ type EaseeChargingState =
   | 'mystery';
 
 type InternalApp = {
+  deviceManager: DeviceTransport;
+  planEngine: PlanEngine;
   onInit(): Promise<void>;
   onUninit(): Promise<void>;
   refreshTargetDevicesSnapshot(options?: { fast?: boolean }): Promise<void>;
@@ -243,21 +247,21 @@ describe('EV charger integration', { retry: 2 }, () => {
       expectedPowerKw: 7.2,
       binaryCapabilityId: 'evcharger_charging',
     }));
-    expect((app as any).deviceManager.getBinaryCommandConfirmationSnapshot()).toContainEqual(
+    expect(app.deviceManager.getBinaryCommandConfirmationSnapshot()).toContainEqual(
       expect.objectContaining({
         id: charger.idValue,
         binaryCommandConfirmation: expect.objectContaining({ state: 'observed', observedValue: false }),
       }),
     );
-    expect((app as any).planEngine.state.pendingBinaryCommands[charger.idValue]).toBeUndefined();
-    expect((app as any).planEngine.state.lastDeviceShedMs[charger.idValue]).toEqual(expect.any(Number));
+    expect(app.planEngine.state.pendingBinaryCommands[charger.idValue]).toBeUndefined();
+    expect(app.planEngine.state.lastDeviceShedMs[charger.idValue]).toEqual(expect.any(Number));
 
     currentTimeMs += 61_000;
-    (app as any).computeDynamicSoftLimit = () => 10.0;
-    (app as any).powerTracker.lastPowerW = 400;
+    app.computeDynamicSoftLimit = () => 10.0;
+    app.powerTracker.lastPowerW = 400;
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
-    (app as any).planEngine.state.sheddingActive = false;
-    (app as any).planEngine.state.lastRecoveryMs = currentTimeMs - 61_000;
+    app.planEngine.state.sheddingActive = false;
+    app.planEngine.state.lastRecoveryMs = currentTimeMs - 61_000;
     plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     evPlan = getPlanEntry(plan, charger.idValue);
 

@@ -31,8 +31,8 @@ describe('Headroom for device condition', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).computeDynamicSoftLimit = () => 0.4; // kW
-    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
+    app.computeDynamicSoftLimit = () => 0.4; // kW
+    app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     expect(runCondition).toBeDefined();
@@ -55,8 +55,8 @@ describe('Headroom for device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 0.4;
-    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
+    app.computeDynamicSoftLimit = () => 0.4;
+    app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     expect(runCondition).toBeDefined();
@@ -64,7 +64,7 @@ describe('Headroom for device condition', () => {
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(true);
 
     await device.setCapabilityValue('measure_power', 1200);
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     // The device may have reached a setpoint. That should not create a cooldown by itself.
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 1.5 })).resolves.toBe(true);
@@ -80,8 +80,8 @@ describe('Headroom for device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 0.4;
-    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
+    app.computeDynamicSoftLimit = () => 0.4;
+    app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     expect(runCondition).toBeDefined();
@@ -89,7 +89,7 @@ describe('Headroom for device condition', () => {
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 0.9 })).resolves.toBe(true);
 
     await device.setCapabilityValue('measure_power', 490);
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 0.8 })).resolves.toBe(true);
   });
 
@@ -108,8 +108,8 @@ describe('Headroom for device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 1.35;
-    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
+    app.computeDynamicSoftLimit = () => 1.35;
+    app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     const runSetExpected = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
@@ -121,7 +121,7 @@ describe('Headroom for device condition', () => {
 
     await expect(runSetExpected({ device: { id: 'dev-1' }, power_w: 1750 })).resolves.toBe(true);
 
-    const loweredSnapshot = ((app as any).latestTargetSnapshot as Array<{
+    const loweredSnapshot = (app.latestTargetSnapshot as Array<{
       id: string;
       expectedPowerKw?: number;
       expectedPowerSource?: string;
@@ -132,9 +132,9 @@ describe('Headroom for device condition', () => {
     expect(loweredSnapshot?.measuredPowerKw).toBeCloseTo(1.19);
 
     await device.setCapabilityValue('measure_power', 2870);
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
-    const raisedMeasurementSnapshot = ((app as any).latestTargetSnapshot as Array<{
+    const raisedMeasurementSnapshot = (app.latestTargetSnapshot as Array<{
       id: string;
       expectedPowerKw?: number;
       expectedPowerSource?: string;
@@ -167,8 +167,8 @@ describe('Headroom for device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 2.28;
-    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
+    app.computeDynamicSoftLimit = () => 2.28;
+    app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     const runSetExpected = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
@@ -179,9 +179,9 @@ describe('Headroom for device condition', () => {
     await expect(runSetExpected({ device: { id: 'dev-1' }, power_w: 1750 })).resolves.toBe(true);
 
     await device.setCapabilityValue('measure_power', 2870);
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
-    const snapshot = ((app as any).latestTargetSnapshot as Array<{
+    const snapshot = (app.latestTargetSnapshot as Array<{
       id: string;
       expectedPowerKw?: number;
       expectedPowerSource?: string;
@@ -210,9 +210,9 @@ describe('Headroom for device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 4.5;
+    app.computeDynamicSoftLimit = () => 4.5;
     const setPowerKw = (kw: number) => {
-      (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: kw * 1000 };
+      app.powerTracker = { ...app.powerTracker, lastPowerW: kw * 1000 };
     };
     setPowerKw(4.28);
 
@@ -238,7 +238,7 @@ describe('Headroom for device condition', () => {
     await expect(runSetExpected({ device: { id: 'dev-1' }, power_w: 1750 })).resolves.toBe(true);
 
     await device.setCapabilityValue('measure_power', 2870);
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
     setPowerKw(4.23);
 
     vi.advanceTimersByTime(2721);
@@ -261,18 +261,18 @@ describe('Headroom for device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 0.4;
-    (app as any).powerTracker = { ...(app as any).powerTracker, lastPowerW: 0 };
+    app.computeDynamicSoftLimit = () => 0.4;
+    app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     expect(runCondition).toBeDefined();
 
-    (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
+    app.planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 0.9 })).resolves.toBe(false);
     await expect(runCondition({ device: { id: 'dev-2' }, required_kw: 0.9 })).resolves.toBe(true);
 
-    delete (app as any).planEngine.state.lastDeviceShedMs['dev-1'];
-    (app as any).planEngine.state.lastDeviceRestoreMs['dev-1'] = Date.now();
+    delete app.planEngine.state.lastDeviceShedMs['dev-1'];
+    app.planEngine.state.lastDeviceRestoreMs['dev-1'] = Date.now();
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 0.9 })).resolves.toBe(false);
     await expect(runCondition({ device: { id: 'dev-2' }, required_kw: 0.9 })).resolves.toBe(true);
   });

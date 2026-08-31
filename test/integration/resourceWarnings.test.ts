@@ -40,7 +40,7 @@ describe('Homey resource warning perf logging', () => {
     const errorSpy = vi.spyOn(app, 'error').mockImplementation(() => undefined);
     try {
       await app.onInit();
-      await (app as any).planService.rebuildPlanFromCache('test_warning_measurement');
+      await app.planService.rebuildPlanFromCache('unknown');
       logSpy.mockClear();
       errorSpy.mockClear();
 
@@ -60,7 +60,7 @@ describe('Homey resource warning perf logging', () => {
     const errorSpy = vi.spyOn(app, 'error').mockImplementation(() => undefined);
     try {
       await app.onInit();
-      await (app as any).planService.rebuildPlanFromCache('test_warning_measurement');
+      await app.planService.rebuildPlanFromCache('unknown');
       logSpy.mockClear();
       errorSpy.mockClear();
 
@@ -121,10 +121,10 @@ describe('Homey resource warning perf logging', () => {
       }));
       expect(payload.rebuilds?.window?.count).toBeGreaterThanOrEqual(1);
       expect(payload.rebuilds?.window?.reasons).toEqual(expect.objectContaining({
-        test_warning_measurement: expect.any(Number),
+        unknown: expect.any(Number),
       }));
       expect(payload.rebuilds?.recent?.[0]).toEqual(expect.objectContaining({
-        reason: 'test_warning_measurement',
+        reason: 'unknown',
         totalMs: expect.any(Number),
         ageMs: expect.any(Number),
       }));

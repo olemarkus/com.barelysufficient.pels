@@ -125,7 +125,7 @@ describe('Flow-backed device support', () => {
     });
     const app = createApp();
     await app.onInit();
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     expect(getSnapshot().find((device) => device.id === 'binary-1')).toBeUndefined();
 
@@ -150,7 +150,7 @@ describe('Flow-backed device support', () => {
     });
     const app = createApp();
     await app.onInit();
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     const initialEntry = getSnapshot().find((device) => device.id === 'binary-1');
     expect(initialEntry).toEqual(expect.objectContaining({
@@ -179,7 +179,7 @@ describe('Flow-backed device support', () => {
     });
     const app = createApp();
     await app.onInit();
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     expect(getSnapshot().find((device) => device.id === 'binary-1')).toBeUndefined();
 
@@ -200,7 +200,7 @@ describe('Flow-backed device support', () => {
     });
     const app = createApp();
     await app.onInit();
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toBeUndefined();
 
@@ -297,7 +297,7 @@ describe('Flow-backed device support', () => {
     });
     const app = createApp();
     await app.onInit();
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toBeUndefined();
 
@@ -363,7 +363,7 @@ describe('Flow-backed device support', () => {
     });
     const app = createApp();
     await app.onInit();
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
     expect(getSnapshot().find((device) => device.id === 'binary-1')).toEqual(expect.objectContaining({
       id: 'binary-1',
@@ -404,7 +404,7 @@ describe('Flow-backed device support', () => {
     );
     const beforeSnapshot = structuredClone(withoutSnapshotFreshness(getSnapshot()));
 
-    await (app as any).refreshTargetDevicesSnapshot({ targeted: true });
+    await app.refreshTargetDevicesSnapshot({ targeted: true });
 
     expect(mockHomeyInstance.flow._triggerCardTriggers.flow_backed_device_refresh_requested).toEqual([
       { tokens: {}, state: { deviceId: 'binary-1' } },
@@ -430,7 +430,7 @@ describe('Flow-backed device support', () => {
     await app.onInit();
     mockHomeyInstance.flow._triggerCardTriggers = {};
 
-    await (app as any).refreshTargetDevicesSnapshot({ targeted: true });
+    await app.refreshTargetDevicesSnapshot({ targeted: true });
 
     expect(mockHomeyInstance.flow._triggerCardTriggers.flow_backed_device_refresh_requested).toBeUndefined();
   });

@@ -1,9 +1,10 @@
+import type { StubWindow } from './stubWindow';
 import { expect, test, type Page } from './fixtures/test';
 import { readMdSelectHeadlineText, setMdValue } from './fixtures/materialWeb';
 
 const requestLegacyUi = async (page: Page) => {
   await page.addInitScript(() => {
-    (window as any).__PELS_HOMEY_STUB__ = {
+    (window as unknown as StubWindow).__PELS_HOMEY_STUB__ = {
       overviewRedesignEnabled: false,
     };
   });
@@ -125,7 +126,7 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#toast')).toContainText('Active mode set to Away');
 
     const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
-      (window as any).Homey.get('operating_mode', (error: Error | null, value?: unknown) => {
+      (window as unknown as StubWindow).Homey.get('operating_mode', (error: Error | null, value?: unknown) => {
         if (error) reject(error);
         else resolve(value);
       });
@@ -148,7 +149,7 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#settings-simulation-mode')).toHaveJSProperty('selected', false);
 
     const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
-      (window as any).Homey.get('capacity_dry_run', (error: Error | null, value?: unknown) => {
+      (window as unknown as StubWindow).Homey.get('capacity_dry_run', (error: Error | null, value?: unknown) => {
         if (error) reject(error);
         else resolve(value);
       });
@@ -277,22 +278,22 @@ test.describe('Settings UI (smoke)', () => {
           resolve();
         });
       });
-      const dailyBudget = await new Promise<any>((resolve, reject) => {
+      const dailyBudget = await new Promise<{ kind?: string; payload?: { days?: Record<string, { budget?: { enabled?: boolean; dailyBudgetKWh?: number } } | undefined>; todayKey?: string } } | null>((resolve, reject) => {
         stub.api('GET', '/daily_budget', (error: Error | null, result?: unknown) => {
           if (error) {
             reject(error);
             return;
           }
-          resolve(result);
+          resolve(result as { kind?: string; payload?: { days?: Record<string, { budget?: { enabled?: boolean; dailyBudgetKWh?: number } } | undefined>; todayKey?: string } } | null);
         });
       });
-      const bootstrap = await new Promise<any>((resolve, reject) => {
+      const bootstrap = await new Promise<{ settings?: Record<string, unknown> } | null>((resolve, reject) => {
         stub.api('GET', '/ui_bootstrap', (error: Error | null, result?: unknown) => {
           if (error) {
             reject(error);
             return;
           }
-          resolve(result);
+          resolve(result as { settings?: Record<string, unknown> } | null);
         });
       });
       // `/daily_budget` answers the discriminated read; the day lives under the

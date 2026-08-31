@@ -117,7 +117,7 @@ describe('Norway norgespris pricing', () => {
     const expectedAdjustment = buildExpectedNorgesprisAdjustment(1);
     const expectedTotal = buildExpectedBaseTotalIncVat() + expectedAdjustment;
 
-    expect((firstPrice as any).norgesprisAdjustment).toBeCloseTo(expectedAdjustment, 2);
+    expect(firstPrice.norgesprisAdjustment).toBeCloseTo(expectedAdjustment, 2);
     expect(firstPrice.totalPrice).toBeCloseTo(expectedTotal, 2);
     expect((firstPrice.electricitySupport ?? 0)).toBeCloseTo(0, 5);
   });
@@ -136,7 +136,7 @@ describe('Norway norgespris pricing', () => {
     const expectedAdjustment = buildExpectedNorgesprisAdjustment(0.5);
     const expectedTotal = buildExpectedBaseTotalIncVat() + expectedAdjustment;
 
-    expect((firstPrice as any).norgesprisAdjustment).toBeCloseTo(expectedAdjustment, 2);
+    expect(firstPrice.norgesprisAdjustment).toBeCloseTo(expectedAdjustment, 2);
     expect(firstPrice.totalPrice).toBeCloseTo(expectedTotal, 2);
     expect((firstPrice.electricitySupport ?? 0)).toBeCloseTo(0, 5);
   });
@@ -152,7 +152,7 @@ describe('Norway norgespris pricing', () => {
     });
 
     const [firstPrice] = createService().getCombinedHourlyPrices();
-    expect((firstPrice as any).norgesprisAdjustment).toBeCloseTo(0, 5);
+    expect(firstPrice.norgesprisAdjustment).toBeCloseTo(0, 5);
     expect(firstPrice.totalPrice).toBeCloseTo(buildExpectedBaseTotalIncVat(), 2);
     expect((firstPrice.electricitySupport ?? 0)).toBeCloseTo(0, 5);
   });
@@ -171,7 +171,7 @@ describe('Norway norgespris pricing', () => {
     });
 
     const [firstPrice] = createService().getCombinedHourlyPrices();
-    expect((firstPrice as any).norgesprisAdjustment).toBeCloseTo(0, 5);
+    expect(firstPrice.norgesprisAdjustment).toBeCloseTo(0, 5);
     expect(firstPrice.totalPrice).toBeCloseTo(buildExpectedBaseTotalIncVat(), 2);
   });
 
@@ -188,7 +188,7 @@ describe('Norway norgespris pricing', () => {
     });
 
     const [firstPrice] = createService().getCombinedHourlyPrices();
-    expect((firstPrice as any).norgesprisAdjustment).toBeCloseTo(NORGESPRIS_TARGET_EX_VAT - SPOT_PRICE_EX_VAT, 2);
+    expect(firstPrice.norgesprisAdjustment).toBeCloseTo(NORGESPRIS_TARGET_EX_VAT - SPOT_PRICE_EX_VAT, 2);
   });
 
   it('omits norgespris adjustment fields when strømstøtte model is active', () => {
@@ -203,8 +203,8 @@ describe('Norway norgespris pricing', () => {
     });
 
     const [firstPrice] = createService().getCombinedHourlyPrices();
-    expect((firstPrice as any).norgesprisAdjustment).toBeUndefined();
-    expect((firstPrice as any).norgesprisAdjustmentExVat).toBeUndefined();
+    expect(firstPrice.norgesprisAdjustment).toBeUndefined();
+    expect(firstPrice.norgesprisAdjustmentExVat).toBeUndefined();
     expect((firstPrice.electricitySupport ?? 0)).toBeGreaterThan(0);
   });
 
@@ -227,7 +227,7 @@ describe('Norway norgespris pricing', () => {
     const prices = createService().getCombinedHourlyPrices();
     const current = prices.find((entry) => entry.startsAt === currentHour.toISOString());
     expect(current).toBeDefined();
-    expect((current as any).norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(0.5), 2);
+    expect(current?.norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(0.5), 2);
   });
 
   it('applies norgespris adjustment to past same-month hours without consuming future cap', () => {
@@ -257,9 +257,9 @@ describe('Norway norgespris pricing', () => {
     expect(current).toBeDefined();
     const expectedAdjustment = buildExpectedNorgesprisAdjustment(1);
     // Past row shows the Norgespris model (adjustment applied), not the spot-only total.
-    expect((previous as any).norgesprisAdjustment).toBeCloseTo(expectedAdjustment, 2);
+    expect(previous?.norgesprisAdjustment).toBeCloseTo(expectedAdjustment, 2);
     // Current row remains fully eligible — the past row did not decrement future cap.
-    expect((current as any).norgesprisAdjustment).toBeCloseTo(expectedAdjustment, 2);
+    expect(current?.norgesprisAdjustment).toBeCloseTo(expectedAdjustment, 2);
   });
 
   it('shows full norgespris adjustment for past hours regardless of live monthly cap snapshot', () => {
@@ -296,10 +296,10 @@ describe('Norway norgespris pricing', () => {
     expect(currentRow).toBeDefined();
 
     // Both past rows display full Norgespris adjustment even though the live snapshot is near-cap.
-    expect((farPastRow as any).norgesprisAdjustment).toBeCloseTo(fullEligibility, 2);
-    expect((recentPastRow as any).norgesprisAdjustment).toBeCloseTo(fullEligibility, 2);
+    expect(farPastRow?.norgesprisAdjustment).toBeCloseTo(fullEligibility, 2);
+    expect(recentPastRow?.norgesprisAdjustment).toBeCloseTo(fullEligibility, 2);
     // Current hour still derives eligibility from remaining cap (1 kWh / 2 kWh estimate = 0.5).
-    expect((currentRow as any).norgesprisAdjustment).toBeCloseTo(halfEligibility, 2);
+    expect(currentRow?.norgesprisAdjustment).toBeCloseTo(halfEligibility, 2);
   });
 
   it('shows full norgespris adjustment for past hours when live cap is fully consumed', () => {
@@ -327,9 +327,9 @@ describe('Norway norgespris pricing', () => {
     expect(previous).toBeDefined();
     expect(current).toBeDefined();
     // Past hour still gets full adjustment.
-    expect((previous as any).norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(1), 2);
+    expect(previous?.norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(1), 2);
     // Current hour reflects the empty cap.
-    expect((current as any).norgesprisAdjustment).toBeCloseTo(0, 5);
+    expect(current?.norgesprisAdjustment).toBeCloseTo(0, 5);
   });
 
   it('keeps strømstøtte support behavior for past hours unchanged', () => {
@@ -349,7 +349,7 @@ describe('Norway norgespris pricing', () => {
 
     const [past] = createService().getCombinedHourlyPrices();
     expect(past.startsAt).toBe(previousHour.toISOString());
-    expect((past as any).norgesprisAdjustment).toBeUndefined();
+    expect(past?.norgesprisAdjustment).toBeUndefined();
     expect((past.electricitySupport ?? 0)).toBeGreaterThan(0);
   });
 
@@ -370,7 +370,7 @@ describe('Norway norgespris pricing', () => {
     });
 
     const [firstPrice] = createService().getCombinedHourlyPrices();
-    expect((firstPrice as any).norgesprisAdjustment).toBeCloseTo(0, 5);
+    expect(firstPrice.norgesprisAdjustment).toBeCloseTo(0, 5);
   });
 
   it('does not overcount UTC daily totals that only partially overlap local month', () => {
@@ -388,7 +388,7 @@ describe('Norway norgespris pricing', () => {
     });
 
     const [firstPrice] = createService().getCombinedHourlyPrices();
-    expect((firstPrice as any).norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(1), 2);
+    expect(firstPrice.norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(1), 2);
   });
 
   it('includes dailyTotals usage even when the same UTC day also has bucket entries', () => {
@@ -415,7 +415,7 @@ describe('Norway norgespris pricing', () => {
     });
 
     const [firstPrice] = createService().getCombinedHourlyPrices();
-    expect((firstPrice as any).norgesprisAdjustment).toBeCloseTo(0, 5);
+    expect(firstPrice.norgesprisAdjustment).toBeCloseTo(0, 5);
     expect(firstPrice.totalPrice).toBeCloseTo(buildExpectedBaseTotalIncVat(), 2);
   });
 
@@ -478,8 +478,8 @@ describe('Norway norgespris pricing', () => {
     const february = prices.find((entry) => entry.startsAt === februaryHour.toISOString());
     expect(january).toBeDefined();
     expect(february).toBeDefined();
-    expect((january as any).norgesprisAdjustment).toBeCloseTo(0, 5);
-    expect((february as any).norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(1), 2);
+    expect(january?.norgesprisAdjustment).toBeCloseTo(0, 5);
+    expect(february?.norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(1), 2);
   });
 
   it('applies cap eligibility in chronological order when spot list is unsorted', () => {
@@ -502,7 +502,7 @@ describe('Norway norgespris pricing', () => {
     expect(prices.map((entry) => entry.startsAt)).toEqual([currentHour.toISOString(), nextHour.toISOString()]);
     const current = prices[0];
     const next = prices[1];
-    expect((current as any).norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(0.5), 2);
-    expect((next as any).norgesprisAdjustment).toBeCloseTo(0, 5);
+    expect(current?.norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(0.5), 2);
+    expect(next.norgesprisAdjustment).toBeCloseTo(0, 5);
   });
 });

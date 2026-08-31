@@ -1,8 +1,13 @@
 import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
-import type { ConfidenceDebug, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type { ConfidenceDebug, DailyBudgetDayPayload, DailyBudgetState, DailyBudgetStatePersistReason } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
 import { createDailyBudgetStateStore } from '../../setup/dailyBudgetStateAdapter';
+import type Homey from 'homey';
+import { partialDouble } from '../helpers/partialDouble';
+import type { Logger } from '../../lib/logging/logger';
+
+type AppHomey = Homey.App['homey'];
 
 const TZ = 'Europe/Oslo';
 
@@ -10,7 +15,9 @@ const TZ = 'Europe/Oslo';
 // plan recompute / state persistence). Reads from a throwaway null homey →
 // canonical defaults; never invoked by those tests.
 const nullSettingsStore = createDailyBudgetSettingsStore(
-  { settings: { get: () => null, set: () => undefined } } as any,
+  partialDouble<AppHomey>({
+    settings: partialDouble<AppHomey['settings']>({ get: () => null, set: () => undefined }),
+  }),
 );
 const NOW_MS = new Date('2025-03-15T12:00:00Z').getTime();
 
@@ -74,16 +81,23 @@ function buildDayPayload(params: {
   };
 }
 
+type TestHomeySettings = { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
+const testSettingsByService = new WeakMap<DailyBudgetService, TestHomeySettings>();
+const testSettingsFor = (service: DailyBudgetService): TestHomeySettings => {
+  const settings = testSettingsByService.get(service);
+  if (!settings) throw new Error('service was not built by buildService');
+  return settings;
+};
+
 function buildService(): DailyBudgetService {
-  const homey = {
-    settings: {
-      get: vi.fn(() => null),
-      set: vi.fn(),
-    },
-    clock: {
-      getTimezone: () => TZ,
-    },
-  } as any;
+  const settings: TestHomeySettings = {
+    get: vi.fn(() => null),
+    set: vi.fn(),
+  };
+  const homey = partialDouble<AppHomey>({
+    settings: partialDouble<AppHomey['settings']>({ get: settings.get as AppHomey['settings']['get'], set: settings.set as AppHomey['settings']['set'] }),
+    clock: partialDouble<AppHomey['clock']>({ getTimezone: () => TZ }),
+  });
   const service = new DailyBudgetService({
     getTimeZone: () => TZ,
     log: () => undefined,
@@ -93,7 +107,7 @@ function buildService(): DailyBudgetService {
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
     dailyBudgetStateStore: createDailyBudgetStateStore(homey),
   });
-  (service as any).__testHomey = homey;
+  testSettingsByService.set(service, settings);
   return service;
 }
 
@@ -123,10 +137,10 @@ describe('DailyBudgetService', () => {
       confidenceDebug: buildConfidenceDebug({ profileBlendConfidence: 0.2 }),
     });
 
-    (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
-    (service as any).buildYesterdayHistory = vi.fn(() => yesterday);
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
+    service['buildYesterdayHistory'] = vi.fn(() => yesterday);
 
-    (service as any).setDaySnapshot(today, NOW_MS, null, true);
+    service['setDaySnapshot'](today, NOW_MS, null, true);
 
     const snapshot = service.getSnapshot();
     expect(snapshot?.days['2025-03-15']?.state.confidence).toBe(0.72);
@@ -142,24 +156,24 @@ describe('DailyBudgetService', () => {
     const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.15 });
     const yesterday = buildDayPayload({ dateKey: '2025-03-14', confidence: 0.2 });
 
-    (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
-    (service as any).buildYesterdayHistory = vi.fn(() => yesterday);
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
+    service['buildYesterdayHistory'] = vi.fn(() => yesterday);
 
-    (service as any).setDaySnapshot(today, NOW_MS, null, true);
+    service['setDaySnapshot'](today, NOW_MS, null, true);
     const cachedTomorrow = service.getSnapshot()?.days['2025-03-16'];
     const cachedYesterday = service.getSnapshot()?.days['2025-03-14'];
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
     expect(service.getSnapshot()?.yesterdayKey).toBe('2025-03-14');
 
-    (service as any).buildTomorrowPreview = vi.fn(() => {
+    service['buildTomorrowPreview'] = vi.fn(() => {
       throw new Error('buildTomorrowPreview should not run on hot-path updates');
     });
-    (service as any).buildYesterdayHistory = vi.fn(() => {
+    service['buildYesterdayHistory'] = vi.fn(() => {
       throw new Error('buildYesterdayHistory should not run on hot-path updates');
     });
 
     const refreshedToday = buildDayPayload({ dateKey: '2025-03-15', confidence: 0.65 });
-    (service as any).setDaySnapshot(refreshedToday, NOW_MS, null);
+    service['setDaySnapshot'](refreshedToday, NOW_MS, null);
 
     const snapshot = service.getSnapshot();
     expect(snapshot?.todayKey).toBe('2025-03-15');
@@ -176,17 +190,17 @@ describe('DailyBudgetService', () => {
     const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.15 });
     const yesterday = buildDayPayload({ dateKey: '2025-03-14', confidence: 0.2 });
 
-    (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
-    (service as any).buildYesterdayHistory = vi.fn(() => yesterday);
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
+    service['buildYesterdayHistory'] = vi.fn(() => yesterday);
 
-    (service as any).setDaySnapshot(today, NOW_MS, null, true);
+    service['setDaySnapshot'](today, NOW_MS, null, true);
 
     const newToday = buildDayPayload({ dateKey: '2025-03-17', confidence: 0.5 });
     const newTomorrow = buildDayPayload({ dateKey: '2025-03-18', confidence: 0.5 });
     const newYesterday = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.5 });
-    (service as any).buildTomorrowPreview = vi.fn(() => newTomorrow);
-    (service as any).buildYesterdayHistory = vi.fn(() => newYesterday);
-    (service as any).setDaySnapshot(newToday, NOW_MS, null);
+    service['buildTomorrowPreview'] = vi.fn(() => newTomorrow);
+    service['buildYesterdayHistory'] = vi.fn(() => newYesterday);
+    service['setDaySnapshot'](newToday, NOW_MS, null);
 
     const snapshot = service.getSnapshot();
     expect(snapshot?.todayKey).toBe('2025-03-17');
@@ -210,15 +224,15 @@ describe('DailyBudgetService', () => {
 
     // First hot-path update: tomorrow prices not yet available.
     const noTomorrowBuilder = vi.fn(() => null);
-    (service as any).buildTomorrowPreview = noTomorrowBuilder;
-    (service as any).buildYesterdayHistory = vi.fn(() => null);
-    (service as any).setDaySnapshot(today, NOW_MS, combinedPrices);
+    service['buildTomorrowPreview'] = noTomorrowBuilder;
+    service['buildYesterdayHistory'] = vi.fn(() => null);
+    service['setDaySnapshot'](today, NOW_MS, combinedPrices);
     expect(service.getSnapshot()?.tomorrowKey).toBe(null);
     expect(noTomorrowBuilder).toHaveBeenCalledTimes(1);
 
     // Subsequent hot-path updates with the same prices: no rebuild attempt.
-    (service as any).setDaySnapshot(today, NOW_MS, combinedPrices);
-    (service as any).setDaySnapshot(today, NOW_MS, combinedPrices);
+    service['setDaySnapshot'](today, NOW_MS, combinedPrices);
+    service['setDaySnapshot'](today, NOW_MS, combinedPrices);
     expect(noTomorrowBuilder).toHaveBeenCalledTimes(1);
 
     // Tomorrow prices arrive: a new entry appears.
@@ -231,15 +245,15 @@ describe('DailyBudgetService', () => {
       lastFetched: '2025-03-15T13:00:00Z',
     };
     const tomorrowBuilder = vi.fn(() => tomorrow);
-    (service as any).buildTomorrowPreview = tomorrowBuilder;
+    service['buildTomorrowPreview'] = tomorrowBuilder;
 
-    (service as any).setDaySnapshot(today, NOW_MS, combinedPrices);
+    service['setDaySnapshot'](today, NOW_MS, combinedPrices);
     expect(tomorrowBuilder).toHaveBeenCalledTimes(1);
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
     expect(service.getSnapshot()?.days['2025-03-16']).toBeDefined();
 
     // Once seeded, further hot-path updates do not re-attempt the rebuild.
-    (service as any).setDaySnapshot(today, NOW_MS, combinedPrices);
+    service['setDaySnapshot'](today, NOW_MS, combinedPrices);
     expect(tomorrowBuilder).toHaveBeenCalledTimes(1);
   });
 
@@ -256,18 +270,18 @@ describe('DailyBudgetService', () => {
       ],
       lastFetched: '2025-03-15T13:00:00Z',
     };
-    (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
-    (service as any).buildYesterdayHistory = vi.fn(() => null);
-    (service as any).setDaySnapshot(today, NOW_MS, prices);
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
+    service['buildYesterdayHistory'] = vi.fn(() => null);
+    service['setDaySnapshot'](today, NOW_MS, prices);
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
 
-    const builderSpy = vi.spyOn(service as any, 'rebuildSnapshotWithAdjacentDays');
+    const builderSpy = vi.spyOn(service as unknown as Record<'rebuildSnapshotWithAdjacentDays', (...args: never[]) => unknown>, 'rebuildSnapshotWithAdjacentDays');
     for (const lastFetched of [
       '2026-01-01T00:00:00Z',
       '2026-01-01T01:00:00Z',
       '2026-01-01T02:00:00Z',
     ]) {
-      (service as any).setDaySnapshot(today, NOW_MS, { ...prices, lastFetched });
+      service['setDaySnapshot'](today, NOW_MS, { ...prices, lastFetched });
     }
     expect(builderSpy).not.toHaveBeenCalled();
   });
@@ -282,8 +296,8 @@ describe('DailyBudgetService', () => {
       }),
       persistReason: null,
     }));
-    (service as any).deps.isDebugTopicEnabled = () => true;
-    (service as any).manager.update = updateSpy;
+    service['deps'].isDebugTopicEnabled = () => true;
+    service['manager'].update = updateSpy;
 
     service.getUiPayload();
 
@@ -303,8 +317,8 @@ describe('DailyBudgetService', () => {
       }),
       persistReason: null,
     }));
-    (service as any).deps.isDebugTopicEnabled = () => false;
-    (service as any).manager.update = updateSpy;
+    service['deps'].isDebugTopicEnabled = () => false;
+    service['manager'].update = updateSpy;
 
     service.getUiPayload();
 
@@ -316,7 +330,7 @@ describe('DailyBudgetService', () => {
 
   it('normalizes legacy persisted tuning values to dropdown modes on load', () => {
     const service = buildService();
-    (service as any).__testHomey.settings.get = vi.fn((key: string) => {
+    testSettingsFor(service).get = vi.fn((key: string) => {
       if (key === 'daily_budget_enabled') return true;
       if (key === 'daily_budget_kwh') return 24;
       if (key === 'daily_budget_price_shaping_enabled') return true;
@@ -327,7 +341,7 @@ describe('DailyBudgetService', () => {
 
     service.loadSettings();
 
-    expect((service as any).settings).toEqual(expect.objectContaining({
+    expect(service['settings']).toEqual(expect.objectContaining({
       controlledUsageWeight: 0,
       priceShapingFlexShare: 0.6,
     }));
@@ -346,7 +360,7 @@ describe('DailyBudgetService', () => {
       snapshot: today,
       persistReason: null,
     }));
-    (service as any).manager.update = updateSpy;
+    service['manager'].update = updateSpy;
 
     const read = service.recomputeTodayPlan();
 
@@ -364,7 +378,7 @@ describe('DailyBudgetService', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW_MS);
     const service = buildService();
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
 
     const preview = service.previewModelSettings({
       enabled: true,
@@ -385,7 +399,7 @@ describe('DailyBudgetService', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW_MS);
     const service = buildService();
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
 
     const read = service.applyModelSettings({
       enabled: true,
@@ -410,7 +424,7 @@ describe('DailyBudgetService', () => {
     vi.setSystemTime(NOW_MS);
     const service = buildService();
     service.applyModelSettings({ enabled: false });
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
     set.mockClear();
 
     expect(service.applyAutoSuggestedBudget(48)).toBe(false);
@@ -425,7 +439,7 @@ describe('DailyBudgetService', () => {
     vi.setSystemTime(NOW_MS);
     const service = buildService();
     service.applyModelSettings({ enabled: true, dailyBudgetKWh: 30 });
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
     set.mockClear();
 
     expect(service.applyAutoSuggestedBudget(48)).toBe(true);
@@ -439,7 +453,7 @@ describe('DailyBudgetService', () => {
     vi.setSystemTime(NOW_MS);
     const service = buildService();
     service.applyModelSettings({ enabled: true, dailyBudgetKWh: 30 });
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
     set.mockClear();
 
     // A sub-MIN suggestion (a pathological capacity cap) must not throw via
@@ -455,23 +469,23 @@ describe('DailyBudgetService', () => {
   it('logs daily budget update failures as a structured event', () => {
     const error = vi.fn();
     const service = new DailyBudgetService({
-      dailyBudgetStateStore: createDailyBudgetStateStore({
-        settings: {
+      dailyBudgetStateStore: createDailyBudgetStateStore(partialDouble<AppHomey>({
+        settings: partialDouble<AppHomey['settings']>({
           get: vi.fn(() => null),
           set: vi.fn(),
-        },
-        clock: {
+        }),
+        clock: partialDouble<AppHomey['clock']>({
           getTimezone: () => TZ,
-        },
-      } as any),
+        }),
+      })),
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
-      structuredLog: { error } as any,
+      structuredLog: partialDouble<Logger>({ error: error as Logger['error'] }),
     });
-    (service as any).manager.update = vi.fn(() => {
+    service['manager'].update = vi.fn(() => {
       throw 'boom';
     });
 
@@ -486,23 +500,23 @@ describe('DailyBudgetService', () => {
   it('does not emit budget_recomputed when refreshing for periodic status only', () => {
     const info = vi.fn();
     const service = new DailyBudgetService({
-      dailyBudgetStateStore: createDailyBudgetStateStore({
-        settings: {
+      dailyBudgetStateStore: createDailyBudgetStateStore(partialDouble<AppHomey>({
+        settings: partialDouble<AppHomey['settings']>({
           get: vi.fn(() => null),
           set: vi.fn(),
-        },
-        clock: {
+        }),
+        clock: partialDouble<AppHomey['clock']>({
           getTimezone: () => TZ,
-        },
-      } as any),
+        }),
+      })),
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
-      structuredLog: { info } as any,
+      structuredLog: partialDouble<Logger>({ info: info as Logger['info'] }),
     });
-    (service as any).manager.update = vi.fn(() => ({
+    service['manager'].update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
@@ -531,23 +545,23 @@ describe('DailyBudgetService', () => {
   it('emits budget_recomputed during normal updates', () => {
     const info = vi.fn();
     const service = new DailyBudgetService({
-      dailyBudgetStateStore: createDailyBudgetStateStore({
-        settings: {
+      dailyBudgetStateStore: createDailyBudgetStateStore(partialDouble<AppHomey>({
+        settings: partialDouble<AppHomey['settings']>({
           get: vi.fn(() => null),
           set: vi.fn(),
-        },
-        clock: {
+        }),
+        clock: partialDouble<AppHomey['clock']>({
           getTimezone: () => TZ,
-        },
-      } as any),
+        }),
+      })),
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
-      structuredLog: { info } as any,
+      structuredLog: partialDouble<Logger>({ info: info as Logger['info'] }),
     });
-    (service as any).manager.update = vi.fn(() => ({
+    service['manager'].update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
@@ -570,23 +584,23 @@ describe('DailyBudgetService', () => {
   it('does not emit budget_recomputed repeatedly for unchanged steady-state updates', () => {
     const info = vi.fn();
     const service = new DailyBudgetService({
-      dailyBudgetStateStore: createDailyBudgetStateStore({
-        settings: {
+      dailyBudgetStateStore: createDailyBudgetStateStore(partialDouble<AppHomey>({
+        settings: partialDouble<AppHomey['settings']>({
           get: vi.fn(() => null),
           set: vi.fn(),
-        },
-        clock: {
+        }),
+        clock: partialDouble<AppHomey['clock']>({
           getTimezone: () => TZ,
-        },
-      } as any),
+        }),
+      })),
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
-      structuredLog: { info } as any,
+      structuredLog: partialDouble<Logger>({ info: info as Logger['info'] }),
     });
-    (service as any).manager.update = vi.fn(() => ({
+    service['manager'].update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
@@ -604,21 +618,21 @@ describe('DailyBudgetService', () => {
   it('emits budget_recomputed when exceeded state changes', () => {
     const info = vi.fn();
     const service = new DailyBudgetService({
-      dailyBudgetStateStore: createDailyBudgetStateStore({
-        settings: {
+      dailyBudgetStateStore: createDailyBudgetStateStore(partialDouble<AppHomey>({
+        settings: partialDouble<AppHomey['settings']>({
           get: vi.fn(() => null),
           set: vi.fn(),
-        },
-        clock: {
+        }),
+        clock: partialDouble<AppHomey['clock']>({
           getTimezone: () => TZ,
-        },
-      } as any),
+        }),
+      })),
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
-      structuredLog: { info } as any,
+      structuredLog: partialDouble<Logger>({ info: info as Logger['info'] }),
     });
     const snapshots = [
       buildDayPayload({
@@ -642,7 +656,7 @@ describe('DailyBudgetService', () => {
         },
       },
     ];
-    (service as any).manager.update = vi
+    service['manager'].update = vi
       .fn()
       .mockReturnValueOnce({ snapshot: snapshots[0], persistReason: null })
       .mockReturnValueOnce({ snapshot: snapshots[1], persistReason: null });
@@ -659,15 +673,15 @@ describe('DailyBudgetService', () => {
 
   it('uses usable hourly capacity when updating daily budget plans', () => {
     const service = new DailyBudgetService({
-      dailyBudgetStateStore: createDailyBudgetStateStore({
-        settings: {
+      dailyBudgetStateStore: createDailyBudgetStateStore(partialDouble<AppHomey>({
+        settings: partialDouble<AppHomey['settings']>({
           get: vi.fn(() => null),
           set: vi.fn(),
-        },
-        clock: {
+        }),
+        clock: partialDouble<AppHomey['clock']>({
           getTimezone: () => TZ,
-        },
-      } as any),
+        }),
+      })),
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
@@ -683,7 +697,7 @@ describe('DailyBudgetService', () => {
       }),
       persistReason: null,
     }));
-    (service as any).manager.update = updateSpy;
+    service['manager'].update = updateSpy;
 
     service.updateState();
 
@@ -695,7 +709,7 @@ describe('DailyBudgetService', () => {
   it('throttles low-priority daily budget state writes from frequent updates', () => {
     const skippedBefore = perfCount('settings_set.daily_budget_state_skipped_throttle_total');
     const service = buildService();
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
     // `exportState` reads the current state, so the revision advances with each
     // update rather than with each export — the persisted value must not depend
     // on how many times the service chose to export.
@@ -708,11 +722,11 @@ describe('DailyBudgetService', () => {
           confidence: 0.72,
           confidenceDebug: buildConfidenceDebug(),
         }),
-        persistReason: 'runtime',
+        persistReason: 'runtime' as const,
       };
     });
-    (service as any).manager.update = updateSpy;
-    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: revision }));
+    service['manager'].update = updateSpy;
+    service['manager'].exportState = vi.fn(() => ({ lastUsedNowKWh: revision }));
 
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 60_000 });
@@ -728,7 +742,7 @@ describe('DailyBudgetService', () => {
   it('does not export or serialize a state the low-priority throttle will discard', () => {
     const service = buildService();
     let revision = 0;
-    (service as any).manager.update = vi.fn(() => {
+    service['manager'].update = vi.fn(() => {
       revision += 1;
       return {
         snapshot: buildDayPayload({
@@ -736,11 +750,11 @@ describe('DailyBudgetService', () => {
           confidence: 0.72,
           confidenceDebug: buildConfidenceDebug(),
         }),
-        persistReason: 'runtime',
+        persistReason: 'runtime' as const,
       };
     });
     const exportState = vi.fn(() => ({ lastUsedNowKWh: revision }));
-    (service as any).manager.exportState = exportState;
+    service['manager'].exportState = exportState;
 
     service.updateState({ nowMs: NOW_MS });
     expect(exportState).toHaveBeenCalledTimes(1); // the write exported once
@@ -760,16 +774,16 @@ describe('DailyBudgetService', () => {
     const throttledBefore = perfCount('settings_set.daily_budget_state_skipped_throttle_total');
     const unchangedBefore = perfCount('settings_set.daily_budget_state_skipped_unchanged_total');
     const service = buildService();
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
-    (service as any).manager.update = vi.fn(() => ({
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    service['manager'].update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
         confidenceDebug: buildConfidenceDebug(),
       }),
-      persistReason: 'runtime',
+      persistReason: 'runtime' as const,
     }));
-    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: 7 }));
+    service['manager'].exportState = vi.fn(() => ({ lastUsedNowKWh: 7 }));
 
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 60_000 }); // inside the window, same state
@@ -782,16 +796,16 @@ describe('DailyBudgetService', () => {
   it('skips daily budget state writes when exported state is unchanged', () => {
     const skippedBefore = perfCount('settings_set.daily_budget_state_skipped_unchanged_total');
     const service = buildService();
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
-    (service as any).manager.update = vi.fn(() => ({
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    service['manager'].update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
         confidenceDebug: buildConfidenceDebug(),
       }),
-      persistReason: 'manual',
+      persistReason: 'manual' as const,
     }));
-    (service as any).manager.exportState = vi.fn(() => ({ plannedKWh: [10] }));
+    service['manager'].exportState = vi.fn(() => ({ plannedKWh: [10] }));
 
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 1_000 });
@@ -802,18 +816,18 @@ describe('DailyBudgetService', () => {
 
   it('persists manual and rollover daily budget state changes despite low-priority throttling', () => {
     const service = buildService();
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
-    const reasons = ['runtime', 'manual', 'rollover'];
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    const reasons: (DailyBudgetStatePersistReason | null)[] = ['runtime', 'manual', 'rollover'];
     let exportIndex = 0;
-    (service as any).manager.update = vi.fn(() => ({
+    service['manager'].update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
         confidenceDebug: buildConfidenceDebug(),
       }),
-      persistReason: reasons.shift(),
+      persistReason: reasons.shift() ?? null,
     }));
-    (service as any).manager.exportState = vi.fn(() => ({ revision: exportIndex++ }));
+    service['manager'].exportState = vi.fn(() => ({ revision: exportIndex++ } as DailyBudgetState));
 
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 1_000 });
@@ -828,18 +842,18 @@ describe('DailyBudgetService', () => {
   it('throttles low-priority writes after a recent high-priority persist', () => {
     const skippedBefore = perfCount('settings_set.daily_budget_state_skipped_throttle_total');
     const service = buildService();
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
-    const reasons = ['manual', 'runtime'];
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    const reasons: (DailyBudgetStatePersistReason | null)[] = ['manual', 'runtime'];
     let exportIndex = 0;
-    (service as any).manager.update = vi.fn(() => ({
+    service['manager'].update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
         confidenceDebug: buildConfidenceDebug(),
       }),
-      persistReason: reasons.shift(),
+      persistReason: reasons.shift() ?? null,
     }));
-    (service as any).manager.exportState = vi.fn(() => ({ revision: exportIndex++ }));
+    service['manager'].exportState = vi.fn(() => ({ revision: exportIndex++ } as DailyBudgetState));
 
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 1_000 });
@@ -851,7 +865,7 @@ describe('DailyBudgetService', () => {
   it('persists reset learning immediately with a reset reason counter', () => {
     const reasonBefore = perfCount('settings_set.daily_budget_state_reason.reset_total');
     const service = buildService();
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
 
     service.resetLearning();
 
@@ -861,9 +875,9 @@ describe('DailyBudgetService', () => {
 
   it('persistState flushes a throttled low-priority write on shutdown', () => {
     const service = buildService();
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
     let revision = 0;
-    (service as any).manager.update = vi.fn(() => {
+    service['manager'].update = vi.fn(() => {
       revision += 1;
       return {
         snapshot: buildDayPayload({
@@ -871,10 +885,10 @@ describe('DailyBudgetService', () => {
           confidence: 0.72,
           confidenceDebug: buildConfidenceDebug(),
         }),
-        persistReason: 'runtime',
+        persistReason: 'runtime' as const,
       };
     });
-    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: revision }));
+    service['manager'].exportState = vi.fn(() => ({ lastUsedNowKWh: revision }));
 
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 60_000 });
@@ -888,16 +902,16 @@ describe('DailyBudgetService', () => {
 
   it('persistState is a no-op when the exported state matches the last persisted write', () => {
     const service = buildService();
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
-    (service as any).manager.update = vi.fn(() => ({
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
+    service['manager'].update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
         confidenceDebug: buildConfidenceDebug(),
       }),
-      persistReason: 'manual',
+      persistReason: 'manual' as const,
     }));
-    (service as any).manager.exportState = vi.fn(() => ({ plannedKWh: [10] }));
+    service['manager'].exportState = vi.fn(() => ({ plannedKWh: [10] }));
 
     service.updateState({ nowMs: NOW_MS });
     expect(dailyBudgetStateSetCount(set)).toBe(1);
@@ -932,18 +946,18 @@ describe('DailyBudgetService', () => {
       { startsAt: '2025-03-15T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
       { startsAt: '2025-03-16T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
     ];
-    (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
-    (service as any).buildYesterdayHistory = vi.fn(() => null);
-    (service as any).setDaySnapshot(today, NOW_MS, { prices: baseEntries });
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
+    service['buildYesterdayHistory'] = vi.fn(() => null);
+    service['setDaySnapshot'](today, NOW_MS, { prices: baseEntries });
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
 
-    const builderSpy = vi.spyOn(service as any, 'rebuildSnapshotWithAdjacentDays');
+    const builderSpy = vi.spyOn(service as unknown as Record<'rebuildSnapshotWithAdjacentDays', (...args: never[]) => unknown>, 'rebuildSnapshotWithAdjacentDays');
     // Same entry count, same first/last startsAt — only the price-tier flags differ.
     const flippedEntries = [
       { startsAt: '2025-03-15T00:00:00Z', total: 1, isCheap: true, isExpensive: false },
       { startsAt: '2025-03-16T00:00:00Z', total: 1, isCheap: false, isExpensive: true },
     ];
-    (service as any).setDaySnapshot(today, NOW_MS, { prices: flippedEntries });
+    service['setDaySnapshot'](today, NOW_MS, { prices: flippedEntries });
     expect(builderSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -960,18 +974,18 @@ describe('DailyBudgetService', () => {
       { startsAt: '2025-03-15T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
       { startsAt: '2025-03-16T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
     ];
-    (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
-    (service as any).buildYesterdayHistory = vi.fn(() => null);
-    (service as any).setDaySnapshot(today, NOW_MS, { prices: baseEntries });
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
+    service['buildYesterdayHistory'] = vi.fn(() => null);
+    service['setDaySnapshot'](today, NOW_MS, { prices: baseEntries });
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
 
-    const builderSpy = vi.spyOn(service as any, 'rebuildSnapshotWithAdjacentDays');
+    const builderSpy = vi.spyOn(service as unknown as Record<'rebuildSnapshotWithAdjacentDays', (...args: never[]) => unknown>, 'rebuildSnapshotWithAdjacentDays');
     // Same horizon and tier flags — only the totals differ (e.g., surcharge bump).
     const shiftedTotals = [
       { startsAt: '2025-03-15T00:00:00Z', total: 1.25, isCheap: false, isExpensive: false },
       { startsAt: '2025-03-16T00:00:00Z', total: 1.25, isCheap: false, isExpensive: false },
     ];
-    (service as any).setDaySnapshot(today, NOW_MS, { prices: shiftedTotals });
+    service['setDaySnapshot'](today, NOW_MS, { prices: shiftedTotals });
     expect(builderSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -982,9 +996,9 @@ describe('DailyBudgetService', () => {
     // forcing caps that loss at the most recent hour bucket of accumulation,
     // which matches how the daily budget reconstructs (in hour buckets).
     const service = buildService();
-    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    const set = testSettingsFor(service).set as ReturnType<typeof vi.fn>;
     let revision = 0;
-    (service as any).manager.update = vi.fn(() => {
+    service['manager'].update = vi.fn(() => {
       revision += 1;
       return {
         snapshot: buildDayPayload({
@@ -992,10 +1006,10 @@ describe('DailyBudgetService', () => {
           confidence: 0.72,
           confidenceDebug: buildConfidenceDebug(),
         }),
-        persistReason: 'runtime',
+        persistReason: 'runtime' as const,
       };
     });
-    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: revision }));
+    service['manager'].exportState = vi.fn(() => ({ lastUsedNowKWh: revision }));
 
     // First persist happens at 10:55. Subsequent samples land within the 10-min
     // throttle window but cross the 11:00 hour boundary.

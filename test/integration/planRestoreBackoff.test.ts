@@ -3984,7 +3984,7 @@ describe('stepped-load shed invariant', () => {
     });
     const debugCalls: unknown[] = [];
     const debugStructured = (payload: unknown) => debugCalls.push(payload);
-    const rejectedCalls = () => debugCalls.filter((c: any) => c?.event === 'restore_stepped_rejected');
+    const rejectedCalls = () => debugCalls.filter((c) => (c as { event?: unknown } | undefined)?.event === 'restore_stepped_rejected');
 
     // First: blocked, emits
     const mapShed = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);

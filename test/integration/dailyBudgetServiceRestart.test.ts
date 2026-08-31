@@ -1,6 +1,10 @@
 import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
 import { createDailyBudgetStateStore } from '../../setup/dailyBudgetStateAdapter';
+import type Homey from 'homey';
+import { partialDouble } from '../helpers/partialDouble';
+
+type AppHomey = Homey.App['homey'];
 import type { PowerTrackerState } from '../../lib/power/tracker';
 
 // Plain-restart invariant for the daily budget: a service reload over the
@@ -16,17 +20,17 @@ const isoForLocalHour = (localHour: number): string => new Date(hourStartMs(loca
 
 // Shared "Homey settings" DB with a faithful JSON roundtrip, so a second
 // service instance loads exactly what the first persisted.
-function buildSharedHomey(): { homey: any } {
+function buildSharedHomey(): { homey: AppHomey } {
   const db = new Map<string, string>();
-  const homey = {
-    settings: {
+  const homey = partialDouble<AppHomey>({
+    settings: partialDouble<AppHomey['settings']>({
       get: (key: string) => (db.has(key) ? JSON.parse(db.get(key) as string) : null),
       set: (key: string, value: unknown) => {
         db.set(key, JSON.stringify(value));
       },
-    },
-    clock: { getTimezone: () => TZ },
-  };
+    }),
+    clock: partialDouble<AppHomey['clock']>({ getTimezone: () => TZ }),
+  });
   return { homey };
 }
 
@@ -39,7 +43,7 @@ function buildTracker(usedThroughLocalHour19: number, hour20Usage: number): Powe
   return { buckets } as PowerTrackerState;
 }
 
-function buildService(homey: any, getTracker: () => PowerTrackerState): DailyBudgetService {
+function buildService(homey: AppHomey, getTracker: () => PowerTrackerState): DailyBudgetService {
   return new DailyBudgetService({
     getTimeZone: () => TZ,
     log: () => undefined,

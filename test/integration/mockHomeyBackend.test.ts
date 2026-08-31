@@ -49,7 +49,7 @@ describe('mock Homey backend', () => {
       driverA: new MockDriver('driverA', [device]),
     });
 
-    const devices = await mockHomeyInstance.api.get('manager/devices') as Record<string, any>;
+    const devices = await mockHomeyInstance.api.get('manager/devices') as Record<string, { makeCapabilityInstance: (capabilityId: string, listener: (value: unknown) => void) => { destroy: () => void } }>;
     const payload = devices['dev-1'];
     const capabilityListener = vi.fn();
     const capabilityInstance = payload.makeCapabilityInstance('onoff', capabilityListener);

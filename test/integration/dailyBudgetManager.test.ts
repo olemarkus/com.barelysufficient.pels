@@ -879,7 +879,7 @@ describe('daily budget price shaping', () => {
       timeZone: TZ,
       powerTracker: { buckets: { [bucketKey0]: 0 } },
     });
-    const priceData = (manager as any).resolvePriceData({
+    const priceData = manager['resolvePriceData']({
       context,
       settings,
       enabled: true,

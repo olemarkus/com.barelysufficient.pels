@@ -1,3 +1,4 @@
+import type { SettingsUiDeviceListItem } from '../src/ui/deviceUtils.ts';
 import { isGrayStateDevice, requiresNativeWiringForActivation } from '../src/ui/deviceUtils.ts';
 
 describe('isGrayStateDevice', () => {
@@ -18,15 +19,15 @@ describe('requiresNativeWiringForActivation', () => {
     expect(requiresNativeWiringForActivation({
       controlAdapter: { kind: 'capability_adapter', activationRequired: true, activationEnabled: false },
       binaryControllable: false,
-    } as any)).toBe(true);
+    } as SettingsUiDeviceListItem)).toBe(true);
     expect(requiresNativeWiringForActivation({
       controlAdapter: { kind: 'capability_adapter', activationRequired: true, activationEnabled: true },
       binaryControllable: false,
-    } as any)).toBe(false);
+    } as SettingsUiDeviceListItem)).toBe(false);
     expect(requiresNativeWiringForActivation({
       controlAdapter: { kind: 'capability_adapter', activationRequired: true, activationEnabled: false },
       binaryControllable: true,
       deviceRole: 'ev_charger',
-    } as any)).toBe(false);
+    } as SettingsUiDeviceListItem)).toBe(false);
   });
 });

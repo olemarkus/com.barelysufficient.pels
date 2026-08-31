@@ -1,3 +1,5 @@
+import type MyApp from '../../app.ts';
+import { partialDouble } from '../helpers/partialDouble';
 import { mockHomeyInstance } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 
@@ -42,10 +44,10 @@ describe('Lowest price flow cards', () => {
 
   const setupApp = (combinedPrices: PriceEntry[]) => {
     const app = createApp();
-    (app as any).priceCoordinator = {
+    app.priceCoordinator = partialDouble<MyApp['priceCoordinator']>({
       getCombinedHourlyPrices: () => combinedPrices,
-    };
-    (app as any).registerFlowCards();
+    });
+    app.registerFlowCards();
     return app;
   };
 

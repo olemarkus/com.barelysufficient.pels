@@ -1,3 +1,4 @@
+import type { AppContext } from '../../lib/app/appContext';
 // Shared harness for the multi-home smart-task scope-gate specs (integration
 // app-lane battery + SDK-boundary flow-card e2e): boots the real app against
 // two mock heaters and configures a sub-home + a device pin purely through the
@@ -81,8 +82,8 @@ export const initAppWithSubHome = async (
   mockHomeyInstance.settings.set(DEVICE_HOME_ASSIGNMENTS, { 'heater-sub': 'h_cabin' });
   await settleAsyncSeams();
   if (options.assertMembership) {
-    expect(app.homeMembership.getHomeIdForDevice('heater-sub')).toBe('h_cabin');
-    expect(app.homeMembership.getHomeIdForDevice('heater-main')).toBe('main');
+    expect((app as AppContext).homeMembership?.getHomeIdForDevice('heater-sub')).toBe('h_cabin');
+    expect((app as AppContext).homeMembership?.getHomeIdForDevice('heater-main')).toBe('main');
   }
   return app;
 };

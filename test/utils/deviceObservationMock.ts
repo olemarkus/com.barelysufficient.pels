@@ -3,6 +3,8 @@ import type {
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import type { TransportControlBindingProbe } from '../../lib/device/transportDeviceSnapshot';
+import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import { partialDouble } from '../helpers/partialDouble';
 
 /**
  * Adds `getSnapshotByDeviceId` derived from the same backing snapshot source
@@ -40,3 +42,12 @@ export const withGetSnapshotByDeviceId = <T extends { getSnapshot: () => TargetD
     | (TargetDeviceSnapshot & TransportControlBindingProbe)
     | undefined,
 });
+
+/**
+ * The same enriched stub, widened to `DeviceTransport` for direct assignment to
+ * `app.deviceManager`. The members provided are typechecked against the real
+ * transport; the rest are absent — see `partialDouble`.
+ */
+export const deviceTransportDouble = <T extends { getSnapshot: () => TargetDeviceSnapshot[] }>(
+  mock: T,
+): DeviceTransport => partialDouble<DeviceTransport>(withGetSnapshotByDeviceId(mock));

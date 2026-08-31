@@ -1,3 +1,8 @@
+import type Homey from 'homey';
+import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import type { PlanService } from '../../lib/plan/planService';
+import type { TargetDeviceSnapshot, MeasuredPowerObservedProbe } from '../../packages/contracts/src/types';
+import { partialDouble } from '../helpers/partialDouble';
 import { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
 import { disableUnsupportedDevices } from '../../setup/appDeviceSupport';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
@@ -33,13 +38,13 @@ describe('appSnapshotHelpers', () => {
     const helper = new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
-      getDeviceManager: () => ({ refreshSnapshot: vi.fn() } as any),
+      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot: vi.fn() }),
       getPlanEngine: () => undefined,
-      getPlanService: () => ({
-        syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+      getPlanService: () => partialDouble<PlanService>({
+        syncLivePlanState: vi.fn(async () => false),
         syncHeadroomCardState: vi.fn(),
         getLatestPlanSnapshot: vi.fn(),
-      } as any),
+      }),
       getLatestTargetSnapshot: () => [],
       resolveManagedState: () => false,
       isCapacityControlEnabled: () => false,
@@ -183,11 +188,14 @@ describe('appSnapshotHelpers', () => {
 
   it('tags headroom syncs from snapshot refresh with snapshot_refresh reconciliation context', async () => {
     const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
-    const syncLivePlanState = vi.fn().mockResolvedValue(undefined);
+    const syncLivePlanState = vi.fn(async () => false);
     const syncHeadroomCardState = vi.fn();
-    const snapshot = [{
+    const snapshot: (TargetDeviceSnapshot & MeasuredPowerObservedProbe)[] = [{
       id: 'dev-1',
       name: 'Heater',
+      targets: [],
+      available: true,
+      expectedPowerSource: 'default',
       binaryControl: { on: true },
       expectedPowerKw: 1.2,
       measuredPowerKw: 1.2,
@@ -195,14 +203,14 @@ describe('appSnapshotHelpers', () => {
     const helper = new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
-      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot }),
       getPlanEngine: () => undefined,
-      getPlanService: () => ({
+      getPlanService: () => partialDouble<PlanService>({
         syncLivePlanState,
         syncHeadroomCardState,
         getLatestPlanSnapshot: vi.fn(),
-      } as any),
-      getLatestTargetSnapshot: () => snapshot as any,
+      }),
+      getLatestTargetSnapshot: () => snapshot,
       resolveManagedState: () => true,
       isCapacityControlEnabled: () => true,
       getStructuredLogger: () => undefined,
@@ -219,7 +227,7 @@ describe('appSnapshotHelpers', () => {
     });
     const scheduleTargetPowerProbe = vi.spyOn(helper, 'scheduleTargetPowerProbe');
 
-    await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
+    await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
 
     expect(scheduleTargetPowerProbe).toHaveBeenCalledTimes(1);
     expect(syncHeadroomCardState).toHaveBeenCalledWith({
@@ -242,34 +250,38 @@ describe('appSnapshotHelpers', () => {
     const callOrder: string[] = [];
     const syncLivePlanState = vi.fn(async () => {
       callOrder.push('syncLivePlanState');
+      return false;
     });
-    const syncHeadroomCardState = vi.fn(() => {
+    const syncHeadroomCardState = vi.fn((_params?: unknown) => {
       callOrder.push('syncHeadroomCardState');
-    });
+    }) as unknown as PlanService['syncHeadroomCardState'] & ReturnType<typeof vi.fn>;
     const disableUnsupported = vi.fn(() => {
       callOrder.push('disableUnsupportedDevices');
     });
     const emitSettingsUiDevicesUpdated = vi.fn(() => {
       callOrder.push('emitSettingsUiDevicesUpdated');
     });
-    const snapshot = [{
+    const snapshot: TargetDeviceSnapshot[] = [{
       id: 'dev-1',
       name: 'Unsupported Socket',
       deviceType: 'onoff',
       powerCapable: false,
       targets: [],
+      available: true,
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
     }];
     const helper = new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
-      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot }),
       getPlanEngine: () => undefined,
-      getPlanService: () => ({
+      getPlanService: () => partialDouble<PlanService>({
         syncLivePlanState,
         syncHeadroomCardState,
         getLatestPlanSnapshot: vi.fn(),
-      } as any),
-      getLatestTargetSnapshot: () => snapshot as any,
+      }),
+      getLatestTargetSnapshot: () => snapshot,
       resolveManagedState: () => true,
       isCapacityControlEnabled: () => true,
       getStructuredLogger: () => undefined,
@@ -285,7 +297,7 @@ describe('appSnapshotHelpers', () => {
       resolveMainMeterSelection: automaticMeterSelection,
     });
 
-    await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
+    await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
 
     expect(callOrder).toEqual([
       'disableUnsupportedDevices',
@@ -301,31 +313,35 @@ describe('appSnapshotHelpers', () => {
     const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
     const settingsSeenByLivePlan: unknown[] = [];
     const settingsSeenByHeadroom: unknown[] = [];
-    const snapshot = [{
+    const snapshot: TargetDeviceSnapshot[] = [{
       id: 'socket-1',
       name: 'Unsupported Socket',
       deviceType: 'onoff',
       powerCapable: false,
       targets: [],
+      available: true,
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
       managed: true,
       controllable: true,
     }];
     const syncHeadroomCardState = vi.fn(() => {
       settingsSeenByHeadroom.push(mockHomeyInstance.settings.get(CONTROLLABLE_DEVICES));
-    });
+    }) as unknown as PlanService['syncHeadroomCardState'] & ReturnType<typeof vi.fn>;
     const helper = new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
-      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot }),
       getPlanEngine: () => undefined,
-      getPlanService: () => ({
+      getPlanService: () => partialDouble<PlanService>({
         syncLivePlanState: vi.fn(async () => {
           settingsSeenByLivePlan.push(mockHomeyInstance.settings.get(MANAGED_DEVICES));
+          return false;
         }),
         syncHeadroomCardState,
         getLatestPlanSnapshot: vi.fn(),
-      } as any),
-      getLatestTargetSnapshot: () => snapshot as any,
+      }),
+      getLatestTargetSnapshot: () => snapshot,
       resolveManagedState: (deviceId) => (
         mockHomeyInstance.settings.get(MANAGED_DEVICES) as Record<string, boolean>
       )[deviceId] !== false,
@@ -338,7 +354,7 @@ describe('appSnapshotHelpers', () => {
       logPeriodicStatus: vi.fn(),
       disableUnsupportedDevices: (nextSnapshot) => disableUnsupportedDevices({
         snapshot: nextSnapshot,
-        settings: mockHomeyInstance.settings as any,
+        settings: mockHomeyInstance.settings as unknown as Homey.App['homey']['settings'],
         debugStructured: vi.fn(),
       }),
       persistFilledModeTargets: vi.fn(),
@@ -349,7 +365,7 @@ describe('appSnapshotHelpers', () => {
       resolveMainMeterSelection: automaticMeterSelection,
     });
 
-    await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
+    await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
 
     expect(settingsSeenByLivePlan).toEqual([{ 'socket-1': false }]);
     expect(settingsSeenByHeadroom).toEqual([{ 'socket-1': false }]);
@@ -375,24 +391,27 @@ describe('appSnapshotHelpers', () => {
     // refresh on every fresh boot. Fix: only demote IDs whose current value
     // is explicitly `true`.
     const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
-    const snapshot = [{
+    const snapshot: TargetDeviceSnapshot[] = [{
       id: 'socket-1',
       name: 'Unsupported Socket',
       deviceType: 'onoff',
       powerCapable: false,
       targets: [],
+      available: true,
+      expectedPowerKw: 0,
+      expectedPowerSource: 'default',
     }];
     const helper = new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
-      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot }),
       getPlanEngine: () => undefined,
-      getPlanService: () => ({
-        syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+      getPlanService: () => partialDouble<PlanService>({
+        syncLivePlanState: vi.fn(async () => false),
         syncHeadroomCardState: vi.fn(),
         getLatestPlanSnapshot: vi.fn(),
-      } as any),
-      getLatestTargetSnapshot: () => snapshot as any,
+      }),
+      getLatestTargetSnapshot: () => snapshot,
       resolveManagedState: () => false,
       isCapacityControlEnabled: () => false,
       getStructuredLogger: () => undefined,
@@ -401,7 +420,7 @@ describe('appSnapshotHelpers', () => {
       logPeriodicStatus: vi.fn(),
       disableUnsupportedDevices: (nextSnapshot) => disableUnsupportedDevices({
         snapshot: nextSnapshot,
-        settings: mockHomeyInstance.settings as any,
+        settings: mockHomeyInstance.settings as unknown as Homey.App['homey']['settings'],
         debugStructured: vi.fn(),
       }),
       persistFilledModeTargets: vi.fn(),
@@ -412,7 +431,7 @@ describe('appSnapshotHelpers', () => {
       resolveMainMeterSelection: automaticMeterSelection,
     });
 
-    await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
+    await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
 
     // No write to MANAGED_DEVICES means the settings handler is never fired,
     // so no recursive snapshot refresh is queued.
@@ -430,13 +449,13 @@ describe('appSnapshotHelpers', () => {
     const helper = new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
-      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot }),
       getPlanEngine: () => undefined,
-      getPlanService: () => ({
-        syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+      getPlanService: () => partialDouble<PlanService>({
+        syncLivePlanState: vi.fn(async () => false),
         syncHeadroomCardState: vi.fn(),
         getLatestPlanSnapshot: vi.fn(),
-      } as any),
+      }),
       getLatestTargetSnapshot: () => [],
       resolveManagedState: () => false,
       isCapacityControlEnabled: () => false,
@@ -453,7 +472,7 @@ describe('appSnapshotHelpers', () => {
       resolveMainMeterSelection: automaticMeterSelection,
     });
     helperRef.current = helper;
-    (helper as any).snapshotRefreshStopped = false;
+    helper['snapshotRefreshStopped'] = false;
 
     await helper.refreshTargetDevicesSnapshot();
 
@@ -476,13 +495,13 @@ describe('appSnapshotHelpers', () => {
     const helper = new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
-      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot }),
       getPlanEngine: () => undefined,
-      getPlanService: () => ({
-        syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+      getPlanService: () => partialDouble<PlanService>({
+        syncLivePlanState: vi.fn(async () => false),
         syncHeadroomCardState: vi.fn(),
         getLatestPlanSnapshot: vi.fn(),
-      } as any),
+      }),
       getLatestTargetSnapshot: () => [],
       resolveManagedState: () => false,
       isCapacityControlEnabled: () => false,
@@ -498,7 +517,7 @@ describe('appSnapshotHelpers', () => {
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: automaticMeterSelection,
     });
-    (helper as any).snapshotRefreshStopped = false;
+    helper['snapshotRefreshStopped'] = false;
 
     const firstRefresh = helper.refreshTargetDevicesSnapshot();
     await Promise.resolve();
@@ -527,13 +546,13 @@ describe('appSnapshotHelpers', () => {
     const helper = new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
-      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot }),
       getPlanEngine: () => undefined,
-      getPlanService: () => ({
-        syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+      getPlanService: () => partialDouble<PlanService>({
+        syncLivePlanState: vi.fn(async () => false),
         syncHeadroomCardState: vi.fn(),
         getLatestPlanSnapshot: vi.fn(),
-      } as any),
+      }),
       getLatestTargetSnapshot: () => [],
       resolveManagedState: () => false,
       isCapacityControlEnabled: () => false,
@@ -549,7 +568,7 @@ describe('appSnapshotHelpers', () => {
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: automaticMeterSelection,
     });
-    (helper as any).snapshotRefreshStopped = false;
+    helper['snapshotRefreshStopped'] = false;
 
     const firstRefresh = helper.refreshTargetDevicesSnapshot();
     await Promise.resolve();
@@ -598,13 +617,13 @@ describe('appSnapshotHelpers', () => {
     ) => new AppSnapshotHelpers({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
-      getDeviceManager: () => ({ refreshSnapshot, noteAdmittedAutomaticHomeMeter } as any),
+      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot: refreshSnapshot as DeviceTransport['refreshSnapshot'], noteAdmittedAutomaticHomeMeter: noteAdmittedAutomaticHomeMeter as DeviceTransport['noteAdmittedAutomaticHomeMeter'] }),
       getPlanEngine: () => undefined,
-      getPlanService: () => ({
-        syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+      getPlanService: () => partialDouble<PlanService>({
+        syncLivePlanState: vi.fn(async () => false),
         syncHeadroomCardState: vi.fn(),
         getLatestPlanSnapshot: vi.fn(),
-      } as any),
+      }),
       getLatestTargetSnapshot: () => [],
       resolveManagedState: () => false,
       isCapacityControlEnabled: () => false,
@@ -726,7 +745,7 @@ describe('appSnapshotHelpers', () => {
       const recordPowerSample = vi.fn().mockResolvedValue({ state: 'admitted', revision: 1 });
       const noteAdmittedAutomaticHomeMeter = vi.fn();
       const helper = buildHelper(refreshSnapshot, recordPowerSample, noteAdmittedAutomaticHomeMeter);
-      (helper as any).deps.getPowerSource = () => {
+      helper['deps'].getPowerSource = () => {
         throw new Error('settings unavailable');
       };
 

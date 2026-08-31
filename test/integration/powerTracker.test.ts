@@ -171,7 +171,7 @@ describe('power tracker integration', () => {
 
   it('splits energy across hour boundary when samples are delayed', async () => {
     const state = {};
-    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const saveState = (nextState: PowerTrackerState) => Object.assign(state, nextState);
     const rebuildPlanFromCache = vi.fn();
     const start = Date.UTC(2025, 0, 1, 0, 50, 0);
 
@@ -195,14 +195,14 @@ describe('power tracker integration', () => {
 
     const bucket0 = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
     const bucket1 = new Date(Date.UTC(2025, 0, 1, 1, 0, 0)).toISOString();
-    const snapshot = state as any;
-    expect(snapshot.buckets[bucket0]).toBeCloseTo(0.6, 3);
-    expect(snapshot.buckets[bucket1]).toBeCloseTo(0.6, 3);
+    const snapshot = state as PowerTrackerState & Record<string, unknown>;
+    expect(snapshot.buckets?.[bucket0]).toBeCloseTo(0.6, 3);
+    expect(snapshot.buckets?.[bucket1]).toBeCloseTo(0.6, 3);
   });
 
   it('tracks controlled and uncontrolled buckets when provided', async () => {
     const state = {};
-    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const saveState = (nextState: PowerTrackerState) => Object.assign(state, nextState);
     const rebuildPlanFromCache = vi.fn();
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
@@ -227,14 +227,14 @@ describe('power tracker integration', () => {
     });
 
     const bucketKey = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
-    const snapshot = state as any;
-    expect(snapshot.controlledBuckets[bucketKey]).toBeCloseTo(0.3, 3);
-    expect(snapshot.uncontrolledBuckets[bucketKey]).toBeCloseTo(0.2, 3);
+    const snapshot = state as PowerTrackerState & Record<string, unknown>;
+    expect(snapshot.controlledBuckets?.[bucketKey]).toBeCloseTo(0.3, 3);
+    expect(snapshot.uncontrolledBuckets?.[bucketKey]).toBeCloseTo(0.2, 3);
   });
 
   it('tracks exempt buckets when provided', async () => {
     const state = {};
-    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const saveState = (nextState: PowerTrackerState) => Object.assign(state, nextState);
     const rebuildPlanFromCache = vi.fn();
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
@@ -259,13 +259,13 @@ describe('power tracker integration', () => {
     });
 
     const bucketKey = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
-    const snapshot = state as any;
-    expect(snapshot.exemptBuckets[bucketKey]).toBeCloseTo(0.2, 3);
+    const snapshot = state as PowerTrackerState & Record<string, unknown>;
+    expect(snapshot.exemptBuckets?.[bucketKey]).toBeCloseTo(0.2, 3);
   });
 
   it('tracks per-device measured buckets when provided on both samples', async () => {
     const state = {};
-    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const saveState = (nextState: PowerTrackerState) => Object.assign(state, nextState);
     const rebuildPlanFromCache = vi.fn();
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
@@ -290,15 +290,15 @@ describe('power tracker integration', () => {
     });
 
     const bucketKey = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
-    const snapshot = state as any;
-    expect(snapshot.deviceBuckets.heater[bucketKey]).toBeCloseTo(0.6, 3);
-    expect(snapshot.deviceBuckets.ev[bucketKey]).toBe(0);
+    const snapshot = state as PowerTrackerState & Record<string, unknown>;
+    expect(snapshot.deviceBuckets?.heater[bucketKey]).toBeCloseTo(0.6, 3);
+    expect(snapshot.deviceBuckets?.ev[bucketKey]).toBe(0);
     expect(snapshot.lastDevicePowerWById).toEqual({ heater: 1200, ev: 0 });
   });
 
   it('splits per-device measured buckets across hour boundaries', async () => {
     const state = {};
-    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const saveState = (nextState: PowerTrackerState) => Object.assign(state, nextState);
     const rebuildPlanFromCache = vi.fn();
     const start = Date.UTC(2025, 0, 1, 0, 50, 0);
 
@@ -324,14 +324,14 @@ describe('power tracker integration', () => {
 
     const bucket0 = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
     const bucket1 = new Date(Date.UTC(2025, 0, 1, 1, 0, 0)).toISOString();
-    const snapshot = state as any;
-    expect(snapshot.deviceBuckets.heater[bucket0]).toBeCloseTo(0.3, 3);
-    expect(snapshot.deviceBuckets.heater[bucket1]).toBeCloseTo(0.3, 3);
+    const snapshot = state as PowerTrackerState & Record<string, unknown>;
+    expect(snapshot.deviceBuckets?.heater[bucket0]).toBeCloseTo(0.3, 3);
+    expect(snapshot.deviceBuckets?.heater[bucket1]).toBeCloseTo(0.3, 3);
   });
 
   it('does not infer per-device buckets when current measured evidence is missing', async () => {
     const state = {};
-    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const saveState = (nextState: PowerTrackerState) => Object.assign(state, nextState);
     const rebuildPlanFromCache = vi.fn();
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
@@ -355,14 +355,14 @@ describe('power tracker integration', () => {
       saveState,
     });
 
-    const snapshot = state as any;
+    const snapshot = state as PowerTrackerState & Record<string, unknown>;
     expect(snapshot.deviceBuckets?.heater).toBeUndefined();
     expect(snapshot.lastDevicePowerWById).toEqual({});
   });
 
   it('omits per-device buckets when no measured device energy is retained', async () => {
     const state = {};
-    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const saveState = (nextState: PowerTrackerState) => Object.assign(state, nextState);
     const rebuildPlanFromCache = vi.fn();
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
@@ -384,7 +384,7 @@ describe('power tracker integration', () => {
       saveState,
     });
 
-    expect((state as any).deviceBuckets).toBeUndefined();
+    expect((state as Record<string, unknown>).deviceBuckets).toBeUndefined();
   });
 
   it('prunes old per-device measured buckets', () => {

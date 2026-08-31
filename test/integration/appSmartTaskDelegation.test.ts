@@ -1,3 +1,5 @@
+import type MyApp from '../../app.ts';
+import { partialDouble } from '../helpers/partialDouble';
 /**
  * The smart-task surface `PelsApp` exposes to the widget host API and the
  * settings-UI handlers is a set of thin stubs delegating to two collaborators
@@ -78,13 +80,15 @@ const buildAppWithRecorders = (options: {
       }],
     });
   }
-  app.deferredObjectiveActivePlanRecorder = {
-    getActivePlansSnapshot: () => options.activePlans ?? null,
-  };
-  app.deferredObjectivePlanHistoryRecorder = {
-    getHistorySnapshot: () => options.history,
+  // The recorder contracts promise a snapshot; these doubles surface the
+  // test-declared absence exactly as the untyped stubs did at runtime.
+  app.deferredObjectiveActivePlanRecorder = partialDouble<MyApp['deferredObjectiveActivePlanRecorder']>({
+    getActivePlansSnapshot: () => (options.activePlans ?? null) as DeferredObjectiveActivePlansV1,
+  });
+  app.deferredObjectivePlanHistoryRecorder = partialDouble<MyApp['deferredObjectivePlanHistoryRecorder']>({
+    getHistorySnapshot: () => options.history as DeferredObjectivePlanHistoryV5,
     getInProgressTrajectory: () => null,
-  };
+  });
   return app;
 };
 
@@ -163,10 +167,10 @@ describe('AppSmartTaskApi boot-window invariants', () => {
   // sibling read the preview's object literal happens to evaluate first.
   it('throws instead of previewing against a defaulted daily-budget snapshot', () => {
     const app = buildAppWithRecorders();
-    app.priceCoordinator = {
+    app.priceCoordinator = partialDouble<MyApp['priceCoordinator']>({
       getPriceUnitLabel: () => 'NOK/kWh',
       getPriceOptimizationEnabled: () => false,
-    };
+    });
     expect(app.dailyBudgetService).toBeUndefined();
     expect(() => app.previewDeferredObjectivePlan(DEVICE_ID, {
       kind: 'temperature',

@@ -50,7 +50,7 @@ describe('Expected power flow card', () => {
     // consumed — and the exclusion had no reason of its own here: this card is a
     // READ ("is there available power for this device"), and a device declaring
     // its load is precisely one PELS has a good estimate for.
-    const condAutocompleteListener = (mockHomeyInstance.flow as any)._conditionCardAutocompleteListeners?.has_headroom_for_device?.device;
+    const condAutocompleteListener = mockHomeyInstance.flow._conditionCardAutocompleteListeners.has_headroom_for_device?.device;
     expect(condAutocompleteListener).toBeDefined();
     const condOptions = await condAutocompleteListener?.('') || [];
     expect(condOptions).toEqual([
@@ -80,7 +80,7 @@ describe('Expected power flow card', () => {
     await app.onInit();
 
     // Sanity: the observe-only devices DO ride the backend snapshot (still tracked).
-    const snapshot = (app as any).latestTargetSnapshot as Array<{ id: string }>;
+    const snapshot = app.latestTargetSnapshot as Array<{ id: string }>;
     expect(snapshot.map((d) => d.id)).toEqual(expect.arrayContaining(['dev-batt', 'dev-pv']));
 
     const actionAutocomplete = mockHomeyInstance.flow._actionCardAutocompleteListeners.set_expected_power_usage?.device;
@@ -110,18 +110,18 @@ describe('Expected power flow card', () => {
     const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
     await expect(runAction({ device: { id: 'dev-1' }, power_w: 1500 })).resolves.toBe(true);
 
-    const snapshot = (app as any).latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
+    const snapshot = app.latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
     const snapDev = snapshot.find((d) => d.id === 'dev-1');
     expect(snapDev?.expectedPowerKw).toBeCloseTo(1.5);
 
     // When the device reports real power again, override is cleared
     await device.setCapabilityValue('measure_power', 2000);
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
 
-    const refreshedSnapshot = (app as any).latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
+    const refreshedSnapshot = app.latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
     const refreshedDev = refreshedSnapshot.find((d) => d.id === 'dev-1');
     expect(refreshedDev?.expectedPowerKw).toBeCloseTo(1.5);
-    expect((app as any).expectedPowerKwOverrides['dev-1']).toBeTruthy();
+    expect(app.expectedPowerKwOverrides['dev-1']).toBeTruthy();
   });
 
   it('does not rewrite override when requested expected power is unchanged', async () => {
@@ -132,10 +132,10 @@ describe('Expected power flow card', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).expectedPowerKwOverrides['dev-1'] = { kw: 1.25, ts: 12345 };
+    app.expectedPowerKwOverrides['dev-1'] = { kw: 1.25, ts: 12345 };
     const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
     await expect(runAction({ device: { id: 'dev-1' }, power_w: 1250 })).resolves.toBe(true);
-    expect((app as any).expectedPowerKwOverrides['dev-1']).toEqual({ kw: 1.25, ts: 12345 });
+    expect(app.expectedPowerKwOverrides['dev-1']).toEqual({ kw: 1.25, ts: 12345 });
   });
 
   // Was: rejected with "Device already has load configured in settings". That
@@ -157,7 +157,7 @@ describe('Expected power flow card', () => {
     const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
     await expect(runAction({ device: { id: 'dev-2' }, power_w: 1200 })).resolves.toBe(true);
 
-    const snapshot = (app as any).latestTargetSnapshot as Array<{
+    const snapshot = app.latestTargetSnapshot as Array<{
       id: string; expectedPowerKw?: number; expectedPowerSource?: string;
     }>;
     const snapDev = snapshot.find((d) => d.id === 'dev-2');
@@ -218,7 +218,7 @@ describe('Expected power flow card', () => {
     const app = createApp();
     await app.onInit();
 
-    const snapshot = (app as any).latestTargetSnapshot as Array<{ id: string; steppedLoadProfile?: unknown }>;
+    const snapshot = app.latestTargetSnapshot as Array<{ id: string; steppedLoadProfile?: unknown }>;
     expect(snapshot.find((entry) => entry.id === 'dev-target-power')?.steppedLoadProfile).toBeDefined();
 
     const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
@@ -240,24 +240,24 @@ describe('Expected power flow card', () => {
     await app.onInit();
 
     // With load set, should use it
-    const snapshotWithLoad = (app as any).latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
+    const snapshotWithLoad = app.latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
     const snapWithLoad = snapshotWithLoad.find((d) => d.id === 'dev-3');
     expect(snapWithLoad?.expectedPowerKw).toBeCloseTo(0.7);
 
     // Remove load to test recency between override and measurement
     device.setSettings({ load: 0 });
-    await (app as any).refreshTargetDevicesSnapshot();
+    await app.refreshTargetDevicesSnapshot();
     const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
     await runAction({ device: { id: 'dev-3' }, power_w: 1500 }); // override first
-    await (app as any).refreshTargetDevicesSnapshot();
-    const snapshotOverride = (app as any).latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
+    await app.refreshTargetDevicesSnapshot();
+    const snapshotOverride = app.latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
     const snapOverride = snapshotOverride.find((d) => d.id === 'dev-3');
     expect(snapOverride?.expectedPowerKw).toBeCloseTo(1.5);
 
     // A measurement below the manual value does not lower it.
     await device.setCapabilityValue('measure_power', 900);
-    await (app as any).refreshTargetDevicesSnapshot();
-    const snapshotMeasured = (app as any).latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
+    await app.refreshTargetDevicesSnapshot();
+    const snapshotMeasured = app.latestTargetSnapshot as Array<{ id: string; expectedPowerKw?: number }>;
     const snapMeasured = snapshotMeasured.find((d) => d.id === 'dev-3');
     expect(snapMeasured?.expectedPowerKw).toBeCloseTo(1.5);
 
@@ -266,8 +266,8 @@ describe('Expected power flow card', () => {
     // be rewritten from underneath them; restore sizing still sees the live
     // 1.6 kW through the measured axis.
     await device.setCapabilityValue('measure_power', 1600);
-    await (app as any).refreshTargetDevicesSnapshot();
-    const snapshotHigh = (app as any).latestTargetSnapshot as Array<{
+    await app.refreshTargetDevicesSnapshot();
+    const snapshotHigh = app.latestTargetSnapshot as Array<{
       id: string; expectedPowerKw?: number; expectedPowerSource?: string;
     }>;
     const snapHigh = snapshotHigh.find((d) => d.id === 'dev-3');
@@ -275,10 +275,10 @@ describe('Expected power flow card', () => {
     expect(snapHigh?.expectedPowerSource).toBe('manual');
 
     // Clear overrides and measurements -> fallback to 1kW
-    Object.keys((app as any).expectedPowerKwOverrides).forEach((k) => delete (app as any).expectedPowerKwOverrides[k]);
-    Object.keys((app as any).lastPositiveMeasuredPowerKw).forEach((k) => delete (app as any).lastPositiveMeasuredPowerKw[k]);
-    Object.keys((app as any).lastKnownPowerKw).forEach((k) => delete (app as any).lastKnownPowerKw[k]);
-    const snapshotFallback = (app as any).deviceManager.parseDeviceListForTests([
+    Object.keys(app.expectedPowerKwOverrides).forEach((k) => delete app.expectedPowerKwOverrides[k]);
+    Object.keys(app.lastPositiveMeasuredPowerKw).forEach((k) => delete app.lastPositiveMeasuredPowerKw[k]);
+    Object.keys(app.lastKnownPowerKw).forEach((k) => delete app.lastKnownPowerKw[k]);
+    const snapshotFallback = app.deviceManager.parseDeviceListForTests([
       {
         id: 'dev-3',
         capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],

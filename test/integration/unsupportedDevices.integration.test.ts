@@ -64,7 +64,7 @@ describe('Unsupported device handling', () => {
             'vent-1': buildVentilationApiDevice(),
         });
 
-        await (app as any).refreshTargetDevicesSnapshot();
+        await app.refreshTargetDevicesSnapshot();
 
         const snapshot = getLatestTargetSnapshotForTests();
         const entry = snapshot.find((device) => device.id === 'vent-1');
@@ -105,7 +105,7 @@ describe('Unsupported device handling', () => {
             }),
         });
 
-        await (app as any).refreshTargetDevicesSnapshot();
+        await app.refreshTargetDevicesSnapshot();
 
         const snapshot = getLatestTargetSnapshotForTests();
         const entry = snapshot.find((device) => device.id === 'vent-1');
@@ -155,7 +155,7 @@ describe('Unsupported device handling', () => {
             },
         });
 
-        await (app as any).refreshTargetDevicesSnapshot();
+        await app.refreshTargetDevicesSnapshot();
 
         // Still supported, still in the snapshot, still configurable.
         expect(getLatestTargetSnapshotForTests().find((device) => device.id === 'vent-1')?.powerCapable)

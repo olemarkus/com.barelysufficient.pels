@@ -1,3 +1,5 @@
+import type { Logger as PinoLogger } from '../../lib/logging/logger';
+import { partialDouble } from '../helpers/partialDouble';
 import { planContextPower } from '../utils/planContextPowerFixture';
 import type { Mock } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
@@ -4432,7 +4434,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
         log: vi.fn(),
         debugStructured: vi.fn(),
-        structuredLog: structuredLog as any,
+        structuredLog: partialDouble<PinoLogger>(structuredLog),
       },
     );
 
@@ -4489,7 +4491,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
         debugStructured: vi.fn(),
-        structuredLog: structuredLog as any,
+        structuredLog: partialDouble<PinoLogger>(structuredLog),
       },
     );
 

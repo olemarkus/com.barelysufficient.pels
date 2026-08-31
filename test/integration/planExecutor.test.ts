@@ -1,3 +1,7 @@
+import type { HomeyDeviceLike } from '../../lib/utils/types';
+import type { Logger as PinoLogger } from '../../lib/logging/logger';
+import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsServiceTypes';
+import { partialDouble } from '../helpers/partialDouble';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
@@ -1121,7 +1125,7 @@ describe('PlanExecutor restore logging', () => {
       available: true,
       binaryControl: { on: true },
     }], {
-      deviceDiagnostics: deviceDiagnostics as any,
+      deviceDiagnostics: partialDouble<DeviceDiagnosticsRecorder>(deviceDiagnostics),
     });
 
     await executor.applyPlanActions({
@@ -2105,7 +2109,7 @@ describe('PlanExecutor stepped loads', () => {
           onoff: { value: true },
           max_power_3000: { value: '1' },
         },
-      } as any,
+      } as HomeyDeviceLike,
       clearWhenUnavailable: true,
     });
 
@@ -3115,7 +3119,7 @@ describe('PlanExecutor stepped loads', () => {
     expect(logCapture.findEvent('binary_command_applied')).toBeUndefined();
     expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
     expect(state.lastDeviceControlledMs['dev-1']).toBeUndefined();
-    expect((deps.homey.settings.set as any)).not.toHaveBeenCalledWith(
+    expect((deps.homey.settings.set as ReturnType<typeof vi.fn>)).not.toHaveBeenCalledWith(
       DEVICE_LAST_CONTROLLED_MS,
       expect.objectContaining({ 'dev-1': expect.any(Number) }),
     );
@@ -3236,7 +3240,7 @@ describe('PlanExecutor stepped loads', () => {
 
     expect(state.lastDeviceRestoreMs['dev-1']).toEqual(expect.any(Number));
     expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
-    expect((deps.homey.settings.set as any)).toHaveBeenCalledWith(
+    expect((deps.homey.settings.set as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
       DEVICE_LAST_CONTROLLED_MS,
       expect.objectContaining({ 'dev-1': expect.any(Number) }),
     );
@@ -3299,8 +3303,8 @@ describe('PlanExecutor stepped loads', () => {
       ],
     });
 
-    const settingsCalls = (deps.homey.settings.set as any).mock.calls
-      .filter(([key]: [string]) => key === DEVICE_LAST_CONTROLLED_MS);
+    const settingsCalls = (deps.homey.settings.set as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([key]) => key === DEVICE_LAST_CONTROLLED_MS);
     expect(settingsCalls.length).toBeLessThanOrEqual(1);
     if (settingsCalls[0]) {
       expect(settingsCalls[0][1]).toEqual(expect.objectContaining({
@@ -4015,7 +4019,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const structuredLog = { info: vi.fn() };
     const debugStructured = vi.fn();
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot, {
-      structuredLog: structuredLog as any,
+      structuredLog: partialDouble<PinoLogger>(structuredLog),
       debugStructured,
     });
 
@@ -4115,7 +4119,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const structuredLog = { info: vi.fn() };
     const debugStructured = vi.fn();
     const { executor } = buildExecutor(state, snapshot, {
-      structuredLog: structuredLog as any,
+      structuredLog: partialDouble<PinoLogger>(structuredLog),
       debugStructured,
     });
 
@@ -4160,7 +4164,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const structuredLog = { info: vi.fn() };
     const debugStructured = vi.fn();
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot, {
-      structuredLog: structuredLog as any,
+      structuredLog: partialDouble<PinoLogger>(structuredLog),
       debugStructured,
     });
 
@@ -4218,7 +4222,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const structuredLog = { info: vi.fn() };
     const debugStructured = vi.fn();
     const { executor, deviceManager } = buildExecutor(state, snapshot, {
-      structuredLog: structuredLog as any,
+      structuredLog: partialDouble<PinoLogger>(structuredLog),
       debugStructured,
     });
 
@@ -4282,7 +4286,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const structuredLog = { info: vi.fn() };
     const debugStructured = vi.fn();
     const { executor, deviceManager } = buildExecutor(state, snapshot, {
-      structuredLog: structuredLog as any,
+      structuredLog: partialDouble<PinoLogger>(structuredLog),
       debugStructured,
     });
 

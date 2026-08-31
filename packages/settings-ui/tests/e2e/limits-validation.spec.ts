@@ -1,3 +1,4 @@
+import type { StubWindow } from './stubWindow';
 import { expect, test, type Page } from './fixtures/test';
 
 const openLimitsAndSafety = async (page: Page) => {
@@ -50,7 +51,7 @@ test.describe('Limits & safety inline validation', () => {
 
     // Seed a known-good baseline so we can detect mutation.
     await page.evaluate(() => {
-      const stub = (window as any).Homey.__stub;
+      const stub = (window as unknown as StubWindow).Homey.__stub;
       stub.setSetting('capacity_limit_kw', 8);
       stub.setSetting('capacity_margin_kw', 0.5);
     });
@@ -64,7 +65,7 @@ test.describe('Limits & safety inline validation', () => {
 
     // The persisted margin must not have moved.
     const persistedMargin = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
-      (window as any).Homey.get('capacity_margin_kw', (error: Error | null, value?: unknown) => {
+      (window as unknown as StubWindow).Homey.get('capacity_margin_kw', (error: Error | null, value?: unknown) => {
         if (error) reject(error);
         else resolve(value);
       });

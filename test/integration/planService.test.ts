@@ -1,6 +1,16 @@
 import { PassThrough } from 'node:stream';
 import type { Mock } from 'vitest';
 import { PlanService } from '../../lib/plan/planService';
+import { partialDouble } from '../helpers/partialDouble';
+import type { Logger } from '../../lib/logging/logger';
+
+type PlanServiceDeps = ConstructorParameters<typeof PlanService>[0];
+
+const stubDepsHomey = (parts: { set?: Mock; realtime?: Mock } = {}): PlanServiceDeps['homey'] => partialDouble<PlanServiceDeps['homey']>({
+  settings: partialDouble<PlanServiceDeps['homey']['settings']>({ set: parts.set ?? vi.fn() }),
+  api: partialDouble<PlanServiceDeps['homey']['api']>({ realtime: parts.realtime ?? vi.fn().mockResolvedValue(undefined) }),
+  flow: partialDouble<PlanServiceDeps['homey']['flow']>({}),
+});
 import type {
   DevicePlan,
   PlanInputDevice,
@@ -100,13 +110,9 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     homeId: 'main',
     getObservedTemperature: () => ({ kind: 'absent' } as const),
     planBuildGate: openPlanBuildGate(),
-    homey: {
-      settings: { set: vi.fn() },
-      api: { realtime: vi.fn().mockResolvedValue(undefined) },
-      flow: {},
-    } as any,
+    homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
     writePelsStatus: vi.fn(),
-    planEngine: {
+    planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
       computeDynamicSoftLimit: vi.fn(() => 0),
@@ -115,7 +121,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-    } as any,
+    }),
     getPlanDevices: () => [],
     getSettleDevices: () => [],
     getCapacityDryRun: () => false,
@@ -173,12 +179,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: settingsSet },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: planEngine as any,
+      homey: stubDepsHomey({ set: settingsSet, realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
@@ -232,12 +234,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: settingsSet },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: planEngine as any,
+      homey: stubDepsHomey({ set: settingsSet, realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
@@ -340,7 +338,7 @@ describe('PlanService', () => {
     };
     const debugStructured = vi.fn();
     const { service } = createPlanService({
-      planEngine: {
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
@@ -352,7 +350,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(undefined),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       loggers: { debugStructured },
     });
 
@@ -378,7 +376,7 @@ describe('PlanService', () => {
   it('logs overview changes on rebuild using the shared formatter output', async () => {
     const overviewDebugStructured = vi.fn();
     const { service } = createPlanService({
-      planEngine: {
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'on',
@@ -393,7 +391,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       overviewDebugStructured,
     });
 
@@ -433,7 +431,7 @@ describe('PlanService', () => {
     const recorder = new DeviceOverviewLogRecorder();
     const overviewDebugStructured = vi.fn();
     const { service } = createPlanService({
-      planEngine: {
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'on',
@@ -448,7 +446,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       overviewDebugStructured,
       isOverviewDebugEnabled: () => false,
       deviceOverviewLogRecorder: recorder,
@@ -503,7 +501,7 @@ describe('PlanService', () => {
       reason: fixtureDeviceReason('shed due to capacity')!,
     })) as DevicePlan['devices'][number]);
     const { service } = createPlanService({
-      planEngine: {
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(plan),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -512,7 +510,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       overviewDebugStructured,
     });
 
@@ -543,7 +541,7 @@ describe('PlanService', () => {
   it('logs the confirmed reported step in overview events', async () => {
     const overviewDebugStructured = vi.fn();
     const { service } = createPlanService({
-      planEngine: {
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           // Stepped is the profile-presence capability (the planner no longer reads
@@ -563,7 +561,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       overviewDebugStructured,
     });
 
@@ -587,7 +585,7 @@ describe('PlanService', () => {
       expectedPowerKw: 3,
     });
     const { service } = createPlanService({
-      planEngine: {
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValueOnce(samePlan).mockResolvedValueOnce(samePlan),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -596,7 +594,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       overviewDebugStructured,
     });
 
@@ -611,12 +609,8 @@ describe('PlanService', () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const { service } = createPlanService({
-      homey: {
-        settings: { set: settingsSet },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: settingsSet, realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn()
           .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
@@ -639,7 +633,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       overviewDebugStructured,
     });
 
@@ -678,12 +672,8 @@ describe('PlanService', () => {
       boostActive: false,
     });
     const { service } = createPlanService({
-      homey: {
-        settings: { set: settingsSet },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: settingsSet, realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
@@ -695,7 +685,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       overviewDebugStructured,
     });
 
@@ -720,7 +710,7 @@ describe('PlanService', () => {
       expectedPowerKw: 3,
     });
     const { service } = createPlanService({
-      planEngine: {
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(samePlan),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -729,14 +719,14 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       overviewDebugStructured: undefined,
       isOverviewDebugEnabled: () => true,
     });
 
     await service.rebuildPlanFromCache('power_delta');
 
-    expect((service as any).lastOverviewSignatureByDeviceId.size).toBe(0);
+    expect(service['lastOverviewSignatureByDeviceId'].size).toBe(0);
   });
 
   it('logs overview changes during live sync when a visible field changes', async () => {
@@ -769,12 +759,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -785,7 +771,7 @@ describe('PlanService', () => {
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         hasPendingBinaryCommands: vi.fn(() => true),
         syncPendingBinaryCommands: vi.fn(() => false),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -795,7 +781,7 @@ describe('PlanService', () => {
       isOverviewDebugEnabled: () => true,
     });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
+    service['latestPlanSnapshot'] = buildPlan(20, 'keep', {}, {
       currentState: 'off',
       plannedState: 'keep',
       boostActive: false,
@@ -803,7 +789,7 @@ describe('PlanService', () => {
       expectedPowerKw: 3,
       binaryCommandPending: true,
     });
-    (service as any).emitPlanUpdated((service as any).latestPlanSnapshot);
+    service['emitPlanUpdated'](service['latestPlanSnapshot']);
     overviewDebugStructured.mockClear();
 
     await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
@@ -867,7 +853,7 @@ describe('PlanService', () => {
         },
       },
     );
-    (service as any).latestPlanSnapshot = runtimePlan;
+    service['latestPlanSnapshot'] = runtimePlan;
 
     expect(service.getLatestPlanSnapshot()).toBe(runtimePlan);
     expect(service.getLatestPlanSnapshotForUi()).toEqual({
@@ -937,12 +923,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
@@ -961,7 +943,7 @@ describe('PlanService', () => {
           return { deviceWriteCount: 1 };
         }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -1008,12 +990,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: settingsSet },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: planEngine as any,
+      homey: stubDepsHomey({ set: settingsSet, realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
@@ -1045,12 +1023,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(19, 'keep')),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -1059,13 +1033,13 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(undefined),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
-      loggers: { structuredLog: structuredLog as any },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
           });
 
     await service.rebuildPlanFromCache('power_delta');
@@ -1099,12 +1073,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: settingsSet },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: planEngine as any,
+      homey: stubDepsHomey({ set: settingsSet, realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
@@ -1147,12 +1117,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -1161,7 +1127,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -1169,7 +1135,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
+    service['latestPlanSnapshot'] = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
       currentTemperature: 20,
@@ -1236,12 +1202,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -1250,7 +1212,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -1258,7 +1220,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
     });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
+    service['latestPlanSnapshot'] = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       currentTarget: 20,
       currentTemperature: 20,
@@ -1282,7 +1244,7 @@ describe('PlanService', () => {
   it('keeps the observed target stale while exposing pending confirmation state', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
-    const decoratePlanWithPendingTargetCommands = vi.fn((plan: DevicePlan) => ({
+    const decoratePlanWithPendingTargetCommands = vi.fn((plan: DevicePlan): DevicePlan => ({
       ...plan,
       devices: plan.devices.map((device) => ({
         ...device,
@@ -1290,7 +1252,7 @@ describe('PlanService', () => {
           desired: 20,
           retryCount: 0,
           nextRetryAtMs: Date.now() + 30_000,
-          status: 'waiting_confirmation',
+          status: 'waiting_confirmation' as const,
           lastObservedValue: 18,
           lastObservedSource: 'snapshot_refresh' as const,
         },
@@ -1324,12 +1286,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: settingsSet },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: settingsSet, realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -1341,7 +1299,7 @@ describe('PlanService', () => {
         hasPendingTargetCommands: vi.fn(() => true),
         syncPendingTargetCommands: vi.fn(() => true),
         decoratePlanWithPendingTargetCommands,
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -1349,7 +1307,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(18, 'keep');
+    service['latestPlanSnapshot'] = buildPlan(18, 'keep');
 
     await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
     expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
@@ -1381,7 +1339,7 @@ describe('PlanService', () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
     let hasPendingTargetCommands = true;
-    const decoratePlanWithPendingTargetCommands = vi.fn((plan: DevicePlan) => ({
+    const decoratePlanWithPendingTargetCommands = vi.fn((plan: DevicePlan): DevicePlan => ({
       ...plan,
       devices: plan.devices.map((device) => ({
         ...device,
@@ -1390,7 +1348,7 @@ describe('PlanService', () => {
             desired: 20,
             retryCount: 0,
             nextRetryAtMs: Date.now() + 30_000,
-            status: 'waiting_confirmation',
+            status: 'waiting_confirmation' as const,
             lastObservedValue: 18,
             lastObservedSource: 'rebuild' as const,
           }
@@ -1425,12 +1383,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: settingsSet },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: settingsSet, realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -1445,7 +1399,7 @@ describe('PlanService', () => {
           return true;
         }),
         decoratePlanWithPendingTargetCommands,
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -1453,7 +1407,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = decoratePlanWithPendingTargetCommands(buildPlan(18, 'keep'));
+    service['latestPlanSnapshot'] = decoratePlanWithPendingTargetCommands(buildPlan(18, 'keep'));
 
     await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
     expect(service.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
@@ -1498,12 +1452,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -1514,7 +1464,7 @@ describe('PlanService', () => {
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         hasPendingBinaryCommands: vi.fn(() => true),
         syncPendingBinaryCommands: vi.fn(() => false),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -1522,7 +1472,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = {
+    service['latestPlanSnapshot'] = {
       ...buildPlan(20, 'meter settling (30s remaining)', {}, {
         currentState: 'on',
         plannedState: 'shed',
@@ -1579,12 +1529,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -1598,7 +1544,7 @@ describe('PlanService', () => {
           hasPendingBinaryCommands = false;
           return true;
         }),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -1606,7 +1552,7 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => null,
           });
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'cooldown (restore, 30s remaining)', {}, {
+    service['latestPlanSnapshot'] = buildPlan(20, 'cooldown (restore, 30s remaining)', {}, {
       currentState: 'on',
       plannedState: 'shed',
       boostActive: false,
@@ -1690,12 +1636,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
           meta: buildPlanMeta({
@@ -1739,7 +1681,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -1813,12 +1755,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
@@ -1834,7 +1772,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -1925,12 +1863,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
           meta: buildPlanMeta({
@@ -1972,7 +1906,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -2071,12 +2005,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
           meta: buildPlanMeta({
@@ -2120,7 +2050,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -2191,12 +2121,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(21, 'keep', {}, {
           currentState: 'on',
@@ -2213,7 +2139,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -2257,12 +2183,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -2271,7 +2193,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
         applySheddingToDevice,
-      } as any,
+      }),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
@@ -2344,12 +2266,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: planEngine as any,
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -2400,12 +2318,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot,
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -2418,7 +2332,7 @@ describe('PlanService', () => {
         syncPendingBinaryCommands,
         prunePendingTargetCommands: vi.fn(() => false),
         decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
-      } as any,
+      }),
       getPlanDevices,
       // Settle reads its own source in production (the device snapshot); provide one here
       // (a separate fn, same devices) so the binary-settle fallback does not double-count
@@ -2493,12 +2407,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -2511,7 +2421,7 @@ describe('PlanService', () => {
         syncPendingBinaryCommands,
         prunePendingTargetCommands: vi.fn(() => false),
         decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
-      } as any,
+      }),
       getPlanDevices: () => liveDevices,
       getSettleDevices: () => settleDevices,
       getCapacityDryRun: () => true,
@@ -2529,7 +2439,7 @@ describe('PlanService', () => {
       }),
     ], 'rebuild');
 
-    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, { binaryCommandPending: true });
+    service['latestPlanSnapshot'] = buildPlan(20, 'keep', {}, { binaryCommandPending: true });
     liveDevices = [buildLiveDevice(realtimeEvidence)];
     settleDevices = [{
       id: 'dev-1',
@@ -2573,12 +2483,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: settingsSet },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: planEngine as any,
+      homey: stubDepsHomey({ set: settingsSet, realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
@@ -2680,12 +2586,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: planEngine as any,
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => liveDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveDevices),
       getCapacityDryRun: () => false,
@@ -2765,12 +2667,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: planEngine as any,
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => liveDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveDevices),
       getCapacityDryRun: () => false,
@@ -2812,12 +2710,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: {},
-        flow: {},
-      } as any,
-      planEngine: { ...createMockPlanEngine() } as any,
+      homey: stubDepsHomey(),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({ ...createMockPlanEngine() }),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => true,
@@ -2825,10 +2719,10 @@ describe('PlanService', () => {
       getLastPowerUpdate: () => 123456,
           });
 
-    const plan = {
+    const plan: DevicePlan = {
       meta: buildPlanMeta({ totalKw: null, softLimitKw: 0, headroomKw: 0 }),
       devices: [],
-    } as any;
+    };
     const changes = {
       actionChanged: false,
       actionSignature: 'a',
@@ -2872,12 +2766,8 @@ describe('PlanService', () => {
       // writer to the same fake-timer-advancing spy the settings.set used to be, so
       // the phase-timing assertion keeps observing the ~7ms status write cost.
       writePelsStatus: settingsSet,
-      homey: {
-        settings: { set: settingsSet },
-        api: { realtime },
-        flow: {},
-      } as any,
-      planEngine: planEngine as any,
+      homey: stubDepsHomey({ set: settingsSet, realtime }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
@@ -2925,18 +2815,14 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: settingsSet },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: planEngine as any,
+      homey: stubDepsHomey({ set: settingsSet, realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => null,
-      loggers: { structuredLog: structuredLog as any },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
           });
 
     const beforePerf = getPerfSnapshot();
@@ -2964,7 +2850,7 @@ describe('PlanService', () => {
   it('suppresses structured rebuild logs for unchanged no-op rebuilds', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service } = createPlanService({
-      loggers: { structuredLog: structuredLog as any },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -2978,7 +2864,7 @@ describe('PlanService', () => {
   it('emits structured rebuild logs for initial rebuild reasons even without action changes', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service } = createPlanService({
-      loggers: { structuredLog: structuredLog as any },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -3078,7 +2964,7 @@ describe('PlanService', () => {
   it('emits structured rebuild logs for slow rebuilds even without action changes', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: structuredLog as any },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -3105,7 +2991,7 @@ describe('PlanService', () => {
   it('emits plan_rebuild_completed at debug level when actionChanged but no actions applied (dry-run)', async () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: structuredLog as any },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
       getCapacityDryRun: () => true,
     });
 
@@ -3134,8 +3020,8 @@ describe('PlanService', () => {
   it('emits plan_rebuild_completed with concrete deviceWriteCount when actuation wrote to devices', async () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: structuredLog as any },
-      planEngine: {
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
@@ -3147,7 +3033,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 2 }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -3172,9 +3058,9 @@ describe('PlanService', () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const schedulePostActuationRefresh = vi.fn();
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: structuredLog as any },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
       schedulePostActuationRefresh,
-      planEngine: {
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
@@ -3186,7 +3072,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0, commandRequestCount: 1 }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -3220,8 +3106,8 @@ describe('PlanService', () => {
   it('normalizes non-finite actuation counts to zero in rebuild logs and traces', async () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: structuredLog as any },
-      planEngine: {
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
@@ -3236,7 +3122,7 @@ describe('PlanService', () => {
           commandRequestCount: Number.POSITIVE_INFINITY,
         }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -3266,7 +3152,7 @@ describe('PlanService', () => {
   it('emits structured rebuild logs for failed rebuilds', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: structuredLog as any },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
     });
     (deps.planEngine.buildDevicePlanSnapshot as Mock).mockImplementation(async () => {
       vi.advanceTimersByTime(17);
@@ -3310,12 +3196,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
@@ -3328,7 +3210,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -3370,12 +3252,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
@@ -3388,7 +3266,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(false),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -3460,12 +3338,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: planEngine as any,
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -3511,12 +3385,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'on',
@@ -3532,7 +3402,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
-      } as any,
+      }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
       getCapacityDryRun: () => false,
@@ -3555,12 +3425,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -3569,7 +3435,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(undefined),
         applySheddingToDevice,
-      } as any,
+      }),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
@@ -3592,12 +3458,8 @@ describe('PlanService', () => {
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
       writePelsStatus: vi.fn(),
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
+      homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
@@ -3606,7 +3468,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
         applySheddingToDevice,
-      } as any,
+      }),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
       getCapacityDryRun: () => false,
