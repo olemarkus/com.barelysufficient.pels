@@ -1,5 +1,5 @@
 // Unit tests for the power-source epoch fence
-// (`setup/homeRuntime/powerSourceEpochFence.ts`), the pure generation/latch
+// (`lib/power/powerSourceEpochFence.ts`), the pure generation/latch
 // machine `HomeRuntimeRegistry` uses to decide whether per-meter samples may be
 // consumed. The boundary read is injected, so there is no SDK here — the fence
 // itself is a state machine over `PowerSource | null`.
@@ -9,7 +9,7 @@
 // authorization, and only a committed transition against the latest observed
 // generation reopens it.
 import { describe, expect, it } from 'vitest';
-import { PowerSourceEpochFence } from '../../setup/homeRuntime/powerSourceEpochFence';
+import { PowerSourceEpochFence } from '../../lib/power/powerSourceEpochFence';
 import type { PowerSource } from '../../lib/power/powerSource';
 
 // Serves `reads` in order, then latches on the last one. The FIRST entry is

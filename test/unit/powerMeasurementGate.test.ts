@@ -1,5 +1,5 @@
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import { PowerMeasurementGate } from '../../setup/powerMeasurementGate';
+import { PowerMeasurementGate } from '../../lib/power/powerMeasurementGate';
 
 const WARN_AFTER_MS = 60_000;
 

@@ -16,7 +16,7 @@ import { createSettingsHandler } from '../lib/utils/settingsHandlers';
 import {
   stopFlowPowerSampleFreshnessClock,
   syncFlowPowerSampleFreshnessClock,
-} from './flowPowerSampleFreshnessClock';
+} from '../lib/power/flowPowerSampleFreshnessClock';
 import { createCapacitySettingsStore } from './capacitySettingsStoreAdapter';
 import {
   isDeviceControlProfiles,

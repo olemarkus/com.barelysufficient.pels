@@ -46,7 +46,7 @@ import {
 import type { PowerSource } from '../../lib/power/powerSource';
 import { createHomesStore } from '../homeRegistryAdapter';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
-import { PowerSourceEpochFence } from './powerSourceEpochFence';
+import { PowerSourceEpochFence } from '../../lib/power/powerSourceEpochFence';
 import {
   logBundleReplacementFailure,
   logHomeReadFailed,
@@ -61,10 +61,8 @@ import {
   type HomeCapacityBundleDiagnostics,
   type OwningHomeHooks,
 } from './createHomeCapacityBundle';
-import {
-  preparePersistedHomeTrackerForMeter,
-  resetPersistedHomeTrackerFreshness,
-} from './resetPersistedHomeTrackerFreshness';
+import { preparePersistedHomeTrackerForMeter } from '../../lib/power/persistedHomeTracker';
+import { resetPersistedHomeTrackerFreshness } from './resetPersistedHomeTrackerFreshness';
 import { HomeModeOwnershipTransfer } from './homeModeOwnershipTransfer';
 
 const CAPACITY_SCALAR_BASE_KEYS: ReadonlySet<string> = new Set([

@@ -424,7 +424,7 @@ export type SettingsUiPowerStatus = {
  *   with the running planner rewriting the blob promptly. When this arm DOES
  *   resolve, any persisted `pels_status` blob describes a previous era and
  *   must not be served as live — the blob itself is preserved untouched
- *   (`setup/powerMeasurementGate.ts`).
+ *   (`lib/power/powerMeasurementGate.ts`).
  * - `no_status_recorded` — a measurement exists but no parsable `pels_status`
  *   blob has been committed yet (first plan not yet written).
  * - `home_scope_unavailable` — the `?homeId=` read could not be served; the

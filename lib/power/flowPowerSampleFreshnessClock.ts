@@ -1,9 +1,9 @@
-import type { PowerSource } from '../lib/power/powerSource';
-import type { TimerRegistry } from '../lib/utils/timerRegistry';
+import type { PowerSource } from './powerSource';
+import type { TimerRegistry } from '../utils/timerRegistry';
 import {
   POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
   POWER_SAMPLE_STALE_THRESHOLD_MS,
-} from '../packages/shared-domain/src/powerFreshness';
+} from '../../packages/shared-domain/src/powerFreshness';
 
 const FLOW_POWER_SAMPLE_HOLD_REBUILD_INTERVAL_MS = 10 * 1000;
 const FLOW_POWER_SAMPLE_FRESHNESS_TIMER = 'flowPowerSampleFreshness';

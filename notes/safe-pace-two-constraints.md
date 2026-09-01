@@ -331,7 +331,7 @@ obvious:
   (`lib/power/sources/homeyEnergyPoll.ts:5`) drives rebuilds. Under
   `power_source = flow`, `FlowPowerSampleFreshnessClock.runTick` requests a
   `flow_power_sample_hold` rebuild every 10 s for as long as the last sample is
-  fresh and reschedules itself (`setup/flowPowerSampleFreshnessClock.ts:128-132`,
+  fresh and reschedules itself (`lib/power/flowPowerSampleFreshnessClock.ts:128-132`,
   `216-224`), so the wind-down is recomputed without new Flow events. Past 60 s of
   silence the same clock moves the sample to stale-hold and then fail-closed, and
   actuating a drain off stale power would be wrong anyway. Do not add a

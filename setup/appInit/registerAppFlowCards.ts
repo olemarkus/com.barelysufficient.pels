@@ -10,7 +10,7 @@ import {
 import {
   FlowPowerSampleFreshnessClock,
   registerFlowPowerSampleFreshnessClock,
-} from '../flowPowerSampleFreshnessClock';
+} from '../../lib/power/flowPowerSampleFreshnessClock';
 import {
   clearObjectiveForDevice,
   migrateBlobToPerKeyIfNeeded,

@@ -1,6 +1,13 @@
 /**
- * The power-source epoch fence for `HomeRuntimeRegistry`, sliced out of
- * `homeRuntimeRegistry.ts` to keep that entry point under the line budget.
+ * The power-source epoch fence: which observed generation of the configured
+ * power source has been durably handled, and therefore whether a sub-home
+ * bundle may consume meter samples right now.
+ *
+ * `HomeRuntimeRegistry` (`setup/homeRuntime/`) is its only caller, but the
+ * question it answers is a power question, so the state lives here and the
+ * registry is handed the fence. It takes the settings boundary as a
+ * `() => PowerSource | null` reader; `null` means the read failed, and the
+ * fence is the thing that decides that is UNKNOWN rather than Flow.
  *
  * A sub-home bundle is only allowed to consume meter samples while the
  * configured power source is `homey_energy` AND the latest OBSERVED source
@@ -15,7 +22,7 @@
  * `reconcileObservedFromSettings` (the caller's read plus `observeChange`'s),
  * same latch points, same predicates.
  */
-import type { PowerSource } from '../../lib/power/powerSource';
+import type { PowerSource } from './powerSource';
 
 export type PowerSourceEpochFenceOutcome = 'unchanged' | 'observed' | 'unreadable';
 

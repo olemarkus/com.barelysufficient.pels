@@ -1,11 +1,11 @@
-import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
-import type { PowerTrackerState } from '../lib/power/tracker';
-import type { HomeId } from '../lib/utils/settingsKeys';
-import type { Logger as PinoLogger } from '../lib/logging/logger';
-import type { ConfiguredPowerSourceRead } from './powerSourceSettings';
+import { hasPowerMeasurement } from './lastTotalPower';
+import type { PowerTrackerState } from './tracker';
+import type { HomeId } from '../utils/settingsKeys';
+import type { Logger as PinoLogger } from '../logging/logger';
+import type { ConfiguredPowerSourceRead } from './powerSource';
 
 /**
- * The wiring-layer answer to "may the planner build a plan right now?".
+ * The power layer's answer to "may the planner build a plan right now?".
  *
  * PELS does not build a plan for a home whose meter has never reported. The
  * alternative is worse: a plan built with no measurement has to model the

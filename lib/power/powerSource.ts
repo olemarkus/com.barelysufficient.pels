@@ -58,3 +58,22 @@ export const classifyPowerSourceSetting = (evidence: {
   if (keyPresent) return { state: 'suspect', reason: 'missing_existing_key' };
   return { state: 'resolved', value: 'flow' };
 };
+
+/**
+ * The configured power source as a CONSUMER sees it: the classification above
+ * plus the error a throwing adapter needs, and the extra `read_failed` reason
+ * only an I/O boundary can produce.
+ *
+ * This is the port type, so it is declared here rather than beside the settings
+ * adapter that produces it (`setup/powerSourceSettings.ts`, which re-exports
+ * it). A consumer in `lib/` — `PowerMeasurementGate` names the cause of a
+ * silent home from it — must be able to name the value without reaching into
+ * the wiring layer, which `no-lib-to-setup` forbids in any case.
+ */
+export type ConfiguredPowerSourceRead =
+  | { state: 'resolved'; value: PowerSource }
+  | {
+    state: 'suspect';
+    reason: PowerSourceSettingSuspectReason | 'read_failed';
+    error: Error;
+  };

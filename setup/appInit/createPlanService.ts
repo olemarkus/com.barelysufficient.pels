@@ -15,7 +15,7 @@ import {
 } from '../../lib/observer/observedDeviceStateProjection';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
-import { PowerMeasurementGate } from '../powerMeasurementGate';
+import { PowerMeasurementGate } from '../../lib/power/powerMeasurementGate';
 
 // How long a home may sit with no meter reading before the gate warns. Matches
 // the boot grace the zone-tree gate uses, and is short in tests so a suite can
