@@ -55,7 +55,6 @@ export const applyShedTemperaturePlan = async (
       target: action.target,
       desired: action.desired,
       observedValue: action.observedValue,
-      communicationModel: action.communicationModel,
       skipContext: 'shedding',
     });
     if (!result.applied) return { handled: true, wrote: false };
@@ -151,7 +150,6 @@ export const dispatchTargetCommand = async (
     target: 'temperature';
     desired: number;
     observedValue?: unknown;
-    communicationModel?: 'local' | 'cloud';
     skipContext: 'plan' | 'shedding' | 'overshoot';
     forceAgainstReleasedOpposing?: boolean;
   },
@@ -162,7 +160,6 @@ export const dispatchTargetCommand = async (
     target,
     desired,
     observedValue,
-    communicationModel,
     skipContext,
     forceAgainstReleasedOpposing,
   } = params;
@@ -174,7 +171,6 @@ export const dispatchTargetCommand = async (
     target,
     desired: resolvedDesired,
     latestObservedValue,
-    communicationModel,
     skipContext,
     forceAgainstReleasedOpposing,
   });
@@ -202,7 +198,6 @@ export const dispatchTargetCommand = async (
       skipContext,
       latestObservedValue,
       decisionType: preflightResult.decisionType,
-      communicationModel,
     });
     return result;
   } finally {
@@ -228,7 +223,6 @@ const applyTargetUpdatePlan = async (
       target: action.target,
       desired: action.desired,
       observedValue: action.observedValue,
-      communicationModel: action.communicationModel,
       skipContext: 'plan',
       forceAgainstReleasedOpposing: options.forceAgainstReleasedOpposing,
     });
@@ -272,7 +266,6 @@ const handleTargetCommandPreflight = (
     target: 'temperature';
     desired: number;
     latestObservedValue: unknown;
-    communicationModel?: 'local' | 'cloud';
     skipContext: 'plan' | 'shedding' | 'overshoot';
     forceAgainstReleasedOpposing?: boolean;
   },
@@ -372,7 +365,6 @@ const executeTargetCommandDispatch = async (
     skipContext: 'plan' | 'shedding' | 'overshoot';
     latestObservedValue: unknown;
     decisionType: 'send' | 'retry';
-    communicationModel?: 'local' | 'cloud';
   },
 ): Promise<TargetCommandDispatchResult> => {
   const {
@@ -384,7 +376,6 @@ const executeTargetCommandDispatch = async (
     skipContext,
     latestObservedValue,
     decisionType,
-    communicationModel,
   } = params;
   const nowMs = Date.now();
   try {
@@ -409,7 +400,6 @@ const executeTargetCommandDispatch = async (
       desired: requestedValue,
       nowMs,
       observedValue: latestObservedValue ?? observedValue,
-      communicationModel,
     });
     const {
       latestObservedValueAfterActuation,
@@ -453,7 +443,6 @@ const executeTargetCommandDispatch = async (
       desired,
       nowMs,
       observedValue: latestObservedValue ?? observedValue,
-      communicationModel,
     });
     const retryDelaySec = Math.max(1, Math.ceil((failedPending.nextRetryAtMs - nowMs) / 1000));
     logger.error({

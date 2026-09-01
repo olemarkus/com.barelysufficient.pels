@@ -82,7 +82,7 @@ idempotency and in-flight guards one level down — longer, and on better eviden
 
 - **Binary** — `shouldSkipBinaryControl` (`lib/plan/planBinaryControlHelpers.ts`):
   `already_matched` (observed state equals desired) and `already_pending` (a matching command in
-  flight for the whole confirmation window — 90 s local / 3 min cloud,
+  flight for the whole confirmation window — 90 s, `CONTROL_COMMAND_CONFIRMATION_MS`,
   `lib/observer/controlCommandConfirmation.ts`). The pending entry is recorded by
   `dispatchBinaryControlDecision` *before* the write and survives a timeout, so this covers the
   flow-backed path too, where confirmation only ever arrives via telemetry.

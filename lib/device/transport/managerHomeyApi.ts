@@ -18,9 +18,9 @@ export const DEVICES_API_PATH = 'manager/devices/device';
  * It is deliberately not longer. A write is awaited inside the plan rebuild and
  * rebuilds are serialized through one queue (`lib/plan/planService.ts`), so a
  * hung write is time the capacity controller is not deciding at all: one stalled
- * the planner for a full 32 s in prod. It must also stay well inside the
- * pending/settle windows that resolve an unacknowledged command — 90 s local and
- * 180 s cloud, and the device that motivated this is a cloud one.
+ * the planner for a full 32 s in prod. It must also stay well inside the 90 s
+ * pending/settle window (`CONTROL_COMMAND_CONFIRMATION_MS`) that resolves an
+ * unacknowledged command — the device that motivated this is a cloud one.
  *
  * Two things this value is NOT, both of which it would be easy to read into it:
  *

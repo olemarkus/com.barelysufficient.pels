@@ -76,7 +76,6 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     id: dev.id,
     name: dev.name,
     steppedLoadProfile: dev.steppedLoadProfile,
-    communicationModel: dev.communicationModel,
     controlAdapter: dev.controlAdapter,
     plannedShedTarget: toExecutableShedTarget(dev.plannedShedTargetKind, desired.stepId),
     desired,

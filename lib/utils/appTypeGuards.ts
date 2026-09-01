@@ -40,13 +40,6 @@ export function isNumberMap(value: unknown): value is Record<string, number> {
   return Object.entries(value).every(([key, entry]) => typeof key === 'string' && isFiniteNumber(entry));
 }
 
-export function isCommunicationModelMap(value: unknown): value is Record<string, 'local' | 'cloud'> {
-  if (!isPlainObjectRecord(value)) return false;
-  return Object.entries(value).every(([key, entry]) => (
-    typeof key === 'string' && (entry === 'local' || entry === 'cloud')
-  ));
-}
-
 export function isPrioritySettings(value: unknown): value is Record<string, Record<string, number>> {
   if (!isPlainObjectRecord(value)) return false;
   return Object.values(value).every((mode) => {

@@ -10,7 +10,6 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CONTROLLABLE_DEVICES,
-  DEVICE_COMMUNICATION_MODELS,
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
   OPERATING_MODE_SETTING,
@@ -61,7 +60,6 @@ const configureRuntime = (): void => {
   mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { [CHARGER_ID]: false });
   mockHomeyInstance.settings.set('capacity_priorities', { Home: { [CHARGER_ID]: 1 } });
   mockHomeyInstance.settings.set(NATIVE_EV_WIRING_DEVICES, { [CHARGER_ID]: true });
-  mockHomeyInstance.settings.set(DEVICE_COMMUNICATION_MODELS, { [CHARGER_ID]: 'cloud' });
   mockHomeyInstance.settings.set(`deferred_objective.${CHARGER_ID}`, {
     enabled: true,
     kind: 'ev_soc',
@@ -122,8 +120,9 @@ describe('satisfied smart-task fallback (SDK-boundary e2e)', () => {
       enabled: true,
     });
 
-    // The charger still reports charging, but its cloud pending window prevents
-    // overlapping writes while the first request may still materialize.
+    // The charger still reports charging, but the pending window
+    // (CONTROL_COMMAND_CONFIRMATION_MS, 90 s) prevents overlapping writes
+    // while the first request may still materialize.
     await vi.advanceTimersByTimeAsync(30_000);
     await drainPending();
     expect(putSpy.mock.calls.filter(([path]) => path === CHARGING_PATH)).toHaveLength(1);
@@ -133,7 +132,7 @@ describe('satisfied smart-task fallback (SDK-boundary e2e)', () => {
     await vi.advanceTimersByTimeAsync(31_000);
     await charger.setCapabilityValue('measure_battery', 80);
     await api.ui_refresh_devices({ homey: mockHomeyInstance as never });
-    await vi.advanceTimersByTimeAsync(120_000);
+    await vi.advanceTimersByTimeAsync(60_000);
     await drainPending();
     expect(putSpy.mock.calls.filter(([path]) => path === CHARGING_PATH)).toHaveLength(2);
 

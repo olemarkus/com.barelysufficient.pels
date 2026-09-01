@@ -59,11 +59,11 @@ export const SWAP_RESTORE_RESERVE_KW = 0.3;
 // happen. Long enough for a genuine block to assemble as cycling loads finish their duty cycle.
 export const HEADROOM_RESERVE_MAX_MS = 15 * 60 * 1000;
 // The old `BINARY_COMMAND_PENDING_MS` constant is gone: the pending window is
-// resolved per communication model by `resolveControlCommandConfirmationMs`
+// the observer-owned `CONTROL_COMMAND_CONFIRMATION_MS`
 // (`lib/observer/controlCommandConfirmation.ts`), which arrived with PR #4 of the
 // observer/transport split (see
 // `notes/state-management/observer-transport-split.md`). Plan does not surface
-// a constant of its own; consumers call the observer's resolver directly.
+// a constant of its own; consumers read the observer's constant directly.
 // `TARGET_COMMAND_RETRY_DELAYS_MS` and `STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS`
 // moved to `lib/executor/commandRetrySchedule.ts`. Command retry pacing is
 // materialization, and the planner never read either constant — only the

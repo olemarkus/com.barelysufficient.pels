@@ -143,7 +143,6 @@ class PelsApp extends PelsAppBase implements AppContext {
   protected flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
   public deviceControlProfiles: DeviceControlProfiles = {};
   public deviceTargetPowerConfigs: DeviceTargetPowerConfigsWithReachability = {};
-  public deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
   public shedBehaviors: Record<string, ShedBehavior> = {};
   public debugLoggingTopics = new Set<DebugLoggingTopic>();
   public dailyBudgetService!: DailyBudgetService;

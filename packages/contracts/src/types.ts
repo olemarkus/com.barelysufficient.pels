@@ -298,7 +298,6 @@ export type DeviceDescriptor = {
     name: string;
     deviceClass?: string;
     deviceType?: 'temperature' | 'onoff';
-    communicationModel?: 'local' | 'cloud';
     zone?: string;
     // Zone IDENTITY (uuid) retained from the raw payload (string or `{id}`
     // shape), distinct from the `zone` display label. Additive/dormant: no

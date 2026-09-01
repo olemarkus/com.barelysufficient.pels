@@ -17,7 +17,6 @@ export const projectLifecycleFallbackDevice = (
   return {
     id: device.id,
     name: device.name,
-    communicationModel: device.communicationModel,
     controlAdapter: device.controlAdapter,
     selectedStepId: device.selectedStepId,
     stepCommandPending: device.stepCommandPending,

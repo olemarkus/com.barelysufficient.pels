@@ -19,7 +19,6 @@ export function buildExecutableTargetIntent(dev: PlanDevice): ExecutableTargetIn
     deviceId: dev.id,
     name: dev.name,
     desired: dev.plannedTarget,
-    communicationModel: dev.communicationModel,
     // `shed_temperature` when the setpoint the plan wants written IS this
     // device's shed end state, rather than an ordinary target update.
     purpose: dev.plannedShedTargetKind === 'target_value'
@@ -65,6 +64,5 @@ export function buildExecutableTargetCommand(
     target: 'temperature',
     desired: intent.desired,
     observedValue: observed.target.observedValue,
-    communicationModel: intent.communicationModel,
   };
 }

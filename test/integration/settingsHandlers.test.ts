@@ -10,7 +10,6 @@ import {
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
-  DEVICE_COMMUNICATION_MODELS,
   DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_HOME_ASSIGNMENTS,
   DEVICE_DRIVER_OVERRIDES,
@@ -243,17 +242,6 @@ describe('createSettingsHandler', () => {
     expect(deps.loadCapacitySettings).toHaveBeenCalled();
     expect(deps.updateOverheadToken).toHaveBeenCalledWith(0.5);
     expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
-    expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
-  });
-
-  it('reloads capacity settings and rebuilds when device communication models change', async () => {
-    const deps = buildDeps();
-    const handler = createSettingsHandler(deps);
-
-    await handler(DEVICE_COMMUNICATION_MODELS);
-
-    expect(deps.loadCapacitySettings).toHaveBeenCalled();
-    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });
 

@@ -224,7 +224,6 @@ export function buildBasePlanDevice(params: {
     // Finalize decides (`finalizePlanDevices`); pre-finalize always false.
     recordRestoreOnTargetApply: false,
     ...pickTemperatureClusterFields(dev, resolvedPlannedTarget),
-    communicationModel: dev.communicationModel,
     ...pickSteppedPlanFields(dev),
     reportedStepId: dev.reportedStepId,
     targetStepId: effectiveDesiredStepId,

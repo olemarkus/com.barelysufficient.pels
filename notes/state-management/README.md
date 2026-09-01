@@ -173,7 +173,7 @@ Pending binary confirmation is observer-owned and keyed only by device plus desi
 The planner and executor never receive capability identifiers or EV-specific settlement state.
 Transport privately translates semantic commands to native capabilities or Flow cards; accepted
 dispatch records intent but does not alter observed truth. Normalized snapshot/realtime telemetry
-confirms the command within 90 seconds locally or 3 minutes for cloud devices. The injected
+confirms the command within the fixed 90 s window (`CONTROL_COMMAND_CONFIRMATION_MS`). The injected
 `observedStateDispatcher` handles post-translation event fan-out without a static transport-to-observer import.
 
 Legacy compatibility fields may still exist in older snapshots and plans while migration is in
@@ -541,7 +541,7 @@ A full fetch can improve coverage while still being older for one or two importa
 Whole-home metering protects against hard-cap overshoot even if PELS misattributes which device changed.
 That lowers the severity of some attribution bugs, but it does not make them harmless for restore order, drift reasoning, or user-visible diagnostics.
 
-### Slow/cloud devices need longer confirmation windows
+### Slow/cloud devices need a generous confirmation window
 
 A device can take tens of seconds before trusted telemetry reflects a command.
 During that window, PELS should:

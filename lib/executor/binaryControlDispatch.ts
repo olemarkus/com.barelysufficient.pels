@@ -6,7 +6,7 @@ import {
   type BinaryControlRestoreSource,
 } from '../plan/planBinaryControlHelpers';
 import { decideBinaryControl } from '../plan/planBinaryControl';
-import { resolveControlCommandConfirmationMs } from '../observer/controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { Actuator } from '../actuator/deviceActuator';
 import { isHomeyRequestTimeout } from '../utils/errorUtils';
@@ -106,7 +106,6 @@ export async function decideAndDispatchBinaryControl(params: {
   const result = await dispatchBinaryControlDecision({
     decision,
     transport,
-    snapshot,
     isAuthorityCurrent: params.isAuthorityCurrent,
   });
   if (!result.ok) return { applied: false };
@@ -142,17 +141,14 @@ export async function decideAndDispatchBinaryControl(params: {
 export async function dispatchBinaryControlDecision(params: {
   decision: BinaryControlDecision;
   transport: BinaryControlTransport;
-  /** Snapshot the decision was made against; used to size the per-device pending window. */
-  snapshot?: BinaryControlDecisionSnapshot;
   isAuthorityCurrent?: () => boolean;
 }): Promise<DispatchBinaryControlResult> {
   const {
-    decision, transport, snapshot, isAuthorityCurrent,
+    decision, transport, isAuthorityCurrent,
   } = params;
   recordPendingForDispatch({
     store: transport.pendingBinaryCommandStore,
     decision,
-    snapshot,
   });
   try {
     const outcome = await dispatchBinaryCommand({
@@ -222,13 +218,12 @@ export async function dispatchBinaryControlDecision(params: {
 function recordPendingForDispatch(params: {
   store: PendingBinaryCommandStore;
   decision: BinaryControlDecision;
-  snapshot?: BinaryControlDecisionSnapshot;
 }): void {
-  const { store, decision, snapshot } = params;
+  const { store, decision } = params;
   store.record(decision.deviceId, {
     desired: decision.desired,
     startedMs: Date.now(),
-    pendingMs: resolveControlCommandConfirmationMs(snapshot?.communicationModel ?? 'local'),
+    pendingMs: CONTROL_COMMAND_CONFIRMATION_MS,
     logContext: decision.logContext,
     restoreSource: decision.restoreSource,
     ...(decision.reason ? { reason: decision.reason } : {}),

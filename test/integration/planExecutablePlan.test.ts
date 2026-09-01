@@ -155,7 +155,6 @@ describe('planExecutablePlan', () => {
       desired: 21,
       observedValue: 16,
       isRestoring: true,
-      communicationModel: undefined,
     });
   });
 
@@ -190,7 +189,6 @@ describe('planExecutablePlan', () => {
       desired: 21,
       observedValue: 17,
       isRestoring: true,
-      communicationModel: undefined,
     });
   });
 
@@ -224,7 +222,6 @@ describe('planExecutablePlan', () => {
       desired: 21,
       observedValue: 22,
       isRestoring: false,
-      communicationModel: undefined,
     });
   });
 
@@ -449,7 +446,6 @@ describe('planExecutablePlan', () => {
       desired: 20,
       observedValue: 18,
       isRestoring: false,
-      communicationModel: undefined,
     });
   });
 });

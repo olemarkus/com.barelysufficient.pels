@@ -1,6 +1,6 @@
 import type { DevicePlanDevice } from './planTypes';
 import { buildMeterSettlingReason, buildRestorePendingReason } from './planReasonStrings';
-import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { isPlanDeviceObservedOff, isSteppedLoadDevice } from './planSteppedLoad';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
@@ -158,7 +158,7 @@ function resolvePendingOrBackoffAttempt(
   nowMs: number,
 ): SteppedRestoreAttemptState | null {
   if (dev.stepCommandPending === true) {
-    const pendingWindowMs = resolveSteppedLoadCommandPendingMs(dev.communicationModel);
+    const pendingWindowMs = CONTROL_COMMAND_CONFIRMATION_MS;
     const issuedAtMs = typeof dev.lastStepCommandIssuedAt === 'number'
       ? dev.lastStepCommandIssuedAt
       : nowMs;

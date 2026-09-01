@@ -21,7 +21,6 @@ import { createCapacitySettingsStore } from './capacitySettingsStoreAdapter';
 import {
   isDeviceControlProfiles,
   isBooleanMap,
-  isCommunicationModelMap,
   isPrioritySettings,
   isStringMap,
   normalizeEvBoostSettings,
@@ -40,7 +39,6 @@ import { normalizeModePriorities } from '../packages/shared-domain/src/modePrior
 import {
   BUDGET_EXEMPT_DEVICES,
   DEVICE_CONTROL_PROFILES,
-  DEVICE_COMMUNICATION_MODELS,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_TARGET_POWER_REACHABILITY,
@@ -86,7 +84,6 @@ export type CapacitySettingsSnapshot = {
   deviceDriverOverrides: Record<string, string>;
   deviceControlProfiles: DeviceControlProfiles;
   deviceTargetPowerConfigs: DeviceTargetPowerConfigsWithReachability;
-  deviceCommunicationModels: Record<string, 'local' | 'cloud'>;
   shedBehaviors: Record<string, ShedBehavior>;
 };
 
@@ -252,7 +249,6 @@ export function buildCapacitySettingsSnapshot(params: {
     deviceDriverOverrides: deviceOverrides.deviceDriverOverrides,
     deviceControlProfiles: deviceSettings.deviceControlProfiles,
     deviceTargetPowerConfigs: deviceSettings.deviceTargetPowerConfigs,
-    deviceCommunicationModels: deviceSettings.deviceCommunicationModels,
     shedBehaviors: nextBehaviors,
   };
 }
@@ -325,13 +321,12 @@ function readDeviceControlSettings(params: {
   current: CapacitySettingsSnapshot;
 }): Pick<
   CapacitySettingsSnapshot,
-  'deviceControlProfiles' | 'deviceTargetPowerConfigs' | 'deviceCommunicationModels'
+  'deviceControlProfiles' | 'deviceTargetPowerConfigs'
 > {
   const { settings, current } = params;
   const deviceControlProfiles = settings.get(DEVICE_CONTROL_PROFILES) as unknown;
   const deviceTargetPowerConfigs = settings.get(DEVICE_TARGET_POWER_CONFIGS) as unknown;
   const targetPowerReachability = settings.get(DEVICE_TARGET_POWER_REACHABILITY) as unknown;
-  const deviceCommunicationModels = settings.get(DEVICE_COMMUNICATION_MODELS) as unknown;
   const targetPowerConfigSetting = parseRecordSetting(deviceTargetPowerConfigs);
   const normalizedTargetPowerConfigs = targetPowerConfigSetting
     ? normalizeDeviceTargetPowerConfigs(targetPowerConfigSetting)
@@ -353,9 +348,6 @@ function readDeviceControlSettings(params: {
         currentReachabilityByDevice,
       )
       : current.deviceTargetPowerConfigs,
-    deviceCommunicationModels: isCommunicationModelMap(deviceCommunicationModels)
-      ? deviceCommunicationModels
-      : current.deviceCommunicationModels,
   };
 }
 

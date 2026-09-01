@@ -19,7 +19,7 @@ const logger = getLogger('plan/binary-helpers');
 export type BinaryControlDecisionSnapshot = Pick<ObservedDeviceState, 'targets' | 'binaryControl'>
   & Pick<
     DeviceDescriptor,
-    'capabilities' | 'canSetControl' | 'communicationModel'
+    'capabilities' | 'canSetControl'
   > & { currentOn?: boolean };
 
 // `BinaryControlPlan` is owned by the producer

@@ -253,7 +253,6 @@ abstract class AppRuntimeApi extends Base {
         deviceDriverOverrides: this.context.deviceDriverOverrides,
         deviceControlProfiles: this.context.deviceControlProfiles,
         deviceTargetPowerConfigs: this.context.deviceTargetPowerConfigs,
-        deviceCommunicationModels: this.context.deviceCommunicationModels,
         shedBehaviors: this.context.shedBehaviors,
       },
     });

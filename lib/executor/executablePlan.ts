@@ -43,7 +43,6 @@ export type ExecutorDeviceSnapshot = ObservedDeviceState
     DeviceDescriptor,
     | 'capabilities'
     | 'canSetControl'
-    | 'communicationModel'
     | 'deviceClass'
   >
   & SteppedLoadDescriptorProbe
@@ -277,7 +276,6 @@ export type ExecutableTargetIntent = {
   deviceId: string;
   name: string;
   desired: number;
-  communicationModel?: 'local' | 'cloud';
   purpose: 'target_update' | 'shed_temperature';
   /** Planner-resolved (`finalizePlanDevices`): applying this write counts as
    * a restore, so the executor stamps the restore clocks when it lands. The
@@ -304,7 +302,6 @@ export type ExecutableTargetCommand = {
   target: 'temperature';
   desired: number;
   observedValue: unknown;
-  communicationModel?: 'local' | 'cloud';
 };
 
 export type ExecutableTargetUpdate = ExecutableTargetCommand & {
@@ -379,7 +376,6 @@ export type ExecutableSteppedLoadIntent = {
   id: string;
   name: string;
   steppedLoadProfile: SteppedLoadProfile;
-  communicationModel?: 'local' | 'cloud';
   controlAdapter?: DeviceControlAdapterSnapshot;
   /** This cycle's shed end state — see `ExecutableShedTarget`. */
   plannedShedTarget?: ExecutableShedTarget;
@@ -401,7 +397,6 @@ export type ExecutableSteppedLoadDevice = {
   id: string;
   name: string;
   steppedLoadProfile: SteppedLoadProfile;
-  communicationModel?: 'local' | 'cloud';
   controlAdapter?: DeviceControlAdapterSnapshot;
   /** This cycle's shed end state — see `ExecutableShedTarget`. */
   plannedShedTarget?: ExecutableShedTarget;

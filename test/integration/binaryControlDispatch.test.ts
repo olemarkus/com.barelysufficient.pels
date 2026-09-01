@@ -49,9 +49,6 @@ describe('binary command dispatch', () => {
         deviceId: 'device-1', name: 'Load', desired: true, logContext: 'capacity',
       },
       transport,
-      snapshot: {
-        targets: [], currentOn: false, canSetControl: true, communicationModel: 'local',
-      },
     })).resolves.toEqual({ ok: true });
 
     expect(requestBinaryControl).toHaveBeenCalledWith('device-1', true);
@@ -60,22 +57,6 @@ describe('binary command dispatch', () => {
     expect(logs.findEvent('binary_command_succeeded')).toMatchObject({
       deviceId: 'device-1', desired: true, controlAxis: 'binary',
     });
-  });
-
-  it('uses the cloud confirmation window without changing the command path', async () => {
-    const { requestBinaryControl, state, transport } = buildTransport();
-    await dispatchBinaryControlDecision({
-      decision: {
-        deviceId: 'cloud-load', name: 'Cloud load', desired: false, logContext: 'capacity',
-      },
-      transport,
-      snapshot: {
-        targets: [], currentOn: true, canSetControl: true, communicationModel: 'cloud',
-      },
-    });
-
-    expect(requestBinaryControl).toHaveBeenCalledWith('cloud-load', false);
-    expect(state.pendingBinaryCommands['cloud-load']).toMatchObject({ desired: false, pendingMs: 180_000 });
   });
 
   it.each([
@@ -88,12 +69,12 @@ describe('binary command dispatch', () => {
       deviceId,
       name,
       desired: true,
-      snapshot: { targets: [], currentOn: false, canSetControl: true, communicationModel: 'cloud' },
+      snapshot: { targets: [], currentOn: false, canSetControl: true },
       logContext: 'capacity',
     })).resolves.toEqual({ applied: true });
 
     expect(requestBinaryControl).toHaveBeenCalledWith(deviceId, true);
-    expect(state.pendingBinaryCommands[deviceId]).toMatchObject({ desired: true, pendingMs: 180_000 });
+    expect(state.pendingBinaryCommands[deviceId]).toMatchObject({ desired: true, pendingMs: 90_000 });
   });
 
   it('clears pending state and reports failure when transport rejects the semantic command', async () => {
@@ -105,7 +86,6 @@ describe('binary command dispatch', () => {
         deviceId: 'device-1', name: 'Load', desired: false, logContext: 'capacity',
       },
       transport,
-      snapshot: { targets: [], currentOn: true, binaryControl: { on: true }, canSetControl: true },
     })).resolves.toEqual({ ok: false, reason: 'dispatch_failed' });
 
     expect(state.pendingBinaryCommands['device-1']).toBeUndefined();
@@ -133,9 +113,6 @@ describe('binary command dispatch', () => {
         deviceId: 'device-1', name: 'Load', desired: true, logContext: 'capacity',
       },
       transport,
-      snapshot: {
-        targets: [], currentOn: false, canSetControl: true, communicationModel: 'local',
-      },
     })).resolves.toEqual({ ok: true });
 
     expect(state.pendingBinaryCommands['device-1']).toMatchObject({ desired: true, pendingMs: 90_000 });
@@ -205,9 +182,6 @@ describe('binary command dispatch', () => {
         deviceId: 'device-1', name: 'Load', desired: true, logContext: 'capacity',
       },
       transport,
-      snapshot: {
-        targets: [], currentOn: false, canSetControl: true, communicationModel: 'local',
-      },
     })).resolves.toEqual({ ok: true });
     expect(store.peek('device-1')).toMatchObject({ desired: true });
 
@@ -268,7 +242,6 @@ describe('binary command dispatch', () => {
         deviceId: 'flow-load', name: 'Flow load', desired: true, logContext: 'capacity',
       },
       transport,
-      snapshot: { targets: [], currentOn: false, canSetControl: true },
     })).resolves.toEqual({ ok: true });
 
     expect(confirmed).toHaveBeenCalledOnce();
