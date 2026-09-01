@@ -3224,9 +3224,10 @@ non-blocking follow-ups.*
       `setup/` constructs and connects and holds nothing (`setup/AGENTS.md` § "No state"), enforced
       by `scripts/check-setup-stateless.mjs`. Thirteen files predate the rule and sit in
       `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (58
-      declarations; 21 files / 104 at the guard's introduction). **Two of the thirteen cannot be
-      finished by moving them** — see the orchestration entry below, which has to be settled before
-      this one can claim a done-condition. Each is a component in the wrong directory, and each
+      declarations; 21 files / 104 at the guard's introduction). **Two of the thirteen files will never
+      move** — `powerSamplePipeline.ts` and `appSnapshotHelpers.ts` are orchestrators whose imports
+      close every domain destination. Their STATE can still move, so this entry's done-condition
+      stands; see the two entries below. Each is a component in the wrong directory, and each
       migration is the same shape: move the state **and the rules that read it** into the domain
       module that owns the concept, as a leaf that takes flat injected getters for anything outside
       its own module (the `no-weather-to-peer` pattern — "a leaf collector fed flat getters from
@@ -3235,8 +3236,8 @@ non-blocking follow-ups.*
       `setup/homeMembership.ts` imports `lib/device/transport/managerFetch` and
       `lib/observer/observedStateEvents` today, so those inputs must arrive injected or move to
       `packages/contracts`. Lanes, in the order they should land:
-      (a) power — DONE except `powerSamplePipeline.ts`, which is not a power component at all; it
-      is an orchestrator with no legal destination (see the entry below);
+      (a) power — DONE except `powerSamplePipeline.ts`, whose file stays in `setup/` but whose
+      state does not (see the entry below);
       (b) solar — DONE;
       (c) device — `targetPowerProbeScheduler.ts` and `appFlowBacked.ts` are DONE (`lib/device/`).
       `appDeviceSupport.ts` still holds a module-level `Set` and imports
@@ -3270,31 +3271,37 @@ non-blocking follow-ups.*
       `scripts/param-bundle-allowlist.txt` and the three `setup/homeRuntime` callers pass the named
       object. Source: Codex review of PR #2263, 2026-09-01. [P2]
 
-- [ ] **Two setup orchestrators hold state that has no legal domain home.**
-      `setup/powerSamplePipeline.ts` (3 declarations) and `setup/appSnapshotHelpers.ts` (2) are the
-      allowlist's structural residue, and unlike every other lane they cannot be finished by moving
-      them. Both are orchestrators: the pipeline fans ONE reading across plan, objectives, solar and
-      home membership, and the snapshot helper drives a device refresh that feeds plan and
-      objectives. The pipeline VALUE-imports both `lib/plan` and `lib/objectives`, and no peer may
-      import both: `arch:grep` (`scripts/check-plan-objectives-edge.mjs`) bars
+- [ ] **The sample pipeline's remaining state is power's, and can move even though the file cannot.**
+      `setup/powerSamplePipeline.ts` (3 declarations) will always live in `setup/`: it value-imports
+      both `lib/plan` and `lib/objectives`, and no peer may import both (`arch:grep` bars
       `lib/plan -> lib/objectives`, `no-objectives-to-peer-except-power` bars the reverse, and
-      `no-power-to-peer-except-objectives` / `no-device-to-peer-except-power` bar `lib/power` and
-      `lib/device` from `lib/plan`. That closes every destination. (Note the cruiser alone would not
-      say so — `tsPreCompilationDeps` is unset, so the pipeline's type-only `lib/device` imports are
-      no edge at all; the binding constraints are the value imports and the AST guard.) The snapshot
-      helper is simpler: it value-imports `withHeadroomCurrentOn` from `lib/plan`, which
-      `no-device-to-peer-except-power` forbids. What each retains is irreducible: a sample-revision
-      ledger and a lifecycle `stopped` flag, plus the single-flight loop component each owns.
-      **This means the top-level entry above cannot reach its stated done-condition** (the allowlist
-      file ceasing to exist) without an answer for orchestration specifically. Two candidates: give
-      the peer DAG an orchestration tier below `setup/` and above the peers, which `arch:check`
-      permits to import several of them, so an orchestrator becomes a component with a home; or
-      accept that the wiring layer legitimately owns run-loop lifecycle and carve exactly that
-      exception into `setup/AGENTS.md` § "No state", with the guard reading a narrow, justified
-      allowlist rather than a shrinking one. Decide before the home and composition-root lanes land,
-      because the answer changes what "done" means for them too. Done when either the tier exists
-      and both files have moved into it, or the exception is written down and the guard enforces it
-      by rule rather than by budget. Found 2026-09-01. [P2]
+      `lib/power`/`lib/device` are barred from `lib/plan`). But the FILE being homeless does not make
+      the STATE homeless, which an earlier version of this entry got wrong and used to argue for a
+      new orchestration tier. What it holds is `sampleRevision`, `completedSampleRevision` and the
+      single-flight loop — "which sample is newest, which finished, one ingest at a time". That is a
+      power concept end to end, and `PowerSampleAdmission` is three numbers with no plan vocabulary
+      in it. Move all three into a `lib/power/sampleIngestQueue.ts` that exposes
+      `record(request): Promise<PowerSampleAdmission>` and takes the run step as an injected
+      callback — the same inversion `recordPowerSampleForApp` already uses for its four plan-shaped
+      seams. `PowerSampleAdmission` moves from `lib/app/appContext.ts` to `lib/power` with it, and
+      the app context re-exports it. Done when `setup/powerSamplePipeline.ts` declares no field and
+      its allowlist line is gone, and the coalescing specs still pass unchanged. Found 2026-09-01.
+      [P2]
+
+- [ ] **`schedulePlanRebuild` is still rebuilt per sample, because it closes over the request.**
+      The other three seams `recordPowerSampleForApp` reaches back through are now bound once
+      (`PowerSamplePipeline`'s readonly arrow properties). The fourth cannot be, as it stands: its
+      body calls `publishResolvedHomeMeter(request)` — the sampled-meter ownership fence — so a
+      boot-bound closure would have no identity to publish. Give it a typed argument carrying the
+      watts and the meter identity the ingest just admitted, so the identity, the watts and their
+      timestamp still move as ONE admitted operation and a superseded request drops its identity
+      claim with its watts. Two things to get right: the argument is a named domain value, not the
+      whole request spread through the seam; and `planConvergenceActive`, `planUnactionable` and
+      `skipWhileShortfallUnrecoverable` currently resolve BEFORE the ingest and would move to call
+      time, which is the anti-storm throttle — the one a persistent zero-allowance shortfall once
+      drove until the cpuwarn watchdog killed the app. Pin the current read-ordering with a test
+      before moving them. Done when the seam takes a named argument, all four callbacks are bound at
+      construction, and `runPowerSample` builds no closures per sample. Found 2026-09-01. [P2]
 
 - [ ] **`setup/appNativeWiring.ts`'s re-entrancy latch is the last of the three coalescers.**
       `nativeWiringDecisionInFlight` (1 declaration) looks like the single-flight loop the other two
