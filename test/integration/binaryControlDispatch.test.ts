@@ -9,6 +9,7 @@ import {
   createPendingBinaryCommandStore,
   syncPendingBinaryCommands,
 } from '../../lib/observer/pendingBinaryCommands';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/observer/controlCommandConfirmation';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
@@ -244,6 +245,25 @@ describe('binary command dispatch', () => {
       transport,
     })).resolves.toEqual({ ok: true });
 
+    // The echo landed while the request was still dispatching, so it did not
+    // settle inside the call — observer settlement may only commit once
+    // transport has accepted. It is not lost, and nothing was parked to replay
+    // it: `binaryCommandConfirmation` projects the device's CURRENT value, so
+    // the next sweep sees the same echo against an accepted entry and confirms
+    // it there. The pending entry survives the gap, so
+    // `isBinaryChangeAttributableToPels` stays true throughout and no
+    // PELS-actuation provenance window opens.
+    expect(confirmed).not.toHaveBeenCalled();
+    syncPendingBinaryCommands({
+      store,
+      liveDevices: [{
+        id: 'flow-load',
+        name: 'Flow load',
+        binaryCommandConfirmation: { state: 'observed', observedValue: true, observedAtMs: observedAtMs },
+      }],
+      source: 'rebuild',
+    });
+
     expect(confirmed).toHaveBeenCalledOnce();
     expect(store.peek('flow-load')).toBeUndefined();
   });
@@ -284,9 +304,11 @@ describe('binary command dispatch', () => {
   it('settles an early echo when the write times out', async () => {
     const state = createPlanEngineState();
     const confirmed = vi.fn();
+    let timedOutStartedMs = 0;
     const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, { onConfirmed: confirmed });
     const { transport } = buildTransport(vi.fn(async () => {
       const pending = store.peek('flow-load');
+      timedOutStartedMs = pending?.startedMs ?? 0;
       syncPendingBinaryCommands({
         store,
         liveDevices: [{
@@ -306,7 +328,27 @@ describe('binary command dispatch', () => {
       transport,
     })).resolves.toEqual({ ok: true });
 
+    // The echo landed while the request was still dispatching, so it did not
+    // settle inside the call — observer settlement may only commit once
+    // transport has accepted. It is not lost, and nothing was parked to replay
+    // it: `binaryCommandConfirmation` projects the device's CURRENT value, so
+    // the next sweep sees the same echo against an accepted entry and confirms
+    // it there. The pending entry survives the gap, so
+    // `isBinaryChangeAttributableToPels` stays true throughout and no
+    // PELS-actuation provenance window opens.
+    expect(confirmed).not.toHaveBeenCalled();
+    syncPendingBinaryCommands({
+      store,
+      liveDevices: [{
+        id: 'flow-load',
+        name: 'Flow load',
+        binaryCommandConfirmation: { state: 'observed', observedValue: true, observedAtMs: timedOutStartedMs },
+      }],
+      source: 'rebuild',
+    });
+
     expect(confirmed).toHaveBeenCalledTimes(1);
+    expect(store.peek('flow-load')).toBeUndefined();
   });
 
   it('does not settle an early echo after command authority is lost', async () => {
@@ -371,5 +413,142 @@ describe('binary command dispatch', () => {
 
     expect(confirmed).not.toHaveBeenCalled();
     expect(store.peek('flow-load')).toMatchObject({ dispatchState: 'accepted', desired: true });
+  });
+});
+
+// The paths where the mechanism does NOT complete. An echo arriving before
+// transport acceptance used to park a closure that `recordDispatchAccepted`
+// replayed; nothing is parked now, so these pin what happens when acceptance
+// never arrives, when the evidence is contradicted, and when a newer command
+// takes the entry over.
+describe('binary command settlement — when the handshake does not complete', () => {
+  const echo = (observedValue: boolean, observedAtMs: number) => ([{
+    id: 'flow-load',
+    name: 'Flow load',
+    binaryCommandConfirmation: { state: 'observed' as const, observedValue, observedAtMs },
+  }]);
+
+  const sweep = (
+    store: ReturnType<typeof createPendingBinaryCommandStore>,
+    observedValue: boolean,
+    observedAtMs: number,
+  ): boolean => syncPendingBinaryCommands({
+    store, liveDevices: echo(observedValue, observedAtMs), source: 'rebuild',
+  });
+
+  it('never confirms while transport acceptance never arrives, then times out once', () => {
+    const state = createPlanEngineState();
+    const confirmed = vi.fn();
+    const timedOut = vi.fn();
+    const store = createPendingBinaryCommandStore(
+      state.pendingBinaryCommands,
+      { onConfirmed: confirmed, onTimedOut: timedOut },
+    );
+    const startedMs = Date.now();
+    store.record('flow-load', { desired: true, startedMs });
+
+    // Matching echo, but the request is still 'dispatching' — settlement waits.
+    expect(sweep(store, true, startedMs)).toBe(false);
+    expect(confirmed).not.toHaveBeenCalled();
+    expect(store.peek('flow-load')).toBeDefined();
+
+    // The window expires with acceptance still absent. Exactly one timeout.
+    // Restored below: the repo's Vitest config clears mocks but does not RESTORE
+    // them, so a lingering `Date.now` stub would bleed into later specs.
+    const nowSpy = vi.spyOn(Date, 'now')
+      .mockReturnValue(startedMs + CONTROL_COMMAND_CONFIRMATION_MS + 1);
+    expect(sweep(store, true, startedMs)).toBe(true);
+    expect(timedOut).toHaveBeenCalledTimes(1);
+    expect(confirmed).not.toHaveBeenCalled();
+    expect(store.peek('flow-load')).toBeUndefined();
+    // The entry is gone, so a further sweep re-fires nothing.
+    expect(sweep(store, true, startedMs)).toBe(false);
+    expect(timedOut).toHaveBeenCalledTimes(1);
+    nowSpy.mockRestore();
+  });
+
+  it('lets a later contradiction supersede an echo seen before acceptance', () => {
+    const state = createPlanEngineState();
+    const confirmed = vi.fn();
+    const store = createPendingBinaryCommandStore(
+      state.pendingBinaryCommands,
+      { onConfirmed: confirmed },
+    );
+    const startedMs = Date.now();
+    store.record('flow-load', { desired: true, startedMs });
+
+    sweep(store, true, startedMs);
+    sweep(store, false, startedMs + 1);
+    // Acceptance now arrives. With nothing parked there is no stale evidence to
+    // replay, and the device's current value disagrees, so it stays pending.
+    store.recordDispatchAccepted('flow-load', { deviceId: 'flow-load', desired: true });
+    expect(confirmed).not.toHaveBeenCalled();
+    expect(store.peek('flow-load')).toMatchObject({ desired: true, lastObservedValue: false });
+  });
+
+  it('does not let a superseded command confirm against the one that replaced it', () => {
+    // `record` replaces the entry. The old design left a parked closure behind
+    // it, so acceptance of the NEW command could fire the OLD one's confirm —
+    // stamping PELS-actuation provenance from a stale desired value and
+    // clearing the live entry. Nothing outlives its entry now.
+    const state = createPlanEngineState();
+    const confirmed = vi.fn();
+    const store = createPendingBinaryCommandStore(
+      state.pendingBinaryCommands,
+      { onConfirmed: confirmed },
+    );
+    const startedMs = Date.now();
+    store.record('flow-load', { desired: false, startedMs });
+    sweep(store, false, startedMs);
+
+    // A newer command for the same device takes the entry over.
+    store.record('flow-load', { desired: true, startedMs: startedMs + 10 });
+    store.recordDispatchAccepted('flow-load', { deviceId: 'flow-load', desired: true });
+
+    expect(confirmed).not.toHaveBeenCalled();
+    expect(store.peek('flow-load')).toMatchObject({ desired: true });
+    // No OFF provenance was stamped from the superseded command.
+    expect(store.hasRecentConfirmedOff('flow-load')).toBe(false);
+  });
+
+  it('does not let a superseded command\'s acceptance flip its replacement', () => {
+    // Only a SAME-direction command is skipped as already pending, so an
+    // opposite-direction decision replaces the entry while the older write is
+    // still in flight. That older write's acceptance must not vouch for the
+    // replacement.
+    const state = createPlanEngineState();
+    const confirmed = vi.fn();
+    const store = createPendingBinaryCommandStore(
+      state.pendingBinaryCommands,
+      { onConfirmed: confirmed },
+    );
+    const startedMs = Date.now();
+    store.record('flow-load', { desired: false, startedMs });
+    store.record('flow-load', { desired: true, startedMs: startedMs + 10 });
+    // The superseded OFF write finally returns.
+    store.recordDispatchAccepted('flow-load', { deviceId: 'flow-load', desired: false });
+    expect(store.isDispatchAccepted('flow-load')).toBe(false);
+    // So an echo of the replacement's desired value cannot settle it yet.
+    expect(sweep(store, true, startedMs + 20)).toBe(false);
+    expect(confirmed).not.toHaveBeenCalled();
+    // The replacement's own acceptance does vouch for it.
+    store.recordDispatchAccepted('flow-load', { deviceId: 'flow-load', desired: true });
+    expect(sweep(store, true, startedMs + 20)).toBe(true);
+    expect(confirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an echo older than the command it would settle', () => {
+    const state = createPlanEngineState();
+    const confirmed = vi.fn();
+    const store = createPendingBinaryCommandStore(
+      state.pendingBinaryCommands,
+      { onConfirmed: confirmed },
+    );
+    const startedMs = Date.now();
+    store.record('flow-load', { desired: true, startedMs });
+    store.recordDispatchAccepted('flow-load', { deviceId: 'flow-load', desired: true });
+    // Pre-dispatch evidence cannot settle a command issued after it.
+    expect(sweep(store, true, startedMs - 1)).toBe(false);
+    expect(confirmed).not.toHaveBeenCalled();
   });
 });
