@@ -41,8 +41,8 @@ import {
 } from '../lib/home/homeConfig';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
-import { SampledMeterIdentity, type SampledMeterIdentityDeps } from './homeSampledMeterIdentity';
-import type { ConfiguredPowerSourceRead } from './powerSourceSettings';
+import { SampledMeterIdentity, type SampledMeterIdentityDeps } from '../lib/power/sampledMeterIdentity';
+import type { ConfiguredPowerSourceRead } from '../lib/power/powerSource';
 
 export type MainMeterAuthorityState = 'ready' | 'retry' | 'blocked';
 
