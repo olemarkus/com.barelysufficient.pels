@@ -11,6 +11,7 @@ import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { runWithoutContext } from '../lib/logging/alsContext';
+import { createSingleFlightLoop } from '../lib/utils/singleFlightLoop';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { ResolveOperatingModeForDevice } from './appDeviceSupport';
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
@@ -58,6 +59,12 @@ const sameMainMeterSelection = (
   )
 );
 
+/** One pass of the refresh loop: the transport to read, and the intent. */
+type SnapshotRefreshRequest = {
+  deviceManager: DeviceTransport;
+  options: RefreshTargetDevicesSnapshotOptions;
+};
+
 export type RefreshTargetDevicesSnapshotOptions = {
   fast?: boolean;
   targeted?: boolean;
@@ -67,17 +74,36 @@ export type RefreshTargetDevicesSnapshotOptions = {
 
 export class AppSnapshotHelpers {
   private snapshotRefreshStopped = true;
-  private isSnapshotRefreshing = false;
-  private snapshotRefreshPending = false;
-  // Promise for the currently-running snapshot refresh cycle. Concurrent
-  // callers await this promise so they see the post-refresh in-memory
-  // snapshot instead of returning while the refresh is still in flight.
-  // Cleared inside the same `finally` that flips `isSnapshotRefreshing` back
-  // to false so awaiters never observe a resolved-but-still-running state.
-  // Synchronous re-entry (before the outer call has yielded once) leaves
-  // this `null`; nested callers in that window keep the legacy fire-and-
-  // forget queue-and-return behavior to avoid awaiting their own caller.
-  private snapshotRefreshInFlight: Promise<void> | null = null;
+
+  /**
+   * One refresh at a time, with a single queued re-run. A caller arriving
+   * mid-refresh awaits the loop, so `/ui_refresh_devices` sees the post-refresh
+   * in-memory snapshot rather than returning while the refresh is still
+   * running; a synchronously re-entrant caller queues and returns instead,
+   * because awaiting there would be awaiting its own frame.
+   *
+   * A queued re-run repeats THIS refresh's options rather than adopting the
+   * queued caller's — a queued request means "do that again" — with
+   * `emitFlowBackedRefresh` cleared, so the flow-backed refresh is emitted at
+   * most once per drain.
+   */
+  private readonly snapshotRefreshLoop = createSingleFlightLoop<SnapshotRefreshRequest>({
+    run: (request) => this.runSnapshotRefreshCycle(request.deviceManager, request.options),
+    nextRequest: (_queued, ran) => ({
+      ...ran,
+      options: { ...ran.options, emitFlowBackedRefresh: false },
+    }),
+    mayContinue: () => !this.snapshotRefreshStopped,
+    onRequest: ({ join }) => {
+      if (join === 'started') return;
+      this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
+        event: 'snapshot_refresh_coalesced',
+        mode: join === 'joined' ? 'awaiting_in_flight' : 'queued',
+      });
+    },
+    onRerun: () => {},
+  });
+
   private readonly targetPowerProbeScheduler: TargetPowerProbeScheduler;
 
   constructor(private readonly deps: {
@@ -161,7 +187,6 @@ export class AppSnapshotHelpers {
   stop(): void {
     this.snapshotRefreshStopped = true;
     this.targetPowerProbeScheduler.stop();
-    this.snapshotRefreshPending = false;
     this.deps.timers.clear('periodicStatus');
     this.deps.timers.clear('devicePoll');
     this.deps.timers.clear('targetConfirmationPoll');
@@ -173,56 +198,11 @@ export class AppSnapshotHelpers {
   ): Promise<void> {
     const deviceManager = this.deps.getDeviceManager();
     if (!deviceManager) return;
-
-    if (this.isSnapshotRefreshing) {
-      this.snapshotRefreshPending = true;
-      if (this.snapshotRefreshInFlight) {
-        // Overlapping caller arrived after the outer call yielded once and
-        // assigned the loop promise — await it so callers (e.g.
-        // `/ui_refresh_devices`) see the post-refresh in-memory snapshot
-        // instead of returning while the refresh is still running. (TODO 728.)
-        this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
-          event: 'snapshot_refresh_coalesced',
-          mode: 'awaiting_in_flight',
-        });
-        await this.snapshotRefreshInFlight;
-        return;
-      }
-      // Synchronous re-entry window (the outer call has not yielded yet, so
-      // the loop promise is not visible). Keep the legacy queue-and-return
-      // behavior to avoid awaiting a promise the caller is itself producing.
-      this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
-        event: 'snapshot_refresh_coalesced',
-        mode: 'queued',
-      });
-      return;
-    }
-
-    this.isSnapshotRefreshing = true;
-    const refreshPromise = this.runSnapshotRefreshLoop(deviceManager, options);
-    this.snapshotRefreshInFlight = refreshPromise;
-    try {
-      await refreshPromise;
-    } finally {
-      this.isSnapshotRefreshing = false;
-      this.snapshotRefreshPending = false;
-      this.snapshotRefreshInFlight = null;
-    }
-  }
-
-  private async runSnapshotRefreshLoop(
-    deviceManager: DeviceTransport,
-    options: RefreshTargetDevicesSnapshotOptions,
-  ): Promise<void> {
-    let shouldEmitFlowBackedRefresh = options.emitFlowBackedRefresh !== false;
-    do {
-      this.snapshotRefreshPending = false;
-      await this.runSnapshotRefreshCycle(deviceManager, {
-        ...options,
-        emitFlowBackedRefresh: shouldEmitFlowBackedRefresh,
-      });
-      shouldEmitFlowBackedRefresh = false;
-    } while (this.snapshotRefreshPending && !this.snapshotRefreshStopped);
+    await this.snapshotRefreshLoop.request({
+      deviceManager,
+      // Normalized here so the re-run policy above only has to clear it.
+      options: { ...options, emitFlowBackedRefresh: options.emitFlowBackedRefresh !== false },
+    });
   }
 
   /**

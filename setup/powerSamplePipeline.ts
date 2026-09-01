@@ -16,6 +16,7 @@ import { isPlanActivelyConverging } from '../lib/plan/planStateHelpers';
 import { buildPlanCapacityStateSummary, isPlanUnactionable } from '../lib/plan/planLogging';
 import { shouldSkipShortfallRebuildFromPlanSummary } from '../lib/plan/rebuildScheduler/shortfallSuppression';
 import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
+import { createSingleFlightLoop } from '../lib/utils/singleFlightLoop';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
@@ -161,16 +162,22 @@ const buildPowerSampleRequest = (
 };
 
 /**
- * Lives in `setup/` because the only state it owns is the coalescing
- * bookkeeping for `recordPowerSample` (`powerSampleLoop`,
- * `powerSampleRerunRequested`, `pendingPowerSampleRequest`). No other
- * module queries those — they exist solely so back-to-back
- * `recordPowerSample` calls debounce into one in-flight loop with a
- * single pending rerun. The orchestration itself just smuggles
- * sibling-domain concerns (`plan*`, `capacityGuard`, `device manager`,
- * `powerTracker`) into one call into `recordPowerSampleForApp`
- * (which IS the lib-side power-sample primitive in
- * `lib/power/sampleIngest.ts`).
+ * Lives in `setup/` because it is an orchestrator, not a domain component: it
+ * fans ONE reading out across plan, objectives, solar and home membership. It
+ * value-imports BOTH `lib/plan` and `lib/objectives`, and no peer module is
+ * allowed to import both: `arch:grep` bars `lib/plan -> lib/objectives`, and
+ * `no-objectives-to-peer-except-power` bars the reverse. `lib/power` and
+ * `lib/device` are barred from `lib/plan` in turn. So there is no domain module
+ * this can live in — see the orchestration entry in `TODO.md`. The domain work
+ * itself is one call into `recordPowerSampleForApp` (`lib/power/sampleIngest.ts`).
+ *
+ * The state it retains is the sample-revision ledger: `sampleRevision` is
+ * bumped at the synchronous request edge and `completedSampleRevision` records
+ * the last request the loop finished, which together answer whether a caller's
+ * sample was admitted or superseded. The coalescing that used to live beside it
+ * is `lib/utils/singleFlightLoop.ts` now — one ingest at a time, newest queued
+ * request wins, and a synchronously re-entrant caller can no longer start a
+ * second concurrent loop.
  *
  * `recordPowerSample(currentPowerW, nowMs)` is the public entry point.
  * The Homey-Energy poll source and the flow-card power-sample reporter
@@ -178,14 +185,31 @@ const buildPowerSampleRequest = (
  * member (implemented by `AppRuntimeApi.recordPowerSample`) also routes here.
  */
 export class PowerSamplePipeline {
-  private powerSampleLoop?: Promise<void>;
-  private powerSampleRerunRequested = false;
-  private pendingPowerSampleRequest?: PowerSampleRequest;
   // Bumped at the synchronous request edge, before a coalesced sample can wait
   // on plan work. Ownership-generation recovery uses it to abort a prepared
   // reconcile when a fresher capacity decision arrives mid-build.
   private sampleRevision = 0;
   private completedSampleRevision = 0;
+
+  /**
+   * One ingest at a time, newest queued request wins. The coalescing itself is
+   * `lib/utils/singleFlightLoop.ts`; what stays here is the revision ledger,
+   * which is the sample-specific half — the loop knows nothing about admission.
+   */
+  private readonly loop = createSingleFlightLoop<PowerSampleRequest>({
+    run: (request) => this.runPowerSample(request).then(() => {
+      this.completedSampleRevision = request.revision;
+    }),
+    nextRequest: (queued) => queued,
+    mayContinue: () => true,
+    onRequest: ({ join, replacedQueued }) => {
+      if (join === 'started') return;
+      incPerfCounter(replacedQueued
+        ? 'power_sample_rerun_coalesced_total'
+        : 'power_sample_rerun_requested_total');
+    },
+    onRerun: () => incPerfCounter('power_sample_rerun_executed_total'),
+  });
 
   constructor(private readonly deps: PowerSamplePipelineDeps) {}
 
@@ -200,24 +224,22 @@ export class PowerSamplePipeline {
       currentPowerW, nowMs, options, this.sampleRevision, this.deps.getCoSampledGenerationW?.(nowMs),
     );
 
-    if (this.powerSampleLoop) {
-      if (this.powerSampleRerunRequested) {
-        incPerfCounter('power_sample_rerun_coalesced_total');
-      } else {
-        incPerfCounter('power_sample_rerun_requested_total');
-      }
-      this.powerSampleRerunRequested = true;
-      this.pendingPowerSampleRequest = request;
-      await this.powerSampleLoop;
-      return this.resolveAdmission(request.revision);
-    }
-
-    const loopPromise = this.runCoalescedPowerSamples(request);
-    this.powerSampleLoop = loopPromise;
-    await loopPromise;
+    await this.loop.request(request);
     return this.resolveAdmission(request.revision);
   }
 
+  /**
+   * Whether the caller's own sample is the one the tracker now serves.
+   *
+   * A synchronously re-entrant caller — which the loop answers immediately with
+   * `queued` rather than letting it start a second pass — reads its verdict
+   * before its request has run, so it sees `superseded` with
+   * `revision === latestRevision`: superseded by itself. That shape is unique to
+   * this window and no current caller reaches it (`recordPowerSample` is driven
+   * by poll sources and flow cards, neither re-entrant). Every consumer treats
+   * anything but `admitted` as "do not claim meter authority", so the answer is
+   * the conservative one either way.
+   */
   private resolveAdmission(revision: number): PowerSampleAdmission {
     const stable = this.getStableSampleRevision();
     return stable.state === 'stable' && stable.revision === revision
@@ -233,27 +255,6 @@ export class PowerSamplePipeline {
     return this.completedSampleRevision === this.sampleRevision
       ? { state: 'stable', revision: this.sampleRevision }
       : { state: 'pending' };
-  }
-
-  private async runCoalescedPowerSamples(initialRequest: PowerSampleRequest): Promise<void> {
-    let request = initialRequest;
-    try {
-      while (true) {
-        this.powerSampleRerunRequested = false;
-        this.pendingPowerSampleRequest = undefined;
-        await this.runPowerSample(request);
-        this.completedSampleRevision = request.revision;
-        if (!this.powerSampleRerunRequested) return;
-        incPerfCounter('power_sample_rerun_executed_total');
-        request = this.pendingPowerSampleRequest ?? request;
-      }
-    } finally {
-      if (this.powerSampleLoop) {
-        this.powerSampleLoop = undefined;
-      }
-      this.powerSampleRerunRequested = false;
-      this.pendingPowerSampleRequest = undefined;
-    }
   }
 
   /**
