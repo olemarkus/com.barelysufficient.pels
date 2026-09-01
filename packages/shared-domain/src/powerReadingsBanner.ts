@@ -1,10 +1,11 @@
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from './powerFreshness';
 
 /**
- * The one staleness surface (owner ruling 2026-08-31: banner only). Computed
- * client-side from the tracker's own timestamp — the runtime publishes no
- * freshness label anywhere — and rendered as the global warning banner above
- * the home-scope bar.
+ * The one staleness surface (owner ruling 2026-08-31: banner only). The
+ * runtime publishes no freshness label anywhere — the power payload carries a
+ * producer-resolved readings FACT (`never` | `received` + stamp), and this
+ * resolver ages it against the freshness threshold to render the global
+ * warning banner above the home-scope bar.
  *
  * Copy rules (`notes/ui-terminology.md` § "The no-readings banner"): say
  * what happens ("No power readings…", never "stale"/"data outdated"); name
@@ -46,9 +47,36 @@ const resolveHint = (input: BannerHintInput): string => {
   return input.neverReceived ? HINT_FLOW_NONE_YET : HINT_FLOW_STALE;
 };
 
+/**
+ * The producer-resolved readings fact (`SettingsUiPowerReadings` on the power
+ * payload, re-declared browser-safe here): the one boolean-plus-stamp the UI
+ * holds about power, with no nullable spelling.
+ */
+export type PowerReadingsFact =
+  | { readonly state: 'never' }
+  | { readonly state: 'received'; readonly lastPowerUpdateMs: number };
+
+/**
+ * Classify an UNTRUSTED readings value (a realtime push, a cached payload)
+ * into the fact, or `null` when the value carries no valid fact — the caller
+ * then keeps its last-known fact instead of fabricating `never`.
+ */
+export const classifyPowerReadingsFact = (value: unknown): PowerReadingsFact | null => {
+  if (!value || typeof value !== 'object') return null;
+  const readings = value as { state?: unknown; lastPowerUpdateMs?: unknown };
+  if (readings.state === 'never') return { state: 'never' };
+  if (
+    readings.state === 'received'
+    && typeof readings.lastPowerUpdateMs === 'number'
+    && Number.isFinite(readings.lastPowerUpdateMs)
+  ) {
+    return { state: 'received', lastPowerUpdateMs: readings.lastPowerUpdateMs };
+  }
+  return null;
+};
+
 export type PowerReadingsBannerInput = {
-  /** The tracker's last sample stamp (status fallback allowed); null = never. */
-  lastPowerUpdate: number | null;
+  readings: PowerReadingsFact;
   nowMs: number;
   source: BannerPowerSource;
   /** Homey Energy only: whether a whole-home meter is chosen yet. */
@@ -59,10 +87,10 @@ export type PowerReadingsBannerInput = {
 export const resolvePowerReadingsBannerContent = (
   input: PowerReadingsBannerInput,
 ): PowerReadingsBannerContent | null => {
-  const neverReceived = input.lastPowerUpdate === null;
+  const neverReceived = input.readings.state === 'never';
   if (
-    input.lastPowerUpdate !== null
-    && (input.nowMs - input.lastPowerUpdate) <= POWER_SAMPLE_STALE_THRESHOLD_MS
+    input.readings.state === 'received'
+    && (input.nowMs - input.readings.lastPowerUpdateMs) <= POWER_SAMPLE_STALE_THRESHOLD_MS
   ) {
     return null;
   }

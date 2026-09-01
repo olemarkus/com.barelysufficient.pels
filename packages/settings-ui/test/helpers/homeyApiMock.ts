@@ -289,11 +289,17 @@ const classifyUiPowerStatus = (tracker: unknown, statusBlob: unknown) => {
 const buildUiPower = async (homey: MockHomeyClient) => {
   const override = getUiOverride(homey, 'power');
   if (override !== undefined) return override;
-  const tracker = await getHomeySetting(homey, 'power_tracker_state') || null;
+  // Mirrors the runtime producer: `{}` is the empty history, and the readings
+  // fact resolves once from the tracker's own stamp.
+  const rawTracker = await getHomeySetting(homey, 'power_tracker_state');
+  const tracker = rawTracker && typeof rawTracker === 'object' ? rawTracker as Record<string, unknown> : {};
+  const lastTimestamp = tracker.lastTimestamp;
   return {
     tracker,
-    status: classifyUiPowerStatus(tracker, await getHomeySetting(homey, 'pels_status')),
-    heartbeat: await getHomeySetting(homey, 'app_heartbeat') || null,
+    readings: typeof lastTimestamp === 'number' && Number.isFinite(lastTimestamp)
+      ? { state: 'received', lastPowerUpdateMs: lastTimestamp }
+      : { state: 'never' },
+    status: classifyUiPowerStatus(rawTracker ?? null, await getHomeySetting(homey, 'pels_status')),
   };
 };
 

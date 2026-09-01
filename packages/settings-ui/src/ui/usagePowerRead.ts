@@ -1,4 +1,5 @@
 import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
+import { classifyPowerReadingsFact } from '../../../shared-domain/src/powerReadingsBanner.ts';
 import { resolveHomeScopedRead, type HomeScopedRead } from '../../../contracts/src/homeScopedRead.ts';
 import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { getApiReadModel, homeScopedApiUri } from './homey.ts';
@@ -53,11 +54,9 @@ type MainPowerEnvelope = Omit<SettingsUiPowerPayload, 'status'> & { status: unkn
 
 const isMainPowerEnvelope = (value: unknown): value is MainPowerEnvelope => {
   if (!isRecord(value) || hasOwn(value, 'homeScope')) return false;
-  if (!hasOwn(value, 'tracker') || !hasOwn(value, 'heartbeat')) return false;
-  if (value.tracker !== null && !isRecord(value.tracker)) return false;
-  if (value.heartbeat !== null && (typeof value.heartbeat !== 'number' || !Number.isFinite(value.heartbeat))) {
-    return false;
-  }
+  if (!hasOwn(value, 'tracker') || !hasOwn(value, 'readings')) return false;
+  if (!isRecord(value.tracker)) return false;
+  if (classifyPowerReadingsFact(value.readings) === null) return false;
   return value.hasManagedSolarDevice === undefined || typeof value.hasManagedSolarDevice === 'boolean';
 };
 

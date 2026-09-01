@@ -1466,8 +1466,10 @@ The global warning banner above the home-scope bar is the ONE staleness
 surface (owner ruling 2026-08-31): the hero renders the last real
 measurements with no freshness chip or age text, and the banner alone says
 readings stopped. Source of truth: `resolvePowerReadingsBannerContent`
-(`packages/shared-domain/src/powerReadingsBanner.ts`), computed client-side
-from the tracker's own timestamp against the 60-second freshness threshold.
+(`packages/shared-domain/src/powerReadingsBanner.ts`), fed by the power
+payload's producer-resolved readings fact (`never` | `received` + stamp) aged
+against the 60-second freshness threshold — the UI never re-derives the fact
+from tracker fields or persisted-blob fallbacks.
 
 - Leads: `No power readings yet.` (never received) / `No power readings in
   the last minute.` (stopped). Say what happens — never "stale", "outdated",

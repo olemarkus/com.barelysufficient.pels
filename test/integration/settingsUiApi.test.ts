@@ -267,8 +267,8 @@ describe('settingsUiApi', () => {
     });
     expect(result.power).toEqual({
       tracker: { lastPowerW: 5200, lastTimestamp: 123, buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
+      readings: { state: 'received', lastPowerUpdateMs: 123 },
       status: { state: 'live', status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
-      heartbeat: null,
       // No solarpanel-class device in the fixture candidates.
       hasManagedSolarDevice: false,
     });
@@ -482,8 +482,8 @@ describe('settingsUiApi', () => {
     });
     expect(getSettingsUiPowerPayload({ homey: homey as never })).toEqual({
       tracker: { lastPowerW: 5200, lastTimestamp: 123, buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
+      readings: { state: 'received', lastPowerUpdateMs: 123 },
       status: { state: 'live', status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
-      heartbeat: null,
       // No solarpanel-class device in the fixture candidates.
       hasManagedSolarDevice: false,
     });

@@ -142,7 +142,7 @@ const buildBootstrap = (
       },
     },
     status: { state: 'unavailable', reason: 'no_status_recorded' },
-    heartbeat: null,
+    readings: { state: 'received', lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0) },
   },
   prices: {
     combinedPrices: null,

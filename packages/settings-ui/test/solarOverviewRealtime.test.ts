@@ -70,11 +70,11 @@ describe('Overview "Solar now" across status-only power pushes', () => {
     await refreshPlan();
     expect(solarSubline()?.textContent).toBe('Solar now 3.2\u00A0kW — 1.1\u00A0kW at home, 2.1\u00A0kW exported');
 
-    // Runtime-shaped status-only push: tracker is null by design.
+    // Runtime-shaped status-only push: no tracker property at all — the
+    // emitter omits it and the WebView preserves its cached one.
     emitHomeyEvent(homey, 'power_updated', {
-      tracker: null,
       status: { state: 'live', status: { lastPowerUpdate: NOW_MS + 10_000, powerFreshnessState: 'fresh' } },
-      heartbeat: null,
+      readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 },
     });
     await flushAsync();
     // The push itself must not tear the line down…

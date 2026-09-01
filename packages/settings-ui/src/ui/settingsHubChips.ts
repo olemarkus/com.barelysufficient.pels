@@ -15,6 +15,10 @@ import { state } from './state.ts';
 import { liveStatusOrNull } from './powerStatusRead.ts';
 
 const setChipHidden = (id: string, hidden: boolean): void => {
+  // The chip resolve is async (two reads race ahead of it); a page mid-teardown
+  // has no document left and no chips to sync — bail instead of throwing into
+  // an unhandled rejection.
+  if (typeof document === 'undefined') return;
   const el = document.getElementById(id);
   if (el) el.hidden = hidden;
 };

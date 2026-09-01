@@ -970,10 +970,17 @@
     if (scenarioPatch && Object.prototype.hasOwnProperty.call(scenarioPatch, 'power')) {
       return scenarioPatch.power;
     }
+    const tracker = settings.power_tracker_state && typeof settings.power_tracker_state === 'object'
+      ? settings.power_tracker_state
+      : {};
     return {
-      tracker: settings.power_tracker_state ?? null,
+      tracker,
+      // Mirrors the producer's one resolution: the readings fact from the
+      // tracker's own stamp.
+      readings: typeof tracker.lastTimestamp === 'number' && Number.isFinite(tracker.lastTimestamp)
+        ? { state: 'received', lastPowerUpdateMs: tracker.lastTimestamp }
+        : { state: 'never' },
       status: classifyPowerStatus(settings.power_tracker_state, settings.pels_status),
-      heartbeat: typeof settings.app_heartbeat === 'number' ? settings.app_heartbeat : null,
       // Mirrors the real producer (setup/settingsUiApi.ts getSettingsUiPower):
       // a solarpanel device in the snapshot AND the homey_energy power source
       // (unset normalizes to flow, which has no solar signal — see
@@ -1659,17 +1666,23 @@
     const scope = resolveServableHomeId(query);
     if (!scope.scoped) return wholeHomePayload;
     if (scope.homeId === null) {
-      return { tracker: null, status: null, heartbeat: null, homeScope: { state: 'unavailable' } };
+      return { tracker: {}, readings: { state: 'never' }, status: null, homeScope: { state: 'unavailable' } };
     }
+    const scopedTracker = settings[`power_tracker_state:${scope.homeId}`]
+      && typeof settings[`power_tracker_state:${scope.homeId}`] === 'object'
+      ? settings[`power_tracker_state:${scope.homeId}`]
+      : {};
     return {
       // The area's OWN suffixed fixtures — absence is honest "not committed
       // yet", never main's tracker/status under an area badge.
-      tracker: settings[`power_tracker_state:${scope.homeId}`] ?? null,
+      tracker: scopedTracker,
+      readings: typeof scopedTracker.lastTimestamp === 'number' && Number.isFinite(scopedTracker.lastTimestamp)
+        ? { state: 'received', lastPowerUpdateMs: scopedTracker.lastTimestamp }
+        : { state: 'never' },
       status: classifyPowerStatus(
         settings[`power_tracker_state:${scope.homeId}`],
         settings[`pels_status:${scope.homeId}`],
       ),
-      heartbeat: null,
       // Same source gate as `buildPowerPayload` above, because the scoped
       // producer (`powerPayloadForHome`) applies it too: `readPowerSource()`
       // reads the GLOBAL `power_source` key, and only `homey_energy` yields
@@ -2020,7 +2033,7 @@
         lastPowerUpdate: Date.now() - 5 * 1000,
       },
     },
-    heartbeat: Date.now() - 4 * 1000,
+    readings: { state: 'received', lastPowerUpdateMs: Date.now() - 4 * 1000 },
   });
 
   const buildScenarioDenseDevicePlan = () => {

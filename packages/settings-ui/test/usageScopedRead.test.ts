@@ -110,7 +110,7 @@ const buildUsageDom = () => {
 
 describe('resolveHomeScopedRead', () => {
   it('serves a payload resolved FOR THE REQUESTED home, by identity', () => {
-    const payload = { tracker: null, homeScope: { state: 'resolved', homeId: AREA } as const };
+    const payload = { tracker: {}, homeScope: { state: 'resolved', homeId: AREA } as const };
     const read = resolveHomeScopedRead(payload, AREA);
     expect(read.state).toBe('served');
     if (read.state === 'served') expect(read.payload).toBe(payload);
@@ -144,7 +144,7 @@ describe('readUsagePower', () => {
   });
 
   it('reads the BARE /ui_power for the Main selection, byte-identically', async () => {
-    const uris = await installClient({ '/ui_power': { tracker: MAIN_TRACKER, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null } });
+    const uris = await installClient({ '/ui_power': { tracker: MAIN_TRACKER, readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 }, status: { state: 'unavailable', reason: 'no_status_recorded' } } });
     const { readUsagePower } = await import('../src/ui/usagePowerRead.ts');
 
     const read = await readUsagePower();
@@ -160,7 +160,7 @@ describe('readUsagePower', () => {
     // history — refusing the whole envelope over the status member would hide
     // the Usage panel's charts behind a claim about a different field.
     await installClient({
-      '/ui_power': { tracker: MAIN_TRACKER, status: { lastPowerUpdate: 123, priceLevel: 'cheap' }, heartbeat: null },
+      '/ui_power': { tracker: MAIN_TRACKER, readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 }, status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
     });
     const { readUsagePower } = await import('../src/ui/usagePowerRead.ts');
 
@@ -176,13 +176,13 @@ describe('readUsagePower', () => {
   it.each([
     ['a null answer', null],
     ['an undefined answer', undefined],
-    ['a partial envelope', { tracker: MAIN_TRACKER, status: { state: 'unavailable', reason: 'no_status_recorded' } }],
-    ['a malformed tracker', { tracker: [], status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null }],
-    ['a non-finite heartbeat', { tracker: MAIN_TRACKER, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: Number.NaN }],
+    ['a partial envelope (no readings fact)', { tracker: MAIN_TRACKER, status: { state: 'unavailable', reason: 'no_status_recorded' } }],
+    ['a malformed tracker', { tracker: [], readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 }, status: { state: 'unavailable', reason: 'no_status_recorded' } }],
+    ['a malformed readings fact', { tracker: MAIN_TRACKER, readings: { state: 'received', lastPowerUpdateMs: Number.NaN }, status: { state: 'unavailable', reason: 'no_status_recorded' } }],
     ['a scoped answer', {
       tracker: AREA_TRACKER,
+      readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 }, 
       status: { state: 'unavailable', reason: 'no_status_recorded' },
-      heartbeat: null,
       homeScope: { state: 'resolved', homeId: AREA },
     }],
   ])('classifies Main power as unavailable for %s', async (_name, payload) => {
@@ -198,7 +198,7 @@ describe('readUsagePower', () => {
     const uris = await installClient({
       '/ui_homes': ROSTER_PAYLOAD,
       [SCOPED_POWER_URI]: {
-        tracker: AREA_TRACKER, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null, homeScope: { state: 'resolved', homeId: AREA },
+        tracker: AREA_TRACKER, readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 }, status: { state: 'unavailable', reason: 'no_status_recorded' }, homeScope: { state: 'resolved', homeId: AREA },
       },
     });
     await selectArea();
@@ -214,15 +214,15 @@ describe('readUsagePower', () => {
 
   it.each([
     ['the producer answered unavailable', {
-      tracker: null, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, heartbeat: null, homeScope: { state: 'unavailable' as const },
+      tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, homeScope: { state: 'unavailable' as const },
     }],
-    ['the producer ignored the query (no scope block)', { tracker: MAIN_TRACKER, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null }],
+    ['the producer ignored the query (no scope block)', { tracker: MAIN_TRACKER, readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 }, status: { state: 'unavailable', reason: 'no_status_recorded' } }],
     // A resolved scope block naming ANOTHER home is a producer answering for
     // the wrong home. The tracker is Main's non-empty history on purpose: if
     // the reader accepted this on `state: 'resolved'` alone, those figures
     // would render under the selected area's chip.
     ['the producer resolved ANOTHER home (misrouted payload)', {
-      tracker: MAIN_TRACKER, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null,
+      tracker: MAIN_TRACKER, readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 }, status: { state: 'unavailable', reason: 'no_status_recorded' },
       homeScope: { state: 'resolved' as const, homeId: 'h_other_area' },
     }],
   ])('a scoped read is unavailable when %s', async (_name, payload) => {
@@ -284,7 +284,7 @@ describe('Usage panel scope states', () => {
     await installClient({
       '/ui_homes': ROSTER_PAYLOAD,
       [SCOPED_POWER_URI]: {
-        tracker: null, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, heartbeat: null, homeScope: { state: 'unavailable' },
+        tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, homeScope: { state: 'unavailable' },
       },
     });
     await selectArea();
@@ -335,7 +335,7 @@ describe('Usage panel scope states', () => {
     await installClient({
       '/ui_homes': ROSTER_PAYLOAD,
       [SCOPED_POWER_URI]: {
-        tracker: AREA_TRACKER, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null, homeScope: { state: 'resolved', homeId: AREA },
+        tracker: AREA_TRACKER, readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 }, status: { state: 'unavailable', reason: 'no_status_recorded' }, homeScope: { state: 'resolved', homeId: AREA },
       },
     });
     await selectArea();
@@ -359,9 +359,9 @@ describe('Usage panel scope states', () => {
   it('renders the area\'s own history when served, and Main\'s after switching back', async () => {
     await installClient({
       '/ui_homes': ROSTER_PAYLOAD,
-      '/ui_power': { tracker: MAIN_TRACKER, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null },
+      '/ui_power': { tracker: MAIN_TRACKER, readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 }, status: { state: 'unavailable', reason: 'no_status_recorded' } },
       [SCOPED_POWER_URI]: {
-        tracker: AREA_TRACKER, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null, homeScope: { state: 'resolved', homeId: AREA },
+        tracker: AREA_TRACKER, readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 }, status: { state: 'unavailable', reason: 'no_status_recorded' }, homeScope: { state: 'resolved', homeId: AREA },
       },
     });
     await selectArea();

@@ -29,6 +29,7 @@ import type {
   SettingsUiPlanPayload,
   SettingsUiPlanSnapshot,
   SettingsUiPowerPayload,
+  SettingsUiPowerReadings,
   SettingsUiPowerStatusRead,
   SettingsUiPricesPayload,
   SettingsUiResetPowerStatsResponse,
@@ -384,6 +385,22 @@ const classifyMainPowerStatus = (homey: ApiContext['homey']): SettingsUiPowerSta
   );
 };
 
+/**
+ * The readings fact, resolved once at this producer from the tracker's own
+ * stamp: ingest writes `lastPowerW` and `lastTimestamp` together, so a finite
+ * stamp IS "a reading has been received". The UI never re-derives this from
+ * tracker fields or persisted-blob fallbacks.
+ */
+const resolvePowerReadings = (tracker: PowerTrackerState): SettingsUiPowerReadings => (
+  // BOTH halves of the latch, matching the measurement gate: ingest stamps
+  // them together, so a persisted blob carrying one without the other is a
+  // half-latch no real sample produced — never reported as received.
+  typeof tracker.lastTimestamp === 'number' && Number.isFinite(tracker.lastTimestamp)
+  && typeof tracker.lastPowerW === 'number' && Number.isFinite(tracker.lastPowerW)
+    ? { state: 'received', lastPowerUpdateMs: tracker.lastTimestamp }
+    : { state: 'never' }
+);
+
 const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
   const app = getApp(homey);
   const mainCapacityScalars = resolveMainCapacityScalars(app?.capacitySettings);
@@ -391,12 +408,15 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
   // (buckets, daily totals, solar families) whose consumers age it themselves
   // (stale-data banner, solar-now staleness gate). Liveness claims ride the
   // classified `status` read only.
-  const tracker = getPowerTrackerForUiFromApp(homey)
+  const rawTracker = getPowerTrackerForUiFromApp(homey)
     ?? (homey.settings.get(POWER_TRACKER_STATE) as PowerTrackerState | null);
+  const tracker: PowerTrackerState = rawTracker && typeof rawTracker === 'object' && !Array.isArray(rawTracker)
+    ? rawTracker
+    : {};
   return {
-    tracker: tracker && typeof tracker === 'object' ? tracker : null,
+    tracker,
+    readings: resolvePowerReadings(tracker),
     status: classifyMainPowerStatus(homey),
-    heartbeat: null,
     ...(typeof app?.capacityDryRun === 'boolean'
       ? { mainDryRunEffective: app.capacityDryRun }
       : {}),
@@ -487,9 +507,9 @@ const UNAVAILABLE_PLAN_PAYLOAD: SettingsUiPlanPayload = {
   plan: null, homeScope: { state: 'unavailable' },
 };
 const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
-  tracker: null,
+  tracker: {},
+  readings: { state: 'never' },
   status: { state: 'unavailable', reason: 'home_scope_unavailable' },
-  heartbeat: null,
   homeScope: { state: 'unavailable' },
 };
 const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
@@ -537,8 +557,8 @@ const powerPayloadForHome = (
   // `resolved`/`absent` reach the classifier.
   return {
     tracker: reading.powerTracker,
+    readings: resolvePowerReadings(reading.powerTracker),
     status: classifyPowerStatusRead(latchEvidence(hasPowerMeasurement(reading.powerTracker)), statusRead),
-    heartbeat: null,
     // Always false when scoped to a SUB-HOME, even when that home owns a solar
     // device. The flag promises production DATA, not the presence of a panel,
     // and a sub-home's `generationBuckets` can never fill: its bundle is built
