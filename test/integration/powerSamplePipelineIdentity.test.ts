@@ -6,6 +6,7 @@
 // identity claim together with its watts; samples that carry no identity field
 // (flow, sub-home meters) never publish. This is the seam that makes the fence
 // unable to move ahead of — or on different evidence than — the tracker.
+import { createSampleIngestQueue } from '../../lib/power/sampleIngestQueue';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -30,6 +31,7 @@ const buildPipeline = (
     lastRebuildPowerW: 0,
   };
   return new PowerSamplePipeline({
+    createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),
     noteSampleAdmitted: () => {},
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
