@@ -69,8 +69,6 @@ export type BinaryCommandLifecycleListener = {
  * the single source of truth in both directions.
  */
 export class PendingBinaryCommandStore {
-  private readonly deferredConfirmationByDevice = new Map<string, () => void>();
-
   private readonly recentConfirmedOffByDevice = new Map<string, {
     confirmedAtMs: number;
   }>();
@@ -83,17 +81,31 @@ export class PendingBinaryCommandStore {
   recordDispatchAccepted(deviceId: string, command: BinaryCommandLifecycleEvent): void {
     const pending = this.backing[deviceId];
     if (!pending) return;
+    // The acceptance must belong to the entry it is flipping. Plan logic may
+    // supersede an in-flight command with the opposite direction — only a
+    // SAME-direction command is skipped as already pending — so a late
+    // acceptance from the superseded write can arrive after `record` replaced
+    // the entry. Flipping on device id alone would mark the REPLACEMENT
+    // accepted on the strength of its predecessor's transport call, letting an
+    // echo settle a command whose own write may not have been accepted yet.
+    if (pending.desired !== command.desired) return;
     this.backing[deviceId] = { ...pending, dispatchState: 'accepted' };
     this.lifecycle?.onDispatchAccepted?.({
       deviceId,
       desired: command.desired,
       startedAtMs: pending.startedMs,
     });
-    const confirm = this.deferredConfirmationByDevice.get(deviceId);
-    if (confirm) {
-      this.deferredConfirmationByDevice.delete(deviceId);
-      confirm();
-    }
+    // Nothing is replayed here. An echo that arrived before acceptance is not a
+    // consumed event — `binaryCommandConfirmation` is a projection of the
+    // device's CURRENT observed value, so it is still there on the next sweep,
+    // which now sees `accepted` and confirms it. Parking a closure to fire from
+    // here bought one sweep of latency and cost a stale-replay hazard: the
+    // closure captured `pending`/`observation`/`liveDevice` from an older sweep,
+    // and `record` replaces the entry WITHOUT clearing it, so a closure parked
+    // for a superseded command could confirm its stale desired value against the
+    // command that replaced it — stamping PELS-actuation provenance from it and
+    // clearing the live entry. Re-reading the projection each sweep cannot go
+    // stale against itself.
   }
 
   recordDispatchFailed(deviceId: string, command: BinaryCommandLifecycleEvent): void {
@@ -135,14 +147,6 @@ export class PendingBinaryCommandStore {
   /** Whether transport accepted the request and observer settlement may commit it. */
   isDispatchAccepted(deviceId: string): boolean {
     return this.backing[deviceId]?.dispatchState === 'accepted';
-  }
-
-  deferConfirmation(deviceId: string, confirm: () => void): void {
-    this.deferredConfirmationByDevice.set(deviceId, confirm);
-  }
-
-  clearDeferredConfirmation(deviceId: string): void {
-    this.deferredConfirmationByDevice.delete(deviceId);
   }
 
   /**
@@ -207,7 +211,6 @@ export class PendingBinaryCommandStore {
   /** Clear the pending entry for a device, if any. */
   clear(deviceId: string): void {
     delete this.backing[deviceId];
-    this.deferredConfirmationByDevice.delete(deviceId);
   }
 
   /** Return the active pending entry, transparently evicting stale entries. */
@@ -366,16 +369,18 @@ function reconcilePendingEntry(params: {
   if (!observation) return false;
   const observedValue = observation.observedValue;
   if (observedValue === pending.desired) {
-    const confirm = (): void => confirmPendingBinaryCommand({
+    // Observer settlement may only commit once transport has accepted the
+    // request. Until then this is a no-op, NOT a deferral: the observation is a
+    // projection of the device's current value, so the next sweep sees the same
+    // echo against an accepted entry and confirms it then. A contradiction
+    // arriving first simply falls through below and supersedes it, with no
+    // parked evidence to cancel.
+    if (!store.isDispatchAccepted(deviceId)) return false;
+    confirmPendingBinaryCommand({
       store, deviceId, pending, liveDevice, source, observation, onConfirmed,
     });
-    if (store.isDispatchAccepted(deviceId)) confirm();
-    else store.deferConfirmation(deviceId, confirm);
     return true;
   }
-  // A newer contradiction supersedes an earlier matching echo seen while the
-  // request was still dispatching. Acceptance must never replay stale evidence.
-  store.clearDeferredConfirmation(deviceId);
 
   if (
     pending.lastObservedValue === observedValue
