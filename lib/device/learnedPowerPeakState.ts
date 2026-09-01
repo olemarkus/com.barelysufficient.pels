@@ -1,11 +1,11 @@
 import {
   adoptPersistedLearnedPeaks,
   type LearnedPeaksByDeviceId,
-} from '../../lib/device/devicePowerPeak';
-import { normalizeError } from '../../lib/utils/errorUtils';
-import type { Logger as PinoLogger } from '../../lib/logging/logger';
-import type { TimerRegistry } from '../../lib/utils/timerRegistry';
-import type { SettingsRepository } from '../settingsRepository';
+} from './devicePowerPeak';
+import { normalizeError } from '../utils/errorUtils';
+import type { Logger as PinoLogger } from '../logging/logger';
+import type { TimerRegistry } from '../utils/timerRegistry';
+import type { DevicePersistencePort } from './devicePersistencePort';
 
 /** Floor between learned-peak settings writes. See {@link createLearnedPowerPeakState}. */
 const PEAK_PERSIST_MIN_INTERVAL_MS = 60_000;
@@ -31,12 +31,12 @@ export type LearnedPowerPeakState = {
  * `lib/device/devicePowerPeak.ts`.
  */
 export function createLearnedPowerPeakState(params: {
-  settingsRepository: SettingsRepository;
+  persistence: DevicePersistencePort;
   getPeaks: () => LearnedPeaksByDeviceId;
   timers: TimerRegistry;
   getStructuredLogger?: () => PinoLogger | undefined;
 }): LearnedPowerPeakState {
-  const { settingsRepository, getPeaks, timers, getStructuredLogger } = params;
+  const { persistence, getPeaks, timers, getStructuredLogger } = params;
   let lastPersistMs = 0;
   let lastPersistedSignature = '';
   /**
@@ -57,7 +57,7 @@ export function createLearnedPowerPeakState(params: {
    * suppression exactly like a populated one.
    */
   const readIntoStore = (): boolean => {
-    const read = settingsRepository.loadLearnedPeaks();
+    const read = persistence.loadLearnedPeaks();
     if (read.state === 'unavailable') return false;
     const peaks = getPeaks();
     // Merged rather than replaced: this can run long after boot (see the retry
@@ -66,9 +66,7 @@ export function createLearnedPowerPeakState(params: {
     // In-place: the record is shared by reference with `DeviceTransport`, which
     // took it at construction. Replacing it would leave the transport writing
     // into the old object and this one reading an orphan.
-    // eslint-disable-next-line functional/immutable-data -- shared-by-reference store, see above
     for (const key of Object.keys(peaks)) delete peaks[key];
-    // eslint-disable-next-line functional/immutable-data -- shared-by-reference store, see above
     Object.assign(peaks, adopted);
     writeBackSuppressed = false;
     return true;
@@ -82,7 +80,7 @@ export function createLearnedPowerPeakState(params: {
       return;
     }
     try {
-      settingsRepository.saveLearnedPeaks(peaks, nowMs);
+      persistence.saveLearnedPeaks(peaks, nowMs);
     } catch (error) {
       // Bookkeeping deliberately NOT advanced. Marking the attempt as done here
       // is what used to strand the peak for good: the signature check would then

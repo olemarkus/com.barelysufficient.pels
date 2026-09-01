@@ -60,7 +60,7 @@ import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosti
 import { createGenerationPollSource } from './setup/appInit/createGenerationPollSource';
 import { createHomeyEnergyPollSource } from './setup/appInit/createHomeyEnergyPollSource';
 import { AppSnapshotHelpers, createTargetPowerReachabilityAppWiring } from './setup/appSnapshotHelpers';
-import { AppFlowBacked } from './setup/appFlowBacked';
+import { createFlowBackedDeviceState } from './setup/flowBackedCardAccess';
 import { AppSmartTaskApi } from './setup/appSmartTaskApi';
 import { AppSmartTaskPayloads } from './setup/appSmartTaskPayloads';
 import { getAppPlanRebuildNowMs, PlanRebuildIntentPolicy } from './setup/planRebuildIntentPolicy';
@@ -320,9 +320,8 @@ class PelsApp extends PelsAppBase implements AppContext {
     getStructuredLogger: (component) => this.getStructuredLogger(component),
     debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
   });
-  protected readonly flowBacked = new AppFlowBacked({
-    homey: this.homey,
-    settingsRepository: this.settingsRepository,
+  protected readonly flowBacked = createFlowBackedDeviceState(this.homey, {
+    persistence: this.settingsRepository,
     getStructuredLogger: (component) => this.getStructuredLogger(component),
     getFlowReportedCapabilities: () => this.flowReportedCapabilities,
     setFlowReportedCapabilities: (state) => { this.flowReportedCapabilities = state; },

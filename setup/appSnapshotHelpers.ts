@@ -17,7 +17,7 @@ import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import {
   TargetPowerProbeScheduler,
   type DueTargetPowerProbe,
-} from './targetPowerProbeScheduler';
+} from '../lib/device/targetPowerProbeScheduler';
 
 export { createTargetPowerReachabilityAppWiring } from './appTargetPowerReachabilityWiring';
 

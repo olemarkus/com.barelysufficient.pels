@@ -1,7 +1,7 @@
 import type Homey from 'homey';
 import { mockHomeyInstance } from '../mocks/homey';
 import { SettingsRepository } from '../../setup/settingsRepository';
-import { createLearnedPowerPeakState } from '../../setup/appInit/learnedPowerPeakState';
+import { createLearnedPowerPeakState } from '../../lib/device/learnedPowerPeakState';
 import { DEVICE_POWER_PEAKS } from '../../lib/utils/settingsKeys';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
@@ -21,7 +21,7 @@ describe('learned power peak persistence', () => {
 
   const buildState = (homey: Homey.App['homey'] = mockHomeyInstance as unknown as Homey.App['homey']) => (
     createLearnedPowerPeakState({
-      settingsRepository: new SettingsRepository(homey),
+      persistence: new SettingsRepository(homey),
       getPeaks: () => peaks,
       timers,
     })

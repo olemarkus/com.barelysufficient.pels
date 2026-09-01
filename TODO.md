@@ -3247,10 +3247,10 @@ non-blocking follow-ups.*
       walks the packaged require graph cleanly, and prod insights RSS steps down after deploy.
       Found 2026-08-20. [P2]
 
-- [ ] **Fifteen setup files still hold runtime state, above the boundaries `arch:check` enforces.**
+- [ ] **Thirteen setup files still hold runtime state, above the boundaries `arch:check` enforces.**
       `setup/` constructs and connects and holds nothing (`setup/AGENTS.md` § "No state"), enforced
-      by `scripts/check-setup-stateless.mjs`. Fifteen files predate the rule and sit in
-      `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (73
+      by `scripts/check-setup-stateless.mjs`. Thirteen files predate the rule and sit in
+      `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (62
       declarations; 21 files / 104 at the guard's introduction). Each is a component in the wrong directory, and each
       migration is the same shape: move the state **and the rules that read it** into the domain
       module that owns the concept, as a leaf that takes flat injected getters for anything outside
@@ -3260,11 +3260,14 @@ non-blocking follow-ups.*
       `setup/homeMembership.ts` imports `lib/device/transport/managerFetch` and
       `lib/observer/observedStateEvents` today, so those inputs must arrive injected or move to
       `packages/contracts`. Lanes, in the order they should land:
-      (a) power — DONE except `powerSamplePipeline.ts`, which is NOT a power component and needs
-      its own answer (see the entry below);
+      (a) power — DONE except `powerSamplePipeline.ts`, which is not a power component at all;
+      it is part of the single-flight cluster below;
       (b) solar — DONE;
-      (c) device — `appSnapshotHelpers.ts`, `targetPowerProbeScheduler.ts`, `appNativeWiring.ts`,
-      `appFlowBacked.ts`, `appDeviceSupport.ts` (two module-level `Set`s) → `lib/device/`;
+      (c) device — `targetPowerProbeScheduler.ts` and `appFlowBacked.ts` are DONE (`lib/device/`).
+      `appDeviceSupport.ts` still holds a module-level `Set` and imports
+      `lib/plan/planTemperatureDevice`, which `no-device-to-peer-except-power` forbids, so that type
+      guard has to be resolved before it can follow. `appSnapshotHelpers.ts` and
+      `appNativeWiring.ts` are the single-flight cluster below, not device moves;
       (d) home — `homeMembership.ts` (832 lines), `homeMainMeterAuthority.ts`,
       `homeSampledMeterIdentity.ts`, `homeRuntime/homeModeOwnershipTransfer.ts`,
       `homeRuntime/homeRuntimeRegistry.ts` → `lib/home/` (the meter-provenance pair may have to go
@@ -3276,22 +3279,6 @@ non-blocking follow-ups.*
       `npm run arch:check` as the gate on the destination. Done when
       `scripts/setup-stateless-allowlist.txt` no longer exists and `npm run setup:stateless` passes
       without it. Found 2026-08-29. [P2]
-
-- [ ] **`setup/powerSamplePipeline.ts` holds a coalescing queue that belongs to neither layer.**
-      The last file on the power lane's allowlist line cannot follow the other four into
-      `lib/power/`: `no-power-to-peer-except-objectives` forbids `lib/power` from importing
-      `lib/plan`, `lib/device` or the rest, and the pipeline imports `PlanEngine`, `PlanService`,
-      `PlanRebuildScheduler` and `DeviceTransport` because its job is to fan ONE reading out across
-      plan, objectives, solar and home membership. `lib/plan` is not the answer either
-      (`no-plan-to-device` blocks the `HomeMeterArrangementObservation` it carries). Its five
-      declarations — `powerSampleLoop`, `powerSampleRerunRequested`, `pendingPowerSampleRequest`,
-      `sampleRevision`, `completedSampleRevision` — are not a power concept at all: they are a
-      single-flight coalescing queue (one run at a time; a newer request supersedes the queued one;
-      completion reports a revision). Extract that as a domain-free primitive in `lib/utils/`
-      (below every peer, so no edge appears), inject it, and the pipeline's own body becomes the
-      stateless fan-out that `setup/` may keep. Done when `setup/powerSamplePipeline.ts` declares no
-      field, its allowlist line is gone, and `test/integration/powerSamplePipeline*` still pins the
-      supersede-and-coalesce behaviour. Found 2026-09-01. [P2]
 
 - [ ] **`lib/power/persistedHomeTracker.ts` passes five parameter bags.**
       Its five functions (`writeFreshnessReset`, `restoreTrackerState`,
@@ -3307,6 +3294,44 @@ non-blocking follow-ups.*
       honest scalars. Done when `lib/power/persistedHomeTracker.ts` has no line in
       `scripts/param-bundle-allowlist.txt` and the three `setup/homeRuntime` callers pass the named
       object. Source: Codex review of PR #2263, 2026-09-01. [P2]
+
+- [ ] **Three setup files hold the same single-flight primitive, spelled three ways.**
+      `setup/powerSamplePipeline.ts` (`powerSampleLoop` / `powerSampleRerunRequested` /
+      `pendingPowerSampleRequest`), `setup/appSnapshotHelpers.ts` (`snapshotRefreshInFlight` /
+      `snapshotRefreshPending` / `isSnapshotRefreshing`) and `setup/appNativeWiring.ts`
+      (`nativeWiringDecisionInFlight`, the degenerate no-queue case) each implement: one run at a
+      time; a request arriving mid-flight queues exactly one re-run; late callers await the
+      in-flight promise. All three share the same latent window — the loop promise is assigned only
+      after the async function has been called, so a synchronous re-entrant caller cannot see it.
+      `appSnapshotHelpers` documents that window and falls back to queue-and-return;
+      `powerSamplePipeline` has it too and merely never exercises it. None of the three can move to
+      a domain module: each imports peers its destination forbids (the pipeline and the snapshot
+      helper both import `lib/plan` values, which `no-power-to-peer-except-objectives` and
+      `no-device-to-peer-except-power` respectively forbid), which is why they are the allowlist's
+      residue. One primitive in `lib/utils/` — below every peer, so no import edge appears —
+      modelling the re-entrancy window EXPLICITLY rather than by accident, would take all three.
+      This is a behaviour-affecting refactor of two hot paths, not a move: it needs its own tests
+      for the supersede, the await-in-flight, and the synchronous re-entry cases. Done when the
+      three files declare no run-loop field, their allowlist lines are gone, and the primitive has
+      a spec covering all three cases. Found 2026-09-01. [P2]
+
+- [ ] **`loadFlowReportedCapabilities` is the one unclean read on `DevicePersistencePort`.**
+      `lib/device/devicePersistencePort.ts` declares six calls; `loadLearnedPeaks` and
+      `loadExpectedPowerOverrides` answer `resolved | unavailable`, but
+      `loadFlowReportedCapabilities` returns a plain `FlowReportedCapabilitiesByDevice` and
+      collapses "never written", "malformed" and "genuinely empty" into the same empty record.
+      `SettingsRepository.loadFlowReportedCapabilities` is also the only one of the three not
+      wrapped against a throwing `settings.get`, so a thrown read escapes rather than classifying.
+      The cost is visible at the consumer:
+      `FlowBackedDeviceState.loadFlowReportedCapabilities` carries a keep-what-we-hold heuristic for
+      an empty parse, which reads exactly like the redundant hedge root `AGENTS.md` tells reviewers
+      to delete — and deleting it restores a wipe-on-transient-miss bug. Promote the read to a
+      `FlowReportedCapabilitiesRead` discriminated union built from the same key-list evidence the
+      other two use, then delete the heuristic and its
+      `flow_capabilities_load_empty_parse_keeping_existing` warning. Done when the port's three
+      reads all answer a discriminated result, the heuristic is gone, and a spec covers
+      unwritten / malformed / throwing / genuinely-empty as four distinct outcomes. Source:
+      adversarial review of the device lane, 2026-09-01. [P2]
 
 ## P3 Future and Exploratory Work
 

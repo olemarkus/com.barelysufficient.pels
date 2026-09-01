@@ -22,9 +22,7 @@ setup/powerSamplePipeline.ts 5
 
 # --- Device/snapshot lane (→ lib/device) -----------------------------------
 setup/appSnapshotHelpers.ts 4
-setup/targetPowerProbeScheduler.ts 4
 setup/appNativeWiring.ts 1
-setup/appFlowBacked.ts 7
 setup/appDeviceSupport.ts 1
 
 # --- Home lane (→ lib/home; the meter-provenance pair may need lib/power) ---

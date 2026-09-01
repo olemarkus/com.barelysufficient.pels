@@ -29,7 +29,7 @@ const INVALID_EXPECTED_POWER_MESSAGE = 'Power when running must be a positive nu
 /**
  * Who gets the field.
  *
- * Mirrors the runtime's own refusal (`AppFlowBacked.setExpectedOverride` throws
+ * Mirrors the runtime's own refusal (`FlowBackedDeviceState.setExpectedOverride` throws
  * "Stepped load devices use configured planning power per step"): a stepped load
  * is sized per configured step, so one whole-device figure has nothing to apply
  * to. Hidden rather than disabled — the step editor on the same page is where
