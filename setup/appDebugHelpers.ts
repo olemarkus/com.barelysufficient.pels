@@ -1,4 +1,5 @@
 /* eslint-disable functional/immutable-data -- debug payload assembly is local and not shared mutable state. */
+import { nextDeviceDumpId } from '../lib/diagnostics/deviceDumpId';
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
 import type { DeviceTransport } from '../lib/device/deviceTransport';
@@ -93,11 +94,6 @@ export async function getHomeyEnergyMetersFromApp(app: Homey.App): Promise<Homey
     .map((item) => ({ id: item.id, name: nameById.get(item.id) ?? item.id }));
 }
 
-// Distinguishes concurrent/repeated dumps so a reader can tell one press of
-// "Log device" from the next. Process-local and monotonic — no clock or
-// randomness needed, since it only has to be unique within a log file.
-let deviceDumpSequence = 0;
-
 /**
  * Emits the dump as one line PER SECTION rather than a single line carrying the
  * whole serialized payload.
@@ -118,8 +114,7 @@ function emitDeviceDumpSections(params: {
   dump: DeviceDebugDump;
 }): void {
   const { deviceId, label, dump } = params;
-  deviceDumpSequence += 1;
-  const dumpId = `${deviceId}#${deviceDumpSequence}`;
+  const dumpId = nextDeviceDumpId(deviceId);
   const sections: readonly (readonly [string, unknown])[] = [
     ['summary', dump.homey.summary],
     ['settings', dump.homey.settings],

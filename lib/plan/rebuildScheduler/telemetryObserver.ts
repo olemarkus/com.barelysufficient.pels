@@ -2,11 +2,11 @@ import type { Logger as PinoLogger } from 'pino';
 import {
   cancelPendingPowerRebuild,
   type PowerSampleRebuildState,
-} from '../lib/plan/rebuildScheduler/powerDriven';
-import type { RebuildIntent } from '../lib/plan/rebuildScheduler/scheduler';
-import { incPerfCounter } from '../lib/utils/perfCounters';
-import { normalizeError } from '../lib/utils/errorUtils';
-import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
+} from './powerDriven';
+import type { RebuildIntent } from './scheduler';
+import { incPerfCounter } from '../../utils/perfCounters';
+import { normalizeError } from '../../utils/errorUtils';
+import type { DebugLoggingTopic } from '../../../packages/shared-domain/src/utils/debugLogging';
 
 const PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS = 60 * 1000;
 
@@ -21,6 +21,12 @@ export type SchedulerTelemetryObserverDeps = {
 /**
  * Telemetry observer for `PlanRebuildScheduler` lifecycle callbacks.
  * Owns the per-key debug rate-limiter and the cross-cutting perf counters.
+ *
+ * Lives with the scheduler it observes. It used to sit in `setup/`, which made
+ * its rate-limiter state ownerless — and put a component that names
+ * `RebuildIntent` and `PowerSampleRebuildState` a layer above the module that
+ * defines them. `lib/logging` would be the wrong home for the same reason in
+ * reverse: logging is a foundation, and this would have it depend on `lib/plan`.
  *
  * Implements all four `onIntent*` / `onPendingIntentReplaced` callbacks the
  * scheduler emits as arrow-function fields, so they can be passed to the

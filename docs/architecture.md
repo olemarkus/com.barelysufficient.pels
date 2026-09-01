@@ -36,7 +36,7 @@ This page is the public contributor reference. Use it when you are deciding wher
 | Layer | Purpose | Examples |
 | --- | --- | --- |
 | **Entry points** | Boot the runtime or render the settings UI. Wire dependencies but contain no domain logic. | `app.ts` (Homey app entry), `drivers/pels_insights/` (virtual device), `script.ts` (settings UI bootstrap) |
-| **App wiring** | Adapt the Homey SDK and Flow cards onto the domain modules, and hold nothing afterwards. This is where dependency injection happens. Wiring lives in `setup/` and `flowCards/`; none is left in `lib/app/`. | `setup/schedulerTelemetryObserver.ts`, `setup/settingsRepository.ts`, `flowCards/registerFlowCards.ts` |
+| **App wiring** | Adapt the Homey SDK and Flow cards onto the domain modules, and hold nothing afterwards. This is where dependency injection happens. Wiring lives in `setup/` and `flowCards/`; none is left in `lib/app/`. | `setup/settingsRepository.ts`, `setup/backgroundTasksController.ts`, `flowCards/registerFlowCards.ts` |
 | **Domain** | Pure planning, capacity, price, budget, and observation logic. No Homey SDK calls; no UI imports. | `lib/plan/planEngine.ts`, `lib/device/deviceTransport.ts`, `lib/power/tracker.ts`, `lib/objectives/profiles.ts`, `lib/observer/idleClassifier.ts` |
 | **Shared utilities** | Pure helpers usable from anywhere — including the browser-side settings UI. Must remain Homey-SDK-free. | `lib/utils/*`, `packages/shared-domain/src/deadlineLabels.ts` |
 | **Test code** | Specs and mocks. Runtime cannot import it. | `test/`, `packages/settings-ui/test/` |
@@ -69,7 +69,7 @@ State in the wiring layer is state with no owner: it sits *above* the boundaries
 
 **Conventions (reviewed at PR time, not cruiser-enforced):**
 
-- **One purpose per file**, named for the concrete wiring it does (`schedulerTelemetryObserver.ts`, `settingsRepository.ts`). No grab-bag `setupHelpers.ts`.
+- **One purpose per file**, named for the concrete wiring it does (`settingsRepository.ts`, `backgroundTasksController.ts`). No grab-bag `setupHelpers.ts`.
 - **Each file exposes a class, or a single `register*` / `init*` / `create*` function.** Not bags of utility functions. The one carve-out is the settings-UI/widget endpoint handler files (`settingsUiApi.ts`, `settingsUiHomesApi.ts`, `settingsUiStarvationRescueApi.ts`, `settingsUiSmartTaskApi.ts`), which each export the handler set for one endpoint family because `api.ts` imports handlers by name. Cohesion still binds: a new endpoint family gets a new file, never an extra export bolted onto an unrelated one.
 
 **`lib/app/` has dissolved.** The migration finished: the directory now holds only `lib/app/appContext.ts` (the shared `AppContext` type definition), which is its long-term and only inhabitant. Wiring goes in `setup/`; nothing new belongs in `lib/app/`.

@@ -35,6 +35,3 @@ setup/homeRuntime/homeRuntimeRegistry.ts 8
 # --- Composition root and leftovers ----------------------------------------
 # Service handles belong to app.ts/AppContext; the rest to their domain module.
 setup/appServiceWiring.ts 7
-setup/backgroundTasksController.ts 6
-setup/schedulerTelemetryObserver.ts 1
-setup/appDebugHelpers.ts 1
