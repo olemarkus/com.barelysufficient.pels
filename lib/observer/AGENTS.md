@@ -4,11 +4,14 @@
 
 ## Map
 
-- `observationTrust.ts` — which observations count as trusted evidence.
 - `observedState.ts` / `observedDeviceStateProjection.ts` / `observedStateEvents.ts` — observed-state model and projections.
 - `idleClassifier.ts` / `idleDetector.ts` — `near_target_idle` / `unresponsive` / `capped_idle` classification (see `notes/idle-classification.md`).
 - `pendingBinaryCommands.ts` + `pendingBinaryCommandTypes.ts` — pending semantic binary commands and telemetry confirmation; capability routing stays in transport.
+- `controlCommandConfirmation.ts` — per-communication-model confirmation windows, shared by every control axis.
+- `steppedReportedStep.ts` — store of the last flow-reported rung per device.
+- `steppedSettleSnapshot.ts` — projection of devices onto the stepped axis's settle evidence.
 - `observedHomePower.ts` / `observedPower.ts` — whole-home and per-device power views.
+- `generationFreshness.ts` — freshness policy for the held generation reading on the flow source.
 - `externalOffHold.ts` — the "Leave off until turned on again" hold state and its persistence.
 
 ## One deliberate exception to "timeless observed state"

@@ -41,8 +41,8 @@ export type CurrentStateInput = Partial<ObservedCurrentStateInput> & {
 
 type StepCurrentStateInput = Pick<
   ObservedCurrentStateInput,
-  'steppedLoadProfile' | 'selectedStepId'
-> & { binaryControl?: { on: boolean } };
+  'steppedLoadProfile' | 'selectedStepId' | 'binaryControl'
+>;
 
 function stepIsAtOff(
   device: Pick<CurrentStateInput, 'steppedLoadProfile' | 'selectedStepId'>,

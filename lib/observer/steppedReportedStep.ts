@@ -36,7 +36,7 @@ export type SteppedLoadReportedRuntimeState = {
  * does not hold. The caller admits or rejects the report first and only records
  * what it admitted.
  */
-export const buildSteppedLoadReportedState = (params: {
+const buildSteppedLoadReportedState = (params: {
   stepId: string;
   reportedAtMs: number;
   planningPowerW?: number;
@@ -56,7 +56,7 @@ export const buildSteppedLoadReportedState = (params: {
  * different power is the target-power probe's evidence, and collapsing it to
  * "unchanged" would drop the observation the probe is waiting on.
  */
-export const hasSteppedLoadReportChanged = (
+const hasSteppedLoadReportChanged = (
   previous: SteppedLoadReportedRuntimeState | undefined,
   next: SteppedLoadReportedRuntimeState,
 ): boolean => {

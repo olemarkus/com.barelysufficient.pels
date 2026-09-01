@@ -183,7 +183,7 @@ describe('binary command dispatch', () => {
       }],
       source: 'device_update',
     })).toBe(true);
-    expect(store.has('charger-1')).toBe(false);
+    expect(store.peek('charger-1')).toBeUndefined();
   });
 
   // The load-bearing safety net. Keeping the entry armed on a timeout must not
