@@ -807,6 +807,41 @@ What remains open is below.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **`external_off_holds` is one blob key, and every guard in the store exists to defend that
+      choice.** `lib/observer/externalOffHold.ts` carries six interacting pieces of state
+      (`stateUnavailable`, `persistBlockedUntilMs`, `unpersistedMutation`,
+      `blobAbandonedUnreconciled`, `releasedWhileUnavailable`, `nextReloadAtMs`) plus a re-entrant
+      `settleState` and a read-before-save ordering rule, all for one reason: the holds live in a
+      single settings key whose write full-replaces it, so an unreadable blob makes any write a
+      potential wipe of every other device's hold. Move to per-device keys
+      (`external_off_hold.<deviceId>`), following `lib/objectives/deferredObjectives/objectiveStore.ts`
+      — including its `migrateBlobToPerKeyIfNeeded` decision order and its `getKeys()`-empty
+      transient-store guard. A per-key write cannot clobber a neighbour, so the grace window,
+      the tombstone set, the abandoned-blob flag and the reconcile ordering all go, and
+      `clearHold` becomes an idempotent `unset`. Two things do not go: `isHeld` still fails closed
+      for an opted-in device whose own key cannot be read, and the `external_off_holds_initialized`
+      written-before marker is replaced by a migration-done marker, not simply dropped. Done when the
+      module holds no abandon-grace/tombstone state, a resumable absent-only migration copies the
+      existing blob and consumes it, and the existing e2e (`test/e2e/externalOffHold.e2e.test.ts`)
+      plus a new mid-migration-restart test both pass.
+
+- [ ] **The pending-binary deferred confirmation stores a closure, and only buys latency.**
+      `PendingBinaryCommandStore.deferConfirmation` (`lib/observer/pendingBinaryCommands.ts`) parks
+      a callback capturing `liveDevice`/`observation`/`source` from one sweep and replays it from
+      `recordDispatchAccepted` later — which is why `clearDeferredConfirmation` has to exist to stop
+      a stale replay. Neither half earns its keep. The deferral is not load-bearing for correctness:
+      `binaryCommandConfirmation` is a level-triggered projection of current observed state
+      (`lib/device/transport/binaryCommandConfirmationSnapshot.ts`), not a consumed edge, so an echo
+      that arrives before dispatch acceptance is still visible on the next sweep — the closure buys
+      one sweep of latency. And the captured `liveDevice` is narrowed to `id`/`name` at the executor
+      (`handleConfirmedBinaryCommand`, `lib/executor/planExecutor.ts`), so today's replay risk is a
+      stale device name in a log line, not a wrong decision — the cost being paid is the state
+      machine, not a live bug. Replace the
+      closure map with the observation recorded on the pending entry plus one `tryConfirm(deviceId)`
+      called from both `recordDispatchAccepted` and the sweep. Done when
+      `deferredConfirmationByDevice` is gone, no captured `liveDevice` outlives its sweep, and the
+      accept-after-echo cases in `test/integration/binaryControlDispatch.test.ts` still pass.
+
 - [ ] **A silent meter AREA has no staleness indication — the no-readings banner speaks only for
       Main.** The banner (`packages/shared-domain/src/powerReadingsBanner.ts`, fed by the
       deliberately Main-only `getPowerReadModel` in `packages/settings-ui/src/ui/power.ts`) is the

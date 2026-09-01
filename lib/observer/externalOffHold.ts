@@ -48,7 +48,22 @@
  * `lib/objectives/deferredObjectives/hoursRemainingCrossings.ts` rather than
  * sharing a helper: `notes/persisted-settings-state.md` cut the shared
  * `PersistedSettingsState<T>` proposal in the 2026-05-31 layering review, because
- * the stores share vocabulary but not semantics. Do not re-raise it.
+ * the stores share vocabulary but not semantics. Do not re-raise *that*: one
+ * generic helper absorbing both stores' policies.
+ *
+ * It is NOT a ruling that this shape is settled. Every flag in the body below
+ * exists because the state is one blob key whose write full-replaces it:
+ * unreadable blob ⇒ unsafe write ⇒ grace window, written-before marker,
+ * tombstones, abandoned-blob flag, and the read-before-save ordering in
+ * `settleState`. Per-device keys
+ * remove the hazard rather than defending against it — a write to one device's
+ * key cannot erase another's, so a blind write is safe and `clearHold` is a
+ * plain idempotent `unset`. What that does NOT remove is the fail-closed read:
+ * an opted-in device whose own key cannot be read must still answer `isHeld`,
+ * because "not held" is the resume this feature exists to prevent.
+ * `lib/objectives/deferredObjectives/objectiveStore.ts` already made exactly
+ * that move, `migrateBlobToPerKeyIfNeeded` included. See the P2 entry in
+ * `TODO.md`.
  */
 
 /**

@@ -172,7 +172,6 @@ lib/objectives/profiles.ts 12
 lib/objectives/stats.ts 2
 lib/observer/generationFreshness.ts 1
 lib/observer/idleClassifier.ts 2
-lib/observer/idleDetector.ts 1
 lib/observer/pendingBinaryCommands.ts 7
 lib/observer/steppedReportedStep.ts 2
 lib/plan/admission/activationBackoff.ts 8
