@@ -14,7 +14,6 @@ import type { TransportContext } from '../../lib/device/transport/transportConte
 
 const buildCtx = () => {
   const dispatcher = {
-    setHomePowerW: vi.fn(),
     setGenerationW: vi.fn(),
   };
   return {

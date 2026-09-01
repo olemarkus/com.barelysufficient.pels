@@ -382,12 +382,12 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
      * generation signal from a failed one, so the caller never publishes an SDK
      * failure as a measurement.
      *
-     * Deliberately NOT `pollHomePowerW`: that path also publishes `homePowerW`
-     * and fires the sub-home meter fan-out. On a flow home Homey's net is not
-     * authoritative — for a split import/export meter it floors at 0 while the
-     * home genuinely exports (`test-devices` Run D) — so publishing it would
-     * overwrite a correct negative net with a wrong zero, and the fan-out would
-     * start delivering sub-home samples no flow-home consumer expects.
+     * Deliberately NOT `pollHomePowerW`: that path also produces the whole-home
+     * net sample and fires the sub-home meter fan-out. On a flow home Homey's
+     * net is not authoritative — for a split import/export meter it floors at 0
+     * while the home genuinely exports (`test-devices` Run D) — so recording it
+     * would overwrite a correct negative net with a wrong zero, and the fan-out
+     * would start delivering sub-home samples no flow-home consumer expects.
      */
     async readGenerationW(): Promise<LiveGenerationRead> {
         return runFetchLiveGenerationW(this.logger);

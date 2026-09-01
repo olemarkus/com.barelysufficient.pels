@@ -36,14 +36,13 @@ export function updateHomePowerFromReport(
     report: LivePowerReport,
     selection: MainMeterSelection,
 ): HomePowerSampleWithIdentity | null {
-    // PR2a of the observer/transport split: observer owns the home-power
-    // read. Transport produces the scalar from the Homey SDK energy report
-    // and pushes it to observer's holder via the injected dispatcher; it no
-    // longer caches the value locally. The return value still feeds the direct
+    // The net scalar leaves ONLY on the returned sample, which feeds the direct
     // `pollHomePowerW()` caller (homey_energy poll source), with generation
     // carried from the same report so it stays co-temporal with the net it was
-    // read beside.
-    ctx.observedStateDispatcher?.setHomePowerW(report.homePowerW);
+    // read beside. (The observer-holder push for net — `setHomePowerW`, PR2a of
+    // the observer/transport split — was removed as write-only: wiring takes the
+    // sample as a parameter, so the holder's read had no production caller.)
+    //
     // Stamped with the read time. On THIS path net and generation are
     // co-temporal, but the holder is shared with the flow source's separate
     // generation reader (`GenerationPollSource`), whose readings are not — so
