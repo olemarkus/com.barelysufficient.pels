@@ -225,9 +225,10 @@ ack — 9.2 s at the observed maximum. It is set far above that because the
 timeout is now the abnormal path only: it must never fire while the command is
 still inside its own pending window, or PELS would report drift for a command it
 still considers outstanding. That is now true by construction rather than by a
-pinned inequality: `resolveBinaryCommandPendingMs` calls the same resolver, so
-the settle window and the pending window are the same number, and the EV-specific
-pending constant the inequality once had to outrun is gone.
+pinned inequality: binary dispatch stamps `pendingMs` from the same resolver
+(`resolveControlCommandConfirmationMs` — the former `resolveBinaryCommandPendingMs`
+alias is gone), so the settle window and the pending window are the same number,
+and the EV-specific pending constant the inequality once had to outrun is gone.
 
 The window also carries a second job, added 2026-08-17: it is the *only*
 resolution mechanism for a write whose HTTP call timed out. Such a write is

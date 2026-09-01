@@ -215,9 +215,8 @@ const emitPowerEdge = (params: {
     lastDrawingById.delete(device.id);
     return;
   }
-  // A missing / non-finite power sample (transient sensor or transport dropout)
-  // carries no information about a draw edge — hold the prior streak and wait for
-  // the next trusted sample rather than fabricating a stop (then resume) edge.
+  // `currentDrawKw` is producer-resolved (absence becomes 0 upstream), so the
+  // only question here is whether the draw clears the idle threshold.
   const drawingNow = device.currentDrawKw > IDLE_MEASURED_POWER_THRESHOLD_KW;
   const wasDrawing = lastDrawingById.get(device.id);
   lastDrawingById.set(device.id, drawingNow);

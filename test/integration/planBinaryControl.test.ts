@@ -32,7 +32,7 @@ describe('generic binary observation and pending confirmation', () => {
     vi.spyOn(Date, 'now').mockReturnValue(61_000);
 
     expect(syncPendingBinaryCommands({
-      state,
+      store: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       source: 'snapshot_refresh',
       liveDevices: [{
         id: deviceId,
@@ -60,7 +60,7 @@ describe('generic binary observation and pending confirmation', () => {
     vi.spyOn(Date, 'now').mockReturnValue(2_000);
 
     expect(syncPendingBinaryCommands({
-      state,
+      store: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       source: 'realtime_capability',
       liveDevices: [{
         id: 'device-1',

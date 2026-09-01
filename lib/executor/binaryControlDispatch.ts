@@ -6,7 +6,7 @@ import {
   type BinaryControlRestoreSource,
 } from '../plan/planBinaryControlHelpers';
 import { decideBinaryControl } from '../plan/planBinaryControl';
-import { resolveBinaryCommandPendingMs } from '../observer/pendingBinaryCommandTypes';
+import { resolveControlCommandConfirmationMs } from '../observer/controlCommandConfirmation';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { Actuator } from '../actuator/deviceActuator';
 import { isHomeyRequestTimeout } from '../utils/errorUtils';
@@ -228,7 +228,7 @@ function recordPendingForDispatch(params: {
   store.record(decision.deviceId, {
     desired: decision.desired,
     startedMs: Date.now(),
-    pendingMs: resolveBinaryCommandPendingMs(snapshot?.communicationModel ?? 'local'),
+    pendingMs: resolveControlCommandConfirmationMs(snapshot?.communicationModel ?? 'local'),
     logContext: decision.logContext,
     restoreSource: decision.restoreSource,
     ...(decision.reason ? { reason: decision.reason } : {}),

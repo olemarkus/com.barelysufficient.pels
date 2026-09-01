@@ -1,8 +1,3 @@
-import {
-  resolveControlCommandConfirmationMs,
-  type CommunicationModel,
-} from './controlCommandConfirmation';
-
 /**
  * Observer-owned pending-binary-command types and freshness predicates.
  *
@@ -57,11 +52,6 @@ export type PendingBinaryCommand = {
   lastObservedSource?: PendingObservationSource;
   lastObservedAtMs?: number;
 };
-
-
-export function resolveBinaryCommandPendingMs(communicationModel: CommunicationModel): number {
-  return resolveControlCommandConfirmationMs(communicationModel);
-}
 
 export function getPendingBinaryCommandWindowMs(
   pending: PendingBinaryCommand,

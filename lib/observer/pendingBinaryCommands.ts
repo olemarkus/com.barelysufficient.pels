@@ -21,9 +21,8 @@
  * `state.pendingBinaryCommands[id]` directly — the store binds to that
  * backing `Record` (supplied by `PlanEngine`) but is the only path that
  * mutates or evicts it. The field survives only as the store's backing
- * store, the legacy state-form of `syncPendingBinaryCommands`, and the
- * `isPlanActivelyConverging` emptiness probe; no consumer reads or
- * evicts it in place.
+ * store and the `isPlanActivelyConverging` emptiness probe; no consumer
+ * reads or evicts it in place.
  */
 import {
   type PendingBinaryCommand,
@@ -267,11 +266,6 @@ export class PendingBinaryCommandStore {
     return this.hasActiveCommand(deviceId) && this.backing[deviceId]?.desired === false;
   }
 
-  /** True if the device currently has any pending entry (active or expired). */
-  has(deviceId: string): boolean {
-    return Object.prototype.hasOwnProperty.call(this.backing, deviceId);
-  }
-
   /** True if the store carries at least one entry. */
   hasAny(): boolean {
     return Object.keys(this.backing).length > 0;
@@ -302,16 +296,9 @@ export function createPendingBinaryCommandStore(
  * Returns true when at least one entry changed (added, removed, or
  * progress fields mutated). This drives the live-plan refresh in
  * `PlanService.syncLivePlanState`.
- *
- * Accepts either an explicit `store` (production wiring) or a `state`
- * shape carrying `pendingBinaryCommands` (legacy plan-side callers).
- * The state-form derives an ephemeral store bound to the backing
- * record, which the legacy callers then continue to read via the
- * `state.pendingBinaryCommands` field.
  */
 export function syncPendingBinaryCommands(params: {
-  store?: PendingBinaryCommandStore;
-  state?: { pendingBinaryCommands: Record<string, PendingBinaryCommand> };
+  store: PendingBinaryCommandStore;
   liveDevices: PendingBinaryLiveDevice[];
   source: PendingObservationSource;
   onConfirmed?: (params: {
@@ -322,8 +309,7 @@ export function syncPendingBinaryCommands(params: {
     confirmedAtMs: number;
   }) => void;
 }): boolean {
-  const { liveDevices, source, onConfirmed } = params;
-  const store = resolveStore(params);
+  const { store, liveDevices, source, onConfirmed } = params;
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
   const nowMs = Date.now();
   let changed = false;
@@ -461,17 +447,6 @@ function confirmPendingBinaryCommand(params: {
     observedValue: observation.observedValue,
     source,
   });
-}
-
-function resolveStore(params: {
-  store?: PendingBinaryCommandStore;
-  state?: { pendingBinaryCommands: Record<string, PendingBinaryCommand> };
-}): PendingBinaryCommandStore {
-  if (params.store) return params.store;
-  if (!params.state) {
-    throw new Error('syncPendingBinaryCommands requires either a store or a state with pendingBinaryCommands');
-  }
-  return createPendingBinaryCommandStore(params.state.pendingBinaryCommands);
 }
 
 /**
