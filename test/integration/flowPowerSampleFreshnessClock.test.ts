@@ -1,4 +1,4 @@
-import { FlowPowerSampleFreshnessClock } from '../../setup/flowPowerSampleFreshnessClock';
+import { FlowPowerSampleFreshnessClock } from '../../lib/power/flowPowerSampleFreshnessClock';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import {
   POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,

@@ -14,7 +14,7 @@ import { normalizeError } from '../../lib/utils/errorUtils';
 import type { SettingsUiHomesSaveRequest } from '../../packages/contracts/src/settingsUiHomes';
 import {
   beginPersistedHomeTrackerFreshnessResetInSettings,
-} from './resetPersistedHomeTrackerFreshness';
+} from '../../lib/power/persistedHomeTracker';
 
 type AreaMutationRequest = Exclude<
 SettingsUiHomesSaveRequest,

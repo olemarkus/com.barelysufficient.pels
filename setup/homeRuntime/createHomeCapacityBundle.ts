@@ -87,7 +87,7 @@ import { installHomeCapacityBundleSourceRecovery } from './homeCapacityBundleSou
 import type { HomeScope } from './homeScope';
 import {
   createSuffixedTrackerPersistence,
-} from './suffixedTrackerPersistence';
+} from '../../lib/power/suffixedTrackerPersistence';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import { createBundleCapacityGuard } from './createBundleCapacityGuard';
 import type { PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
@@ -569,7 +569,14 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   let rebuildState: PowerSampleRebuildState = { lastMs: 0 };
 
   const tracker = createSuffixedTrackerPersistence({
-    ctx,
+    deps: {
+      settings: ctx.homey.settings,
+      timers: ctx.timers,
+      getLogger: () => ctx.getStructuredLogger('homes'),
+      getPruneDebugEmitter: () => ctx.getStructuredDebugEmitter('perf', 'perf'),
+      reportError: (message, error) => ctx.error(message, error),
+      getTimeZone: () => ctx.getTimeZone(),
+    },
     homeId,
     initialState: deps.initialPowerTrackerState,
     meterIdentity: deps.powerTrackerMeterIdentity,

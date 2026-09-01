@@ -5,27 +5,29 @@
  * reloads remain classified: a suspect read latches every write path closed
  * until a valid present tracker with the same meter identity is adopted.
  */
-import type { AppContext } from '../../lib/app/appContext';
+import type { StructuredDebugEmitter, Logger as PinoLogger } from '../logging/logger';
+import type { TimerRegistry } from '../utils/timerRegistry';
 import type {
   PowerTrackerMeterIdentity,
   PowerTrackerState,
-} from '../../lib/power/trackerTypes';
+} from './trackerTypes';
 import {
   prunePowerTrackerHistoryForApp,
   type PowerTrackerPersistReason,
-} from '../../lib/power/sampleIngest';
-import { getHourBucketKey } from '../../lib/utils/dateUtils';
-import { normalizeError } from '../../lib/utils/errorUtils';
+} from './sampleIngest';
+import { getHourBucketKey } from '../utils/dateUtils';
+import { normalizeError } from '../utils/errorUtils';
 import {
   POWER_TRACKER_STATE,
   homeScopedSettingsKey,
   type HomeId,
-} from '../../lib/utils/settingsKeys';
-import { VOLATILE_WRITE_THROTTLE_MS } from '../../lib/utils/timingConstants';
+} from '../utils/settingsKeys';
+import { VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import {
   powerTrackerMeterIdentityMatches,
   readPersistedHomeTracker,
-} from './resetPersistedHomeTrackerFreshness';
+  type TrackerSettingsPort,
+} from './persistedHomeTracker';
 
 const TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
@@ -59,8 +61,26 @@ export type SuffixedTrackerPersistence = {
   stopAndFlush: () => void;
 };
 
+/**
+ * The collaborators this controller needs, flat.
+ *
+ * It used to take the whole `AppContext`, which is why it could only live in
+ * the wiring layer: `no-domain-to-app-layer` forbids a domain module from
+ * naming that type. The bag was never the concept — each field below is a
+ * separate seam, and the controller reaches for six of them.
+ */
+type SuffixedTrackerPersistenceDeps = {
+  settings: TrackerSettingsPort;
+  timers: TimerRegistry;
+  /** `homes` structured logger; absent before structured logging is wired. */
+  getLogger: () => PinoLogger | undefined;
+  getPruneDebugEmitter: () => StructuredDebugEmitter;
+  reportError: (message: string, error: Error) => void;
+  getTimeZone: () => string;
+};
+
 type SuffixedTrackerPersistenceParams = {
-  ctx: AppContext;
+  deps: SuffixedTrackerPersistenceDeps;
   homeId: HomeId;
   initialState: PowerTrackerState;
   meterIdentity: PowerTrackerMeterIdentity;
@@ -92,8 +112,8 @@ class SuffixedTrackerPersistenceController implements SuffixedTrackerPersistence
       this.persist('hour_rollover');
       return;
     }
-    if (!this.params.ctx.timers.has(this.params.timerKey('powerTrackerSave'))) {
-      this.params.ctx.timers.registerTimeout(
+    if (!this.params.deps.timers.has(this.params.timerKey('powerTrackerSave'))) {
+      this.params.deps.timers.registerTimeout(
         this.params.timerKey('powerTrackerSave'),
         setTimeout(() => this.persist('scheduled'), VOLATILE_WRITE_THROTTLE_MS),
       );
@@ -111,41 +131,41 @@ class SuffixedTrackerPersistenceController implements SuffixedTrackerPersistence
   };
 
   startPruning = (): void => {
-    const { ctx, timerKey } = this.params;
-    ctx.timers.registerTimeout(timerKey('trackerPruneInitial'), setTimeout(() => {
-      ctx.timers.clear(timerKey('trackerPruneInitial'));
+    const { deps, timerKey } = this.params;
+    deps.timers.registerTimeout(timerKey('trackerPruneInitial'), setTimeout(() => {
+      deps.timers.clear(timerKey('trackerPruneInitial'));
       this.prune();
     }, TRACKER_PRUNE_INITIAL_DELAY_MS));
-    ctx.timers.registerInterval(
+    deps.timers.registerInterval(
       timerKey('trackerPruneInterval'),
       setInterval(() => this.prune(), TRACKER_PRUNE_INTERVAL_MS),
     );
   };
 
   stopAndFlush = (): void => {
-    const { ctx, timerKey } = this.params;
-    if (ctx.timers.has(timerKey('powerTrackerSave'))) this.persist('uninit');
+    const { deps, timerKey } = this.params;
+    if (deps.timers.has(timerKey('powerTrackerSave'))) this.persist('uninit');
     for (const suffix of [
       'powerTrackerSave',
       'trackerPersistenceReprobe',
       'trackerPruneInitial',
       'trackerPruneInterval',
     ]) {
-      ctx.timers.clear(timerKey(suffix));
+      deps.timers.clear(timerKey(suffix));
     }
   };
 
   private persist(reason: PowerTrackerPersistReason): boolean {
-    const { ctx, homeId, timerKey } = this.params;
-    ctx.timers.clear(timerKey('powerTrackerSave'));
+    const { deps, homeId, timerKey } = this.params;
+    deps.timers.clear(timerKey('powerTrackerSave'));
     if (this.persistenceFenced) return false;
     try {
       const serialized = JSON.stringify(this.state);
-      ctx.homey.settings.set(this.trackerKey, this.state);
+      deps.settings.set(this.trackerKey, this.state);
       this.lastPersistedJson = serialized;
       return true;
     } catch (error) {
-      ctx.getStructuredLogger('homes')?.error({
+      deps.getLogger()?.error({
         event: 'home_power_tracker_persist_failed',
         homeId,
         reason,
@@ -156,21 +176,21 @@ class SuffixedTrackerPersistenceController implements SuffixedTrackerPersistence
   }
 
   private prune(): void {
-    const { ctx } = this.params;
+    const { deps } = this.params;
     this.state = prunePowerTrackerHistoryForApp({
       powerTracker: this.state,
-      debugStructured: ctx.getStructuredDebugEmitter('perf', 'perf'),
-      error: (message, error) => ctx.error(message, error),
-      timeZone: ctx.getTimeZone(),
+      debugStructured: deps.getPruneDebugEmitter(),
+      error: (message, error) => deps.reportError(message, error),
+      timeZone: deps.getTimeZone(),
     });
     this.persist('prune');
   }
 
   private fencePersistence(error?: Error): void {
-    const { ctx, homeId, timerKey } = this.params;
-    ctx.timers.clear(timerKey('powerTrackerSave'));
+    const { deps, homeId, timerKey } = this.params;
+    deps.timers.clear(timerKey('powerTrackerSave'));
     if (!this.persistenceFenced) {
-      ctx.getStructuredLogger('homes')?.error({
+      deps.getLogger()?.error({
         event: 'home_power_tracker_reload_suspect',
         homeId,
         ...(error === undefined ? {} : { err: normalizeError(error) }),
@@ -182,10 +202,10 @@ class SuffixedTrackerPersistenceController implements SuffixedTrackerPersistence
   }
 
   private schedulePersistenceReprobe(): void {
-    const { ctx, timerKey } = this.params;
+    const { deps, timerKey } = this.params;
     if (
       this.params.isTornDown()
-      || ctx.timers.has(timerKey('trackerPersistenceReprobe'))
+      || deps.timers.has(timerKey('trackerPersistenceReprobe'))
     ) return;
     const delayMs = Math.min(
       TRACKER_REPROBE_INITIAL_DELAY_MS * (2 ** this.persistenceReprobeAttempt),
@@ -195,10 +215,10 @@ class SuffixedTrackerPersistenceController implements SuffixedTrackerPersistence
       this.persistenceReprobeAttempt + 1,
       TRACKER_REPROBE_MAX_EXPONENT,
     );
-    ctx.timers.registerTimeout(
+    deps.timers.registerTimeout(
       timerKey('trackerPersistenceReprobe'),
       setTimeout(() => {
-        ctx.timers.clear(timerKey('trackerPersistenceReprobe'));
+        deps.timers.clear(timerKey('trackerPersistenceReprobe'));
         if (this.params.isTornDown()) return;
         this.reload();
       }, delayMs),
@@ -206,12 +226,12 @@ class SuffixedTrackerPersistenceController implements SuffixedTrackerPersistence
   }
 
   private clearPersistenceReprobe(): void {
-    this.params.ctx.timers.clear(this.params.timerKey('trackerPersistenceReprobe'));
+    this.params.deps.timers.clear(this.params.timerKey('trackerPersistenceReprobe'));
     this.persistenceReprobeAttempt = 0;
   }
 
   private reload(): boolean {
-    const read = readPersistedHomeTracker(this.params.ctx.homey.settings, this.trackerKey);
+    const read = readPersistedHomeTracker(this.params.deps.settings, this.trackerKey);
     if (read.state === 'suspect') {
       this.fencePersistence();
       return false;
@@ -265,7 +285,7 @@ class SuffixedTrackerPersistenceController implements SuffixedTrackerPersistence
   }
 
   private logPersistenceRecovered(): void {
-    this.params.ctx.getStructuredLogger('homes')?.info({
+    this.params.deps.getLogger()?.info({
       event: 'home_power_tracker_reload_recovered',
       homeId: this.params.homeId,
       detail: 'tracker persistence reopened after a valid settings repair',

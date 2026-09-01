@@ -31,7 +31,7 @@ export function resolveLastTotalPowerKw(
 
 /**
  * Whether this home has a meter measurement to plan from at all — the
- * `planBuildGate`'s predicate (`setup/powerMeasurementGate.ts`).
+ * `planBuildGate`'s predicate (`lib/power/powerMeasurementGate.ts`).
  *
  * False only before the meter's first reading, and again once a freshness reset
  * clears the latch. It is NOT a freshness question: an old reading is still a

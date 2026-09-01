@@ -142,7 +142,7 @@ export type PlanServiceDeps = {
    * It exists so the planner never has to model "there is no measurement":
    * every power value it receives is a real one, so nothing on `PlanContext`
    * needs to be nullable or discriminated for an absence that a closed gate has
-   * already excluded. See `setup/powerMeasurementGate.ts` for the production
+   * already excluded. See `lib/power/powerMeasurementGate.ts` for the production
    * implementation and the rule it serves.
    *
    * REQUIRED. It was briefly optional, on the theory that callers predating it

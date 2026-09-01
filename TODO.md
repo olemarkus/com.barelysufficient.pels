@@ -3247,11 +3247,11 @@ non-blocking follow-ups.*
       walks the packaged require graph cleanly, and prod insights RSS steps down after deploy.
       Found 2026-08-20. [P2]
 
-- [ ] **Twenty setup files still hold runtime state, above the boundaries `arch:check` enforces.**
+- [ ] **Fifteen setup files still hold runtime state, above the boundaries `arch:check` enforces.**
       `setup/` constructs and connects and holds nothing (`setup/AGENTS.md` § "No state"), enforced
-      by `scripts/check-setup-stateless.mjs`. Twenty files predate the rule and sit in
-      `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (103 at the
-      guard's introduction, once the executor store above is excluded). Each is a component in the wrong directory, and each
+      by `scripts/check-setup-stateless.mjs`. Fifteen files predate the rule and sit in
+      `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (73
+      declarations; 21 files / 104 at the guard's introduction). Each is a component in the wrong directory, and each
       migration is the same shape: move the state **and the rules that read it** into the domain
       module that owns the concept, as a leaf that takes flat injected getters for anything outside
       its own module (the `no-weather-to-peer` pattern — "a leaf collector fed flat getters from
@@ -3260,10 +3260,9 @@ non-blocking follow-ups.*
       `setup/homeMembership.ts` imports `lib/device/transport/managerFetch` and
       `lib/observer/observedStateEvents` today, so those inputs must arrive injected or move to
       `packages/contracts`. Lanes, in the order they should land:
-      (a) power — `powerMeasurementGate.ts`, `powerSamplePipeline.ts`,
-      `flowPowerSampleFreshnessClock.ts`, `homeRuntime/suffixedTrackerPersistence.ts` (it holds
-      `PowerTrackerState` itself), `homeRuntime/powerSourceEpochFence.ts` → `lib/power/`;
-      (b) solar — `appInit/createPvForecastService.ts` → `lib/solar/`;
+      (a) power — DONE except `powerSamplePipeline.ts`, which is NOT a power component and needs
+      its own answer (see the entry below);
+      (b) solar — DONE;
       (c) device — `appSnapshotHelpers.ts`, `targetPowerProbeScheduler.ts`, `appNativeWiring.ts`,
       `appFlowBacked.ts`, `appDeviceSupport.ts` (two module-level `Set`s) → `lib/device/`;
       (d) home — `homeMembership.ts` (832 lines), `homeMainMeterAuthority.ts`,
@@ -3277,6 +3276,37 @@ non-blocking follow-ups.*
       `npm run arch:check` as the gate on the destination. Done when
       `scripts/setup-stateless-allowlist.txt` no longer exists and `npm run setup:stateless` passes
       without it. Found 2026-08-29. [P2]
+
+- [ ] **`setup/powerSamplePipeline.ts` holds a coalescing queue that belongs to neither layer.**
+      The last file on the power lane's allowlist line cannot follow the other four into
+      `lib/power/`: `no-power-to-peer-except-objectives` forbids `lib/power` from importing
+      `lib/plan`, `lib/device` or the rest, and the pipeline imports `PlanEngine`, `PlanService`,
+      `PlanRebuildScheduler` and `DeviceTransport` because its job is to fan ONE reading out across
+      plan, objectives, solar and home membership. `lib/plan` is not the answer either
+      (`no-plan-to-device` blocks the `HomeMeterArrangementObservation` it carries). Its five
+      declarations — `powerSampleLoop`, `powerSampleRerunRequested`, `pendingPowerSampleRequest`,
+      `sampleRevision`, `completedSampleRevision` — are not a power concept at all: they are a
+      single-flight coalescing queue (one run at a time; a newer request supersedes the queued one;
+      completion reports a revision). Extract that as a domain-free primitive in `lib/utils/`
+      (below every peer, so no edge appears), inject it, and the pipeline's own body becomes the
+      stateless fan-out that `setup/` may keep. Done when `setup/powerSamplePipeline.ts` declares no
+      field, its allowlist line is gone, and `test/integration/powerSamplePipeline*` still pins the
+      supersede-and-coalesce behaviour. Found 2026-09-01. [P2]
+
+- [ ] **`lib/power/persistedHomeTracker.ts` passes five parameter bags.**
+      Its five functions (`writeFreshnessReset`, `restoreTrackerState`,
+      `preparePersistedHomeTrackerForMeter`, `resetPersistedHomeTrackerFreshnessInSettings`,
+      `beginPersistedHomeTrackerFreshnessResetInSettings`) each take an inline object of
+      `{ settings, homeId | trackerKey, state?, meterIdentity?, onFailure }` and destructure it back
+      into loose values on the first line — the signature the param-bundle rule names (root
+      `AGENTS.md`). They predate the rule and travelled unchanged when the module moved out of
+      `setup/homeRuntime/`, so the ratchet's total is unmoved at 1111 bundles; what changed is that
+      they now sit in a domain module, where the concept they are circling is visible. There IS a
+      domain object here — one home's persisted tracker: its settings port and its key — and every
+      one of the five is about exactly that. Introduce it, pass it, and the remaining arguments are
+      honest scalars. Done when `lib/power/persistedHomeTracker.ts` has no line in
+      `scripts/param-bundle-allowlist.txt` and the three `setup/homeRuntime` callers pass the named
+      object. Source: Codex review of PR #2263, 2026-09-01. [P2]
 
 ## P3 Future and Exploratory Work
 
@@ -3335,7 +3365,7 @@ non-blocking follow-ups.*
       `lastPowerW` and `lastTimestamp` together), so the harness sits in a state real ingest
       cannot produce: a total present on a
       home that has never sampled, which resolves to `stale_hold`. Since
-      `setup/powerMeasurementGate.ts`, a genuinely never-sampled home builds no plan at all, so the
+      `lib/power/powerMeasurementGate.ts`, a genuinely never-sampled home builds no plan at all, so the
       real stale-hold is *total present, timestamp OLD* — and tests like `plan.test.ts` "marks off
       devices as shed with stale-hold fallback headroom when no power sample is available" assert
       through a door production no longer has. Re-express them with an aged timestamp and stamp

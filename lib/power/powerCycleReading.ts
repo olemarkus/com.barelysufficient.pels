@@ -135,7 +135,7 @@ export class PowerFreshnessMonitor {
     powerTracker: PowerTrackerState;
     /**
      * `null` only when a caller reached a plan build without a measurement,
-     * which `setup/powerMeasurementGate.ts` prevents in production. Resolved
+     * which `lib/power/powerMeasurementGate.ts` prevents in production. Resolved
      * here, into a held headroom, so the absence stops at this boundary.
      */
     totalKw: number | null;

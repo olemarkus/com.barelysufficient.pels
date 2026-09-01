@@ -30,7 +30,7 @@ import type {
   HomeCapacityBundleDeps,
   HomeCapacityBundleDiagnostics,
 } from './createHomeCapacityBundle';
-import type { SuffixedTrackerPersistence } from './suffixedTrackerPersistence';
+import type { SuffixedTrackerPersistence } from '../../lib/power/suffixedTrackerPersistence';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import { invalidateRebuildSuppressionForObservation } from '../../lib/plan/rebuildScheduler/observationSuppression';
 import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';

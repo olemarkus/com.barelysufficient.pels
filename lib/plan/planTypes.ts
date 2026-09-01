@@ -660,7 +660,7 @@ export type DevicePlan = {
     //
     // It meant "no meter reading this cycle": the guard held `null` until its
     // meter's first sample, and again between an in-place meter swap and the
-    // new meter's first reading. The build gate (`setup/powerMeasurementGate.ts`)
+    // new meter's first reading. The build gate (`lib/power/powerMeasurementGate.ts`)
     // now refuses to build a plan in either state, so no plan can carry a null
     // total for any reason a home can actually be in — a raw untrusted total has
     // no business on a plan type in the first place.
