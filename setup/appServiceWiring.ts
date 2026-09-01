@@ -1,3 +1,4 @@
+import type { TeardownRegistry } from '../lib/utils/teardownRegistry';
 import type Homey from 'homey';
 import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
 import type { ObservedHomePower } from '../lib/observer/observedHomePower';
@@ -84,8 +85,49 @@ const SNAPSHOT_WARMUP_TIMEOUT_MS = process.env.NODE_ENV === 'test' ? 0 : 5_000;
  * stub (`initPlanEngine`, `runStartupSettingsMigrations`, …) route back through
  * the app so test seams/spies that reassign the instance method are honoured.
  */
+// Re-exported so `app.ts` can construct the fence it owns without taking a
+// second module dependency — its `import-x/max-dependencies` ceiling of 31 is a
+// ratchet, and this wiring already imports the factory.
+export { createPreparedMainReconcileFence };
+
+/** The Main-home shortfall gate, as this wiring hands it over and reads it back. */
+export type MainShortfallSideEffectGate = ReturnType<
+  typeof createMainCapacityGuard
+>['shortfallSideEffectGate'];
+
+/** Ask Main to re-establish meter authority, now or on the next scheduled pass. */
+export type MainAuthorityRecoveryRequest = (timing?: 'scheduled' | 'immediate') => void;
+
+/** Detaches the membership recompute triggers: refresh subscription + zone-tree-commit callback. */
+const MEMBERSHIP_TEARDOWN_KEY = 'homeMembership';
+
 export type AppServiceWiringDeps = {
   ctx: AppContext;
+  /**
+   * Handles to the services ordered startup constructs, held by `PelsApp` — the
+   * composition root — and reached here through accessors. This class builds
+   * them and hands them over; it does not remember them. The shape is
+   * `AppNativeWiring`'s, for the same reason: the wiring layer holds nothing,
+   * and a handle to a constructed service belongs to whoever composed the app.
+   */
+  getHomeMembershipService: () => HomeMembershipService | undefined;
+  setHomeMembershipService: (service: HomeMembershipService | undefined) => void;
+  getHomeRuntimeRegistry: () => HomeRuntimeRegistry | undefined;
+  setHomeRuntimeRegistry: (registry: HomeRuntimeRegistry | undefined) => void;
+  getMainShortfallSideEffectGate: () => MainShortfallSideEffectGate | undefined;
+  setMainShortfallSideEffectGate: (gate: MainShortfallSideEffectGate | undefined) => void;
+  getRequestMainAuthorityRecovery: () => MainAuthorityRecoveryRequest | undefined;
+  setRequestMainAuthorityRecovery: (request: MainAuthorityRecoveryRequest | undefined) => void;
+  /**
+   * Set before teardown starts and read at the final Main actuator seam: an
+   * already-running recovery reconcile can otherwise resume after membership is
+   * detached and issue a late SDK command. One-way — nothing un-stops it.
+   */
+  isMainActuationStopped: () => boolean;
+  stopMainActuation: () => void;
+  /** Where this wiring's own stop callbacks live. See `lib/utils/teardownRegistry.ts`. */
+  teardown: TeardownRegistry;
+  preparedMainReconcileFence: ReturnType<typeof createPreparedMainReconcileFence>;
   homeyApp: Homey.App;
   backgroundTasks: BackgroundTasksController;
   timers: TimerRegistry;
@@ -153,35 +195,9 @@ export class AppServiceWiring {
   // this wiring site) and shared by `initPlanEngine`/`initPlanService`.
   private readonly mainHomeScope: HomeScope;
 
-  // Detaches the membership recompute triggers (refresh subscription +
-  // zone-tree-commit callback); set by `initHomeMembership`, invoked and
-  // cleared in `runUninit`.
-  private homeMembershipTeardown?: () => void;
-  private requestMainAuthorityRecovery?: (timing?: 'scheduled' | 'immediate') => void;
-
-  // Concrete membership service (the ctx carries only the provenance-free
-  // port); the per-home bundles' execution gate reads its tree-commit signal.
-  private homeMembershipService?: HomeMembershipService;
-
-  // Per-home capacity bundles (multi-home R7b). Built by
-  // `initHomeRuntimeRegistry` after membership wiring; empty (and inert) with
-  // zero sub-homes configured. Torn down in `runUninit`.
-  private homeRuntimeRegistry?: HomeRuntimeRegistry;
-  // Set before teardown starts and read at the final Main actuator seam. An
-  // already-running recovery reconcile can otherwise resume after membership
-  // is detached and issue a late SDK command.
-  private mainActuationStopped = false;
-  private readonly mainPreparedReconcileFence;
-  private mainShortfallSideEffectGate?: ReturnType<
-    typeof createMainCapacityGuard
-  >['shortfallSideEffectGate'];
-
   constructor(private readonly deps: AppServiceWiringDeps) {
     const { ctx } = deps;
     this.mainHomeScope = buildMainHomeScope(deps.ctx);
-    this.mainPreparedReconcileFence = createPreparedMainReconcileFence(
-      deps.getStablePowerSampleRevision,
-    );
     ctx.rebuildOwningHomePlanForDevice = (deviceId, trigger) => (
       this.rebuildOwningHomePlanForDevice(deviceId, trigger)
     );
@@ -311,8 +327,8 @@ export class AppServiceWiring {
     await wireDeviceTransport({
       ...this.deps,
       installStructuredLogger: () => this.installStructuredLogger(),
-      getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
-      getHomeMembershipService: () => this.homeMembershipService,
+      getHomeRuntimeRegistry: () => this.deps.getHomeRuntimeRegistry(),
+      getHomeMembershipService: () => this.deps.getHomeMembershipService(),
     });
   }
 
@@ -321,34 +337,39 @@ export class AppServiceWiring {
   initHomeMembership(): void {
     // The zone-tree-commit readiness edge fires each capacity bundle's
     // membership-ready apply (decoupled from meter-sample arrival). Lazy over
-    // `this.homeRuntimeRegistry`, which is wired later by
+    // `this.deps.getHomeRuntimeRegistry()`, which is wired later by
     // `initHomeRuntimeRegistry` — inert (registry undefined) until then.
     const wiring = wireHomeMembership(
       this.deps.ctx,
       this.deps.getObservedStateEmitter(),
       buildAppHomeMembershipOptions({
-        getRegistry: () => this.homeRuntimeRegistry,
-        getMembership: () => this.homeMembershipService,
+        getRegistry: () => this.deps.getHomeRuntimeRegistry(),
+        getMembership: () => this.deps.getHomeMembershipService(),
         getMainStableSampleRevision: this.deps.getStablePowerSampleRevision,
         beginMainPreparedReconcile: (sampleRevision) => {
-          this.mainShortfallSideEffectGate?.holdDeferredUntilPreparedApply();
-          return this.mainPreparedReconcileFence.begin(sampleRevision);
+          this.deps.getMainShortfallSideEffectGate()?.holdDeferredUntilPreparedApply();
+          return this.deps.preparedMainReconcileFence.begin(sampleRevision);
         },
         flushMainShortfallSideEffect: async () => (
-          this.mainShortfallSideEffectGate?.flushAfterPreparedApply() ?? true
+          this.deps.getMainShortfallSideEffectGate()?.flushAfterPreparedApply() ?? true
         ),
         retryDeferredOvershootSeed: this.deps.retryDeferredOvershootSeed,
       }),
     );
     this.deps.ctx.homeMembership = wiring.service;
-    this.homeMembershipService = wiring.service;
-    this.homeMembershipTeardown = wiring.teardown;
-    this.requestMainAuthorityRecovery = wiring.requestMainAuthorityRecovery;
+    this.deps.setHomeMembershipService(wiring.service);
+    // Refuses rather than silently replacing, which the field assignment this
+    // came from did not: a second `initHomeMembership` without an intervening
+    // `runUninit` used to leak the predecessor's detach callback. There is one
+    // call site and it sits inside the ordered startup sequence, so this is a
+    // louder failure for a path that should not exist rather than a new one.
+    this.deps.teardown.register(MEMBERSHIP_TEARDOWN_KEY, wiring.teardown);
+    this.deps.setRequestMainAuthorityRecovery(wiring.requestMainAuthorityRecovery);
   }
 
   /**
    * Build the per-home capacity-bundle registry (R7b). Its runtime seams are
-   * already wired lazily over `this.homeRuntimeRegistry` (the transport's
+   * already wired lazily over `this.deps.getHomeRuntimeRegistry()` (the transport's
    * per-meter provider pair and the suffixed settings-change hooks). Runs
    * AFTER membership wiring so a bundle's first plan input and its
    * execution-readiness gate (fail-closed: false until a committed zone tree
@@ -356,30 +377,30 @@ export class AppServiceWiring {
    * state. With zero sub-homes the reconcile is a no-op and nothing else runs.
    */
   initHomeRuntimeRegistry(): void {
-    this.homeRuntimeRegistry = createHomeRuntimeRegistryForApp(
+    this.deps.setHomeRuntimeRegistry(createHomeRuntimeRegistryForApp(
       this.deps.ctx,
-      () => this.homeMembershipService?.isSubHomeExecutionReady() === true,
-      () => this.homeMembershipService?.isRuntimeActive() === true,
-    );
+      () => this.deps.getHomeMembershipService()?.isSubHomeExecutionReady() === true,
+      () => this.deps.getHomeMembershipService()?.isRuntimeActive() === true,
+    ));
     // Publish the per-home read seam. The registry stays private: `ctx` gets a
-    // closure over the field exposing only `readHome`, so it reports
-    // `unavailable` before this step and again once `runUninit` clears it.
-    this.deps.ctx.homeRuntimeRead = buildHomeRuntimeReadPort(() => this.homeRuntimeRegistry);
+    // closure over the app's registry handle exposing only `readHome`, so it
+    // reports `unavailable` before this step and again once `runUninit` clears it.
+    this.deps.ctx.homeRuntimeRead = buildHomeRuntimeReadPort(() => this.deps.getHomeRuntimeRegistry());
   }
 
   initCapacityGuard(): void {
     const { ctx } = this.deps;
     const runtime = createMainCapacityGuard({
       ctx,
-      isDiscarded: () => this.mainActuationStopped,
+      isDiscarded: () => this.deps.isMainActuationStopped(),
       isTemporarilyFenced: () => (
-        this.mainPreparedReconcileFence.isActive()
-        || this.homeMembershipService?.isMainHomeActuationFenced() === true
+        this.deps.preparedMainReconcileFence.isActive()
+        || this.deps.getHomeMembershipService()?.isMainHomeActuationFenced() === true
       ),
-      isPreparedReconcileActive: this.mainPreparedReconcileFence.isActive,
+      isPreparedReconcileActive: this.deps.preparedMainReconcileFence.isActive,
     });
     ctx.capacityGuard = runtime.guard;
-    this.mainShortfallSideEffectGate = runtime.shortfallSideEffectGate;
+    this.deps.setMainShortfallSideEffectGate(runtime.shortfallSideEffectGate);
   }
 
   initPlanEngine(): void {
@@ -395,8 +416,8 @@ export class AppServiceWiring {
       // Active sub-home zone membership is provisional until the first real
       // zone tree commits. Main's plan may still contain those fallback-Main
       // devices, so close the final write seam until ownership is trustworthy.
-      isActuationFenced: () => this.mainActuationStopped
-        || this.mainPreparedReconcileFence.isSuperseded()
+      isActuationFenced: () => this.deps.isMainActuationStopped()
+        || this.deps.preparedMainReconcileFence.isSuperseded()
         || ctx.homeMembership?.isMainHomeActuationFenced() === true,
     });
     ctx.planEngine = planEngine;
@@ -453,7 +474,7 @@ export class AppServiceWiring {
   initPlanService(): void {
     const { ctx } = this.deps;
     ctx.planService = createPlanService(ctx, this.mainHomeScope);
-    installMainFreshnessEscalation(ctx, () => this.mainActuationStopped);
+    installMainFreshnessEscalation(ctx, () => this.deps.isMainActuationStopped());
   }
 
   /**
@@ -495,7 +516,7 @@ export class AppServiceWiring {
     invalidateOwningHomeRebuildSuppression({
       ctx: this.deps.ctx,
       deviceId,
-      getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
+      getHomeRuntimeRegistry: () => this.deps.getHomeRuntimeRegistry(),
     });
   }
 
@@ -505,15 +526,15 @@ export class AppServiceWiring {
   }
 
   initSettingsHandler(): void {
-    // Home-runtime hooks are lazy over the registry field:
+    // Home-runtime hooks are lazy over the app's registry handle:
     // `initHomeRuntimeRegistry` runs after this step; until then a suffixed
     // write is dropped here and absorbed by the registry's boot-time reconcile.
     this.deps.setStopSettingsHandler(registerSettingsHandler({
       ctx: this.deps.ctx,
-      getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
-      requestMainAuthorityRecovery: (timing) => this.requestMainAuthorityRecovery?.(timing),
+      getHomeRuntimeRegistry: () => this.deps.getHomeRuntimeRegistry(),
+      requestMainAuthorityRecovery: (timing) => this.deps.getRequestMainAuthorityRecovery()?.(timing),
       observeOwnershipConfigurationChanged: () => {
-        this.homeMembershipService?.observeOwnershipConfigurationChanged();
+        this.deps.getHomeMembershipService()?.observeOwnershipConfigurationChanged();
       },
       // Lazy over the app field: the controller starts in a later step
       // (startPostStartupBackgroundTasks); until then a write is a no-op and
@@ -537,9 +558,9 @@ export class AppServiceWiring {
       ctx: this.deps.ctx,
       event,
       // Route a sub-home device through its own bundle (R7b P1#1); lazy over the
-      // registry field so it stays byte-identical (undefined → main closures)
+      // app's registry handle so it stays byte-identical (undefined → main closures)
       // before `initHomeRuntimeRegistry` and with no sub-homes.
-      getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
+      getHomeRuntimeRegistry: () => this.deps.getHomeRuntimeRegistry(),
     });
   }
 
@@ -555,7 +576,7 @@ export class AppServiceWiring {
    * freshly written reachability anyway.
    */
   rebuildOwningHomePlanForDevice(deviceId: string, trigger: PlanRebuildTrigger): Promise<unknown> {
-    const subHomeRoute = this.homeRuntimeRegistry?.getOwningHomeRouteForDevice(deviceId);
+    const subHomeRoute = this.deps.getHomeRuntimeRegistry()?.getOwningHomeRouteForDevice(deviceId);
     if (subHomeRoute) return subHomeRoute.hooks.rebuildPlan(trigger);
     const resolved = resolvePlanService(this.deps.ctx);
     if (resolved.state !== 'ready') return Promise.resolve();
@@ -566,7 +587,7 @@ export class AppServiceWiring {
     const { ctx } = this.deps;
     // First teardown edge: close the final Main write seam before any awaited
     // or synchronous cleanup can detach the membership authority it also reads.
-    this.mainActuationStopped = true;
+    this.deps.stopMainActuation();
     this.mainHomeScope.disposeBinaryCommandReachability();
     // Signal the fire-and-forget native-wiring probe to drop its side effects
     // before anything else tears down. We deliberately do NOT await it: it can
@@ -577,8 +598,8 @@ export class AppServiceWiring {
     // bundle can flush a pending suffixed tracker persist while its debounce
     // timer is still observable. Clearing the field also disconnects the lazy
     // per-meter fan-out: an in-flight poll resolving after this routes nowhere.
-    this.homeRuntimeRegistry?.teardownAll();
-    this.homeRuntimeRegistry = undefined;
+    this.deps.getHomeRuntimeRegistry()?.teardownAll();
+    this.deps.setHomeRuntimeRegistry(undefined);
     ctx.homeRuntimeRead = undefined;
     this.clearUninitTimers();
     this.stopUninitServices();
@@ -586,10 +607,9 @@ export class AppServiceWiring {
     // so a still-in-flight refresh dispatch or detached zone-tree commit can
     // no longer recompute; clearing `ctx.homeMembership` also kills the lazy
     // settings-change trigger.
-    this.homeMembershipTeardown?.();
-    this.homeMembershipTeardown = undefined;
-    this.requestMainAuthorityRecovery = undefined;
-    this.homeMembershipService = undefined;
+    this.deps.teardown.clear(MEMBERSHIP_TEARDOWN_KEY);
+    this.deps.setRequestMainAuthorityRecovery(undefined);
+    this.deps.setHomeMembershipService(undefined);
     ctx.homeMembership = undefined;
     this.deps.getPvForecast()?.stop();
     const homeySolarForecast = this.deps.getHomeySolarForecast();

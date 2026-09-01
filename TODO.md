@@ -3237,11 +3237,11 @@ non-blocking follow-ups.*
       walks the packaged require graph cleanly, and prod insights RSS steps down after deploy.
       Found 2026-08-20. [P2]
 
-- [ ] **Thirteen setup files still hold runtime state, above the boundaries `arch:check` enforces.**
+- [ ] **Nine setup files still hold runtime state, above the boundaries `arch:check` enforces.**
       `setup/` constructs and connects and holds nothing (`setup/AGENTS.md` § "No state"), enforced
-      by `scripts/check-setup-stateless.mjs`. Thirteen files predate the rule and sit in
-      `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (58
-      declarations; 21 files / 104 at the guard's introduction). **Two of the thirteen files will never
+      by `scripts/check-setup-stateless.mjs`. Nine files predate the rule and sit in
+      `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (42
+      declarations; 21 files / 104 at the guard's introduction). **Two of the nine files will never
       move** — `powerSamplePipeline.ts` and `appSnapshotHelpers.ts` are orchestrators whose imports
       close every domain destination. Their STATE can still move, so this entry's done-condition
       stands; see the two entries below. Each is a component in the wrong directory, and each
@@ -3265,8 +3265,10 @@ non-blocking follow-ups.*
       `homeSampledMeterIdentity.ts`, `homeRuntime/homeModeOwnershipTransfer.ts`,
       `homeRuntime/homeRuntimeRegistry.ts` → `lib/home/` (the meter-provenance pair may have to go
       to `lib/power/` instead, since `no-home-to-peer` forbids reading the tracker);
-      (e) composition root and leftovers — DONE except `appServiceWiring.ts`, whose late-bound
-      service handles still belong on `app.ts`/`AppContext`. The teardown handles are an injected
+      (e) composition root and leftovers — DONE. `appServiceWiring.ts`'s late-bound service handles
+      are `PelsApp` fields reached through getter/setter pairs (the `AppNativeWiring` shape), its
+      membership teardown is a `TeardownRegistry` key, and the prepared-reconcile fence is
+      constructed by `app.ts`. The background teardown handles are an injected
       `TeardownRegistry` (`lib/utils/`), the dump counter is `lib/diagnostics/deviceDumpId.ts`, and
       the scheduler telemetry observer moved to `lib/plan/rebuildScheduler/` rather than
       `lib/logging/` as this entry used to say — it names `RebuildIntent` and
