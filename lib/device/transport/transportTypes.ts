@@ -81,13 +81,6 @@ export type TransportObservedStateDispatcher = {
     observedStateRefresh: (event: ObservedDeviceStateRefreshEvent) => void;
     observedControlStateChanged: (event: PlanRealtimeUpdateEvent) => void;
     /**
-     * Push the whole-home power scalar resolved from a Homey SDK energy report
-     * into observer's home-power holder. PR2a of the observer/transport split:
-     * observer owns the home-power read; transport produces the value and hands
-     * it over here, no longer caching it locally.
-     */
-    setHomePowerW: (w: number | null) => void;
-    /**
      * Push the gross PV generation (W) resolved from the same energy report into
      * observer's holder, or `null` when absent, stamped with its read time. Used
      * to gross up the authoritative whole-home actual consumption for the

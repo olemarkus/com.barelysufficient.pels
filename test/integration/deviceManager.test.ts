@@ -940,11 +940,11 @@ describe('DeviceTransport', () => {
             expect(loggerMock.error).not.toHaveBeenCalled();
         });
 
-        it('pushes cumulative home power from live report to the observer dispatcher', async () => {
-            // PR2a of the observer/transport split: transport no longer caches
-            // home power; it pushes the Homey-SDK-sourced scalar to observer via
-            // the injected `observedStateDispatcher.setHomePowerW`.
-            const setHomePowerW = vi.fn();
+        it('returns the cumulative home power from the live report as the refresh sample', async () => {
+            // The net scalar leaves transport only on the returned sample (the
+            // observer-holder push was removed as write-only); generation from
+            // the same report is still pushed to observer via the injected
+            // `observedStateDispatcher.setGenerationW`.
             const setGenerationW = vi.fn();
             const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, {
                 getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }),
@@ -953,7 +953,6 @@ describe('DeviceTransport', () => {
                     observedStateChanged: vi.fn(),
                     observedStateRefresh: vi.fn(),
                     observedControlStateChanged: vi.fn(),
-                    setHomePowerW,
                     setGenerationW,
                 },
             });
@@ -977,7 +976,6 @@ describe('DeviceTransport', () => {
                 mainMeterSelection: { state: 'resolved', meterDeviceId: 'meter-main' },
             });
 
-            expect(setHomePowerW).toHaveBeenCalledWith(4500);
             // Gross generation from the same payload is pushed alongside net power,
             // stamped with its read time (the holder is shared with the flow
             // source's separate generation reader, whose clock differs).
@@ -989,8 +987,7 @@ describe('DeviceTransport', () => {
             });
         });
 
-        it('pushes null home power when no cumulative item exists', async () => {
-            const setHomePowerW = vi.fn();
+        it('yields no home-power sample when no cumulative item exists', async () => {
             const setGenerationW = vi.fn();
             const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, {
                 getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
@@ -999,7 +996,6 @@ describe('DeviceTransport', () => {
                     observedStateChanged: vi.fn(),
                     observedStateRefresh: vi.fn(),
                     observedControlStateChanged: vi.fn(),
-                    setHomePowerW,
                     setGenerationW,
                 },
             });
@@ -1015,16 +1011,17 @@ describe('DeviceTransport', () => {
                 items: [{ type: 'device', id: 'dev1', values: { W: 500 } }],
             });
 
-            await dispatchingManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            const sample = await dispatchingManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
-            expect(setHomePowerW).toHaveBeenCalledWith(null);
+            // A report without a cumulative item resolves no whole-home reading,
+            // so the refresh yields no sample for the ingest to record.
+            expect(sample).toBeNull();
             // No generation signal in the payload -> null pushed (no-op gross-up).
             // Still stamped: "the report carried no generation" is an observation.
             expect(setGenerationW).toHaveBeenCalledWith(null, expect.any(Number));
         });
 
         it('does not publish empty home power evidence when live power is skipped', async () => {
-            const setHomePowerW = vi.fn();
             const setGenerationW = vi.fn();
             const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, {
                 getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
@@ -1033,7 +1030,6 @@ describe('DeviceTransport', () => {
                     observedStateChanged: vi.fn(),
                     observedStateRefresh: vi.fn(),
                     observedControlStateChanged: vi.fn(),
-                    setHomePowerW,
                     setGenerationW,
                 },
             });
@@ -1049,7 +1045,6 @@ describe('DeviceTransport', () => {
             const sample = await dispatchingManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
 
             expect(sample).toBeNull();
-            expect(setHomePowerW).not.toHaveBeenCalled();
             expect(setGenerationW).not.toHaveBeenCalled();
         });
 

@@ -109,19 +109,13 @@ export type ObservedStateEmitterDispatcher = {
     observedStateRefresh: (event: ObservedStateRefreshEvent) => void;
     observedControlStateChanged: (event: ObservedControlStateChangedEvent) => void;
     /**
-     * Push the latest whole-home power reading (watts) into observer's
-     * `ObservedHomePower` holder. The *source* is a Homey SDK energy report
-     * read in the device layer; transport resolves the scalar and hands it
-     * here. PR2a of the observer/transport split.
-     */
-    setHomePowerW: (w: number | null) => void;
-    /**
      * Push the gross PV generation reading (watts) into observer's
      * `ObservedHomePower` holder, or `null` when absent, stamped with its read
-     * time. On this path the stamp is the same instant as `setHomePowerW` (one
-     * report, one poll); it is carried explicitly because the flow source's
-     * separate generation reader rides a different clock, and the holder's
-     * consumers must be able to tell a fresh reading from an abandoned one.
+     * time. The *source* is a Homey SDK energy report read in the device layer;
+     * transport resolves the scalar and hands it here. The stamp is carried
+     * explicitly because the flow source's separate generation reader rides a
+     * different clock, and the holder's consumers must be able to tell a fresh
+     * reading from an abandoned one.
      */
     setGenerationW: (w: number | null, observedAtMs: number) => void;
 };
@@ -169,15 +163,14 @@ export class ObservedStateEmitter {
      * Build a dispatcher bound to this emitter and the observer-owned
      * `ObservedHomePower` holder. Wiring passes the returned object into
      * `DeviceTransport`'s constructor so transport's translation pipeline
-     * routes through observer's emitter — and its home-power reports through
-     * observer's home-power holder — without importing observer.
+     * routes through observer's emitter — and its generation reports through
+     * observer's holder — without importing observer.
      */
     asDispatcher(homePower: ObservedHomePower): ObservedStateEmitterDispatcher {
         return {
             observedStateChanged: (event) => this.emitObservedStateChanged(event),
             observedStateRefresh: (event) => this.emitObservedStateRefresh(event),
             observedControlStateChanged: (event) => this.emitObservedControlStateChanged(event),
-            setHomePowerW: (w) => homePower.setHomePowerW(w),
             setGenerationW: (w, observedAtMs) => homePower.setGenerationW(w, observedAtMs),
         };
     }

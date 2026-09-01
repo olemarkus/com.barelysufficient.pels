@@ -1,40 +1,31 @@
 /**
- * Observer-owned whole-home power scalar.
+ * Observer-owned gross PV generation reading and its read time.
  *
  * PR2a of the observer/transport split (`notes/state-management/observer-transport-split.md`).
  *
- * The *source* of this value is a Homey SDK energy report read in the device
- * layer (`managerFetch` → `managerHomeyApi` → `managerEnergy`); transport pushes
- * the already-resolved scalar here through the `observedStateDispatcher` callback
- * bag (`setHomePowerW`) at construction time. Observer never imports `lib/device/`
- * or `lib/power/` — it only holds the value transport hands it. `getHomePowerW()`
- * is the read side of that hold; no production caller uses it today.
+ * Two producers push the already-resolved scalar here, one per power source: on
+ * `homey_energy` it rides the SDK energy report read in the device layer
+ * (`managerFetch` → `managerHomeyApi` → `managerEnergy`), pushed by transport
+ * through the `observedStateDispatcher` callback bag (`setGenerationW`); on
+ * `flow` the companion generation poll writes it through its own
+ * wiring-injected dep. Either way observer never imports the producing layer —
+ * it only holds the value it is handed.
+ *
+ * The holder used to carry the whole-home net scalar too
+ * (`setHomePowerW`/`getHomePowerW`, PR2a). That half was removed as write-only:
+ * wiring takes the net sample as a parameter, so `getHomePowerW` had no
+ * production reader left.
  */
 export class ObservedHomePower {
-    private homePowerW: number | null = null;
-
     private generationW: number | null = null;
 
     private generationObservedAtMs: number | null = null;
-
-    /** Push the latest whole-home reading (watts), or `null` when absent. */
-    setHomePowerW(w: number | null): void {
-        this.homePowerW = w;
-    }
-
-    /**
-     * Returns the whole-home power reading in watts as last reported by
-     * transport, or `null` when no live reading is available.
-     */
-    getHomePowerW(): number | null {
-        return this.homePowerW;
-    }
 
     /**
      * Push the latest gross PV generation reading (watts), or `null` when no
      * generation signal is present, stamped with the time it was read. `+`-only.
      *
-     * On the `homey_energy` source this is co-temporal with `setHomePowerW` (one
+     * On the `homey_energy` source this is co-temporal with the net reading (one
      * report, one poll). On `flow` it is NOT: net arrives through the
      * `report_power_usage` card while generation comes from a separate reader
      * (`GenerationPollSource`), so the two ride different clocks. That is why the

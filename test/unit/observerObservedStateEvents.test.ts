@@ -41,15 +41,21 @@ const _observedControlStateChangedEventParity: _MutuallyAssignable<
   Parameters<TransportObservedStateDispatcher['observedControlStateChanged']>[0]
 > = [true, true];
 
-const _setHomePowerWParity: _MutuallyAssignable<
-  Parameters<ObservedStateEmitterDispatcher['setHomePowerW']>[0],
-  Parameters<TransportObservedStateDispatcher['setHomePowerW']>[0]
+const _observedStateRefreshParity: _MutuallyAssignable<
+  Parameters<ObservedStateEmitterDispatcher['observedStateRefresh']>[0],
+  Parameters<TransportObservedStateDispatcher['observedStateRefresh']>[0]
+> = [true, true];
+
+const _setGenerationWParity: _MutuallyAssignable<
+  Parameters<ObservedStateEmitterDispatcher['setGenerationW']>,
+  Parameters<TransportObservedStateDispatcher['setGenerationW']>
 > = [true, true];
 
 // Reference the values so the compiler doesn't strip them as unused.
 void _observedStateChangedEventParity;
 void _observedControlStateChangedEventParity;
-void _setHomePowerWParity;
+void _observedStateRefreshParity;
+void _setGenerationWParity;
 
 describe('ObservedStateEmitter', () => {
   it('pins the event-name strings the two declaration sites share', () => {
@@ -150,41 +156,46 @@ describe('ObservedStateEmitter', () => {
     expect(reconcileListener).not.toHaveBeenCalled();
   });
 
-  it('routes home-power reports through the dispatcher into the observer holder', () => {
-    // PR2a of the observer/transport split: transport pushes the
-    // Homey-SDK-sourced home-power scalar via the dispatcher; observer's
-    // `ObservedHomePower` holder owns the read.
+  it('routes generation reports through the dispatcher into the observer holder', () => {
+    // Transport pushes the Homey-SDK-sourced generation scalar via the
+    // dispatcher; observer's `ObservedHomePower` holder owns the read.
     const emitter = new ObservedStateEmitter();
     const homePower = new ObservedHomePower();
     const dispatcher = emitter.asDispatcher(homePower);
 
-    expect(homePower.getHomePowerW()).toBeNull();
+    expect(homePower.getGenerationW()).toBeNull();
+    expect(homePower.getGenerationObservedAtMs()).toBeNull();
 
-    dispatcher.setHomePowerW(2400);
-    expect(homePower.getHomePowerW()).toBe(2400);
-
-    dispatcher.setHomePowerW(null);
-    expect(homePower.getHomePowerW()).toBeNull();
+    dispatcher.setGenerationW(2400, 1_000);
+    expect(homePower.getGenerationW()).toBe(2400);
+    expect(homePower.getGenerationObservedAtMs()).toBe(1_000);
   });
 });
 
 describe('ObservedHomePower', () => {
   it('returns null before any report is pushed', () => {
-    expect(new ObservedHomePower().getHomePowerW()).toBeNull();
+    const homePower = new ObservedHomePower();
+    expect(homePower.getGenerationW()).toBeNull();
+    expect(homePower.getGenerationObservedAtMs()).toBeNull();
   });
 
-  it('returns the last pushed reading', () => {
+  it('returns the last pushed reading and its read time', () => {
     const homePower = new ObservedHomePower();
-    homePower.setHomePowerW(1500);
-    expect(homePower.getHomePowerW()).toBe(1500);
-    homePower.setHomePowerW(3200);
-    expect(homePower.getHomePowerW()).toBe(3200);
+    homePower.setGenerationW(1500, 1_000);
+    expect(homePower.getGenerationW()).toBe(1500);
+    expect(homePower.getGenerationObservedAtMs()).toBe(1_000);
+    homePower.setGenerationW(3200, 2_000);
+    expect(homePower.getGenerationW()).toBe(3200);
+    expect(homePower.getGenerationObservedAtMs()).toBe(2_000);
   });
 
-  it('can be cleared back to null', () => {
+  it('keeps the read time when the value is a null observation', () => {
+    // "The report carried no generation" is itself an observation: the VALUE
+    // clears but the TIMESTAMP advances.
     const homePower = new ObservedHomePower();
-    homePower.setHomePowerW(800);
-    homePower.setHomePowerW(null);
-    expect(homePower.getHomePowerW()).toBeNull();
+    homePower.setGenerationW(800, 1_000);
+    homePower.setGenerationW(null, 2_000);
+    expect(homePower.getGenerationW()).toBeNull();
+    expect(homePower.getGenerationObservedAtMs()).toBe(2_000);
   });
 });

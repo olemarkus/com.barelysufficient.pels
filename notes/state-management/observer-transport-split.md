@@ -64,13 +64,22 @@ the cruiser rule promote to error.
 > energy report read in the device layer (`managerFetch` → `managerHomeyApi` →
 > `managerEnergy`); `updateHomePowerFromReport` now pushes the resolved scalar
 > to observer via a new `setHomePowerW(w)` method on the `observedStateDispatcher`
-> callback bag; transport still does not import observer. Wiring
+> callback bag; transport still does not import observer.
 > Wiring read the value back through a `getHomePowerW` dep at the time; it no
 > longer does — `recordImplicitHomeyEnergySample` (`setup/appSnapshotHelpers.ts`)
 > takes the sample as a parameter, and `getHomePowerW` has no production caller
 > left.
 > Observer introduces **no** `lib/power/**` import — the correction to the
 > original "fed via event/contract from `lib/power/`" wording below.
+>
+> **2026-09-01 — the home-power half of the holder was removed as write-only.**
+> Once wiring took the sample as a parameter (previous paragraph), nothing read
+> the holder's net scalar back: transport pushed it on every report while
+> `getHomePowerW` had no production caller. The `homePowerW` field,
+> `setHomePowerW`, and `getHomePowerW` are gone from `ObservedHomePower`, and the
+> `setHomePowerW` leg is gone from both dispatcher shapes
+> (`ObservedStateEmitterDispatcher`, `TransportObservedStateDispatcher`). The
+> holder now carries generation only — the reading and its read time.
 >
 > **The holder later gained a second writer, and therefore a timestamp.** The
 > generation half (`setGenerationW`) started out co-temporal with the net half:
@@ -136,9 +145,11 @@ Owns the stored view, not the parse pipeline:
   (`lib/observer/observedHomePower.ts`). The original design said this would be
   "fed via event/contract from `lib/power/`"; that was wrong about the source.
   The value originates from a **Homey SDK energy report read in the device
-  layer**, and transport pushes the resolved scalar to the observer via the
-  `observedStateDispatcher.setHomePowerW(w)` callback. Observer holds it without
-  importing `lib/device/` or `lib/power/`.
+  layer**, and transport pushed the resolved scalar to the observer via the
+  `observedStateDispatcher.setHomePowerW(w)` callback. Observer held it without
+  importing `lib/device/` or `lib/power/`. **Since removed (2026-09-01, see the
+  callout above):** the net half proved write-only once wiring took the sample
+  as a parameter; the holder now carries generation only.
 - Today's pure interpretation helpers (`observedState.ts`,
   `observationTrust.ts`, `observedPower.ts`,
   `idleDetector.ts`, `devicePowerCalibration.ts`)
@@ -291,7 +302,7 @@ drift-against-plan-intent. (Since renamed `observedControlStateChanged`; it was
 | `no-observer-to-peer` (error) | Unchanged; observer remains a peer leaf. |
 | `todo-narrow-plan-device-dep` (warn, plan→device) | Promoted to **error**. |
 | (no rule today) | New error rule: `lib/executor/**` must not import `lib/device/**`. |
-| (no rule today) | New error rule: `lib/observer/**` must not statically import `lib/power/**`. (PR2a reality: observer's `ObservedHomePower` receives the scalar from transport via the `observedStateDispatcher.setHomePowerW` callback — the *source* is a Homey SDK energy report in the device layer, not `lib/power/`. No `lib/power/` import is needed or introduced.) |
+| (no rule today) | New error rule: `lib/observer/**` must not statically import `lib/power/**`. (PR2a reality: observer's `ObservedHomePower` receives the scalar from transport via the `observedStateDispatcher` callback bag — the *source* is a Homey SDK energy report in the device layer, not `lib/power/`. No `lib/power/` import is needed or introduced. The net leg, `setHomePowerW`, was later removed as write-only — 2026-09-01 callout above; the generation leg remains.) |
 
 ## Sequencing
 
