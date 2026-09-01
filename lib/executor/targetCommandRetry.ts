@@ -88,7 +88,6 @@ export function recordPendingTargetCommandAttempt(params: {
     target,
     desired,
     startedMs: isRetry ? previous.startedMs : nowMs,
-    pendingMs: isRetry ? previous.pendingMs : CONTROL_COMMAND_CONFIRMATION_MS,
     lastAttemptMs: nowMs,
     retryCount,
     nextRetryAtMs: nowMs + (isRetry
@@ -132,7 +131,6 @@ export function recordFailedPendingTargetCommandAttempt(params: {
     target,
     desired,
     startedMs: isRetry ? previous.startedMs : nowMs,
-    pendingMs: isRetry ? previous.pendingMs : CONTROL_COMMAND_CONFIRMATION_MS,
     lastAttemptMs: nowMs,
     retryCount,
     nextRetryAtMs: nowMs + getTargetCommandRetryDelayMs(retryCount),

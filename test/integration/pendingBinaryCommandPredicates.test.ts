@@ -14,7 +14,6 @@ const pending = (overrides: Partial<PendingBinaryCommand> = {}): PendingBinaryCo
   dispatchState: 'accepted',
   desired: true,
   startedMs: Date.now(),
-  pendingMs: 30_000,
   ...overrides,
 });
 
@@ -48,7 +47,7 @@ describe('PendingBinaryCommandStore in-flight predicates', () => {
     // Eviction fires the timeout lifecycle, which belongs to `get` and the
     // reconcile sweep. A predicate a projection may call must not have that
     // side effect — `buildLiveStatePlan` is a projection, not a re-plan.
-    const backing = { 'stale-1': pending({ startedMs: Date.now() - 120_000, pendingMs: 30_000 }) };
+    const backing = { 'stale-1': pending({ startedMs: Date.now() - 120_000 }) };
     const store = createPendingBinaryCommandStore(backing);
 
     expect(store.hasActiveCommand('stale-1')).toBe(false);

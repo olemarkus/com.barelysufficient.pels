@@ -21,7 +21,6 @@ describe('recordPendingTargetCommandAttempt', () => {
       target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 10_000,
-      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 10_000,
       retryCount: 1,
       nextRetryAtMs: Date.now() + 20_000,

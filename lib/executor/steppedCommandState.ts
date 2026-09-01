@@ -27,7 +27,6 @@ export type SteppedLoadDesiredRuntimeState = {
   previousStepId?: string;
   changedAtMs: number;
   lastIssuedAtMs?: number;
-  pendingWindowMs?: number;
   retryCount: number;
   nextRetryAtMs?: number;
   pending: boolean;
@@ -77,7 +76,6 @@ export type MarkSteppedLoadDesiredStepIssuedParams = {
   desiredStepId: string;
   previousStepId?: string;
   issuedAtMs?: number;
-  pendingWindowMs?: number;
   confirmationPolicy?: 'required' | 'assume_applied';
   planningPowerW?: number;
   previousPlanningPowerW?: number;
@@ -198,7 +196,6 @@ export const markSteppedLoadDesiredStepIssued = (params: {
   desiredStepId: string;
   previousStepId?: string;
   issuedAtMs?: number;
-  pendingWindowMs?: number;
   confirmationPolicy?: 'required' | 'assume_applied';
   planningPowerW?: number;
   previousPlanningPowerW?: number;
@@ -210,7 +207,6 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     desiredStepId,
     previousStepId,
     issuedAtMs = Date.now(),
-    pendingWindowMs,
     confirmationPolicy = 'required',
     planningPowerW,
     previousPlanningPowerW,
@@ -234,7 +230,6 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     previousStepId,
     changedAtMs: issuedAtMs,
     lastIssuedAtMs: issuedAtMs,
-    pendingWindowMs,
     retryCount,
     nextRetryAtMs: undefined,
     pending: true,
@@ -330,13 +325,12 @@ export const pruneStaleSteppedLoadCommandStates = (
   let changed = false;
   for (const [deviceId, desired] of runtimeState.steppedLoadDesiredByDeviceId.entries()) {
     if (!desired.pending || typeof desired.lastIssuedAtMs !== 'number') continue;
-    const pendingWindowMs = desired.pendingWindowMs ?? STEPPED_LOAD_COMMAND_STALE_MS;
-    if (nowMs - desired.lastIssuedAtMs < pendingWindowMs) continue;
+    if (nowMs - desired.lastIssuedAtMs < STEPPED_LOAD_COMMAND_STALE_MS) continue;
     runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
       ...desired,
       nextRetryAtMs:
         desired.lastIssuedAtMs
-        + pendingWindowMs
+        + STEPPED_LOAD_COMMAND_STALE_MS
         + resolveSteppedLoadCommandRetryDelayMs(desired.retryCount),
       pending: false,
       status: 'stale',

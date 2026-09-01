@@ -14,7 +14,6 @@ export type PendingTargetCommandState = {
   target: 'temperature';
   desired: number;
   startedMs: number;
-  pendingMs: number;
   lastAttemptMs: number;
   retryCount: number;
   nextRetryAtMs: number;

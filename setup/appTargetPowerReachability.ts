@@ -107,7 +107,7 @@ const applyProbeTransition = (params: {
       requestedPowerW: params.desired.planningPowerW,
       confirmedMaxPowerW: params.desired.targetPowerProbeConfirmedMaxPowerW,
       issuedAtMs: params.desired.targetPowerProbeStartedAtMs,
-      settleWindowMs: params.desired.pendingWindowMs ?? CONTROL_COMMAND_CONFIRMATION_MS,
+      settleWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     },
     observation: params.evidence,
     nowMs: params.nowMs,

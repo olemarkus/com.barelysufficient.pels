@@ -372,7 +372,6 @@ export class AppDeviceControlHelpers {
       desiredStepId: params.desiredStepId,
       previousStepId: params.previousStepId,
       issuedAtMs: params.issuedAtMs,
-      pendingWindowMs: params.pendingWindowMs,
       confirmationPolicy: params.confirmationPolicy,
       ...stepPowers,
     });
@@ -383,7 +382,7 @@ export class AppDeviceControlHelpers {
     ) {
       this.deps.scheduleTargetPowerProbeSettlement?.(
         desired.targetPowerProbeStartedAtMs
-          + (desired.pendingWindowMs ?? CONTROL_COMMAND_CONFIRMATION_MS),
+          + CONTROL_COMMAND_CONFIRMATION_MS,
       );
     }
   }

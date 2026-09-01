@@ -1553,7 +1553,6 @@ describe('PlanExecutor pending target commands', () => {
       target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
-      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + TARGET_COMMAND_RETRY_DELAYS_MS[0],
@@ -1591,7 +1590,6 @@ describe('PlanExecutor pending target commands', () => {
       target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
-      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + TARGET_COMMAND_RETRY_DELAYS_MS[0],
@@ -1648,7 +1646,6 @@ describe('PlanExecutor pending target commands', () => {
       target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
-      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + TARGET_COMMAND_RETRY_DELAYS_MS[0],
@@ -1934,7 +1931,6 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'max',
       previousStepId: 'low',
       issuedAtMs: expect.any(Number),
-      pendingWindowMs: expect.any(Number),
     });
   });
 
@@ -2416,7 +2412,6 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'max',
       previousStepId: 'low',
       issuedAtMs: expect.any(Number),
-      pendingWindowMs: expect.any(Number),
     });
     expect(state.lastRestoreMs).toEqual(expect.any(Number));
   });
@@ -2499,7 +2494,6 @@ describe('PlanExecutor stepped loads', () => {
         desiredStepId: 'max',
         previousStepId: 'low',
         issuedAtMs: expect.any(Number),
-        pendingWindowMs: expect.any(Number),
       });
     } finally {
       vi.useRealTimers();
@@ -2537,7 +2531,6 @@ describe('PlanExecutor stepped loads', () => {
         desiredStepId: 'max',
         previousStepId: 'low',
         issuedAtMs: expect.any(Number),
-        pendingWindowMs: expect.any(Number),
       });
     } finally {
       vi.useRealTimers();

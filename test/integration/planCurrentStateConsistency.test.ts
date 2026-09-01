@@ -99,7 +99,6 @@ describe('planner current-state consistency', () => {
         dispatchState: 'accepted',
         desired: true,
         startedMs: Date.now(),
-        pendingMs: 90_000,
       };
     }
 

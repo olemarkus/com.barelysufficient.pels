@@ -379,7 +379,6 @@ describe('Device plan snapshot', () => {
       dispatchState: 'dispatching',
       desired: true,
       startedMs: pendingStartedMs,
-      pendingMs: 90_000,
     };
     app.planEngine.state.lastDeviceShedMs['dev-cooldown'] = Date.now();
     app.planEngine.state.lastInstabilityMs = Date.now();
@@ -573,7 +572,6 @@ describe('Device plan snapshot', () => {
       dispatchState: 'dispatching',
       desired: false,
       startedMs: Date.now(),
-      pendingMs: 90_000,
     };
     app.deviceManager.setSnapshotForTests([
       {
@@ -637,7 +635,6 @@ describe('Device plan snapshot', () => {
       dispatchState: 'dispatching',
       desired: true,
       startedMs: Date.now(),
-      pendingMs: 90_000,
     };
 
     app.deviceManager.setSnapshotForTests([
@@ -703,7 +700,6 @@ describe('Device plan snapshot', () => {
 
     app.planEngine.state.pendingTargetCommands['dev-target-pending'] = {
       target: 'temperature',
-      pendingMs: 30_000,
       desired: 23,
       startedMs: Date.now(),
       lastAttemptMs: Date.now(),

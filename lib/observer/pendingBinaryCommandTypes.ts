@@ -12,9 +12,12 @@
  * Plan/executor consume these types and freshness helpers via a direct
  * dependency — observer is a leaf so the consumer direction is allowed.
  *
- * Constants are inlined here rather than imported from `lib/plan/` so
- * observer remains a leaf (cruiser rule `no-observer-to-peer`).
+ * The window itself is the observer-owned `CONTROL_COMMAND_CONFIRMATION_MS`
+ * (`./controlCommandConfirmation`); entries do not carry a copy — there is
+ * one window for every device and axis, so a stored per-entry number could
+ * only ever restate or contradict it.
  */
+import { CONTROL_COMMAND_CONFIRMATION_MS } from './controlCommandConfirmation';
 
 /**
  * Observation sources that can settle a pending command. Identical to
@@ -35,7 +38,6 @@ export type PendingBinaryCommand = {
   dispatchState: 'dispatching' | 'accepted';
   desired: boolean;
   startedMs: number;
-  pendingMs: number;
   logContext?: PendingBinaryCommandLogContext;
   restoreSource?: PendingBinaryCommandRestoreSource;
   reason?: string;
@@ -53,17 +55,11 @@ export type PendingBinaryCommand = {
   lastObservedAtMs?: number;
 };
 
-export function getPendingBinaryCommandWindowMs(
-  pending: PendingBinaryCommand,
-): number {
-  return pending.pendingMs;
-}
-
 export function isPendingBinaryCommandActive(params: {
   pending?: PendingBinaryCommand;
   nowMs?: number;
 }): boolean {
   const { pending, nowMs = Date.now() } = params;
   if (!pending) return false;
-  return (nowMs - pending.startedMs) < getPendingBinaryCommandWindowMs(pending);
+  return (nowMs - pending.startedMs) < CONTROL_COMMAND_CONFIRMATION_MS;
 }

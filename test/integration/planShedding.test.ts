@@ -660,7 +660,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-heater'] = {
       target: 'temperature',
-      pendingMs: 90_000,
       desired: 15,
       startedMs: Date.now() - 5000,
       lastAttemptMs: Date.now() - 5000,
@@ -740,7 +739,6 @@ describe('buildSheddingPlan', () => {
       target: 'temperature',
       desired: 15,
       startedMs: Date.now() - 5000,
-      pendingMs: 90_000,
       lastAttemptMs: Date.now() - 5000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30000,
@@ -2331,7 +2329,6 @@ describe('buildSheddingPlan', () => {
       dispatchState: 'accepted',
       desired: false,
       startedMs: Date.now() - 5_000,
-      pendingMs: 90_000,
     };
 
     const devices = [
@@ -2388,7 +2385,6 @@ describe('buildSheddingPlan', () => {
       dispatchState: 'accepted',
       desired: false,
       startedMs: Date.now() - 5_000,
-      pendingMs: 90_000,
     };
 
     const devices = [
@@ -2456,7 +2452,6 @@ describe('buildSheddingPlan', () => {
       dispatchState: 'accepted',
       desired: true,
       startedMs: Date.now() - 5_000,
-      pendingMs: 75_000,
     };
 
     const capacityGuard = {
