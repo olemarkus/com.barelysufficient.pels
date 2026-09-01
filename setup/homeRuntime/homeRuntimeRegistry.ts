@@ -63,7 +63,7 @@ import {
 } from './createHomeCapacityBundle';
 import { preparePersistedHomeTrackerForMeter } from '../../lib/power/persistedHomeTracker';
 import { resetPersistedHomeTrackerFreshness } from './resetPersistedHomeTrackerFreshness';
-import { HomeModeOwnershipTransfer } from './homeModeOwnershipTransfer';
+import type { ModeOwnershipTransfer } from '../../lib/home/modeOwnershipTransfer';
 
 const CAPACITY_SCALAR_BASE_KEYS: ReadonlySet<string> = new Set([
   CAPACITY_LIMIT_KW,
@@ -91,6 +91,12 @@ export type HomeRuntimeRegistryDeps = {
   isRuntimeActive: () => boolean;
   /** Store override for tests; defaults to the real settings-backed store. */
   homesStore?: HomesStore;
+  /**
+   * `lib/home`'s ownership transfer, built by the caller. Handed over rather
+   * than constructed here so this class holds a reference to a component
+   * someone else owns, not a component it made.
+   */
+  modeOwnershipTransfer: ModeOwnershipTransfer;
 };
 
 export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
@@ -110,14 +116,12 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     bundle: HomeCapacityBundle;
     sampleRevision: number;
   }>();
-  private readonly modeOwnershipTransfer: HomeModeOwnershipTransfer;
   // Edge-latch for the flow-source misconfiguration warn (see the emitter).
   private subHomesUnderFlowWarned = false;
 
   constructor(private readonly deps: HomeRuntimeRegistryDeps) {
     this.homesStore = deps.homesStore ?? createHomesStore(deps.ctx.homey);
     this.epoch = new PowerSourceEpochFence(() => this.tryReadConfiguredPowerSource());
-    this.modeOwnershipTransfer = new HomeModeOwnershipTransfer(deps.ctx);
     this.handledRuntimeActive = deps.isRuntimeActive();
   }
 
@@ -127,7 +131,7 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
 
   private reconcileModeOwnershipTransfer(complete: boolean, deferred: boolean): boolean {
     if (deferred) return complete;
-    return this.modeOwnershipTransfer.reconcile() && complete;
+    return this.deps.modeOwnershipTransfer.reconcile() && complete;
   }
 
   /** Live sub-home ids, for tests and diagnostics. */
@@ -435,7 +439,7 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
       bundle.reloadModeCatalog(allowPendingOwnershipGeneration);
       ready = bundle.isModeCatalogInitialized() && ready;
     }
-    return ready && this.modeOwnershipTransfer.reconcile(allowPendingOwnershipGeneration);
+    return ready && this.deps.modeOwnershipTransfer.reconcile(allowPendingOwnershipGeneration);
   }
 
   /** Rebuild every live sub-home plan after the producer commits new ownership. */

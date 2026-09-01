@@ -3,16 +3,16 @@ import {
   isPlausibleDeviceHomeAssignmentsBlob,
   normalizeDeviceHomeAssignments,
 } from '../../lib/home/homeConfig';
+import type { ModeTargetOwnershipRead } from '../../lib/home/modeOwnershipTransfer';
 import {
   MODE_TARGET_OWNERSHIP_STATE,
   MODE_TARGET_OWNERSHIP_STATE_INITIALIZED,
   type HomeId,
 } from '../../lib/utils/settingsKeys';
 
-export type ModeTargetOwnershipRead =
-  | { state: 'unwritten' }
-  | { state: 'present'; owners: Record<string, HomeId> }
-  | { state: 'suspect' };
+// The port types are declared with the domain (`lib/home/modeOwnershipTransfer.ts`);
+// this adapter re-exports them so existing importers keep their import site.
+export type { ModeTargetOwnershipRead };
 
 type SettingsReadResult = { value: unknown; threw: false } | { value: undefined; threw: true };
 type SettingsKeysReadResult = { value: string[]; threw: false } | { value: []; threw: true };
