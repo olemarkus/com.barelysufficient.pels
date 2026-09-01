@@ -68,13 +68,13 @@ describe('resolvePowerReadingsBannerContent', () => {
 
   it('hides the banner while the last sample is fresh', () => {
     expect(resolvePowerReadingsBannerContent({
-      ...base, lastPowerUpdate: base.nowMs - 1000, source: 'flow', meterChosen: false,
+      ...base, readings: { state: 'received', lastPowerUpdateMs: base.nowMs - 1000 }, source: 'flow', meterChosen: false,
     })).toBeNull();
   });
 
   it('names both remedies for a flow home that never received a reading', () => {
     expect(resolvePowerReadingsBannerContent({
-      ...base, lastPowerUpdate: null, source: 'flow', meterChosen: false,
+      ...base, readings: { state: 'never' }, source: 'flow', meterChosen: false,
     })).toEqual({
       text: 'No power readings yet. Set up a Flow with the Report power usage action, or pick a '
         + 'whole-home meter under Limits & safety.',
@@ -84,7 +84,7 @@ describe('resolvePowerReadingsBannerContent', () => {
 
   it('points a silent flow home at its Flow', () => {
     expect(resolvePowerReadingsBannerContent({
-      ...base, lastPowerUpdate: 1000, source: 'flow', meterChosen: false,
+      ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'flow', meterChosen: false,
     })).toEqual({
       text: 'No power readings in the last minute. Check the Flow that runs Report power usage.',
       actionLabel: 'Check power source',
@@ -93,11 +93,11 @@ describe('resolvePowerReadingsBannerContent', () => {
 
   it('points a Homey Energy home at its chosen meter, or at the picker before one is chosen', () => {
     expect(resolvePowerReadingsBannerContent({
-      ...base, lastPowerUpdate: 1000, source: 'homey_energy', meterChosen: true,
+      ...base, readings: { state: 'received', lastPowerUpdateMs: 1000 }, source: 'homey_energy', meterChosen: true,
     })?.text).toBe('No power readings in the last minute. Check that the selected whole-home '
       + 'meter is available and reporting power in Homey Energy.');
     expect(resolvePowerReadingsBannerContent({
-      ...base, lastPowerUpdate: null, source: 'homey_energy', meterChosen: false,
+      ...base, readings: { state: 'never' }, source: 'homey_energy', meterChosen: false,
     })?.text).toBe('No power readings yet. Pick a whole-home meter under Limits & safety.');
   });
 });

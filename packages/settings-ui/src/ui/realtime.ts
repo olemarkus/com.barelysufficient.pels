@@ -1,4 +1,5 @@
 import { syncSettingsHubChips } from './settingsHubChips.ts';
+import { classifyPowerReadingsFact } from '../../../shared-domain/src/powerReadingsBanner.ts';
 import {
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
   SETTINGS_UI_DEVICE_LOG_PATH,
@@ -147,10 +148,11 @@ const handlePowerUpdated = (power: unknown) => {
     // reads this cache) until the 30 s periodic refetch healed it. Consumers
     // that need a FRESH tracker already invalidate before refetching (see
     // refreshPowerDataIfVisible and the usage-tab activation hook).
+    const pushedReadings = classifyPowerReadingsFact(payload?.readings);
     updateApiCache<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH, {
       status: statusRead,
-      heartbeat: payload?.heartbeat ?? null,
-    }, { tracker: null });
+      ...(pushedReadings !== null ? { readings: pushedReadings } : {}),
+    }, { tracker: {}, readings: { state: 'never' } });
   }
   // Only a full-tracker push refreshes the hero's "Solar now" triple; a
   // status-only push keeps the cached one (the resolver's staleness gate

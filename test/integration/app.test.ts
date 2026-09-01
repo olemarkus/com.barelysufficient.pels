@@ -1048,9 +1048,9 @@ describe('MyApp initialization', () => {
     const powerEvents = mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'power_updated');
     expect(powerEvents).toHaveLength(1);
     expect(powerEvents[0].data).toMatchObject({
-      tracker: null,
-      // The classified read: a push rides a recorded sample, so the status is
-      // the live arm with the sample's own stamp overlaid.
+      // The slim push: the readings stamp plus the classified status — no
+      // tracker (the WebView preserves its cached one).
+      readings: { state: 'received', lastPowerUpdateMs: now },
       status: expect.objectContaining({
         state: 'live',
         status: expect.objectContaining({
@@ -1058,6 +1058,7 @@ describe('MyApp initialization', () => {
         }),
       }),
     });
+    expect(powerEvents[0].data).not.toHaveProperty('tracker');
   });
 
   it('taps the co-sampled generation + SIGNED net power into the PV forecast recorder', async () => {
@@ -1687,9 +1688,9 @@ describe('MyApp initialization', () => {
     const powerEvents = mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'power_updated');
     expect(powerEvents).toHaveLength(1);
     expect(powerEvents[0].data).toMatchObject({
-      tracker: null,
-      // The classified read: a push rides a recorded sample, so the status is
-      // the live arm with the sample's own stamp overlaid.
+      // The slim push: the readings stamp plus the classified status — no
+      // tracker (the WebView preserves its cached one).
+      readings: { state: 'received', lastPowerUpdateMs: now },
       status: expect.objectContaining({
         state: 'live',
         status: expect.objectContaining({
@@ -1697,6 +1698,7 @@ describe('MyApp initialization', () => {
         }),
       }),
     });
+    expect(powerEvents[0].data).not.toHaveProperty('tracker');
     expect(mockHomeyInstance.settings.get('power_tracker_state')).toMatchObject(nextState);
   });
 
@@ -1723,9 +1725,12 @@ describe('MyApp initialization', () => {
     const powerEvents = mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'power_updated');
     expect(powerEvents).toHaveLength(1);
     expect(powerEvents[0].data).toMatchObject({
-      tracker: null,
       status: { state: 'unavailable', reason: 'no_measurement' },
     });
+    // A latch-less tracker has no stamp, so the push carries no readings fact
+    // (the WebView keeps its last-known one) and no tracker.
+    expect(powerEvents[0].data).not.toHaveProperty('readings');
+    expect(powerEvents[0].data).not.toHaveProperty('tracker');
     // The stored blob is preserved — the push changed only the claim.
     expect(mockHomeyInstance.settings.get('pels_status'))
       .toEqual({ lastPowerUpdate: 1, powerFreshnessState: 'fresh' });

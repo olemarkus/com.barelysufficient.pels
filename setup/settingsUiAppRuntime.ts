@@ -269,10 +269,15 @@ export const emitSettingsUiPowerUpdatedForApp = (
   const realtime = api?.realtime;
   if (typeof realtime !== 'function') return;
   const status = homey.settings.get('pels_status') as unknown;
+  // Status-only push: no tracker (the WebView preserves its cached one). The
+  // readings stamp resolves from the same tracker the status rode in on;
+  // with no finite stamp (a half-latch) the field is omitted, and the
+  // WebView keeps its last-known readings fact.
   realtime.call(api, 'power_updated', {
-    tracker: null,
     status: resolveRealtimePowerStatus(status, powerTracker),
-    heartbeat: null,
+    ...(typeof powerTracker.lastTimestamp === 'number' && Number.isFinite(powerTracker.lastTimestamp)
+      ? { readings: { state: 'received', lastPowerUpdateMs: powerTracker.lastTimestamp } }
+      : {}),
   })
     .catch((error: unknown) => onError('Failed to emit power_updated event', error as Error));
 };

@@ -124,7 +124,9 @@ let setHourlyPatternToggleActive: (view: HourlyPatternView | null) => void = () 
 // keeps the scope discriminated.
 const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
   const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
-  return payload ?? { tracker: null, status: { state: 'unavailable', reason: 'read_failed' }, heartbeat: null };
+  return payload ?? {
+    tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'read_failed' },
+  };
 };
 
 const getTimeZoneWeekRange = (now: Date, weekOffset: number, timeZone: string) => {
@@ -335,7 +337,7 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
   // An unavailable scoped read has NO stats — the empty summary here is only
   // a safe return shape for callers; `renderPowerStats` (the render owner)
   // discriminates the same read itself and never paints these as figures.
-  return computePowerStats(read.state === 'served' ? read.payload.tracker : null);
+  return computePowerStats(read.state === 'served' ? read.payload.tracker : {});
 };
 
 const computePowerStats = (

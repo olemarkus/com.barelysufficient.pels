@@ -381,7 +381,8 @@ const SCENARIO_FACTORIES: Record<AuditScenarioName, () => BootstrapAuditScenario
     description: 'Capacity guard active: total power above the soft limit, headroom collapsed, two devices planned to shed.',
     plan: buildPressurePlanSnapshot(),
     power: {
-      tracker: null,
+      tracker: {},
+      readings: { state: 'received', lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0) },
       status: {
         state: 'live',
         status: {

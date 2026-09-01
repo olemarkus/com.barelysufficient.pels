@@ -444,10 +444,28 @@ export type SettingsUiPowerStatusRead =
   | { readonly state: 'live'; readonly status: SettingsUiPowerStatus }
   | { readonly state: 'unavailable'; readonly reason: SettingsUiPowerStatusUnavailableReason };
 
+/**
+ * The one readings fact the UI may branch on before touching power numbers:
+ * has this home EVER received a whole-home reading, and when was the last.
+ * Resolved ONCE at the producer from the live tracker's own stamp — the UI
+ * never re-derives it from tracker fields or persisted-blob fallbacks. The
+ * `never` arm is the no-readings banner's onboarding lead; `received` +
+ * a stale age is its stopped lead.
+ */
+export type SettingsUiPowerReadings =
+  | { readonly state: 'never' }
+  | { readonly state: 'received'; readonly lastPowerUpdateMs: number };
+
 export type SettingsUiPowerPayload = {
-  tracker: PowerTrackerState | null;
+  /**
+   * Usage HISTORY (buckets, daily totals, solar families) — always an object;
+   * `{}` is the empty history. History and readings are different facts: a
+   * meter swap clears the readings latch while the buckets survive.
+   */
+  tracker: PowerTrackerState;
+  /** Producer-resolved readings fact; see `SettingsUiPowerReadings`. */
+  readings: SettingsUiPowerReadings;
   status: SettingsUiPowerStatusRead;
-  heartbeat: number | null;
   // Runtime-authoritative Main-home simulation posture. The persisted
   // `capacity_dry_run` key may be absent while the running app deliberately
   // retains its last-good value, so a freshly opened WebView must not infer a

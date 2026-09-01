@@ -36,14 +36,14 @@ const HOUR_ISO = new Date(Date.UTC(2025, 0, 6, 11, 0, 0)).toISOString();
 
 const mainPowerPayload = () => ({
   tracker: { buckets: { [HOUR_ISO]: 2 } },
+  readings: { state: 'received' as const, lastPowerUpdateMs: 1_700_000_000_000 },
   status: { state: 'unavailable', reason: 'no_status_recorded' },
-  heartbeat: null,
 });
 
 const areaPowerPayload = () => ({
   tracker: { buckets: { [HOUR_ISO]: 0.7 } },
+  readings: { state: 'received' as const, lastPowerUpdateMs: 1_700_000_000_000 },
   status: { state: 'unavailable', reason: 'no_status_recorded' },
-  heartbeat: null,
   homeScope: { state: 'resolved', homeId: AREA },
 });
 
@@ -56,11 +56,13 @@ const AREA_GENERATED_KWH = 1;
 const mainSolarPowerPayload = () => ({
   ...mainPowerPayload(),
   tracker: { buckets: { [HOUR_ISO]: 2 }, generationBuckets: { [HOUR_ISO]: MAIN_GENERATED_KWH } },
+  readings: { state: 'received' as const, lastPowerUpdateMs: 1_700_000_000_000 },
 });
 
 const areaSolarPowerPayload = () => ({
   ...areaPowerPayload(),
   tracker: { buckets: { [HOUR_ISO]: 0.7 }, generationBuckets: { [HOUR_ISO]: AREA_GENERATED_KWH } },
+  readings: { state: 'received' as const, lastPowerUpdateMs: 1_700_000_000_000 },
 });
 
 // The Usage panel surface: the hero + summary + history mounts the stats pass

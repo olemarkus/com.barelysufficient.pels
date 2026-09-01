@@ -128,7 +128,7 @@ type PlanPowerRead = {
 const readPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
   try {
     const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
-    return { solarNowInput: toSolarNowInput(payload?.tracker ?? null) };
+    return { solarNowInput: payload ? toSolarNowInput(payload.tracker) : null };
   } catch {
     return { solarNowInput: null };
   }
@@ -389,7 +389,7 @@ const readScopedPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
     const read = await readUsagePower();
     if (read.state !== 'served') return { solarNowInput: null };
     return {
-      solarNowInput: toSolarNowInput(read.payload.tracker ?? null),
+      solarNowInput: toSolarNowInput(read.payload.tracker),
     };
   } catch {
     return { solarNowInput: null };

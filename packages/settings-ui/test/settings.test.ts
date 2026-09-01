@@ -442,7 +442,7 @@ describe('settings script', () => {
           },
           dailyBudget: null,
           plan: null,
-          power: { tracker: null, status: { state: 'unavailable', reason: 'no_status_recorded' }, heartbeat: null },
+          power: { tracker: {}, status: { state: 'unavailable', reason: 'no_status_recorded' }, readings: { state: 'never' } },
           prices: {
             combinedPrices: null,
             electricityPrices: null,
@@ -2061,26 +2061,16 @@ describe('Plan sorting', () => {
     expect(after).toBe(before);
   });
 
-  it('keeps the stale-data banner hidden when tracker data is fresh even if status is stale', async () => {
+  it('hides the banner on the producer-resolved readings fact, ignoring a stale status blob', async () => {
+    // The payload's `readings` is the ONE fact the banner reads: a fresh fact
+    // keeps it hidden even when the persisted status blob carries an old
+    // stamp (the tracker-vs-status precedence the UI used to re-derive is the
+    // producer's job now, and heartbeat is gone from the wire entirely).
     const now = Date.now();
     installedHomeyMock().__uiState.power = {
       tracker: { lastTimestamp: now - 5_000 },
+      readings: { state: 'received', lastPowerUpdateMs: now - 5_000 },
       status: { state: 'live', status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' } },
-      heartbeat: now,
-    };
-
-    await loadSettingsScript();
-
-    const banner = document.querySelector('#stale-data-banner') as HTMLDivElement;
-    expect(banner.hidden).toBe(true);
-  });
-
-  it('ignores stale heartbeat values when tracker data is fresh', async () => {
-    const now = Date.now();
-    installedHomeyMock().__uiState.power = {
-      tracker: { lastTimestamp: now - 5_000 },
-      status: { state: 'live', status: { lastPowerUpdate: now - 5_000, priceLevel: 'cheap' } },
-      heartbeat: now - 2 * 60_000,
     };
 
     await loadSettingsScript();
@@ -2093,8 +2083,8 @@ describe('Plan sorting', () => {
     const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
     const stalePower = {
       tracker: { lastTimestamp: Date.now() - 2 * 60_000 },
+      readings: { state: 'received', lastPowerUpdateMs: Date.now() - 2 * 60_000 },
       status: { state: 'live', status: { lastPowerUpdate: Date.now() - 2 * 60_000, priceLevel: 'cheap' } },
-      heartbeat: Date.now(),
     };
 
     installedHomeyMock().__uiState = { power: stalePower };
@@ -2110,10 +2100,10 @@ describe('Plan sorting', () => {
     expect(banner.hidden).toBe(false);
 
     (installedHomeyMock().api as ReturnType<typeof vi.fn>).mockClear();
+    // The runtime's slim push: status plus the readings stamp, no tracker.
     const freshPower = {
-      tracker: null,
+      readings: { state: 'received', lastPowerUpdateMs: Date.now() - 5_000 },
       status: { state: 'live', status: { lastPowerUpdate: Date.now() - 5_000, priceLevel: 'cheap' } },
-      heartbeat: null,
     };
     const powerCallbacks = listeners.power_updated || [];
     powerCallbacks.forEach((cb) => cb(freshPower));
@@ -2139,14 +2129,19 @@ describe('Plan sorting', () => {
     invalidateApiCache('/ui_power');
 
     const freshPower = {
-      tracker: null,
+      readings: { state: 'received', lastPowerUpdateMs: Date.now() - 5_000 },
       status: { state: 'live', status: { lastPowerUpdate: Date.now() - 5_000, priceLevel: 'cheap' } },
-      heartbeat: null,
     };
     (listeners.power_updated || []).forEach((cb) => cb(freshPower));
     await flushPromises();
 
-    await expect(getApiReadModel('/ui_power')).resolves.toEqual(freshPower);
+    // The cache entry keeps the /ui_power SHAPE: the slim push's status and
+    // readings land on the empty-tracker seed.
+    await expect(getApiReadModel('/ui_power')).resolves.toEqual({
+      tracker: {},
+      readings: freshPower.readings,
+      status: freshPower.status,
+    });
     const powerGetCalls = (installedHomeyMock().api as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');
     expect(powerGetCalls).toHaveLength(0);
@@ -2157,8 +2152,8 @@ describe('Plan sorting', () => {
     installedHomeyMock().__uiState = {
       power: {
         tracker: { hourly: {}, daily: {}, lastTimestamp: Date.now() },
+        readings: { state: 'received', lastPowerUpdateMs: Date.now() },
         status: { state: 'live', status: { lastPowerUpdate: Date.now(), priceLevel: 'cheap' } },
-        heartbeat: null,
       },
     };
     installedHomeyMock().on = vi.fn((event, cb) => {
@@ -2174,9 +2169,8 @@ describe('Plan sorting', () => {
 
     (installedHomeyMock().api as ReturnType<typeof vi.fn>).mockClear();
     const freshPower = {
-      tracker: null,
+      readings: { state: 'received', lastPowerUpdateMs: Date.now() },
       status: { state: 'live', status: { lastPowerUpdate: Date.now(), priceLevel: 'cheap' } },
-      heartbeat: null,
     };
     (listeners.power_updated || []).forEach((cb) => cb(freshPower));
     (listeners.power_updated || []).forEach((cb) => cb({
@@ -2208,8 +2202,8 @@ describe('Plan sorting', () => {
       const now = Date.now();
       installedHomeyMock().__uiState.power = {
         tracker: { lastTimestamp: now - 5_000 },
+        readings: { state: 'received', lastPowerUpdateMs: now - 5_000 },
         status: { state: 'live', status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' } },
-        heartbeat: now,
       };
 
       await loadSettingsScript();
@@ -2219,8 +2213,8 @@ describe('Plan sorting', () => {
 
       installedHomeyMock().__uiState.power = {
         tracker: { lastTimestamp: now - 2 * 60_000 },
+        readings: { state: 'received', lastPowerUpdateMs: now - 2 * 60_000 },
         status: { state: 'live', status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' } },
-        heartbeat: now,
       };
 
       (installedHomeyMock().api as ReturnType<typeof vi.fn>).mockClear();

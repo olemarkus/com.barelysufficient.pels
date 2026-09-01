@@ -56,12 +56,15 @@ import {
 } from '../../../shared-domain/src/simulationPosture.ts';
 import { syncSimulationHomeScopeNote } from './simulationScopeNote.ts';
 import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
-import { resolvePowerReadingsBannerContent } from '../../../shared-domain/src/powerReadingsBanner.ts';
+import {
+  classifyPowerReadingsFact,
+  resolvePowerReadingsBannerContent,
+  type PowerReadingsFact,
+} from '../../../shared-domain/src/powerReadingsBanner.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
-import { liveStatusOrNull } from './powerStatusRead.ts';
 
 export type PowerSource = 'flow' | 'homey_energy';
 
@@ -350,10 +353,10 @@ const validateCapacitySettings = ({ limit, margin }: ResolvedCapacitySettings) =
   }
 };
 
-// Last value handed to the banner, so a settings load that resolves AFTER the
-// first power read can re-render the copy without refetching power. undefined
-// = the banner has never rendered.
-let lastBannerPowerUpdate: number | null | undefined;
+// Last readings fact handed to the banner, so a settings load that resolves
+// AFTER the first power read can re-render the copy without refetching power.
+// undefined = the banner has never rendered.
+let lastBannerReadings: PowerReadingsFact | undefined;
 // Newer loads supersede the entire older snapshot. Power-source saves have a
 // narrower generation: they fence stale source-dependent paint without
 // discarding unrelated capacity values read from a realtime refresh.
@@ -377,11 +380,11 @@ const recordConfirmedPowerSourcePaint = (powerSource: unknown): void => {
   }
 };
 
-const updateStaleDataBanner = (lastPowerUpdate: number | null) => {
-  lastBannerPowerUpdate = lastPowerUpdate;
+const updateStaleDataBanner = (readings: PowerReadingsFact) => {
+  lastBannerReadings = readings;
   if (!staleDataBanner) return;
   const content = resolvePowerReadingsBannerContent({
-    lastPowerUpdate,
+    readings,
     nowMs: Date.now(),
     // The select mirrors the persisted source (and a drafted Homey Energy
     // switch, where the picker hint is exactly right).
@@ -395,25 +398,27 @@ const updateStaleDataBanner = (lastPowerUpdate: number | null) => {
 };
 
 export const refreshStaleDataBanner = (): void => {
-  if (lastBannerPowerUpdate !== undefined) updateStaleDataBanner(lastBannerPowerUpdate);
-};
-
-const resolveLastPowerUpdate = (power: SettingsUiPowerPayload): number | null => {
-  const trackerTimestamp = power.tracker?.lastTimestamp;
-  if (typeof trackerTimestamp === 'number' && Number.isFinite(trackerTimestamp)) {
-    return trackerTimestamp;
-  }
-  const statusTimestamp = liveStatusOrNull(power.status)?.lastPowerUpdate;
-  return typeof statusTimestamp === 'number' && Number.isFinite(statusTimestamp) ? statusTimestamp : null;
+  if (lastBannerReadings !== undefined) updateStaleDataBanner(lastBannerReadings);
 };
 
 export const loadStaleDataStatus = async () => {
   const power = await getPowerReadModel();
-  updateStaleDataBanner(resolveLastPowerUpdate(power));
+  // Producer-resolved fact, classified ONCE at this transport seam (the GET
+  // response is untrusted): a junk payload keeps the last-known fact rather
+  // than fabricating `never` — and before any render, resolves to `never`.
+  const fact = classifyPowerReadingsFact(power.readings);
+  if (fact !== null) updateStaleDataBanner(fact);
+  else if (lastBannerReadings !== undefined) refreshStaleDataBanner();
+  else updateStaleDataBanner({ state: 'never' });
 };
 
 export const updateStaleDataStatusFromPowerPayload = (power: SettingsUiPowerPayload | null) => {
-  updateStaleDataBanner(power ? resolveLastPowerUpdate(power) : null);
+  // The payload may be a realtime push (an untrusted transport): classify the
+  // fact once here. A push carrying no valid fact keeps the last-known one —
+  // it must never fabricate `never` over a real stamp.
+  const fact = classifyPowerReadingsFact(power?.readings);
+  if (fact !== null) updateStaleDataBanner(fact);
+  else refreshStaleDataBanner();
 };
 
 const syncLoadedPowerSource = (powerSource: unknown): void => {
