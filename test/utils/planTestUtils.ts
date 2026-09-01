@@ -993,15 +993,7 @@ export const steppedInputDevice = (
 export const buildPlanMeta = (
   overrides: Partial<DevicePlan['meta']> = {},
 ): DevicePlan['meta'] => {
-  const meta = buildPlanMetaFields(overrides);
-  // Mirror the producer's invariant so a fixture cannot encode a plan the
-  // planner could never build: `splitControlledUsageKw` derives the background
-  // side from the whole-home total, so it is absent exactly when the total is.
-  // A spec that sets `totalKw: null` gets a null background side unless it
-  // deliberately says otherwise.
-  return meta.totalKw === null && overrides.uncontrolledKw === undefined
-    ? { ...meta, uncontrolledKw: null }
-    : meta;
+  return buildPlanMetaFields(overrides);
 };
 
 const buildPlanMetaFields = (
@@ -1015,10 +1007,9 @@ const buildPlanMetaFields = (
   projectedExemptKw: null,
   softLimitSource: 'capacity',
   headroomKw: 1,
-  powerNowKw: 5,
   powerIsMeasured: true,
   capacityShortfall: false,
-  shortfallBudgetHeadroomKw: null,
+  shortfallBudgetHeadroomKw: 1,
   hardCapLimitKw: 10,
   hardCapHeadroomKw: 5,
   hourlyBudgetExhausted: false,
@@ -1028,6 +1019,7 @@ const buildPlanMetaFields = (
   minutesRemaining: 30,
   controlledKw: 2,
   uncontrolledKw: 3,
+  lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0),
   dailyBudgetRemainingKWh: 0,
   dailyBudgetExceeded: false,
   ...overrides,
@@ -1056,6 +1048,7 @@ export const buildSettingsUiPlanMeta = (
   minutesRemaining: 30,
   controlledKw: 2,
   uncontrolledKw: 3,
+  lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0),
   ...overrides,
 });
 

@@ -46,20 +46,22 @@ function handleShortfallCheck(
     }) ?? Promise.resolve());
 }
 
-function computeShortfallDeficitKw(total: number | null, shortfallThreshold: number): number {
-  if (total === null) return 0;
-  return Math.max(0, total - shortfallThreshold);
+function computeShortfallDeficitKw(drawKw: number, powerIsMeasured: boolean, shortfallThreshold: number): number {
+  // A deficit is a claim about the LIVE draw: an unmeasured cycle claims none.
+  if (!powerIsMeasured) return 0;
+  return Math.max(0, drawKw - shortfallThreshold);
 }
 
 function sumRemainingReducibleControlledLoadKw(params: {
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   limitSource: PlanContext['softLimitSource'];
-  total: number | null;
+  drawKw: number;
+  powerIsMeasured: boolean;
   capacitySoftLimit: number;
 }): number {
-  const { devices, shedSet, limitSource, total, capacitySoftLimit } = params;
-  const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
+  const { devices, shedSet, limitSource, drawKw, powerIsMeasured, capacitySoftLimit } = params;
+  const capacityBreached = powerIsMeasured && isCapacityBreached(drawKw, capacitySoftLimit);
   return sumRemainingSheddableLoadKw({
     devices: devices.map(toInputRemainingSheddableDevice),
     isAlreadyShed: (device) => shedSet.has(device.id),
@@ -71,13 +73,14 @@ function sumRemainingReducibleControlledLoadKw(params: {
 function buildShortfallCapacityStateSummary(params: {
   devices: PlanInputDevice[];
   shedSet: Set<string>;
-  total: number | null;
+  drawKw: number;
+  powerIsMeasured: boolean;
   limitSource: PlanContext['softLimitSource'];
   capacitySoftLimit: number;
   isBinaryCommandPending: (deviceId: string) => boolean;
 }): PlanCapacityStateSummary {
   const {
-    devices, shedSet, total, limitSource, capacitySoftLimit, isBinaryCommandPending,
+    devices, shedSet, drawKw, powerIsMeasured, limitSource, capacitySoftLimit, isBinaryCommandPending,
   } = params;
   const summary = buildPlanInputCapacityStateSummary(devices, shedSet, isBinaryCommandPending, {
     summarySource: 'plan_input',
@@ -85,12 +88,13 @@ function buildShortfallCapacityStateSummary(params: {
   });
   const controlledKw = sumControlledUsageKw(devices);
   const controlledPowerW = roundPowerW(controlledKw);
-  const totalPowerW = roundPowerW(total);
+  const totalPowerW = roundPowerW(drawKw);
   const remainingReducibleControlledLoadW = roundPowerW(sumRemainingReducibleControlledLoadKw({
     devices,
     shedSet,
     limitSource,
-    total,
+    drawKw,
+    powerIsMeasured,
     capacitySoftLimit,
   }));
 
@@ -112,13 +116,14 @@ function resolveShortfallCapacityStateSummary(params: {
   deficitKw: number;
   devices: PlanInputDevice[];
   shedSet: Set<string>;
-  total: number | null;
+  drawKw: number;
+  powerIsMeasured: boolean;
   limitSource: PlanContext['softLimitSource'];
   capacitySoftLimit: number;
   isBinaryCommandPending: (deviceId: string) => boolean;
 }): PlanCapacityStateSummary {
   const {
-    deficitKw, devices, shedSet, total, limitSource, capacitySoftLimit, isBinaryCommandPending,
+    deficitKw, devices, shedSet, drawKw, powerIsMeasured, limitSource, capacitySoftLimit, isBinaryCommandPending,
   } = params;
   // Only an entering incident reads it, and that needs a positive deficit, so
   // the null summary spares every ordinary rebuild the device walk.
@@ -126,7 +131,8 @@ function resolveShortfallCapacityStateSummary(params: {
   return buildShortfallCapacityStateSummary({
     devices,
     shedSet,
-    total,
+    drawKw,
+    powerIsMeasured,
     limitSource,
     capacitySoftLimit,
     isBinaryCommandPending,
@@ -148,12 +154,13 @@ export function countRemainingCandidates(params: {
   shedSet: Set<string>;
   headroom: number;
   limitSource: PlanContext['softLimitSource'];
-  total: number | null;
+  drawKw: number;
+  powerIsMeasured: boolean;
   capacitySoftLimit: number;
 }): number {
-  const { devices, shedSet, headroom, limitSource, total, capacitySoftLimit } = params;
+  const { devices, shedSet, headroom, limitSource, drawKw, powerIsMeasured, capacitySoftLimit } = params;
   if (headroom >= 0) return 0;
-  const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
+  const capacityBreached = powerIsMeasured && isCapacityBreached(drawKw, capacitySoftLimit);
   return devices
     .filter((d) => d.controllable && !shedSet.has(d.id))
     // On/off is a binary-only question: a binary device is still a remaining
@@ -175,12 +182,13 @@ export async function updateGuardState(params: {
   overshootActionable: boolean;
   capacitySoftLimit: number;
   /**
-   * The measured whole-home draw (`measuredTotalKw` on the cycle reading,
-   * `lib/power/powerCycleReading.ts`), or `null` when this
-   * cycle had none. The deficit is a real quantity in kW, so unlike most planner
-   * power questions it cannot be answered with a headroom.
+   * The whole-home draw (`PlanContext.drawKw` — always a number, the carried
+   * reading) plus whether it was MEASURED this cycle. The deficit is a real
+   * quantity in kW, so unlike most planner power questions it cannot be
+   * answered with a headroom — and it is claimed only from a measured draw.
    */
-  measuredTotalKw: number | null;
+  drawKw: number;
+  powerIsMeasured: boolean;
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   softLimitSource: PlanContext['softLimitSource'];
@@ -199,7 +207,8 @@ export async function updateGuardState(params: {
     headroom,
     overshootActionable,
     capacitySoftLimit,
-    measuredTotalKw,
+    drawKw,
+    powerIsMeasured,
     devices,
     shedSet,
     softLimitSource,
@@ -213,24 +222,29 @@ export async function updateGuardState(params: {
     shedSet,
     headroom,
     limitSource: softLimitSource,
-    total: measuredTotalKw,
+    drawKw,
+    powerIsMeasured,
     capacitySoftLimit,
   });
-  const deficitKw = computeShortfallDeficitKw(measuredTotalKw, shortfallThresholdKw);
+  const deficitKw = computeShortfallDeficitKw(drawKw, powerIsMeasured, shortfallThresholdKw);
 
   if (overshootActionable && shouldActivateShedding(headroom, shedSet)) {
     await handleShortfallCheck({
       capacityGuard,
       remaining: remainingCandidates,
       deficitKw,
-      totalKw: measuredTotalKw,
+      // The guard's `null` is its no-op signal, and lib/power may know
+      // absence: an unmeasured cycle (the fail-closed pass) must not feed a
+      // shortfall incident a carried total as if it were live.
+      totalKw: powerIsMeasured ? drawKw : null,
       shortfallThresholdKw,
       capacityStateSummary: resolveShortfallCapacityStateSummary({
         isBinaryCommandPending,
         deficitKw,
         devices,
         shedSet,
-        total: measuredTotalKw,
+        drawKw,
+        powerIsMeasured,
         limitSource: softLimitSource,
         capacitySoftLimit,
       }),
@@ -247,14 +261,15 @@ export async function updateGuardState(params: {
     capacityGuard,
     remaining: remainingCandidates,
     deficitKw,
-    totalKw: measuredTotalKw,
+    totalKw: powerIsMeasured ? drawKw : null,
     shortfallThresholdKw,
     capacityStateSummary: resolveShortfallCapacityStateSummary({
       isBinaryCommandPending,
       deficitKw,
       devices,
       shedSet,
-      total: measuredTotalKw,
+      drawKw,
+      powerIsMeasured,
       limitSource: softLimitSource,
       capacitySoftLimit,
     }),

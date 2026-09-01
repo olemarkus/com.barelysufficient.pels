@@ -172,30 +172,17 @@ const needsFacetSanitizing = (device: PlanDeviceSnapshot): boolean => (
 const REQUIRED_META_NUMBERS = [
   'softLimitKw', 'capacitySoftLimitKw', 'headroomKw', 'hardCapLimitKw',
   'usedKWh', 'hourBudgetKWh', 'minutesRemaining', 'controlledKw',
+  // The meter pair and its stamp: always numbers — a snapshot exists only
+  // behind the measurement gate, so its cycle always carried a reading.
+  'totalKw', 'uncontrolledKw', 'lastPowerUpdateMs',
 ] as const;
 
-// Required, but `null` is a real value: no meter reading this cycle
-// (`totalKw`/`uncontrolledKw`) and no daily-budget axis (the pace pair).
+// Required, but `null` is a real value: no daily-budget axis (the pace pair).
 const REQUIRED_META_NULLABLE_NUMBERS = [
-  'totalKw', 'uncontrolledKw', 'budgetPaceKw', 'projectedExemptKw',
+  'budgetPaceKw', 'projectedExemptKw',
 ] as const;
 
 const SOFT_LIMIT_SOURCES: ReadonlySet<unknown> = new Set(['capacity', 'daily']);
-// `totalKw` and `uncontrolledKw` are ONE fact and must be null together.
-// `splitControlledUsageKw` derives the background side as the whole-home total
-// minus the managed side, so it is absent exactly when the total is — which is
-// why the hero can resolve the pair once and then read both as plain numbers.
-//
-// Checking them independently would let a mismatched pair through, and the
-// consequence is worse than a wrong number: `PlanHero` needs BOTH to build its
-// input, so it would fall to the loading skeleton, while the accepted payload
-// had already replaced the last good plan. The Overview would sit on a spinner
-// with nothing to recover to. Validating the pair as a pair is the same
-// atomicity rule the temperature and stepped facets get.
-const hasConsistentMeterNullness = (meta: Record<string, unknown>): boolean => (
-  (meta.totalKw === null) === (meta.uncontrolledKw === null)
-);
-
 const isValidPlanMeta = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false;
   const meta = value as Record<string, unknown>;
@@ -203,7 +190,6 @@ const isValidPlanMeta = (value: unknown): boolean => {
     && REQUIRED_META_NULLABLE_NUMBERS.every(
       (key) => meta[key] === null || isFiniteNumber(meta[key]),
     )
-    && hasConsistentMeterNullness(meta)
     && SOFT_LIMIT_SOURCES.has(meta.softLimitSource);
 };
 

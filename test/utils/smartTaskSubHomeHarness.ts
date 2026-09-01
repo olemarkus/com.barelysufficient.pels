@@ -69,7 +69,10 @@ export const initAppWithSubHome = async (
   const main = new MockDevice('heater-main', 'Hall heater', ['measure_power', 'target_temperature']);
   main.setZone('z1');
   setMockDrivers({ driverA: new MockDriver('driverA', [sub, main]) });
-  const app = createApp();
+  // Passive power: these lanes assert WRITE gating and membership, and the
+  // default seeded reading (fresh 0 kW, full headroom) would let boot-time
+  // rebuilds actuate the fixture heaters and race the membership settle.
+  const app = createApp({ withoutPowerMeasurement: true });
   await app.onInit();
   app.setSnapshotForTests([
     buildPlannedHeater('heater-sub', 'Cabin heater', 'z2'),

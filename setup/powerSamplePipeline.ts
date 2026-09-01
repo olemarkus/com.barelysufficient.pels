@@ -7,13 +7,14 @@ import {
   recordPowerSampleForApp,
   type SplitControlledUsage,
   type SumBudgetExemptUsage,
+  type SumControlledUsage,
   type UpdateObjectiveProfiles,
 } from '../lib/power/sampleIngest';
 import { PowerSampleRebuildState } from '../lib/plan/rebuildScheduler/powerDriven';
 import { schedulePlanRebuildFromSignal } from '../lib/plan/rebuildScheduler/signalDriven';
 import { resolveLastTotalPowerKw } from '../lib/power/lastTotalPower';
 import { computeShortfallThreshold } from '../lib/plan/planBudget';
-import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../lib/plan/planUsage';
+import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { isPlanActivelyConverging } from '../lib/plan/planStateHelpers';
@@ -221,6 +222,10 @@ export class PowerSamplePipeline {
     devices: params.devices.map(withHeadroomCurrentOn),
   });
 
+  private readonly sumControlledUsage: SumControlledUsage = (devices) => (
+    sumControlledUsageKw(devices.map(withHeadroomCurrentOn))
+  );
+
   private readonly sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
     sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
   );
@@ -335,6 +340,7 @@ export class PowerSamplePipeline {
         getLatestTargetSnapshot: () => this.deps.getLatestTargetSnapshot(),
         powerTracker,
         splitControlledUsage: this.splitControlledUsage,
+        sumControlledUsage: this.sumControlledUsage,
         sumBudgetExemptUsage: this.sumBudgetExemptUsage,
         updateObjectiveProfiles: this.updateObjectiveProfiles,
         schedulePlanRebuild: async () => {

@@ -49,7 +49,7 @@ const buildTracker = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice
 
 const resolve = (params: {
   state: PlanEngineState;
-  signedNetKw: number | null;
+  signedNetKw: number;
   nowTs: number;
   devices: PlanInputDevice[];
   debugStructured?: (payload: Record<string, unknown>) => void;
@@ -58,6 +58,7 @@ const resolve = (params: {
     devices: params.devices,
     state: params.state,
     signedNetKw: params.signedNetKw,
+    powerIsMeasured: true,
     inferredSurplusKw: 0,
     getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
     debugStructured: params.debugStructured,

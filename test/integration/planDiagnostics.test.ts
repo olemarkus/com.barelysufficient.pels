@@ -26,14 +26,16 @@ const buildContext = (
   device: PlanInputDevice,
   modeTargets: Record<string, number> = {},
   softLimitSource: PlanContext['softLimitSource'] = 'capacity',
-  // What the meter read, or `null` for a cycle with no measurement. The power
-  // answers follow from it (`planContextPower`), as they do in production.
-  fixtureTotalKw: number | null = 4,
+  // What the meter read; `unmeasured` marks the fail-closed cycle (the one
+  // build without a live measurement). The power answers follow from it
+  // (`planContextPower`), as they do in production.
+  fixtureTotalKw = 4,
   currentHourPriceLevel: PlanContext['currentHourPriceLevel'] = PriceLevel.UNKNOWN,
+  unmeasured = false,
 ): PlanContext => ({
   devices: [device],
   modeTargetCFor: (d) => modeTargets[d.id] ?? d.currentTarget,
-  ...planContextPower(fixtureTotalKw),
+  ...planContextPower(fixtureTotalKw, unmeasured ? { failClosed: true } : {}),
   softLimit: 5,
   capacitySoftLimit: 5,
   dailySoftLimit: null,
@@ -42,7 +44,7 @@ const buildContext = (
   softLimitSource,
   // Mirrors the producer resolution in `buildPlanContext`: daily binding + fresh
   // power + no capacity breach (total 4 < capacitySoftLimit 5 in this fixture).
-  budgetReleasableHeadroomHold: softLimitSource === 'daily' && fixtureTotalKw !== null,
+  budgetReleasableHeadroomHold: softLimitSource === 'daily' && !unmeasured,
   capacityHeadroomKw: 1,
   budgetHeadroomKw: null,
   hourBucketKey: '2026-01-01T00',
@@ -108,7 +110,8 @@ const buildObservation = (params: {
   restoreResult?: Partial<RestorePlanResult>;
   modeTargets?: Record<string, number>;
   softLimitSource?: PlanContext['softLimitSource'];
-  fixtureTotalKw?: number | null;
+  fixtureTotalKw?: number;
+  unmeasured?: boolean;
   priceOptimizationEnabled?: boolean;
   priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   currentHourPriceLevel?: PlanContext['currentHourPriceLevel'];
@@ -121,6 +124,7 @@ const buildObservation = (params: {
     params.softLimitSource,
     params.fixtureTotalKw,
     params.currentHourPriceLevel,
+    params.unmeasured,
   ),
   // Production always stamps the plan device's `deviceType` from the snapshot, so
   // mirror the input device's modality onto the plan device the fixture builds.
@@ -919,7 +923,7 @@ describe('plan diagnostics observations', () => {
       modeTargets: { 'heater-1': 21 },
       softLimitSource: 'daily',
       // No measurement this cycle — the hold exists regardless of the budget.
-      fixtureTotalKw: null,
+      unmeasured: true,
     });
 
     expect(observation).toMatchObject({

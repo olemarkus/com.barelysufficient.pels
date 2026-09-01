@@ -1,4 +1,3 @@
-import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { resolvePowerCycleReading } from '../../lib/power/powerCycleReading';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
@@ -26,7 +25,6 @@ const readingFor = (
   powerTracker: { lastTimestamp?: number; lastPowerW?: number },
 ) => resolvePowerCycleReading({
   powerTracker,
-  totalKw: resolveLastTotalPowerKw(powerTracker),
   nowMs: Date.now(),
 });
 
@@ -94,7 +92,7 @@ describe('power sample freshness policy', () => {
 
   // Owner ruling 2026-08-31: a short gap is a no-op, not a hold — the last
   // good value carries forward AS MEASURED until the 10-minute silence mark.
-  it('carries a minutes-old reading forward as measured; startup with no sample holds at 0', () => {
+  it('carries a minutes-old reading forward as measured; a build with no sample at all fails loud', () => {
     const carriedContext = contextFor({
       powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000), lastPowerW: 4.4 * 1000 },
     });
@@ -103,16 +101,15 @@ describe('power sample freshness policy', () => {
     expect(carriedContext.headroomRaw).toBeCloseTo(0.6, 6);
     expect(carriedContext.headroom).toBeCloseTo(0.6, 6);
 
-    const startupContext = contextFor({ powerTracker: {} });
-
-    expect(startupContext.powerIsMeasured).toBe(false);
-    expect(startupContext.headroomRaw).toBe(0);
-    expect(startupContext.headroom).toBe(0);
+    // Startup with NO sample is the measurement gate's case, not a context
+    // state: a build with an unsampled tracker is a gate violation and fails
+    // loud instead of synthesizing a held headroom.
+    expect(() => contextFor({ powerTracker: {} })).toThrow(/measurement gate/);
   });
 
   it('uses fail-closed fallback headroom -1 once stale timeout is reached', () => {
     const context = contextFor({
-      powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS },
+      powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 4_400 },
     });
 
     expect(context.powerIsMeasured).toBe(false);
@@ -165,7 +162,7 @@ describe('power sample freshness policy', () => {
     it('synthesizes -1 on both axes once the silence passes the shed timeout', () => {
       const failClosed = contextFor({
         ...perAxis,
-        powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS },
+        powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 1_850 },
       });
       expect(failClosed.capacityHeadroomKw).toBe(-1);
       expect(failClosed.budgetHeadroomKw).toBe(-1);
@@ -224,16 +221,18 @@ describe('planner behavior under stale power freshness states', () => {
     }, params.state ?? createPlanEngineState());
   }
 
-  it('does not proactively shed when a build runs with no total at all', async () => {
+  it('fails loud when a build runs with no total at all — a gate violation, never a fabricated plan', async () => {
+    // A timestamp with no latched watts is a state production ingest cannot
+    // write (both land on the same sample); reaching a build with it means the
+    // measurement gate was bypassed. The resolver throws rather than planning
+    // on a number nobody measured, and the rebuild path reports it as a
+    // failed build (`rebuildPlanFromCache` resolves `{ failed: true }`).
     const builder = buildBuilder({
       tracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
     });
 
-    const plan = await builder.buildDevicePlanSnapshot([buildDevice()]);
-
-    expect(plan.meta.powerNowKw).toBeNull();
-    expect(plan.meta.headroomKw).toBe(0);
-    expect(plan.devices[0]?.plannedState).toBe('keep');
+    await expect(builder.buildDevicePlanSnapshot([buildDevice()]))
+      .rejects.toThrow(/measurement gate/);
   });
 
   // The shed grace buys time only when a deficit might be a restore PELS itself

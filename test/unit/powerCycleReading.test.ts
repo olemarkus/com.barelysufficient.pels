@@ -6,9 +6,11 @@ import {
 
 const NOW_MS = Date.UTC(2026, 3, 18, 10, 0, 0);
 
-const resolve = (ageMs: number | null, totalKw: number | null = 4) => resolvePowerCycleReading({
-  powerTracker: ageMs === null ? {} : { lastTimestamp: NOW_MS - ageMs },
-  totalKw,
+// The reading is resolved from the tracker's own latch — the fixture states
+// tracker state exactly as ingest would have latched it (watts and stamp from
+// the same sample), and the resolver derives everything else.
+const resolve = (ageMs: number, totalKw = 4) => resolvePowerCycleReading({
+  powerTracker: { lastPowerW: totalKw * 1000, lastTimestamp: NOW_MS - ageMs },
   nowMs: NOW_MS,
 });
 
@@ -31,7 +33,7 @@ describe('resolvePowerCycleReading — what the planner is allowed to know', () 
     expect(reading.isMeasured).toBe(true);
     expect(reading.headroomKw(6)).toBeCloseTo(2, 6);
     expect(reading.measuredAtOrBelowKw(4)).toBe(true);
-    expect(reading.display.measuredTotalKw).toBe(4);
+    expect(reading.display.totalKw).toBe(4);
   });
 
   // The one silent-window build is the escalation's fail-closed pass: it must
@@ -43,17 +45,25 @@ describe('resolvePowerCycleReading — what the planner is allowed to know', () 
     expect(reading.headroomKw(6)).toBe(-1);
     expect(reading.headroomKw(0)).toBe(-1);
     expect(reading.measuredAtOrBelowKw(100)).toBe(false);
-    expect(reading.display.measuredTotalKw).toBeNull();
+    // The display still carries the CARRIED reading — the owner may see the
+    // last real number — but no planning predicate spends it.
+    expect(reading.display.totalKw).toBe(9.9);
   });
 
-  // Defensive only: production's measurement gate prevents a build with no
-  // total, so the hold is the boundary where that absence stops.
-  it('reports no measurement when there is no total, even on a fresh timestamp', () => {
-    const reading = resolve(1000, null);
-
-    expect(reading.isMeasured).toBe(false);
-    expect(reading.headroomKw(6)).toBe(0);
-    expect(reading.measuredAtOrBelowKw(100)).toBe(false);
+  // The measurement gate is the reading's precondition, not a case it hedges
+  // for: a build reaching this resolver with an unsampled tracker is a wiring
+  // bug, and it fails loud instead of planning on a fabricated number.
+  it('throws on an unsampled tracker — a build past the gate is a violation, not a hold', () => {
+    expect(() => resolvePowerCycleReading({ powerTracker: {}, nowMs: NOW_MS }))
+      .toThrow(/measurement gate/);
+    expect(() => resolvePowerCycleReading({
+      powerTracker: { lastPowerW: 4000 },
+      nowMs: NOW_MS,
+    })).toThrow(/measurement gate/);
+    expect(() => resolvePowerCycleReading({
+      powerTracker: { lastPowerW: Number.NaN, lastTimestamp: NOW_MS },
+      nowMs: NOW_MS,
+    })).toThrow(/measurement gate/);
   });
 
   it('answers measuredAtOrBelowKw and measuredAboveKw only on a positive measurement', () => {
@@ -68,9 +78,9 @@ describe('resolvePowerCycleReading — what the planner is allowed to know', () 
     expect(silent.measuredAboveKw(0)).toBe(false);
   });
 
-  it('resolves the measured draw once, rather than leaving consumers to recombine it', () => {
-    expect(resolve(1000, 4).display.measuredTotalKw).toBe(4);
-    expect(resolve(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, 4).display.measuredTotalKw).toBeNull();
-    expect(resolve(1000, null).display.measuredTotalKw).toBeNull();
+  it('stamps the display from the same sample as the watts — one view, no nullable', () => {
+    const reading = resolve(1000, 4);
+    expect(reading.display.totalKw).toBe(4);
+    expect(reading.display.lastPowerUpdateMs).toBe(NOW_MS - 1000);
   });
 });

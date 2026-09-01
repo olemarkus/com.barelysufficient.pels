@@ -1537,7 +1537,7 @@ describe('Device plan snapshot', () => {
 
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = createApp();
+    const app = createApp({ withoutPowerMeasurement: true });
     await app.onInit();
 
     // Force headroom small; monkey-patch guard headroom and margin.
@@ -1606,7 +1606,7 @@ describe('Device plan snapshot', () => {
     expect(nextState?.plannedState).toBe('shed');
   });
 
-  it('marks off devices as shed with stale-hold fallback headroom when no power sample is available', async () => {
+  it('marks off devices as shed when the measured headroom cannot admit them', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 0);
     await dev1.setCapabilityValue('onoff', false);
@@ -1619,6 +1619,12 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    // A measured reading right AT the soft limit: headroom 0.00 kW, so the
+    // off device cannot be admitted. (The old door — a total with no sample
+    // timestamp, resolving to the deleted stale-hold — is unreachable now:
+    // ingest stamps both together and the resolver refuses the half-state.)
+    app.powerTracker = { ...app.powerTracker, lastPowerW: 5_000, lastTimestamp: Date.now() };
+    app.computeDynamicSoftLimit = () => 5.0;
 
     const plan = await app.planService.buildDevicePlanSnapshot([
       buildPlanInputDevice({
@@ -2698,7 +2704,10 @@ describe('Device plan snapshot', () => {
     });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = createApp();
+    // Passive setup: the seeded fresh reading would let boot-time rebuilds
+    // restore the OFF fixtures before the swap state is even arranged; the
+    // spec's own sample below opens the gate instead.
+    const app = createApp({ withoutPowerMeasurement: true });
     await app.onInit();
 
     app.computeDynamicSoftLimit = () => 1.4;
@@ -3949,9 +3958,10 @@ describe('Dry run mode', () => {
       app.computeDynamicSoftLimit = () => 5.0;
       app.computeDynamicSoftLimit = () => 5.0;
 
-      // Advance time to bypass cooldowns if any
-      vi.advanceTimersByTime(10 * 60 * 1000);
-      vi.setSystemTime(new Date('2023-01-01T12:10:00Z'));
+      // Move the CLOCK without running the intervals: firing them would let
+      // the freshness heartbeat restore one device per cycle across the gap,
+      // so the spec's own rebuild would find nothing left to throttle.
+      vi.setSystemTime(new Date('2023-01-01T12:05:00Z'));
 
       // Explicitly clear cooldowns to avoid test flakiness with Date mocking
       app.planEngine.state.lastInstabilityMs = 0;

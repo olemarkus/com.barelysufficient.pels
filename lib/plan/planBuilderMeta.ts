@@ -76,10 +76,6 @@ export function buildPlanMeta(params: {
     projectedExemptKw: context.projectedExemptKw,
     softLimitSource: context.softLimitSource,
     headroomKw: context.headroom,
-    // The measured whole-home draw, or `null` when this cycle had none. The
-    // single resolved figure every status/display consumer reads — it replaced
-    // a `powerKnown` boolean that each of them recombined with a raw total.
-    powerNowKw: power.measuredTotalKw,
     powerIsMeasured: context.powerIsMeasured,
     ...shortfallMeta,
     hourlyBudgetExhausted,
@@ -87,11 +83,6 @@ export function buildPlanMeta(params: {
     budgetKWh: context.budgetKWh,
     capacityLimitKw,
     minutesRemaining: context.minutesRemaining,
-    // Straight through, no `?? undefined`. `splitControlledUsageKw` returns
-    // `controlledKw: number` — the managed side always resolves — so the
-    // coalesce on it was unreachable. And collapsing the background side's
-    // `null` to `undefined` erased the one thing it says: there was no
-    // whole-home reading this cycle, which is different from "no value here".
     controlledKw,
     uncontrolledKw,
     hourControlledKWh: currentHourUsageSplit.controlledKWh,
@@ -101,24 +92,19 @@ export function buildPlanMeta(params: {
     dailyBudgetHourKWh: extractPlanDailyBudgetHourKWh(dailyBudgetSnapshot),
     // From the producer's reading, not a second read of the tracker: the meta
     // writer resolving its own timestamp is how two views of the same sample
-    // drift apart. `undefined` stays the wire's "no sample yet".
-    lastPowerUpdateMs: power.lastPowerUpdateMs ?? undefined,
+    // drift apart.
+    lastPowerUpdateMs: power.lastPowerUpdateMs,
   };
 }
 
 function buildShortfallMeta(
   capacityGuard: CapacityGuard,
-  totalKw: number | null,
+  totalKw: number,
   hardCapLimitKw: number,
   shortfallBudgetThresholdKw: number,
 ): ShortfallMeta {
-  const shortfallBudgetHeadroomKw
-    = typeof totalKw === 'number'
-      ? shortfallBudgetThresholdKw - totalKw
-      : null;
-  const hardCapHeadroomKw = typeof totalKw === 'number'
-    ? hardCapLimitKw - totalKw
-    : null;
+  const shortfallBudgetHeadroomKw = shortfallBudgetThresholdKw - totalKw;
+  const hardCapHeadroomKw = hardCapLimitKw - totalKw;
   return {
     capacityShortfall: capacityGuard.isInShortfall() ?? false,
     shortfallBudgetThresholdKw,
@@ -134,24 +120,18 @@ export function buildPlanContextHeadroomLogFields(
   hardCapLimitKw: number,
   shortfallBudgetThresholdKw: number,
 ): Record<string, number | boolean | string | null> {
-  const shortfallBudgetHeadroomKw
-    = typeof power.totalKw === 'number'
-      ? shortfallBudgetThresholdKw - power.totalKw
-      : null;
-  const hardCapHeadroomKw = typeof power.totalKw === 'number'
-    ? hardCapLimitKw - power.totalKw
-    : null;
+  const shortfallBudgetHeadroomKw = shortfallBudgetThresholdKw - power.totalKw;
+  const hardCapHeadroomKw = hardCapLimitKw - power.totalKw;
   return {
     totalKw: power.totalKw,
     softLimitKw: context.softLimit,
     softHeadroomKw: context.headroom,
-    // The measured whole-home draw, or `null` when this cycle had none. The
-    // single resolved figure every status/display consumer reads — it replaced
-    // a `powerKnown` boolean that each of them recombined with a raw total.
-    powerNowKw: power.measuredTotalKw,
+    // Log continuity: saved queries read `powerNowKw` as "the measured draw or
+    // null". Derived here from the resolved pair — a LOG field, not a seam.
+    powerNowKw: context.powerIsMeasured ? power.totalKw : null,
     shortfallBudgetThresholdKw: shortfallBudgetThresholdKw ?? null,
     shortfallBudgetHeadroomKw,
     hardCapHeadroomKw,
-    hardCapBreached: hardCapHeadroomKw !== null ? hardCapHeadroomKw < 0 : false,
+    hardCapBreached: hardCapHeadroomKw < 0,
   };
 }

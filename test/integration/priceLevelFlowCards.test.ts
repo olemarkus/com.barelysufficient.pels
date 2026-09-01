@@ -112,11 +112,11 @@ describe('Price level flow cards', () => {
       getSettleDevices: () => [],
       getCapacityDryRun: () => true,
       getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
-      getLastPowerUpdate: () => null,
+      getLastPowerUpdate: () => 1_745_000_000_000,
     });
 
     planService.updatePelsStatus({
-      meta: buildPlanMeta({ totalKw: null, softLimitKw: 0, headroomKw: 0 }),
+      meta: buildPlanMeta({ totalKw: 0, softLimitKw: 0, headroomKw: 0 }),
       devices: [],
     });
 

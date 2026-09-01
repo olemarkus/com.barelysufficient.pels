@@ -56,7 +56,7 @@ export type PlanCapacityStateSummaryInput = Pick<DevicePlan, 'devices'> & {
   meta: Pick<
     DevicePlan['meta'],
     'controlledKw' | 'uncontrolledKw' | 'totalKw' | 'softLimitKw'
-    | 'capacitySoftLimitKw' | 'softLimitSource' | 'powerNowKw'
+    | 'capacitySoftLimitKw' | 'softLimitSource' | 'powerIsMeasured'
   >;
 };
 
@@ -229,7 +229,8 @@ function resolvePlanRemainingSheddableContext(
     // From the MEASURED total, matching what the plan's own device-level
     // `capacityBreached` now reports. Reading the raw `totalKw` here made the two
     // disagree on exactly the cycles where the meter could not be trusted.
-    capacityBreached: isCapacityBreached(plan.meta.powerNowKw, plan.meta.capacitySoftLimitKw),
+    capacityBreached: plan.meta.powerIsMeasured
+      && isCapacityBreached(plan.meta.totalKw, plan.meta.capacitySoftLimitKw),
   };
 }
 

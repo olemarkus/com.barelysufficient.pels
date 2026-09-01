@@ -17,6 +17,7 @@ import {
   recordDailyBudgetCap,
   recordPowerSampleForApp,
   type SplitControlledUsage,
+  type SumControlledUsage,
   type SumBudgetExemptUsage,
   type UpdateObjectiveProfiles,
 } from '../../lib/power/sampleIngest';
@@ -41,7 +42,7 @@ import { shouldSkipShortfallRebuildFromPlanSummary } from '../../lib/plan/rebuil
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import { createTestPowerRebuildScheduler } from '../helpers/powerRebuildScheduler';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
-import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
+import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../../lib/objectives/profiles';
 import { buildNullCapacityStateSummary } from '../../lib/power/capacityStateSummary';
@@ -58,6 +59,9 @@ const splitControlledUsage: SplitControlledUsage = (params) => splitControlledUs
   ...params,
   devices: params.devices.map(withHeadroomCurrentOn),
 });
+const sumControlledUsage: SumControlledUsage = (devices) => (
+  sumControlledUsageKw(devices.map(withHeadroomCurrentOn))
+);
 const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
   sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
 );
@@ -2367,6 +2371,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -2383,6 +2388,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -2424,6 +2430,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -2440,6 +2447,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -2477,6 +2485,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -2493,6 +2502,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -2565,6 +2575,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2581,6 +2592,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2620,6 +2632,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2636,6 +2649,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2659,6 +2673,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot: () => [],
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2712,6 +2727,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: updateProfiles,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2729,6 +2745,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
       splitControlledUsage,
+      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: updateProfiles,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -2785,6 +2802,7 @@ describe('recordPowerSampleForApp', () => {
         getLatestTargetSnapshot: params.getLatestTargetSnapshot as never,
         powerTracker: {},
         splitControlledUsage,
+      sumControlledUsage,
         sumBudgetExemptUsage,
         updateObjectiveProfiles: ({ state }) => state,
         schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),

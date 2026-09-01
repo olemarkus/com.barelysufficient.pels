@@ -157,7 +157,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           targets: [{ id: 'target_temperature', value: 18.6, unit: '°C', min: 5, max: 35, step: 1 }],
         })]),
         modeTargetCFor: (d) => (({ tank: 22 })[d.id] ?? d.currentTarget),
-        ...planContextPower(null),
+        ...planContextPower(3, { failClosed: true }),
       },
       state: createPlanEngineState(),
       shedSet: new Set(),
@@ -194,7 +194,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           // `powerKnown: false` alone and the stale companion number stayed
           // inherited — the two-correlated-fields hazard the resolved field exists
           // to remove.
-          ...planContextPower(null),
+          ...planContextPower(3, { failClosed: true }),
         }),
       },
       state: createPlanEngineState(),
@@ -227,7 +227,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           targets: [{ id: 'target_temperature', value: 24, unit: '°C', min: 5, max: 35 }],
         })]),
         modeTargetCFor: (d) => (({ tank: 20 })[d.id] ?? d.currentTarget),
-        ...planContextPower(null),
+        ...planContextPower(3, { failClosed: true }),
       },
       state: createPlanEngineState(),
       shedSet: new Set(),
@@ -253,7 +253,7 @@ describe('unknown power holds a load-adding mode-target change', () => {
           deadlineFloorTargetC: 60,
         })]),
         modeTargetCFor: (d) => (({ tank: 55 })[d.id] ?? d.currentTarget),
-        ...planContextPower(null),
+        ...planContextPower(3, { failClosed: true }),
       },
       state: createPlanEngineState(),
       shedSet: new Set(),

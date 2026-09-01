@@ -2,7 +2,6 @@ import type { PlanEngineState } from '../planState';
 import type { PlanInputDevice } from '../planTypes';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { compareDeviceIdAsc } from '../planSort';
-import { isCapacityBreached } from '../planRemainingSheddableLoad';
 import { resolveRecentRestoreState } from './overshoot';
 import {
   buildBinaryCandidate,
@@ -74,13 +73,11 @@ function collectSheddingCandidates(
     needed,
     deficitKw,
     limitSource,
-    total,
-    capacitySoftLimit,
+    capacityBreached,
     state,
     deps,
   } = params;
   const nowTs = Date.now();
-  const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
   const candidates: ShedCandidate[] = [];
   // Every exit below either produces a candidate or records why it did not, so a
   // cycle that sheds nothing can say which devices it considered and what stopped

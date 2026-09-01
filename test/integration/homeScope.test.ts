@@ -25,7 +25,7 @@ describe('buildMainHomeScope', () => {
     priceLevel: PriceLevel.NORMAL,
     devicesOn: 0,
     devicesOff: 0,
-    lastPowerUpdate: null,
+    lastPowerUpdate: 1_745_000_000_000,
   };
 
   it('writes the persisted signals to the unsuffixed main-home keys', () => {

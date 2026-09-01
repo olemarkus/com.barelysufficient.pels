@@ -33,15 +33,15 @@ describe('pels status limit reason', () => {
     softLimitSource: 'capacity' | 'daily';
     reason: string | DeviceReason;
     headroomKw?: number;
-    /** The producer-resolved measured draw; `null` means this cycle had none. */
-    powerNowKw?: number | null;
+    /** The producer-resolved flag; false = the -1 headroom is the fail-closed sentinel. */
+    powerIsMeasured?: boolean;
   }): DevicePlan => ({
     meta: buildPlanMeta({
       totalKw: 4.2,
       softLimitKw: 6,
       softLimitSource: params.softLimitSource,
       headroomKw: params.headroomKw ?? 1.8,
-      powerNowKw: params.powerNowKw === undefined ? 4.2 : params.powerNowKw}),
+      powerIsMeasured: params.powerIsMeasured ?? true}),
     devices: [
       withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
         recordRestoreOnTargetApply: false,
@@ -105,7 +105,7 @@ describe('pels status limit reason', () => {
       headroomKw: -1,
       // No measurement this cycle, so the -1 is the fail-closed SENTINEL, not a
       // real negative headroom — the status must not read it as a limit.
-      powerNowKw: null,
+      powerIsMeasured: false,
     });
 
     const status = buildPelsStatus({
@@ -273,13 +273,13 @@ describe('pels status projected-over-hard-cap flag', () => {
 
 describe('pels status effective dry-run posture (R7b, per-home Limits card)', () => {
   const emptyPlan: DevicePlan = {
-    meta: buildPlanMeta({ totalKw: 0, softLimitKw: 6, headroomKw: 1, powerNowKw: 0}),
+    meta: buildPlanMeta({ totalKw: 0, softLimitKw: 6, headroomKw: 1 }),
     devices: [],
   };
   const statusWith = (dryRunEffective?: boolean) => buildPelsStatus({
     plan: emptyPlan,
     priceLevel: PriceLevel.NORMAL,
-    lastPowerUpdate: null,
+    lastPowerUpdate: 1_745_000_000_000,
     dryRunEffective,
   });
 
@@ -298,13 +298,13 @@ describe('pels status effective dry-run posture (R7b, per-home Limits card)', ()
 
 describe('pels status whole-area total (per-home Limits "Power now")', () => {
   const drawPlan: DevicePlan = {
-    meta: buildPlanMeta({ totalKw: 5.2, softLimitKw: 6, headroomKw: 0.8, powerNowKw: 5.2}),
+    meta: buildPlanMeta({ totalKw: 5.2, softLimitKw: 6, headroomKw: 0.8 }),
     devices: [],
   };
   const statusWith = (dryRunEffective?: boolean) => buildPelsStatus({
     plan: drawPlan,
     priceLevel: PriceLevel.NORMAL,
-    lastPowerUpdate: null,
+    lastPowerUpdate: 1_745_000_000_000,
     dryRunEffective,
   });
 

@@ -2656,7 +2656,7 @@ describe('restore admission — headroom and penalty gates', () => {
       context: buildContext({
         headroomRaw: 5,
         headroom: 5,
-        ...planContextPower(null),
+        ...planContextPower(3, { failClosed: true }),
       } as Partial<PlanContext>),
       state,
       sheddingActive: false,

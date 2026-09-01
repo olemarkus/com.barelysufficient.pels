@@ -259,6 +259,7 @@ describe('parsePlanSnapshot meta guard', () => {
     minutesRemaining: 30,
     controlledKw: 2,
     uncontrolledKw: 2.2,
+    lastPowerUpdateMs: 1_700_000_000_000,
   };
 
   it('passes a complete meta through identity-preserving', () => {
@@ -266,14 +267,19 @@ describe('parsePlanSnapshot meta guard', () => {
     expect(parsePlanSnapshot(payload)).toBe(payload);
   });
 
-  it('keeps the nullable four as null — real states, not absence', () => {
-    // `totalKw`/`uncontrolledKw` null = no meter reading this cycle;
-    // the pace pair null = no daily-budget axis.
-    const payload = {
-      meta: { ...validMeta, totalKw: null, uncontrolledKw: null },
+  it('keeps the nullable pace pair as null, and rejects a null meter pair — a reading always exists', () => {
+    // The pace pair's null = no daily-budget axis (a real state). The meter
+    // pair is always numbers now: a snapshot exists only behind the
+    // measurement gate, so "no reading" is not a plan-meta state any more.
+    const paceNull = {
+      meta: { ...validMeta, budgetPaceKw: null, projectedExemptKw: null },
       devices: [],
     };
-    expect(parsePlanSnapshot(payload)).toBe(payload);
+    expect(parsePlanSnapshot(paceNull)).toBe(paceNull);
+    expect(parsePlanSnapshot({
+      meta: { ...validMeta, totalKw: null, uncontrolledKw: null },
+      devices: [],
+    })).toBeNull();
   });
 
   it.each([

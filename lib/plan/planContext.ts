@@ -39,8 +39,8 @@ export type PlanContext = {
    * more permissive) number than `headroom` in an exhausted hour, so a consumer
    * that reaches for it to re-derive an axis has silently dropped that force.
    * Nothing outside this file calls it today — the last such caller went with
-   * `resolveMeasuredTotalKw`, and the shedding guard's `measuredTotalKw` comes
-   * from `measuredDrawKw`, not from here. The warning above is why it should
+   * `resolveMeasuredTotalKw`, and the shedding guard's draw comes
+   * from `drawKw`, not from here. The warning above is why it should
    * stay that way.
    */
   headroomForLimitKw: (limitKw: number) => number;
@@ -62,21 +62,21 @@ export type PlanContext = {
    */
   powerMeasuredAboveKw: (limitKw: number) => boolean;
   /**
-   * The measured whole-home draw, or `null` when this cycle had none.
+   * The whole-home draw behind this cycle (signed net — negative on export).
    *
-   * Resolved ONCE by the producer. Two consumers need the NUMBER rather than a
-   * difference — the surplus allocator's signed net (which goes negative on
-   * export) and the shortfall deficit — and for them "we did not measure" has no
-   * safe numeric stand-in: a synthesized 0 would read as a balanced house to one
-   * and no deficit to the other. Every other consumer wants a headroom or a
-   * predicate above and must not reach for this.
-   *
-   * It is the one nullable left on the power axis, and it is genuine domain
-   * absence rather than an unresolved read. It replaced a derivation that
-   * recovered the draw by negating `headroomForLimitKw(0)` — correct only while
-   * that answer stayed exactly linear and unclamped, an invariant held by comment.
+   * Resolved ONCE by the producer, and always a number: a build exists only
+   * behind the measurement gate, so a reading always exists — on the one
+   * unmeasured build (the fail-closed pass) it is the CARRIED reading. Two
+   * consumers need the NUMBER rather than a difference — the surplus
+   * allocator's signed net (which goes negative on export) and the shortfall
+   * deficit — and both must gate their claims on `powerIsMeasured`: for them
+   * "we did not measure" has no safe numeric stand-in (a synthesized 0 would
+   * read as a balanced house to one and no deficit to the other), so on an
+   * unmeasured cycle they decide nothing instead of reading this as live.
+   * Every other consumer wants a headroom or a predicate above and must not
+   * reach for this.
    */
-  measuredDrawKw: number | null;
+  drawKw: number;
   softLimit: number;
   capacitySoftLimit: number;
   dailySoftLimit: number | null;
@@ -259,7 +259,7 @@ export function buildPlanContext(params: {
     powerIsMeasured: power.isMeasured,
     powerMeasuredAtOrBelowKw: power.measuredAtOrBelowKw,
     powerMeasuredAboveKw: power.measuredAboveKw,
-    measuredDrawKw: power.display.measuredTotalKw,
+    drawKw: power.display.totalKw,
     softLimit,
     capacitySoftLimit,
     dailySoftLimit,

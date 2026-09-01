@@ -191,8 +191,8 @@ export function resolveSurplusTrackingPosture(params: {
 // controller's standing import can explain. The gate may then release an
 // engaged lift without waiting out the min dwell (the dwell only protects the
 // passing-cloud dip, where net hovers near zero).
-const isHardOffCondition = (powerOk: boolean, signedNetKw: number | null): boolean => (
-  !powerOk || (isFiniteNumber(signedNetKw) && signedNetKw > SURPLUS_ABSORB_HARD_OFF_IMPORT_KW)
+const isHardOffCondition = (powerOk: boolean, signedNetKw: number): boolean => (
+  !powerOk || signedNetKw > SURPLUS_ABSORB_HARD_OFF_IMPORT_KW
 );
 
 // Compose the whole-home surplus budget: measured export + the add-back of
@@ -535,7 +535,10 @@ const resolveHeldStep = (
 export function resolveSurplusEligibility(params: {
   devices: PlanInputDevice[];
   state: PlanEngineState;
-  signedNetKw: number | null;
+  /** Always a number (the carried reading, signed); gate every raise on `powerIsMeasured`. */
+  signedNetKw: number;
+  /** Producer-resolved: whether `signedNetKw` was measured this cycle. */
+  powerIsMeasured: boolean;
   // Producer-resolved inferred curtailed-surplus term (kW); null/undefined when
   // absent or currently suppressed. Folded into the pool as max(0, term) — it can
   // only ever ENLARGE the pool, and the `powerOk` gate below is unaffected: a
@@ -570,9 +573,9 @@ export function resolveSurplusEligibility(params: {
 
   if (willing.length === 0) return;
 
-  // `signedNetKw` is already null when this cycle had no trustworthy total, so
-  // finiteness is the only check left — there is no provenance to re-derive.
-  const powerOk = isFiniteNumber(params.signedNetKw);
+  // Producer-resolved: an unmeasured cycle allocates nothing and releases
+  // every willing device — a carried number must never raise a lift.
+  const powerOk = params.powerIsMeasured;
   const hardOff = isHardOffCondition(powerOk, params.signedNetKw);
   if (!powerOk) {
     // Power unknown/stale: no surplus to allocate — let every willing device release.
@@ -593,7 +596,7 @@ export function resolveSurplusEligibility(params: {
   let poolKw = composeSurplusPool({
     willing,
     state,
-    signedNetKw: params.signedNetKw as number,
+    signedNetKw: params.signedNetKw,
     inferredSurplusKw: params.inferredSurplusKw,
     debugStructured: params.debugStructured,
   });

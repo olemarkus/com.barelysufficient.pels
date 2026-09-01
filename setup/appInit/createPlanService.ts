@@ -1,5 +1,6 @@
 import { requireDeviceManager, requirePlanEngine } from './contextGuards';
 import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
+import { requireLastSampleAtMs } from '../../lib/power/lastTotalPower';
 import { PlanService } from '../../lib/plan/planService';
 import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
 import type { PlanEngine } from '../../lib/plan/planEngine';
@@ -86,7 +87,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // constant UNKNOWN — capacity-only status, no price level driving plan
     // behavior and no `price_level_changed` fired against MAIN's level).
     getCurrentHourPriceLevel: scope.getCurrentHourPriceLevel,
-    getLastPowerUpdate: () => scope.getPowerTracker().lastTimestamp ?? null,
+    getLastPowerUpdate: () => requireLastSampleAtMs(scope.getPowerTracker()),
     schedulePostActuationRefresh: () => ctx.snapshotHelpers.schedulePostActuationRefresh(),
     overviewDebugStructured: ctx.getStructuredDebugEmitter('overview', 'overview'),
     isOverviewDebugEnabled: () => ctx.debugLoggingTopics.has('overview'),

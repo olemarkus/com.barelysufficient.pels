@@ -29,7 +29,13 @@ export type PelsStatus = {
   priceLevel: PriceLevel;
   devicesOn: number;
   devicesOff: number;
-  lastPowerUpdate: number | null;
+  /**
+   * Always a number on every write this app makes: a status is computed from a
+   * plan, a plan exists only behind the measurement gate, and the gate implies
+   * a stamped sample. (Old persisted blobs may carry `null`; readers of the
+   * PERSISTED shape classify that at their own adapter.)
+   */
+  lastPowerUpdate: number;
   dryRunEffective?: boolean;
 };
 
@@ -43,7 +49,7 @@ export function buildPelsStatus(params: {
    * reason the status had to read the (uncached) price store to build at all.
    */
   priceLevel: PriceLevel;
-  lastPowerUpdate: number | null;
+  lastPowerUpdate: number;
   /**
    * The EFFECTIVE (membership-gated) dry-run this home actuates on —
    * `getCapacityDryRun()`, which folds in the R7b boot-window zone-tree gate.
@@ -96,14 +102,15 @@ export function buildPelsStatus(params: {
     // persisted blob external automations read, and it spells absence by JSON
     // omission. Keeping `null` here would change the persisted shape, which
     // the backward-compatibility rule above forbids.
-    uncontrolledKw: plan.meta.uncontrolledKw ?? undefined,
-    powerNowKw: plan.meta.powerNowKw,
-    // Kept for BACKWARD COMPATIBILITY only. `pels_status` is a persisted
-    // payload external automations may read, and removing a field from it
-    // breaks them — the repo rule is to ADD rather than rename or remove.
-    // Derived from `powerNowKw` so it cannot drift from the resolved value;
-    // nothing inside PELS reads it any more.
-    powerKnown: plan.meta.powerNowKw !== null && plan.meta.powerNowKw !== undefined,
+    uncontrolledKw: plan.meta.uncontrolledKw,
+    // The blob's "measured draw or null" — DERIVED at this write from the
+    // resolved pair (`powerIsMeasured`, `totalKw`); the plan itself no longer
+    // carries a nullable power figure. `pels_status` is a persisted payload
+    // external automations may read, so the field and its null-when-unmeasured
+    // spelling stay exactly as published.
+    powerNowKw: plan.meta.powerIsMeasured ? plan.meta.totalKw : null,
+    // Kept for BACKWARD COMPATIBILITY only — same derivation, cannot drift.
+    powerKnown: plan.meta.powerIsMeasured,
     priceLevel,
     devicesOn: summary.devicesOn,
     devicesOff: summary.devicesOff,
@@ -262,9 +269,8 @@ function resolveDailyLimited(params: DailyLimitParams): boolean {
 function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): 'none' | 'hourly' | 'daily' | 'both' {
   // Both claims require a MEASUREMENT this cycle: `headroomKw` is synthesized
   // when there is none (silent meter → −1 for the fail-closed pass), and the −1
-  // sentinel would otherwise read as a real negative headroom. `powerNowKw` is
-  // null in exactly those cycles, so its absence is the gate.
-  const measured = plan.meta.powerNowKw !== null && plan.meta.powerNowKw !== undefined;
+  // sentinel would otherwise read as a real negative headroom.
+  const measured = plan.meta.powerIsMeasured;
   const hasShedDevices = measured && summary.hasLimitDrivenShedDevices;
   const headroomNegative = measured && plan.meta.headroomKw < 0;
   const limitSource = plan.meta.softLimitSource;

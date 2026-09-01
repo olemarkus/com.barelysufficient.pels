@@ -44,7 +44,7 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
   state: createPlanEngineState(),
   buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
     meta: buildPlanMeta({
-      totalKw: null,
+      totalKw: 0,
       softLimitKw: 0,
       headroomKw: 0}),
     devices: [],

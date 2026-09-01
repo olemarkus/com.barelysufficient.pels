@@ -30,6 +30,7 @@ const rentalAreaConfig = (activated: boolean) => ({
 const buildPlanFixture = (totalKw: number, device: { id: string; name: string }) => ({
   meta: {
     totalKw,
+    lastPowerUpdateMs: Date.now() - 5 * 1000,
     softLimitKw: 3,
     capacitySoftLimitKw: 3,
     budgetPaceKw: null,

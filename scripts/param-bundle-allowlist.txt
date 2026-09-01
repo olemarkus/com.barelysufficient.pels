@@ -255,7 +255,7 @@ lib/plan/swap/lifecycle.ts 2
 lib/ports/homeyRuntime.ts 1
 lib/power/capacityGuard.ts 1
 lib/power/persistedHomeTracker.ts 5
-lib/power/powerCycleReading.ts 1
+lib/power/powerCycleReading.ts 0
 lib/power/powerSource.ts 1
 lib/power/sampleIngest.ts 6
 lib/power/sources/generationPoll.ts 1

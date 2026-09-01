@@ -1,4 +1,5 @@
 import type { PowerTrackerState } from './tracker';
+import { resolveLastTotalPowerKw } from './lastTotalPower';
 import {
   POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
   resolvePowerSampleFreshness,
@@ -58,24 +59,14 @@ export type PowerCycleReading = {
 
 export type PowerCycleDisplay = {
   /**
-   * The meter total behind this cycle, for display only.
-   *
-   * Nullable HERE and nowhere downstream of here: it is the producer's own
-   * statement about its own reading, and `null` is only reachable when a caller
-   * drives a plan build without going through the measurement gate (in
-   * production, nothing does). It never becomes a planning input — the planner's
-   * surface above is numbers, so no consumer can spend an absent total by
-   * forgetting to check for one.
+   * The meter total behind this cycle — always a number: a plan build exists
+   * only behind the measurement gate, so a reading always exists (the
+   * fail-closed pass runs on the CARRIED reading; `isMeasured` is false
+   * there, and consumers whose claims need a live measurement gate on that
+   * boolean — they never re-derive it from the number).
    */
-  totalKw: number | null;
-  /**
-   * The total PLANNING may use: the reading when it is trustworthy, `null` when
-   * there is none. Resolved ONCE, here — consumers must not recombine
-   * `isMeasured` with `totalKw` for themselves, which is the raw-total-plus-flag
-   * shape deleted on 2026-08-07 and easy to reintroduce one site at a time.
-   */
-  measuredTotalKw: number | null;
-  lastPowerUpdateMs: number | null;
+  totalKw: number;
+  lastPowerUpdateMs: number;
 };
 
 /**
@@ -86,12 +77,6 @@ export type PowerCycleDisplay = {
  * (`MeterSilenceMonitor`), so this constant is how the single pass sheds.
  */
 const FAIL_CLOSED_HEADROOM_KW = -1;
-/**
- * Defensive only: reachable when a caller reaches a build with no measurement,
- * which the measurement gate prevents in production.
- */
-const HOLD_HEADROOM_KW = 0;
-
 /**
  * Resolve one plan cycle's reading — pure, no per-home state.
  *
@@ -108,40 +93,30 @@ const HOLD_HEADROOM_KW = 0;
  */
 export const resolvePowerCycleReading = (params: {
   powerTracker: PowerTrackerState;
-  /**
-   * `null` only when a caller reached a plan build without a measurement,
-   * which `lib/power/powerMeasurementGate.ts` prevents in production. Resolved
-   * here, into a held headroom, so the absence stops at this boundary.
-   */
-  totalKw: number | null;
   nowMs: number;
 }): PowerCycleReading => {
-  const { powerTracker, totalKw, nowMs } = params;
+  const { powerTracker, nowMs } = params;
+  // The reading is resolved from the tracker's own latch — no separate total
+  // parameter to fall out of sync with the freshness stamp, and no nullable
+  // to cross the seam. A build without a latched sample is a measurement-gate
+  // violation (`lib/power/powerMeasurementGate.ts` holds every ungated home), so
+  // it fails loud here instead of planning on a fabricated number.
+  const totalKw = resolveLastTotalPowerKw(powerTracker);
   const freshness = resolvePowerSampleFreshness(powerTracker, nowMs);
-  const silent = freshness.powerSampleAgeMs !== null
-    && freshness.powerSampleAgeMs >= POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
-  // A total with NO timestamp cannot be judged silent-or-not, so it is not
-  // spendable: production ingest always stamps both together, so this arm is
-  // only reachable by a gate-bypassing caller — the same family as the
-  // null-total hold below.
-  const measured = !silent && totalKw !== null && freshness.lastPowerUpdateMs !== null;
+  if (totalKw === null || freshness.lastPowerUpdateMs === null || freshness.powerSampleAgeMs === null) {
+    throw new Error('power cycle reading requires a latched sample — a build reached past the measurement gate');
+  }
+  const lastPowerUpdateMs = freshness.lastPowerUpdateMs;
+  const silent = freshness.powerSampleAgeMs >= POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
+  const measured = !silent;
 
   return {
     isMeasured: measured,
-    headroomKw: (limitKw: number): number => {
-      if (measured && totalKw !== null) return limitKw - totalKw;
-      return silent ? FAIL_CLOSED_HEADROOM_KW : HOLD_HEADROOM_KW;
-    },
-    measuredAtOrBelowKw: (thresholdKw: number): boolean => (
-      measured && totalKw !== null && totalKw <= thresholdKw
+    headroomKw: (limitKw: number): number => (
+      measured ? limitKw - totalKw : FAIL_CLOSED_HEADROOM_KW
     ),
-    measuredAboveKw: (limitKw: number): boolean => (
-      measured && totalKw !== null && totalKw > limitKw
-    ),
-    display: {
-      totalKw,
-      measuredTotalKw: measured ? totalKw : null,
-      lastPowerUpdateMs: freshness.lastPowerUpdateMs,
-    },
+    measuredAtOrBelowKw: (thresholdKw: number): boolean => measured && totalKw <= thresholdKw,
+    measuredAboveKw: (limitKw: number): boolean => measured && totalKw > limitKw,
+    display: { totalKw, lastPowerUpdateMs },
   };
 };

@@ -18,6 +18,7 @@ const HOUR_MS = 3_600_000;
 // → net = −2.1 kW; background segment carries the gross 1.1 kW home load.
 const EXPORTING_PLAN_META_PATCH = {
   totalKw: -2.1,
+  lastPowerUpdateMs: Date.now() - 5 * 1000,
   headroomKw: 4.4,
   hardCapHeadroomKw: 10.1,
   controlledKw: 0,
@@ -27,6 +28,7 @@ const EXPORTING_PLAN_META_PATCH = {
 // All-used-at-home story: production 3.2 kW fully consumed, net import 0.4 kW.
 const ALL_USED_PLAN_META_PATCH = {
   totalKw: 0.4,
+  lastPowerUpdateMs: Date.now() - 5 * 1000,
   headroomKw: 1.9,
   hardCapHeadroomKw: 7.6,
   controlledKw: 0,

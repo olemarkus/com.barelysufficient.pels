@@ -70,13 +70,10 @@ export const sumBudgetExemptMeasuredUsageKw = (devices: UsageDevice[]): number =
 
 export function splitControlledUsageKw(params: {
   devices: UsageDevice[];
-  totalKw: number | null;
-}): { controlledKw: number; uncontrolledKw: number | null } {
+  totalKw: number;
+}): { controlledKw: number; uncontrolledKw: number } {
   const { devices, totalKw } = params;
   const controlledKw = sumControlledUsageKw(devices);
-  // `uncontrolledKw` stays nullable: the WHOLE-HOME total is a separate reading
-  // and can genuinely be missing. The managed side always resolves.
-  if (totalKw === null) return { controlledKw, uncontrolledKw: null };
   const boundedControlledKw = Math.max(0, Math.min(totalKw, controlledKw));
   return {
     controlledKw: boundedControlledKw,

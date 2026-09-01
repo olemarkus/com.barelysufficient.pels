@@ -29,6 +29,7 @@ describe('PowerMeasurementGate', () => {
     expect(info).not.toHaveBeenCalled();
 
     tracker.lastPowerW = 2400;
+    tracker.lastTimestamp = Date.now();
 
     expect(gate.isOpen()).toBe(true);
     expect(info).toHaveBeenCalledWith(expect.objectContaining({
@@ -44,6 +45,7 @@ describe('PowerMeasurementGate', () => {
     const { gate } = buildGate(tracker, () => 1000);
 
     tracker.lastPowerW = 0;
+    tracker.lastTimestamp = Date.now();
 
     expect(gate.isOpen()).toBe(true);
   });
@@ -92,10 +94,12 @@ describe('PowerMeasurementGate', () => {
     const { gate, warn, info } = buildGate(tracker, () => nowMs);
 
     tracker.lastPowerW = 2400;
+    tracker.lastTimestamp = Date.now();
     expect(gate.isOpen()).toBe(true);
     expect(info).toHaveBeenCalledTimes(1);
 
     tracker.lastPowerW = undefined;
+    tracker.lastTimestamp = undefined;
     expect(gate.isOpen()).toBe(false);
 
     // The grace restarts from the swap, so the new meter gets its own window
@@ -108,6 +112,7 @@ describe('PowerMeasurementGate', () => {
     expect(warn).toHaveBeenCalledTimes(1);
 
     tracker.lastPowerW = 1100;
+    tracker.lastTimestamp = Date.now();
     expect(gate.isOpen()).toBe(true);
     expect(info).toHaveBeenCalledTimes(2);
   });

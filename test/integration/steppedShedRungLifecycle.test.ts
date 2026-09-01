@@ -57,7 +57,7 @@ const buildContext = (overrides: Partial<PlanContext> & { total?: number | null 
     headroom: 0,
     restoreMarginPlanning: 0.2,
     currentHourPriceLevel: PriceLevel.UNKNOWN,
-    ...planContextPower(total),
+    ...planContextPower(total ?? 3, total === null ? { failClosed: true } : {}),
     ...overrides,
   } as PlanContext;
 };

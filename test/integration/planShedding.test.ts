@@ -89,8 +89,8 @@ const buildContext = (
     restoreMarginPlanning: 0.2,
     currentHourPriceLevel: PriceLevel.UNKNOWN,
     // Power answers derived from the fixture's reading FIRST, so a case that
-    // wants a cached-but-unmeasured total can still say so explicitly.
-    ...planContextPower(total),
+    // wants an unmeasured (fail-closed) cycle can still say so explicitly.
+    ...planContextPower(total ?? 3, total === null ? { failClosed: true } : {}),
     ...overrides,
   };
 };
@@ -332,7 +332,7 @@ describe('buildSheddingPlan', () => {
           controllable: true,
         }),
       ],
-      ...planContextPower(null),
+      ...planContextPower(3, { failClosed: true }),
       softLimit: 5,
       capacitySoftLimit: 5,
       headroomRaw: 0,

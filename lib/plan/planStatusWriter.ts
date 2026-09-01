@@ -35,7 +35,8 @@ type PlanStatusWriterDeps = {
    * service already knew, so the store read is gone.
    */
   getCurrentHourPriceLevel: () => PriceLevel;
-  getLastPowerUpdate: () => number | null;
+  /** The tracker's stamp; a status is computed only behind the measurement gate, so it exists. */
+  getLastPowerUpdate: () => number;
   /**
    * When set, the effective (membership-gated) dry-run this bundle actuates on,
    * written into `pels_status` as `dryRunEffective` for the per-home Limits
@@ -135,7 +136,7 @@ export class PlanStatusWriter {
       changes,
       priceLevel,
       lastPowerUpdate,
-      powerNowKw: plan.meta.powerNowKw,
+      powerIsMeasured: plan.meta.powerIsMeasured,
       dryRunEffective,
     });
     const status = this.resolveStatusResult({
@@ -157,7 +158,7 @@ export class PlanStatusWriter {
     inputKey: string;
     plan: DevicePlan;
     priceLevel: PriceLevel;
-    lastPowerUpdate: number | null;
+    lastPowerUpdate: number;
     dryRunEffective?: boolean;
   }): PelsStatus {
     const { inputKey, plan, priceLevel, lastPowerUpdate, dryRunEffective } = params;
