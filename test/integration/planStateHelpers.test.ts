@@ -59,7 +59,6 @@ describe('isPlanActivelyConverging', () => {
         target: 'temperature',
         desired: 21,
         startedMs: Date.now(),
-        pendingMs: 90_000,
         lastAttemptMs: Date.now(),
         retryCount: 0,
         nextRetryAtMs: Date.now(),
@@ -75,7 +74,6 @@ describe('isPlanActivelyConverging', () => {
         dispatchState: 'accepted',
         desired: true,
         startedMs: Date.now(),
-        pendingMs: 90_000,
       },
     };
 

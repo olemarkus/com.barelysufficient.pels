@@ -648,7 +648,6 @@ describe('buildInitialPlanDevices', () => {
       dispatchState: 'accepted',
       desired: true,
       startedMs: Date.now(),
-      pendingMs: 90_000,
     };
 
     const [planDevice] = buildInitialPlanDevices({
@@ -701,7 +700,6 @@ describe('buildInitialPlanDevices', () => {
       dispatchState: 'accepted',
       desired: false,
       startedMs: Date.now(),
-      pendingMs: 90_000,
     };
 
     const [planDevice] = buildInitialPlanDevices({

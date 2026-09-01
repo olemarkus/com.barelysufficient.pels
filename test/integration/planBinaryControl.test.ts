@@ -27,7 +27,6 @@ describe('generic binary observation and pending confirmation', () => {
       dispatchState: 'accepted',
       desired: true,
       startedMs: 1_000,
-      pendingMs: 180_000,
     };
     vi.spyOn(Date, 'now').mockReturnValue(61_000);
 
@@ -46,7 +45,6 @@ describe('generic binary observation and pending confirmation', () => {
     })).toBe(true);
     expect(state.pendingBinaryCommands[deviceId]).toMatchObject({
       desired: true,
-      pendingMs: 180_000,
       lastObservedValue: false,
       lastObservedSource: 'snapshot_refresh',
     });
@@ -55,7 +53,7 @@ describe('generic binary observation and pending confirmation', () => {
   it('confirms from normalized binary evidence without inspecting device kind', () => {
     const state = createPlanEngineState();
     state.pendingBinaryCommands['device-1'] = {
-      dispatchState: 'accepted', desired: true, startedMs: 1_000, pendingMs: 90_000,
+      dispatchState: 'accepted', desired: true, startedMs: 1_000,
     };
     vi.spyOn(Date, 'now').mockReturnValue(2_000);
 
@@ -81,7 +79,7 @@ describe('generic binary observation and pending confirmation', () => {
   it('expires an unconfirmed command at its pending window', () => {
     const state = createPlanEngineState();
     state.pendingBinaryCommands['device-1'] = {
-      dispatchState: 'accepted', desired: false, startedMs: 1_000, pendingMs: 90_000,
+      dispatchState: 'accepted', desired: false, startedMs: 1_000,
     };
     const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
     vi.spyOn(Date, 'now').mockReturnValue(91_000);

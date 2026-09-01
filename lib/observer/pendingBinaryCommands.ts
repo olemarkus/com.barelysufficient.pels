@@ -27,9 +27,9 @@
 import {
   type PendingBinaryCommand,
   type PendingObservationSource,
-  getPendingBinaryCommandWindowMs,
   isPendingBinaryCommandActive,
 } from './pendingBinaryCommandTypes';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from './controlCommandConfirmation';
 import { getLogger } from '../logging/logger';
 
 export type {
@@ -50,7 +50,6 @@ export type BinaryCommandDispatchAcceptedEvent = {
   deviceId: string;
   desired: boolean;
   startedAtMs: number;
-  confirmationMs: number;
 };
 
 export type BinaryCommandLifecycleListener = {
@@ -89,7 +88,6 @@ export class PendingBinaryCommandStore {
       deviceId,
       desired: command.desired,
       startedAtMs: pending.startedMs,
-      confirmationMs: getPendingBinaryCommandWindowMs(pending),
     });
     const confirm = this.deferredConfirmationByDevice.get(deviceId);
     if (confirm) {
@@ -226,7 +224,7 @@ export class PendingBinaryCommandStore {
       deviceId,
       desired: entry.desired,
       ageMs: nowMs - entry.startedMs,
-      timeoutMs: getPendingBinaryCommandWindowMs(entry),
+      timeoutMs: CONTROL_COMMAND_CONFIRMATION_MS,
     });
     return undefined;
   }
@@ -356,7 +354,7 @@ function reconcilePendingEntry(params: {
       controlAxis: 'binary',
       desired: pending.desired,
       ageMs: nowMs - pending.startedMs,
-      timeoutMs: getPendingBinaryCommandWindowMs(pending),
+      timeoutMs: CONTROL_COMMAND_CONFIRMATION_MS,
       lastObservedValue: pending.lastObservedValue,
       lastObservedSource: pending.lastObservedSource,
     });

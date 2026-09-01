@@ -993,7 +993,7 @@ What remains open is below.*
       The shape to copy is the target axis, which already gets this right:
       `targetExecutor.ts` → `recordFailedPendingTargetCommandAttempt`
       (`lib/plan/planTargetControl.ts`) *writes* an entry with `status: 'temporary_unavailable'` and
-      `nextRetryAtMs`, preserving `startedMs`/`pendingMs`, and never deletes. Three axes now have
+      `nextRetryAtMs`, preserving `startedMs`, and never deletes. Three axes now have
       three hand-rolled `catch` policies; a shared write-outcome policy is the larger prize but the
       stepped gap is fixable on its own. Found 2026-08-17. [P2]
 

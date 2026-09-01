@@ -70,7 +70,6 @@ export type PlanEngineWiring = {
     desiredStepId: string;
     previousStepId?: string;
     issuedAtMs?: number;
-    pendingWindowMs?: number;
     confirmationPolicy?: 'required' | 'assume_applied';
     /** See `MarkSteppedLoadDesiredStepIssuedParams`: no probe on an unanswered write. */
     unacknowledged?: boolean;

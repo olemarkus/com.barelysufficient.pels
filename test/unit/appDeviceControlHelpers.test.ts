@@ -105,18 +105,17 @@ describe('appDeviceControlHelpers', () => {
     helpers.markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
       desiredStepId: '28a',
-      issuedAtMs: 1000,
-      pendingWindowMs: 100,
+      issuedAtMs: 1_000,
     });
-    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2000);
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(92_000);
 
-    helpers.reconcileTargetPowerReachability([snapshot], 2_000);
+    helpers.reconcileTargetPowerReachability([snapshot], 92_000);
     const [decorated] = helpers.decorateTargetSnapshotList([snapshot]);
 
     expect(config.reachability).toMatchObject({
       maxReachedPowerW: 5750,
       probeFailureCount: 1,
-      nextProbeAtMs: 902_000,
+      nextProbeAtMs: 992_000,
     });
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
     expect(decorated.steppedLoadProfile?.steps.at(-1)?.id).toBe('25a');
@@ -167,7 +166,6 @@ describe('appDeviceControlHelpers', () => {
       desiredStepId: '28a',
       previousStepId: '25a',
       issuedAtMs: 1000,
-      pendingWindowMs: 100,
     });
     snapshot.reportedStepPowerW = 6440;
     snapshot.reportedStepObservedAtMs = 1500;
@@ -229,10 +227,9 @@ describe('appDeviceControlHelpers', () => {
       deviceId: 'dev-1',
       desiredStepId: '28a',
       previousStepId: '25a',
-      issuedAtMs: 1000,
-      pendingWindowMs: 100,
+      issuedAtMs: 1_000,
     });
-    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2000);
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(92_000);
 
     // The pending window lapses on the settle pass, not on a projection read.
     syncSteppedCommands({
@@ -245,7 +242,7 @@ describe('appDeviceControlHelpers', () => {
     expect(config.reachability).toMatchObject({
       maxReachedPowerW: 5750,
       probeFailureCount: 1,
-      nextProbeAtMs: 902_000,
+      nextProbeAtMs: 992_000,
     });
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
     dateNow.mockRestore();
@@ -290,7 +287,6 @@ describe('appDeviceControlHelpers', () => {
       desiredStepId: '24a',
       previousStepId: '25a',
       issuedAtMs: 1000,
-      pendingWindowMs: 100,
     });
     const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2000);
 
@@ -337,7 +333,6 @@ describe('appDeviceControlHelpers', () => {
       desiredStepId: '16a',
       previousStepId: '6a',
       issuedAtMs: 1_000,
-      pendingWindowMs: 100,
     });
     helpers.reconcileTargetPowerReachability([snapshot], 2_000);
 
@@ -388,14 +383,13 @@ describe('appDeviceControlHelpers', () => {
       desiredStepId: '28a',
       previousStepId: '25a',
       issuedAtMs: 1_000,
-      pendingWindowMs: 100,
     });
-    helpers.reconcileTargetPowerReachability([snapshot], 2_000);
+    helpers.reconcileTargetPowerReachability([snapshot], 92_000);
 
     expect(config.reachability).toMatchObject({
       maxReachedPowerW: 5_750,
       probeFailureCount: 1,
-      nextProbeAtMs: 902_000,
+      nextProbeAtMs: 992_000,
     });
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
   });
@@ -438,9 +432,8 @@ describe('appDeviceControlHelpers', () => {
       desiredStepId: '28a',
       previousStepId: '25a',
       issuedAtMs: 1_000,
-      pendingWindowMs: 100,
     });
-    helpers.reconcileTargetPowerReachability([snapshot], 2_000);
+    helpers.reconcileTargetPowerReachability([snapshot], 92_000);
 
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
   });
@@ -485,7 +478,6 @@ describe('appDeviceControlHelpers', () => {
       desiredStepId: '28a',
       previousStepId: '25a',
       issuedAtMs: 1_000,
-      pendingWindowMs: 100,
       unacknowledged: true,
     });
 
@@ -542,25 +534,23 @@ describe('appDeviceControlHelpers', () => {
       desiredStepId: '28a',
       previousStepId: '25a',
       issuedAtMs: 1_000,
-      pendingWindowMs: 100,
     });
     helpers.markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
       desiredStepId: '28a',
       previousStepId: '25a',
       issuedAtMs: 1_050,
-      pendingWindowMs: 100,
     });
 
-    expect(scheduleTargetPowerProbeSettlement).toHaveBeenNthCalledWith(1, 1_100);
-    expect(scheduleTargetPowerProbeSettlement).toHaveBeenNthCalledWith(2, 1_100);
+    expect(scheduleTargetPowerProbeSettlement).toHaveBeenNthCalledWith(1, 91_000);
+    expect(scheduleTargetPowerProbeSettlement).toHaveBeenNthCalledWith(2, 91_000);
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       lastIssuedAtMs: 1_050,
       targetPowerProbeStartedAtMs: 1_000,
       retryCount: 1,
     });
 
-    helpers.reconcileTargetPowerReachability([snapshot], 1_100);
+    helpers.reconcileTargetPowerReachability([snapshot], 91_000);
     expect(config.reachability).toMatchObject({
       maxReachedPowerW: 5_750,
       probeFailureCount: 1,
@@ -876,41 +866,6 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.reportedStepId).toBeUndefined();
     expect(runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.has('dev-1')).toBe(false);
     expect(runtimeState.steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
-  });
-
-  it('keeps a slow stepped-load step-up pending for 60s before confirmative telemetry arrives', () => {
-    const { store } = steppedStoresForTest();
-    const runtimeState = store.getStateForTests();
-
-    markSteppedLoadDesiredStepIssued({
-      runtimeState,
-      deviceId: 'dev-1',
-      desiredStepId: 'max',
-      previousStepId: 'low',
-      issuedAtMs: 1_000,
-      pendingWindowMs: 180_000,
-    });
-
-    expect(pruneStaleSteppedLoadCommandStates(runtimeState, 61_000)).toBe(false);
-    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
-      capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-      stepId: 'max',
-      retryCount: 0,
-      pending: true,
-      status: 'pending',
-      pendingWindowMs: 180_000,
-    });
-
-    expect(pruneStaleSteppedLoadCommandStates(runtimeState, 181_001)).toBe(true);
-    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
-      capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-      stepId: 'max',
-      retryCount: 0,
-      nextRetryAtMs: 211_000,
-      pending: false,
-      status: 'stale',
-      pendingWindowMs: 180_000,
-    });
   });
 
   it('resolves default control models from explicit and implicit device shape', () => {
@@ -1909,10 +1864,9 @@ describe('appDeviceControlHelpers', () => {
       desiredStepId: 'max',
       previousStepId: 'low',
       issuedAtMs: 1_000,
-      pendingWindowMs: 5_000,
     });
     // Expire the pending window so the command goes stale before the report.
-    pruneStaleSteppedLoadCommandStates(helpers.getRuntimeStateForTests(), 10_000);
+    pruneStaleSteppedLoadCommandStates(helpers.getRuntimeStateForTests(), 91_001);
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       status: 'stale',
     });
@@ -2030,9 +1984,9 @@ describe('appDeviceControlHelpers', () => {
       desiredStepId: 'max',
       previousStepId: 'low',
       issuedAtMs: 1_000,
-      pendingWindowMs: 90_000,
     });
 
+    expect(pruneStaleSteppedLoadCommandStates(runtimeState, 61_000)).toBe(false);
     expect(pruneStaleSteppedLoadCommandStates(runtimeState, 91_001)).toBe(true);
     expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
@@ -2048,7 +2002,6 @@ describe('appDeviceControlHelpers', () => {
       desiredStepId: 'max',
       previousStepId: 'low',
       issuedAtMs: 122_000,
-      pendingWindowMs: 90_000,
     });
 
     expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
@@ -2070,7 +2023,6 @@ describe('appDeviceControlHelpers', () => {
       desiredStepId: 'max',
       previousStepId: 'low',
       issuedAtMs: 1_000,
-      pendingWindowMs: 90_000,
     });
     expect(reportSteppedLoadActualStep({
       runtimeState,
@@ -2087,7 +2039,6 @@ describe('appDeviceControlHelpers', () => {
       desiredStepId: 'max',
       previousStepId: 'low',
       issuedAtMs: 3_000,
-      pendingWindowMs: 90_000,
     });
 
     expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({

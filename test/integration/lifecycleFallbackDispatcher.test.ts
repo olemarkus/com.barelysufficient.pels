@@ -1941,7 +1941,7 @@ describe('LifecycleFallbackDispatcher', () => {
     } as unknown as DeviceObservation;
     const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
     store.record(snapshot.id, {
-      desired: true, startedMs: Date.now(), pendingMs: 90_000,
+      desired: true, startedMs: Date.now(),
     });
     const actuator = createTestActuator();
     const ctx: PlanExecutorBinaryContext = {

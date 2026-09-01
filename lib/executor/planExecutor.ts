@@ -89,7 +89,6 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & {
     desiredStepId: string;
     previousStepId?: string;
     issuedAtMs?: number;
-    pendingWindowMs?: number;
     confirmationPolicy?: 'required' | 'assume_applied';
     /** See `MarkSteppedLoadDesiredStepIssuedParams`: no probe on an unanswered write. */
     unacknowledged?: boolean;
@@ -140,7 +139,6 @@ export class PlanExecutor {
     desiredStepId: string;
     previousStepId?: string;
     issuedAtMs?: number;
-    pendingWindowMs?: number;
     confirmationPolicy?: 'required' | 'assume_applied';
     /** See `MarkSteppedLoadDesiredStepIssuedParams`: no probe on an unanswered write. */
     unacknowledged?: boolean;
@@ -242,7 +240,6 @@ export class PlanExecutor {
     desiredStepId: string;
     previousStepId?: string;
     issuedAtMs?: number;
-    pendingWindowMs?: number;
     confirmationPolicy?: 'required' | 'assume_applied';
     /** See `MarkSteppedLoadDesiredStepIssuedParams`: no probe on an unanswered write. */
     unacknowledged?: boolean;

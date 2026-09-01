@@ -13,7 +13,6 @@ const offPending = (over: Partial<PendingBinaryCommand>): PendingBinaryCommand =
   dispatchState: 'accepted',
   desired: false,
   startedMs: 0,
-  pendingMs: 90_000,
   ...over,
 });
 

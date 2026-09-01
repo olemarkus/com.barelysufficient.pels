@@ -52,7 +52,7 @@ describe('binary command dispatch', () => {
     })).resolves.toEqual({ ok: true });
 
     expect(requestBinaryControl).toHaveBeenCalledWith('device-1', true);
-    expect(state.pendingBinaryCommands['device-1']).toMatchObject({ desired: true, pendingMs: 90_000 });
+    expect(state.pendingBinaryCommands['device-1']).toMatchObject({ desired: true });
     expect(accepted).toHaveBeenCalledWith(expect.objectContaining({ deviceId: 'device-1', desired: true }));
     expect(logs.findEvent('binary_command_succeeded')).toMatchObject({
       deviceId: 'device-1', desired: true, controlAxis: 'binary',
@@ -74,7 +74,7 @@ describe('binary command dispatch', () => {
     })).resolves.toEqual({ applied: true });
 
     expect(requestBinaryControl).toHaveBeenCalledWith(deviceId, true);
-    expect(state.pendingBinaryCommands[deviceId]).toMatchObject({ desired: true, pendingMs: 90_000 });
+    expect(state.pendingBinaryCommands[deviceId]).toMatchObject({ desired: true });
   });
 
   it('clears pending state and reports failure when transport rejects the semantic command', async () => {
@@ -115,7 +115,7 @@ describe('binary command dispatch', () => {
       transport,
     })).resolves.toEqual({ ok: true });
 
-    expect(state.pendingBinaryCommands['device-1']).toMatchObject({ desired: true, pendingMs: 90_000 });
+    expect(state.pendingBinaryCommands['device-1']).toMatchObject({ desired: true });
     expect(logs.findEvent('binary_command_outcome_unknown')).toMatchObject({
       deviceId: 'device-1', desired: true, reasonCode: 'control_request_timed_out', controlAxis: 'binary',
     });
@@ -144,7 +144,7 @@ describe('binary command dispatch', () => {
     const state = createPlanEngineState();
     const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
     const startedMs = Date.now();
-    store.record('charger-1', { desired: true, startedMs, pendingMs: 90_000 });
+    store.record('charger-1', { desired: true, startedMs });
     store.recordDispatchAccepted('charger-1', { deviceId: 'charger-1', desired: true });
 
     expect(syncPendingBinaryCommands({

@@ -25,7 +25,6 @@ describe('binary command reachability', () => {
       deviceId: 'heater',
       desired: true,
       startedAtMs: 1_000,
-      confirmationMs: 90_000,
     });
 
     expect(scheduleRebuild).toHaveBeenCalledWith('heater', 91_000);
@@ -54,7 +53,7 @@ describe('binary command reachability', () => {
     const { reachability, requestRebuild, scheduleRebuild } = buildReachability();
 
     reachability.lifecycle.onDispatchAccepted?.({
-      deviceId: 'heater', desired: false, startedAtMs: 1_000, confirmationMs: 90_000,
+      deviceId: 'heater', desired: false, startedAtMs: 1_000,
     });
     reachability.lifecycle.onTimedOut?.({ deviceId: 'heater', desired: false });
 

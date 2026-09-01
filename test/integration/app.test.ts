@@ -2107,7 +2107,6 @@ describe('MyApp initialization', () => {
     const nowMs = new Date('2026-03-20T06:00:00.000Z').getTime();
     app.planEngine.state.pendingTargetCommands['dev-1'] = {
       target: 'temperature',
-      pendingMs: 30_000,
       desired: 18,
       startedMs: nowMs - 5_000,
       lastAttemptMs: nowMs - 5_000,
@@ -2152,7 +2151,6 @@ describe('MyApp initialization', () => {
     const nowMs = new Date('2026-03-20T06:00:00.000Z').getTime();
     app.planEngine.state.pendingTargetCommands['dev-1'] = {
       target: 'temperature',
-      pendingMs: 30_000,
       desired: 16,
       startedMs: nowMs - TARGET_CONFIRMATION_STUCK_POLL_MS - 1,
       lastAttemptMs: nowMs - 5_000,

@@ -2,6 +2,7 @@ import type {
   BinaryCommandLifecycleEvent,
   BinaryCommandLifecycleListener,
 } from '../../observer/pendingBinaryCommands';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../observer/controlCommandConfirmation';
 
 const RETRY_DELAYS_MS = [15, 30, 60].map((minutes) => minutes * 60 * 1000);
 
@@ -57,7 +58,7 @@ export function createBinaryCommandReachability(params: {
     lifecycle: {
       onDispatchAccepted: (event) => {
         if (disposed || !event.desired) return;
-        const dueAtMs = event.startedAtMs + event.confirmationMs;
+        const dueAtMs = event.startedAtMs + CONTROL_COMMAND_CONFIRMATION_MS;
         const current = stateByDevice.get(event.deviceId);
         stateByDevice.set(event.deviceId, {
           failures: current?.failures ?? 0,
