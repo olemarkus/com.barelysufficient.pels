@@ -364,17 +364,17 @@ const hasObservedFullWindow = (
 // truth being measured is "the device has settled at its own cap, not at
 // PELS' commanded target". A `near_target_idle` device is already on the
 // right side of the hysteresis band so we never override it.
-const shouldUseCappedIdle = (params: {
-  gap: number | undefined;
-  samples: readonly IdleSample[];
-  firstSampleAtMs: number | undefined;
-  now: number;
-}): boolean => {
-  if (params.gap === undefined) return false;
-  if (params.gap <= NEAR_TARGET_TEMPERATURE_DELTA_C) return false;
-  if (!hasObservedFullWindow(params.firstSampleAtMs, params.now)) return false;
-  if (!samplesShowCycling(params.samples, params.now)) return false;
-  if (!samplesShowStableTemperature(params.samples)) return false;
+const shouldUseCappedIdle = (
+  gap: number | undefined,
+  samples: readonly IdleSample[],
+  firstSampleAtMs: number | undefined,
+  now: number,
+): boolean => {
+  if (gap === undefined) return false;
+  if (gap <= NEAR_TARGET_TEMPERATURE_DELTA_C) return false;
+  if (!hasObservedFullWindow(firstSampleAtMs, now)) return false;
+  if (!samplesShowCycling(samples, now)) return false;
+  if (!samplesShowStableTemperature(samples)) return false;
   return true;
 };
 
@@ -382,96 +382,46 @@ const elapsedSince = (previousEntry: IdleDetectorEntry | undefined, now: number)
   previousEntry ? Math.max(0, now - previousEntry.idleSinceMs) : 0
 );
 
-// Bundled context the per-branch result builders share — pulling these into
-// a single record keeps each builder under the max-params budget while still
-// reading naturally at each call site.
-type ClassifyContext = {
-  state: IdleDetectorState;
-  input: IdleDetectorInput;
-  previousEntry: IdleDetectorEntry | undefined;
-  previousClassification: IdleClassification | undefined;
-  samples: IdleSample[];
-  firstSampleAtMs: number;
-  gap: number | undefined;
+/**
+ * The streak this tick belongs to, decided before anything is written. Split
+ * from the entry write below so all three outcomes commit through one path — a
+ * new outcome cannot ship an entry with a field left behind.
+ */
+type StreakVerdict = {
+  classification: IdleClassification;
+  idleSinceMs: number;
+  idleDurationMs: number;
 };
 
-// Streak reset — an eligibility break, or a setpoint change that invalidates
-// the retained evidence. Purge the entry and report "active" with the just-lost
-// duration so the cleared-event payload stays honest. `previousClassification`
-// is preserved so the transition log still emits the matching `_cleared` event.
-const buildStreakResetResult = (
-  state: IdleDetectorState,
+const resolveStreakVerdict = (
   input: IdleDetectorInput,
   previousEntry: IdleDetectorEntry | undefined,
-  previousClassification: IdleClassification | undefined,
   gap: number | undefined,
-): IdleDetectorVerdict => {
-  const idleDurationMs = elapsedSince(previousEntry, input.now);
-  if (previousEntry) state.delete(input.deviceId);
+  cappedIdle: boolean,
+): StreakVerdict => {
+  // Capped-idle wins over the measured-idle path because cycling history is the
+  // more specific signal — an unresponsive device would have no on-cycles in
+  // the window. The streak restarts at the now-moment: `capped_idle` doesn't
+  // accumulate a contiguous idle streak by definition, so reporting zero
+  // duration is the honest answer.
+  if (cappedIdle) {
+    return { classification: 'capped_idle', idleSinceMs: input.now, idleDurationMs: 0 };
+  }
+  // Device is drawing power and doesn't match the cycling pattern — close the
+  // idle streak but keep accumulating samples for the next window check.
+  if (!measuredIsIdle(input.currentDrawKw)) {
+    return {
+      classification: 'active',
+      idleSinceMs: input.now,
+      idleDurationMs: elapsedSince(previousEntry, input.now),
+    };
+  }
+  const idleSinceMs = previousEntry?.idleSinceMs ?? input.now;
+  const idleDurationMs = Math.max(0, input.now - idleSinceMs);
   return {
-    classification: 'active',
-    previousClassification,
-    idleDurationMs,
-    temperatureGapC: gap,
-  };
-};
-
-// Device is drawing power and doesn't match the cycling pattern — close
-// the idle streak but keep accumulating samples for the next window check.
-const buildDrawingActiveResult = (ctx: ClassifyContext): IdleDetectorVerdict => {
-  const idleDurationMs = elapsedSince(ctx.previousEntry, ctx.input.now);
-  ctx.state.set(ctx.input.deviceId, {
-    idleSinceMs: ctx.input.now,
-    lastClassification: 'active',
-    samples: ctx.samples,
-    firstSampleAtMs: ctx.firstSampleAtMs,
-    targetTemperatureBasis: ctx.input.targetTemperature,
-  });
-  return {
-    classification: 'active',
-    previousClassification: ctx.previousClassification,
-    idleDurationMs,
-    temperatureGapC: ctx.gap,
-  };
-};
-
-// Capped-idle wins over the measured-idle path because cycling history is
-// the more specific signal — an unresponsive device would have no
-// on-cycles in the window. Streak start is the now-moment — `capped_idle`
-// doesn't accumulate a contiguous idle streak by definition, so reporting
-// zero duration is the honest answer.
-const buildCappedIdleResult = (ctx: ClassifyContext): IdleDetectorVerdict => {
-  ctx.state.set(ctx.input.deviceId, {
-    idleSinceMs: ctx.input.now,
-    lastClassification: 'capped_idle',
-    samples: ctx.samples,
-    firstSampleAtMs: ctx.firstSampleAtMs,
-    targetTemperatureBasis: ctx.input.targetTemperature,
-  });
-  return {
-    classification: 'capped_idle',
-    previousClassification: ctx.previousClassification,
-    idleDurationMs: 0,
-    temperatureGapC: ctx.gap,
-  };
-};
-
-const buildMeasuredIdleResult = (ctx: ClassifyContext): IdleDetectorVerdict => {
-  const idleSinceMs = ctx.previousEntry?.idleSinceMs ?? ctx.input.now;
-  const idleDurationMs = Math.max(0, ctx.input.now - idleSinceMs);
-  const classification = classifyByGapAndDuration(ctx.gap, idleDurationMs, ctx.previousClassification);
-  ctx.state.set(ctx.input.deviceId, {
+    classification: classifyByGapAndDuration(gap, idleDurationMs, previousEntry?.lastClassification),
     idleSinceMs,
-    lastClassification: classification,
-    samples: ctx.samples,
-    firstSampleAtMs: ctx.firstSampleAtMs,
-    targetTemperatureBasis: ctx.input.targetTemperature,
-  });
-  return {
-    classification,
-    previousClassification: ctx.previousClassification,
     idleDurationMs,
-    temperatureGapC: ctx.gap,
   };
 };
 
@@ -510,35 +460,55 @@ function classifyIdleStateInner(
   // happily at its setback would otherwise certify as "parked at its own cap"
   // on the very FIRST tick after the raise, and a deferred objective would
   // terminally mark the new target satisfied without heating toward it at all.
-  if (previousEntry !== undefined && previousEntry.targetTemperatureBasis !== input.targetTemperature) {
-    return buildStreakResetResult(state, input, previousEntry, previousClassification, gap);
+  const basisMoved = previousEntry !== undefined
+    && previousEntry.targetTemperatureBasis !== input.targetTemperature;
+
+  // Streak reset — an eligibility break, or a setpoint change that invalidates
+  // the retained evidence. Purge the entry and report "active" with the
+  // just-lost duration so the cleared-event payload stays honest.
+  // `previousClassification` is preserved so the transition log still emits the
+  // matching `_cleared` event.
+  if (basisMoved || !passesCommonEligibility(input)) {
+    const idleDurationMs = elapsedSince(previousEntry, input.now);
+    if (previousEntry) state.delete(input.deviceId);
+    return {
+      classification: 'active',
+      previousClassification,
+      idleDurationMs,
+      temperatureGapC: gap,
+    };
   }
 
-  if (!passesCommonEligibility(input)) {
-    return buildStreakResetResult(state, input, previousEntry, previousClassification, gap);
-  }
-
-  // Common eligibility holds — record the sample (regardless of
-  // on/off-cycle) so the cycling discriminator can see both halves of
-  // the device's duty cycle. `firstSampleAtMs` is sticky across the
-  // current session so window coverage survives buffer pruning.
+  // Common eligibility holds — record the sample (regardless of on/off-cycle)
+  // so the cycling discriminator can see both halves of the device's duty
+  // cycle. `firstSampleAtMs` is sticky across the current session so window
+  // coverage survives buffer pruning.
   const samples = appendSample(previousEntry?.samples ?? [], {
     atMs: input.now,
     powerKw: input.currentDrawKw,
     temperatureC: input.currentTemperature,
   }, input.now);
   const firstSampleAtMs = previousEntry?.firstSampleAtMs ?? input.now;
-  const ctx: ClassifyContext = {
-    state, input, previousEntry, previousClassification, samples, firstSampleAtMs, gap,
-  };
 
-  if (shouldUseCappedIdle({ gap, samples, firstSampleAtMs, now: input.now })) {
-    return buildCappedIdleResult(ctx);
-  }
-  if (!measuredIsIdle(input.currentDrawKw)) {
-    return buildDrawingActiveResult(ctx);
-  }
-  return buildMeasuredIdleResult(ctx);
+  const verdict = resolveStreakVerdict(
+    input,
+    previousEntry,
+    gap,
+    shouldUseCappedIdle(gap, samples, firstSampleAtMs, input.now),
+  );
+  state.set(input.deviceId, {
+    idleSinceMs: verdict.idleSinceMs,
+    lastClassification: verdict.classification,
+    samples,
+    firstSampleAtMs,
+    targetTemperatureBasis: input.targetTemperature,
+  });
+  return {
+    classification: verdict.classification,
+    previousClassification,
+    idleDurationMs: verdict.idleDurationMs,
+    temperatureGapC: gap,
+  };
 }
 
 /** Drop tracking state for devices no longer present in the live snapshot. */

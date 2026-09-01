@@ -62,11 +62,12 @@ export type BinaryCommandLifecycleListener = {
 
 /**
  * Observer-owned facade over the pending-binary-command map. The backing
- * `Record` is supplied by the engine at construction; it is the only thing the
- * store mutates, and plan-/executor-side consumers read it only through this
- * class — the `hasActive*` predicates for "is something in flight", `get` /
- * `peek` when the record itself is needed — so the store is the single source
- * of truth in both directions.
+ * `Record` is supplied by the engine at construction; it is the only SHARED
+ * state the store mutates (the deferred-confirmation and recent-confirmed-off
+ * maps are private to it), and plan-/executor-side consumers read it only
+ * through this class — the `hasActive*` predicates for "is something in
+ * flight", `get` / `peek` when the record itself is needed — so the store is
+ * the single source of truth in both directions.
  */
 export class PendingBinaryCommandStore {
   private readonly deferredConfirmationByDevice = new Map<string, () => void>();
