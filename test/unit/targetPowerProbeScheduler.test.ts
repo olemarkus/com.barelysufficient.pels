@@ -1,5 +1,5 @@
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
-import { TargetPowerProbeScheduler } from '../../setup/targetPowerProbeScheduler';
+import { TargetPowerProbeScheduler } from '../../lib/device/targetPowerProbeScheduler';
 
 describe('TargetPowerProbeScheduler', () => {
   afterEach(() => {

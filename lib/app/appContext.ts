@@ -61,14 +61,12 @@ import type {
 import type { PvForecastSourceUiStatus, SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import type { PlanRebuildTrigger } from '../plan/planRebuildTrigger';
+import type { FlowBackedCapabilityReportOutcome } from '../device/flowBackedCapabilityReport';
 
-export type FlowBackedCapabilityReportOutcome = {
-  kind: 'state_changed' | 'freshness_only' | 'noop';
-  valueChanged: boolean;
-  freshnessAdvanced: boolean;
-  refreshSnapshot: boolean;
-  rebuildPlan: boolean;
-};
+// Declared with the device layer, which produces it; re-exported here so the
+// existing import sites are unchanged.
+export type { FlowBackedCapabilityReportOutcome };
+
 
 /**
  * Per-request result from the coalesced whole-home sample loop.

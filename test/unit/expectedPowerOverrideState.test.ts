@@ -1,4 +1,4 @@
-import { applyExpectedPowerOverrides } from '../../setup/expectedPowerOverrideState';
+import { applyExpectedPowerOverrides } from '../../lib/device/expectedPowerOverrideState';
 import type { ExpectedPowerOverridesByDeviceId } from '../../lib/device/devicePowerPeak';
 
 describe('applyExpectedPowerOverrides', () => {

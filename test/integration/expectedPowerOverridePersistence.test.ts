@@ -1,6 +1,7 @@
 import type Homey from 'homey';
 import { mockHomeyInstance } from '../mocks/homey';
-import { AppFlowBacked, type AppFlowBackedDeps } from '../../setup/appFlowBacked';
+import type { FlowBackedDeviceState } from '../../lib/device/flowBackedDeviceState';
+import { createFlowBackedDeviceState } from '../../setup/flowBackedCardAccess';
 import { SettingsRepository } from '../../setup/settingsRepository';
 import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../lib/utils/settingsKeys';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
@@ -19,9 +20,8 @@ describe('expected power override persistence', () => {
 
   const buildFlowBacked = (
     homey: Homey.App['homey'] = mockHomeyInstance as unknown as Homey.App['homey'],
-  ): AppFlowBacked => new AppFlowBacked({
-    homey,
-    settingsRepository: new SettingsRepository(homey),
+  ): FlowBackedDeviceState => createFlowBackedDeviceState(homey, {
+    persistence: new SettingsRepository(homey),
     getStructuredLogger: () => undefined,
     getFlowReportedCapabilities: () => ({}),
     setFlowReportedCapabilities: () => {},
@@ -35,7 +35,7 @@ describe('expected power override persistence', () => {
     getLearnedPowerPeaks: () => ({}),
     timers,
     syncHeadroomUsageObservation: () => {},
-  } satisfies AppFlowBackedDeps);
+  });
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });

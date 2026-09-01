@@ -1,11 +1,11 @@
 import type {
   ExpectedPowerOverridesByDeviceId,
   ExpectedPowerOverridesRead,
-} from '../lib/device/devicePowerPeak';
+} from './devicePowerPeak';
 
 /**
  * Two manual figures this close together are the same figure. Guards the
- * change-gate on both writers (`AppFlowBacked.setExpectedOverride` and the
+ * change-gate on both writers (`FlowBackedDeviceState.setExpectedOverride` and the
  * adoption below) so a re-persist of an unchanged record is not reported as a
  * change.
  */
@@ -67,13 +67,11 @@ export const applyExpectedPowerOverrides = (params: {
   const changed = Object.entries(next).filter(
     ([deviceId, entry]) => !isSameOverrideKw(target[deviceId]?.kw, entry.kw),
   );
-  /* eslint-disable functional/immutable-data --
-   * The in-place replace is the point of this helper: the transport holds this
-   * exact object, so producing a new record would leave it reading the old one.
-   * Documented in the docblock above. */
+  // The in-place replace is the point of this helper: the transport holds this
+  // exact object, so producing a new record would leave it reading the old one.
+  // Documented in the docblock above.
   for (const deviceId of Object.keys(target)) delete target[deviceId];
   Object.assign(target, next);
-  /* eslint-enable functional/immutable-data */
   for (const [deviceId, entry] of changed) onOverrideChanged(deviceId, entry.kw);
   return true;
 };

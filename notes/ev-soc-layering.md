@@ -74,7 +74,7 @@ adopted because the user ticked it for this charger
 (`notes/ev-car-link/README.md`). It has real consumers, and each of them would be
 wrong without it:
 
-- `setup/appFlowBacked.ts` — a flow report must not wake the planner for, or
+- `lib/device/flowBackedDeviceState.ts` — a flow report must not wake the planner for, or
   refresh the freshness of, a level the flow card no longer supplies.
 - `retainedCarCandidate` (`lib/device/transport/stateOfCharge.ts`) — parse carries
   a car reading across refreshes and must not promote a charger-owned one.

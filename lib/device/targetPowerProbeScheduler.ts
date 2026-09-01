@@ -1,6 +1,6 @@
-import type { Logger } from '../lib/logging/logger';
-import { normalizeError } from '../lib/utils/errorUtils';
-import type { TimerRegistry } from '../lib/utils/timerRegistry';
+import type { Logger } from '../logging/logger';
+import { normalizeError } from '../utils/errorUtils';
+import type { TimerRegistry } from '../utils/timerRegistry';
 
 const DEFERRED_PROBE_RECHECK_MS = 60 * 1000;
 

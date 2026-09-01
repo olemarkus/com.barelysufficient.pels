@@ -80,12 +80,13 @@ export class SettingsRepository {
   }
 
   /**
-   * Writes the (filtered) flow-reported capabilities map back to settings.
-   * Used after the boot-time filter strips entries for capabilities whose
-   * backing flow cards aren't installed in the current Homey environment.
+   * Writes the flow-reported capabilities map back to settings. Two callers:
+   * the boot-time filter's result, once entries for capabilities whose backing
+   * flow cards aren't installed in this Homey have been stripped; and the live
+   * map after a flow report changes a device's state.
    */
-  saveFlowReportedCapabilities(filtered: FlowReportedCapabilitiesByDevice): void {
-    this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, filtered);
+  saveFlowReportedCapabilities(state: FlowReportedCapabilitiesByDevice): void {
+    this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, state);
   }
 
   /**

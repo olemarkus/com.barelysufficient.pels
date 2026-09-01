@@ -34,7 +34,7 @@ import { migrateManagedDevices } from './appManagedDeviceMigration';
 import { runBootMigrations } from './appBootMigrations';
 import { registerAppFlowCards, toObservedStateSeed } from './appInit';
 import { buildPeriodicStatusLogFields } from '../lib/diagnostics/periodicStatus';
-import type { AppFlowBacked } from './appFlowBacked';
+import type { FlowBackedDeviceState } from '../lib/device/flowBackedDeviceState';
 import type { BackgroundTasksController } from './backgroundTasksController';
 import type { AppNativeWiring } from './appNativeWiring';
 import type { AppPowerTracker } from './appPowerTracker';
@@ -50,7 +50,7 @@ import { withAppHostApi } from './appHostApi';
 // eslint-disable-next-line max-lines-per-function
 export const withAppRuntimeApi = (Base: ReturnType<typeof withAppHostApi>) => {
 abstract class AppRuntimeApi extends Base {
-  protected abstract readonly flowBacked: AppFlowBacked;
+  protected abstract readonly flowBacked: FlowBackedDeviceState;
   protected abstract flowReportedCapabilities: FlowReportedCapabilitiesByDevice;
   protected abstract readonly backgroundTasks: BackgroundTasksController;
   protected abstract readonly powerSamplePipeline: PowerSamplePipeline;

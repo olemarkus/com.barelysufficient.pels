@@ -1,15 +1,14 @@
-import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from '../lib/device/devicePowerPeak';
+import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from './devicePowerPeak';
 import {
   createLearnedPowerPeakState,
   type LearnedPowerPeakState,
-} from './appInit/learnedPowerPeakState';
+} from './learnedPowerPeakState';
 import {
   applyExpectedPowerOverrides,
   EXPECTED_OVERRIDE_EQUALS_EPSILON_KW,
   type ExpectedOverrideAuthority,
 } from './expectedPowerOverrideState';
-import type Homey from 'homey';
-import type { HomeyDeviceLike } from '../lib/utils/types';
+import type { HomeyDeviceLike } from '../utils/types';
 import {
   getFlowRefreshRequestedDeviceIds,
   isFlowReportedObservationCapabilityId,
@@ -17,25 +16,25 @@ import {
   type FlowReportedCapabilityId,
   type FlowReportedCapabilitiesByDevice,
   type FlowReportedCapabilitiesForDevice,
-} from '../lib/device/transport/flowReportedCapabilities';
+} from './transport/flowReportedCapabilities';
 import {
   EV_SOC_CAPABILITY_ID,
   updateStateOfChargeObservationFreshness,
   wouldReportRestoreStateOfChargeLevel,
-} from '../lib/device/transport/stateOfCharge';
-import { hasObservedStateOfCharge } from '../packages/shared-domain/src/stateOfChargeObservedState';
-import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../lib/utils/settingsKeys';
-import { normalizeError } from '../lib/utils/errorUtils';
-import type { TimerRegistry } from '../lib/utils/timerRegistry';
-import type { Logger as PinoLogger } from '../lib/logging/logger';
-import type { DeviceTransport } from '../lib/device/deviceTransport';
-import type { SettingsRepository } from './settingsRepository';
+} from './transport/stateOfCharge';
+import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
+import { normalizeError } from '../utils/errorUtils';
+import type { TimerRegistry } from '../utils/timerRegistry';
+import type { Logger as PinoLogger } from '../logging/logger';
+import type { DeviceTransport } from './deviceTransport';
+import type { DevicePersistencePort } from './devicePersistencePort';
+import type { FlowBackedRefreshTrigger } from './flowBackedRefreshTrigger';
 import type {
   DecoratedDeviceSnapshot,
   StateOfChargeObservedProbe,
   TargetDeviceSnapshot,
-} from '../packages/contracts/src/types';
-import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
+} from '../../packages/contracts/src/types';
+import type { FlowBackedCapabilityReportOutcome } from './flowBackedCapabilityReport';
 
 const FLOW_DEVICE_AUTOCOMPLETE_CACHE_MS = 15 * 1000;
 
@@ -76,15 +75,23 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
 }
 
 /**
- * Dependencies for {@link AppFlowBacked}. Flow-reported capability state stays
+ * Dependencies for {@link FlowBackedDeviceState}. Flow-reported capability state stays
  * on `PelsApp` (read by the snapshot/UI seams) and flows in via getter/setter;
  * `expectedPowerKwOverrides` is shared with `DeviceTransport`, so the helper
  * mutates the same object via the getter. Cross-layer reads (`getSnapshotDevice`,
  * `hasEnabledEvBoostForSnapshot`, `resolveManagedState`) are app callbacks.
  */
-export type AppFlowBackedDeps = {
-  homey: Homey.App['homey'];
-  settingsRepository: SettingsRepository;
+export type FlowBackedDeviceStateDeps = {
+  persistence: DevicePersistencePort;
+  /**
+   * Whether a Flow card this state depends on exists in THIS Homey
+   * environment. The wiring layer owns the SDK lookup and its failure modes
+   * (an absent `homey.flow`, an absent method, a throwing call); a missing card
+   * is an ordinary environment fact, so it arrives as a plain boolean.
+   */
+  isFlowCardAvailable: (kind: 'action' | 'trigger', cardId: string) => boolean;
+  /** The refresh-request trigger card, resolved: `available` carries the call. */
+  getFlowBackedRefreshTrigger: () => FlowBackedRefreshTrigger;
   getStructuredLogger: (component: string) => PinoLogger | undefined;
   getFlowReportedCapabilities: () => FlowReportedCapabilitiesByDevice;
   setFlowReportedCapabilities: (state: FlowReportedCapabilitiesByDevice) => void;
@@ -101,7 +108,7 @@ export type AppFlowBackedDeps = {
   syncHeadroomUsageObservation: (params: { deviceId: string; usageObservation: { kw: number } }) => void;
 }
 
-export class AppFlowBacked {
+export class FlowBackedDeviceState {
   private flowReportedCapabilitiesEmptyParseWarned = false;
   private flowBackedCardsAvailable?: boolean;
   private flowDeviceAutocompleteCache?: { devices: HomeyDeviceLike[]; fetchedAtMs: number };
@@ -119,9 +126,9 @@ export class AppFlowBacked {
 
   private readonly learnedPowerPeakState: LearnedPowerPeakState;
 
-  constructor(private readonly deps: AppFlowBackedDeps) {
+  constructor(private readonly deps: FlowBackedDeviceStateDeps) {
     this.learnedPowerPeakState = createLearnedPowerPeakState({
-      settingsRepository: deps.settingsRepository,
+      persistence: deps.persistence,
       getPeaks: () => deps.getLearnedPowerPeaks(),
       timers: deps.timers,
       getStructuredLogger: () => deps.getStructuredLogger('devices'),
@@ -194,7 +201,7 @@ export class AppFlowBacked {
       return;
     }
     try {
-      this.deps.settingsRepository.saveExpectedPowerOverrides(overrides);
+      this.deps.persistence.saveExpectedPowerOverrides(overrides);
       this.unpersistedExpectedOverrideDeviceIds.delete(deviceId);
     } catch (error) {
       this.unpersistedExpectedOverrideDeviceIds.add(deviceId);
@@ -223,7 +230,7 @@ export class AppFlowBacked {
     onOverrideChanged: (deviceId: string, kw: number) => void;
   }): boolean {
     const resolved = applyExpectedPowerOverrides({
-      read: this.deps.settingsRepository.loadExpectedPowerOverrides(),
+      read: this.deps.persistence.loadExpectedPowerOverrides(),
       target: this.deps.getExpectedPowerKwOverrides(),
       authority: params.authority,
       onOverrideChanged: params.onOverrideChanged,
@@ -276,7 +283,7 @@ export class AppFlowBacked {
   }
 
   private loadFlowReportedCapabilities(): void {
-    const parsed = this.deps.settingsRepository.loadFlowReportedCapabilities();
+    const parsed = this.deps.persistence.loadFlowReportedCapabilities();
     // Homey SDK reads can transiently return falsy/empty data even when the
     // underlying setting is intact (see `feedback_homey_sdk_unreliable`). If
     // the parse came back empty but we already hold non-empty in-memory state,
@@ -302,7 +309,7 @@ export class AppFlowBacked {
     if (JSON.stringify(parsed) === JSON.stringify(filtered)) {
       return;
     }
-    this.deps.settingsRepository.saveFlowReportedCapabilities(filtered);
+    this.deps.persistence.saveFlowReportedCapabilities(filtered);
     this.deps.getStructuredLogger('devices')?.info({
       event: 'flow_backed_state_cleared',
       reasonCode: 'cards_unavailable',
@@ -334,7 +341,7 @@ export class AppFlowBacked {
       reportedAt: params.reportedAt,
     });
     if (update.stateChanged || (params.capabilityId === EV_SOC_CAPABILITY_ID && update.freshnessAdvanced)) {
-      this.deps.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, this.deps.getFlowReportedCapabilities());
+      this.deps.persistence.saveFlowReportedCapabilities(this.deps.getFlowReportedCapabilities());
     }
     const evSocRebuildPlan = this.shouldRebuildPlanForFlowEvSocReport({
       deviceId: params.deviceId,
@@ -463,8 +470,8 @@ export class AppFlowBacked {
   async emitFlowBackedRefreshRequests(deviceIds: string[]): Promise<void> {
     if (deviceIds.length === 0) return;
     if (!this.areFlowBackedCardsAvailable()) return;
-    const card = this.deps.homey.flow?.getTriggerCard?.('flow_backed_device_refresh_requested');
-    if (!card?.trigger) return;
+    const refreshTrigger = this.deps.getFlowBackedRefreshTrigger();
+    if (refreshTrigger.state === 'unavailable') return;
     const devices = await this.getHomeyDevicesForFlow();
     const deviceById = new Map(devices.map((device) => [device.id, device]));
     const flowReportedCapabilities = this.deps.getFlowReportedCapabilities();
@@ -503,19 +510,19 @@ export class AppFlowBacked {
       });
       triggers.push({
         deviceId,
-        trigger: card.trigger({}, { deviceId }),
+        trigger: refreshTrigger.trigger({ deviceId }),
       });
     }
     if (triggers.length > 0) {
       const results = await Promise.allSettled(triggers.map(({ trigger }) => trigger));
-      results.forEach((result, index) => {
-        if (result.status === 'fulfilled') return;
+      for (const [index, result] of results.entries()) {
+        if (result.status === 'fulfilled') continue;
         this.deps.getStructuredLogger('devices')?.warn({
           event: 'flow_backed_refresh_request_failed',
           deviceId: triggers[index]?.deviceId,
           err: normalizeError(result.reason),
         });
-      });
+      }
     }
   }
 
@@ -523,25 +530,14 @@ export class AppFlowBacked {
     if (typeof this.flowBackedCardsAvailable === 'boolean') {
       return this.flowBackedCardsAvailable;
     }
-    this.flowBackedCardsAvailable = this.canAccessFlowCard('action', 'report_flow_backed_device_onoff')
-      && this.canAccessFlowCard('trigger', 'flow_backed_device_refresh_requested');
+    this.flowBackedCardsAvailable = this.deps.isFlowCardAvailable('action', 'report_flow_backed_device_onoff')
+      && this.deps.isFlowCardAvailable('trigger', 'flow_backed_device_refresh_requested');
     return this.flowBackedCardsAvailable;
-  }
-
-  private canAccessFlowCard(kind: 'action' | 'trigger', cardId: string): boolean {
-    try {
-      if (kind === 'action') {
-        return Boolean(this.deps.homey.flow?.getActionCard?.(cardId));
-      }
-      return Boolean(this.deps.homey.flow?.getTriggerCard?.(cardId));
-    } catch {
-      return false;
-    }
   }
 
   private isFlowReportedCapabilityAvailable(capabilityId: FlowReportedCapabilityId): boolean {
     if (capabilityId === EV_SOC_CAPABILITY_ID) {
-      return this.canAccessFlowCard('action', 'report_evcharger_battery_level');
+      return this.deps.isFlowCardAvailable('action', 'report_evcharger_battery_level');
     }
     return this.areFlowBackedCardsAvailable();
   }

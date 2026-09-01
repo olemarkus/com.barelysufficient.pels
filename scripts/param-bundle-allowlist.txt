@@ -58,6 +58,9 @@ lib/device/evCarLinkSessionResume.ts 1
 lib/device/evCarLinkSnapshot.ts 4
 lib/device/evCarLinkStore.ts 4
 lib/device/evCarLinkWiring.ts 1
+lib/device/expectedPowerOverrideState.ts 1
+lib/device/flowBackedDeviceState.ts 4
+lib/device/learnedPowerPeakState.ts 1
 lib/device/liveFeed.ts 2
 lib/device/managerControl.ts 4
 lib/device/managerFlowSupport.ts 3
@@ -71,6 +74,7 @@ lib/device/nativeEvWiring.ts 2
 lib/device/nativeSteppedLoadWiring.ts 8
 lib/device/observationProducers.ts 1
 lib/device/targetPowerContractWarn.ts 2
+lib/device/targetPowerProbeScheduler.ts 1
 lib/device/targetPowerReachability.ts 2
 lib/device/transport/binarySettleEvidence.ts 4
 lib/device/transport/carAssociation.ts 3
@@ -381,13 +385,11 @@ setup/appDeviceControlFeedback.ts 5
 setup/appDeviceControlHelpers.ts 5
 setup/appDeviceControlSteppedState.ts 2
 setup/appDeviceSupport.ts 5
-setup/appFlowBacked.ts 4
 setup/appInit/appHomeMembershipOptions.ts 1
 setup/appInit/buildDeviceParseProviders.ts 1
 setup/appInit/calibrationViews.ts 1
 setup/appInit/composedPlanEngine.ts 3
 setup/appInit/createMainCapacityGuard.ts 1
-setup/appInit/learnedPowerPeakState.ts 1
 setup/appInit/planEngineWiring.ts 2
 setup/appInit/registerSettingsHandler.ts 1
 setup/appInit/residualKwForPlanDevice.ts 1
@@ -402,7 +404,6 @@ setup/appSnapshotHelpers.ts 1
 setup/appTargetPowerReachability.ts 8
 setup/capacityShortfallAlertDispatch.ts 2
 setup/capacityShortfallSideEffectGate.ts 1
-setup/expectedPowerOverrideState.ts 1
 setup/externalOffHoldDetection.ts 3
 setup/flowConflictProbe.ts 1
 setup/homeMembership.ts 1
@@ -419,7 +420,6 @@ setup/homeRuntime/resetPersistedHomeTrackerFreshness.ts 1
 setup/lifecycleFallbackRequest.ts 1
 setup/settingsUiAppRuntime.ts 1
 setup/steppedProfileRepair.ts 1
-setup/targetPowerProbeScheduler.ts 1
 setup/targetPowerReachabilitySettings.ts 1
 setup/temperatureShedFloorDefaults.ts 4
 widgets/_shared/widgetClientLog.ts 1
