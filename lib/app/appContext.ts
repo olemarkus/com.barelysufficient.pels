@@ -174,7 +174,6 @@ export type AppContext = {
   // re-decoration, no device-manager re-entry: it reads `getSnapshot()` (the
   // cached array) and projects each entry via `projectObservedState`.
   seedObservedStateFromSnapshot: () => void;
-  getCommunicationModel: (deviceId: string) => 'local' | 'cloud';
   isCapacityControlEnabled: (deviceId: string) => boolean;
   isTemperatureControlDisabled: (deviceId: string) => boolean;
   isBudgetExempt: (deviceId: string) => boolean;
@@ -237,8 +236,6 @@ export type AppContext = {
   set deviceControlProfiles(value: DeviceControlProfiles);
   get deviceTargetPowerConfigs(): DeviceTargetPowerConfigsWithReachability;
   set deviceTargetPowerConfigs(value: DeviceTargetPowerConfigsWithReachability);
-  get deviceCommunicationModels(): Record<string, 'local' | 'cloud'>;
-  set deviceCommunicationModels(value: Record<string, 'local' | 'cloud'>);
   get shedBehaviors(): Record<string, ShedBehavior>;
   set shedBehaviors(value: Record<string, ShedBehavior>);
   get debugLoggingTopics(): Set<DebugLoggingTopic>;

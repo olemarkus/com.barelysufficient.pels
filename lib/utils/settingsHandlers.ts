@@ -10,7 +10,6 @@ import {
   COMBINED_PRICES,
   CONTROLLABLE_DEVICES,
   DEVICE_CONTROL_PROFILES,
-  DEVICE_COMMUNICATION_MODELS,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
@@ -359,7 +358,6 @@ const SNAPSHOT_REPARSE_SETTINGS: readonly (readonly [string, string])[] = [
   [DEVICE_CONTROL_PROFILES, 'device_control_profile_change'],
   [DEVICE_TARGET_POWER_CONFIGS, 'device_target_power_change'],
   [DEVICE_TARGET_POWER_REACHABILITY, 'device_target_power_reachability_change'],
-  [DEVICE_COMMUNICATION_MODELS, 'device_communication_model_change'],
 ];
 
 function buildSnapshotReparseHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {

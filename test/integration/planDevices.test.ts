@@ -670,31 +670,6 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.binaryCommandPending).toBe(true);
   });
 
-  it('propagates communicationModel into planned devices', () => {
-    const device = steppedInput({
-      id: 'dev-1',
-      name: 'Cloud Heater',
-      communicationModel: 'cloud',
-    });
-
-    const [planDevice] = buildInitialPlanDevices({
-      context: buildContext([device]),
-      state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
-      guardInShortfall: false,
-      deps: {
-        getInferredSurplusKw: () => 0,
-        getShedBehavior: () => ({ action: 'set_step' }),
-        getPriceOptimizationEnabled: () => false,
-        getPriceOptimizationSettings: () => ({}),
-        pendingBinaryCommandStore: emptyPendingStore,
-      },
-    });
-
-    expect(planDevice.communicationModel).toBe('cloud');
-  });
 
   it('omits binaryCommandPending when no pending binary command exists', () => {
     const device = inputDevice({ id: 'dev-1', name: 'Heater', binaryControl: { on: true } });

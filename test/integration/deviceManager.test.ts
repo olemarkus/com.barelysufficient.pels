@@ -170,7 +170,6 @@ describe('DeviceTransport', () => {
                 getControllable: (deviceId) => deviceId === 'thermo-1',
                 getManaged: (deviceId) => deviceId === 'thermo-1',
                 getBudgetExempt: (deviceId) => deviceId === 'thermo-1',
-                getCommunicationModel: (deviceId) => (deviceId === 'thermo-1' ? 'cloud' : 'local'),
             });
 
             const [parsed] = parsingDeviceManager.parseDeviceListForTests([{
@@ -217,7 +216,6 @@ describe('DeviceTransport', () => {
                 zone: 'Hallway',
                 deviceClass: 'thermostat',
                 deviceType: 'temperature',
-                communicationModel: 'cloud',
                 controllable: true,
                 managed: true,
                 budgetExempt: true,

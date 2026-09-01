@@ -55,7 +55,6 @@ export type DeviceTransportParseProviders = {
     getManaged?: (deviceId: string) => boolean;
     isManagedFilterActive?: () => boolean;
     getBudgetExempt?: (deviceId: string) => boolean;
-    getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
     getDeviceDriverIdOverride?: (deviceId: string) => string | undefined;
     getNativeEvWiringEnabled?: (deviceId: string) => boolean;
     getFlowConflict?: (deviceId: string) => TargetDeviceSnapshot['flowConflict'];

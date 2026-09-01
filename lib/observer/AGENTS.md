@@ -7,7 +7,7 @@
 - `observedState.ts` / `observedDeviceStateProjection.ts` / `observedStateEvents.ts` — observed-state model and projections.
 - `idleClassifier.ts` / `idleDetector.ts` — `near_target_idle` / `unresponsive` / `capped_idle` classification (see `notes/idle-classification.md`).
 - `pendingBinaryCommands.ts` + `pendingBinaryCommandTypes.ts` — pending semantic binary commands and telemetry confirmation; capability routing stays in transport.
-- `controlCommandConfirmation.ts` — per-communication-model confirmation windows, shared by every control axis.
+- `controlCommandConfirmation.ts` — the single command-confirmation window, shared by every control axis and every device.
 - `steppedReportedStep.ts` — store of the last flow-reported rung per device.
 - `steppedSettleSnapshot.ts` — projection of devices onto the stepped axis's settle evidence.
 - `observedHomePower.ts` / `observedPower.ts` — whole-home and per-device power views.

@@ -78,7 +78,7 @@ describe('generic binary observation and pending confirmation', () => {
     });
   });
 
-  it('expires an unconfirmed command at its communication-model window', () => {
+  it('expires an unconfirmed command at its pending window', () => {
     const state = createPlanEngineState();
     state.pendingBinaryCommands['device-1'] = {
       dispatchState: 'accepted', desired: false, startedMs: 1_000, pendingMs: 90_000,

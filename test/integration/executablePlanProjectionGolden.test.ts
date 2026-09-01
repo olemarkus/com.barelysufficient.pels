@@ -113,7 +113,6 @@ describe('executable plan projection (characterization)', () => {
           "id": "dev-2",
           "name": "Heater",
           "target": {
-            "communicationModel": undefined,
             "desired": 21,
             "deviceId": "dev-2",
             "name": "Heater",
@@ -140,7 +139,6 @@ describe('executable plan projection (characterization)', () => {
           "id": "dev-2",
           "name": "Heater",
           "target": {
-            "communicationModel": undefined,
             "desired": 16,
             "deviceId": "dev-2",
             "name": "Heater",
@@ -160,7 +158,6 @@ describe('executable plan projection (characterization)', () => {
           "id": "dev-1",
           "name": "Tank",
           "steppedLoad": {
-            "communicationModel": undefined,
             "confirmedCommandStepId": undefined,
             "controlAdapter": undefined,
             "desired": {
@@ -220,7 +217,6 @@ describe('executable plan projection (characterization)', () => {
           "id": "dev-1",
           "name": "Tank",
           "steppedLoad": {
-            "communicationModel": undefined,
             "confirmedCommandStepId": undefined,
             "controlAdapter": undefined,
             "desired": {
@@ -282,7 +278,6 @@ describe('executable plan projection (characterization)', () => {
           "id": "dev-1",
           "name": "Tank",
           "steppedLoad": {
-            "communicationModel": undefined,
             "confirmedCommandStepId": undefined,
             "controlAdapter": undefined,
             "desired": {

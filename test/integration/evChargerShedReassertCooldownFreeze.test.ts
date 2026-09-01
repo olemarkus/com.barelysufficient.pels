@@ -316,12 +316,12 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
 
     // Cycles 2..N: the service re-applies the held plan every ~35 s (prod:
     // one rebuild ≈ one off-write, 321 in one evening). The pending window
-    // (15 s here — the harness charger resolves communicationModel 'local')
+    // (15 s here in the harness)
     // has expired by each next cycle, exactly as prod's ~2 s echo
     // confirmation cleared it — nothing suppresses the re-dispatch but the
-    // observed state itself. (A 'cloud' charger's 75 s window would mask
-    // cycle 2 behind `already_pending` on the unfixed base; cycles 3+ still
-    // reproduce, so the repro does not depend on the communication model.)
+    // observed state itself. (Historically, when a per-device cloud window
+    // existed, a 'cloud' charger's 75 s window would mask cycle 2 behind
+    // `already_pending` on the unfixed base; cycles 3+ still reproduced.)
     for (let cycle = 2; cycle <= CYCLES; cycle += 1) {
       vi.advanceTimersByTime(CYCLE_MS);
       snapshot = parseChargerSnapshot({ charging, nowMs: Date.now() }, logger);

@@ -1,6 +1,5 @@
 import {
   isBooleanMap,
-  isCommunicationModelMap,
   isFiniteNumber,
   isNumberMap,
   isPlausiblePowerTrackerState,
@@ -46,15 +45,6 @@ describe('appTypeGuards plain-object handling', () => {
     });
   });
 
-  describe('isCommunicationModelMap', () => {
-    it('accepts a mix of local/cloud entries', () => {
-      expect(isCommunicationModelMap({ a: 'local', b: 'cloud' })).toBe(true);
-    });
-
-    it('rejects other strings', () => {
-      expect(isCommunicationModelMap({ a: 'wifi' })).toBe(false);
-    });
-  });
 
   describe('isPrioritySettings', () => {
     it('accepts a nested record of numeric priorities', () => {

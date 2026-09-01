@@ -8,7 +8,7 @@ import { isBinaryOnOrUnknown } from '../packages/shared-domain/src/binaryControl
 import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import type { DevicePlan } from '../lib/plan/planTypes';
-import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../lib/plan/planObservationPolicy';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../lib/observer/controlCommandConfirmation';
 import type {
   DecoratedDeviceSnapshot, DeviceControlModel,
   DeviceControlProfiles, ReportedStepObservedProbe,
@@ -383,7 +383,7 @@ export class AppDeviceControlHelpers {
     ) {
       this.deps.scheduleTargetPowerProbeSettlement?.(
         desired.targetPowerProbeStartedAtMs
-          + (desired.pendingWindowMs ?? LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS),
+          + (desired.pendingWindowMs ?? CONTROL_COMMAND_CONFIRMATION_MS),
       );
     }
   }

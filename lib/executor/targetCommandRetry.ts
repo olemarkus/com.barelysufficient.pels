@@ -35,7 +35,7 @@
  */
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
 import type { PendingTargetCommandState, PlanEngineState } from '../plan/planState';
-import { resolveControlCommandConfirmationMs } from '../observer/controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
 
 type PendingTargetStore = Pick<PlanEngineState, 'pendingTargetCommands'>;
 
@@ -72,7 +72,6 @@ export function recordPendingTargetCommandAttempt(params: {
   desired: number;
   nowMs: number;
   observedValue?: unknown;
-  communicationModel?: 'local' | 'cloud';
 }): PendingTargetCommandState {
   const {
     state,
@@ -81,7 +80,6 @@ export function recordPendingTargetCommandAttempt(params: {
     desired,
     nowMs,
     observedValue,
-    communicationModel,
   } = params;
   const previous = state.pendingTargetCommands[deviceId];
   const isRetry = previous?.target === 'temperature' && previous.desired === desired;
@@ -90,12 +88,12 @@ export function recordPendingTargetCommandAttempt(params: {
     target,
     desired,
     startedMs: isRetry ? previous.startedMs : nowMs,
-    pendingMs: isRetry ? previous.pendingMs : resolveControlCommandConfirmationMs(communicationModel ?? 'local'),
+    pendingMs: isRetry ? previous.pendingMs : CONTROL_COMMAND_CONFIRMATION_MS,
     lastAttemptMs: nowMs,
     retryCount,
     nextRetryAtMs: nowMs + (isRetry
       ? getTargetCommandRetryDelayMs(retryCount)
-      : resolveControlCommandConfirmationMs(communicationModel ?? 'local')),
+      : CONTROL_COMMAND_CONFIRMATION_MS),
     status: 'waiting_confirmation',
     lastObservedValue: resolvePendingTargetObservedValue({
       isRetry,
@@ -118,7 +116,6 @@ export function recordFailedPendingTargetCommandAttempt(params: {
   desired: number;
   nowMs: number;
   observedValue?: unknown;
-  communicationModel?: 'local' | 'cloud';
 }): PendingTargetCommandState {
   const {
     state,
@@ -127,7 +124,6 @@ export function recordFailedPendingTargetCommandAttempt(params: {
     desired,
     nowMs,
     observedValue,
-    communicationModel,
   } = params;
   const previous = state.pendingTargetCommands[deviceId];
   const isRetry = previous?.target === 'temperature' && previous.desired === desired;
@@ -136,7 +132,7 @@ export function recordFailedPendingTargetCommandAttempt(params: {
     target,
     desired,
     startedMs: isRetry ? previous.startedMs : nowMs,
-    pendingMs: isRetry ? previous.pendingMs : resolveControlCommandConfirmationMs(communicationModel ?? 'local'),
+    pendingMs: isRetry ? previous.pendingMs : CONTROL_COMMAND_CONFIRMATION_MS,
     lastAttemptMs: nowMs,
     retryCount,
     nextRetryAtMs: nowMs + getTargetCommandRetryDelayMs(retryCount),

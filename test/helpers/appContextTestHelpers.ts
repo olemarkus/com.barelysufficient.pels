@@ -120,7 +120,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let temperatureControlPolicyState: 'unavailable' | 'resolved' = 'resolved';
   let evBoostSettings: EvBoostSettings = {};
   let evCarAssociations: EvCarAssociations = {};
-  let deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
   let shedBehaviors: Record<string, ShedBehavior> = {};
   let debugLoggingTopics = new Set<DebugLoggingTopic>();
   let defaultComputeDynamicSoftLimit: (() => number) | undefined;
@@ -226,7 +225,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getObservedState: vi.fn(() => undefined),
     getObservationRevision: vi.fn(() => 0),
     seedObservedStateFromSnapshot: vi.fn(),
-    getCommunicationModel: vi.fn((): 'local' | 'cloud' => 'local'),
     isCapacityControlEnabled: vi.fn(() => false),
     isTemperatureControlDisabled: vi.fn(() => false),
     isBudgetExempt: vi.fn(() => false),
@@ -281,8 +279,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set evBoostSettings(value) { evBoostSettings = value; },
     get evCarAssociations() { return evCarAssociations; },
     set evCarAssociations(value) { evCarAssociations = value; },
-    get deviceCommunicationModels() { return deviceCommunicationModels; },
-    set deviceCommunicationModels(value) { deviceCommunicationModels = value; },
     get shedBehaviors() { return shedBehaviors; },
     set shedBehaviors(value) { shedBehaviors = value; },
     get debugLoggingTopics() { return debugLoggingTopics; },

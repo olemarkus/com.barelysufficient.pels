@@ -438,7 +438,6 @@ type DevicePlanDeviceBase = {
   // trusts the producer-resolved `currentOn`/`currentState`. Nothing anywhere
   // ages a device observation out — a Homey driver only republishes a
   // capability on value CHANGE, so silence means "unchanged", not "unknown".
-  communicationModel?: 'local' | 'cloud';
   reportedStepId?: string;
   targetStepId?: string;
   // `selectedStepId` is NOT here: it is a fact about a step ladder and lives on

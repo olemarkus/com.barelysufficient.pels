@@ -120,7 +120,6 @@ const buildSteppedIntent = (
   id: device.id,
   name: device.name,
   steppedLoadProfile: posture.profile,
-  communicationModel: device.communicationModel,
   controlAdapter: device.controlAdapter,
   // The lifecycle fallback drives the device to its configured posture, and for
   // a step-axis device that posture IS `posture.stepId`. It keeps its own

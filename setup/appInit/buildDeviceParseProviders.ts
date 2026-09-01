@@ -44,7 +44,6 @@ export const buildDeviceParseProviders = (params: {
     getManaged: (id) => ctx.resolveManagedState(id),
     isManagedFilterActive: () => deps.isManagedFilterActive(),
     getBudgetExempt: (id) => ctx.isBudgetExempt(id),
-    getCommunicationModel: (id) => ctx.getCommunicationModel(id),
     getNativeEvWiringEnabled: (id) => deps.resolveNativeWiringEnabled(id),
     getFlowConflict: (id) => deps.getFlowConflict(id),
     getDeviceDriverIdOverride: (id) => deps.getDeviceDriverIdOverride(id),

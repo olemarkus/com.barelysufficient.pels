@@ -2470,7 +2470,6 @@ describe('buildSheddingPlan', () => {
           buildDevice({
             id: 'tank',
             name: 'Connected 300',
-            communicationModel: 'cloud',
             currentDrawKw: 3,
             expectedPowerKw: 3,
             binaryControl: { on: false },

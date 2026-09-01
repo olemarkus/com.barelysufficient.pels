@@ -66,7 +66,7 @@ import {
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
-    'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt' | 'flowConflict'
+    'priority' | 'controllable' | 'managed' | 'budgetExempt' | 'flowConflict'
 >;
 
 type DeviceCapabilityProfile = {
@@ -451,7 +451,6 @@ function resolveParsedDeviceSettings(
     providers: DeviceTransportParseProviders,
 ): ParsedDeviceSettings {
     const base = {
-        communicationModel: providers.getCommunicationModel?.(deviceId) ?? 'local',
         controllable: providers.getControllable?.(deviceId),
         managed: providers.getManaged?.(deviceId),
         budgetExempt: providers.getBudgetExempt?.(deviceId),

@@ -11,7 +11,7 @@ import {
   withoutTargetPowerReachability,
 } from '../lib/device/targetPowerReachability';
 import { resolveTargetPowerReachabilityTransition } from '../lib/executor/targetPowerReachability';
-import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../lib/plan/planObservationPolicy';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../lib/observer/controlCommandConfirmation';
 import { sortSteppedLoadSteps } from '../lib/utils/deviceControlProfiles';
 import type {
   ReportedStepObservedProbe,
@@ -107,7 +107,7 @@ const applyProbeTransition = (params: {
       requestedPowerW: params.desired.planningPowerW,
       confirmedMaxPowerW: params.desired.targetPowerProbeConfirmedMaxPowerW,
       issuedAtMs: params.desired.targetPowerProbeStartedAtMs,
-      settleWindowMs: params.desired.pendingWindowMs ?? LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS,
+      settleWindowMs: params.desired.pendingWindowMs ?? CONTROL_COMMAND_CONFIRMATION_MS,
     },
     observation: params.evidence,
     nowMs: params.nowMs,

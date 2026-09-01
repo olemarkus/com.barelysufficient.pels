@@ -206,9 +206,6 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected isManagedFilterActive = (): boolean => (
     Object.values(this.context.managedDevices).some((value) => value === true)
   );
-  public getCommunicationModel = (deviceId: string): 'local' | 'cloud' => (
-    this.context.deviceCommunicationModels[deviceId] ?? 'local'
-  );
   protected getDeviceDriverIdOverride = (deviceId: string): string | undefined => {
     const override = this.context.deviceDriverOverrides[deviceId]?.trim();
     return override || undefined;

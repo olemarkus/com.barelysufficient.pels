@@ -5,7 +5,7 @@ import type { SteppedLoadStep } from '../../packages/contracts/src/types';
 import {
   recordActivationAttemptStarted,
 } from './executorSupport';
-import { resolveControlCommandConfirmationMs } from '../observer/controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
 import { isRequestedStepMaterialized } from './steppedLoadActuation';
 import type {
   ExecutableSteppedLoadDevice,
@@ -142,7 +142,7 @@ const markAcceptedSteppedLoadCommand = (
     desiredStepId: desiredStep.id,
     previousStepId,
     issuedAtMs: now,
-    pendingWindowMs: resolveControlCommandConfirmationMs(action.communicationModel ?? 'local'),
+    pendingWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
   });
 };
 
@@ -305,7 +305,7 @@ const markUnacknowledgedSteppedLoadCommand = (
     desiredStepId: desiredStep.id,
     previousStepId,
     issuedAtMs: now,
-    pendingWindowMs: resolveControlCommandConfirmationMs(action.communicationModel ?? 'local'),
+    pendingWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
     unacknowledged: true,
   });
 };

@@ -122,7 +122,6 @@ const applyShedReleaseTemperature = async (params: {
     target: target.target,
     desired: shedTemperature,
     observedValue: target.observedValue,
-    communicationModel: observed.snapshot.communicationModel,
     isRestoring: false,
   }, { forceAgainstReleasedOpposing });
   if (wrote) {
@@ -214,7 +213,6 @@ const buildShedReleaseSteppedAction = (params: {
     id: intent.deviceId,
     name: intent.name,
     steppedLoadProfile: profile,
-    communicationModel: steppedLoadIntent.communicationModel,
     controlAdapter: steppedLoadIntent.controlAdapter,
     // The end state THIS path drives toward: `targetStep` is the producer-resolved
     // release-cascade rung (`resolveProducerShedReleaseStep`), not a capacity-path

@@ -183,7 +183,7 @@ Reasoning:
 Pending binary commands are keyed by device and desired on/off state. No raw
 capability identifier crosses into observer, planner, or executor state. The
 observer confirms them from normalized telemetry within one generic window:
-90 seconds for local devices and 3 minutes for cloud devices. An accepted SDK
+90 seconds (`CONTROL_COMMAND_CONFIRMATION_MS`). An accepted SDK
 or Flow dispatch records intent and accounting, but never fabricates observed
 state. Transport alone retains the private capability/Flow binding needed to
 translate the semantic command.
@@ -215,18 +215,20 @@ timeout and reported drift against a snapshot older than the write, on a command
 the charger had in fact accepted.
 
 **How long it waits.** One confirmation policy for every device and capability,
-deliberately **not** sized per device class or command kind
-(`resolveControlCommandConfirmationMs`, `lib/observer/controlCommandConfirmation.ts`);
-only the device communication model moves it — 90 s local
-(`LOCAL_CONTROL_COMMAND_CONFIRMATION_MS`), 3 min cloud. The window is armed
+deliberately **not** sized per device class or command kind: a single fixed
+window (`CONTROL_COMMAND_CONFIRMATION_MS`, 90 s,
+`lib/observer/controlCommandConfirmation.ts`). A per-device cloud tier (3 min)
+existed until 2026-09-01; the settings map that selected it was never written
+by anything, so every device already ran the 90 s window, and the tier was
+removed. The window is armed
 before dispatch (a device echo can arrive before the write promise resolves, so
 re-arming on acceptance would miss it), so it must cover the round-trip plus the
 ack — 9.2 s at the observed maximum. It is set far above that because the
 timeout is now the abnormal path only: it must never fire while the command is
 still inside its own pending window, or PELS would report drift for a command it
 still considers outstanding. That is now true by construction rather than by a
-pinned inequality: binary dispatch stamps `pendingMs` from the same resolver
-(`resolveControlCommandConfirmationMs` — the former `resolveBinaryCommandPendingMs`
+pinned inequality: binary dispatch stamps `pendingMs` from the same constant
+(`CONTROL_COMMAND_CONFIRMATION_MS` — the former `resolveBinaryCommandPendingMs`
 alias is gone), so the settle window and the pending window are the same number,
 and the EV-specific pending constant the inequality once had to outrun is gone.
 
