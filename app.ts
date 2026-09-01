@@ -65,7 +65,14 @@ import { AppSmartTaskApi } from './setup/appSmartTaskApi';
 import { AppSmartTaskPayloads } from './setup/appSmartTaskPayloads';
 import { getAppPlanRebuildNowMs, PlanRebuildIntentPolicy } from './setup/planRebuildIntentPolicy';
 import { AppNativeWiring } from './setup/appNativeWiring';
-import { AppServiceWiring } from './setup/appServiceWiring';
+import {
+  AppServiceWiring,
+  createPreparedMainReconcileFence,
+  type MainAuthorityRecoveryRequest,
+  type MainShortfallSideEffectGate,
+} from './setup/appServiceWiring';
+import type { HomeMembershipService } from './setup/homeMembership';
+import type { HomeRuntimeRegistry } from './setup/homeRuntime/homeRuntimeRegistry';
 import { AppPowerTracker } from './setup/appPowerTracker';
 import { TimerRegistry } from './lib/utils/timerRegistry';
 import type { FlowReportedCapabilitiesByDevice } from './lib/device/transport/flowReportedCapabilities';
@@ -390,8 +397,38 @@ class PelsApp extends PelsAppBase implements AppContext {
   // Boot/teardown orchestration + per-service construction. Public lifecycle
   // and init delegators live on AppRuntimeApi; AppServiceWiring routes through
   // this instance so integration-test method overrides remain observable.
+  // Handles to the services ordered startup constructs. They live here — the
+  // composition root — rather than inside `AppServiceWiring`, which builds them
+  // and hands them over. Same shape as the native-wiring maps.
+  private homeMembershipService?: HomeMembershipService;
+
+  private homeRuntimeRegistry?: HomeRuntimeRegistry;
+
+  private mainShortfallSideEffectGate?: MainShortfallSideEffectGate;
+
+  private requestMainAuthorityRecoveryHandle?: MainAuthorityRecoveryRequest;
+
+  // One-way: set before teardown starts, read at the final Main actuator seam.
+  private mainActuationStopped = false;
+
+  private readonly preparedMainReconcileFence = createPreparedMainReconcileFence(
+    () => this.powerSamplePipeline.getStableSampleRevision(),
+  );
+
   protected readonly serviceWiring = new AppServiceWiring({
     ctx: this.ctx,
+    getHomeMembershipService: () => this.homeMembershipService,
+    setHomeMembershipService: (service) => { this.homeMembershipService = service; },
+    getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
+    setHomeRuntimeRegistry: (registry) => { this.homeRuntimeRegistry = registry; },
+    getMainShortfallSideEffectGate: () => this.mainShortfallSideEffectGate,
+    setMainShortfallSideEffectGate: (gate) => { this.mainShortfallSideEffectGate = gate; },
+    getRequestMainAuthorityRecovery: () => this.requestMainAuthorityRecoveryHandle,
+    setRequestMainAuthorityRecovery: (request) => { this.requestMainAuthorityRecoveryHandle = request; },
+    isMainActuationStopped: () => this.mainActuationStopped,
+    stopMainActuation: () => { this.mainActuationStopped = true; },
+    teardown: this.backgroundTaskBundle.teardown,
+    preparedMainReconcileFence: this.preparedMainReconcileFence,
     homeyApp: this,
     backgroundTasks: this.backgroundTasks,
     timers: this.timers,
