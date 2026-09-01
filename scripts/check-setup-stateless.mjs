@@ -55,7 +55,7 @@
 //     (`appHostApi.ts`, `appRuntimeApi.ts`) because `homey.app` callers reach
 //     them through the instance. Judged by its initializer, so a field that is
 //     assigned a function LATER — a stored teardown handle like
-//     `BackgroundTasksController.stopPerfLog` — is state and is caught.
+//     a `stop*?: () => void` teardown handle — is state and is caught.
 //   - A module const whose name is SCREAMING_SNAKE_CASE and whose initializer is
 //     an array or object literal: the repo's constant-table convention
 //     (`PERIODIC_STATUS_MINUTE_INTERVALS = [25, 55]`). The exemption is by

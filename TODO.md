@@ -3283,10 +3283,13 @@ non-blocking follow-ups.*
       `homeSampledMeterIdentity.ts`, `homeRuntime/homeModeOwnershipTransfer.ts`,
       `homeRuntime/homeRuntimeRegistry.ts` → `lib/home/` (the meter-provenance pair may have to go
       to `lib/power/` instead, since `no-home-to-peer` forbids reading the tracker);
-      (e) composition root and leftovers — `appServiceWiring.ts`'s late-bound service handles and
-      `backgroundTasksController.ts`'s teardown handles onto `app.ts`/`AppContext`,
-      `schedulerTelemetryObserver.ts` → `lib/logging/`, `appDebugHelpers.ts`'s dump counter →
-      `lib/diagnostics/`. Each lane is behaviour-preserving: a move plus an injection change, with
+      (e) composition root and leftovers — DONE except `appServiceWiring.ts`, whose late-bound
+      service handles still belong on `app.ts`/`AppContext`. The teardown handles are an injected
+      `TeardownRegistry` (`lib/utils/`), the dump counter is `lib/diagnostics/deviceDumpId.ts`, and
+      the scheduler telemetry observer moved to `lib/plan/rebuildScheduler/` rather than
+      `lib/logging/` as this entry used to say — it names `RebuildIntent` and
+      `PowerSampleRebuildState`, so putting it in `lib/logging` would have made a foundation module
+      depend on `lib/plan`. Each lane is behaviour-preserving: a move plus an injection change, with
       `npm run arch:check` as the gate on the destination. Done when
       `scripts/setup-stateless-allowlist.txt` no longer exists and `npm run setup:stateless` passes
       without it. Found 2026-08-29. [P2]

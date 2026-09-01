@@ -156,9 +156,10 @@ const buildHarness = (
     updateOverheadToken: vi.fn().mockResolvedValue(undefined),
     updateDebugLoggingEnabled: vi.fn(),
     restartHomeyEnergyPoll: vi.fn(),
-    // The production wiring for this hook (`ctx.reloadWeatherCollector`)
-    // restarts the collector; start() begins with stop(), so this is the
-    // same restart edge BackgroundTasksController drives.
+    // Approximates the production hook (`ctx.reloadWeatherCollector`), which
+    // goes through `BackgroundTasksController.startWeatherCollector` — that
+    // path also swaps the teardown registration, and the ordering it depends on
+    // is pinned in `test/unit/backgroundTasksTeardown.test.ts` rather than here.
     reloadWeatherAdvisor: () => { collector.start(); },
   };
   const handler = createSettingsHandler(deps);

@@ -36,12 +36,12 @@ import { AppDeviceControlHelpers } from './setup/appDeviceControlHelpers';
 import { createSteppedStores, type SteppedStores } from './setup/appInit/createSteppedStores';
 import { DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, MAIN_HOME_ID } from './lib/utils/settingsKeys';
 import type { PowerSampleRebuildState } from './lib/plan/rebuildScheduler/powerDriven';
-import { BackgroundTasksController } from './setup/backgroundTasksController';
+import { createBackgroundTasks, type BackgroundTasks } from './setup/appInit/createBackgroundTasks';
 import { createHomePowerPipeline, createMeterSilenceMonitor } from './setup/homeRuntime/createHomePowerPipeline';
 import type { PvForecastController } from './setup/appInit/createPvForecastService';
 import type { HomeySolarForecastLifecycle } from './lib/solar/homeySolarForecastController';
 import type { WeatherCollector } from './lib/weather/weatherCollector';
-import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
+import { SchedulerTelemetryObserver } from './lib/plan/rebuildScheduler/telemetryObserver';
 import { SettingsRepository } from './setup/settingsRepository';
 import { createCombinedPricesReaderForApp } from './setup/priceCombinedPricesAdapter';
 import { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore';
@@ -260,7 +260,7 @@ class PelsApp extends PelsAppBase implements AppContext {
   // controller is built by the post-startup background step, while the
   // settings hook and the uninit sweep are wired before it.
   private homeySolarForecast: HomeySolarForecastLifecycle = { kind: 'not_started' };
-  protected readonly backgroundTasks = new BackgroundTasksController({
+  private readonly backgroundTaskBundle: BackgroundTasks = createBackgroundTasks({
     homey: this.homey,
     log: (...args: unknown[]) => this.log(...args),
     logDebug: (topic, ...args: unknown[]) => this.logDebug(topic, ...args),
@@ -271,6 +271,13 @@ class PelsApp extends PelsAppBase implements AppContext {
     getTimeZone: () => this.getTimeZone(),
     getCombinedHourlyPrices: () => this.getCombinedHourlyPrices(),
   });
+
+  // The composition root holds both halves — the controller the wiring drives,
+  // and (on the bundle) the registry the started tasks' stop callbacks live in,
+  // so that state has an owner outside `setup/` rather than sitting one property
+  // deep inside the class that drives it.
+  protected readonly backgroundTasks = this.backgroundTaskBundle.controller;
+
   protected structuredLogger?: PinoLogger;
   public readonly timers = new TimerRegistry();
 
