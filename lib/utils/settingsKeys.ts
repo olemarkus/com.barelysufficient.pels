@@ -95,13 +95,18 @@ export const TEMPERATURE_CONTROL_DISABLED_DEVICES = 'temperature_control_disable
 // because they were turned off outside PELS. Deliberately a separate key from
 // the config: clearing the opt-in must not lose the config, and vice versa.
 // Shape validated by `lib/observer/externalOffHold.ts`.
+// LEGACY. Read only by `migrateExternalOffHoldsToPerKey`, which consumes it.
 export const EXTERNAL_OFF_HOLDS = 'external_off_holds';
-// Written-before marker for the above. Lets the store tell a fresh install
-// (no marker, absent state => persist immediately) from a transient read miss
-// (marker set, absent state => engage the abandon-grace window instead of
-// full-replacing the state with an empty map). Same trick as
-// `power_calibration_initialized`.
+// LEGACY written-before marker for the blob above; unset by the same migration.
+// It existed only to tell a fresh install from a transient miss of a blob that
+// no longer exists.
 export const EXTERNAL_OFF_HOLDS_INITIALIZED = 'external_off_holds_initialized';
+// One key per held device, value an unread placeholder — the key's PRESENCE is
+// the hold. Singular + dot, deliberately DISTINCT from the plural blob key
+// above so a prefix scan never matches it (`external_off_holds` has no dot).
+export const PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX = 'external_off_hold.';
+// Set once the blob above has been copied into per-device keys and consumed.
+export const EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED = 'external_off_holds_perkey_migrated';
 export const TEMPERATURE_BOOST_SETTINGS = 'temperature_boost_settings';
 /** Learned measured peaks, `{ kw, observedAtMs }` per device (`lib/device/devicePowerPeak.ts`). */
 export const DEVICE_POWER_PEAKS = 'device_power_peaks';

@@ -21,8 +21,7 @@ import type { ExternalOffHoldSyncDeps } from '../../setup/externalOffHoldDetecti
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import {
-  EXTERNAL_OFF_HOLDS,
-  EXTERNAL_OFF_HOLDS_INITIALIZED,
+  PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
   RESPECT_EXTERNAL_OFF_DEVICES,
 } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
@@ -75,28 +74,40 @@ type Harness = {
   ctx: AppContext;
   deps: ExternalOffHoldSyncDeps;
   clearRecentBinaryOffCommand: ReturnType<typeof vi.fn>;
+  /** Let a store seeded as unreadable start answering again. */
+  recoverStore: () => void;
 };
 
 const buildCtx = (params: {
   optedIn?: boolean;
-  persistedHolds?: unknown;
+  /** Device ids already holding across a restart, seeded as per-device keys. */
+  heldBefore?: readonly string[];
   pending?: { desired: boolean };
-  /** Make the hold blob unreadable, as a transient Homey settings failure does. */
+  /**
+   * Make the store unreadable, as a transient Homey settings failure does. A
+   * hold is a key, so the read that fails is the key LIST — there is no per-hold
+   * value left to fail on.
+   */
   holdsUnreadable?: boolean;
 } = {}): Harness => {
   const ctx = createAppContextMock();
-  const settings = new Map<string, unknown>();
+  const unreadable = { current: params.holdsUnreadable === true };
+  // Stands in for the rest of PELS's settings: an empty key list is read as a
+  // transient-store flake by design, so a store holding only the hold under
+  // test would flip to fail-closed the moment that hold is released.
+  const settings = new Map<string, unknown>([['some_other_pels_setting', 1]]);
   if (params.optedIn) settings.set(RESPECT_EXTERNAL_OFF_DEVICES, { [DEVICE_ID]: true });
-  if (params.persistedHolds !== undefined) settings.set(EXTERNAL_OFF_HOLDS, params.persistedHolds);
-  if (params.holdsUnreadable) settings.set(EXTERNAL_OFF_HOLDS_INITIALIZED, true);
+  for (const deviceId of params.heldBefore ?? []) {
+    settings.set(`${PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX}${deviceId}`, true);
+  }
   ctx.externalOffHold = createExternalOffHoldPolicy({
-    get: (key) => {
-      if (params.holdsUnreadable && key === EXTERNAL_OFF_HOLDS) {
-        throw new Error('settings unavailable');
-      }
-      return settings.get(key);
-    },
+    get: (key) => settings.get(key) ?? null,
     set: (key, value) => { settings.set(key, value); },
+    unset: (key) => { settings.delete(key); },
+    getKeys: () => {
+      if (unreadable.current) throw new Error('settings unavailable');
+      return Array.from(settings.keys());
+    },
   });
   ctx.isCapacityControlEnabled = () => true;
   const clearRecentBinaryOffCommand = vi.fn();
@@ -110,7 +121,9 @@ const buildCtx = (params: {
     ),
     clearRecentBinaryOffCommand,
   };
-  return { ctx, deps, clearRecentBinaryOffCommand };
+  return {
+    ctx, deps, clearRecentBinaryOffCommand, recoverStore: () => { unreadable.current = false; },
+  };
 };
 
 const observedDeviceFor = (
@@ -241,6 +254,10 @@ describe('syncExternalOffHoldForDevice — an off LEVEL is not an off ACTION', (
     // become a REAL hold.
     const h = buildCtx({ optedIn: true, holdsUnreadable: true });
     expect(sync(h, observedDeviceFor(h.ctx))).toBe('started');
+    // The store is the only place a hold lives, so "it became REAL" is asked of
+    // the store once it answers again — not of an in-memory copy the policy
+    // deliberately does not keep.
+    h.recoverStore();
     expect(h.ctx.externalOffHold?.heldDeviceIds()).toEqual([DEVICE_ID]);
   });
 });
@@ -394,15 +411,7 @@ describe('toPlanDevice — externalOffHoldActive projection', () => {
   });
 
   it('restores a hold persisted before a restart', () => {
-    const h = buildCtx({
-      optedIn: true,
-      persistedHolds: {
-        version: 1,
-        entriesByDeviceId: {
-          [DEVICE_ID]: { sinceMs: NOW - 60_000, observedAtMs: NOW - 60_000, capabilityId: 'onoff' },
-        },
-      },
-    });
+    const h = buildCtx({ optedIn: true, heldBefore: [DEVICE_ID] });
     expect(toPlanDevice(h.ctx, buildSnapshot()).externalOffHoldActive).toBe(true);
   });
 });
@@ -412,16 +421,34 @@ describe('toPlanDevice — externalOffHoldActive projection', () => {
 // re-armed out from under a rebuild that has not landed yet.
 describe('external-off hold — release under an unreadable store', () => {
   it('records a pull-observed ON even when no hold ids can be enumerated', () => {
-    const h = buildCtx({ optedIn: true, holdsUnreadable: true });
-    // `heldDeviceIds()` is empty while the state cannot be read, so sweeping only
-    // the recorded holds would leave no trace of this release — and the recovered
-    // read would revive a hold on a device that is demonstrably running.
-    releaseExternalOffHoldsForObservedOn({
-      policy: h.ctx.externalOffHold,
-      deviceIds: [DEVICE_ID],
-      isObservedOn: () => true,
+    // `heldDeviceIds()` is empty while the key list cannot be read, so sweeping
+    // only the enumerated holds would leave no trace of this release. The sweep
+    // therefore also passes the observed device ids, and `clearHold` unsets
+    // unconditionally — the release lands on the store even though nothing could
+    // be listed. `isHeld` still answers its fail-closed guess while the list is
+    // unreadable (and the planner pairs that with "still observed off", so a
+    // running device is unaffected); what matters is that once the list reads
+    // again the hold is genuinely gone rather than revived.
+    const failing = { current: true };
+    const settings = new Map<string, unknown>([
+      [RESPECT_EXTERNAL_OFF_DEVICES, { [DEVICE_ID]: true }],
+      [`${PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX}${DEVICE_ID}`, true],
+    ]);
+    const policy = createExternalOffHoldPolicy({
+      get: (key) => settings.get(key) ?? null,
+      set: (key, value) => { settings.set(key, value); },
+      unset: (key) => { settings.delete(key); },
+      getKeys: () => {
+        if (failing.current) throw new Error('settings unavailable');
+        return Array.from(settings.keys());
+      },
     });
-    expect(h.ctx.externalOffHold?.isHeld(DEVICE_ID)).toBe(false);
+    releaseExternalOffHoldsForObservedOn({
+      policy, deviceIds: [DEVICE_ID], isObservedOn: () => true,
+    });
+    failing.current = false;
+    expect(policy.isHeld(DEVICE_ID)).toBe(false);
+    expect(policy.heldDeviceIds()).toEqual([]);
   });
 
   it('uses a newer pull-observed raw EV ON to end old PELS-OFF attribution', () => {

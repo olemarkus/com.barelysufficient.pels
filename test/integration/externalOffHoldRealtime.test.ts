@@ -13,7 +13,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { EXTERNAL_OFF_HOLDS, RESPECT_EXTERNAL_OFF_DEVICES } from '../../lib/utils/settingsKeys';
+import {
+  PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
+  RESPECT_EXTERNAL_OFF_DEVICES,
+} from '../../lib/utils/settingsKeys';
 
 const DEVICE = 'heater-1';
 
@@ -62,10 +65,15 @@ const settle = async () => {
   await vi.advanceTimersByTimeAsync(2_000);
 };
 
-const heldDeviceIds = (): string[] => Object.keys(
-  (mockHomeyInstance.settings.get(EXTERNAL_OFF_HOLDS) as
-    { entriesByDeviceId?: Record<string, unknown> } | undefined)?.entriesByDeviceId ?? {},
-);
+/**
+ * The held devices as the SETTINGS STORE sees them, independently of the policy
+ * — the point of these cases is that the hold reached persistence, not merely
+ * that the in-process object agrees with itself. A hold is one key whose
+ * presence is the fact, so this is a prefix scan of the key list.
+ */
+const heldDeviceIds = (): string[] => mockHomeyInstance.settings.getKeys()
+  .filter((key) => key.startsWith(PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX))
+  .map((key) => key.slice(PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX.length));
 
 describe('external-off hold — realtime lifecycle', () => {
   beforeEach(() => {
@@ -90,10 +98,6 @@ describe('external-off hold — realtime lifecycle', () => {
 
     expect(app.externalOffHold?.isHeld(DEVICE)).toBe(true);
     expect(heldDeviceIds()).toEqual([DEVICE]);
-    expect(mockHomeyInstance.settings.get(EXTERNAL_OFF_HOLDS)).toMatchObject({
-      version: 1,
-      entriesByDeviceId: { [DEVICE]: { sinceMs: expect.any(Number) } },
-    });
   });
 
   it('starts no hold for a device that has not opted in', async () => {
