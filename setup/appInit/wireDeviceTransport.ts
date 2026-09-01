@@ -119,9 +119,12 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
   // the projection getter at event time, so reassigning the field is sufficient.
   deps.setObservedDeviceStateProjection(new ObservedDeviceStateProjection());
   // "Leave off until turned on again". Constructed here so the persisted holds
-  // are loaded before the first plan cycle can resume anything — a hold that
-  // survived a restart must win over the first rebuild, not lose a race with
-  // it. Assigned onto ctx (the wiring-assigns-ctx-members house pattern).
+  // are visible before the first plan cycle can resume anything — a hold that
+  // survived a restart must win over the first rebuild, not lose a race with it.
+  // The blob→per-key migration needs no sequencing from this side: the policy
+  // asserts it on every read, so it cannot be built against an unmigrated store
+  // and it heals itself if the SDK was failing at boot. Assigned onto ctx (the
+  // wiring-assigns-ctx-members house pattern).
   // eslint-disable-next-line functional/immutable-data -- shared AppContext write
   ctx.externalOffHold = createExternalOffHoldPolicy(ctx.homey.settings);
   const observeCalibrationSnapshotMutation = createCalibrationSnapshotMutationHook({

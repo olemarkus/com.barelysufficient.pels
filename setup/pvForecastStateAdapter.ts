@@ -166,10 +166,12 @@ export const createPvForecastStore = (
 
   // The marker probe answers three ways — `present` / `absent` / `unanswered`
   // — because the split matters: `true` is the only value ever stored, but an
-  // uninterpretable value still counts as present (it vouches; the
-  // `externalOffHoldAdapter.hasWrittenBefore` precedent), while a thrown read
-  // is `unanswered` and must keep the classification ambiguous. Only a literal
-  // `true` is CACHED, so the next persist normalises anything else.
+  // uninterpretable value still counts as present (it vouches), while a thrown
+  // read is `unanswered` and must keep the classification ambiguous. Only a
+  // literal `true` is CACHED, so the next persist normalises anything else.
+  // (This used to cite `externalOffHoldAdapter.hasWrittenBefore` as precedent.
+  // That marker is gone: external-off holds are one key per device, so there is
+  // no whole-blob write for a written-before marker to protect.)
   const probeMarker = (): 'present' | 'absent' | 'unanswered' => {
     if (markerConfirmed) return 'present';
     try {

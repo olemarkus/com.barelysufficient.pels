@@ -53,6 +53,47 @@ and the EV car-link store (each per-store, per the ruling above) now add:
   and production PELS is routinely OOM-killed before `onUninit` runs, so the
   shutdown flush is a bonus, not the mechanism.
 
+### Addendum (2026-09-01): the better answer is one key per subject
+
+Everything below — the grace window, the written-before marker, the plausibility
+predicate, the dirty flag, the flush variants — is machinery for making a
+**whole-blob read-modify-write** safe against an SDK read that can transiently
+fail. None of it is needed when there is no shared document to clobber.
+
+Two stores have now moved to one settings key per subject, and both deleted
+their whole guard set rather than improving it:
+
+- `lib/objectives/deferredObjectives/objectiveStore.ts` — `deferred_objective.<deviceId>`
+- `lib/observer/externalOffHold.ts` — `external_off_hold.<deviceId>`
+
+What survives the move, and what does not:
+
+| | blob | per key |
+| --- | --- | --- |
+| a write while the store is unreadable | may wipe every other subject | cannot reach another key |
+| deleting a subject | read-modify-write, needs a tombstone if the read failed | idempotent `unset` |
+| abandon-grace + written-before marker | required | gone |
+| trusting an empty read | needs a plausibility predicate on the value | `getKeys()` empty is the one flake signal |
+| fail-closed reads | required | still required |
+
+Two rules that do carry over, because they are about the SDK rather than the shape:
+
+- **An empty `getKeys()` is a flake, not an empty store.** PELS always has
+  settings keys. Conclude nothing from an empty list.
+- **Absence is only trustworthy from the key LIST.** A value that reads back
+  malformed on a listed key is a failed read, not an affirmative absence.
+
+And one thing per-key makes newly worth asking: **does the value carry anything
+at all?** `external_off_hold.<deviceId>` stores a constant placeholder, because
+the hold is set membership and nothing varies per device. A key with no payload
+has nothing to validate, nothing to normalise, and nothing to drift — the
+external-off store lost its entry type, its normaliser and every value read that
+way. Check for a real reader before persisting a field; the blob-era `sinceMs`
+had none and had been carried for the life of the feature.
+
+New per-device or per-subject state should start per-key. Reach for the
+machinery below only when something genuinely must be written as one document.
+
 ## Historical Proposal
 
 ## Why this note exists

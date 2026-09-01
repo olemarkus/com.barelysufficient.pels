@@ -5,129 +5,93 @@
  *
  * Ownership split:
  *  - **This module** owns the hold state, the opt-in read, and persistence. It is
- *    a pure observer leaf (`no-observer-to-peer`): no imports at all, so
- *    `lib/device`, `lib/plan`, `lib/executor`, and `setup` may all depend on it.
- *  - **`setup/externalOffHoldAdapter.ts`** binds the two settings keys to the
- *    `load`/`save`/`readOptIn` seams below. It knows Homey; this module does not.
+ *    a pure observer leaf (`no-observer-to-peer`): its only import is the settings
+ *    key registry, so `lib/device`, `lib/plan`, `lib/executor`, and `setup` may
+ *    all depend on it.
+ *  - **`setup/externalOffHoldAdapter.ts`** binds `homey.settings` to the store
+ *    port below and resolves the opt-in read. It knows Homey; this module does not.
  *  - **`setup/externalOffHoldDetection.ts`** owns the provenance question ("was
- *    this OFF ours?"). This module never asks why a device is off.
+ *    this OFF ours?") — the actually hard part of this feature, since PELS turns
+ *    devices off all the time. This module never asks why a device is off.
  *  - **`setup/appInit/toPlanDevice.ts`** resolves the stored hold against live
  *    observed state into the flat `externalOffHoldActive` plan-input bit.
  *
+ * ## A hold is a key, and the key has no payload
+ *
+ * Each hold is one settings key (`external_off_hold.<deviceId>`) whose PRESENCE
+ * is the entire fact. Nothing about a hold varies per device: it is on or it is
+ * not. So the stored value is a constant `true` placeholder — Homey settings
+ * need something — and no code reads it.
+ *
+ * Two consequences worth stating, because both used to cost a lot of code:
+ *
+ *  - **There is no value to validate.** An absent payload cannot be malformed,
+ *    truncated, `NaN`, or tampered into an extra field. The only untrusted read
+ *    left is the key LIST, classified once in `readKeyList`.
+ *  - **There is no shared document to clobber.** The previous shape kept every
+ *    hold in one `external_off_holds` blob whose write full-replaced it, so a
+ *    blob PELS could not read made *any* write a potential wipe of every other
+ *    device's hold. Defending that took an abandon-grace window, a
+ *    written-before marker, a tombstone set for releases recorded against an
+ *    unread blob, an abandoned-blob flag, and a read-before-save ordering rule
+ *    inside a re-entrant settle pass — seven pieces of interacting state. A
+ *    per-key write cannot reach another device, so none of it is needed and
+ *    this module now holds no state at all between calls.
+ *
+ * Same move as `lib/objectives/deferredObjectives/objectiveStore.ts`, whose
+ * migration order `migrateExternalOffHoldsToPerKey` below mirrors.
+ *
  * Invariants callers may rely on:
- *  - `load` never throws and never wipes. An absent, malformed, or throwing read
- *    yields an empty in-memory map AND engages an abandon-grace window during
- *    which nothing is persisted — otherwise the next mutation for any device
- *    would full-replace the setting and erase every other device's hold. A fresh
- *    install (no marker) skips the grace, so the first real hold persists at once.
- *    Per `feedback_homey_sdk_unreliable` / `notes/persisted-settings-state.md`.
- *  - **Unavailable is not "no holds".** An unreadable state must not answer
- *    `isHeld === false`, because that answer IS the resume this feature exists to
- *    prevent. While unavailable the read is re-attempted on access and `isHeld`
- *    fails closed for opted-in devices. Every consumer pairs `isHeld` with "still
- *    observed off", so a device that is actually running is never affected.
- *  - A mutation the grace window (or a throwing `save`) kept out of the store is
- *    retained and flushed on a later access. Repeating the same `startHold` is a
- *    no-op, so without this a transient failure would silently lose the hold.
- *    Releases get the same durability: a `clearHold` whose deletion could not
- *    land on the unreadable map is tombstoned, and — for a device the blob
- *    could actually hold — kept as a pending write across grace expiry, so a
- *    reconciling read-merge or write eventually lands and a restart cannot
- *    reload the stale persisted hold and strand a device the user released.
- *  - A corrupt individual entry is skipped, not fatal, and entries are rebuilt
- *    field-by-field on load so a tampered blob cannot smuggle extra keys through
- *    into the next write.
- *  - Writes are dirty-gated: an unchanged mutation performs no settings write.
- *    Homey settings writes are synchronous, so per-observation writes would
- *    thrash flash.
- *  - Entries are never pruned on snapshot absence. There is no device-removal
- *    grace in the codebase today, and a single failed snapshot must not release a
- *    hold; a stale entry for a removed device is inert and bounded by device count.
- *
- * The persistence shape here deliberately duplicates
- * `lib/objectives/deferredObjectives/hoursRemainingCrossings.ts` rather than
- * sharing a helper: `notes/persisted-settings-state.md` cut the shared
- * `PersistedSettingsState<T>` proposal in the 2026-05-31 layering review, because
- * the stores share vocabulary but not semantics. Do not re-raise *that*: one
- * generic helper absorbing both stores' policies.
- *
- * It is NOT a ruling that this shape is settled. Every flag in the body below
- * exists because the state is one blob key whose write full-replaces it:
- * unreadable blob ⇒ unsafe write ⇒ grace window, written-before marker,
- * tombstones, abandoned-blob flag, and the read-before-save ordering in
- * `settleState`. Per-device keys
- * remove the hazard rather than defending against it — a write to one device's
- * key cannot erase another's, so a blind write is safe and `clearHold` is a
- * plain idempotent `unset`. What that does NOT remove is the fail-closed read:
- * an opted-in device whose own key cannot be read must still answer `isHeld`,
- * because "not held" is the resume this feature exists to prevent.
- * `lib/objectives/deferredObjectives/objectiveStore.ts` already made exactly
- * that move, `migrateBlobToPerKeyIfNeeded` included. See the P2 entry in
- * `TODO.md`.
+ *  - **Unreadable is not "no hold".** An untrustworthy key list must not answer
+ *    `isHeld === false`, because that answer IS the resume this feature exists
+ *    to prevent, so it fails closed for opted-in devices. Every consumer pairs
+ *    `isHeld` with "still observed off", so a device that is actually running is
+ *    never affected.
+ *  - **An empty `getKeys()` is a flake, not an empty store.** PELS always has
+ *    settings keys, so an empty list means the read is untrustworthy right now
+ *    (`feedback_homey_sdk_unreliable`). Nothing is concluded from it.
+ *  - Holds are never pruned on snapshot absence. There is no device-removal
+ *    grace in the codebase today, and a stale key for a removed device is inert
+ *    and bounded by device count.
  */
+import {
+  EXTERNAL_OFF_HOLDS,
+  EXTERNAL_OFF_HOLDS_INITIALIZED,
+  EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED,
+  PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
+} from '../utils/settingsKeys';
 
 /**
- * One active hold. `sinceMs` is when it began — the only field with a reader
- * (diagnostics/logging). The spec's suggested `observedAtMs`/`capabilityId` are
- * deliberately absent: nothing advances or reads them, and an unread persisted
- * field is a shape that can only drift. Add them with the surface that needs them.
+ * The minimal settings surface this store needs. Structurally matches the
+ * `homey.settings` manager (and the test `MockSettings`), so the adapter passes
+ * `homey.settings` straight through. `get` is here for the migration only —
+ * reading a hold is a key-list question, never a value read.
  */
-export type ExternalOffHoldEntry = {
-  sinceMs: number;
+export type ExternalOffHoldSettingsStore = {
+  get: (key: string) => unknown;
+  set: (key: string, value: unknown) => void;
+  unset: (key: string) => void;
+  getKeys: () => string[];
 };
-
-/**
- * Persisted shape. `version` is bumped when the shape changes; the validator
- * rejects anything else so a tampered or downgraded payload is treated as
- * missing rather than smuggled past type checks.
- */
-export type PersistedExternalOffHolds = {
-  version: 1;
-  entriesByDeviceId: Record<string, ExternalOffHoldEntry>;
-};
-
-export const EXTERNAL_OFF_HOLD_VERSION = 1 as const;
-
-/**
- * How long to refuse persistence after a load that produced no usable state
- * while the marker says we have written before. Long enough to cover a transient
- * SDK read failure and a following recovery read; the in-memory map stays
- * authoritative meanwhile. Mirrors `devicePowerCalibrationStore`'s window.
- */
-export const EXTERNAL_OFF_HOLD_LOAD_GRACE_MS = 5 * 60 * 1000;
-
-/**
- * How long to wait before re-attempting a read that came back unavailable. Short
- * enough that a transient SDK failure clears well inside the first plan cycle,
- * long enough that a persistently broken read costs one settings call per 10 s
- * rather than one per device per cycle.
- */
-export const EXTERNAL_OFF_HOLD_RELOAD_RETRY_MS = 10 * 1000;
 
 /**
  * The opt-in read as a typed semantic result: "nobody opted in" and "the map
- * could not be read" are different answers and the adapter owns the distinction
- * (the boundary rule in `AGENTS.md`). Collapsing them is a wipe — at construction
- * an unavailable read would make every restored hold look de-opted, and
- * `releaseDeOptedHolds` would clear and persist an empty map.
+ * could not be read" are different answers and the adapter owns the distinction.
+ * Collapsing them is a wipe — an unavailable read would make every stored hold
+ * look de-opted, and `releaseDeOptedHolds` would clear them all.
  */
 export type ExternalOffHoldOptInRead =
   | { status: 'resolved'; optIn: Record<string, boolean> }
   | { status: 'unavailable' };
 
 export type ExternalOffHoldDeps = {
-  load?: () => unknown;
-  save?: (holds: PersistedExternalOffHolds) => void;
+  store: ExternalOffHoldSettingsStore;
   /**
    * Reads the per-device opt-in map. Called live rather than cached so a
    * just-toggled setting takes effect immediately; it is only reached once per
    * candidate observation, never per device per plan cycle.
    */
-  readOptIn?: () => ExternalOffHoldOptInRead;
-  /** True once PELS has persisted holds before — distinguishes a fresh install
-   *  from a transient read miss. Absent ⇒ treated as a fresh install. */
-  hasWrittenBefore?: () => boolean;
-  nowMs?: () => number;
+  readOptIn: () => ExternalOffHoldOptInRead;
 };
 
 /**
@@ -152,328 +116,307 @@ export type ExternalOffHoldPolicy = {
   releaseDeOptedHolds: () => string[];
 };
 
-const isFinitePositive = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value) && value > 0
+/**
+ * The value written under a hold key. Never read — the key's presence is the
+ * hold. A constant placeholder rather than a timestamp, so there is no per-hold
+ * data to drift, to validate, or to tempt a future reader into treating as
+ * meaningful.
+ */
+const HOLD_PLACEHOLDER = true;
+
+/**
+ * Attempts a hold write, retrying a bounded number of times before giving up.
+ * `homey.settings.set` is synchronous and has been seen to throw transiently
+ * under contention, so an immediate retry recovers the common case without
+ * retaining anything. It is deliberately NOT the old pending-write machinery:
+ * this returns an honest `false` when every attempt fails rather than reporting
+ * a hold it did not store, and the caller logs no hold started.
+ */
+const HOLD_WRITE_ATTEMPTS = 3;
+
+const writeWithRetry = (store: ExternalOffHoldSettingsStore, key: string): boolean => {
+  for (let attempt = 0; attempt < HOLD_WRITE_ATTEMPTS; attempt += 1) {
+    try {
+      store.set(key, HOLD_PLACEHOLDER);
+      return true;
+    } catch {
+      // Next attempt, or fall out to `false` below.
+    }
+  }
+  return false;
+};
+
+const perDeviceKey = (deviceId: string): string => (
+  `${PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX}${deviceId}`
 );
 
 /**
- * Validates the persisted payload against the v1 shape and rebuilds each entry
- * field-by-field, so unknown keys in a tampered blob are dropped rather than
- * round-tripped into the next write. Returns `null` for anything unusable.
+ * The key list, classified — the ONLY untrusted read this module makes. PELS
+ * always has settings keys, so an empty list is the transient-empty-store flake
+ * rather than a store with nothing in it. The SDK has returned nullish and
+ * malformed values here as well as throwing, so the value is classified before
+ * any array operation.
  */
-const parsePersistedHolds = (raw: unknown): PersistedExternalOffHolds | null => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const candidate = raw as Partial<PersistedExternalOffHolds>;
-  if (candidate.version !== EXTERNAL_OFF_HOLD_VERSION) return null;
-  if (!candidate.entriesByDeviceId
-    || typeof candidate.entriesByDeviceId !== 'object'
-    || Array.isArray(candidate.entriesByDeviceId)) {
-    return null;
-  }
-  const entries = Object.entries(candidate.entriesByDeviceId)
-    .filter(([deviceId, entry]) => (
-      deviceId.length > 0 && isFinitePositive((entry as ExternalOffHoldEntry | undefined)?.sinceMs)
-    ))
-    .map(([deviceId, entry]): [string, ExternalOffHoldEntry] => (
-      [deviceId, { sinceMs: entry.sinceMs }]
-    ));
-  return {
-    version: EXTERNAL_OFF_HOLD_VERSION,
-    entriesByDeviceId: Object.fromEntries(entries),
-  };
-};
+type KeyListRead =
+  | { status: 'resolved'; keys: readonly string[] }
+  | { status: 'unavailable' };
 
-const serializeHolds = (
-  holds: Map<string, ExternalOffHoldEntry>,
-): PersistedExternalOffHolds => ({
-  version: EXTERNAL_OFF_HOLD_VERSION,
-  entriesByDeviceId: Object.fromEntries(holds.entries()),
-});
-
-type LoadResult = {
-  holds: Map<string, ExternalOffHoldEntry>;
-  /**
-   * True when the read produced no usable state despite having written before —
-   * i.e. the persisted state is *unknown*, not empty. Blocks persistence and
-   * makes `isHeld` fail closed until a later read resolves it.
-   */
-  unavailable: boolean;
-};
-
-const loadPersistedHolds = (deps: ExternalOffHoldDeps): LoadResult => {
-  const holds = new Map<string, ExternalOffHoldEntry>();
-  if (!deps.load) return { holds, unavailable: false };
+const readKeyList = (store: ExternalOffHoldSettingsStore): KeyListRead => {
   let raw: unknown;
-  let threw = false;
   try {
-    raw = deps.load();
+    raw = store.getKeys();
   } catch {
-    threw = true;
+    return { status: 'unavailable' };
   }
-  const parsed = threw ? null : parsePersistedHolds(raw);
-  if (parsed) {
-    for (const [deviceId, entry] of Object.entries(parsed.entriesByDeviceId)) {
-      holds.set(deviceId, entry);
-    }
-    return { holds, unavailable: false };
+  if (!Array.isArray(raw) || !raw.every((key) => typeof key === 'string')) {
+    return { status: 'unavailable' };
   }
-  // Nothing usable came back. If PELS has written holds before, this is a
-  // transient miss or a corrupt payload — refuse to persist for a while so the
-  // next mutation cannot full-replace the setting with an empty map and erase
-  // every other device's hold. On a fresh install there is nothing to protect.
-  const wroteBefore = deps.hasWrittenBefore?.() === true;
-  const absent = !threw && (raw === undefined || raw === null);
-  return { holds, unavailable: wroteBefore || !absent };
+  if (raw.length === 0) return { status: 'unavailable' };
+  return { status: 'resolved', keys: raw };
 };
 
 export const createExternalOffHoldPolicy = (
-  deps: ExternalOffHoldDeps = {},
+  deps: ExternalOffHoldDeps,
 ): ExternalOffHoldPolicy => {
-  const now = deps.nowMs ?? Date.now;
-  const { holds: holdsByDeviceId, unavailable: initiallyUnavailable } = loadPersistedHolds(deps);
-  const persistBlockedUntilMs = initiallyUnavailable
-    ? now() + EXTERNAL_OFF_HOLD_LOAD_GRACE_MS
-    : 0;
-  // The persisted state is unknown — NOT empty. Reads fail closed and writes are
-  // withheld until a retry resolves it or the grace window expires.
-  let stateUnavailable = initiallyUnavailable;
-  let nextReloadAtMs = now() + EXTERNAL_OFF_HOLD_RELOAD_RETRY_MS;
-  // A mutation the grace window or a throwing `save` kept out of the store.
-  let unpersistedMutation = false;
-  // True from grace expiry until a read or write reconciles the persisted blob.
-  // Expiry makes the in-memory map authoritative WITHOUT the blob ever having
-  // been read, so a release that lands on nothing in the map may still be
-  // recorded in the blob — only a reconciling read-merge or full-replace write
-  // settles the difference, and until one does, `clearHold` must keep
-  // tombstoning (see there). Deliberately not a wipe licence: the abandoned
-  // blob is left in place so a restart can still recover the holds nobody
-  // touched.
-  let blobAbandonedUnreconciled = false;
-  // Devices released while the persisted state was unknown (unavailable, or
-  // abandoned unread after grace expiry), so the deletion could not land on a
-  // map we did not have. Replayed against a recovered read — and, for a device
-  // the blob could actually hold, carried as a pending write so the release
-  // still lands durably when the read never recovers (see `clearHold`). Spent
-  // only by the reconcile itself: a successful read-merge or a successful save.
-  const releasedWhileUnavailable = new Set<string>();
+  const { store } = deps;
 
-  const readOptIn = (): ExternalOffHoldOptInRead => (
-    deps.readOptIn?.() ?? { status: 'resolved', optIn: {} }
-  );
+  /**
+   * The store must be migrated before it can be read, so every entry point
+   * asserts it rather than trusting a caller to have sequenced it. This is not
+   * belt-and-braces: `migrateExternalOffHoldsToPerKey` returns silently when the
+   * marker, the key list, the blob read, or a copy write fails, and a policy
+   * built after such a deferral reads only per-device keys — so an upgrading
+   * owner's still-in-the-blob holds would answer "not held" for the rest of the
+   * boot, and the next meter-driven plan would resume devices they left off.
+   * Asserting it here means the SDK recovering mid-boot heals the migration on
+   * the next read instead of on the next restart. It costs one `get` of an
+   * already-set marker once migrated, which is the steady state forever after.
+   */
+  const ensureMigrated = (): void => {
+    migrateExternalOffHoldsToPerKey(store);
+  };
 
   const isEnabledForDevice = (deviceId: string): boolean => {
-    const read = readOptIn();
+    const read = deps.readOptIn();
     return read.status === 'resolved' && read.optIn[deviceId] === true;
   };
 
   /**
-   * Whether a persisted blob we could not read might hold this device. This is
-   * the fail-closed guess `isHeld` answers while the state is unavailable, and
-   * the gate for treating a tombstoned clear as a pending write: an unresolved
-   * opt-in read cannot rule any device out, so every device stays in.
+   * Whether a key list we could not read might carry this device. This is the
+   * fail-closed guess `isHeld` answers while the list is unreadable: an
+   * unresolved opt-in read cannot rule any device out, so every device stays in.
    */
-  const mayBeHeldInUnreadBlob = (deviceId: string): boolean => {
-    const read = readOptIn();
+  const mayBeHeldWhenUnreadable = (deviceId: string): boolean => {
+    const read = deps.readOptIn();
     return read.status !== 'resolved' || read.optIn[deviceId] === true;
   };
 
-  const flushPendingWrite = (): void => {
-    if (!unpersistedMutation || !deps.save) return;
-    if (stateUnavailable && now() < persistBlockedUntilMs) return;
-    try {
-      deps.save(serializeHolds(holdsByDeviceId));
-      unpersistedMutation = false;
-      // The blob now equals the map: every release recorded against a blob we
-      // could not read has been applied durably, so no reconciling write is
-      // owed any more and a restart has no stale blob to resurrect holds from.
-      blobAbandonedUnreconciled = false;
-      // While the state is still unavailable the tombstones stay, though: they
-      // are what keeps `isHeld` from re-guessing "held" for a device the user
-      // just released, until a recovered read or grace expiry settles the state.
-      if (!stateUnavailable) releasedWhileUnavailable.clear();
-    } catch {
-      // Stay pending and retry on the next access. A permanent failure degrades
-      // to in-memory-only, which beats crashing the observation path.
-    }
+  const heldDeviceIds = (): string[] => {
+    ensureMigrated();
+    const keyList = readKeyList(store);
+    if (keyList.status !== 'resolved') return [];
+    return keyList.keys
+      .filter((key) => key.startsWith(PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX))
+      // Sliced, never trimmed: the id has to round-trip back through
+      // `perDeviceKey`, because `dropDeOptedHolds` feeds these straight to
+      // `clearHold`. A normalised id would rebuild a key that is not the one on
+      // disk, and the unset would silently miss.
+      .map((key) => key.slice(PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX.length))
+      // Drops the bare prefix with nothing after it.
+      .filter((deviceId) => deviceId.length > 0);
   };
 
-  // Persist only when the map actually changed; a pending write survives the
-  // grace window and a failing `save`, because repeating the same `startHold` is
-  // a no-op and would otherwise lose the hold at the next restart.
-  const applyMutation = (mutate: () => boolean): boolean => {
-    if (!mutate()) return false;
-    unpersistedMutation = true;
-    flushPendingWrite();
-    return true;
+  const clearHold = (deviceId: string): boolean => {
+    ensureMigrated();
+    const keyList = readKeyList(store);
+    const wasHeld = keyList.status === 'resolved'
+      && keyList.keys.includes(perDeviceKey(deviceId));
+    try {
+      // Unconditional and idempotent: unsetting a key that is not there costs
+      // nothing and cannot touch another device, so there is no read to get
+      // right first and no pending-write state to carry. A throw leaves the key
+      // in place; the observed-ON sweep calls this every plan cycle for every
+      // device it sees on, so the retry is the ordinary path rather than
+      // machinery this module has to own.
+      store.unset(perDeviceKey(deviceId));
+    } catch {
+      return false;
+    }
+    // `false` under an unreadable key list means one lost debug line, not a lost
+    // release — the unset above already happened, whatever the list said.
+    return wasHeld;
   };
 
   const dropDeOptedHolds = (): string[] => {
+    const held = heldDeviceIds();
     // Nothing held ⇒ nothing to reconcile, and no reason to spend a settings
     // read. This is the case for everyone who has not opted a device in.
-    if (holdsByDeviceId.size === 0) return [];
-    const read = readOptIn();
+    if (held.length === 0) return [];
+    const read = deps.readOptIn();
     // An unavailable opt-in read is not "nobody opted in". Releasing on it would
-    // clear — and persist — every restored hold, permanently resuming devices the
-    // user turned off. Skip; the next call reconciles once the read resolves.
+    // clear every stored hold, permanently resuming devices the user turned off.
+    // Skip; the next call reconciles once the read resolves.
     if (read.status !== 'resolved') return [];
-    return Array.from(holdsByDeviceId.keys())
+    return held
       .filter((deviceId) => read.optIn[deviceId] !== true)
-      .filter((deviceId) => applyMutation(() => holdsByDeviceId.delete(deviceId)));
+      .filter((deviceId) => clearHold(deviceId));
   };
 
-  /**
-   * Merge a recovered read under what happened while it was unavailable.
-   *
-   * Releases have to be replayed, not just holds. A clear that arrived while the
-   * map was empty was a no-op, so without a tombstone the recovered read would
-   * resurrect a hold the user had already ended — and if PELS legitimately
-   * limited the device in between, it is off again, so the observed-ON pull sweep
-   * will never clear it either. That strands exactly the device this feature is
-   * supposed to hand back.
-   */
-  const adoptReloadedHolds = (reloaded: Map<string, ExternalOffHoldEntry>): void => {
-    const changedMeanwhile = holdsByDeviceId.size > 0 || releasedWhileUnavailable.size > 0;
-    for (const [deviceId, entry] of reloaded) {
-      if (releasedWhileUnavailable.has(deviceId)) continue;
-      if (!holdsByDeviceId.has(deviceId)) holdsByDeviceId.set(deviceId, entry);
-    }
-    releasedWhileUnavailable.clear();
-    stateUnavailable = false;
-    // A read reconciled the blob. When this recovery arrives only after grace
-    // expiry, the union revives holds the bounded abandon had dropped — that is
-    // restart-equivalent (the blob would have been loaded then anyway), and
-    // every consumer pairs `isHeld` with "still observed off".
-    blobAbandonedUnreconciled = false;
-    // The union differs from what is stored, so it has to be written back.
-    if (changedMeanwhile) unpersistedMutation = true;
-    dropDeOptedHolds();
-  };
-
-  /**
-   * Re-attempt an unavailable read, then flush anything that was withheld. Driven
-   * from every read and write, so recovery needs no timer and no scheduler.
-   * Reload attempts continue past grace expiry for as long as a tombstoned
-   * release is outstanding: a successful read lets the reconcile be a surgical
-   * merge (keeping every hold the release did not touch) instead of the
-   * full-replace write, which remains the fallback when only `save` recovers.
-   */
-  const settleState = (): void => {
-    // A reconcile is owed when a pending write would land on a blob that has
-    // never been read since its content last mattered (still unavailable past
-    // grace, or abandoned at expiry). The flush below runs on EVERY access
-    // while the reload path is throttled, so without a read-before-save order
-    // a recovering service is a race the blind save usually wins — it would
-    // full-replace the blob with the never-read in-memory map and durably
-    // erase every hold the blob still recorded, defeating the restart
-    // recovery the abandon deliberately leaves possible. Reading un-throttled
-    // right before that flush turns a healed read into the surgical merge;
-    // the full replace remains only for a store whose read never heals.
-    const reconcileOwed = unpersistedMutation
-      && (blobAbandonedUnreconciled || (stateUnavailable && now() >= persistBlockedUntilMs));
-    const reloadWorthwhile = stateUnavailable || releasedWhileUnavailable.size > 0;
-    if (reconcileOwed || (reloadWorthwhile && now() >= nextReloadAtMs)) {
-      nextReloadAtMs = now() + EXTERNAL_OFF_HOLD_RELOAD_RETRY_MS;
-      const reloaded = loadPersistedHolds(deps);
-      if (!reloaded.unavailable) adoptReloadedHolds(reloaded.holds);
-      // Grace expired with the read still broken: stop failing closed and
-      // accept the in-memory map as authoritative, matching the bounded
-      // abandon-grace contract in `notes/persisted-settings-state.md`. The
-      // blob itself is now abandoned unread — deliberately NOT wiped, so a
-      // restart can still recover the holds nobody touched — and anything
-      // recorded against it (a tombstoned release and its pending write)
-      // stays outstanding until a reconciling read or write settles it; the
-      // trailing flush below makes the first attempt.
-      else if (stateUnavailable && now() >= persistBlockedUntilMs) {
-        stateUnavailable = false;
-        blobAbandonedUnreconciled = true;
-      }
-    }
-    flushPendingWrite();
-  };
-
-  const releaseDeOptedHolds = (): string[] => {
-    settleState();
-    return dropDeOptedHolds();
-  };
-
-  // An opt-in cleared while the app was down would otherwise leave the reloaded
+  // An opt-in cleared while the app was down would otherwise leave the stored
   // hold honoured forever — there is no other path that reconciles the two.
-  releaseDeOptedHolds();
+  dropDeOptedHolds();
 
   return {
     isEnabledForDevice,
     isHeld: (deviceId) => {
-      settleState();
-      if (holdsByDeviceId.has(deviceId)) return true;
-      if (!stateUnavailable) return false;
-      // An explicit release beats the guess below: the device was observed ON,
-      // which is direct evidence no hold applies, however unreadable the store.
-      if (releasedWhileUnavailable.has(deviceId)) return false;
-      // Persisted state unknown: an opted-in device may have a hold we simply
-      // could not read, and answering "not held" is exactly the resume this
-      // feature exists to prevent. Bounded by the grace window, and harmless for
-      // a running device — every consumer pairs this with "still observed off".
-      // When the OPT-IN map is unreadable too, we cannot even tell which devices
-      // those are, so every device fails closed (see `mayBeHeldInUnreadBlob`).
-      // That window means the settings service is wholly unavailable — normally
-      // cleared by the first retry seconds later, and hard-bounded by the grace
-      // window.
-      return mayBeHeldInUnreadBlob(deviceId);
+      ensureMigrated();
+      const keyList = readKeyList(store);
+      if (keyList.status === 'resolved') return keyList.keys.includes(perDeviceKey(deviceId));
+      // The key list could not be read: an opted-in device may have a hold we
+      // simply could not see, and answering "not held" is exactly the resume
+      // this feature exists to prevent. Harmless for a running device — every
+      // consumer pairs this with "still observed off". When the OPT-IN map is
+      // unreadable too (a total settings outage — both sit behind the same
+      // settings service), we cannot even tell which devices those are, so every
+      // device fails closed.
+      return mayBeHeldWhenUnreadable(deviceId);
     },
     startHold: (deviceId) => {
-      settleState();
-      if (holdsByDeviceId.has(deviceId)) return false;
-      return applyMutation(() => {
-        holdsByDeviceId.set(deviceId, { sinceMs: now() });
-        return true;
-      });
-    },
-    clearHold: (deviceId) => {
-      settleState();
-      const blobMayStillRecordHolds = stateUnavailable || blobAbandonedUnreconciled;
-      if (blobMayStillRecordHolds && !releasedWhileUnavailable.has(deviceId)) {
-        releasedWhileUnavailable.add(deviceId);
-        // The map misses what the blob may record, so the delete below can land
-        // on nothing — and a clear that retains no pending write is dropped on
-        // the floor when the read never recovers: a restart then reloads the
-        // stale hold and strands a device the user already turned back on. A
-        // tombstoned clear of a device the blob could actually hold is
-        // therefore itself an unpersisted mutation, pending until a
-        // reconciling read-merge or save lands; the flush retries a throwing
-        // save on every access, like any other withheld mutation. The opt-in
-        // gate keeps the pull sweep — which clears every observed-ON device,
-        // opted in or not — from pending that write for devices a RESOLVED
-        // opt-in read rules out. That protection is conditional: while the
-        // opt-in read is unavailable too (a total settings outage — both keys
-        // sit behind the same settings service), no device can be ruled out
-        // and every tombstone pends the write; containment then falls to the
-        // read-before-save reconcile in `settleState` — a merge when the read
-        // heals, the full replace only when it never does.
-        if (mayBeHeldInUnreadBlob(deviceId)) unpersistedMutation = true;
+      ensureMigrated();
+      const keyList = readKeyList(store);
+      if (keyList.status === 'resolved' && keyList.keys.includes(perDeviceKey(deviceId))) {
+        return false;
       }
-      const removed = applyMutation(() => holdsByDeviceId.delete(deviceId));
-      // A delete that landed on nothing performed no mutation, so
-      // `applyMutation` did not flush — and the `settleState` at the top of
-      // this call ran before the tombstone above existed. Settle again so the
-      // reconcile this very call created (`reconcileOwed`: un-throttled
-      // read-before-save, then flush) runs NOW rather than on the next
-      // access: under `power_source = flow` the next access can be far away,
-      // and a restart inside that gap would lose a release a healthy write
-      // path could have landed immediately. During the grace window this is
-      // a designed no-op — the flush stays blocked and the blob protected.
-      if (!removed && unpersistedMutation) settleState();
-      return removed;
+      // Written on a resolved absence AND on an unreadable list. Under an
+      // unreadable list the fail-safe direction is to record: a hold that
+      // should not exist is dropped by the next observed-ON sweep, whereas a
+      // hold that should exist and is missing resumes a device against the
+      // owner's wish. Re-writing an existing hold is a no-op on the stored
+      // fact, because the value carries nothing.
+      //
+      // This is the one write in the module that cannot be retried later. A
+      // hold starts on a ON->OFF EDGE (`shouldStartHold`), and an edge happens
+      // once — nothing re-derives it, so a dropped write loses the hold for
+      // good and the next eligible plan turns the device back on. `clearHold`
+      // has no such problem: the observed-ON sweep repeats it every plan cycle.
+      // So this write, and only this write, retries in place.
+      return writeWithRetry(store, perDeviceKey(deviceId));
     },
+    clearHold,
     heldDeviceIds: () => {
-      settleState();
       // Reconcile opt-outs here too, not only on the settings-change edge. That
       // edge's read can fail, and nothing else would retry it — the device would
       // stay held until the user changed a setting again or turned it on by hand.
       // This runs once per plan cycle (the pull-path release sweep) and costs
-      // nothing at all while no device is held.
+      // one key-list read while no device is held.
       dropDeOptedHolds();
-      return Array.from(holdsByDeviceId.keys());
+      return heldDeviceIds();
     },
-    releaseDeOptedHolds,
+    releaseDeOptedHolds: dropDeOptedHolds,
   };
+};
+
+/**
+ * One-shot migration of the legacy `external_off_holds` blob into per-device
+ * keys. Mirrors `migrateBlobToPerKeyIfNeeded` in
+ * `lib/objectives/deferredObjectives/objectiveStore.ts`; the decision order is
+ * load-bearing for data safety:
+ *
+ *  1. Marker truthy → return (already migrated).
+ *  2. `getKeys()` unusable or empty → return WITHOUT the marker. PELS always has
+ *     settings keys, so that is the transient-empty-store signal; retry next
+ *     boot rather than record a false "migrated" against an unreadable store.
+ *  3. Blob key ABSENT → nothing to migrate: a fresh install, or the blob was
+ *     consumed by a completed migration whose marker-set flaked. Set the marker
+ *     and return — there is no source to copy or resurrect from, so a device the
+ *     user released after migrating can never reappear.
+ *  4. Blob present but its value does not read back as the V1 shape → a flaky or
+ *     malformed read. Return WITHOUT consuming or marking; retry next boot,
+ *     rather than erase the only legacy copy before any per-key is written.
+ *  5. ABSENT-ONLY copy each held device whose per-device key does not yet exist
+ *     (so a partial prior copy resumes without clobbering), then UNSET the blob
+ *     and its now-dead written-before marker, then set the migrated marker.
+ */
+export const migrateExternalOffHoldsToPerKey = (
+  store: ExternalOffHoldSettingsStore,
+): void => {
+  let marker: unknown;
+  try {
+    marker = store.get(EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED);
+  } catch {
+    return;
+  }
+  if (marker === true) return;
+
+  const keyList = readKeyList(store);
+  if (keyList.status !== 'resolved') return;
+
+  if (!keyList.keys.includes(EXTERNAL_OFF_HOLDS)) {
+    try {
+      store.set(EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED, true);
+    } catch {
+      // Retry next boot. Step 3 is reached again and stays correct: the blob is
+      // still absent, so nothing is resurrected.
+    }
+    return;
+  }
+
+  let rawBlob: unknown;
+  try {
+    rawBlob = store.get(EXTERNAL_OFF_HOLDS);
+  } catch {
+    return;
+  }
+  const heldDeviceIds = readLegacyBlobDeviceIds(rawBlob);
+  if (!heldDeviceIds) return;
+
+  const present = new Set(keyList.keys);
+  try {
+    for (const deviceId of heldDeviceIds) {
+      // Decided by key PRESENCE, so a resumed partial migration finishes the
+      // remaining devices without rewriting the ones already copied.
+      if (present.has(perDeviceKey(deviceId))) continue;
+      store.set(perDeviceKey(deviceId), HOLD_PLACEHOLDER);
+    }
+    store.unset(EXTERNAL_OFF_HOLDS);
+    // Dead with the blob: it existed only to tell a fresh install from a
+    // transient miss of a blob that no longer exists.
+    store.unset(EXTERNAL_OFF_HOLDS_INITIALIZED);
+    store.set(EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED, true);
+  } catch {
+    // A throw part-way leaves the blob in place and the marker unset, so the
+    // next boot re-runs and the absent-only copy finishes what is left.
+  }
+};
+
+/**
+ * The device ids the legacy blob recorded a hold for, or `null` when the value
+ * is not a structurally valid V1. A present key whose value transiently reads
+ * back `undefined` or malformed is the same SDK flake the per-key writes refuse
+ * on — consuming on that would erase the only legacy copy. A valid blob with
+ * zero entries is a real answer (the user cleared their holds pre-upgrade) and
+ * migrates fine.
+ *
+ * Only the ids are taken: the blob's per-entry `sinceMs` had no reader then and
+ * has no destination now. It is still REQUIRED to be a finite positive number
+ * for the entry to count, because that is exactly what the v1 loader demanded —
+ * a migration has to reproduce what the old code would have loaded, no more. A
+ * per-entry failure skips that entry and the rest still migrate, matching the
+ * v1 loader again; refusing the whole blob instead would stall the migration
+ * forever and re-run it on every boot.
+ */
+const readLegacyBlobDeviceIds = (raw: unknown): string[] | null => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const candidate = raw as { version?: unknown; entriesByDeviceId?: unknown };
+  if (candidate.version !== 1) return null;
+  const map = candidate.entriesByDeviceId;
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return null;
+  const heldSinceIsValid = (entry: unknown): boolean => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    const { sinceMs } = entry as { sinceMs?: unknown };
+    return typeof sinceMs === 'number' && Number.isFinite(sinceMs) && sinceMs > 0;
+  };
+  return Object.entries(map)
+    .filter(([deviceId, entry]) => deviceId.length > 0 && heldSinceIsValid(entry))
+    .map(([deviceId]) => deviceId);
 };

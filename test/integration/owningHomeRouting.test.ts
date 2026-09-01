@@ -49,8 +49,10 @@ const buildCtx = (): AppContext => {
     })),
   });
   ctx.externalOffHold = createExternalOffHoldPolicy({
-    get: (key) => settings.get(key),
+    get: (key) => settings.get(key) ?? null,
     set: (key, value) => { settings.set(key, value); },
+    unset: (key) => { settings.delete(key); },
+    getKeys: () => Array.from(settings.keys()),
   });
   return ctx;
 };

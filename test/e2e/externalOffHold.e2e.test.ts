@@ -20,6 +20,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   EXTERNAL_OFF_HOLDS,
+  PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
   OPERATING_MODE_SETTING,
   RESPECT_EXTERNAL_OFF_DEVICES,
 } from '../../lib/utils/settingsKeys';
@@ -64,6 +65,12 @@ const seedSettings = (params: { optedIn: boolean; held: boolean; controllable?: 
   mockHomeyInstance.settings.set('managed_devices', { [DEVICE]: true });
   if (params.optedIn) mockHomeyInstance.settings.set(RESPECT_EXTERNAL_OFF_DEVICES, { [DEVICE]: true });
   if (params.held) {
+    // Deliberately seeded in the LEGACY blob shape rather than as a per-device
+    // key. Holds now live one-key-per-device, and the blob→per-key migration
+    // runs at boot — so seeding the old shape makes every case below double as
+    // end-to-end migration coverage: an upgrading owner's hold has to survive
+    // the first boot on the new build, driven through the real SDK boundary
+    // rather than by calling the migration directly.
     mockHomeyInstance.settings.set(EXTERNAL_OFF_HOLDS, {
       version: 1,
       entriesByDeviceId: {
@@ -152,7 +159,10 @@ describe('Leave off until turned on again (SDK-boundary e2e)', () => {
     await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: true });
 
     expect(onoffPuts(putSpy)).toContain(true);
-    expect(mockHomeyInstance.settings.get(EXTERNAL_OFF_HOLDS)).toMatchObject({ entriesByDeviceId: {} });
+    // The hold key is gone, and the migration consumed the legacy blob on boot.
+    expect(mockHomeyInstance.settings.getKeys())
+      .not.toContain(`${PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX}${DEVICE}`);
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(EXTERNAL_OFF_HOLDS);
   });
 
   it('does not force a held device on when Power-limit control is turned off', async () => {
