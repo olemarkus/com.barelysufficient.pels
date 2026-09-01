@@ -3261,10 +3261,14 @@ non-blocking follow-ups.*
       `lib/plan/planTemperatureDevice`, which `no-device-to-peer-except-power` forbids, so that type
       guard has to be resolved before it can follow. `appSnapshotHelpers.ts` and
       `appNativeWiring.ts` each have their own entry below;
-      (d) home — `homeMembership.ts` (832 lines), `homeMainMeterAuthority.ts`,
-      `homeSampledMeterIdentity.ts`, `homeRuntime/homeModeOwnershipTransfer.ts`,
-      `homeRuntime/homeRuntimeRegistry.ts` → `lib/home/` (the meter-provenance pair may have to go
-      to `lib/power/` instead, since `no-home-to-peer` forbids reading the tracker);
+      (d) home — `homeSampledMeterIdentity.ts` is DONE, as `lib/power/sampledMeterIdentity.ts`:
+      the fact it holds is about the sample the TRACKER serves, and it imports nothing but the
+      freshness constant its expiry derives from. `homeMainMeterAuthority.ts` cannot follow it and
+      cannot go to `lib/home` either — see the entry below. `homeMembership.ts` (16 of the lane's
+      declarations), `homeRuntime/homeModeOwnershipTransfer.ts` and
+      `homeRuntime/homeRuntimeRegistry.ts` still want `lib/home/`, which `no-home-to-peer` makes a
+      pure leaf, so their `lib/device`, `lib/observer` and `lib/app/appContext` inputs must arrive
+      as injected values first;
       (e) composition root and leftovers — DONE. `appServiceWiring.ts`'s late-bound service handles
       are `PelsApp` fields reached through getter/setter pairs (the `AppNativeWiring` shape), its
       membership teardown is a `TeardownRegistry` key, and the prepared-reconcile fence is
@@ -3337,6 +3341,21 @@ non-blocking follow-ups.*
       callbacks. Done when `AppNativeWiring` takes `awaitSnapshotWarmup` and `rebuildPlanFromCache`
       as callbacks, the conflict probe is injected or moved, the component lives in `lib/device`,
       and its allowlist line is gone. Found 2026-09-01. [P2]
+
+- [ ] **`setup/homeMainMeterAuthority.ts` straddles two leaf modules, so neither will take it.**
+      Seven declarations — an edge-trigger log latch per warning, the last-resolved meter and
+      source, and a fence-episode flag. It needs `findMainMeterCollision` and `SubHomeConfig` (a
+      VALUE import from `lib/home`) and `ConfiguredPowerSourceRead` (`lib/power`). `lib/home` is a
+      declared pure leaf, so it may not name the power type; `no-power-to-peer-except-objectives`
+      bars `lib/power` from naming the home ones. Type-only imports are invisible to the cruiser
+      (`tsPreCompilationDeps` is unset), so either direction would pass `arch:check` — do NOT take
+      that route: it exploits the blind spot the `arch:grep` guard exists to close for `lib/plan`.
+      The honest options are to reduce the power-source read at the seam, so the authority takes
+      `'homey_energy' | 'flow' | 'unavailable'` and the CALLER owns the suspect-read logging (its
+      `powerSourceUnavailableLogged` edge latch is what makes that non-trivial today); or to move
+      the meter-collision rule to wherever the authority lands. Done when the file has no line in
+      `scripts/setup-stateless-allowlist.txt` and `arch:check` passes without a type-only edge
+      standing in for a real one. Found 2026-09-01. [P2]
 
 - [ ] **`loadFlowReportedCapabilities` is the one unclean read on `DevicePersistencePort`.**
       `lib/device/devicePersistencePort.ts` declares six calls; `loadLearnedPeaks` and

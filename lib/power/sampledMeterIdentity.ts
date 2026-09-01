@@ -2,6 +2,11 @@
  * The identity of the meter the power tracker's current whole-home sample came
  * from, and the single rule for how long that identity stays usable.
  *
+ * Lives in `lib/power` because the question is about the sample the TRACKER
+ * currently serves and the lifetime of that sample — `MainMeterAuthority` is
+ * its only caller, but the fact it holds is power's. It imports nothing but the
+ * freshness constant its expiry is derived from.
+ *
  * Split out of `MainMeterAuthority` because this is the one seam in that module
  * that owns state nothing else touches: it reads no settings, holds none of the
  * authority's edge-trigger log latches, and knows nothing about meter areas or
@@ -10,7 +15,7 @@
  * stays with the authority, next to the latches and the two side-effecting
  * reads it shares.
  */
-import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../packages/shared-domain/src/powerFreshness';
+import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../packages/shared-domain/src/powerFreshness';
 
 /**
  * What this process can say about the provenance of the watts the power tracker
