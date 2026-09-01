@@ -107,7 +107,8 @@ export type PlanServiceDeps = {
   // The current hour's RESOLVED price level from ONE combined-series build;
   // see `PriceService.getCurrentHourPriceLevel`.
   getCurrentHourPriceLevel: () => PriceLevel;
-  getLastPowerUpdate: () => number | null;
+  /** The tracker's sample stamp — gated consumers only, so it always exists. */
+  getLastPowerUpdate: () => number;
   schedulePostActuationRefresh?: () => void;
   loggers?: Loggers;
   overviewDebugStructured?: StructuredDebugEmitter;

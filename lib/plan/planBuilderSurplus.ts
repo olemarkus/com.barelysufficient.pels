@@ -79,9 +79,10 @@ export function runSurplusPass(params: {
   resolveSurplusEligibility({
     devices: context.devices,
     state,
-    // Producer-resolved: `null` when no trustworthy total exists this cycle, so
-    // the allocator has no untrusted number to guard against.
-    signedNetKw: context.measuredDrawKw,
+    // Producer-resolved pair: the signed net is always a number (the carried
+    // reading), and the allocator gates every raise on the measured flag.
+    signedNetKw: context.drawKw,
+    powerIsMeasured: context.powerIsMeasured,
     inferredSurplusKw: params.getInferredSurplusKw(),
     excludeIds,
     getConfig: params.getConfig,

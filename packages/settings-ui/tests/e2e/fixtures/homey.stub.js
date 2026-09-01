@@ -190,6 +190,7 @@
     return {
       meta: {
         totalKw: 1.5,
+        lastPowerUpdateMs: Date.now() - 5 * 1000,
         softLimitKw: 2.3,
         capacitySoftLimitKw: 2.3,
         hardCapLimitKw: 8.0,
@@ -1953,6 +1954,7 @@
   const buildScenarioPressurePlan = () => ({
     meta: {
       totalKw: 8.6,
+      lastPowerUpdateMs: Date.now() - 5 * 1000,
       softLimitKw: 8.0,
       capacitySoftLimitKw: 8.0,
       budgetPaceKw: null,
@@ -2044,6 +2046,7 @@
     return {
       meta: {
         totalKw: 4.7,
+        lastPowerUpdateMs: Date.now() - 5 * 1000,
         softLimitKw: 8.0,
         capacitySoftLimitKw: 8.0,
         budgetPaceKw: null,
@@ -2077,6 +2080,7 @@
       plan: {
         meta: {
           totalKw: 12.5,
+          lastPowerUpdateMs: Date.now() - 5 * 1000,
           softLimitKw: 12,
           capacitySoftLimitKw: 14,
           budgetPaceKw: 5,

@@ -23,7 +23,6 @@
  * Capacity-model internals: `docs/technical.md`.
  */
 import CapacityGuard from '../power/capacityGuard';
-import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import type { PowerTrackerState } from '../power/tracker';
 import { PriceLevel } from '../price/priceLevels';
 import { resolvePowerCycleReading, type PowerCycleDisplay } from '../power/powerCycleReading';
@@ -428,7 +427,6 @@ export class PlanBuilder {
     // `lib/power/meterSilence.ts`, never in a planner-held state machine.
     const power = resolvePowerCycleReading({
       powerTracker: this.powerTracker,
-      totalKw: resolveLastTotalPowerKw(this.powerTracker),
       nowMs: Date.now(),
     });
     const context = trackPlanStage('plan_context_ms', () => buildPlanContext({

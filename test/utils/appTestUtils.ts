@@ -60,14 +60,17 @@ export function createApp(options: CreateAppOptions = {}): MyApp {
     const originalInitCapacityGuard = app['initCapacityGuard'].bind(app);
     app['initCapacityGuard'] = () => {
       originalInitCapacityGuard();
-      // The VALUE latch only, deliberately: `lastTimestamp` is left alone, so
-      // seeding a measurement does not also hand every test a FRESH sample and
-      // silently rewrite its headroom. Production stamps both together
-      // (`recordPowerSampleForApp`), so this leaves the harness in a state real
-      // ingest cannot produce — total present, never sampled, reading as
-      // `stale_hold`. Tracked in TODO.md; see the tests that assert stale-hold
-      // via an absent timestamp rather than an old one.
-      app.powerTracker = { ...app.powerTracker, lastPowerW: SEEDED_TOTAL_POWER_KW * 1000 };
+      // BOTH halves of the latch, exactly as production ingest stamps them
+      // (`recordPowerSampleForApp`): the reading resolver requires a stamped
+      // sample behind every build, so the old value-only seed — a state real
+      // ingest cannot produce — now fails loud instead of reading as held.
+      // With a 0 kW seed the fresh sample steers nothing: headroom is full,
+      // and suites that care about the total or its age stamp their own.
+      app.powerTracker = {
+        ...app.powerTracker,
+        lastPowerW: SEEDED_TOTAL_POWER_KW * 1000,
+        lastTimestamp: Date.now(),
+      };
     };
   }
   appInstances.push(app);

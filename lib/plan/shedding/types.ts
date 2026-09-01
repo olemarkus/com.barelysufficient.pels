@@ -125,8 +125,12 @@ export type ShedCandidateParams = {
    */
   deficitKw: number;
   limitSource: PlanContext['softLimitSource'];
-  total: number | null;
-  capacitySoftLimit: number;
+  /**
+   * Producer-resolved: MEASURED above the capacity soft limit. Resolved once
+   * in `buildSheddingPlan` from the context's predicate, so no candidate walk
+   * re-derives breach from a total (an unmeasured cycle is not breached).
+   */
+  capacityBreached: boolean;
   state: PlanEngineState;
   deps: SheddingDeps;
 };

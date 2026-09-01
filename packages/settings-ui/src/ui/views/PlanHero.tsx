@@ -772,21 +772,11 @@ export const PlanHero = ({
     ? resolveDisplayPlanDevices(plan, plan.devices ?? [], renderedAtMs, nowMs) as PlanDeviceSnapshot[]
     : [];
 
-  // The one question the hero has to ask before it can render numbers: is there
-  // a meter reading this cycle? The capacity guard holds `null` until its
-  // meter's first sample, and again after an in-place meter swap
-  // (`SuffixedTrackerPersistence.resetFreshness`). `uncontrolledKw` is the whole-home total minus the
-  // managed side, so it is absent exactly when the total is — the pair is one
-  // fact, checked once, and both checks are needed only because the compiler
-  // cannot see that they move together.
-  //
-  // Answering it HERE is what lets `formatHeroHeadline` be total and
-  // `PlanHeroMetaInput` be strict. shared-domain sits inward of this decision
-  // and carries no "maybe there is no power" case.
-  const heroMeta: PlanHeroMetaInput | null
-    = meta !== undefined && meta.totalKw !== null && meta.uncontrolledKw !== null
-      ? { ...meta, totalKw: meta.totalKw, uncontrolledKw: meta.uncontrolledKw }
-      : null;
+  // A snapshot's meta always carries its reading now (a plan exists only
+  // behind the measurement gate), so the hero's only pre-render question is
+  // whether a plan has arrived at all. shared-domain sits inward of this and
+  // carries no "maybe there is no power" case.
+  const heroMeta: PlanHeroMetaInput | null = meta ?? null;
   if (heroMeta === null || meta === undefined) {
     return (
       <div class="plan-hero pels-hero" aria-live="polite" aria-busy="true">

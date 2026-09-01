@@ -246,6 +246,7 @@ const buildPressurePlanSnapshot = (): SettingsUiPlanSnapshot => {
     uncontrolledKw: 2.3,
     hourControlledKWh: 1.6,
     hourUncontrolledKWh: 0.6,
+    lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0),
   };
   const devices: SettingsUiPlanDeviceSnapshot[] = [
     {
@@ -318,6 +319,7 @@ const buildDenseDevicePlan = (): SettingsUiPlanSnapshot => {
     uncontrolledKw: 2.2,
     hourControlledKWh: 0.6,
     hourUncontrolledKWh: 0.6,
+    lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0),
   };
   const devices: SettingsUiPlanDeviceSnapshot[] = [];
   for (let i = 0; i < 12; i += 1) {

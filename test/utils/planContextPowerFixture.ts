@@ -11,7 +11,7 @@ const FRESH_SAMPLE_AGE_MS = 1_000;
 export type PlanContextPowerMembers = Pick<
   PlanContext,
   'headroomForLimitKw' | 'powerIsMeasured' | 'powerMeasuredAtOrBelowKw'
-  | 'powerMeasuredAboveKw' | 'measuredDrawKw'
+  | 'powerMeasuredAboveKw' | 'drawKw'
 >;
 
 /**
@@ -29,27 +29,25 @@ export type PlanContextPowerMembers = Pick<
  * against a stale copy of the old behaviour.
  */
 export const planContextPowerReading = (
-  totalKw: number | null,
-  options: { measured?: boolean; failClosed?: boolean } = {},
+  totalKw: number,
+  options: { failClosed?: boolean } = {},
 ): PowerCycleReading => {
-  const measured = options.measured ?? (typeof totalKw === 'number' && Number.isFinite(totalKw));
   // Age drives the producer's answer, so the fixture's intent is expressed as
   // production state rather than a label it would have to keep in sync.
   // `failClosed` is the escalation's one silent-window pass (age past the shed
-  // timeout, synthesized -1); plain unmeasured is the gate-bypass hold (no
-  // total at all, synthesized 0) — the 60 s stale_hold synthesis is gone, so a
-  // minutes-old reading is simply measured now.
+  // timeout, synthesized -1). A reading always exists — the gate guarantees it
+  // in production and the fixture states it as tracker state, exactly as
+  // ingest would have latched it.
   const ageMs = options.failClosed === true ? POWER_SAMPLE_STALE_SHED_TIMEOUT_MS : FRESH_SAMPLE_AGE_MS;
   return resolvePowerCycleReading({
-    powerTracker: { lastTimestamp: FIXTURE_NOW_MS - ageMs },
-    totalKw: measured || options.failClosed === true ? totalKw : null,
+    powerTracker: { lastPowerW: totalKw * 1000, lastTimestamp: FIXTURE_NOW_MS - ageMs },
     nowMs: FIXTURE_NOW_MS,
   });
 };
 
 export const planContextPower = (
-  totalKw: number | null,
-  options: { measured?: boolean; failClosed?: boolean } = {},
+  totalKw: number,
+  options: { failClosed?: boolean } = {},
 ): PlanContextPowerMembers => {
   const reading = planContextPowerReading(totalKw, options);
   return {
@@ -57,6 +55,6 @@ export const planContextPower = (
     powerIsMeasured: reading.isMeasured,
     powerMeasuredAtOrBelowKw: reading.measuredAtOrBelowKw,
     powerMeasuredAboveKw: reading.measuredAboveKw,
-    measuredDrawKw: reading.display.measuredTotalKw,
+    drawKw: reading.display.totalKw,
   };
 };

@@ -32,7 +32,7 @@ const recordingFlow = (fired: TriggerRecord[]): FlowPort => ({
 });
 
 const plan = (totalKw: number): DevicePlan => ({
-  meta: buildPlanMeta({ totalKw, softLimitKw: 6, headroomKw: 6 - totalKw, powerNowKw: totalKw}),
+  meta: buildPlanMeta({ totalKw, softLimitKw: 6, headroomKw: 6 - totalKw }),
   devices: [],
 });
 
@@ -61,7 +61,7 @@ type Harness = {
 
 const makeWriter = (initialDryRun: boolean | undefined, mainHome: boolean): Harness => {
   let dryRun = initialDryRun;
-  let lastPowerUpdate: number | null = null;
+  let lastPowerUpdate = 1_745_000_000_000;
   let priceLevel = PriceLevel.UNKNOWN;
   const writeSpy = vi.fn();
   const fired: TriggerRecord[] = [];
@@ -80,7 +80,7 @@ const makeWriter = (initialDryRun: boolean | undefined, mainHome: boolean): Harn
     computeSpy,
     fired,
     setDryRun: (value) => { dryRun = value; },
-    setLastPowerUpdate: (value) => { lastPowerUpdate = value; },
+    setLastPowerUpdate: (value) => { lastPowerUpdate = value ?? lastPowerUpdate; },
     setPriceLevel: (value) => { priceLevel = value; },
   };
 };

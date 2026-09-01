@@ -201,8 +201,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       needed: 5, // ask for a large reduction so any eligible device is offered
       deficitKw: 5,
       limitSource: 'capacity',
-      total: context.measuredDrawKw,
-      capacitySoftLimit: context.capacitySoftLimit,
+      capacityBreached: context.powerMeasuredAboveKw(context.capacitySoftLimit),
       state: createPlanEngineState(),
       deps: {
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
@@ -225,6 +224,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       devices: [batteryInputDevice()],
       state,
       signedNetKw: -3, // 3 kW export available
+      powerIsMeasured: true,
       inferredSurplusKw: 0,
       // Even if a (nonsensical) surplus config were present, the temperature-boost
       // filter drops the battery before allocation.

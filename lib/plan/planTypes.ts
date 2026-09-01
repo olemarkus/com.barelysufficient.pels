@@ -662,7 +662,7 @@ export type DevicePlan = {
     // now refuses to build a plan in either state, so no plan can carry a null
     // total for any reason a home can actually be in — a raw untrusted total has
     // no business on a plan type in the first place.
-    totalKw: number | null;
+    totalKw: number;
     softLimitKw: number;
     capacitySoftLimitKw: number;
     // `null` = no daily budget configured. Always written (`?? null`).
@@ -677,7 +677,6 @@ export type DevicePlan = {
     // which bought a dead branch in every consumer that switched on it.
     softLimitSource: 'capacity' | 'daily';
     headroomKw: number;
-    powerNowKw: number | null;
     /**
      * Producer-resolved: did this cycle have a measurement. Downstream layers
      * that gate a positive (turn-on) action read THIS — the plan carries no
@@ -689,21 +688,18 @@ export type DevicePlan = {
     // Genuinely absent when there is no capacity guard: the threshold is the
     // guard's own, and `getCapacityGuard()` returns `undefined` before wiring.
     shortfallBudgetThresholdKw?: number;
-    shortfallBudgetHeadroomKw: number | null;
+    shortfallBudgetHeadroomKw: number;
     // From `capacitySettings.limitKw`, a plain required `number` passed straight
     // through — so neither `?` nor `| null` was ever right here.
     hardCapLimitKw: number;
-    hardCapHeadroomKw: number | null;
+    hardCapHeadroomKw: number;
     hourlyBudgetExhausted: boolean;
     usedKWh: number;
     budgetKWh: number;
     capacityLimitKw: number;
     minutesRemaining: number;
-    // `splitControlledUsageKw` states the asymmetry outright: the managed side
-    // always resolves; the whole-home total is a separate reading that can
-    // genuinely be missing, so only the background side is nullable.
     controlledKw: number;
-    uncontrolledKw: number | null;
+    uncontrolledKw: number;
     // Genuinely absent when the hour has no bucket data yet
     // (`resolveHourlyUsageSplit` returns `{}`).
     hourControlledKWh?: number;
@@ -714,7 +710,7 @@ export type DevicePlan = {
     // out of range (`extractDailyBudgetHourKWh`).
     dailyBudgetHourKWh?: number;
     // Genuinely absent before the power tracker's first timestamp.
-    lastPowerUpdateMs?: number;
+    lastPowerUpdateMs: number;
   };
   devices: DevicePlanDevice[];
 };

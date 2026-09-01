@@ -46,7 +46,30 @@ export function resolveLastTotalPowerKw(
  * `lastTimestamp` together, so this answers false again exactly when it should.
  */
 export function hasPowerMeasurement(
-  powerTracker: Pick<PowerTrackerState, 'lastPowerW'>,
+  powerTracker: Pick<PowerTrackerState, 'lastPowerW' | 'lastTimestamp'>,
 ): boolean {
-  return resolveLastTotalPowerKw(powerTracker) !== null;
+  // BOTH halves of the latch: ingest writes them together, so a persisted
+  // blob carrying one without the other is a half-latch no real sample
+  // produced — the gate stays shut on it, exactly matching the reading
+  // resolver's own invariant (`resolvePowerCycleReading` fails loud on a
+  // half-latch reaching a build).
+  return resolveLastTotalPowerKw(powerTracker) !== null
+    && isFiniteNumber(powerTracker.lastTimestamp);
+}
+
+/**
+ * The latched sample's stamp, for consumers that exist only behind the
+ * measurement gate (a plan build, a status write computed from one). The gate
+ * (`hasPowerMeasurement`) implies a latched sample, and ingest stamps
+ * `lastTimestamp` with `lastPowerW` on the same write — so absence here is a
+ * gate violation, and it fails loud instead of handing a nullable onward.
+ */
+export function requireLastSampleAtMs(
+  powerTracker: Pick<PowerTrackerState, 'lastPowerW' | 'lastTimestamp'>,
+): number {
+  const lastTimestamp = powerTracker.lastTimestamp;
+  if (!isFiniteNumber(lastTimestamp)) {
+    throw new Error('power sample stamp required — a gated consumer read an unsampled tracker');
+  }
+  return lastTimestamp;
 }

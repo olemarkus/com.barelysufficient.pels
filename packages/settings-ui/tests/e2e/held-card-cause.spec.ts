@@ -53,6 +53,7 @@ const applyProdHeldState = async (page: Page) => {
         // The daily budget binds, and the hard cap is nowhere near it — the
         // shape that made a card reading "Limited by the hard cap" a lie.
         totalKw: 0.82,
+        lastPowerUpdateMs: Date.now() - 5 * 1000,
         softLimitKw: 1.85,
         headroomKw: 1.03,
         softLimitSource: 'daily',

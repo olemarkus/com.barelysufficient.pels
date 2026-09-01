@@ -130,8 +130,8 @@ const buildMeasuredDevicePowerWById = (params: {
  * demonstrably drawing.
  *
  * So on a negative net with no production term, floor at the split's OWN
- * unbounded controlled sum (`splitControlledUsage` with a null total, which
- * skips the bounding step). The floor and the attribution are then the same
+ * unbounded controlled sum (`sumControlledUsage`, the split's own attribution
+ * before the bounding step). The floor and the attribution are then the same
  * quantity by construction — every watt of the floor is a watt the split
  * assigns to a controllable device, and background stays 0 because it is
  * genuinely unobservable without a production reading.
@@ -150,9 +150,9 @@ const resolveGrossConsumptionW = (params: {
   currentPowerW: number;
   generationW?: number;
   devices: TargetDeviceSnapshot[];
-  splitControlledUsage: SplitControlledUsage;
+  sumControlledUsage: SumControlledUsage;
 }): number => {
-  const { currentPowerW, generationW, devices, splitControlledUsage } = params;
+  const { currentPowerW, generationW, devices, sumControlledUsage } = params;
   const grossFromReadings = currentPowerW + Math.max(0, generationW ?? 0);
   // Gate the fallback on the RESOLVED value, not on whether a generation term
   // was supplied. A solar home now carries generation on every sample including
@@ -163,14 +163,21 @@ const resolveGrossConsumptionW = (params: {
   // discharging to grid after dark, a second inverter Homey cannot see).
   if (grossFromReadings > 0 || currentPowerW >= 0) return Math.max(0, grossFromReadings);
   if (devices.length === 0) return 0;
-  const { controlledKw } = splitControlledUsage({ devices, totalKw: null });
-  return controlledKw !== null ? Math.max(0, controlledKw * 1000) : 0;
+  return Math.max(0, sumControlledUsage(devices) * 1000);
 };
 
 export type SplitControlledUsage = (params: {
   devices: TargetDeviceSnapshot[];
-  totalKw: number | null;
-}) => { controlledKw: number | null; uncontrolledKw: number | null };
+  totalKw: number;
+}) => { controlledKw: number; uncontrolledKw: number };
+
+/**
+ * The UNBOUNDED controlled sum — the split's own attribution before the
+ * whole-home bounding step. Its one consumer is the export-floor fallback in
+ * `resolveGrossConsumptionW`; it used to be expressed as the split called
+ * with `totalKw: null`, a flag argument smuggled through a nullable.
+ */
+export type SumControlledUsage = (devices: TargetDeviceSnapshot[]) => number;
 
 export type SumBudgetExemptUsage = (devices: TargetDeviceSnapshot[]) => number | null;
 
@@ -199,6 +206,7 @@ export async function recordPowerSampleForApp(params: {
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
   splitControlledUsage: SplitControlledUsage;
+  sumControlledUsage: SumControlledUsage;
   sumBudgetExemptUsage: SumBudgetExemptUsage;
   updateObjectiveProfiles: UpdateObjectiveProfiles;
 }): Promise<void> {
@@ -213,6 +221,7 @@ export async function recordPowerSampleForApp(params: {
     schedulePlanRebuild,
     saveState,
     splitControlledUsage,
+    sumControlledUsage,
     sumBudgetExemptUsage,
     updateObjectiveProfiles,
   } = params;
@@ -229,7 +238,7 @@ export async function recordPowerSampleForApp(params: {
     currentPowerW,
     generationW,
     devices: snapshot,
-    splitControlledUsage,
+    sumControlledUsage,
   });
   const { controlledKw } = snapshot.length
     ? splitControlledUsage({

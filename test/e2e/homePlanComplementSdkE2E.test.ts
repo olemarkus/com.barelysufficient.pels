@@ -74,7 +74,12 @@ const configureCapacity = (limitKw: number) => {
 // a sub-home on a running app — then drive an overshoot poll.
 const bootAndOvershoot = async (configureHomes?: () => void) => {
   const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-  const app = createApp();
+  // Passive power: production boot never carries a sample before its first
+  // poll, and the default seeded reading lets boot rebuilds race the
+  // membership/zone-tree settle — the R7b effective-dry-run fence then eats
+  // the one shed attempt silently. The suite's own reportHomePower poll is
+  // the first ingest, exactly as a real boot sequences it.
+  const app = createApp({ withoutPowerMeasurement: true });
   await app.onInit();
   await vi.advanceTimersByTimeAsync(1000);
   configureHomes?.();

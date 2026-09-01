@@ -294,10 +294,11 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        // Stale-but-present timestamp (> 10 min) drives the fail-closed freshness
-        // state, which forces negative headroom and an actionable overshoot even
-        // though the current total is null.
-        getPowerTracker: () => ({ lastTimestamp: now - (11 * 60_000) }),
+        // Stale-but-present sample (> 10 min) drives the fail-closed pass,
+        // which forces negative headroom and an actionable overshoot even
+        // though the cycle is unmeasured — the carried watts must not be
+        // diffed into a confident attribution.
+        getPowerTracker: () => ({ lastTimestamp: now - (11 * 60_000), lastPowerW: 500 }),
         getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 2.0,
         getShedBehavior: () => ({ action: 'turn_off' }),

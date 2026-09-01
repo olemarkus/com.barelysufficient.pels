@@ -44,7 +44,8 @@ export async function buildSheddingPlan(
   const wasSheddingActive = state.sheddingActive;
   const guardResult = await updateGuardState({
     headroom: context.headroom,
-    measuredTotalKw: context.measuredDrawKw,
+    drawKw: context.drawKw,
+    powerIsMeasured: context.powerIsMeasured,
     overshootActionable: sheddingActionable,
     capacitySoftLimit: context.capacitySoftLimit,
     devices: context.devices,
@@ -127,8 +128,9 @@ function planShedding(
     // kW against it. See `ShedCandidateParams`.
     deficitKw: needed,
     limitSource: hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
-    total: context.measuredDrawKw,
-    capacitySoftLimit: context.capacitySoftLimit,
+    // Resolved once from the context's own predicate: an unmeasured cycle is
+    // not breached, and no candidate walk re-derives this from a total.
+    capacityBreached: context.powerMeasuredAboveKw(context.capacitySoftLimit),
     state,
     deps,
   };

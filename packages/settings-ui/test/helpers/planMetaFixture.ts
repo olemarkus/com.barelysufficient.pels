@@ -20,6 +20,7 @@ export const buildPlanMeta = (
   overrides: Partial<SettingsUiPlanMetaSnapshot> = {},
 ): SettingsUiPlanMetaSnapshot => ({
   totalKw: 4.2,
+  lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0),
   softLimitKw: 9.5,
   capacitySoftLimitKw: 9.5,
   budgetPaceKw: null,

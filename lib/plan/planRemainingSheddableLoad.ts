@@ -68,8 +68,8 @@ type RemainingSheddableSourceDevice = RemainingSheddableResidualFields & {
   budgetExempt?: boolean;
 };
 
-export function isCapacityBreached(totalKw: number | null, capacitySoftLimitKw: number): boolean {
-  return typeof totalKw === 'number' && Number.isFinite(totalKw) && totalKw > capacitySoftLimitKw;
+export function isCapacityBreached(totalKw: number, capacitySoftLimitKw: number): boolean {
+  return totalKw > capacitySoftLimitKw;
 }
 
 export function toInputRemainingSheddableDevice(device: PlanInputDevice): RemainingSheddableDevice {

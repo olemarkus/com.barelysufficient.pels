@@ -82,14 +82,4 @@ describe('sumControlledUsageKw', () => {
     });
   });
 
-  it('leaves the background residual unknown when the whole-home total is missing', () => {
-    // Only the managed side became certain; the house meter can still fail.
-    expect(splitControlledUsageKw({
-      totalKw: null,
-      devices: [{ expectedPowerKw: 1, controllable: true, currentDrawKw: 0.7 }],
-    })).toEqual({
-      controlledKw: 0.7,
-      uncontrolledKw: null,
-    });
-  });
 });

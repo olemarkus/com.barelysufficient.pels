@@ -208,7 +208,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     getSteppedSettleDevices: () => [],
       getCapacityDryRun: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => null,
+      getLastPowerUpdate: () => 1_745_000_000_000,
       snapshotWarmupGate: warmupGate,
     });
 
@@ -259,7 +259,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     getSteppedSettleDevices: () => [],
       getCapacityDryRun: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => null,
+      getLastPowerUpdate: () => 1_745_000_000_000,
       snapshotWarmupGate: warmupGate,
     });
 
@@ -301,7 +301,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     getSteppedSettleDevices: () => [],
       getCapacityDryRun: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => null,
+      getLastPowerUpdate: () => 1_745_000_000_000,
       snapshotWarmupGate: warmupGate,
     });
 

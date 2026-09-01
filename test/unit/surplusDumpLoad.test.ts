@@ -216,7 +216,7 @@ const tempDevice = (id: string, priority: number) => buildPlanInputDevice({
 const allocatorPass = (params: {
   state: PlanEngineState;
   devices: ReturnType<typeof buildPlanInputDevice>[];
-  signedNetKw: number | null;
+  signedNetKw: number;
   nowTs: number;
   powerKnown?: boolean;
   priorities?: Record<string, number>;
@@ -230,7 +230,8 @@ const allocatorPass = (params: {
     { ...device, priority: params.priorities?.[device.id] ?? device.priority }
   )),
   state: params.state,
-  signedNetKw: (params.powerKnown ?? true) ? params.signedNetKw : null,
+  signedNetKw: params.signedNetKw,
+  powerIsMeasured: params.powerKnown ?? true,
   inferredSurplusKw: 0,
   excludeIds: params.excludeIds,
   getConfig: (deviceId) => params.configs?.[deviceId],
@@ -334,9 +335,9 @@ describe('resolveSurplusEligibility (mixed temp + binary pool)', () => {
     const devices = [dumpLoad('pump')];
     // Power lost: hard-off condition; sustained a settle window it releases
     // despite the dwell.
-    allocatorPass({ state, devices, signedNetKw: null, powerKnown: false, nowTs: 10_000 });
+    allocatorPass({ state, devices, signedNetKw: 0, powerKnown: false, nowTs: 10_000 });
     allocatorPass({
-      state, devices, signedNetKw: null, powerKnown: false, nowTs: 10_000 + SURPLUS_ABSORB_SETTLE_MS,
+      state, devices, signedNetKw: 0, powerKnown: false, nowTs: 10_000 + SURPLUS_ABSORB_SETTLE_MS,
     });
     expect(state.surplusEligibilityByDevice.pump?.eligible ?? false).toBe(false);
   });

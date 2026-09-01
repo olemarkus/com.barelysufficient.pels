@@ -2657,9 +2657,10 @@ describe('computeDynamicSoftLimit', () => {
     // pels_status should be set even with no devices
     const status = mockHomeyInstance.settings.get('pels_status') as { lastPowerUpdate?: unknown };
     expect(status).toBeDefined();
-    expect(status).toHaveProperty('lastPowerUpdate');
-    // No power data received yet, so lastPowerUpdate should be null
-    expect(status.lastPowerUpdate).toBeNull();
+    // The stamp is the seeded sample's — a status exists only behind the
+    // measurement gate, so it always carries a real timestamp.
+    expect(typeof status.lastPowerUpdate).toBe('number');
+    expect(Number.isFinite(status.lastPowerUpdate)).toBe(true);
   });
 
   it('builds device plan in dry-run mode without actuating', async () => {

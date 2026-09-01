@@ -117,10 +117,9 @@ export const normalizePelsStatus = (
 };
 
 export const normalizeLastPowerUpdate = (
-  lastPowerUpdate: number | null,
+  lastPowerUpdate: number,
   powerBucketMs: number,
-): number | null => {
-  if (typeof lastPowerUpdate !== 'number' || !Number.isFinite(lastPowerUpdate)) return lastPowerUpdate;
+): number => {
   const safeBucketMs = Math.max(1, powerBucketMs);
   return Math.floor(lastPowerUpdate / safeBucketMs) * safeBucketMs;
 };
@@ -136,21 +135,21 @@ export const buildPelsStatusInputKey = (params: {
   // the two raw flags plus a shape check of the price blob re-derived it here,
   // in a second copy of the precedence the status itself applied.
   priceLevel: PriceLevel;
-  lastPowerUpdate: number | null;
-  powerNowKw?: number | null;
+  lastPowerUpdate: number;
+  powerIsMeasured: boolean;
   dryRunEffective?: boolean;
 }): string => {
   const {
-    changes, priceLevel, lastPowerUpdate, powerNowKw, dryRunEffective,
+    changes, priceLevel, lastPowerUpdate, powerIsMeasured, dryRunEffective,
   } = params;
   const actionSignature = changes?.actionSignature ?? '';
   const detailSignature = changes?.detailSignature ?? '';
   const metaSignature = changes?.metaSignature ?? '';
-  const lastPowerUpdateKey = lastPowerUpdate === null ? 'null' : String(lastPowerUpdate);
-  // PRESENCE only, not the value: the figure moves every sample and would bust
+  const lastPowerUpdateKey = String(lastPowerUpdate);
+  // The FLAG, not the figure: the figure moves every sample and would bust
   // the status cache on each one. What must bust it is the transition between
   // having a measurement and not.
-  const powerNowKey = powerNowKw === null || powerNowKw === undefined ? 'unknown' : 'known';
+  const powerNowKey = powerIsMeasured ? 'known' : 'unknown';
   // Fold the effective dry-run in so a posture flip (membership becoming ready,
   // or the persisted flag toggled) busts the cache and forces a status write.
   const dryRunKey = resolveDryRunKey(dryRunEffective);

@@ -687,7 +687,12 @@ async function createEvApp(
   if (options?.capacityPriorities) {
     mockHomeyInstance.settings.set('capacity_priorities', options.capacityPriorities);
   }
-  const app = createApp() as unknown as InternalApp;
+  // Passive setup: the gate stays shut until the spec's own `rebuildPlan`
+  // records its first sample, so no snapshot-triggered build restores a
+  // paused charger before the spec has even arranged its scenario. (The
+  // default createApp seed opens the gate with a fresh 0 kW reading — full
+  // headroom — which is exactly a restore trigger.)
+  const app = createApp({ withoutPowerMeasurement: true }) as unknown as InternalApp;
   await app.onInit();
   if (options?.evDeadlinePricesByRelativeHour) {
     app.dailyBudgetService.getSnapshot = () => buildEvDeadlineDailyBudgetSnapshot(options.evDeadlinePricesByRelativeHour!);

@@ -3422,24 +3422,6 @@ non-blocking follow-ups.*
       checks the widget after a restart with a dead meter and acts on numbers from before the
       reboot. *Persona:* the widget-first owner. [P2]
 
-- [ ] **App tests model stale-hold as an ABSENT sample timestamp, which the build gate made
-      unreachable.** `createApp` seeds `powerTracker.lastPowerW` only, deliberately
-      leaving `powerTracker.lastTimestamp` untouched so a suite's own headroom expectations are not
-      rewritten. Production stamps both from the same sample (`recordPowerSample` writes
-      `lastPowerW` and `lastTimestamp` together), so the harness sits in a state real ingest
-      cannot produce: a total present on a
-      home that has never sampled, which resolves to `stale_hold`. Since
-      `lib/power/powerMeasurementGate.ts`, a genuinely never-sampled home builds no plan at all, so the
-      real stale-hold is *total present, timestamp OLD* — and tests like `plan.test.ts` "marks off
-      devices as shed with stale-hold fallback headroom when no power sample is available" assert
-      through a door production no longer has. Re-express them with an aged timestamp and stamp
-      both in the seed. Measured blast radius when the seed was made faithful: 15 tests across
-      `plan.test.ts`, `evDevices.integration.test.ts`, `smartTaskSubHomeGateApp.test.ts`, and
-      `app.test.ts`, mostly EV/swap cases whose headroom expectations assume the synthesized 0.
-      *Hypothesis:* a future change to freshness handling passes the suite while breaking real
-      homes, because the suite's stale-hold is reached by a path production cannot take.
-      *Persona:* the contributor who trusts a green run before shipping a capacity change. [P3]
-
 - [ ] **A switched-off EV charger's reason line may restate its own state word.**
       With signal-2 gating (2026-08-04), a charger the owner switched off renders the state word
       `Off` above the reason line `Not charging` — close to saying the same thing twice, the failure

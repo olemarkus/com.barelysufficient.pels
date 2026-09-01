@@ -80,6 +80,7 @@ test.describe('Onboarding links', () => {
         // would never reach the empty state this test is about.
         meta: {
           totalKw: 0,
+          lastPowerUpdateMs: Date.now() - 5 * 1000,
           softLimitKw: 5,
           capacitySoftLimitKw: 5,
           budgetPaceKw: null,

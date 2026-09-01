@@ -104,7 +104,8 @@ const buildDevices = (params: {
   resolveSurplusEligibility({
     devices: params.context.devices,
     state: params.state,
-    signedNetKw: params.context.measuredDrawKw,
+    signedNetKw: params.context.drawKw,
+    powerIsMeasured: params.context.powerIsMeasured,
     inferredSurplusKw: 0,
     getConfig: (deviceId) => params.deps.getPriceOptimizationSettings()[deviceId],
   });
@@ -160,7 +161,7 @@ const cyclePowerUnknown = (state: PlanEngineState): number | undefined => {
   const device = buildDevices({
     context: {
       ...buildContext(0),
-      ...planContextPower(null),
+      ...planContextPower(3, { failClosed: true }),
     },
     state,
     deps: deps(true),
@@ -346,7 +347,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       const powerKnown = options.powerKnown ?? true;
       const context: PlanContext = {
         ...buildContext(signedNetKw),
-        ...(powerKnown ? {} : planContextPower(null)),
+        ...(powerKnown ? {} : planContextPower(3, { failClosed: true })),
       };
       // Mirror the PR-7 hoist: the builder resolves surplus eligibility (with the
       // producer-injected inferred term + debug seam) BEFORE materialization;
@@ -354,7 +355,8 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       resolveSurplusEligibility({
         devices: context.devices,
         state,
-        signedNetKw: context.measuredDrawKw,
+        signedNetKw: context.drawKw,
+        powerIsMeasured: context.powerIsMeasured,
         inferredSurplusKw,
         getConfig: (deviceId) => deps(true).getPriceOptimizationSettings()[deviceId],
         debugStructured: options.debugStructured,

@@ -31,7 +31,7 @@ const surplusConfig = { surplusWilling: true, surplusDelta: 2 };
 
 const resolve = (params: {
   state: PlanEngineState;
-  signedNetKw: number | null;
+  signedNetKw: number;
   inferredSurplusKw: number;
   powerKnown?: boolean;
   nowTs: number;
@@ -42,7 +42,8 @@ const resolve = (params: {
   resolveSurplusEligibility({
     devices: params.devices ?? [buildDevice()],
     state: params.state,
-    signedNetKw: (params.powerKnown ?? true) ? params.signedNetKw : null,
+    signedNetKw: params.signedNetKw,
+    powerIsMeasured: params.powerKnown ?? true,
     inferredSurplusKw: params.inferredSurplusKw,
     getConfig: () => surplusConfig,
     debugStructured: params.debugStructured,
@@ -86,10 +87,10 @@ describe('resolveSurplusEligibility — inferred-term pool composition', () => {
     // the engagement (never raise blind on inference alone). Power-unknown is also
     // a hard-off condition, so the release skips the min dwell after one settle.
     const lostAt = SURPLUS_ABSORB_SETTLE_MS + 10_000;
-    resolve({ state, signedNetKw: null, powerKnown: false, inferredSurplusKw: 99, nowTs: lostAt });
+    resolve({ state, signedNetKw: 0, powerKnown: false, inferredSurplusKw: 99, nowTs: lostAt });
     expect(eligible(state)).toBe(true); // release settle still applies
     resolve({
-      state, signedNetKw: null, powerKnown: false, inferredSurplusKw: 99, nowTs: lostAt + SURPLUS_ABSORB_SETTLE_MS,
+      state, signedNetKw: 0, powerKnown: false, inferredSurplusKw: 99, nowTs: lostAt + SURPLUS_ABSORB_SETTLE_MS,
     });
     expect(eligible(state)).toBe(false);
     expect(lostAt + SURPLUS_ABSORB_SETTLE_MS).toBeLessThan(SURPLUS_ABSORB_SETTLE_MS + SURPLUS_ABSORB_MIN_DWELL_MS);

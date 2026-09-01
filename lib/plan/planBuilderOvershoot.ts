@@ -73,7 +73,6 @@ export class OvershootTracker {
       power,
       capacityLimitKw,
       shortfallBudgetThresholdKw,
-      powerTracker,
       deviceNameById,
       planDevices,
       overshootDecision,
@@ -86,7 +85,9 @@ export class OvershootTracker {
       this.state,
       this.deps.pendingBinaryCommandStore,
     );
-    const lastPowerUpdateMs = powerTracker.lastTimestamp ?? null;
+    // From the producer's reading, not a second tracker read: one sample, one
+    // view (and never null — a build implies a latched sample).
+    const lastPowerUpdateMs = power.lastPowerUpdateMs;
     const overshootTimingFields = this.buildOvershootTimingFields(nowTs, lastPowerUpdateMs);
     if (overshootActive && !prevOvershoot) {
       this.state.overshootLogged = true;
@@ -98,10 +99,11 @@ export class OvershootTracker {
         // `attributeOvershootToRecentRestores`, which calls
         // `recordActivationSetback` and so changes future restore admission —
         // that makes it a control input, and control inputs come off
-        // `PlanContext`. `measuredDrawKw` is the successor to the `context.total`
+        // `PlanContext`. `drawKw` is the successor to the `context.total`
         // this read used before the display bundle existed; the display members
         // stay for the outward meta writes below.
-        measuredTotalKw: context.measuredDrawKw,
+        drawKw: context.drawKw,
+        powerIsMeasured: context.powerIsMeasured,
         nowTs,
         lastPowerUpdateMs,
         previousTotalKw: this.state.lastPlanTotalKw,
@@ -122,7 +124,7 @@ export class OvershootTracker {
         ...buildPlanCapacityStateSummary({
           meta: {
             totalKw: power.totalKw,
-            powerNowKw: power.measuredTotalKw,
+            powerIsMeasured: context.powerIsMeasured,
             softLimitKw: context.softLimit,
             capacitySoftLimitKw: context.capacitySoftLimit,
             softLimitSource: context.softLimitSource,
@@ -234,16 +236,16 @@ export class OvershootTracker {
 
   private buildOvershootTimingFields(
     nowTs: number,
-    lastPowerUpdateMs: number | null,
+    lastPowerUpdateMs: number,
   ): {
     lastPlanBuildAgeMs: number | null;
-    lastPowerUpdateAgeMs: number | null;
+    lastPowerUpdateAgeMs: number;
   } {
     return {
       lastPlanBuildAgeMs: typeof this.state.lastPlanBuiltAtMs === 'number'
         ? Math.max(0, nowTs - this.state.lastPlanBuiltAtMs)
         : null,
-      lastPowerUpdateAgeMs: lastPowerUpdateMs !== null ? Math.max(0, nowTs - lastPowerUpdateMs) : null,
+      lastPowerUpdateAgeMs: Math.max(0, nowTs - lastPowerUpdateMs),
     };
   }
 }
@@ -307,21 +309,25 @@ type OvershootEntryDiagnostics = {
 };
 
 function buildOvershootEntryDiagnostics(params: {
+  /** The whole-home draw behind this cycle (always a number — the carried reading). */
+  drawKw: number;
   /**
-   * The total this cycle MEASURED, or `null` when the producer synthesized the
-   * headroom instead. It replaces a raw total plus a separate freshness check:
-   * a stale cached total could otherwise be diffed into a confident cause.
+   * Whether that draw was MEASURED this cycle. False = the producer
+   * synthesized the headroom instead, and no confident cause may be diffed
+   * from the number: a stale carried total diffed into an attribution would
+   * be a confident-but-wrong cause.
    */
-  measuredTotalKw: number | null;
+  powerIsMeasured: boolean;
   nowTs: number;
-  lastPowerUpdateMs: number | null;
+  lastPowerUpdateMs: number;
   previousTotalKw: number | null;
   previousBuiltAtMs: number | null;
   previousDevicesById: Record<string, OvershootTrackedPlanDevice>;
   currentDevicesById: Record<string, OvershootTrackedPlanDevice>;
 }): OvershootEntryDiagnostics {
   const {
-    measuredTotalKw,
+    drawKw,
+    powerIsMeasured,
     nowTs,
     lastPowerUpdateMs,
     previousTotalKw,
@@ -340,12 +346,11 @@ function buildOvershootEntryDiagnostics(params: {
     .filter((contributor) => !contributor.controllable)
     .slice(0, OVERSHOOT_TOP_CONTRIBUTOR_LIMIT);
   const totalDeltaKw = (
-    typeof measuredTotalKw === 'number'
+    powerIsMeasured
     && typeof previousTotalKw === 'number'
-    && Number.isFinite(measuredTotalKw)
     && Number.isFinite(previousTotalKw)
   )
-    ? roundOvershootKw(measuredTotalKw - previousTotalKw)
+    ? roundOvershootKw(drawKw - previousTotalKw)
     : null;
   const attributedDeltaKw = roundOvershootKw(contributors.reduce((sum, contributor) => sum + contributor.deltaKw, 0));
   const unattributedDeltaKw = totalDeltaKw === null ? null : roundOvershootKw(totalDeltaKw - attributedDeltaKw);
