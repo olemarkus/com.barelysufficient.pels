@@ -13,12 +13,13 @@
 # Declaration counts are as of the guard's introduction (21 files, 104 declarations).
 
 # --- Power lane (→ lib/power) ----------------------------------------------
-# The four power COMPONENTS are gone (lib/power/). What is left is not one:
-# the sample pipeline fans a reading out across plan, objectives, solar and
-# home membership, and `no-power-to-peer-except-objectives` forbids lib/power
-# from importing any of them. Its state is a coalescing single-flight queue,
-# which is not a power concept either. See TODO.md.
-setup/powerSamplePipeline.ts 3
+# The power COMPONENTS are gone (lib/power/), and so is the coalescing queue —
+# it WAS a power concept, and lives in lib/power/sampleIngestQueue.ts now. The
+# file stays because it fans a reading out across plan, objectives, solar and
+# home membership, and no peer module may import both lib/plan and
+# lib/objectives. What is left is its reference to the injected queue; see
+# TODO.md for what reaching zero takes.
+setup/powerSamplePipeline.ts 1
 
 # --- Device/snapshot lane (→ lib/device) -----------------------------------
 setup/appSnapshotHelpers.ts 2

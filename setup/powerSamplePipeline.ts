@@ -20,7 +20,11 @@ import { isPlanActivelyConverging } from '../lib/plan/planStateHelpers';
 import { buildPlanCapacityStateSummary, isPlanUnactionable } from '../lib/plan/planLogging';
 import { shouldSkipShortfallRebuildFromPlanSummary } from '../lib/plan/rebuildScheduler/shortfallSuppression';
 import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
-import { createSingleFlightLoop } from '../lib/utils/singleFlightLoop';
+import type {
+  SampleIngestQueue,
+  SampleIngestQueueDeps,
+  StableSampleRevision,
+} from '../lib/power/sampleIngestQueue';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
@@ -35,6 +39,14 @@ const POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS = process.env.NODE_ENV === 'test' 
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
 
 export type PowerSamplePipelineDeps = {
+  /**
+   * Builds the coalescing queue this pipeline runs its samples through. Passed
+   * in rather than constructed here because the wiring layer holds no state,
+   * and the queue is where the revision ledger lives.
+   */
+  createIngestQueue: (
+    deps: SampleIngestQueueDeps<PowerSampleRequest>,
+  ) => SampleIngestQueue<PowerSampleRequest>;
   getPowerTracker: () => PowerTrackerState;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   /**
@@ -105,9 +117,9 @@ type PowerSampleOptions = {
   meterDeviceId?: string;
 };
 
-export type StableSampleRevision =
-  | { state: 'stable'; revision: number }
-  | { state: 'pending' };
+// Declared with the queue that owns the ledger; re-exported so the existing
+// import sites (`setup/homeRuntime/homeCapacityBundleReadiness.ts`) are unchanged.
+export type { StableSampleRevision };
 
 type PowerSampleRequest = {
   currentPowerW: number;
@@ -169,13 +181,11 @@ const buildPowerSampleRequest = (
  * this can live in — see the orchestration entry in `TODO.md`. The domain work
  * itself is one call into `recordPowerSampleForApp` (`lib/power/sampleIngest.ts`).
  *
- * The state it retains is the sample-revision ledger: `sampleRevision` is
- * bumped at the synchronous request edge and `completedSampleRevision` records
- * the last request the loop finished, which together answer whether a caller's
- * sample was admitted or superseded. The coalescing that used to live beside it
- * is `lib/utils/singleFlightLoop.ts` now — one ingest at a time, newest queued
- * request wins, and a synchronously re-entrant caller can no longer start a
- * second concurrent loop.
+ * It no longer owns the coalescing or the sample-revision ledger: both are
+ * `lib/power/sampleIngestQueue.ts`, injected. The file being homeless never made
+ * its STATE homeless, and that state was a power concept throughout — which
+ * sample is newest, which finished, one ingest at a time. What it still holds is
+ * references: the queue someone else owns, and the seams it binds once.
  *
  * `recordPowerSample(currentPowerW, nowMs)` is the public entry point.
  * The Homey-Energy poll source and the flow-card power-sample reporter
@@ -183,31 +193,12 @@ const buildPowerSampleRequest = (
  * member (implemented by `AppRuntimeApi.recordPowerSample`) also routes here.
  */
 export class PowerSamplePipeline {
-  // Bumped at the synchronous request edge, before a coalesced sample can wait
-  // on plan work. Ownership-generation recovery uses it to abort a prepared
-  // reconcile when a fresher capacity decision arrives mid-build.
-  private sampleRevision = 0;
-  private completedSampleRevision = 0;
-
   /**
-   * One ingest at a time, newest queued request wins. The coalescing itself is
-   * `lib/utils/singleFlightLoop.ts`; what stays here is the revision ledger,
-   * which is the sample-specific half — the loop knows nothing about admission.
+   * One ingest at a time plus the revision ledger, both owned by
+   * `lib/power/sampleIngestQueue.ts`. Injected rather than constructed here:
+   * this file is wiring, and what the queue holds is a power concept.
    */
-  private readonly loop = createSingleFlightLoop<PowerSampleRequest>({
-    run: (request) => this.runPowerSample(request).then(() => {
-      this.completedSampleRevision = request.revision;
-    }),
-    nextRequest: (queued) => queued,
-    mayContinue: () => true,
-    onRequest: ({ join, replacedQueued }) => {
-      if (join === 'started') return;
-      incPerfCounter(replacedQueued
-        ? 'power_sample_rerun_coalesced_total'
-        : 'power_sample_rerun_requested_total');
-    },
-    onRerun: () => incPerfCounter('power_sample_rerun_executed_total'),
-  });
+  private readonly queue: SampleIngestQueue<PowerSampleRequest>;
 
   /**
    * The three snapshot seams `recordPowerSampleForApp` reaches back through,
@@ -249,50 +240,22 @@ export class PowerSamplePipeline {
     })
   );
 
-  constructor(private readonly deps: PowerSamplePipelineDeps) {}
+  constructor(private readonly deps: PowerSamplePipelineDeps) {
+    this.queue = deps.createIngestQueue({ run: (request) => this.runPowerSample(request) });
+  }
 
   async recordPowerSample(
     currentPowerW: number,
     nowMs: number = Date.now(),
     options: PowerSampleOptions = {},
   ): Promise<PowerSampleAdmission> {
-    this.sampleRevision += 1;
-    incPerfCounter('power_sample_requested_total');
-    const request = buildPowerSampleRequest(
-      currentPowerW, nowMs, options, this.sampleRevision, this.deps.getCoSampledGenerationW?.(nowMs),
-    );
-
-    await this.loop.request(request);
-    return this.resolveAdmission(request.revision);
-  }
-
-  /**
-   * Whether the caller's own sample is the one the tracker now serves.
-   *
-   * A synchronously re-entrant caller — which the loop answers immediately with
-   * `queued` rather than letting it start a second pass — reads its verdict
-   * before its request has run, so it sees `superseded` with
-   * `revision === latestRevision`: superseded by itself. That shape is unique to
-   * this window and no current caller reaches it (`recordPowerSample` is driven
-   * by poll sources and flow cards, neither re-entrant). Every consumer treats
-   * anything but `admitted` as "do not claim meter authority", so the answer is
-   * the conservative one either way.
-   */
-  private resolveAdmission(revision: number): PowerSampleAdmission {
-    const stable = this.getStableSampleRevision();
-    return stable.state === 'stable' && stable.revision === revision
-      ? { state: 'admitted', revision }
-      : {
-        state: 'superseded',
-        revision,
-        latestRevision: this.sampleRevision,
-      };
+    return this.queue.submit((revision) => buildPowerSampleRequest(
+      currentPowerW, nowMs, options, revision, this.deps.getCoSampledGenerationW?.(nowMs),
+    ));
   }
 
   getStableSampleRevision(): StableSampleRevision {
-    return this.completedSampleRevision === this.sampleRevision
-      ? { state: 'stable', revision: this.sampleRevision }
-      : { state: 'pending' };
+    return this.queue.getStableRevision();
   }
 
   /**

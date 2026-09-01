@@ -16,6 +16,7 @@
  * home's grid power, so feeding it to the PV forecast or the
  * curtailment-surplus estimator would corrupt them.
  */
+import { createSampleIngestQueue } from '../../lib/power/sampleIngestQueue';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { AppContext } from '../../lib/app/appContext';
 import type { PlanEngine } from '../../lib/plan/planEngine';
@@ -76,6 +77,7 @@ export type HomePowerPipelineDeps = {
 export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSamplePipeline {
   const { ctx } = deps;
   return new PowerSamplePipeline({
+    createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),
     getPowerTracker: deps.getPowerTracker ?? (() => ctx.powerTracker),
     getCapacitySettings: deps.getCapacitySettings ?? (() => ctx.capacitySettings),
     getCapacityGuard: deps.getCapacityGuard,

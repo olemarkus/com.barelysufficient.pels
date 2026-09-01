@@ -15,6 +15,7 @@
 // inflates the inferred surplus into real grid import. So it stays dormant on
 // sources that cannot deliver the pair together, and arming it there needs the
 // generation's own clock carried into `recordSample` first.
+import { createSampleIngestQueue } from '../../lib/power/sampleIngestQueue';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it, vi } from 'vitest';
 import { PowerSamplePipeline } from '../../setup/powerSamplePipeline';
@@ -41,6 +42,7 @@ const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePi
     pvForecast: vi.fn<(generationW: number | undefined, nowMs: number, netW?: number) => void>(),
   };
   const pipeline = new PowerSamplePipeline({
+    createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),
     noteSampleAdmitted: () => {},
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
