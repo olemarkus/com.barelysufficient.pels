@@ -16,6 +16,7 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { DeviceTransportParseProviders } from '../../lib/device/transport/managerParseDevice';
 import type { HomeRuntimeReadPort } from '../../lib/home/homeRuntimeRead';
 import { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
+import { createModeOwnershipTransfer } from '../homeRuntime/createModeOwnershipTransfer';
 
 /** Construct the registry and run its boot-time reconcile (empty = inert). */
 export const createHomeRuntimeRegistryForApp = (
@@ -23,7 +24,12 @@ export const createHomeRuntimeRegistryForApp = (
   isMembershipReady: () => boolean,
   isRuntimeActive: () => boolean,
 ): HomeRuntimeRegistry => {
-  const registry = new HomeRuntimeRegistry({ ctx, isMembershipReady, isRuntimeActive });
+  const registry = new HomeRuntimeRegistry({
+    ctx,
+    isMembershipReady,
+    isRuntimeActive,
+    modeOwnershipTransfer: createModeOwnershipTransfer(ctx),
+  });
   registry.reconcile();
   return registry;
 };

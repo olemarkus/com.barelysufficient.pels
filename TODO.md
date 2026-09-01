@@ -3264,11 +3264,12 @@ non-blocking follow-ups.*
       (d) home — `homeSampledMeterIdentity.ts` is DONE, as `lib/power/sampledMeterIdentity.ts`:
       the fact it holds is about the sample the TRACKER serves, and it imports nothing but the
       freshness constant its expiry derives from. `homeMainMeterAuthority.ts` cannot follow it and
-      cannot go to `lib/home` either — see the entry below. `homeMembership.ts` (16 of the lane's
-      declarations), `homeRuntime/homeModeOwnershipTransfer.ts` and
-      `homeRuntime/homeRuntimeRegistry.ts` still want `lib/home/`, which `no-home-to-peer` makes a
-      pure leaf, so their `lib/device`, `lib/observer` and `lib/app/appContext` inputs must arrive
-      as injected values first;
+      cannot go to `lib/home` either — see the entry below.
+      `homeRuntime/homeModeOwnershipTransfer.ts` is DONE, as
+      `lib/home/modeOwnershipTransfer.ts`. `homeMembership.ts` (16 of the lane's declarations) and
+      `homeRuntime/homeRuntimeRegistry.ts` (8) still want `lib/home/`, which `no-home-to-peer`
+      makes a pure leaf, so their `lib/device`, `lib/observer` and `lib/app/appContext` inputs must
+      arrive as injected values first;
       (e) composition root and leftovers — DONE. `appServiceWiring.ts`'s late-bound service handles
       are `PelsApp` fields reached through getter/setter pairs (the `AppNativeWiring` shape), its
       membership teardown is a `TeardownRegistry` key, and the prepared-reconcile fence is

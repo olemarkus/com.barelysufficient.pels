@@ -17,6 +17,7 @@
 // Only outward seams are mocked: the shared mock Homey settings store backs
 // the real homes store, capacity store, and suffixed persistence; the bundles
 // run their REAL plan engine/service/guard/pipeline.
+import { createModeOwnershipTransfer } from '../../setup/homeRuntime/createModeOwnershipTransfer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import type { AppContext } from '../../lib/app/appContext';
@@ -110,6 +111,7 @@ const buildRig = (): Rig => {
       return membershipReady;
     },
     isRuntimeActive: () => runtimeActive,
+    modeOwnershipTransfer: createModeOwnershipTransfer(ctx),
   });
   return {
     ctx,

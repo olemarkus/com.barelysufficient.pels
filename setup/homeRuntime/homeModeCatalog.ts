@@ -7,6 +7,10 @@
  * mistaken for an independent catalog. Until then, the area deliberately keeps
  * the legacy Main snapshot as a compatibility fallback.
  */
+import type {
+  ModeOwnershipMove,
+  ModeOwnershipTransferResult,
+} from '../../lib/home/modeOwnershipTransfer';
 import type Homey from 'homey';
 import type { AppContext } from '../../lib/app/appContext';
 import {
@@ -313,15 +317,9 @@ export const getConfiguredPriorityFromHomeModeCatalog = (
   deviceId: string,
 ): number | undefined => resolveConfiguredDevicePriority(catalog.priorities, catalog.operatingMode, deviceId);
 
-export type ModeOwnershipMove = {
-  deviceId: string;
-  fromHomeId: HomeId;
-  toHomeId: HomeId;
-};
-type ModeOwnershipTransferResult = {
-  completedDeviceIds: string[];
-  failedDeviceIds: string[];
-};
+// Declared with the component that produces the moves and consumes the result
+// (`lib/home/modeOwnershipTransfer.ts`); re-exported for existing import sites.
+export type { ModeOwnershipMove, ModeOwnershipTransferResult };
 
 const readCatalogForTransfer = (
   ctx: AppContext,
