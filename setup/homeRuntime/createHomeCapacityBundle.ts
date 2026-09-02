@@ -397,16 +397,6 @@ function buildSubHomeScope(params: {
     // succeeds.
     getOperatingMode: () => modeCatalog.getSnapshot().operatingMode,
     getModeDeviceTargets: () => modeCatalog.getSnapshot().targets,
-    // ...but a RAISE to that target is held while this area's own draw is
-    // unknown. It adds load, and it is the one load-adding write nothing else
-    // fences: a restore is gated on headroom (0 whenever power is unknown),
-    // while an 18→22 raise is an ordinary `target_update` that the producer
-    // never stamps `recordRestoreOnTargetApply`, so neither
-    // `BUNDLE_RESTORE_STABILIZATION_MS` nor the restore cooldowns see it. An area
-    // meter can stay silent indefinitely, and a never-sampled bundle has no aging
-    // timestamp for the freshness heartbeat to escalate. Held one-directionally: a mode change that LOWERS a setpoint
-    // removes draw, so it still applies (see `applyModeSeedModulation`).
-    holdsModeTargetRaisesWhilePowerUnknown: () => true,
     // Capacity-only UI/side-effect posture: no shared `plan_updated` emit (the
     // settings UI reads only MAIN's plan stream), and no shared diagnostics
     // recorder (a sub-home plan pollutes main's per-boot epoch).

@@ -1,7 +1,6 @@
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { PlanContext } from '../../lib/plan/planContext';
 import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
 import { isBinaryRestoreCandidate } from '../../lib/plan/restore/devices';
 import { buildSheddingPlan } from '../../lib/plan/shedding';
@@ -55,10 +54,10 @@ const buildPlan = (
   }))) as DevicePlanDevice],
 });
 
-const buildContext = (device: PlanInputDevice): PlanContext => ({
+const buildContext = (device: PlanInputDevice): PlanCycle => buildPlanCycleObject({
   devices: [device],
   modeTargetCFor: (d) => d.currentTarget,
-  ...planContextPower(FIXTURE_TOTAL_KW),
+  total: FIXTURE_TOTAL_KW,
   hourBucketKey: '2025-01-01T00',
   softLimit: 4,
   capacitySoftLimit: 4,
@@ -103,8 +102,10 @@ describe('planner current-state consistency', () => {
     }
 
     const mergedPlan = buildLiveStatePlan(plan, [liveDevice], noPendingBinary);
+    const cycle = buildContext(liveDevice);
     const sheddingPlan = await buildSheddingPlan(
-      buildContext(liveDevice),
+      cycle,
+      cycle,
       state,
       {
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),

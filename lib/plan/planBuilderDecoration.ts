@@ -5,7 +5,6 @@
  * Behaviour is unchanged — these moved verbatim from the builder.
  */
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
-import type { PlanContext } from './planContext';
 import type {
   DeferredDecorationBundle,
   DeferredReleaseIntent,
@@ -24,19 +23,24 @@ export function buildIdentityDecorationBundle(devices: PlanInputDevice[]): Defer
   };
 }
 
+/**
+ * `binaryRestoreAllowed` is the seam between the two passes: `binary_restore`
+ * is the only intent that drives a positive (turn-on) command, so it rides only
+ * a MEASURED cycle's plan — the silent-meter pass passes `false`, and the
+ * executor's own gate (`executablePlanProjection.ts`) reads the meta's signal
+ * for the same reason. `binary_release` and `shed_release` are negative
+ * commands and ride either plan.
+ */
 export function attachDeferredReleaseIntents(
   planDevices: DevicePlanDevice[],
   intentByDeviceId: Record<string, DeferredReleaseIntent>,
-  context: PlanContext,
+  binaryRestoreAllowed: boolean,
 ): DevicePlanDevice[] {
   if (Object.keys(intentByDeviceId).length === 0) return planDevices;
   return planDevices.map((device) => {
     const deferredReleaseIntent = intentByDeviceId[device.id];
     if (!deferredReleaseIntent) return device;
-    // binary_restore is the only intent that drives a positive (turn-on) command, so it requires
-    // a MEASURED sample to avoid racing the capacity guard on a synthesized headroom.
-    // binary_release and shed_release are negative commands and remain safe without one.
-    if (deferredReleaseIntent === 'binary_restore' && !context.powerIsMeasured) return device;
+    if (deferredReleaseIntent === 'binary_restore' && !binaryRestoreAllowed) return device;
     return { ...device, deferredReleaseIntent };
   });
 }

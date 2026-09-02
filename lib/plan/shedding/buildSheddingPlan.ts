@@ -1,6 +1,6 @@
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanEngineState } from '../planState';
-import type { PlanContext } from '../planContext';
+import type { MeasuredPower, PlanContext } from '../planContext';
 
 import { updateGuardState } from '../admission';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
@@ -21,11 +21,12 @@ import { buildSheddingCandidates, summarizeSheddingCandidates } from './candidat
 
 export async function buildSheddingPlan(
   context: PlanContext,
+  power: MeasuredPower,
   state: PlanEngineState,
   deps: SheddingDeps,
   overshoot: SheddingOvershootInput = {
-    actionable: context.headroom < 0,
-    shedActionable: context.headroom < 0,
+    actionable: power.headroomKw < 0,
+    shedActionable: power.headroomKw < 0,
   },
 ): Promise<SheddingPlan> {
   const {
@@ -34,7 +35,7 @@ export async function buildSheddingPlan(
     shedStepTargets,
     updates,
     overshootStats,
-  } = planShedding(context, state, deps, overshoot.shedActionable);
+  } = planShedding(context, power, state, deps, overshoot.shedActionable);
   const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
   // `actionable`, not `shedActionable`: the latch answers "is the house in an
   // overshoot", which a deferred shed does not change. See
@@ -43,17 +44,17 @@ export async function buildSheddingPlan(
   const sheddingLimitSource = hourlyBudgetExhausted ? 'daily' : context.softLimitSource;
   const wasSheddingActive = state.sheddingActive;
   const guardResult = await updateGuardState({
-    headroom: context.headroom,
-    drawKw: context.drawKw,
-    powerIsMeasured: context.powerIsMeasured,
+    headroom: power.headroomKw,
+    drawKw: power.drawKw,
+    capacityBreached: power.capacityBreached,
     overshootActionable: sheddingActionable,
-    capacitySoftLimit: context.capacitySoftLimit,
     devices: context.devices,
     shedSet,
     softLimitSource: sheddingLimitSource,
     capacityGuard: deps.capacityGuard,
     shortfallThresholdKw: deps.shortfallThresholdKw,
     sheddingActive: wasSheddingActive,
+    hourlyBudgetExhausted,
     // Any direction: the shortfall log counts devices mid-actuation, and a
     // turn-OFF in flight is as much in flight as a turn-ON. Kept a callback
     // rather than a prebuilt id set so the `deficitKw <= 0` early return still
@@ -97,28 +98,27 @@ function emptySheddingResult(
 
 function planShedding(
   context: PlanContext,
+  power: MeasuredPower,
   state: PlanEngineState,
   deps: SheddingDeps,
   overshootActionable: boolean,
 ): PlanSheddingResult {
   const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
-  if (!shouldAttemptShedding({ hourlyBudgetExhausted, overshootActionable, headroom: context.headroom })) {
+  if (!shouldAttemptShedding({ hourlyBudgetExhausted, overshootActionable, headroom: power.headroomKw })) {
     return emptySheddingResult();
   }
 
   const nowTs = Date.now();
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
   const measurementPowerW = resolveMeasurementPowerW(deps.powerTracker);
-  const needed = Math.max(0, -context.headroom);
+  const needed = Math.max(0, -power.headroomKw);
   const measurementDecision = resolveSameMeasurementSheddingDecision({
     state,
     measurementTs,
     measurementPowerW,
     neededKw: needed,
     nowTs,
-    // Measured-only, as before: `isCapacityBreached` was fed the trustworthy
-    // total, so an unmeasured cycle never escalated.
-    allowEscalation: context.powerMeasuredAboveKw(context.capacitySoftLimit),
+    allowEscalation: power.capacityBreached,
   });
 
   const candidateParams: ShedCandidateParams = {
@@ -128,9 +128,8 @@ function planShedding(
     // kW against it. See `ShedCandidateParams`.
     deficitKw: needed,
     limitSource: hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
-    // Resolved once from the context's own predicate: an unmeasured cycle is
-    // not breached, and no candidate walk re-derives this from a total.
-    capacityBreached: context.powerMeasuredAboveKw(context.capacitySoftLimit),
+    // Resolved once on the measurement; no candidate walk re-derives it from a total.
+    capacityBreached: power.capacityBreached,
     state,
     deps,
   };

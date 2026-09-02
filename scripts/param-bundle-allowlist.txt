@@ -186,7 +186,6 @@ lib/plan/planBinaryControlHelpers.ts 4
 lib/plan/planBoost.ts 1
 lib/plan/planBudget.ts 1
 lib/plan/planBuilderMaterialization.ts 3
-lib/plan/planBuilderMeta.ts 1
 lib/plan/planBuilderOvershoot.ts 4
 lib/plan/planBuilderSurplus.ts 3
 lib/plan/planChangeTracker.ts 1
@@ -202,7 +201,6 @@ lib/plan/planHeadroomDevice.ts 1
 lib/plan/planHeadroomState.ts 9
 lib/plan/planHeadroomSupport.ts 3
 lib/plan/planLogging.ts 1
-lib/plan/planOffStateReason.ts 1
 lib/plan/planOvershoot.ts 1
 lib/plan/planReasonShortfall.ts 1
 lib/plan/planReasonStrings.ts 1
@@ -229,7 +227,6 @@ lib/plan/rebuildScheduler/powerDrivenScheduling.ts 7
 lib/plan/rebuildScheduler/shortfallSuppression.ts 2
 lib/plan/rebuildScheduler/signalDriven.ts 2
 lib/plan/restore/accounting.ts 2
-lib/plan/restore/batch.ts 1
 lib/plan/restore/candidateLoop.ts 5
 lib/plan/restore/cooldownPreview.ts 2
 lib/plan/restore/devices.ts 1

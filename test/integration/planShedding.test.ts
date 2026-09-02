@@ -1,11 +1,11 @@
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import { partialDouble } from '../helpers/partialDouble';
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import type { Mock } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { PlanContext } from '../../lib/plan/planContext';
+import type { MeasuredPower, PlanContext } from '../../lib/plan/planContext';
 import { SOFT_OVERSHOOT_PERSIST_MS } from '../../lib/plan/planConstants';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -23,7 +23,6 @@ import {
   type FixtureShedBehavior,
   resolveFixtureCurrentOn,
 } from '../utils/planTestUtils';
-import { PriceLevel } from '../../lib/price/priceLevels';
 
 // Shared empty pending-binary-command store for deps blocks that build their
 // engine state inline (or declare it after the deps object) and never seed
@@ -61,38 +60,18 @@ const buildDevice = (
   }) as PlanInputDevice;
 };
 
-// `total` is the fixture's own input (what the meter read this cycle), not a
-// `PlanContext` field any more: the context carries the producer's ANSWERS, and
-// this builder derives them from the reading exactly as `lib/power` does.
-const buildContext = (
-  overrides: Partial<PlanContext> & { total?: number | null } = {},
-): PlanContext => {
-  const total = overrides.total ?? null;
-  return {
-    devices: [],
-    modeTargetCFor: (d) => d.currentTarget,
-    softLimit: 0,
-    capacitySoftLimit: 0,
-    dailySoftLimit: null,
-    budgetPaceKw: null,
-    projectedExemptKw: null,
-    softLimitSource: 'capacity',
-    budgetReleasableHeadroomHold: false,
-    capacityHeadroomKw: 1,
-    budgetHeadroomKw: null,
-    hourBucketKey: '2024-01-01T00',
-    budgetKWh: 0,
-    usedKWh: 0,
-    minutesRemaining: 60,
-    headroomRaw: 0,
-    headroom: 0,
-    restoreMarginPlanning: 0.2,
-    currentHourPriceLevel: PriceLevel.UNKNOWN,
-    // Power answers derived from the fixture's reading FIRST, so a case that
-    // wants an unmeasured (fail-closed) cycle can still say so explicitly.
-    ...planContextPower(total ?? 3, total === null ? { failClosed: true } : {}),
-    ...overrides,
-  };
+// The frame and the measurement are two objects now (`PlanContext` carries no
+// measurement; `MeasuredPower` exists only on a measured cycle). The spec keeps
+// spelling both together and the fixture splits them; `total` is the meter's
+// reading, `headroom` the binding headroom the case is about.
+const buildContext = (overrides: PlanCycleSpec = {}): { context: PlanContext; power: MeasuredPower } => (
+  buildPlanCycle({ total: 3, headroom: 0, capacityHeadroomKw: 1, ...overrides })
+);
+
+/** The same cycle as the two positional arguments `buildSheddingPlan` takes. */
+const cycleArgs = (overrides: PlanCycleSpec = {}): readonly [PlanContext, MeasuredPower] => {
+  const { context, power } = buildContext(overrides);
+  return [context, power] as const;
 };
 
 describe('buildSheddingPlan', () => {
@@ -112,7 +91,7 @@ describe('buildSheddingPlan', () => {
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const context = buildContext({
+    const { context, power } = buildContext({
       devices: [
         buildDevice({
           id: 'dev-1',
@@ -131,7 +110,7 @@ describe('buildSheddingPlan', () => {
     });
 
     const overshootDecision = resolveSoftOvershootDecision({
-      headroomKw: context.headroom,
+      headroomKw: power.headroomKw,
       hourRemainingKWh: 4.7,
       restoreTransientPossible: false,
       state,
@@ -141,6 +120,7 @@ describe('buildSheddingPlan', () => {
 
     const result = await buildSheddingPlan(
       context,
+      power,
       state,
       {
         capacityGuard,
@@ -171,7 +151,7 @@ describe('buildSheddingPlan', () => {
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const context = buildContext({
+    const { context, power } = buildContext({
       devices: [
         buildDevice({
           id: 'dev-1',
@@ -192,6 +172,7 @@ describe('buildSheddingPlan', () => {
 
     const result = await buildSheddingPlan(
       context,
+      power,
       state,
       {
         capacityGuard,
@@ -220,7 +201,7 @@ describe('buildSheddingPlan', () => {
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
 
-    const context = buildContext({
+    const { context, power } = buildContext({
       devices: [
         buildDevice({
           id: 'dev-1',
@@ -239,7 +220,7 @@ describe('buildSheddingPlan', () => {
     });
 
     const overshootDecision = resolveSoftOvershootDecision({
-      headroomKw: context.headroom,
+      headroomKw: power.headroomKw,
       hourRemainingKWh: 4.7,
       restoreTransientPossible: false,
       state,
@@ -248,6 +229,7 @@ describe('buildSheddingPlan', () => {
 
     const result = await buildSheddingPlan(
       context,
+      power,
       state,
       {
         capacityGuard,
@@ -273,7 +255,7 @@ describe('buildSheddingPlan', () => {
       isInShortfall: vi.fn().mockReturnValue(true),
     } as unknown as CapacityGuard;
 
-    const context = buildContext({
+    const { context, power } = buildContext({
       devices: [],
       total: 5.2,
       softLimit: 5.19,
@@ -284,7 +266,7 @@ describe('buildSheddingPlan', () => {
     });
 
     const overshootDecision = resolveSoftOvershootDecision({
-      headroomKw: context.headroom,
+      headroomKw: power.headroomKw,
       hourRemainingKWh: 4.7,
       restoreTransientPossible: false,
       state,
@@ -293,6 +275,7 @@ describe('buildSheddingPlan', () => {
 
     const result = await buildSheddingPlan(
       context,
+      power,
       state,
       {
         capacityGuard,
@@ -315,52 +298,33 @@ describe('buildSheddingPlan', () => {
     expect(result.guardInShortfall).toBe(true);
   });
 
-  it('does not enter hard-cap shortfall from a stale-hold cached total', async () => {
+  it('keeps the shedding latch engaged in an exhausted hour with an idle house and nothing to shed', async () => {
+    // The hour's kWh is spent, the measured house is at 0 kW against a 0 kW
+    // pace, and no candidate is running. This used to ride on the context
+    // forcing headroom to -1; the flag carries it now, and the latch is what
+    // keeps the restore lanes holding every off device off (owner ruling
+    // 2026-09-02, Codex review on PR #2286).
     const state = createPlanEngineState();
+    state.hourlyBudgetExhausted = true;
     const capacityGuard = {
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
     } as unknown as CapacityGuard;
+    const { context, power } = buildContext({ total: 0, softLimit: 0, capacitySoftLimit: 5, headroom: 0 });
 
-    const context = buildContext({
-      devices: [
-        buildDevice({
-          id: 'dev-1',
-          name: 'Heater',
-          currentDrawKw: 1.2, expectedPowerKw: 1.2,
-          binaryControl: { on: true },
-          controllable: true,
-        }),
-      ],
-      ...planContextPower(3, { failClosed: true }),
-      softLimit: 5,
-      capacitySoftLimit: 5,
-      headroomRaw: 0,
-      headroom: 0,
-      softLimitSource: 'capacity',
-    });
-
-    const result = await buildSheddingPlan(
-      context,
-      state,
-      {
-        capacityGuard,
-        shortfallThresholdKw: 5,
-        powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) } as PowerTrackerState,
-        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-        log: vi.fn(),
-        debugStructured: vi.fn(),
-      },
-      { actionable: false, shedActionable: false },
-    );
+    const result = await buildSheddingPlan(context, power, state, {
+      capacityGuard,
+      shortfallThresholdKw: 5,
+      powerTracker: { lastTimestamp: Date.now() } as PowerTrackerState,
+      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+      getShedBehavior: () => ({ action: 'turn_off' }),
+      log: vi.fn(),
+      debugStructured: vi.fn(),
+    }, { actionable: false, shedActionable: false });
 
     expect(result.shedSet.size).toBe(0);
-    expect(result.guardInShortfall).toBe(false);
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(expect.objectContaining({
-      hasCandidates: true,
-      deficitKw: 0,
-    }));
+    expect(result.sheddingActive).toBe(true);
+    expect(state.sheddingActive).toBe(true);
   });
 
   it('deprioritizes recently restored devices when same-priority alternatives exist', async () => {
@@ -401,7 +365,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4.4,
         softLimit: 4,
@@ -468,7 +432,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 5,
         softLimit: 4.5,
@@ -520,7 +484,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 6,
         softLimit: 4,
@@ -561,7 +525,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'dev-stale',
@@ -632,7 +596,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 3,
         softLimit: 2.4,
@@ -701,7 +665,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 3.5,
         softLimit: 3,
@@ -778,7 +742,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 3.5,
         softLimit: 3,
@@ -836,7 +800,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 3,
         softLimit: 2,
@@ -896,7 +860,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4.1,
         softLimit: 3,
@@ -961,7 +925,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4.1,
         softLimit: 3,
@@ -1023,7 +987,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4.1,
         softLimit: 3,
@@ -1087,7 +1051,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 2.2,
         softLimit: 1.6,
@@ -1153,7 +1117,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4.1,
         softLimit: 3,
@@ -1214,7 +1178,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4.1,
         softLimit: 3,
@@ -1285,7 +1249,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 3.6,
         softLimit: 2.8,
@@ -1351,7 +1315,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4,
         softLimit: 3,
@@ -1417,7 +1381,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4,
         softLimit: 3,
@@ -1481,7 +1445,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 2.9,
         softLimit: 2.3,
@@ -1538,7 +1502,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 1.5,
         softLimit: 0.8,
@@ -1597,7 +1561,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4.23,
         softLimit: 3.82,
@@ -1661,7 +1625,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4.1,
         softLimit: 3,
@@ -1730,7 +1694,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4.0,
         softLimit: 3,
@@ -1800,7 +1764,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4.1,
         softLimit: 3,
@@ -1870,7 +1834,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4.1,
         softLimit: 3,
@@ -1937,7 +1901,7 @@ describe('buildSheddingPlan', () => {
     // normally), but the stepped device is above its lowest active step so its
     // preemptive step-down sorts first.
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4,
         softLimit: 3.5,
@@ -2009,7 +1973,7 @@ describe('buildSheddingPlan', () => {
 
     const debugStructured = vi.fn();
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 8.77,
         softLimit: 5,
@@ -2067,7 +2031,7 @@ describe('buildSheddingPlan', () => {
 
     const debugStructured = vi.fn();
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'heater',
@@ -2159,7 +2123,7 @@ describe('buildSheddingPlan', () => {
 
     const debugStructured = vi.fn();
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'pump',
@@ -2291,7 +2255,7 @@ describe('buildSheddingPlan', () => {
     // Need 1.5kW relief. heater-high is above lowest active and should step down
     // preemptively. heater-low is already at lowest active so it's not preemptive.
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4,
         softLimit: 2.5,
@@ -2354,7 +2318,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 3.1,
         softLimit: 2.3,
@@ -2421,7 +2385,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 4.23,
         softLimit: 3.43,
@@ -2460,7 +2424,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'tank',
@@ -2504,7 +2468,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [],
         total: 7,
         softLimit: 5,
@@ -2545,7 +2509,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'zero',
@@ -2593,7 +2557,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'positive',
@@ -2648,7 +2612,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'dev-at-temp',
@@ -2722,7 +2686,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'stepper',
@@ -2786,7 +2750,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'budget-exempt',
@@ -2838,7 +2802,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'exempt',
@@ -2889,7 +2853,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'exempt',
@@ -2939,7 +2903,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'exempt',
@@ -3011,7 +2975,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 1.5,
         softLimit: 0.8,
@@ -3067,7 +3031,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 2.5,
         softLimit: 2,
@@ -3127,7 +3091,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices,
         total: 2.5,
         softLimit: 2,
@@ -3171,7 +3135,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [],
         total: 1,
         softLimit: 5,
@@ -3204,7 +3168,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [],
         total: 1,
         softLimit: 5,
@@ -3302,7 +3266,7 @@ describe('buildSheddingPlan', () => {
     // insufficient, take each device's whole draw, and shed all three — correct,
     // but not the ordering this test exists to pin.)
     const result1 = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({ ...steppedABase, selectedStepId: 'max', currentDrawKw: 2.8 }),
           buildDevice({ ...steppedBBase, selectedStepId: 'max', currentDrawKw: 1.4 }),
@@ -3330,7 +3294,7 @@ describe('buildSheddingPlan', () => {
     // `max -> low` frees 0.9 kW, which covers the 0.8 kW still needed, so again
     // the step-down wins the cycle ahead of the higher-priority binary.
     const result2 = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({ ...steppedABase, selectedStepId: 'low', currentDrawKw: 0.9 }),
           buildDevice({ ...steppedBBase, selectedStepId: 'max', currentDrawKw: 1.4 }),
@@ -3355,7 +3319,7 @@ describe('buildSheddingPlan', () => {
     // Cycle 3: both stepped devices at lowest active step. No more preemptive
     // candidates, so normal priority ordering resumes and binary device sheds.
     const result3 = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({ ...steppedABase, selectedStepId: 'low', currentDrawKw: 0.9 }),
           buildDevice({ ...steppedBBase, selectedStepId: 'low', currentDrawKw: 0.45 }),
@@ -3388,7 +3352,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'dev-escalate',
@@ -3438,7 +3402,7 @@ describe('buildSheddingPlan', () => {
       debugStructured: vi.fn(),
     };
 
-    const context = buildContext({
+    const { context, power } = buildContext({
       devices: [
         buildDevice({
           id: 'dev-fresh',
@@ -3458,6 +3422,7 @@ describe('buildSheddingPlan', () => {
 
     const freshResult = await buildSheddingPlan(
       context,
+      power,
       state,
       {
         ...deps,
@@ -3478,6 +3443,7 @@ describe('buildSheddingPlan', () => {
 
     const sameSampleResult = await buildSheddingPlan(
       context,
+      power,
       state,
       {
         ...deps,
@@ -3549,7 +3515,7 @@ describe('buildSheddingPlan', () => {
       }),
     ];
 
-    const incidentContext = (params: { devices: PlanInputDevice[]; total: number }) => buildContext({
+    const incidentContext = (params: { devices: PlanInputDevice[]; total: number }) => cycleArgs({
       devices: params.devices,
       total: params.total,
       softLimit: 2.538,
@@ -3579,7 +3545,7 @@ describe('buildSheddingPlan', () => {
       const state = createPlanEngineState();
       state.overshootStartedMs = Date.now();
       const result = await buildSheddingPlan(
-        incidentContext({ devices: incidentDevices(), total: 4.351 }),
+        ...incidentContext({ devices: incidentDevices(), total: 4.351 }),
         state,
         {
           ...deps,
@@ -3606,7 +3572,7 @@ describe('buildSheddingPlan', () => {
       // to give, and together they are exactly the deficit the stale reading
       // still claims — so without the hold both go, including the user's #1.
       const repeatResult = await buildSheddingPlan(
-        incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.351 }),
+        ...incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.351 }),
         state,
         {
           ...deps,
@@ -3638,7 +3604,7 @@ describe('buildSheddingPlan', () => {
       // The decided device is still on — dry-run, a failed write, or someone
       // switching it back. The hold must freeze that decision, not drop it.
       const repeatResult = await buildSheddingPlan(
-        incidentContext({ devices: incidentDevices(), total: 4.351 }),
+        ...incidentContext({ devices: incidentDevices(), total: 4.351 }),
         state,
         {
           ...deps,
@@ -3664,7 +3630,7 @@ describe('buildSheddingPlan', () => {
       vi.setSystemTime(new Date(Date.now() + 10_000));
 
       const repeatResult = await buildSheddingPlan(
-        incidentContext({ devices: incidentDevices(), total: 4.351 }),
+        ...incidentContext({ devices: incidentDevices(), total: 4.351 }),
         state,
         {
           ...deps,
@@ -3687,7 +3653,7 @@ describe('buildSheddingPlan', () => {
 
       // The meter has now caught up with the shed water heater (~1.08kW).
       const correctedResult = await buildSheddingPlan(
-        incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 3.271 }),
+        ...incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 3.271 }),
         state,
         {
           ...deps,
@@ -3712,7 +3678,7 @@ describe('buildSheddingPlan', () => {
       const pollWithUnchangedReading = async (atMs: number, lastTimestamp: number) => {
         vi.setSystemTime(new Date(shedAtMs + atMs));
         const heldResult = await buildSheddingPlan(
-          incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.351 }),
+          ...incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.351 }),
           state,
           {
             ...deps,
@@ -3731,7 +3697,7 @@ describe('buildSheddingPlan', () => {
       // The water heater is confirmed off and the reading still has not moved,
       // so the shed really did achieve nothing and deepening is warranted.
       const sustainedResult = await buildSheddingPlan(
-        incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.351 }),
+        ...incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.351 }),
         state,
         {
           ...deps,
@@ -3759,7 +3725,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'dev-wait',
@@ -3813,7 +3779,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'off-device',
@@ -3870,7 +3836,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'heater',
@@ -3932,7 +3898,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           // Stale measurement: only `max -> off` releases anything (1.193 kW).
           buildDevice({
@@ -3989,7 +3955,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           // Same stale-measurement shape on a `set_step` device. The walk now
           // tries every ACTIVE rung — `medium` and `low` — and the stale meter
@@ -4064,7 +4030,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           // The `inc_26449fb9` stale-meter shape, one notch less stale: the
           // reported 1.5 kW sits between `low`'s calibrated admission (1.193)
@@ -4130,7 +4096,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'binary',
@@ -4195,7 +4161,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'stepped',
@@ -4269,7 +4235,7 @@ describe('buildSheddingPlan', () => {
 
     const debugStructured = vi.fn();
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'charger',
@@ -4340,7 +4306,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'stepped-zero',
@@ -4398,7 +4364,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'dev-at-temp',
@@ -4459,7 +4425,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'dev-unmanaged',
@@ -4506,7 +4472,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'dev-daily',
@@ -4552,7 +4518,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [
           buildDevice({
             id: 'dev-cap',
@@ -4592,7 +4558,7 @@ describe('buildSheddingPlan', () => {
     state.sheddingActive = true;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [],
         total: 3.65,
         softLimit: 4,
@@ -4626,7 +4592,7 @@ describe('buildSheddingPlan', () => {
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [],
         total: 4.79,
         softLimit: 5,
@@ -4659,7 +4625,7 @@ describe('buildSheddingPlan', () => {
     state.sheddingActive = true;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [],
         total: 3.65,
         softLimit: 4.1,
@@ -4690,7 +4656,7 @@ describe('buildSheddingPlan', () => {
     state.sheddingActive = true;
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [],
         total: 3.59,
         softLimit: 4,
@@ -4738,7 +4704,7 @@ describe('buildSheddingPlan', () => {
     expect(unmetered.currentDrawKw).toBeCloseTo(1.5, 6);
 
     const result = await buildSheddingPlan(
-      buildContext({
+      ...cycleArgs({
         devices: [unmetered],
         total: 3,
         softLimit: 2,

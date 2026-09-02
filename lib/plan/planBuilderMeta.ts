@@ -1,9 +1,8 @@
 /**
- * Plan-meta assembly and power-freshness transition logging, sliced out of
- * `planBuilder.ts` to keep that entry point under the line budget. These are
- * private helpers of the builder; nothing here changes behaviour — the meta
- * object, shortfall fields, headroom log fields, and freshness transition logs
- * are byte-for-byte what the builder produced inline.
+ * Plan-meta assembly and the context headroom log fields, sliced out of
+ * `planBuilder.ts` to keep that entry point under the line budget. Two writers
+ * share one base: the ordinary pipeline composes the measured variant on top
+ * of it, the silent-meter pass composes the unmeasured one.
  */
 import type CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
@@ -13,9 +12,8 @@ import type {
   DevicePlanDevice,
   PlanMeasuredMetaFields,
   PlanMetaBase,
-  PlanUnmeasuredMetaFields,
 } from './planTypes';
-import type { PlanContext } from './planContext';
+import type { MeasuredPower, PlanContext } from './planContext';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { splitControlledUsageKw } from './planUsage';
 import {
@@ -23,39 +21,40 @@ import {
   getHourUsageSplit,
 } from './planDailyBudgetWindow';
 
-export function buildPlanMeta(params: {
+/**
+ * The facts every plan meta is written from, measured or not: the cycle's
+ * frame, the reading's display projection, the materialized devices, and the
+ * builder's per-cycle inputs. Held by both meta writers, which is what makes
+ * it a concept rather than an argument bag — the measured writer adds the
+ * `MeasuredPower` beside it, the unmeasured writer has nothing to add.
+ */
+export type PlanMetaCycleFacts = {
   context: PlanContext;
+  /**
+   * The reading's display facts for this cycle. They arrive ALONGSIDE the
+   * context rather than on it: everything here is written outward onto the
+   * snapshot and never read back as a control input.
+   */
+  reading: PowerCycleDisplay;
   planDevices: DevicePlanDevice[];
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
-  /**
-   * The producer's display facts for this cycle. They arrive ALONGSIDE the
-   * context rather than on it, so a planner stage cannot reach a freshness
-   * label: everything here is written outward onto the snapshot and never read
-   * back as a control input.
-   */
-  power: PowerCycleDisplay;
   powerTracker: PowerTrackerState;
   capacityGuard: CapacityGuard;
   capacityLimitKw: number;
   hourlyBudgetExhausted: boolean;
   /** Producer-resolved `computeShortfallThreshold` for this build. */
   shortfallBudgetThresholdKw: number;
-}): DevicePlan['meta'] {
+};
+
+export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
   const {
-    context,
-    planDevices,
-    dailyBudgetSnapshot,
-    power,
-    powerTracker,
-    capacityGuard,
-    capacityLimitKw,
-    hourlyBudgetExhausted,
-    shortfallBudgetThresholdKw,
-  } = params;
+    context, reading, dailyBudgetSnapshot, powerTracker, capacityGuard,
+    capacityLimitKw, hourlyBudgetExhausted, shortfallBudgetThresholdKw,
+  } = facts;
   const currentHourUsageSplit = getHourUsageSplit(powerTracker, context.hourBucketKey);
   const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
-  const base: PlanMetaBase = {
-    totalKw: power.totalKw,
+  return {
+    totalKw: reading.totalKw,
     softLimitKw: context.softLimit,
     capacitySoftLimitKw: context.capacitySoftLimit,
     dailySoftLimitKw: context.dailySoftLimit,
@@ -78,67 +77,69 @@ export function buildPlanMeta(params: {
     // From the producer's reading, not a second read of the tracker: the meta
     // writer resolving its own timestamp is how two views of the same sample
     // drift apart.
-    lastPowerUpdateMs: power.lastPowerUpdateMs,
+    lastPowerUpdateMs: reading.lastPowerUpdateMs,
   };
+}
+
+/** The measured cycle's meta: the base plus every figure derived from the measurement. */
+export function buildPlanMeta(facts: PlanMetaCycleFacts, power: MeasuredPower): DevicePlan['meta'] {
   return {
-    ...base,
-    ...resolveMeasuredMetaFields(context, power, planDevices, capacityLimitKw, shortfallBudgetThresholdKw),
+    ...buildPlanMetaBase(facts),
+    ...resolveMeasuredMetaFields(
+      power, facts.reading, facts.planDevices, facts.capacityLimitKw, facts.shortfallBudgetThresholdKw,
+    ),
   };
 }
 
 /**
- * The ONE constructor of the meta's measured/unmeasured split — the single
- * branch on the signal inside the planner. The measured figures are computed
- * and published together; the unmeasured build publishes none of them
- * (`PlanMeasuredMetaFields`). The overshoot tracker's entry log builds its
- * capacity summary from the same call, so no second site can drift from it.
+ * The silent-meter pass's meta: the base and the bare signal. No headroom, no
+ * managed/background split, no cap distance — there is no measurement to
+ * derive them from, and publishing a stand-in is what this variant exists to
+ * make impossible (`PlanMeasuredMetaFields`).
+ */
+export function buildUnmeasuredPlanMeta(facts: PlanMetaCycleFacts): DevicePlan['meta'] {
+  return { ...buildPlanMetaBase(facts), powerIsMeasured: false };
+}
+
+/**
+ * The ONE constructor of the measured figures. The overshoot tracker's entry
+ * log builds its capacity summary from the same call, so no second site can
+ * drift from the published meta.
  */
 export function resolveMeasuredMetaFields(
-  context: PlanContext,
-  power: PowerCycleDisplay,
+  power: MeasuredPower,
+  reading: PowerCycleDisplay,
   planDevices: DevicePlanDevice[],
   capacityLimitKw: number,
   shortfallBudgetThresholdKw: number,
-): PlanMeasuredMetaFields | PlanUnmeasuredMetaFields {
-  if (!context.powerIsMeasured) return { powerIsMeasured: false };
+): PlanMeasuredMetaFields {
   return {
     powerIsMeasured: true,
-    headroomKw: context.headroom,
-    shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw - power.totalKw,
-    hardCapHeadroomKw: capacityLimitKw - power.totalKw,
-    ...splitControlledUsageKw({ devices: planDevices, totalKw: power.totalKw }),
+    headroomKw: power.headroomKw,
+    shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw - reading.totalKw,
+    hardCapHeadroomKw: capacityLimitKw - reading.totalKw,
+    ...splitControlledUsageKw({ devices: planDevices, totalKw: reading.totalKw }),
   };
 }
 
 export function buildPlanContextHeadroomLogFields(
   context: PlanContext,
-  power: PowerCycleDisplay,
+  power: MeasuredPower,
+  reading: PowerCycleDisplay,
   hardCapLimitKw: number,
   shortfallBudgetThresholdKw: number,
 ): Record<string, number | boolean | string | null> {
-  // The distances are measured figures: null on the unmeasured build, like the
-  // meta publishes none and `planRebuildMetrics` logs null for the same names.
-  const measured = context.powerIsMeasured
-    ? {
-      softHeadroomKw: context.headroom,
-      powerNowKw: power.totalKw,
-      shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw - power.totalKw,
-      hardCapHeadroomKw: hardCapLimitKw - power.totalKw,
-      hardCapBreached: hardCapLimitKw - power.totalKw < 0,
-    }
-    : {
-      softHeadroomKw: null,
-      // Log continuity: saved queries read `powerNowKw` as "the measured draw
-      // or null". A LOG field, not a seam.
-      powerNowKw: null,
-      shortfallBudgetHeadroomKw: null,
-      hardCapHeadroomKw: null,
-      hardCapBreached: null,
-    };
+  const hardCapHeadroomKw = hardCapLimitKw - reading.totalKw;
   return {
-    totalKw: power.totalKw,
+    totalKw: reading.totalKw,
     softLimitKw: context.softLimit,
+    softHeadroomKw: power.headroomKw,
+    // Log continuity: saved queries read `powerNowKw` as "the measured draw".
+    // A LOG field, not a seam.
+    powerNowKw: reading.totalKw,
     shortfallBudgetThresholdKw: shortfallBudgetThresholdKw ?? null,
-    ...measured,
+    shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw - reading.totalKw,
+    hardCapHeadroomKw,
+    hardCapBreached: hardCapHeadroomKw < 0,
   };
 }

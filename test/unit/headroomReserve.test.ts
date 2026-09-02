@@ -22,14 +22,12 @@ const waiting = (over: Parameters<typeof buildPlanDevice>[0]): DevicePlanDevice 
 const NOW = 1_800_000_000_000;
 
 const run = (devices: DevicePlanDevice[], over?: {
-  powerKnown?: boolean;
   armed?: Record<string, number>;
   nowTs?: number;
 }) => {
   const state = { headroomReserveArmedMs: over?.armed ?? {} };
   const reserves = resolveHeadroomReserves({
     devices,
-    powerIsMeasured: over?.powerKnown ?? true,
     state,
     nowTs: over?.nowTs ?? NOW,
   });
@@ -75,19 +73,6 @@ describe('resolveHeadroomReserves', () => {
     expect(run([waiting({ id: 'heater', priority: 1 })]).reserves).toEqual([]);
   });
 
-  it('declines to reserve when power is unknown, but keeps the clock running', () => {
-    const { reserves, armed } = run(
-      [waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 })],
-      { powerKnown: false, armed: { heater: NOW - 1000 } },
-    );
-    expect(reserves).toEqual([]);
-    expect(armed.heater).toBe(NOW - 1000);
-  });
-
-  // A non-stepped device can no longer fail to produce a startup estimate: the
-  // producer resolves `expectedPowerKw` for every device, ending on a default
-  // rather than on absence. Only the stepped arm can still decline, and only
-  // because a device with no usable step genuinely has nothing to size against.
   it('reserves the producer-resolved expected power when no other estimate exists', () => {
     const { reserves } = run([waiting({ id: 'heater', priority: 1, reservesStartupPower: true })]);
     expect(reserves).toHaveLength(1);

@@ -11,7 +11,7 @@
 // (`buildDeviceDiagnosticsObservations`), and the REAL whole-home sample ingest
 // (`recordPowerSampleForApp`) with a synthetic solar fixture (class:'solarpanel',
 // managed:true, controllable:false). Nothing internal is mocked.
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it, vi } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
@@ -25,7 +25,6 @@ import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnosti
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { RestorePlanResult } from '../../lib/plan/restore';
-import type { PlanContext } from '../../lib/plan/planContext';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
@@ -83,10 +82,10 @@ const heaterInputDevice = (): PlanInputDevice =>
     targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
   });
 
-const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext> = {}): PlanContext => ({
+const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanCycle> = {}): PlanCycle => buildPlanCycleObject({
   devices,
   modeTargetCFor: (d) => (({ [HEATER_ID]: 21 })[d.id] ?? d.currentTarget),
-  ...planContextPower(FIXTURE_TOTAL_KW),
+  total: FIXTURE_TOTAL_KW,
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
   capacitySoftLimit: 2,
@@ -154,7 +153,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
 
@@ -172,7 +171,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       needed: 5,
       deficitKw: 5,
       limitSource: 'capacity',
-      capacityBreached: context.powerMeasuredAboveKw(context.capacitySoftLimit),
+      capacityBreached: context.capacityBreached,
       state: createPlanEngineState(),
       deps: {
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
@@ -194,7 +193,6 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       devices: [solarInputDevice()],
       state,
       signedNetKw: -3,
-      powerIsMeasured: true,
       inferredSurplusKw: 0,
       getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
       nowTs: Date.UTC(2025, 0, 1, 12, 0, 0),
@@ -232,11 +230,12 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
     const observations = buildDeviceDiagnosticsObservations({
       context,
+      power: context,
       planDevices,
       restoreResult: emptyRestoreResult,
       priceOptimizationEnabled: false,

@@ -33,7 +33,6 @@ const resolve = (params: {
   state: PlanEngineState;
   signedNetKw: number;
   inferredSurplusKw: number;
-  powerKnown?: boolean;
   nowTs: number;
   devices?: PlanInputDevice[];
   getPriority?: (deviceId: string) => number;
@@ -43,7 +42,6 @@ const resolve = (params: {
     devices: params.devices ?? [buildDevice()],
     state: params.state,
     signedNetKw: params.signedNetKw,
-    powerIsMeasured: params.powerKnown ?? true,
     inferredSurplusKw: params.inferredSurplusKw,
     getConfig: () => surplusConfig,
     debugStructured: params.debugStructured,
@@ -75,25 +73,6 @@ describe('resolveSurplusEligibility — inferred-term pool composition', () => {
     resolve({ state, signedNetKw: 0, inferredSurplusKw: 0, nowTs: SURPLUS_ABSORB_SETTLE_MS });
     expect(eligible(state)).toBe(false);
     expect(state.surplusEligibilityByDevice[DEVICE_ID]).toBeUndefined(); // no pending flip either
-  });
-
-  it('powerOk=false ignores the term entirely: an engaged device releases despite a huge inferred value', () => {
-    const state = createPlanEngineState();
-    // Engage on the inferred term first.
-    resolve({ state, signedNetKw: 0, inferredSurplusKw: 1.5, nowTs: 0 });
-    resolve({ state, signedNetKw: 0, inferredSurplusKw: 1.5, nowTs: SURPLUS_ABSORB_SETTLE_MS });
-    expect(eligible(state)).toBe(true);
-    // Meter goes stale: no surplus to allocate — the inferred term must not hold
-    // the engagement (never raise blind on inference alone). Power-unknown is also
-    // a hard-off condition, so the release skips the min dwell after one settle.
-    const lostAt = SURPLUS_ABSORB_SETTLE_MS + 10_000;
-    resolve({ state, signedNetKw: 0, powerKnown: false, inferredSurplusKw: 99, nowTs: lostAt });
-    expect(eligible(state)).toBe(true); // release settle still applies
-    resolve({
-      state, signedNetKw: 0, powerKnown: false, inferredSurplusKw: 99, nowTs: lostAt + SURPLUS_ABSORB_SETTLE_MS,
-    });
-    expect(eligible(state)).toBe(false);
-    expect(lostAt + SURPLUS_ABSORB_SETTLE_MS).toBeLessThan(SURPLUS_ABSORB_SETTLE_MS + SURPLUS_ABSORB_MIN_DWELL_MS);
   });
 
   it('sustained import beyond the hard-off bar releases without the dwell once the term stops feeding', () => {

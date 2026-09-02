@@ -22,7 +22,7 @@ import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
-import type { PlanContext } from './planContext';
+import type { MeasuredPower, PlanContext } from './planContext';
 import type { PowerCycleDisplay } from '../power/powerCycleReading';
 import { buildPlanCapacityStateSummary } from './planLogging';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
@@ -57,7 +57,8 @@ export class OvershootTracker {
 
   public updateOvershootState(params: {
     context: PlanContext;
-    power: PowerCycleDisplay;
+    power: MeasuredPower;
+    reading: PowerCycleDisplay;
     capacityLimitKw: number;
     powerTracker: PowerTrackerState;
     deviceNameById: ReadonlyMap<string, string>;
@@ -70,6 +71,7 @@ export class OvershootTracker {
     const {
       context,
       power,
+      reading,
       capacityLimitKw,
       shortfallBudgetThresholdKw,
       deviceNameById,
@@ -86,7 +88,7 @@ export class OvershootTracker {
     );
     // From the producer's reading, not a second tracker read: one sample, one
     // view (and never null — a build implies a latched sample).
-    const lastPowerUpdateMs = power.lastPowerUpdateMs;
+    const lastPowerUpdateMs = reading.lastPowerUpdateMs;
     const overshootTimingFields = this.buildOvershootTimingFields(nowTs, lastPowerUpdateMs);
     if (overshootActive && !prevOvershoot) {
       this.state.overshootLogged = true;
@@ -101,8 +103,7 @@ export class OvershootTracker {
         // `PlanContext`. `drawKw` is the successor to the `context.total`
         // this read used before the display bundle existed; the display members
         // stay for the outward meta writes below.
-        drawKw: context.drawKw,
-        powerIsMeasured: context.powerIsMeasured,
+        drawKw: power.drawKw,
         nowTs,
         lastPowerUpdateMs,
         previousTotalKw: this.state.lastPlanTotalKw,
@@ -113,25 +114,22 @@ export class OvershootTracker {
       this.deps.structuredLog?.info({
         event: 'overshoot_entered',
         reasonCode: 'active_overshoot',
-        // A measured figure: the fail-closed pass enters the overshoot on its
-        // own decision, and the log says so with null rather than a number.
-        headroomKw: context.powerIsMeasured ? context.headroom : null,
+        headroomKw: power.headroomKw,
         ...overshootTimingFields,
-        ...buildPlanContextHeadroomLogFields(context, power, capacityLimitKw, shortfallBudgetThresholdKw),
+        ...buildPlanContextHeadroomLogFields(context, power, reading, capacityLimitKw, shortfallBudgetThresholdKw),
         // Supplies exactly the meta the summary reads. It used to pass
         // `headroomKw` (never read) while omitting the managed/background
         // split (always read), so this log's `controlledPowerW` /
         // `uncontrolledPowerW` were null on every overshoot entry.
         ...buildPlanCapacityStateSummary({
           meta: {
-            totalKw: power.totalKw,
+            totalKw: reading.totalKw,
             softLimitKw: context.softLimit,
             capacitySoftLimitKw: context.capacitySoftLimit,
             softLimitSource: context.softLimitSource,
             // The same constructor the plan meta uses, so the summary's
-            // managed/background split cannot drift from the published one
-            // (and is absent on the unmeasured build, like the meta's).
-            ...resolveMeasuredMetaFields(context, power, planDevices, capacityLimitKw, shortfallBudgetThresholdKw),
+            // managed/background split cannot drift from the published one.
+            ...resolveMeasuredMetaFields(power, reading, planDevices, capacityLimitKw, shortfallBudgetThresholdKw),
           },
           devices: planDevices,
         }),
@@ -156,32 +154,26 @@ export class OvershootTracker {
         reasonCode: 'overshoot_cleared',
         durationMs,
         ...overshootTimingFields,
-        ...buildPlanContextHeadroomLogFields(context, power, capacityLimitKw, shortfallBudgetThresholdKw),
+        ...buildPlanContextHeadroomLogFields(context, power, reading, capacityLimitKw, shortfallBudgetThresholdKw),
       });
     } else if (overshootActive && this.state.overshootStartedMs === null) {
       this.state.overshootStartedMs = nowTs;
     }
-    this.rememberPlanSnapshot(power, trackedPlanDevicesById, nowTs);
+    this.rememberPlanSnapshot(reading, trackedPlanDevicesById, nowTs);
     this.state.wasOvershoot = overshootActive;
   }
 
   private rememberPlanSnapshot(
     /**
-     * The RAW `totalKw`, deliberately — not the context's measured draw.
-     *
-     * This is the baseline half of a later cycle's overshoot delta, and it must
-     * survive a cycle the meter went stale on: `measuredDrawKw` is `null` while
-     * unmeasured, so storing it would make the next fresh cycle's delta `null`
-     * and silently close restore attribution. That is the exact regression
-     * `does not close restore attribution on a stale-hold rebuild with
-     * non-negative synthetic headroom` pins. The freshness judgement stays on
-     * the CURRENT half of the delta, which reads the context.
+     * The reading's total: the baseline half of a later cycle's overshoot
+     * delta. Every cycle that reaches this tracker is measured (the silent-meter
+     * pass never runs it), so the baseline is always a measured figure.
      */
-    power: PowerCycleDisplay,
+    reading: PowerCycleDisplay,
     trackedPlanDevicesById: Record<string, OvershootTrackedPlanDevice>,
     nowTs: number,
   ): void {
-    this.state.lastPlanTotalKw = power.totalKw;
+    this.state.lastPlanTotalKw = reading.totalKw;
     this.state.lastPlanBuiltAtMs = nowTs;
     this.state.lastPlanDevicesById = trackedPlanDevicesById;
   }
@@ -314,13 +306,6 @@ type OvershootEntryDiagnostics = {
 function buildOvershootEntryDiagnostics(params: {
   /** The whole-home draw behind this cycle (always a number — the carried reading). */
   drawKw: number;
-  /**
-   * Whether that draw was MEASURED this cycle. False = the producer
-   * synthesized the headroom instead, and no confident cause may be diffed
-   * from the number: a stale carried total diffed into an attribution would
-   * be a confident-but-wrong cause.
-   */
-  powerIsMeasured: boolean;
   nowTs: number;
   lastPowerUpdateMs: number;
   previousTotalKw: number | null;
@@ -330,7 +315,6 @@ function buildOvershootEntryDiagnostics(params: {
 }): OvershootEntryDiagnostics {
   const {
     drawKw,
-    powerIsMeasured,
     nowTs,
     lastPowerUpdateMs,
     previousTotalKw,
@@ -348,11 +332,7 @@ function buildOvershootEntryDiagnostics(params: {
   const uncontrolled = contributors
     .filter((contributor) => !contributor.controllable)
     .slice(0, OVERSHOOT_TOP_CONTRIBUTOR_LIMIT);
-  const totalDeltaKw = (
-    powerIsMeasured
-    && typeof previousTotalKw === 'number'
-    && Number.isFinite(previousTotalKw)
-  )
+  const totalDeltaKw = (typeof previousTotalKw === 'number' && Number.isFinite(previousTotalKw))
     ? roundOvershootKw(drawKw - previousTotalKw)
     : null;
   const attributedDeltaKw = roundOvershootKw(contributors.reduce((sum, contributor) => sum + contributor.deltaKw, 0));
@@ -429,9 +409,8 @@ function resolveOvershootAttributionReason(params: {
 //  (a) a finite, diffable total delta exists. This used to be TWO clauses — an
 //      explicit freshness check plus a diffability check — because the delta was
 //      taken from the RAW total, which survives a dropout and could be diffed
-//      into a confident-but-wrong cause. The delta is now built from the
-//      producer's MEASURED total (`null` whenever it synthesized the headroom
-//      instead), so an unmeasured cycle cannot produce a delta and the freshness
+//      into a confident-but-wrong cause. Every cycle that reaches this tracker
+//      is measured now (the silent-meter pass never runs it), so the freshness
 //      clause has nothing left to add; AND
 //  (b) every tracked device that could PLAUSIBLY have carried the rise — controllable
 //      OR uncontrolled, with a current reading above the attribution epsilon — was
@@ -452,7 +431,7 @@ function areAttributionInputsComplete(params: {
 // True when at least one tracked device that could PLAUSIBLY have carried the rise was
 // DROPPED from the contributor diff because it could not be diffed — its current read
 // was unresolvable, or its previous-snapshot power was missing/unknown (e.g. a newly
-// discovered device, or a prior stale-hold cycle). A device whose CURRENT reading sits
+// discovered device). A device whose CURRENT reading sits
 // at/below the attribution epsilon (off / ~0 W) cannot have caused a positive rise, so
 // its undiffability is harmless and does not block a confident verdict — this covers
 // the zero-current newcomer. Controllable AND uncontrolled tracked devices count: an

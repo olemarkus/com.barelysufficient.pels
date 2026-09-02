@@ -18,7 +18,7 @@
  */
 import type { DevicePlanDevice, ShedBehavior } from './planTypes';
 import type { PlanEngineState } from './planState';
-import type { PlanContext } from './planContext';
+import type { MeasuredPower, PlanContext } from './planContext';
 import type { SheddingPlan } from './shedding';
 import type { PriceOptDeviceConfig } from './planBuilderSurplus';
 import type { PowerTrackerState } from '../power/tracker';
@@ -26,6 +26,7 @@ import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommand
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { buildInitialPlanDevices } from './planDevices';
+import type { ShortfallOffState } from './planOffStateReason';
 import { applyRestorePlan, type RestorePlanResult } from './restore';
 import {
   applyShedTemperatureHold,
@@ -53,7 +54,6 @@ export type PlanMaterializationDeps = {
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
   getInferredSurplusKw: () => number;
   // Per-home mode-target raise hold while power is unknown; absent = no hold.
-  holdsModeTargetRaisesWhilePowerUnknown?: () => boolean;
   getOperatingMode: () => string;
   getPowerTracker: () => PowerTrackerState;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
@@ -88,6 +88,7 @@ export class PlanMaterializationStages {
   buildPlanDevices(
     context: PlanContext,
     sheddingPlan: SheddingPlan,
+    shortfall: ShortfallOffState,
   ): DevicePlanDevice[] {
     return trackPlanStage('plan_devices_ms', () => buildInitialPlanDevices({
       context,
@@ -95,14 +96,13 @@ export class PlanMaterializationStages {
       shedSet: sheddingPlan.shedSet,
       shedReasons: sheddingPlan.shedReasons,
       shedStepTargets: sheddingPlan.shedStepTargets,
-      guardInShortfall: sheddingPlan.guardInShortfall,
+      shortfall,
       deps: {
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
         getPriceOptimizationEnabled: () => this.deps.getPriceOptimizationEnabled(),
         getPriceOptimizationSettings: () => this.priceOptimizationSettings,
         getInferredSurplusKw: this.deps.getInferredSurplusKw,
         getOperatingMode: () => this.deps.getOperatingMode(),
-        holdsModeTargetRaisesWhilePowerUnknown: this.deps.holdsModeTargetRaisesWhilePowerUnknown,
         pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
         debugStructured: this.deps.debugStructured,
       },
@@ -112,6 +112,7 @@ export class PlanMaterializationStages {
   applyRestorePlan(
     planDevices: DevicePlanDevice[],
     context: PlanContext,
+    power: MeasuredPower,
     sheddingPlan: SheddingPlan,
     deviceNameById: ReadonlyMap<string, string>,
     normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
@@ -119,6 +120,7 @@ export class PlanMaterializationStages {
     return trackPlanStage('plan_restore_ms', () => this.applyRestorePlanAndUpdateState({
       planDevices,
       context,
+      power,
       sheddingActive: sheddingPlan.sheddingActive,
       guardInShortfall: sheddingPlan.guardInShortfall,
       deviceNameById,
@@ -173,6 +175,7 @@ export class PlanMaterializationStages {
   normalizeReasons(params: {
     planDevices: DevicePlanDevice[];
     context: PlanContext;
+    power: MeasuredPower;
     restoreResult: RestorePlanResult;
     sheddingPlan: SheddingPlan;
     holds: ShedReasonHoldInputs;
@@ -180,13 +183,13 @@ export class PlanMaterializationStages {
     normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
   }): DevicePlanDevice[] {
     const {
-      planDevices, context, restoreResult, sheddingPlan, holds, holdResult, normalizedShedFloorCByDevice,
+      planDevices, context, power, restoreResult, sheddingPlan, holds, holdResult, normalizedShedFloorCByDevice,
     } = params;
     return trackPlanStage('plan_reasons_ms', () => normalizeShedReasons({
       planDevices,
       shedReasons: sheddingPlan.shedReasons,
       guardInShortfall: sheddingPlan.guardInShortfall,
-      headroomRaw: context.headroomRaw,
+      headroomRaw: power.headroomKw,
       inCooldown: restoreResult.inCooldown,
       activeOvershoot: restoreResult.activeOvershoot,
       shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
@@ -194,26 +197,16 @@ export class PlanMaterializationStages {
       shedCooldownTotalSec: restoreResult.shedCooldownTotalSec,
       ...holds,
       softLimitSource: context.softLimitSource,
-      // Measured-only: a synthesized headroom must not produce a user-visible
-      // breach reason. This used to read the RAW total, which survives a meter
-      // dropout, so a stale cached figure could claim a breach PELS could not
-      // observe. Shedding is unaffected — a fail-closed meter still forces -1.
-      capacityBreached: context.powerMeasuredAboveKw(context.capacitySoftLimit),
-      budgetReleasableHeadroomHold: context.budgetReleasableHeadroomHold,
+      // The one resolved breach answer: this used to read the RAW total, which
+      // survives a meter dropout, so a stale cached figure could claim a breach
+      // PELS could not observe.
+      capacityBreached: power.capacityBreached,
+      budgetReleasableHeadroomHold: power.budgetReleasableHeadroomHold,
       // The hold lane's post-pass axes — `applyHoldPlan` always supplies a
       // ledger on this path, so `ledgerAxes` is only null for scalar-only
       // direct callers (tests), which simply get no per-cycle shortfall rather
       // than a silently different availability basis.
-      //
-      // Gated on a measurement (`powerIsMeasured`, resolved once by the
-      // producer): whenever there is none the context synthesizes the headroom
-      // (silent meter → −1 for the fail-closed pass, and a fresh tracker with a
-      // null total — e.g. right after an in-place meter swap — synthesizes 0),
-      // so a gap computed from those axes would be fabricated —
-      // the real recourse is a fresh meter reading, not freed power. No new
-      // numbers while unknown; holds keep whatever the last known cycle
-      // attached.
-      admissionInputs: holdResult.ledgerAxes && context.powerIsMeasured
+      admissionInputs: holdResult.ledgerAxes
         ? buildCeilingShortfallInputs({
           ledgerAxes: holdResult.ledgerAxes,
           headroomReserves: restoreResult.headroomReserves,
@@ -288,6 +281,7 @@ export class PlanMaterializationStages {
    */
   observeDiagnostics(params: {
     context: PlanContext;
+    power: MeasuredPower;
     planDevices: DevicePlanDevice[];
     restoreResult: RestorePlanResult;
     nowTs: number;
@@ -297,6 +291,7 @@ export class PlanMaterializationStages {
       const { nowTs } = params;
       const observations = buildDeviceDiagnosticsObservations({
         context: params.context,
+        power: params.power,
         planDevices: params.planDevices,
         restoreResult: params.restoreResult,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
@@ -311,17 +306,19 @@ export class PlanMaterializationStages {
   private applyRestorePlanAndUpdateState(params: {
     planDevices: DevicePlanDevice[];
     context: PlanContext;
+    power: MeasuredPower;
     sheddingActive: boolean;
     guardInShortfall: boolean;
     deviceNameById: ReadonlyMap<string, string>;
     normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
   }): RestorePlanResult {
     const {
-      planDevices, context, sheddingActive, guardInShortfall, deviceNameById, normalizedShedFloorCByDevice,
+      planDevices, context, power, sheddingActive, guardInShortfall, deviceNameById, normalizedShedFloorCByDevice,
     } = params;
     const restoreResult = applyRestorePlan({
       planDevices,
       context,
+      power,
       state: this.state,
       sheddingActive,
       guardInShortfall,

@@ -17,45 +17,42 @@ const resolve = (ageMs: number, totalKw = 4) => resolvePowerCycleReading({
 describe('resolvePowerCycleReading — what the planner is allowed to know', () => {
   it('answers a measured headroom as the real difference', () => {
     const reading = resolve(1000, 4);
-
     expect(reading.isMeasured).toBe(true);
-    expect(reading.headroomKw(6)).toBeCloseTo(2, 6);
-    expect(reading.headroomKw(3)).toBeCloseTo(-1, 6);
+    if (!reading.isMeasured) throw new Error('unreachable');
+    expect(reading.totalKw).toBe(4);
+    expect(reading.headroomKw(6)).toBe(2);
+    expect(reading.headroomKw(3)).toBe(-1);
   });
 
-  // Owner ruling 2026-08-31: between the 60 s staleness threshold and the
-  // 10-minute shed timeout the last good value carries forward AS MEASURED —
-  // a transient gap is a no-op, not a hold. (The old `stale_hold` 0 kW
-  // synthesis re-decided on the strength of a sample merely being old.)
   it('carries a minutes-old reading forward as measured', () => {
+    // Between the 60 s staleness threshold and the 10-minute shed timeout a
+    // gap is a no-op (owner ruling 2026-08-31): the last good value carries
+    // forward AS MEASURED — no hold, no synthesized 0.
     const reading = resolve(POWER_SAMPLE_STALE_THRESHOLD_MS + 60_000, 4);
-
     expect(reading.isMeasured).toBe(true);
-    expect(reading.headroomKw(6)).toBeCloseTo(2, 6);
-    expect(reading.measuredAtOrBelowKw(4)).toBe(true);
-    expect(reading.display.totalKw).toBe(4);
+    if (!reading.isMeasured) throw new Error('unreachable');
+    expect(reading.headroomKw(6)).toBe(2);
   });
 
-  // The one silent-window build is the escalation's fail-closed pass: it must
-  // shed, and it must never spend the cached total, however large.
-  it('forces -1 and spends nothing once silence passes the shed timeout', () => {
+  it('answers the silent-meter variant once silence passes the shed timeout — a signal, never a number', () => {
+    // This used to force a sentinel `-1` headroom, which every consumer then
+    // did arithmetic on (owner ruling 2026-09-02). The silent variant carries
+    // no headroom at all: the planner takes an explicit directive instead.
     const reading = resolve(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, 9.9);
 
     expect(reading.isMeasured).toBe(false);
-    expect(reading.headroomKw(6)).toBe(-1);
-    expect(reading.headroomKw(0)).toBe(-1);
-    expect(reading.measuredAtOrBelowKw(100)).toBe(false);
-    // The display still carries the CARRIED reading — the owner may see the
-    // last real number — but no planning predicate spends it.
-    expect(reading.display.totalKw).toBe(9.9);
+    expect(reading).not.toHaveProperty('headroomKw');
+    // The carried reading is still on the display facts — the owner may see
+    // the last real number — but nothing plans on it.
+    expect(reading.totalKw).toBe(9.9);
+    expect(reading.lastPowerUpdateMs).toBe(NOW_MS - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
   });
 
   // The measurement gate is the reading's precondition, not a case it hedges
   // for: a build reaching this resolver with an unsampled tracker is a wiring
   // bug, and it fails loud instead of planning on a fabricated number.
   it('throws on an unsampled tracker — a build past the gate is a violation, not a hold', () => {
-    expect(() => resolvePowerCycleReading({ powerTracker: {}, nowMs: NOW_MS }))
-      .toThrow(/measurement gate/);
+    expect(() => resolvePowerCycleReading({ powerTracker: {}, nowMs: NOW_MS })).toThrow(/measurement gate/);
     expect(() => resolvePowerCycleReading({
       powerTracker: { lastPowerW: 4000 },
       nowMs: NOW_MS,
@@ -66,21 +63,9 @@ describe('resolvePowerCycleReading — what the planner is allowed to know', () 
     })).toThrow(/measurement gate/);
   });
 
-  it('answers measuredAtOrBelowKw and measuredAboveKw only on a positive measurement', () => {
-    const measured = resolve(1000, 4);
-    expect(measured.measuredAtOrBelowKw(4)).toBe(true);
-    expect(measured.measuredAtOrBelowKw(3.9)).toBe(false);
-    expect(measured.measuredAboveKw(3.9)).toBe(true);
-    expect(measured.measuredAboveKw(4)).toBe(false);
-
-    const silent = resolve(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, 4);
-    expect(silent.measuredAtOrBelowKw(100)).toBe(false);
-    expect(silent.measuredAboveKw(0)).toBe(false);
-  });
-
   it('stamps the display from the same sample as the watts — one view, no nullable', () => {
     const reading = resolve(1000, 4);
-    expect(reading.display.totalKw).toBe(4);
-    expect(reading.display.lastPowerUpdateMs).toBe(NOW_MS - 1000);
+    expect(reading.totalKw).toBe(4);
+    expect(reading.lastPowerUpdateMs).toBe(NOW_MS - 1000);
   });
 });

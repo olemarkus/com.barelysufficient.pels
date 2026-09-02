@@ -5,15 +5,12 @@
  * data it cannot trust. `binary_release` and `shed_release` are negative commands
  * and stay safe under stale power.
  *
- * This used to be asserted end to end through the reconcile lane, which had to
- * re-stamp freshness onto the plan it re-applied (`stampCurrentPowerFreshness`)
- * precisely because that plan had been built at a different moment. With the
- * reconcile lane gone, the guard sits where it belongs — at build time, in the
- * producer of the intent — and this pins it there directly.
+ * The guard sits at build time, in the producer of the intent, as a seam
+ * argument: the measured pipeline passes `true`, the silent-meter pass `false`.
+ * Neither pass reads a flag inside; this pins the argument's meaning.
  */
 import { describe, expect, it } from 'vitest';
 import { attachDeferredReleaseIntents } from '../../lib/plan/planBuilderDecoration';
-import type { PlanContext } from '../../lib/plan/planContext';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 
 type PlanDevice = DevicePlan['devices'][number];
@@ -32,35 +29,32 @@ const evDevice = (): PlanDevice => ({
 // The gate is now "did this cycle measure", not which stale state it was in —
 // the planner is not told the difference. The parameterised cases below still
 // name each freshness state, because that is what produces each answer.
-const contextWithMeasurement = (powerIsMeasured: boolean): PlanContext =>
-  ({ powerIsMeasured } as unknown as PlanContext);
-
-describe('attachDeferredReleaseIntents — power measurement gate', () => {
+describe('attachDeferredReleaseIntents — the binary_restore seam', () => {
   it('attaches a binary_restore intent when the cycle has a measurement', () => {
     const result = attachDeferredReleaseIntents(
       [evDevice()],
       { 'ev-1': 'binary_restore' },
-      contextWithMeasurement(true),
+      true,
     );
 
     expect(result[0].deferredReleaseIntent).toBe('binary_restore');
   });
 
-  it('withholds a binary_restore intent on an unmeasured cycle', () => {
+  it('withholds a binary_restore intent when the pass forbids it (the silent-meter pass)', () => {
     const result = attachDeferredReleaseIntents(
       [evDevice()],
       { 'ev-1': 'binary_restore' },
-      contextWithMeasurement(false),
+      false,
     );
 
     expect(result[0].deferredReleaseIntent).toBeUndefined();
   });
 
-  it('still attaches the negative binary_release intent on an unmeasured cycle', () => {
+  it('still attaches the negative binary_release intent when binary_restore is forbidden', () => {
     const result = attachDeferredReleaseIntents(
       [evDevice()],
       { 'ev-1': 'binary_release' },
-      contextWithMeasurement(false),
+      false,
     );
 
     expect(result[0].deferredReleaseIntent).toBe('binary_release');

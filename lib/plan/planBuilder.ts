@@ -25,16 +25,22 @@
 import CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
 import { PriceLevel } from '../price/priceLevels';
-import { resolvePowerCycleReading, type PowerCycleDisplay } from '../power/powerCycleReading';
-import type { DevicePlan, PlanInputDevice, ShedBehavior } from './planTypes';
+import type { PlanBuilderDeps } from './planBuilderDeps';
+import { resolvePowerCycleReading } from '../power/powerCycleReading';
+import type { DevicePlan, PlanInputDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import {
   buildPlanContext,
+  resolveMeasuredPower,
+  type MeasuredPower,
   type PlanContext,
+  type PlanLimits,
   type SoftLimitSource,
 } from './planContext';
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
+import { buildSheddingDeps, SilentMeterPlanBuilder } from './planBuilderSilentMeter';
+import { resolveShortfallOffState } from './planOffStateReason';
 import { runSurplusPass, type PriceOptDeviceConfig } from './planBuilderSurplus';
 import { sumBudgetExemptProjectedUsageKw } from './planUsage';
 import { PlanMaterializationStages } from './planBuilderMaterialization';
@@ -43,70 +49,17 @@ import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/
 import { trackPlanStage, trackPlanStageAsync } from './planStageTiming';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { incPerfCounter } from '../utils/perfCounters';
-import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { resolveDailySoftLimitBucket } from './planDailyBudgetWindow';
 import {
   ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
   syncConfirmedRestoreAttributionState as syncConfirmedRestoreAttributionAttempt,
 } from './admission';
-import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
-import type {
-  DeferredDecorationBundle,
-  DeferredDecorationInput,
-} from '../../packages/planner-types/src/deferredDecoration';
 import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta } from './planBuilderMeta';
 import { attachDeferredReleaseIntents, buildIdentityDecorationBundle } from './planBuilderDecoration';
 
-export type PlanBuilderDeps = {
-  setCapacityInShortfall: (inShortfall: boolean) => void;
-  /** Per-home dry-run posture — the same fact `shouldApplyPlan` consults
-   * before actuating. */
-  getCapacityDryRun: () => boolean;
-  capacityGuard: CapacityGuard;
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
-  getOperatingMode: () => string;
-  getModeDeviceTargets: () => Record<string, Record<string, number>>;
-  getPriceOptimizationEnabled: () => boolean;
-  getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
-  // Producer-resolved: both current-hour flags from ONE combined-series build.
-  getCurrentHourPriceLevel: () => PriceLevel;
-  // Producer-resolved inferred curtailed-surplus term (kW, >= 0) for the surplus
-  // allocator (zero-export homes); forwarded untouched to the per-device prep
-  // pass. 0 is the whole of "nothing inferred" — see `homeScope`.
-  getInferredSurplusKw: () => number;
-  // Producer-resolved per-home posture: hold a mode-target RAISE while this
-  // home's own power reading is unknown (see `applyModeSeedModulation` in
-  // `planDevices.ts`). Absent = no hold, which is the main home's binding.
-  holdsModeTargetRaisesWhilePowerUnknown?: () => boolean;
-  getPowerTracker: () => PowerTrackerState;
-  getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
-  getShedBehavior: (deviceId: string) => ShedBehavior;
-  getDynamicSoftLimitOverride?: () => number | null;
-  // Observer-owned pending-binary-command store. Plan-side reads consult
-  // `peek(id)` (raw read) through this facade rather than touching
-  // `state.pendingBinaryCommands[id]` directly, so the store stays the
-  // single source of truth for that map (observer/transport split).
-  pendingBinaryCommandStore: PendingBinaryCommandStore;
-  deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  // Observer-resolved per-device staleness for the diagnostics freshness gate
-  // (starvation must not count stale-but-unobserved time). Sourced from the
-  // observer projection at the wiring layer (createPlanEngine); absent in tests
-  // that don't exercise freshness, which then treat every device as fresh.
-  structuredLog?: PinoLogger;
-  debugStructured?: StructuredDebugEmitter;
-  // Smart-task (deferred-objective) decoration seam. The smart-task controller
-  // (lib/objectives) evaluates objectives, commits active plans synchronously,
-  // and applies admission / target-overrides / release-intents, returning a
-  // `DeferredDecorationBundle`. When absent (no smart tasks wired, e.g. tests),
-  // the planner uses the identity bundle and stays entirely smart-task-agnostic.
-  // This is the dependency inversion that keeps lib/plan free of lib/objectives.
-  decorateDeferredObjectives?: (input: DeferredDecorationInput) => DeferredDecorationBundle;
-  log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
-};
+export type { PlanBuilderDeps } from './planBuilderDeps';
 const SOFT_LIMIT_EPSILON = 1e-3;
 
 // No price call was made this build — nothing in it can spend a price delta —
@@ -128,6 +81,9 @@ export class PlanBuilder {
   // plus the headroom-card sync and the diagnostics observation.
   private readonly stages: PlanMaterializationStages;
 
+  /** The unmeasured path — see `planBuilderSilentMeter.ts`. */
+  private readonly silentMeter: SilentMeterPlanBuilder;
+
   /**
    * Per builder, so a main home and its meter areas keep separate freshness
    * histories. Owned by `lib/power`; the builder only drives it once per cycle.
@@ -136,6 +92,7 @@ export class PlanBuilder {
   constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) {
     this.overshootTracker = new OvershootTracker(state, deps);
     this.stages = new PlanMaterializationStages(deps, state);
+    this.silentMeter = new SilentMeterPlanBuilder(deps, state, this.stages);
   }
 
   private get capacityGuard(): CapacityGuard { return this.deps.capacityGuard; }
@@ -246,38 +203,48 @@ export class PlanBuilder {
     // committed plan here; the active-plan RECORD (revisions) is written on the
     // lifecycle clock, not on this plan cycle. When no controller is wired the
     // planner uses the identity bundle and ignores smart tasks entirely.
-    const {
-      admittedDevices,
-      forceShedSet,
-      deferredAvoidDeviceIds,
-      deferredReleaseIntentByDeviceId,
-      admittedDeviceIds,
-    } = trackPlanStage('plan_deferred_objective_observe_ms', () => (
+    const decoration = trackPlanStage('plan_deferred_objective_observe_ms', () => (
       this.deps.decorateDeferredObjectives?.({ devices, dailyBudgetSnapshot, nowTs })
       ?? buildIdentityDecorationBundle(devices)
     ));
+    const { admittedDevices } = decoration;
 
-    const {
-      context,
-      power,
-      sheddingPlan,
-      overshootDecision,
-    } = await this.buildContextAndShedding(
-      admittedDevices,
-      nowTs,
-      dailyBudgetSnapshot,
-    );
+    // One reading per build, resolved by `lib/power` — pure: the silence
+    // policy (block + one shed pass) lives in the wiring's composed gate and
+    // `lib/power/meterSilence.ts`, never in a planner-held state machine.
+    const reading = resolvePowerCycleReading({
+      powerTracker: this.powerTracker,
+      nowMs: Date.now(),
+    });
+    const context = trackPlanStage('plan_context_ms', () => buildPlanContext({
+      devices: admittedDevices,
+      capacitySettings: this.capacitySettings,
+      powerTracker: this.powerTracker,
+      limits: this.resolvePlanLimits(admittedDevices, dailyBudgetSnapshot),
+      modeTargetCFor: this.modeTargetCFor(),
+      currentHourPriceLevel: this.resolveCurrentHourPriceLevel(admittedDevices),
+    }));
+    // THE seam. The ordinary pipeline below is entered only with a measurement,
+    // so nothing inside it asks whether power was measured; the one unmeasured
+    // build — the silent-meter fail-closed pass — takes its directive here and
+    // never constructs a `MeasuredPower` (owner ruling 2026-09-02).
+    if (!reading.isMeasured) {
+      return this.silentMeter.build(context, reading, decoration, nowTs);
+    }
+    const power = resolveMeasuredPower(reading, context, admittedDevices);
+    const { sheddingPlan, overshootDecision } = await this.decideShedding(context, power, nowTs);
     // Surplus allocator + the "Run on solar surplus" dump-load hold + the
     // post-shedding hold merges, all in `runSurplusPass` (hoisted so eligibility
     // exists as the shed set is assembled); returns the dump-load reason map for
     // reason normalization.
     const surplusHoldReasonById = trackPlanStage('plan_surplus_eligibility_ms', () => runSurplusPass({
       context,
+      power,
       state: this.state,
       admittedDevices,
       shedSet: sheddingPlan.shedSet,
       shedStepTargets: sheddingPlan.shedStepTargets,
-      decoration: { forceShedSet, deferredAvoidDeviceIds, deferredReleaseIntentByDeviceId, admittedDeviceIds },
+      decoration,
       getConfig: (deviceId) => this.priceOptimizationSettings[deviceId],
       getInferredSurplusKw: this.deps.getInferredSurplusKw,
       debugStructured: this.deps.debugStructured,
@@ -285,7 +252,11 @@ export class PlanBuilder {
     }));
     const deviceNameById = new Map(admittedDevices.map((d) => [d.id, d.name]));
 
-    let planDevices = this.stages.buildPlanDevices(context, sheddingPlan);
+    let planDevices = this.stages.buildPlanDevices(
+      context,
+      sheddingPlan,
+      resolveShortfallOffState(sheddingPlan.guardInShortfall, power.headroomKw),
+    );
     // One capability-normalized configured floor per device per build — the
     // single source the restore/swap pass, the hold lane, reason
     // normalization, and restore classification all read, so no stage
@@ -296,7 +267,7 @@ export class PlanBuilder {
       (deviceId) => this.deps.getShedBehavior(deviceId),
     );
     const restoreResult = this.stages.applyRestorePlan(
-      planDevices, context, sheddingPlan, deviceNameById, normalizedShedFloorCByDevice,
+      planDevices, context, power, sheddingPlan, deviceNameById, normalizedShedFloorCByDevice,
     );
     planDevices = restoreResult.planDevices;
 
@@ -311,16 +282,17 @@ export class PlanBuilder {
     planDevices = this.stages.normalizeReasons({
       planDevices,
       context,
+      power,
       restoreResult,
       sheddingPlan,
       normalizedShedFloorCByDevice,
       holds: {
-        deferredObjectiveAvoidDeviceIds: deferredAvoidDeviceIds,
+        deferredObjectiveAvoidDeviceIds: decoration.deferredAvoidDeviceIds,
         surplusHoldReasonById,
       },
       holdResult,
     });
-    planDevices = attachDeferredReleaseIntents(planDevices, deferredReleaseIntentByDeviceId, context);
+    planDevices = attachDeferredReleaseIntents(planDevices, decoration.deferredReleaseIntentByDeviceId, true);
     this.stages.syncHeadroomCardState(planDevices);
     const finalized = this.stages.finalizePlan(planDevices, normalizedShedFloorCByDevice);
     // Decision-time shed clock (edge-set) + the plan-less-safe surplus-posture
@@ -330,11 +302,14 @@ export class PlanBuilder {
       surplusOnlyIds: new Set(admittedDevices.filter((dev) => dev.surplusOnly === true).map((dev) => dev.id)),
       nowTs,
     });
+    const capacityLimitKw = this.capacitySettings.limitKw;
+    const shortfallBudgetThresholdKw = this.computeShortfallThreshold();
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
       context,
       power,
-      capacityLimitKw: this.capacitySettings.limitKw,
-      shortfallBudgetThresholdKw: this.computeShortfallThreshold(),
+      reading,
+      capacityLimitKw,
+      shortfallBudgetThresholdKw,
       powerTracker: this.powerTracker,
       deviceNameById,
       planDevices: finalized.planDevices,
@@ -344,17 +319,18 @@ export class PlanBuilder {
 
     const meta = trackPlanStage('plan_meta_ms', () => buildPlanMeta({
       context,
-      power,
+      reading,
       planDevices: finalized.planDevices,
       dailyBudgetSnapshot,
       powerTracker: this.powerTracker,
       capacityGuard: this.capacityGuard,
-      capacityLimitKw: this.capacitySettings.limitKw,
-      shortfallBudgetThresholdKw: this.computeShortfallThreshold(),
+      capacityLimitKw,
+      shortfallBudgetThresholdKw,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
-    }));
+    }, power));
     this.stages.observeDiagnostics({
       context,
+      power,
       planDevices: finalized.planDevices,
       restoreResult,
       nowTs,
@@ -393,75 +369,53 @@ export class PlanBuilder {
     return this.deps.getCurrentHourPriceLevel();
   }
 
-  private async buildContextAndShedding(
-    devices: PlanInputDevice[],
-    nowTs: number,
-    dailyBudgetSnapshot: DailyBudgetUiPayload | null,
-  ): Promise<{
-    context: PlanContext;
-    // Display-only facts, carried BESIDE the context rather than on it so no
-    // planner stage can reach a freshness label (2026-08-16 ruling).
-    power: PowerCycleDisplay;
-    sheddingPlan: SheddingPlan;
-    overshootDecision: SoftOvershootDecision;
-  }> {
-    // Resolved ONCE, here, into a total function. `persistFilledModeTargets`
-    // keeps the stored catalog complete — it writes an entry for every planned
-    // temperature device on the settings refresh, before the first plan of that
-    // cycle — so the fallback covers only the boot window before its first write
-    // lands, where holding the device at its own setpoint commands nothing new.
-    // Downstream there is no map and no absent case, so no stage can ask whether
-    // this mode has a target for a device.
+  private modeTargetCFor(): (device: PlanInputDevice & TemperaturePlanInputKind) => number {
     const stored = this.modeDeviceTargets[this.operatingMode] ?? {};
-    const modeTargetCFor = (device: PlanInputDevice & TemperaturePlanInputKind): number => (
-      stored[device.id] ?? device.currentTarget
-    );
+    return (device) => stored[device.id] ?? device.currentTarget;
+  }
+
+  /**
+   * The limits this cycle is decided against — one resolution, held by the
+   * frame both passes build. Stamps the capacity pace into the engine state
+   * (`hourlyRemainingKWh`, `hourlyBudgetExhausted`) as a side effect, exactly
+   * as before.
+   */
+  private resolvePlanLimits(devices: PlanInputDevice[], dailyBudgetSnapshot: DailyBudgetUiPayload | null): PlanLimits {
     const capacitySoftLimit = this.stampCapacityPace();
     const dailySoftLimitResolution = this.computeDailySoftLimit(dailyBudgetSnapshot, devices);
     const dailySoftLimit = dailySoftLimitResolution?.dailySoftLimitKw ?? null;
-    const softLimit = dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit;
-    const softLimitSource = this.resolveSoftLimitSource(capacitySoftLimit, dailySoftLimit);
-
-    // One reading per build, resolved by `lib/power` — pure: the silence
-    // policy (block + one shed pass) lives in the wiring's composed gate and
-    // `lib/power/meterSilence.ts`, never in a planner-held state machine.
-    const power = resolvePowerCycleReading({
-      powerTracker: this.powerTracker,
-      nowMs: Date.now(),
-    });
-    const context = trackPlanStage('plan_context_ms', () => buildPlanContext({
-      devices,
-      power,
-      capacitySettings: this.capacitySettings,
-      powerTracker: this.powerTracker,
-      softLimit,
+    return {
+      softLimit: dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit,
       capacitySoftLimit,
       dailySoftLimit,
       budgetPaceKw: dailySoftLimitResolution?.budgetPaceKw ?? null,
       projectedExemptKw: dailySoftLimitResolution?.projectedExemptKw ?? null,
-      softLimitSource,
-      modeTargetCFor,
-      hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
-      currentHourPriceLevel: this.resolveCurrentHourPriceLevel(devices),
-    }));
+      softLimitSource: this.resolveSoftLimitSource(capacitySoftLimit, dailySoftLimit),
+    };
+  }
+
+  private async decideShedding(
+    context: PlanContext,
+    power: MeasuredPower,
+    nowTs: number,
+  ): Promise<{ sheddingPlan: SheddingPlan; overshootDecision: SoftOvershootDecision }> {
     const overshootDecision = resolveSoftOvershootDecision({
-      headroomKw: context.headroom,
-      // Stamped by `stampCapacityPace` a few lines above, from the same
+      headroomKw: power.headroomKw,
+      // Stamped by `stampCapacityPace` in `resolvePlanLimits`, from the same
       // hourly budget the soft limit itself is paced against.
       hourRemainingKWh: this.state.hourlyRemainingKWh,
-      // Only price a wait when a restore PELS issued is still settling, and only
-      // while power is actually observable — a synthesized headroom is a
-      // blind-mode shed and must never be delayed.
-      restoreTransientPossible: context.powerIsMeasured
-        && this.hasOpenActivationAttempt(nowTs),
+      // Only price a wait when a restore PELS issued is still settling.
+      restoreTransientPossible: this.hasOpenActivationAttempt(nowTs),
       state: this.state,
       nowTs,
     });
     this.state.softOvershootPendingSinceMs = overshootDecision.pendingSinceMs;
+    // A clean whole-home sample: the house is under its pace, and the hour is
+    // not spent (an exhausted hour admits nothing, however the draw reads).
     this.syncConfirmedRestoreAttributionAttempts(
-      devices,
+      context.devices,
       this.powerTracker.lastTimestamp ?? null,
-      context.powerIsMeasured && context.headroom >= 0,
+      power.headroomKw >= 0 && !this.state.hourlyBudgetExhausted,
     );
 
     // `buildSheddingPlan` takes the WHOLE decision, not just the shed half: the
@@ -470,20 +424,13 @@ export class PlanBuilder {
     // (`lib/plan/shedding/AGENTS.md`).
     const sheddingPlan = await trackPlanStageAsync(
       'plan_shedding_ms',
-      () => buildSheddingPlan(context, this.state, {
-        capacityGuard: this.capacityGuard,
-        shortfallThresholdKw: this.computeShortfallThreshold(),
-        powerTracker: this.powerTracker,
-        getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-        pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
-        log: (...args: unknown[]) => this.deps.log(...args),
-        debugStructured: this.deps.debugStructured,
-        structuredLog: this.deps.structuredLog,
-      }, overshootDecision),
+      () => buildSheddingPlan(
+        context, power, this.state, buildSheddingDeps(this.deps, this.computeShortfallThreshold()), overshootDecision,
+      ),
     );
     this.applySheddingUpdates(sheddingPlan);
 
-    return { context, power: power.display, sheddingPlan, overshootDecision };
+    return { sheddingPlan, overshootDecision };
   }
 
   /**

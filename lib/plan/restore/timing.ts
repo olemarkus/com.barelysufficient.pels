@@ -96,11 +96,14 @@ export const buildRestoreTiming = (
 };
 
 export const shouldPlanRestores = (
-  _headroomRaw: number,
   sheddingActive: boolean,
   timing: Pick<RestoreTiming, 'inCooldown' | 'inRestoreCooldown' | 'inStartupStabilization'>,
+  hourlyBudgetExhausted: boolean,
 ): boolean => (
   !sheddingActive
+  // An exhausted hour admits nothing before it rolls over — a FLAG, read
+  // here, not a headroom forced negative upstream to make this gate fail.
+  && !hourlyBudgetExhausted
   && !timing.inCooldown
   && !timing.inRestoreCooldown
   && !timing.inStartupStabilization
@@ -117,8 +120,9 @@ export const shouldPlanRestores = (
  * hysteresis band, so binding headroom may hover at/above zero while the lane
  * must keep running; and when the source is `capacity` the capacity axis IS
  * the binding axis, where running the lane would defeat the latch's flap
- * protection. `capacityHeadroomKw > 0` (strict) inherits the exhausted-hour
- * and stale-meter carve-outs, which force the axis to -1 or 0.
+ * protection. `capacityHeadroomKw > 0` (strict) is the measured axis; the
+ * exhausted hour is its own explicit term (a silent meter never reaches this
+ * lane — the silent-meter pass plans no restores at all).
  *
  * Known accepted corner: `softLimitSource` is instantaneous while
  * `sheddingActive` is a latch, so a capacity-latched shed whose binding source
@@ -130,11 +134,13 @@ export const shouldPlanBudgetExemptRestores = (params: {
   sheddingActive: boolean;
   softLimitSource: SoftLimitSource;
   capacityHeadroomKw: number;
+  hourlyBudgetExhausted: boolean;
   timing: Pick<RestoreTiming, 'inCooldown' | 'inRestoreCooldown' | 'inStartupStabilization'>;
 }): boolean => (
   params.sheddingActive
   && params.softLimitSource === 'daily'
   && params.capacityHeadroomKw > 0
+  && !params.hourlyBudgetExhausted
   && !params.timing.inCooldown
   && !params.timing.inRestoreCooldown
   && !params.timing.inStartupStabilization

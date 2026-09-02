@@ -1,4 +1,4 @@
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
@@ -69,10 +69,10 @@ const plannedTargetOf = (device: DevicePlanDevice): number | undefined =>
 /** The plan device's one boost flag. There is no second one, and no kind behind it. */
 const boostActiveOf = (device: DevicePlanDevice): boolean => device.boostActive;
 
-const buildContext = (devices: PlanContext['devices']): PlanContext => ({
+const buildContext = (devices: PlanContext['devices']): PlanCycle => buildPlanCycleObject({
   devices,
   modeTargetCFor: (d) => d.currentTarget,
-  ...planContextPower(FIXTURE_TOTAL_KW),
+  total: FIXTURE_TOTAL_KW,
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
   capacitySoftLimit: 2,
@@ -131,7 +131,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: defaultDeps,
     })[0];
 
@@ -160,7 +160,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
 
@@ -181,7 +181,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
 
@@ -203,7 +203,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
 
@@ -239,7 +239,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
 
@@ -267,7 +267,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
 
@@ -295,7 +295,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
 
@@ -324,7 +324,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 55 }),
@@ -369,7 +369,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
@@ -416,7 +416,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
@@ -464,7 +464,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
@@ -502,7 +502,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
@@ -549,7 +549,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map([['dev-1', 'mid']]),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
@@ -592,7 +592,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -624,7 +624,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
@@ -656,7 +656,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -679,7 +679,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -708,7 +708,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -741,7 +741,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -766,8 +766,7 @@ describe('buildInitialPlanDevices', () => {
     });
 
     const context = buildContext([steppedDevice]);
-    context.headroomRaw = -1;
-    context.headroom = -1; // Shortfall
+    context.headroomKw = -1; // Shortfall
 
     const [planDevice] = buildInitialPlanDevices({
       context,
@@ -775,7 +774,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: true, // Shortfall!
+      shortfall: { inShortfall: true, headroomKw: -1 }, // Shortfall!
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
@@ -810,7 +809,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -841,7 +840,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: true,
+      shortfall: { inShortfall: true, headroomKw: -1 },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
@@ -877,7 +876,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -912,7 +911,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -946,7 +945,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -976,7 +975,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -1022,7 +1021,7 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
 
@@ -1044,7 +1043,7 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
 
@@ -1069,7 +1068,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
 
@@ -1093,7 +1092,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
 
@@ -1119,7 +1118,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       shedSet: new Set(['dev-1']),
       shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
 
@@ -1147,7 +1146,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
 
@@ -1173,7 +1172,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
 
@@ -1200,7 +1199,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
 
@@ -1231,7 +1230,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
 
@@ -1259,7 +1258,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
 
@@ -1296,7 +1295,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
 
@@ -1310,7 +1309,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
 
@@ -1324,7 +1323,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: {
           ...defaultDeps,
           getPriceOptimizationEnabled: () => true,
@@ -1347,7 +1346,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: {
           ...defaultDeps,
           getPriceOptimizationEnabled: () => true,
@@ -1366,7 +1365,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
 
@@ -1380,7 +1379,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
 
@@ -1395,7 +1394,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
 
@@ -1410,7 +1409,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(['tank']),
         shedReasons: shedReasonMap([['tank', 'shed due to capacity']]),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: {
           ...defaultDeps,
           getShedBehavior: () => ({ action: 'set_temperature', temperature: 40 }),
@@ -1449,7 +1448,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' },
       });
 
@@ -1469,7 +1468,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
 
@@ -1494,7 +1493,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: {
           ...defaultDeps,
           getPriceOptimizationEnabled: () => true,
@@ -1534,7 +1533,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(['thermostat']),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
 
@@ -1564,7 +1563,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
           shedSet: new Set(['thermostat']),
           shedReasons: new Map(),
           shedStepTargets: new Map(),
-          guardInShortfall: false,
+          shortfall: { inShortfall: false },
           deps: defaultDeps,
         });
         return stepped;
@@ -1590,7 +1589,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
 
@@ -1607,7 +1606,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(['pool-pump']),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
 
@@ -1632,7 +1631,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(['pool-pump']),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
 
@@ -1651,7 +1650,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(['pool-pump']),
         shedReasons: shedReasonMap([['pool-pump', 'shed due to capacity']]),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
 
@@ -1677,7 +1676,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(['phantom']),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: {
           ...defaultDeps,
           getShedBehavior: () => ({ action: 'set_step' }),
@@ -1697,7 +1696,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(['heater']),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
 

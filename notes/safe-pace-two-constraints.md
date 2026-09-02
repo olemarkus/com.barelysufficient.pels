@@ -605,12 +605,12 @@ Two further consequences:
   `'both'` in the argmin sense.
 - Exempt shed candidacy could key off `overCapacityPace` instead of the
   `limitSource !== 'daily' || capacityBreached` pair, but only with the caveat in
-  item 4: the two are equivalent in the ordinary case and **not** in the two
-  forced-headroom branches, where `overCapacityPace` is false while shedding must
-  still run. The predicate has to be `overCapacityPace || forcedBreach`, with
-  `forcedBreach` carrying the unmeasured-cycle force and exhausted-hour explicitly. Done
-  that way it is behaviour-preserving; done naively it silently protects exempt
-  devices from a fail-closed meter.
+  item 4: the two are equivalent in the ordinary case and **not** in the exhausted
+  hour, where `overCapacityPace` is false while shedding must still run. The predicate
+  has to be `overCapacityPace || hourlyBudgetExhausted`, with the exhausted hour carried
+  explicitly. (The other forced branch — the silent meter — is gone since 2026-09-02:
+  that pass no longer runs this predicate at all, it is its own path that sheds every
+  candidate, `lib/plan/planBuilderSilentMeter.ts`.)
 
 The `?? 0` in item 3 is independent of this and should be fixed first: the producer
 needs to return an "exempt draw unresolved" state that the planner handles

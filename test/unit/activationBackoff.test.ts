@@ -1,4 +1,4 @@
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import { type HeadroomCardDeviceLike, withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
@@ -21,7 +21,6 @@ import {
   RESTORE_COOLDOWN_MS,
   SHED_COOLDOWN_MS,
 } from '../../lib/plan/planConstants';
-import type { PlanContext } from '../../lib/plan/planContext';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildPlanDevice as baseBuildPlanDevice } from '../utils/planTestUtils';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -41,10 +40,10 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 // MEASURED say so through the reading, the way production does.
 const FIXTURE_TOTAL_KW = 3;
 
-const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
+const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({
   devices: [],
   modeTargetCFor: (d) => d.currentTarget,
-  ...planContextPower(FIXTURE_TOTAL_KW),
+  total: FIXTURE_TOTAL_KW,
   softLimit: 0,
   capacitySoftLimit: 0,
   dailySoftLimit: null,
@@ -52,7 +51,6 @@ const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext =
   projectedExemptKw: null,
   softLimitSource: 'capacity',
   budgetReleasableHeadroomHold: false,
-  capacityHeadroomKw: 1,
   budgetHeadroomKw: null,
   hourBucketKey: '2026-03-08T10',
   budgetKWh: 0,
@@ -69,14 +67,7 @@ const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext =
 // axis tracks the fixture's binding headroom (capacity-bound home, no daily
 // budget), so restore admissions see the same available power as before the
 // per-axis ledger.
-const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
-  const base = buildContextFields(overrides);
-  return {
-    ...base,
-    capacityHeadroomKw: overrides.capacityHeadroomKw ?? base.headroom,
-    budgetHeadroomKw: overrides.budgetHeadroomKw ?? null,
-  };
-};
+const buildContext = (overrides: PlanCycleSpec = {}): PlanCycle => buildContextFields(overrides);
 
 const buildPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice =>
   baseBuildPlanDevice({ currentState: 'off', ...overrides });
@@ -709,10 +700,10 @@ describe('activation backoff', () => {
           currentDrawKw: 0,
         }),
       ],
-      context: buildContext({
+      ...cycleArgsFor(buildContext({
         headroomRaw: 2.9,
         headroom: 2.9,
-      }),
+      })),
       state,
       sheddingActive: false,
       deps: {
@@ -754,10 +745,10 @@ describe('activation backoff', () => {
           currentDrawKw: 0,
         }),
       ],
-      context: buildContext({
+      ...cycleArgsFor(buildContext({
         headroomRaw: 5,
         headroom: 5,
-      }),
+      })),
       state,
       sheddingActive: false,
       deps: {
@@ -940,10 +931,10 @@ describe('activation backoff', () => {
           currentDrawKw: 0,
         }),
       ],
-      context: buildContext({
+      ...cycleArgsFor(buildContext({
         headroomRaw: 5,
         headroom: 5,
-      }),
+      })),
       state,
       sheddingActive: false,
       deps: {

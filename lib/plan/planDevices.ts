@@ -9,7 +9,6 @@ import {
   resolveSteppedShedHypotheticalStepId,
 } from './planSteppedShedResolution';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import { isCoolingCapableTemperatureDeviceClass } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import { applySurplusAbsorbDelta, type PriceOptDeviceConfig } from './planSurplusAbsorb';
 import { isSurplusHeldDevice } from './shedding/surplusHold';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
@@ -18,7 +17,7 @@ import {
   getPrimaryTargetCapability,
   normalizeTargetCapabilityValue,
 } from '../utils/targetCapabilities';
-import { applyOffStateReason } from './planOffStateReason';
+import { applyOffStateReason, type ShortfallOffState } from './planOffStateReason';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { buildBasePlanDevice } from './planDevicesBase';
 import { emitBoostStateChange, resolveBoostActive } from './planBoost';
@@ -37,12 +36,6 @@ export type PlanDevicesDeps = {
   // every safety decision about the term — this layer never re-validates it.
   getInferredSurplusKw: () => number;
   getOperatingMode?: () => string;
-  /**
-   * Producer-resolved: does THIS home hold a mode-target RAISE while its own
-   * power reading is unknown? See `applyModeSeedModulation`. Absent = no hold
-   * (the main home's binding, and every test that does not exercise it).
-   */
-  holdsModeTargetRaisesWhilePowerUnknown?: () => boolean;
   // Observer-owned pending-binary-command store; plan-side raw reads go
   // through `peek(id)` rather than `state.pendingBinaryCommands[id]`.
   pendingBinaryCommandStore: PendingBinaryCommandStore;
@@ -64,7 +57,7 @@ export function buildInitialPlanDevices(params: {
    * device, never re-derived — see `resolveSteppedLoadDirectShedStepId`.
    */
   shedStepTargets: Map<string, string>;
-  guardInShortfall: boolean;
+  shortfall: ShortfallOffState;
   deps: PlanDevicesDeps;
 }): DevicePlanDevice[] {
   const {
@@ -73,7 +66,7 @@ export function buildInitialPlanDevices(params: {
     shedSet,
     shedReasons,
     shedStepTargets,
-    guardInShortfall,
+    shortfall,
     deps,
   } = params;
   // Drop entries that must NOT count as capacity-shed posture, so the keep-invariant
@@ -105,7 +98,6 @@ export function buildInitialPlanDevices(params: {
     const plannedTarget = resolvePlannedTarget({
       dev,
       modeTargetCFor: context.modeTargetCFor,
-      powerIsMeasured: context.powerIsMeasured,
       currentHourPriceLevel: context.currentHourPriceLevel,
       state,
       deps,
@@ -171,11 +163,7 @@ export function buildInitialPlanDevices(params: {
     baseMs += Date.now() - t1;
     state.boostActiveByDevice[dev.id] = base.boostActive;
     const t2 = Date.now();
-    const withOffStateReason = applyOffStateReason({
-      planDevice: base,
-      headroomRaw: context.headroomRaw,
-      guardInShortfall,
-    });
+    const withOffStateReason = applyOffStateReason(base, shortfall);
     offStateMs += Date.now() - t2;
     return withOffStateReason;
   });
@@ -187,8 +175,6 @@ export function buildInitialPlanDevices(params: {
 function resolvePlannedTarget(params: {
   dev: PlanInputDevice;
   modeTargetCFor: (device: PlanInputDevice & TemperaturePlanInputKind) => number;
-  /** Producer-resolved: did this cycle have a measurement at all. */
-  powerIsMeasured: boolean;
   /** `context.currentHourPriceLevel`: producer-resolved once for this build. */
   currentHourPriceLevel: PriceLevel;
   state: PlanEngineState;
@@ -197,7 +183,6 @@ function resolvePlannedTarget(params: {
   const {
     dev,
     modeTargetCFor,
-    powerIsMeasured,
     currentHourPriceLevel,
     state,
     deps,
@@ -216,19 +201,15 @@ function resolvePlannedTarget(params: {
     seedValue: modeTargetCFor(dev),
     dev,
     config: deps.getPriceOptimizationSettings()[dev.id],
-    observedTarget: dev.currentTarget,
-    powerIsMeasured,
     currentHourPriceLevel,
     state,
     deps,
   });
-  const resolved = resolveModulatedSeedTargets(modulated, { deferredC });
-  if (resolved.done) return resolved.value;
-  let plannedTarget = resolved.plannedTarget;
+  let { plannedTarget } = modulated;
   // Track the same target with NO surplus lift in parallel, so surplus's "binding cause" can
   // be decided AFTER all floors AND capability normalization/rounding (below) — not latched
   // mid-computation.
-  let nonSurplusTarget = resolved.nonSurplusTarget;
+  let { nonSurplusTarget } = modulated;
   if (hasDeferred) {
     // The deadline floor applies to both the actual and the non-surplus target.
     plannedTarget = Math.max(plannedTarget, deferredC);
@@ -246,84 +227,22 @@ function resolvePlannedTarget(params: {
   return normalizedTarget;
 }
 
-type ModeSeedModulation =
-  | { kind: 'value'; plannedTarget: number; nonSurplusTarget: number }
-  /** Held at the device's exact observed setpoint — the caller must emit it unnormalized. */
-  | { kind: 'held_at_observed'; observedTarget: number };
+type ModeSeedModulation = { plannedTarget: number; nonSurplusTarget: number };
 
 /**
- * Fold a `ModeSeedModulation` into either a FINAL planned target (`done`) or
- * the planned/non-surplus pair the deferred-floor + normalization tail runs on.
- *
- * - `held_at_observed` without a deadline floor → the EXACT observed value,
- *   bypassing capability normalization: an off-step reading (18.6 with a 1°
- *   step) would otherwise round UP to 19 and defeat the executor's no-op fence
- *   with a load-adding write. Planned === observed is by construction a no-op.
- * - `held_at_observed` WITH a deadline floor → both members of the pair start
- *   at the observed value; the caller's floor/normalization tail lifts them.
- */
-function resolveModulatedSeedTargets(
-  modulated: ModeSeedModulation,
-  params: {
-    deferredC: number | undefined;
-  },
-): { done: true; value: number } | { done: false; plannedTarget: number; nonSurplusTarget: number } {
-  const hasDeferred = typeof params.deferredC === 'number';
-  if (modulated.kind === 'held_at_observed') {
-    return hasDeferred
-      ? { done: false, plannedTarget: modulated.observedTarget, nonSurplusTarget: modulated.observedTarget }
-      : { done: true, value: modulated.observedTarget };
-  }
-  return { done: false, plannedTarget: modulated.plannedTarget, nonSurplusTarget: modulated.nonSurplusTarget };
-}
-
-/**
- * Price-opt + surplus modulation of a CONFIGURED mode setpoint, plus the
- * unknown-power hold.
- *
- * The hold stops a load-ADDING setpoint change while this home's draw is
- * unknown. Every other way the planner adds load is gated on headroom, which is
- * 0 or negative whenever no trustworthy total exists — but a mode target is issued as
- * an ordinary `target_update`, so it consults neither headroom nor the restore
- * cooldowns / startup stabilization (`lib/executor/executableTargetProjection.ts`
- * advances the restore clocks only for a write the producer stamped
- * `recordRestoreOnTargetApply`, so an 18→22 raise is not a restore).
- * Holding AT the device's own current setpoint makes the write a no-op rather
- * than dropping the device from the plan. Direction is class-aware:
- *
- * - Heat-direction devices (heater, thermostat, water heater): a RAISE is held;
- *   a LOWERING removes draw, so it still applies.
- * - Cooling-capable classes (`isCoolingCapableTemperatureDeviceClass` — heat
- *   pump, air conditioning, air treatment): BOTH directions are held, because
- *   lowering adds compressor load in cooling mode and PELS cannot observe which
- *   mode a reversible unit is in.
- * The deadline floor is applied by the caller AFTER this and is intentionally
- * exempt — a smart task's floor is a promise to the user, not opportunistic load.
- *
- * Producer-gated, not universal: only a home whose scope opts in
- * (`holdsModeTargetRaisesWhilePowerUnknown`) applies the hold. The main home
- * does not — its unknown-power window is normally the seconds before the first
- * Homey Energy poll, and it owns settle/dwell machinery of its own for the
- * power-goes-unknown transition (`lib/plan/planSurplusAbsorb.ts`) that a blanket
- * clamp would pre-empt. A meter area opts in because its window lasts as long as
- * its meter stays offline.
+ * The mode's seed setpoint after the price-optimization delta and the surplus
+ * lift, tracked as a pair so surplus's "binding cause" can be decided after the
+ * deadline floor and capability normalization run on both.
  */
 function applyModeSeedModulation(params: {
   seedValue: number;
   dev: PlanInputDevice;
   config: PriceOptDeviceConfig | undefined;
-  /**
-   * The device's live target setpoint (`dev.currentTarget`), guaranteed finite
-   * by the observer's atomic temperature facet — never absent for a temperature
-   * device, so the unknown-power hold always has a value to hold at.
-   */
-  observedTarget: number;
-  powerIsMeasured: boolean;
   currentHourPriceLevel: PriceLevel;
   state: PlanEngineState;
   deps: PlanDevicesDeps;
 }): ModeSeedModulation {
-  const { seedValue, dev, config, observedTarget, powerIsMeasured, currentHourPriceLevel, state, deps } = params;
+  const { seedValue, dev, config, currentHourPriceLevel, state, deps } = params;
   const pricedTarget = deps.getPriceOptimizationEnabled() && config?.enabled
     ? applyPriceOptimizationDelta(seedValue, config, currentHourPriceLevel)
     : seedValue;
@@ -334,13 +253,7 @@ function applyModeSeedModulation(params: {
     config,
     state,
   });
-  const holds = !powerIsMeasured && deps.holdsModeTargetRaisesWhilePowerUnknown?.() === true;
-  if (!holds) return { kind: 'value', plannedTarget: surplusTarget, nonSurplusTarget: pricedTarget };
-  const holdBothDirections = isCoolingCapableTemperatureDeviceClass(dev.deviceClass);
-  if (holdBothDirections || surplusTarget > observedTarget) {
-    return { kind: 'held_at_observed', observedTarget };
-  }
-  return { kind: 'value', plannedTarget: surplusTarget, nonSurplusTarget: pricedTarget };
+  return { plannedTarget: surplusTarget, nonSurplusTarget: pricedTarget };
 }
 
 function applyPriceOptimizationDelta(

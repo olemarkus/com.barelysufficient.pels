@@ -62,7 +62,7 @@ export type HeadroomReserve = {
   kw: number;
 };
 
-type ReserveOutcome = 'armed' | 'expired' | 'satisfied' | 'not_startable' | 'unknown_total' | 'unknown_device_power';
+type ReserveOutcome = 'armed' | 'expired' | 'satisfied' | 'not_startable' | 'unknown_device_power';
 
 // Sentinel stored in place of an arming timestamp once a device has been seen to start. The
 // reservation is a one-shot per grant: get the device going, then stay out of the way. Without the
@@ -82,11 +82,10 @@ const RELEASED = -1;
  */
 export function resolveHeadroomReserves(params: {
   devices: readonly DevicePlanDevice[];
-  powerIsMeasured: boolean;
   state: Pick<PlanEngineState, 'headroomReserveArmedMs'>;
   nowTs: number;
 }): HeadroomReserve[] {
-  const { devices, powerIsMeasured, state, nowTs } = params;
+  const { devices, state, nowTs } = params;
   const previousArmedMs = state.headroomReserveArmedMs;
   const nextArmedMs: Record<string, number> = {};
   const reserves: HeadroomReserve[] = [];
@@ -94,7 +93,7 @@ export function resolveHeadroomReserves(params: {
   for (const device of devices) {
     if (device.reservesStartupPower !== true) continue;
     const decision = resolveReserveForDevice({
-      device, powerIsMeasured, armedMs: previousArmedMs[device.id] ?? null, nowTs,
+      device, armedMs: previousArmedMs[device.id] ?? null, nowTs,
     });
     if (decision.armedMs !== null) nextArmedMs[device.id] = decision.armedMs;
     if (decision.reserve) reserves.push(decision.reserve);
@@ -123,21 +122,13 @@ type ReserveDecision = {
 
 function resolveReserveForDevice(params: {
   device: DevicePlanDevice;
-  /** Producer-resolved: did this cycle have a measurement at all. */
-  powerIsMeasured: boolean;
   armedMs: number | null;
   nowTs: number;
 }): ReserveDecision {
-  const { device, powerIsMeasured, armedMs, nowTs } = params;
+  const { device, armedMs, nowTs } = params;
 
   // Already started once under this grant — stay released, whatever the meter says right now.
   if (armedMs === RELEASED) return { outcome: 'satisfied', armedMs: RELEASED, reserve: null };
-
-  // Boundary: without a trustworthy total we cannot tell whether the device has already started,
-  // so a reserve would be guesswork that strands lower-priority devices. The outcome name says
-  // it — the ABSENCE of the number is the condition, not a flag beside one. The stamp is kept so
-  // the bound keeps running.
-  if (!powerIsMeasured) return { outcome: 'unknown_total', armedMs, reserve: null };
 
   // Both of the next two gates read fields a flaky Homey poll can flip for a single cycle
   // (`steppedLoadProfile`, `available`, `commandableNow`). They withhold the reserve for that

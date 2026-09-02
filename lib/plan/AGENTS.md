@@ -74,10 +74,15 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   redesign it, not permission to write the clause. See
   `notes/deferred-load-objectives/preemptive-power-reservation.md`.
 - **The planner trusts power data and holds no concept of staleness.** `lib/power`
-  owns the meter, so it decides what a doubtful reading means and answers in kW:
-  `PlanContext` carries `headroomForLimitKw`, `powerIsMeasured`, and
-  `powerMeasuredAtOrBelowKw` — no total, no freshness label, nothing to
-  discriminate. No freshness concept (`lib/power/meterSilence.ts` included) may be
+  owns the meter, so it decides what a doubtful reading means — and it answers with
+  a VARIANT, never a number that lies: `PowerCycleReading` is either a measured
+  reading or the silent-meter marker (owner ruling 2026-09-02). The ordinary pipeline
+  is entered only with a measurement: `PlanContext` carries the frame (devices,
+  limits, hour) and `MeasuredPower` the measurement (draw, per-axis headroom,
+  `capacityBreached`) — no flag, no sentinel, nothing for a stage to narrow on. The
+  one unmeasured build is `SilentMeterPlanBuilder` (`planBuilderSilentMeter.ts`),
+  which takes an explicit directive — shed every candidate to its floor — and never
+  constructs a `MeasuredPower`. Guard at the seams, never per read. No freshness concept (`lib/power/meterSilence.ts` included) may be
   importable from `lib/plan`; the wiring composes the silence block into the one
   `planBuildGate` boolean instead. This
   is the twin of the plan kinds carrying no device-observation freshness, and it exists

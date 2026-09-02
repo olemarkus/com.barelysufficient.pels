@@ -9,7 +9,6 @@ import type { PlanContext } from '../planContext';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { buildPlanInputCapacityStateSummary } from '../planLogging';
 import {
-  isCapacityBreached,
   resolveRemainingSheddableLoadKw,
   sumRemainingSheddableLoadKw,
   toInputRemainingSheddableDevice,
@@ -46,9 +45,7 @@ function handleShortfallCheck(
     }) ?? Promise.resolve());
 }
 
-function computeShortfallDeficitKw(drawKw: number, powerIsMeasured: boolean, shortfallThreshold: number): number {
-  // A deficit is a claim about the LIVE draw: an unmeasured cycle claims none.
-  if (!powerIsMeasured) return 0;
+function computeShortfallDeficitKw(drawKw: number, shortfallThreshold: number): number {
   return Math.max(0, drawKw - shortfallThreshold);
 }
 
@@ -56,12 +53,9 @@ function sumRemainingReducibleControlledLoadKw(params: {
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   limitSource: PlanContext['softLimitSource'];
-  drawKw: number;
-  powerIsMeasured: boolean;
-  capacitySoftLimit: number;
+  capacityBreached: boolean;
 }): number {
-  const { devices, shedSet, limitSource, drawKw, powerIsMeasured, capacitySoftLimit } = params;
-  const capacityBreached = powerIsMeasured && isCapacityBreached(drawKw, capacitySoftLimit);
+  const { devices, shedSet, limitSource, capacityBreached } = params;
   return sumRemainingSheddableLoadKw({
     devices: devices.map(toInputRemainingSheddableDevice),
     isAlreadyShed: (device) => shedSet.has(device.id),
@@ -74,13 +68,12 @@ function buildShortfallCapacityStateSummary(params: {
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   drawKw: number;
-  powerIsMeasured: boolean;
+  capacityBreached: boolean;
   limitSource: PlanContext['softLimitSource'];
-  capacitySoftLimit: number;
   isBinaryCommandPending: (deviceId: string) => boolean;
 }): PlanCapacityStateSummary {
   const {
-    devices, shedSet, drawKw, powerIsMeasured, limitSource, capacitySoftLimit, isBinaryCommandPending,
+    devices, shedSet, drawKw, capacityBreached, limitSource, isBinaryCommandPending,
   } = params;
   const summary = buildPlanInputCapacityStateSummary(devices, shedSet, isBinaryCommandPending, {
     summarySource: 'plan_input',
@@ -93,9 +86,7 @@ function buildShortfallCapacityStateSummary(params: {
     devices,
     shedSet,
     limitSource,
-    drawKw,
-    powerIsMeasured,
-    capacitySoftLimit,
+    capacityBreached,
   }));
 
   return {
@@ -117,13 +108,12 @@ function resolveShortfallCapacityStateSummary(params: {
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   drawKw: number;
-  powerIsMeasured: boolean;
+  capacityBreached: boolean;
   limitSource: PlanContext['softLimitSource'];
-  capacitySoftLimit: number;
   isBinaryCommandPending: (deviceId: string) => boolean;
 }): PlanCapacityStateSummary {
   const {
-    deficitKw, devices, shedSet, drawKw, powerIsMeasured, limitSource, capacitySoftLimit, isBinaryCommandPending,
+    deficitKw, devices, shedSet, drawKw, capacityBreached, limitSource, isBinaryCommandPending,
   } = params;
   // Only an entering incident reads it, and that needs a positive deficit, so
   // the null summary spares every ordinary rebuild the device walk.
@@ -132,9 +122,8 @@ function resolveShortfallCapacityStateSummary(params: {
     devices,
     shedSet,
     drawKw,
-    powerIsMeasured,
+    capacityBreached,
     limitSource,
-    capacitySoftLimit,
     isBinaryCommandPending,
   });
 }
@@ -144,8 +133,18 @@ function roundPowerW(powerKw: number | null | undefined): number | null {
   return Math.round(Math.max(0, powerKw * 1000));
 }
 
-export function shouldActivateShedding(headroom: number, shedSet: Set<string>): boolean {
-  if (shedSet.size > 0) return true;
+/**
+ * The exhausted hour keeps the latch engaged on its own: with the hour's kWh
+ * spent nothing may restore, even when the measured house is idle and there is
+ * nothing left to shed. This used to ride on the context forcing the headroom
+ * to -1; it is the flag now (owner ruling 2026-09-02).
+ */
+export function shouldActivateShedding(
+  headroom: number,
+  shedSet: Set<string>,
+  hourlyBudgetExhausted: boolean,
+): boolean {
+  if (shedSet.size > 0 || hourlyBudgetExhausted) return true;
   return headroom < 0;
 }
 
@@ -155,12 +154,10 @@ export function countRemainingCandidates(params: {
   headroom: number;
   limitSource: PlanContext['softLimitSource'];
   drawKw: number;
-  powerIsMeasured: boolean;
-  capacitySoftLimit: number;
+  capacityBreached: boolean;
 }): number {
-  const { devices, shedSet, headroom, limitSource, drawKw, powerIsMeasured, capacitySoftLimit } = params;
+  const { devices, shedSet, headroom, limitSource, capacityBreached } = params;
   if (headroom >= 0) return 0;
-  const capacityBreached = powerIsMeasured && isCapacityBreached(drawKw, capacitySoftLimit);
   return devices
     .filter((d) => d.controllable && !shedSet.has(d.id))
     // On/off is a binary-only question: a binary device is still a remaining
@@ -180,15 +177,14 @@ export function countRemainingCandidates(params: {
 export async function updateGuardState(params: {
   headroom: number;
   overshootActionable: boolean;
-  capacitySoftLimit: number;
   /**
-   * The whole-home draw (`PlanContext.drawKw` — always a number, the carried
-   * reading) plus whether it was MEASURED this cycle. The deficit is a real
+   * The whole-home draw (`MeasuredPower.drawKw`). The deficit is a real
    * quantity in kW, so unlike most planner power questions it cannot be
-   * answered with a headroom — and it is claimed only from a measured draw.
+   * answered with a headroom.
    */
   drawKw: number;
-  powerIsMeasured: boolean;
+  /** The one "is capacity breached" answer (`MeasuredPower.capacityBreached`). */
+  capacityBreached: boolean;
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   softLimitSource: PlanContext['softLimitSource'];
@@ -197,6 +193,8 @@ export async function updateGuardState(params: {
   shortfallThresholdKw: number;
   /** The shedding latch this build inherits, from `PlanEngineState`. */
   sheddingActive: boolean;
+  /** The hour's kWh is spent: the latch stays engaged whatever the headroom says. */
+  hourlyBudgetExhausted: boolean;
   /**
    * "Is a binary command in flight", answered by `PendingBinaryCommandStore`.
    * Only the shortfall summary needs it, and only for its log counters.
@@ -206,15 +204,15 @@ export async function updateGuardState(params: {
   const {
     headroom,
     overshootActionable,
-    capacitySoftLimit,
     drawKw,
-    powerIsMeasured,
+    capacityBreached,
     devices,
     shedSet,
     softLimitSource,
     capacityGuard,
     shortfallThresholdKw,
     sheddingActive,
+    hourlyBudgetExhausted,
     isBinaryCommandPending,
   } = params;
   const remainingCandidates = countRemainingCandidates({
@@ -223,20 +221,16 @@ export async function updateGuardState(params: {
     headroom,
     limitSource: softLimitSource,
     drawKw,
-    powerIsMeasured,
-    capacitySoftLimit,
+    capacityBreached,
   });
-  const deficitKw = computeShortfallDeficitKw(drawKw, powerIsMeasured, shortfallThresholdKw);
+  const deficitKw = computeShortfallDeficitKw(drawKw, shortfallThresholdKw);
 
-  if (overshootActionable && shouldActivateShedding(headroom, shedSet)) {
+  if (overshootActionable && shouldActivateShedding(headroom, shedSet, hourlyBudgetExhausted)) {
     await handleShortfallCheck({
       capacityGuard,
       remaining: remainingCandidates,
       deficitKw,
-      // The guard's `null` is its no-op signal, and lib/power may know
-      // absence: an unmeasured cycle (the fail-closed pass) must not feed a
-      // shortfall incident a carried total as if it were live.
-      totalKw: powerIsMeasured ? drawKw : null,
+      totalKw: drawKw,
       shortfallThresholdKw,
       capacityStateSummary: resolveShortfallCapacityStateSummary({
         isBinaryCommandPending,
@@ -244,9 +238,8 @@ export async function updateGuardState(params: {
         devices,
         shedSet,
         drawKw,
-        powerIsMeasured,
+        capacityBreached,
         limitSource: softLimitSource,
-        capacitySoftLimit,
       }),
     });
     return { sheddingActive: true };
@@ -261,7 +254,7 @@ export async function updateGuardState(params: {
     capacityGuard,
     remaining: remainingCandidates,
     deficitKw,
-    totalKw: powerIsMeasured ? drawKw : null,
+    totalKw: drawKw,
     shortfallThresholdKw,
     capacityStateSummary: resolveShortfallCapacityStateSummary({
       isBinaryCommandPending,
@@ -269,9 +262,8 @@ export async function updateGuardState(params: {
       devices,
       shedSet,
       drawKw,
-      powerIsMeasured,
+      capacityBreached,
       limitSource: softLimitSource,
-      capacitySoftLimit,
     }),
   });
   return { sheddingActive: canDisable ? false : sheddingActive };

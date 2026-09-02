@@ -1,60 +1,93 @@
-import type { PlanContext } from '../../lib/plan/planContext';
-import {
-  resolvePowerCycleReading,
-  type PowerCycleReading,
-} from '../../lib/power/powerCycleReading';
-import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/power/sampleFreshness';
-
-const FIXTURE_NOW_MS = Date.UTC(2026, 3, 18, 10, 0, 0);
-const FRESH_SAMPLE_AGE_MS = 1_000;
-
-export type PlanContextPowerMembers = Pick<
-  PlanContext,
-  'headroomForLimitKw' | 'powerIsMeasured' | 'powerMeasuredAtOrBelowKw'
-  | 'powerMeasuredAboveKw' | 'drawKw'
->;
+import type { MeasuredPower, PlanContext } from '../../lib/plan/planContext';
+import { PriceLevel } from '../../lib/price/priceLevels';
 
 /**
- * The power members of a `PlanContext`, resolved by the REAL producer.
- *
- * Fixtures used to set `total` / `planningTotalKw` / `powerFreshnessState`
- * directly, which let a test describe a home no producer can produce (a total
- * with no sample, a `fresh` label with no reading). Since the planner receives
- * answers rather than ingredients, a fixture states the one thing that is
- * actually true — what the meter read, or that it read nothing — and
- * `PowerFreshnessMonitor` derives the answers exactly as production does.
- *
- * Driving the real monitor rather than restating its rule is the point: a change
- * to the forcing or to what counts as measured cannot leave the suite green
- * against a stale copy of the old behaviour.
+ * A measurement a spec pins directly — for the many cases that are about a
+ * particular headroom rather than a particular reading. Defaults describe an
+ * on-track cycle: 3 kW drawn, 1 kW of headroom on the binding and capacity
+ * axes, no daily axis, capacity not breached.
  */
-export const planContextPowerReading = (
-  totalKw: number,
-  options: { failClosed?: boolean } = {},
-): PowerCycleReading => {
-  // Age drives the producer's answer, so the fixture's intent is expressed as
-  // production state rather than a label it would have to keep in sync.
-  // `failClosed` is the escalation's one silent-window pass (age past the shed
-  // timeout, synthesized -1). A reading always exists — the gate guarantees it
-  // in production and the fixture states it as tracker state, exactly as
-  // ingest would have latched it.
-  const ageMs = options.failClosed === true ? POWER_SAMPLE_STALE_SHED_TIMEOUT_MS : FRESH_SAMPLE_AGE_MS;
-  return resolvePowerCycleReading({
-    powerTracker: { lastPowerW: totalKw * 1000, lastTimestamp: FIXTURE_NOW_MS - ageMs },
-    nowMs: FIXTURE_NOW_MS,
-  });
+export const buildMeasuredPower = (overrides: Partial<MeasuredPower> = {}): MeasuredPower => ({
+  drawKw: 3,
+  headroomKw: 1,
+  capacityHeadroomKw: 1,
+  budgetHeadroomKw: null,
+  capacityBreached: false,
+  budgetReleasableHeadroomHold: false,
+  ...overrides,
+});
+
+/**
+ * The frame every planner-stage spec starts from: no devices, zero limits,
+ * capacity-bound, an unremarkable hour. A spec overrides what it is about.
+ */
+export const buildPlanContextFixture = (overrides: Partial<PlanContext> = {}): PlanContext => ({
+  devices: [],
+  modeTargetCFor: (d) => d.currentTarget,
+  softLimit: 0,
+  capacitySoftLimit: 0,
+  dailySoftLimit: null,
+  budgetPaceKw: null,
+  projectedExemptKw: null,
+  softLimitSource: 'capacity',
+  hourBucketKey: '2024-01-01T00',
+  budgetKWh: 0,
+  usedKWh: 0,
+  minutesRemaining: 60,
+  restoreMarginPlanning: 0.2,
+  currentHourPriceLevel: PriceLevel.UNKNOWN,
+  ...overrides,
+});
+
+/**
+ * The old fixtures spelled the frame and the measurement as one object. This
+ * splits such a spec: the measurement keys (and the legacy `headroom` /
+ * `headroomRaw` / `total` spellings) become a `MeasuredPower`, everything else
+ * the `PlanContext`. `capacityBreached` defaults to the derived answer — the
+ * draw above the capacity pace — exactly as the producer resolves it.
+ */
+export type PlanCycleSpec = Partial<PlanContext> & Partial<MeasuredPower> & {
+  total?: number;
+  headroom?: number;
+  headroomRaw?: number;
 };
 
-export const planContextPower = (
-  totalKw: number,
-  options: { failClosed?: boolean } = {},
-): PlanContextPowerMembers => {
-  const reading = planContextPowerReading(totalKw, options);
+export const buildPlanCycle = (spec: PlanCycleSpec = {}): { context: PlanContext; power: MeasuredPower } => {
+  const {
+    total, headroom, headroomRaw, drawKw, headroomKw, capacityHeadroomKw, budgetHeadroomKw,
+    capacityBreached, budgetReleasableHeadroomHold, ...contextOverrides
+  } = spec;
+  const context = buildPlanContextFixture(contextOverrides);
+  const draw = drawKw ?? total ?? 3;
+  const binding = headroomKw ?? headroom ?? headroomRaw ?? 0;
   return {
-    headroomForLimitKw: reading.headroomKw,
-    powerIsMeasured: reading.isMeasured,
-    powerMeasuredAtOrBelowKw: reading.measuredAtOrBelowKw,
-    powerMeasuredAboveKw: reading.measuredAboveKw,
-    drawKw: reading.display.totalKw,
+    context,
+    power: buildMeasuredPower({
+      drawKw: draw,
+      headroomKw: binding,
+      capacityHeadroomKw: capacityHeadroomKw ?? binding,
+      budgetHeadroomKw: budgetHeadroomKw ?? null,
+      capacityBreached: capacityBreached ?? draw > context.capacitySoftLimit,
+      budgetReleasableHeadroomHold: budgetReleasableHeadroomHold ?? false,
+    }),
   };
 };
+
+
+/**
+ * A spec's whole cycle as ONE value — the frame and the measurement merged —
+ * for the many older specs whose helper spelled both together. It satisfies
+ * `PlanContext` and `MeasuredPower` alike, so a stage that takes both is
+ * handed the same fixture twice; production never builds such an object.
+ */
+export type PlanCycle = PlanContext & MeasuredPower;
+
+export const buildPlanCycleObject = (spec: PlanCycleSpec = {}): PlanCycle => {
+  const { context, power } = buildPlanCycle(spec);
+  return { ...context, ...power };
+};
+
+/** The two arguments a stage takes, from one merged cycle — for param-object call sites. */
+export const cycleArgsFor = (cycle: PlanCycle): { context: PlanContext; power: MeasuredPower } => (
+  { context: cycle, power: cycle }
+);

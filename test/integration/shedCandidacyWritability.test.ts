@@ -1,8 +1,7 @@
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { PlanContext } from '../../lib/plan/planContext';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -24,10 +23,10 @@ const FIXTURE_TOTAL_KW = 3;
 // the cascade wastes the shed slot and leaves the overshoot unrelieved while a
 // writable, lower-priority device goes unshed.
 
-const buildContext = (devices: PlanInputDevice[], headroom: number): PlanContext => ({
+const buildContext = (devices: PlanInputDevice[], headroom: number): PlanCycle => buildPlanCycleObject({
   devices,
   modeTargetCFor: (d) => d.currentTarget,
-  ...planContextPower(FIXTURE_TOTAL_KW),
+  total: FIXTURE_TOTAL_KW,
   softLimit: 4,
   capacitySoftLimit: 4,
   dailySoftLimit: null,
@@ -105,8 +104,10 @@ describe('shed candidacy gates on writability', () => {
 
   it('sheds the writable device, not a cap-less target-bearing one credited first', async () => {
     const state = createPlanEngineState();
+    const cycle = buildContext([capLessTargetBearing, writableBinary], -2);
     const result = await buildSheddingPlan(
-      buildContext([capLessTargetBearing, writableBinary], -2),
+      cycle,
+      cycle,
       state,
       buildDeps(state, buildCapacityGuard()),
       { actionable: true, shedActionable: true },
@@ -121,8 +122,10 @@ describe('shed candidacy gates on writability', () => {
 
   it('does not shed a cap-less target-bearing device even when it is the only candidate', async () => {
     const state = createPlanEngineState();
+    const cycle = buildContext([capLessTargetBearing], -2);
     const result = await buildSheddingPlan(
-      buildContext([capLessTargetBearing], -2),
+      cycle,
+      cycle,
       state,
       buildDeps(state, buildCapacityGuard()),
       { actionable: true, shedActionable: true },
