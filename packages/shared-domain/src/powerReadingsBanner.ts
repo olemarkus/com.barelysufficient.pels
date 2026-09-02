@@ -11,10 +11,10 @@ import { POWER_SAMPLE_STALE_THRESHOLD_MS } from './powerFreshness';
  * what happens ("No power readings…", never "stale"/"data outdated"); name
  * controls as settings ("Whole-home meter" under "Limits & safety"); name the
  * Flow card by its registered name — **Report power usage** — so the words on
- * the banner are findable in the Flow editor. The old onboarding arm ("PELS
- * needs to know where to read…") is gone: the boot-time meter-authority
- * migration persists a source on every install, so "no source chosen" is no
- * longer a steady state the banner needs to narrate.
+ * the banner are findable in the Flow editor. There is no separate
+ * onboarding arm ("PELS needs to know where to read…"): an install with no
+ * source chosen runs on Flow and has received nothing, and that arm already
+ * names both remedies.
  */
 
 export type PowerReadingsBannerContent = { text: string; actionLabel: string };

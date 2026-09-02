@@ -12,9 +12,9 @@ describe('Main meter settings boundary', () => {
 
   it('classifies every non-string read as unavailable — absence is never a value', () => {
     // Stored null (the retired Automatic), a never-written key, and a
-    // transient miss are indistinguishable and all honestly unavailable; the
-    // boot-time migration is what guarantees a configured install reads a
-    // string here.
+    // transient miss are indistinguishable and all honestly unavailable; a
+    // configured install reads a string here because the save seam writes
+    // nothing else.
     expect(readMainMeterSelection({ get: () => null }).state).toBe('unavailable');
     expect(readMainMeterSelection({ get: () => undefined }).state).toBe('unavailable');
     expect(readMainMeterSelection({ get: () => 42 }).state).toBe('unavailable');

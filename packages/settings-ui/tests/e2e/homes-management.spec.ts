@@ -138,8 +138,8 @@ test('saving an area without a whole-home meter is refused with the remedy', asy
   await installRentalMeterDeviceList(page);
   await gotoApp(page);
   await seedRentalMeterSnapshot(page);
-  // Invalid steady state: no whole-home meter persisted (a legacy shape the
-  // boot-time migration defers on).
+  // Invalid steady state: no whole-home meter persisted (a legacy Automatic
+  // install whose owner has not picked one yet).
   await seedStubSetting(page, 'homey_energy_meter_device_id', null);
   await openHomesPanel(page);
   await page.locator('#homes-add-button').click();
