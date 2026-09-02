@@ -1,20 +1,21 @@
 
 /**
  * The hero's input, resolved. Every power figure is a plain number: the caller
- * has already established that this cycle HAS a meter reading, which is the one
- * thing that can be missing.
+ * has already established that this cycle was MEASURED, which is the one
+ * thing that can be missing — the wire meta is a union on `powerIsMeasured`,
+ * and only its measured variant satisfies this shape. Resolving that is the
+ * view's job (unmeasured ⇒ it renders no hero at all); inward of that decision
+ * there is no "maybe there is no power" case for a formatter to carry, and
+ * shared-domain sits inward of it.
  *
- * `totalKw` and `uncontrolledKw` are nullable on the wire and they are nullable
- * TOGETHER — the background side is the whole-home total minus the managed
- * side, so it is absent exactly when the total is. Resolving that pair is the
- * view's job (no reading ⇒ it renders the loading state); inward of that
- * decision there is no "maybe there is no power" case for a formatter to carry,
- * and shared-domain sits inward of it.
+ * No `headroomKw`: the hero's above-safe-pace state and its overshoot come
+ * from the two numbers it prints, `totalKw` against `softLimitKw`, so the
+ * sentence can never contradict the figures beside it (owner ruling
+ * 2026-09-02, `notes/overview-hero-spec.md` § "Power now").
  */
 export type PlanHeroMetaInput = {
   totalKw: number;
   softLimitKw: number;
-  headroomKw: number;
   hardCapLimitKw: number;
   controlledKw: number;
   uncontrolledKw: number;
@@ -33,7 +34,6 @@ export type HeroHeadline = {
   hardLimitKw: number;
   controlledKw: number;
   uncontrolledKw: number;
-  headroomKw: number;
   overSoftLimit: boolean;
 };
 
@@ -56,8 +56,11 @@ export const formatHeroHeadline = (
   hardLimitKw: meta.hardCapLimitKw,
   controlledKw: meta.controlledKw,
   uncontrolledKw: meta.uncontrolledKw,
-  headroomKw: meta.headroomKw,
-  overSoftLimit: meta.headroomKw < 0,
+  // From the printed pair, never from a headroom figure: a planner-side
+  // headroom that disagreed with `softLimitKw - totalKw` (the silent-meter
+  // sentinel, the exhausted-hour override) is exactly how the chip once said
+  // "Above safe pace" over a bar drawn under the tick.
+  overSoftLimit: meta.totalKw > meta.softLimitKw,
 });
 
 /**
@@ -162,7 +165,8 @@ export const formatEnergyMeterMarkerLabels = (
 };
 
 // ─── Above-safe-pace subline ─────────────────────────────────────────────────
-// `headroomKw` is the spare room before safe pace (negative when above).
+// The overshoot is `totalKw - safePaceKw`, the same two numbers the hero
+// prints, so the sentence cannot claim more or less than the figures beside it.
 // The subline copy matches `notes/overview-hero-spec.md` § "Power now". There
 // is deliberately NO above-hard-cap subline: instantaneous kW above the cap is
 // not a breach (the cap is an hourly-average ceiling), so the power subline
@@ -176,11 +180,11 @@ export const formatEnergyMeterMarkerLabels = (
 // the existing parenthetical rather than as a third clause — at 320 px a second
 // separator pushed the line to three rows. Omitted when the source is unknown.
 export const formatAboveSafePaceSubline = (
-  headroomKw: number,
+  totalKw: number,
   safePaceKw: number,
   sourceText?: string | null,
 ): string => {
-  const overshootKw = Math.max(0, -headroomKw);
+  const overshootKw = Math.max(0, totalKw - safePaceKw);
   const pace = sourceText ? `${formatKw(safePaceKw)} · ${sourceText}` : formatKw(safePaceKw);
   return `${formatKw(overshootKw)} above safe pace (${pace})`;
 };

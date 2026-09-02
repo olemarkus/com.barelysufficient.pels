@@ -16,7 +16,6 @@ import {
 const meta = (overrides: Partial<PlanHeroMetaInput> = {}): PlanHeroMetaInput => ({
   totalKw: 5.2,
   softLimitKw: 11.0,
-  headroomKw: 5.8,
   hardCapLimitKw: 14,
   controlledKw: 3.1,
   uncontrolledKw: 2.1,
@@ -32,12 +31,20 @@ describe('formatHeroHeadline', () => {
     expect(headline.hardLimitKw).toBeCloseTo(14);
   });
 
-  it('flags over-soft-limit state', () => {
+  it('flags over-soft-limit state from the printed pair, total against safe pace', () => {
     const headline = formatHeroHeadline(meta({
       totalKw: 12,
-      headroomKw: -1,
+      softLimitKw: 11,
     }));
     expect(headline.overSoftLimit).toBe(true);
+  });
+
+  it('never claims above-safe-pace while the total prints under the tick', () => {
+    // Regression (2026-09-02): the state used to come from a planner-side
+    // headroom, which could disagree with `softLimitKw - totalKw` — the hero
+    // then said "Above safe pace" over a bar drawn under the tick.
+    const headline = formatHeroHeadline(meta({ totalKw: 1.5, softLimitKw: 2.3 }));
+    expect(headline.overSoftLimit).toBe(false);
   });
 
   it('carries the hard cap as a display value only — no instantaneous over-cap judgement', () => {
@@ -47,7 +54,6 @@ describe('formatHeroHeadline', () => {
     // the projected-energy trajectory in the caller.
     const headline = formatHeroHeadline(meta({
       totalKw: 15,
-      headroomKw: -4,
       hardCapLimitKw: 14,
     }));
     expect(headline.hardLimitKw).toBe(14);
@@ -434,12 +440,12 @@ describe('formatCheapestUpcomingHour', () => {
 });
 
 describe('above-threshold subline formatters', () => {
-  it('renders the overshoot kW and safe pace reference when above safe pace', () => {
-    expect(formatAboveSafePaceSubline(-1.5, 5.0)).toBe('1.5 kW above safe pace (5.0 kW)');
+  it('renders the overshoot as total minus safe pace, with the safe pace reference', () => {
+    expect(formatAboveSafePaceSubline(6.5, 5.0)).toBe('1.5 kW above safe pace (5.0 kW)');
   });
 
-  it('clamps overshoot to zero when headroom is positive but still surfaces the reference', () => {
-    expect(formatAboveSafePaceSubline(2.0, 5.0)).toBe('0.0 kW above safe pace (5.0 kW)');
+  it('clamps overshoot to zero when the total is under the pace but still surfaces the reference', () => {
+    expect(formatAboveSafePaceSubline(3.0, 5.0)).toBe('0.0 kW above safe pace (5.0 kW)');
   });
 });
 

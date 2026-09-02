@@ -34,7 +34,7 @@ describe('plan logging helpers', () => {
 
   it('builds capacity state summary counts with stable zero fields', () => {
     const plan = {
-      meta: { headroomKw: -0.5 },
+      meta: { powerIsMeasured: false },
       devices: [
         {
           id: 'shed',
@@ -139,7 +139,7 @@ describe('plan logging helpers', () => {
 
   it('distinguishes actionable shortfall load from reducible live load', () => {
     const plan = {
-      meta: { headroomKw: -0.5 },
+      meta: { powerIsMeasured: false },
       devices: [
         {
           id: 'cooldown',
@@ -174,7 +174,7 @@ describe('plan logging helpers', () => {
 
   it('keeps shed-invariant stepped restore blocks actionable for shortfall shedding', () => {
     const plan = {
-      meta: { headroomKw: -0.5 },
+      meta: { powerIsMeasured: false },
       devices: [
         {
           id: 'invariant',
@@ -364,6 +364,7 @@ describe('plan logging helpers', () => {
         capacitySoftLimitKw: 4.0,
         dailySoftLimitKw: 3.0,
         softLimitSource: 'daily',
+        powerIsMeasured: true,
         headroomKw: -0.97,
       },
       devices: [
@@ -425,6 +426,7 @@ describe('plan logging helpers', () => {
         capacitySoftLimitKw: 3,
         dailySoftLimitKw: null,
         softLimitSource: 'capacity',
+        powerIsMeasured: true,
         headroomKw: 0.8,
       },
       devices: [

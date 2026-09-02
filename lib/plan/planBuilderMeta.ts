@@ -8,7 +8,13 @@
 import type CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
 import type { PowerCycleDisplay } from '../power/powerCycleReading';
-import type { DevicePlan, DevicePlanDevice } from './planTypes';
+import type {
+  DevicePlan,
+  DevicePlanDevice,
+  PlanMeasuredMetaFields,
+  PlanMetaBase,
+  PlanUnmeasuredMetaFields,
+} from './planTypes';
 import type { PlanContext } from './planContext';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { splitControlledUsageKw } from './planUsage';
@@ -16,15 +22,6 @@ import {
   extractDailyBudgetHourKWh as extractPlanDailyBudgetHourKWh,
   getHourUsageSplit,
 } from './planDailyBudgetWindow';
-
-type ShortfallMeta = Pick<
-  DevicePlan['meta'],
-  | 'capacityShortfall'
-  | 'shortfallBudgetThresholdKw'
-  | 'shortfallBudgetHeadroomKw'
-  | 'hardCapLimitKw'
-  | 'hardCapHeadroomKw'
->;
 
 export function buildPlanMeta(params: {
   context: PlanContext;
@@ -55,19 +52,9 @@ export function buildPlanMeta(params: {
     hourlyBudgetExhausted,
     shortfallBudgetThresholdKw,
   } = params;
-  const { controlledKw, uncontrolledKw } = splitControlledUsageKw({
-    devices: planDevices,
-    totalKw: power.totalKw,
-  });
   const currentHourUsageSplit = getHourUsageSplit(powerTracker, context.hourBucketKey);
   const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
-  const shortfallMeta = buildShortfallMeta(
-    capacityGuard,
-    power.totalKw,
-    capacityLimitKw,
-    shortfallBudgetThresholdKw,
-  );
-  return {
+  const base: PlanMetaBase = {
     totalKw: power.totalKw,
     softLimitKw: context.softLimit,
     capacitySoftLimitKw: context.capacitySoftLimit,
@@ -75,16 +62,14 @@ export function buildPlanMeta(params: {
     budgetPaceKw: context.budgetPaceKw,
     projectedExemptKw: context.projectedExemptKw,
     softLimitSource: context.softLimitSource,
-    headroomKw: context.headroom,
-    powerIsMeasured: context.powerIsMeasured,
-    ...shortfallMeta,
+    capacityShortfall: capacityGuard.isInShortfall() ?? false,
+    shortfallBudgetThresholdKw,
+    hardCapLimitKw: capacityLimitKw,
     hourlyBudgetExhausted,
     usedKWh: context.usedKWh,
     budgetKWh: context.budgetKWh,
     capacityLimitKw,
     minutesRemaining: context.minutesRemaining,
-    controlledKw,
-    uncontrolledKw,
     hourControlledKWh: currentHourUsageSplit.controlledKWh,
     hourUncontrolledKWh: currentHourUsageSplit.uncontrolledKWh,
     dailyBudgetRemainingKWh: today?.state.remainingKWh ?? 0,
@@ -95,22 +80,33 @@ export function buildPlanMeta(params: {
     // drift apart.
     lastPowerUpdateMs: power.lastPowerUpdateMs,
   };
+  return {
+    ...base,
+    ...resolveMeasuredMetaFields(context, power, planDevices, capacityLimitKw, shortfallBudgetThresholdKw),
+  };
 }
 
-function buildShortfallMeta(
-  capacityGuard: CapacityGuard,
-  totalKw: number,
-  hardCapLimitKw: number,
+/**
+ * The ONE constructor of the meta's measured/unmeasured split — the single
+ * branch on the signal inside the planner. The measured figures are computed
+ * and published together; the unmeasured build publishes none of them
+ * (`PlanMeasuredMetaFields`). The overshoot tracker's entry log builds its
+ * capacity summary from the same call, so no second site can drift from it.
+ */
+export function resolveMeasuredMetaFields(
+  context: PlanContext,
+  power: PowerCycleDisplay,
+  planDevices: DevicePlanDevice[],
+  capacityLimitKw: number,
   shortfallBudgetThresholdKw: number,
-): ShortfallMeta {
-  const shortfallBudgetHeadroomKw = shortfallBudgetThresholdKw - totalKw;
-  const hardCapHeadroomKw = hardCapLimitKw - totalKw;
+): PlanMeasuredMetaFields | PlanUnmeasuredMetaFields {
+  if (!context.powerIsMeasured) return { powerIsMeasured: false };
   return {
-    capacityShortfall: capacityGuard.isInShortfall() ?? false,
-    shortfallBudgetThresholdKw,
-    shortfallBudgetHeadroomKw,
-    hardCapLimitKw,
-    hardCapHeadroomKw,
+    powerIsMeasured: true,
+    headroomKw: context.headroom,
+    shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw - power.totalKw,
+    hardCapHeadroomKw: capacityLimitKw - power.totalKw,
+    ...splitControlledUsageKw({ devices: planDevices, totalKw: power.totalKw }),
   };
 }
 
@@ -120,18 +116,29 @@ export function buildPlanContextHeadroomLogFields(
   hardCapLimitKw: number,
   shortfallBudgetThresholdKw: number,
 ): Record<string, number | boolean | string | null> {
-  const shortfallBudgetHeadroomKw = shortfallBudgetThresholdKw - power.totalKw;
-  const hardCapHeadroomKw = hardCapLimitKw - power.totalKw;
+  // The distances are measured figures: null on the unmeasured build, like the
+  // meta publishes none and `planRebuildMetrics` logs null for the same names.
+  const measured = context.powerIsMeasured
+    ? {
+      softHeadroomKw: context.headroom,
+      powerNowKw: power.totalKw,
+      shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw - power.totalKw,
+      hardCapHeadroomKw: hardCapLimitKw - power.totalKw,
+      hardCapBreached: hardCapLimitKw - power.totalKw < 0,
+    }
+    : {
+      softHeadroomKw: null,
+      // Log continuity: saved queries read `powerNowKw` as "the measured draw
+      // or null". A LOG field, not a seam.
+      powerNowKw: null,
+      shortfallBudgetHeadroomKw: null,
+      hardCapHeadroomKw: null,
+      hardCapBreached: null,
+    };
   return {
     totalKw: power.totalKw,
     softLimitKw: context.softLimit,
-    softHeadroomKw: context.headroom,
-    // Log continuity: saved queries read `powerNowKw` as "the measured draw or
-    // null". Derived here from the resolved pair — a LOG field, not a seam.
-    powerNowKw: context.powerIsMeasured ? power.totalKw : null,
     shortfallBudgetThresholdKw: shortfallBudgetThresholdKw ?? null,
-    shortfallBudgetHeadroomKw,
-    hardCapHeadroomKw,
-    hardCapBreached: hardCapHeadroomKw < 0,
+    ...measured,
   };
 }

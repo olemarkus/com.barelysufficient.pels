@@ -23,6 +23,8 @@ type PelsStatusComputation = {
   statusJson: string;
   /** The effective (membership-gated) dry-run this write reflects; undefined for the main home. */
   dryRunEffective: boolean | undefined;
+  /** Whether the plan behind this write was measured (`powerKnown` on the blob). */
+  powerIsMeasured: boolean;
 };
 
 type PlanStatusWriterDeps = {
@@ -61,6 +63,16 @@ export class PlanStatusWriter {
    * the main home, so its cadence is untouched (undefined never differs).
    */
   private lastPelsStatusWrittenDryRunEffective: boolean | undefined = undefined;
+  /**
+   * Whether the last persisted blob was built from a measured plan. A flip is
+   * material even inside the volatile throttle: the one unmeasured build (the
+   * silent-meter fail-closed pass) writes `powerKnown: false` and omits every
+   * measured figure, and after it the silence block stops rebuilding — so a
+   * swallowed write would leave the widget and the Insights capabilities
+   * asserting a measured headroom for the whole outage, with nothing scheduled
+   * to correct it. Undefined until the first write.
+   */
+  private lastPelsStatusWrittenPowerIsMeasured: boolean | undefined = undefined;
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
   constructor(private deps: PlanStatusWriterDeps) {}
@@ -80,7 +92,7 @@ export class PlanStatusWriter {
     this.notifyPriceLevelChanged(priceLevel);
     this.lastNotifiedPriceLevel = priceLevel;
 
-    if (this.computationIsDeadWork(changes?.actionChanged === true, now)) {
+    if (this.computationIsDeadWork(changes?.actionChanged === true, plan.meta.powerIsMeasured, now)) {
       incPerfCounter('settings_set.pels_status_skipped_throttle_total');
       incPerfCounter('settings_set.pels_status_compute_skipped_total');
       return 0;
@@ -92,6 +104,7 @@ export class PlanStatusWriter {
       computation.statusJson,
       changes?.actionChanged === true,
       computation.dryRunEffective,
+      computation.powerIsMeasured,
       now,
     );
   }
@@ -106,9 +119,9 @@ export class PlanStatusWriter {
    * half — paid that cost for nothing. `planRebuildStatus` is 170 ms of a 311 ms
    * rebuild, and the write itself only accounts for 100 ms of it.
    *
-   * The three reasons that can force a write inside the throttle window are all
+   * The four reasons that can force a write inside the throttle window are all
    * knowable without the status: the first-ever write, an action-signature
-   * change, and a dry-run posture flip. Mirror exactly those, so this stays a
+   * change, a dry-run posture flip, and a measured/unmeasured flip. Mirror exactly those, so this stays a
    * fast path in front of `resolveWriteReason` rather than a second policy —
    * every case it lets through is still decided there.
    *
@@ -118,10 +131,11 @@ export class PlanStatusWriter {
    * a property of the status blob, and nothing guarantees another rebuild inside
    * the hour that could carry a deferred one.
    */
-  private computationIsDeadWork(actionChanged: boolean, now: number): boolean {
+  private computationIsDeadWork(actionChanged: boolean, powerIsMeasured: boolean, now: number): boolean {
     if (this.lastPelsStatusWriteMs === 0) return false;
     if (actionChanged) return false;
     if (this.deps.getEffectiveDryRun?.() !== this.lastPelsStatusWrittenDryRunEffective) return false;
+    if (powerIsMeasured !== this.lastPelsStatusWrittenPowerIsMeasured) return false;
     return now - this.lastPelsStatusWriteMs <= VOLATILE_WRITE_THROTTLE_MS;
   }
 
@@ -151,6 +165,7 @@ export class PlanStatusWriter {
       status,
       statusJson: JSON.stringify(normalizePelsStatus(status, STATUS_POWER_BUCKET_MS)),
       dryRunEffective,
+      powerIsMeasured: plan.meta.powerIsMeasured,
     };
   }
 
@@ -182,22 +197,28 @@ export class PlanStatusWriter {
     statusJson: string,
     actionChanged: boolean,
     dryRunEffective: boolean | undefined,
+    powerIsMeasured: boolean,
     now: number,
   ): number {
-    const reason = this.resolveWriteReason(statusJson, actionChanged, dryRunEffective, now);
+    const reason = this.resolveWriteReason(statusJson, actionChanged, dryRunEffective, powerIsMeasured, now);
     if (!reason) return 0;
-    return this.writeStatus(status, statusJson, dryRunEffective, reason, now);
+    return this.writeStatus(status, statusJson, dryRunEffective, powerIsMeasured, reason, now);
   }
 
   private resolveWriteReason(
     statusJson: string,
     actionChanged: boolean,
     dryRunEffective: boolean | undefined,
+    powerIsMeasured: boolean,
     now: number,
   ): PelsStatusWriteReason | null {
     if (statusJson === this.lastPelsStatusWrittenJson) return null;
     if (this.lastPelsStatusWriteMs === 0) return 'initial';
     if (actionChanged) return 'action_changed';
+    // Same standing as the dry-run flip below: the measured/unmeasured
+    // transition is what the widget's empty state and the blob's omitted
+    // headroom hang on (see `lastPelsStatusWrittenPowerIsMeasured`).
+    if (powerIsMeasured !== this.lastPelsStatusWrittenPowerIsMeasured) return 'posture_flip';
     // A posture flip (effective dry-run changed since the last persist) is
     // material even without an action-signature change — force the write so the
     // per-home Limits card reflects live/simulating promptly, busting the
@@ -213,6 +234,7 @@ export class PlanStatusWriter {
     status: PelsStatus,
     statusJson: string,
     dryRunEffective: boolean | undefined,
+    powerIsMeasured: boolean,
     reason: PelsStatusWriteReason,
     now: number,
   ): number {
@@ -220,6 +242,7 @@ export class PlanStatusWriter {
     this.deps.writePelsStatus(status);
     this.lastPelsStatusWrittenJson = statusJson;
     this.lastPelsStatusWrittenDryRunEffective = dryRunEffective;
+    this.lastPelsStatusWrittenPowerIsMeasured = powerIsMeasured;
     this.lastPelsStatusWriteMs = now;
     const writeMs = Date.now() - writeStart;
     addPerfDuration('settings_write_ms', writeMs);

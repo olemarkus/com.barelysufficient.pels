@@ -26,6 +26,14 @@
     /** Shown when there is no status to render yet. */
     noDataSubtitle: "No data yet",
     /**
+     * Shown when the status behind the tile had no measurement (`powerKnown:
+     * false`): the blob carries no headroom then, and nothing derived is honest
+     * to draw. Shares the Overview banner's "No power readings" lead
+     * (`powerReadingsBanner.ts`) without its time qualifier: the value slot has
+     * room for a noun phrase, not a sentence.
+     */
+    noReadingsSubtitle: "No power readings",
+    /**
      * Meta line while the tile's reading is not current — the payload builder
      * aged the persisted status by its own `lastPowerUpdate` (or the planner
      * reported no live sample). The numbers above it are from before, so the

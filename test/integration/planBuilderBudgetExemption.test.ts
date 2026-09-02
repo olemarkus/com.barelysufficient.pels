@@ -8,7 +8,7 @@ import {
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { resolveFixtureCurrentOn, withFixtureResidualKw } from '../utils/planTestUtils';
+import { resolveFixtureCurrentOn, withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
@@ -165,7 +165,7 @@ describe('PlanBuilder budget exemption handling', () => {
       (plan.meta.budgetPaceKw ?? 0) + (plan.meta.projectedExemptKw ?? 0),
       6,
     );
-    expect(plan.meta.headroomKw).toBeCloseTo(0, 6);
+    expect(expectMeasuredMeta(plan.meta).headroomKw).toBeCloseTo(0, 6);
     expect(plan.devices).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'budget-exempt', plannedState: 'keep' }),
       expect.objectContaining({ id: 'regular', plannedState: 'keep' }),

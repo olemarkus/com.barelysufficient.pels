@@ -4,13 +4,20 @@ import {
   computeProjectedHourEnergyKWh,
   isProjectedOverHardCap,
 } from '../../packages/shared-domain/src/hourEnergyProjection';
-import type { DevicePlan } from './planTypes';
-import type { DevicePlanDevice } from './planTypes';
+import type { DevicePlan, DevicePlanDevice, PlanMeta } from './planTypes';
 import { NEUTRAL_STARTUP_HOLD_REASON } from './restore/devices';
 
 /** The persisted `pels_status` payload. External Flow automations read it. */
 export type PelsStatus = {
-  headroomKw: number;
+  /**
+   * JSON-omitted when the plan behind this status had no measurement
+   * (`powerKnown: false`): the blob carries no headroom then rather than a
+   * stand-in number an automation could compare against (owner ruling
+   * 2026-09-02). The same goes for the other measured figures below. Omission
+   * is how this blob already spells absence (`totalKw`, `dryRunEffective`);
+   * `powerNowKw` is the one field whose `null` spelling predates that and stays.
+   */
+  headroomKw?: number;
   hourlyLimitKw?: number;
   hourlyUsageKwh: number;
   dailyBudgetRemainingKwh?: number;
@@ -81,7 +88,7 @@ export function buildPelsStatus(params: {
     : undefined;
 
   return {
-    headroomKw: plan.meta.headroomKw,
+    ...resolveMeasuredStatusFields(plan.meta),
     hourlyLimitKw: plan.meta.softLimitKw,
     hourlyUsageKwh: plan.meta.usedKWh ?? 0,
     dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh ?? 0,
@@ -89,34 +96,47 @@ export function buildPelsStatus(params: {
     limitReason,
     capacityShortfall: plan.meta.capacityShortfall ?? false,
     shortfallBudgetThresholdKw: plan.meta.shortfallBudgetThresholdKw,
-    shortfallBudgetHeadroomKw: plan.meta.shortfallBudgetHeadroomKw,
-    // No PELS surface consumes this any more (the headroom widget moved to
-    // `projectedOverHardCap`); kept because `pels_status` is a persisted
-    // payload external automations may read.
-    hardCapHeadroomKw: plan.meta.hardCapHeadroomKw,
     projectedOverHardCap: resolveProjectedOverHardCap(plan),
     totalKw: areaTotalKw,
-    controlledKw: plan.meta.controlledKw,
-    // `?? undefined` is an ENCODING translation, not a hedge. The domain
-    // spells "no whole-home reading this cycle" as `null`; `pels_status` is a
-    // persisted blob external automations read, and it spells absence by JSON
-    // omission. Keeping `null` here would change the persisted shape, which
-    // the backward-compatibility rule above forbids.
-    uncontrolledKw: plan.meta.uncontrolledKw,
-    // The blob's "measured draw or null" — DERIVED at this write from the
-    // resolved pair (`powerIsMeasured`, `totalKw`); the plan itself no longer
-    // carries a nullable power figure. `pels_status` is a persisted payload
-    // external automations may read, so the field and its null-when-unmeasured
-    // spelling stay exactly as published.
-    powerNowKw: plan.meta.powerIsMeasured ? plan.meta.totalKw : null,
-    // Kept for BACKWARD COMPATIBILITY only — same derivation, cannot drift.
-    powerKnown: plan.meta.powerIsMeasured,
     priceLevel,
     devicesOn: summary.devicesOn,
     devicesOff: summary.devicesOff,
     lastPowerUpdate,
     // Undefined for the main home ⇒ JSON-omitted ⇒ its blob is byte-identical.
     dryRunEffective,
+  };
+}
+
+/**
+ * The status blob's measured figures, from the meta's measured variant — the
+ * one branch on the signal this writer makes. An unmeasured plan contributes
+ * nothing here, so the persisted blob spells "no measurement" by JSON omission
+ * (its existing convention — `totalKw`, `dryRunEffective`) and never by a
+ * number; `powerNowKw` keeps its published `null` spelling.
+ *
+ * `hardCapHeadroomKw`: no PELS surface consumes it any more (the headroom
+ * widget moved to `projectedOverHardCap`); kept because `pels_status` is a
+ * persisted payload external automations may read.
+ */
+function resolveMeasuredStatusFields(
+  meta: PlanMeta,
+): Pick<
+  PelsStatus,
+  | 'powerNowKw' | 'powerKnown' | 'headroomKw' | 'shortfallBudgetHeadroomKw'
+  | 'hardCapHeadroomKw' | 'controlledKw' | 'uncontrolledKw'
+> {
+  // `powerNowKw` is the blob's "measured draw or null" and `powerKnown` its
+  // backward-compatible twin; `pels_status` is a persisted payload external
+  // automations may read, so both keep their published spelling.
+  if (!meta.powerIsMeasured) return { powerNowKw: null, powerKnown: false };
+  return {
+    powerNowKw: meta.totalKw,
+    powerKnown: true,
+    headroomKw: meta.headroomKw,
+    shortfallBudgetHeadroomKw: meta.shortfallBudgetHeadroomKw,
+    hardCapHeadroomKw: meta.hardCapHeadroomKw,
+    controlledKw: meta.controlledKw,
+    uncontrolledKw: meta.uncontrolledKw,
   };
 }
 
@@ -267,12 +287,10 @@ function resolveDailyLimited(params: DailyLimitParams): boolean {
 }
 
 function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): 'none' | 'hourly' | 'daily' | 'both' {
-  // Both claims require a MEASUREMENT this cycle: `headroomKw` is synthesized
-  // when there is none (silent meter → −1 for the fail-closed pass), and the −1
-  // sentinel would otherwise read as a real negative headroom.
-  const measured = plan.meta.powerIsMeasured;
-  const hasShedDevices = measured && summary.hasLimitDrivenShedDevices;
-  const headroomNegative = measured && plan.meta.headroomKw < 0;
+  // Both claims require a MEASUREMENT this cycle: `headroomKw` exists only on
+  // the measured meta, so the narrowing is also what makes it readable.
+  const hasShedDevices = plan.meta.powerIsMeasured && summary.hasLimitDrivenShedDevices;
+  const headroomNegative = plan.meta.powerIsMeasured && plan.meta.headroomKw < 0;
   const limitSource = plan.meta.softLimitSource;
   const dailySourceActive = isDailySourceActive(limitSource);
   const capacitySourceActive = isCapacitySourceActive(limitSource);

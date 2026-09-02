@@ -1,7 +1,7 @@
 import { installHomeyMock } from './helpers/homeyApiMock.ts';
 import { SETTINGS_UI_POWER_PATH } from '../../contracts/src/settingsUiApi.ts';
 import { fixtureDeviceReason } from './helpers/fixtureDeviceReason.ts';
-import { buildPlanMeta } from './helpers/planMetaFixture.ts';
+import { buildPlanMeta, buildUnmeasuredPlanMeta } from './helpers/planMetaFixture.ts';
 
 afterEach(() => {
   vi.clearAllTimers();
@@ -90,12 +90,32 @@ describe('Redesign plan UI', () => {
   });
   
   describe('Overview plan UI', () => {
+    it('renders no hero at all for an unmeasured cycle — the cards stay, nothing computed is drawn', async () => {
+      // The silent-meter fail-closed plan: the wire meta carries the bare
+      // `powerIsMeasured: false` and no headroom or managed/background split.
+      // Nothing derived from a reading the meter stopped confirming is honest
+      // to draw — no chip, no subline, no bar — so the hero is absent and the
+      // global no-readings banner above it is the whole surface (owner ruling
+      // 2026-09-02). Before this, the hero said "Above safe pace · 1.0 kW
+      // above safe pace" beside a bar drawn under the tick for the whole outage.
+      await renderPlanSnapshot({
+        meta: buildUnmeasuredPlanMeta({ totalKw: 1.5, softLimitKw: 2.3 }),
+        devices: [
+          { id: 'dev-1', name: 'First', priority: 1, currentState: 'off', plannedState: 'shed' },
+        ],
+      });
+
+      expect(document.querySelector('.plan-hero')).toBeNull();
+      expect(document.body.textContent).not.toContain('Above safe pace');
+      expect(document.body.textContent).not.toContain('above safe pace');
+      expect(getFirstPlanCard()).not.toBeNull();
+    });
+
     it('renders the hero bars and priority-sorted cards', async () => {
       await renderPlanSnapshot({
         meta: buildPlanMeta({
           totalKw: 5.2,
           softLimitKw: 11,
-          headroomKw: 5.8,
           hardCapLimitKw: 14,
           controlledKw: 3.1,
           uncontrolledKw: 2.1,
@@ -149,7 +169,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 5.2,
           softLimitKw: 11,
-          headroomKw: 5.8,
           controlledKw: 0,
           uncontrolledKw: 5.2,
           usedKWh: 4.2,
@@ -174,7 +193,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 5.2,
           softLimitKw: 11,
-          headroomKw: 5.8,
           controlledKw: 0,
           uncontrolledKw: 5.2,
           usedKWh: 4.2,
@@ -198,7 +216,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: -2.0,
           softLimitKw: 11,
-          headroomKw: 13,
           hardCapLimitKw: 14,
           controlledKw: 0.2,
           uncontrolledKw: 0.1,
@@ -225,7 +242,7 @@ describe('Redesign plan UI', () => {
 
     it('renders the "Budget exempt" chip on device cards', async () => {
       await renderPlanSnapshot({
-        meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5, headroomKw: 5}),
+        meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5}),
         devices: [
           {
             id: 'dev-always-on',
@@ -248,7 +265,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 1.2,
           softLimitKw: 6,
-          headroomKw: 4.8,
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 30}),
@@ -265,7 +281,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 5.0,
           softLimitKw: 8,
-          headroomKw: 3.0,
           hardCapLimitKw: 10,
           controlledKw: 3.0,
           uncontrolledKw: 2.0,
@@ -285,7 +300,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 1.2,
           softLimitKw: 6,
-          headroomKw: 4.8,
           hardCapLimitKw: 8,
           usedKWh: 0.8,
           hourBudgetKWh: 5,
@@ -302,7 +316,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 12,
           softLimitKw: 6,
-          headroomKw: -6,
           hardCapLimitKw: 8,
           controlledKw: 3.0,
           uncontrolledKw: 9.0,
@@ -355,7 +368,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 12,
           softLimitKw: 6,
-          headroomKw: -6,
           hardCapLimitKw: 8,
           controlledKw: 3.0,
           uncontrolledKw: 9.0,
@@ -384,7 +396,6 @@ describe('Redesign plan UI', () => {
           // projected = 4.9 + 2 × 10/60 ≈ 5.23 kWh > 5 kWh cap.
           totalKw: 2,
           softLimitKw: 0.5,
-          headroomKw: -1.5,
           hardCapLimitKw: 5,
           controlledKw: 1.5,
           uncontrolledKw: 0.5,
@@ -408,7 +419,6 @@ describe('Redesign plan UI', () => {
           // projected = 0.8 + 7 × 38/60 ≈ 5.23 kWh > 5 kWh cap → trajectory alarm.
           totalKw: 7,
           softLimitKw: 4.5,
-          headroomKw: -2.5,
           hardCapLimitKw: 5,
           controlledKw: 2.4,
           uncontrolledKw: 4.6,
@@ -449,7 +459,6 @@ describe('Redesign plan UI', () => {
           // projected = 0.8 + 7 × 38/60 ≈ 5.23 kWh > 5 kWh cap → trajectory alarm.
           totalKw: 7,
           softLimitKw: 4.5,
-          headroomKw: -2.5,
           hardCapLimitKw: 5,
           controlledKw: 2.4,
           uncontrolledKw: 4.6,
@@ -481,7 +490,6 @@ describe('Redesign plan UI', () => {
           // projected = 0.8 + 7 × 38/60 ≈ 5.23 kWh > 5 kWh cap → trajectory alarm.
           totalKw: 7,
           softLimitKw: 4.5,
-          headroomKw: -2.5,
           hardCapLimitKw: 5,
           controlledKw: 2.4,
           uncontrolledKw: 4.6,
@@ -526,7 +534,6 @@ describe('Redesign plan UI', () => {
           // projected = 0.8 + 7 × 38/60 ≈ 5.23 kWh > 5 kWh cap → trajectory alarm.
           totalKw: 7,
           softLimitKw: 4.5,
-          headroomKw: -2.5,
           hardCapLimitKw: 5,
           controlledKw: 2.4,
           uncontrolledKw: 4.6,
@@ -561,7 +568,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 4.0,
           softLimitKw: 5,
-          headroomKw: 1.0,
           hardCapLimitKw: 7,
           usedKWh: 0.8,
           hourBudgetKWh: 5,
@@ -579,7 +585,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 7.0,
           softLimitKw: 5,
-          headroomKw: -2.0,
           hardCapLimitKw: 10,
           usedKWh: 0.8,
           hourBudgetKWh: 5,
@@ -598,7 +603,6 @@ describe('Redesign plan UI', () => {
           // currentKw 4.5 × 30/60 = 2.25 → projected 5.05 kWh, above 4.5 budget
           totalKw: 4.5,
           softLimitKw: 6,
-          headroomKw: 1.5,
           hardCapLimitKw: 8,
           usedKWh: 2.8,
           hourBudgetKWh: 4.5,
@@ -614,7 +618,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 6.5,
           softLimitKw: 5,
-          headroomKw: -1.5,
           hardCapLimitKw: 8,
           usedKWh: 0.8,
           hourBudgetKWh: 5,
@@ -638,7 +641,6 @@ describe('Redesign plan UI', () => {
           // projected = 1.9 + 5.2 × 28/60 ≈ 4.33 kWh < 4.5 kWh budget.
           totalKw: 5.2,
           softLimitKw: 5.5,
-          headroomKw: 0.3,
           hardCapLimitKw: 5,
           controlledKw: 4.6,
           uncontrolledKw: 0.6,
@@ -672,7 +674,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 5.2,
           softLimitKw: 11,
-          headroomKw: 5.8,
           hardCapLimitKw: 14,
           controlledKw: 3.1,
           uncontrolledKw: 2.1,
@@ -731,7 +732,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 1.5,
           softLimitKw: 2.3,
-          headroomKw: 0.8,
           controlledKw: 1.0,
           uncontrolledKw: 0.5,
           usedKWh: 0.3,
@@ -754,7 +754,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 12.5,
           softLimitKw: 12,
-          headroomKw: -0.5,
           softLimitSource: 'daily',
           budgetPaceKw: 5,
           projectedExemptKw: 7,
@@ -790,7 +789,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 4,
           softLimitKw: 5,
-          headroomKw: 1,
           ...fields}),
         devices: [],
       });
@@ -803,7 +801,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 0.6,
           softLimitKw: 4.5,
-          headroomKw: 3.9,
           usedKWh: 0.02,
           hourBudgetKWh: 4.5,
           minutesRemaining: 58}),
@@ -821,7 +818,7 @@ describe('Redesign plan UI', () => {
   
     it('renders three-row cards with the state word below the title, load, and real reason text', async () => {
       await renderPlanSnapshot({
-        meta: buildPlanMeta({ totalKw: 2.2, softLimitKw: 6, headroomKw: 3.8}),
+        meta: buildPlanMeta({ totalKw: 2.2, softLimitKw: 6}),
         devices: [
           {
             id: 'dev-heat',
@@ -835,7 +832,6 @@ describe('Redesign plan UI', () => {
               fromTarget: '21°',
               toTarget: '22°',
               needKw: 0.4,
-              headroomKw: 2.1,
             },
             stateKind: 'active',
             stateTone: 'active',
@@ -859,7 +855,7 @@ describe('Redesign plan UI', () => {
   
     it('prefers structured state presentation from the snapshot payload', async () => {
       await renderPlanSnapshot({
-        meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5, headroomKw: 5}),
+        meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5}),
         devices: [
           {
             id: 'dev-held',
@@ -881,7 +877,7 @@ describe('Redesign plan UI', () => {
   
     it('surfaces starvation badges and the held-back reason line', async () => {
       await renderPlanSnapshot({
-        meta: buildPlanMeta({ totalKw: 4.2, softLimitKw: 5, headroomKw: 0.8}),
+        meta: buildPlanMeta({ totalKw: 4.2, softLimitKw: 5}),
         devices: [
           {
             id: 'dev-starved',
@@ -911,7 +907,6 @@ describe('Redesign plan UI', () => {
         meta: buildPlanMeta({
           totalKw: 2.2,
           softLimitKw: 6,
-          headroomKw: 3.8,
           lastPowerUpdateMs: Date.now()}),
         devices: [
           {
@@ -943,8 +938,7 @@ describe('Redesign plan UI', () => {
         generatedAtMs: Date.now(),
         meta: buildPlanMeta({
           totalKw: 2.2,
-          softLimitKw: 6,
-          headroomKw: 3.8}),
+          softLimitKw: 6}),
         devices: [
           {
             id: 'dev-restore-cooldown',
@@ -988,8 +982,7 @@ describe('Redesign plan UI', () => {
         generatedAtMs: Date.parse('2026-04-20T12:00:00Z'),
         meta: buildPlanMeta({
           totalKw: 2.2,
-          softLimitKw: 6,
-          headroomKw: 3.8}),
+          softLimitKw: 6}),
         devices: [
           {
             id: 'dev-expired-cooldown',
@@ -1011,7 +1004,7 @@ describe('Redesign plan UI', () => {
   
     it('dims idle devices and marks missing devices unavailable via state kind', async () => {
       await renderPlanSnapshot({
-        meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5, headroomKw: 5}),
+        meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5}),
         devices: [
           { id: 'idle', name: 'Idle device', currentState: 'off', plannedState: 'inactive', stateKind: 'idle' },
           { id: 'missing', name: 'Missing device', currentState: 'unknown', plannedState: 'keep', stateKind: 'unavailable' },
@@ -1029,7 +1022,7 @@ describe('Redesign plan UI', () => {
       }) as EventListener);
   
       await renderPlanSnapshot({
-        meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5, headroomKw: 5}),
+        meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5}),
         devices: [{ id: 'dev-open', name: 'Overview Device', currentState: 'on', plannedState: 'keep' }],
       });
   
@@ -1051,7 +1044,7 @@ describe('Redesign plan UI', () => {
       // the device list, so a missing plan costs the DECISIONS, not the
       // devices — see the undecided-card test below.
       await renderPlanSnapshot({
-        meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5, headroomKw: 5}),
+        meta: buildPlanMeta({ totalKw: 0, softLimitKw: 5}),
         devices: [],
       });
       expect((document.querySelector('#plan-empty') as HTMLElement | null)?.textContent)
@@ -1094,7 +1087,7 @@ describe('Redesign plan UI', () => {
       const { renderPlan } = await import('../src/ui/plan.ts');
 
       renderPlan(normalizePlanSnapshot({
-        meta: buildPlanMeta({ totalKw: 2.2, softLimitKw: 6, headroomKw: 3.8}),
+        meta: buildPlanMeta({ totalKw: 2.2, softLimitKw: 6}),
         devices: [{ id: 'dev-clear', name: 'Device to clear', currentState: 'on', plannedState: 'keep' }],
       }) as Parameters<typeof renderPlan>[0]);
 
@@ -1124,7 +1117,7 @@ describe('Redesign plan UI', () => {
       const homey = installHomeyMock({
         uiState: {
           plan: normalizePlanSnapshot({
-            meta: buildPlanMeta({ totalKw: 2.2, softLimitKw: 6, headroomKw: 3.8}),
+            meta: buildPlanMeta({ totalKw: 2.2, softLimitKw: 6}),
             devices: [{ id: 'dev-refresh', name: 'Refreshed device', currentState: 'on', plannedState: 'keep' }],
           }),
         },

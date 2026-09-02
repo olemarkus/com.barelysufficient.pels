@@ -23,6 +23,14 @@ type BannerPowerSource = 'homey_energy' | 'flow';
 
 const NONE_YET_LEAD = 'No power readings yet.';
 const STALE_LEAD = 'No power readings in the last minute.';
+// The plan behind the page was built without a measurement: the meter has been
+// silent past the 10-minute shed timeout and PELS ran its one fail-closed pass.
+// The hero draws nothing for that cycle (owner ruling 2026-09-02), so this is
+// the only line on the page that connects the cause (no readings) to what the
+// owner sees below it (every managed device `Limited`). "Limited" is the
+// canonical word (`notes/ui-terminology.md`); "stay" says nothing will change
+// until readings return, which is exactly the silence block's rule.
+const UNMEASURED_LEAD = 'No power readings for over 10 minutes. Managed devices stay limited until readings return.';
 const ACTION_LABEL = 'Check power source';
 
 const HINT_FLOW_NONE_YET = 'Set up a Flow with the Report power usage action, or pick a '
@@ -45,6 +53,11 @@ const resolveHint = (input: BannerHintInput): string => {
   // Flow, never received: the exact state detection leaves an install with
   // nothing findable in — the one arm where naming BOTH remedies is honest.
   return input.neverReceived ? HINT_FLOW_NONE_YET : HINT_FLOW_STALE;
+};
+
+const resolveLead = (input: { neverReceived: boolean; planUnmeasured: boolean }): string => {
+  if (input.neverReceived) return NONE_YET_LEAD;
+  return input.planUnmeasured ? UNMEASURED_LEAD : STALE_LEAD;
 };
 
 /**
@@ -81,6 +94,13 @@ export type PowerReadingsBannerInput = {
   source: BannerPowerSource;
   /** Homey Energy only: whether a whole-home meter is chosen yet. */
   meterChosen: boolean;
+  /**
+   * The current plan's `powerIsMeasured` is false: the silent-meter
+   * fail-closed pass. Fresh readings still win (the next admitted sample
+   * rebuilds, and the plan catches up a cycle later), so this only sharpens
+   * the lead while the banner is showing anyway.
+   */
+  planUnmeasured: boolean;
 };
 
 /** `null` = fresh readings; the banner hides. */
@@ -94,7 +114,7 @@ export const resolvePowerReadingsBannerContent = (
   ) {
     return null;
   }
-  const lead = neverReceived ? NONE_YET_LEAD : STALE_LEAD;
+  const lead = resolveLead({ neverReceived, planUnmeasured: input.planUnmeasured });
   const hint = resolveHint({ source: input.source, meterChosen: input.meterChosen, neverReceived });
   return { text: `${lead} ${hint}`, actionLabel: ACTION_LABEL };
 };

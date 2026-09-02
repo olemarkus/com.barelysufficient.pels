@@ -86,7 +86,7 @@ test.describe('Onboarding links', () => {
           budgetPaceKw: null,
           projectedExemptKw: null,
           softLimitSource: 'capacity',
-          headroomKw: 5,
+          powerIsMeasured: true,
           hardCapLimitKw: 10,
           usedKWh: 0,
           hourBudgetKWh: 5,

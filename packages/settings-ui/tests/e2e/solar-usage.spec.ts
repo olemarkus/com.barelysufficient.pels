@@ -19,7 +19,7 @@ const HOUR_MS = 3_600_000;
 const EXPORTING_PLAN_META_PATCH = {
   totalKw: -2.1,
   lastPowerUpdateMs: Date.now() - 5 * 1000,
-  headroomKw: 4.4,
+  powerIsMeasured: true,
   hardCapHeadroomKw: 10.1,
   controlledKw: 0,
   uncontrolledKw: 1.1,
@@ -29,7 +29,7 @@ const EXPORTING_PLAN_META_PATCH = {
 const ALL_USED_PLAN_META_PATCH = {
   totalKw: 0.4,
   lastPowerUpdateMs: Date.now() - 5 * 1000,
-  headroomKw: 1.9,
+  powerIsMeasured: true,
   hardCapHeadroomKw: 7.6,
   controlledKw: 0,
   uncontrolledKw: 0.4,

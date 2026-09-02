@@ -5,12 +5,14 @@ import {
 import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 import type {
   SettingsUiPlanDeviceSnapshot,
+  SettingsUiPlanMetaMeasuredFields,
   SettingsUiPlanMetaSnapshot,
+  SettingsUiPlanMetaUnmeasuredFields,
   SettingsUiPlanDeviceStarvation,
   SettingsUiPlanSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
 import { normalizePlanMeta } from './planStatusHelpers';
-import type { DevicePlan } from './planTypes';
+import type { DevicePlan, PlanMeta } from './planTypes';
 import type {
   DeviceStateOfChargeSnapshot,
   EvChargingState,
@@ -77,6 +79,23 @@ function resolveHourBudgetKWh(params: {
 }
 
 /**
+ * The wire's measured figures, or the bare signal: the one branch on
+ * `powerIsMeasured` the read model makes. The settings UI narrows on the same
+ * discriminant once, at the hero's mount, and renders nothing computed when it
+ * is false (owner ruling 2026-09-02).
+ */
+function resolveWireMeasuredFields(
+  meta: PlanMeta,
+): SettingsUiPlanMetaMeasuredFields | SettingsUiPlanMetaUnmeasuredFields {
+  if (!meta.powerIsMeasured) return { powerIsMeasured: false };
+  return {
+    powerIsMeasured: true,
+    controlledKw: meta.controlledKw,
+    uncontrolledKw: meta.uncontrolledKw,
+  };
+}
+
+/**
  * Projects the planner's meta onto the settings-UI wire shape.
  *
  * FIELD-BY-FIELD, deliberately — this used to `...spread` the normalized planner
@@ -104,16 +123,14 @@ function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsU
     budgetPaceKw: normalizedMeta.budgetPaceKw,
     projectedExemptKw: normalizedMeta.projectedExemptKw,
     softLimitSource: normalizedMeta.softLimitSource,
-    headroomKw: normalizedMeta.headroomKw,
     hardCapLimitKw: normalizedMeta.hardCapLimitKw,
     usedKWh: normalizedMeta.usedKWh,
     hourBudgetKWh: resolveHourBudgetKWh({ capacityHourBudgetKWh, dailyBudgetHourKWh }),
     minutesRemaining: normalizedMeta.minutesRemaining,
-    controlledKw: normalizedMeta.controlledKw,
-    uncontrolledKw: normalizedMeta.uncontrolledKw,
     hourControlledKWh: normalizedMeta.hourControlledKWh,
     hourUncontrolledKWh: normalizedMeta.hourUncontrolledKWh,
     lastPowerUpdateMs: normalizedMeta.lastPowerUpdateMs,
+    ...resolveWireMeasuredFields(normalizedMeta),
   };
 }
 

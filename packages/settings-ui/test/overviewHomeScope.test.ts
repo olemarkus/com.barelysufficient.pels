@@ -43,7 +43,6 @@ const buildPlan = (params: { totalKw: number; deviceId: string; deviceName: stri
   meta: buildPlanMeta({
     totalKw: params.totalKw,
     softLimitKw: 3,
-    headroomKw: 3 - params.totalKw,
     controlledKw: 0.5,
     uncontrolledKw: Math.max(0, params.totalKw - 0.5),
     usedKWh: 0.2,

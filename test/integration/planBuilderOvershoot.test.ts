@@ -504,7 +504,8 @@ describe('PlanBuilder overshoot diagnostics', () => {
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'overshoot_entered',
       reasonCode: 'active_overshoot',
-      hardCapBreached: false,
+      // Unmeasured: the log claims no cap verdict, not a confident negative.
+      hardCapBreached: null,
       // The lower-priority 0.9 kW device cannot cover the stale-power 1 kW
       // shortfall alone, so the strict order proceeds to the second device.
       remainingReducibleControlledLoad: false,

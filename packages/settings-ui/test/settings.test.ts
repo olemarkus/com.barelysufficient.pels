@@ -1796,8 +1796,7 @@ describe('Plan sorting', () => {
     const planSnapshot = {
       meta: buildPlanMeta({
         totalKw: 4.2,
-        softLimitKw: 9.5,
-        headroomKw: 5.3}),
+        softLimitKw: 9.5}),
       devices: [
         {
           id: 'dev-1', name: 'Most Important Heater', zone: 'Living Room', priority: 1, currentState: 'heating', plannedState: 'keep',
@@ -1842,8 +1841,7 @@ describe('Plan sorting', () => {
     const planSnapshot = {
       meta: buildPlanMeta({
         totalKw: 5.1,
-        softLimitKw: 7.5,
-        headroomKw: 2.4}),
+        softLimitKw: 7.5}),
       devices: [
         { id: 'a2', name: 'Alpha Two', priority: 2, currentState: 'on', plannedState: 'keep' },
         { id: 'b1', name: 'Bravo One', priority: 1, currentState: 'on', plannedState: 'shed' },
@@ -1874,8 +1872,7 @@ describe('Plan sorting', () => {
     const planSnapshot = {
       meta: buildPlanMeta({
         totalKw: 3.3,
-        softLimitKw: 9.0,
-        headroomKw: 5.7}),
+        softLimitKw: 9.0}),
       devices: [
         {
           id: 'device-1',
@@ -1905,8 +1902,7 @@ describe('Plan sorting', () => {
     const planSnapshot = {
       meta: buildPlanMeta({
         totalKw: 1.0,
-        softLimitKw: 9.0,
-        headroomKw: 8.0}),
+        softLimitKw: 9.0}),
       devices: [
         {
           id: 'device-2',
@@ -1936,8 +1932,7 @@ describe('Plan sorting', () => {
     const planSnapshot = {
       meta: buildPlanMeta({
         totalKw: 2.0,
-        softLimitKw: 9.0,
-        headroomKw: 7.0}),
+        softLimitKw: 9.0}),
       devices: [
         {
           id: 'device-3',
@@ -1972,8 +1967,7 @@ describe('Plan sorting', () => {
       planSnapshot: {
         meta: buildPlanMeta({
           totalKw: 2.0,
-          softLimitKw: 9.0,
-          headroomKw: 7.0}),
+          softLimitKw: 9.0}),
         devices: [
           {
             id: 'device-1',
@@ -2000,8 +1994,7 @@ describe('Plan sorting', () => {
     emitHomeyEvent(homey, 'plan_updated', {
       meta: buildPlanMeta({
         totalKw: 2.1,
-        softLimitKw: 9.0,
-        headroomKw: 6.9}),
+        softLimitKw: 9.0}),
       devices: [
         {
           id: 'device-1',
@@ -2033,7 +2026,7 @@ describe('Plan sorting', () => {
 
     installSettingsHomeyMock({
       planSnapshot: {
-        meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
+        meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5}),
         devices: [],
       },
       target_devices_snapshot: [],
@@ -2326,7 +2319,7 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
   // A budget-held card: cause='budget' + isStarved offers the chip by card data;
   // the server-resolved rescuable gate then decides whether it actually renders.
   const budgetHeldPlan = {
-    meta: buildPlanMeta({ totalKw: 2.0, softLimitKw: 9.0, headroomKw: 7.0}),
+    meta: buildPlanMeta({ totalKw: 2.0, softLimitKw: 9.0}),
     devices: [
       {
         id: 'heater-1',

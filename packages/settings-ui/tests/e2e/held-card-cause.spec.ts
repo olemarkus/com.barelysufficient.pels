@@ -55,7 +55,7 @@ const applyProdHeldState = async (page: Page) => {
         totalKw: 0.82,
         lastPowerUpdateMs: Date.now() - 5 * 1000,
         softLimitKw: 1.85,
-        headroomKw: 1.03,
+        powerIsMeasured: true,
         softLimitSource: 'daily',
         hardCapLimitKw: 10.05,
       },

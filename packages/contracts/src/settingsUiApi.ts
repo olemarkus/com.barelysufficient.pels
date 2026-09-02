@@ -204,13 +204,15 @@ export type SettingsUiPlanSteppedLoadState = DeviceOverviewSteppedLoad;
  * `hardCapLimitKw`; `powerKnown`) that only compiled because the signature
  * accepted anything.
  */
-export type SettingsUiPlanMetaSnapshot = {
+export type SettingsUiPlanMetaSnapshotBase = {
   /**
    * Always a number: a plan exists only behind the measurement gate, so the
    * cycle behind every snapshot carries a reading (on the one unmeasured
-   * build — the fail-closed pass — it is the carried reading). "No readings"
-   * is not a plan-meta state at all any more; the power payload's own read
-   * carries that fact for the banner.
+   * build — the fail-closed pass — it is the carried reading). Whether the
+   * meter still confirms it is `powerIsMeasured`'s fact, and the figures
+   * derived from the total exist only behind it. Staleness short of that is
+   * not a plan-meta state at all; the power payload's own read carries it for
+   * the banner.
    */
   totalKw: number;
   softLimitKw: number;
@@ -219,20 +221,42 @@ export type SettingsUiPlanMetaSnapshot = {
   budgetPaceKw: number | null;
   projectedExemptKw: number | null;
   softLimitSource: 'capacity' | 'daily';
-  headroomKw: number;
   /** From `capacitySettings.limitKw` — a plain number, never absent or null. */
   hardCapLimitKw: number;
   usedKWh: number;
   hourBudgetKWh: number;
   minutesRemaining: number;
-  controlledKw: number;
-  uncontrolledKw: number;
   /** Genuinely absent until the hour has bucket data. */
   hourControlledKWh?: number;
   hourUncontrolledKWh?: number;
   /** The sample stamp behind this cycle — always present (see `totalKw`). */
   lastPowerUpdateMs: number;
 };
+
+/**
+ * The power-derived figures the hero draws, present ONLY when the cycle had a
+ * measurement. On the one unmeasured cycle (the silent-meter fail-closed pass)
+ * the wire carries the bare signal and no headroom or managed/background
+ * split at all — never a stand-in number the view could compare or subtract
+ * (owner ruling 2026-09-02). The view branches on the discriminant once, at
+ * the hero's mount, and renders nothing computed when it is false.
+ *
+ * No `headroomKw`: the hero derives its above-safe-pace state and overshoot
+ * from the two numbers it prints (`totalKw` against `softLimitKw`), so a
+ * headroom on the wire would be a second truth nothing renders.
+ */
+export type SettingsUiPlanMetaMeasuredFields = {
+  powerIsMeasured: true;
+  controlledKw: number;
+  uncontrolledKw: number;
+};
+
+export type SettingsUiPlanMetaUnmeasuredFields = {
+  powerIsMeasured: false;
+};
+
+export type SettingsUiPlanMetaSnapshot = SettingsUiPlanMetaSnapshotBase
+  & (SettingsUiPlanMetaMeasuredFields | SettingsUiPlanMetaUnmeasuredFields);
 
 /**
  * NO `[key: string]: unknown` index signature, deliberately. It used to carry
