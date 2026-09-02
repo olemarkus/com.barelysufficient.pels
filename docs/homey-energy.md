@@ -56,16 +56,19 @@ Homey Energy already knows your total home consumption. Instead of creating a Fl
 3. Change **Power source** to **Power meter**.
 4. Pick your meter under **Whole-home meter**, just below **Power source**.
 
+If you never chose the Flow source or sent readings through one, and your meter is marked **Tracks total home energy consumption** and is the only whole-home meter Homey lists, PELS sets both of these for you shortly after starting; you only need to check them here.
+
 ![Power source set to Power meter](images/power-source-homey-energy.png)
 
 Once a meter is chosen, PELS polls it every 10 seconds. The Overview tab should show live power data within moments.
 
-PELS always reads one named meter. It does not guess between meters, and a
-selection does not need Homey's **Tracks total home energy consumption**
-marking. If you updated from a version that chose the meter for you, pick it
-here once. Until you do, PELS shows a warning that starts with "No power
-readings" and leaves your managed devices as they are: nothing is limited or
-resumed.
+PELS always reads one named meter. If your meter is marked **Tracks total home
+energy consumption**, is the only whole-home meter Homey lists, and no Flow
+has ever sent PELS readings, PELS picks it on its own shortly after starting
+and shows it here; with several meters it does not guess, so choose the right
+one. A meter you pick yourself does not need that marking. Until a meter is chosen, PELS shows a warning that starts
+with "No power readings" and leaves your managed devices as they are: nothing
+is limited or resumed.
 
 ### Per-device energy reporting
 
@@ -79,7 +82,8 @@ Your power meter must be paired with Homey and appear in Homey Energy — either
 marked **Tracks total home energy consumption** in its device settings (the
 same cumulative reading Homey shows as "Total home consumption" in the Energy
 dashboard) or as a sensor-class power meter. PELS reads the one meter chosen
-under **Whole-home meter**.
+under **Whole-home meter**; with exactly one whole-home meter present and
+marked as tracking total home consumption, PELS picks it on its own.
 
 Common meters that work: Tibber Pulse, P1/HAN readers, Shelly EM, or any device Homey recognizes as a whole-home energy tracker.
 

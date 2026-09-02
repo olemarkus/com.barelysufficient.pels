@@ -4,18 +4,12 @@ import {
   type PowerSource,
   type PowerSourceSettingClassification,
 } from '../lib/power/powerSource';
-
-import { POWER_SOURCE } from '../lib/utils/settingsKeys';
+import { readPowerSourceEvidence, type PowerSourceSettingsPort } from './powerSourceEvidence';
 
 // The port type is declared with the domain (`lib/power/powerSource.ts`); this
 // adapter re-exports it so existing importers keep their import site. One
 // declaration, not two — a structurally identical local copy is free to drift.
 export type { ConfiguredPowerSourceRead };
-
-type PowerSourceSettingsPort = {
-  get(key: string): unknown;
-  getKeys(): string[];
-};
 
 const attachSuspectError = (
   classified: PowerSourceSettingClassification,
@@ -32,20 +26,7 @@ export const readConfiguredPowerSource = (
   settings: PowerSourceSettingsPort,
 ): ConfiguredPowerSourceRead => {
   try {
-    const raw = settings.get(POWER_SOURCE);
-    if (raw !== undefined && raw !== null) {
-      return attachSuspectError(classifyPowerSourceSetting({
-        raw,
-        keyPresent: false,
-        keyListEmpty: false,
-      }));
-    }
-    const keys = settings.getKeys();
-    return attachSuspectError(classifyPowerSourceSetting({
-      raw,
-      keyPresent: keys.includes(POWER_SOURCE),
-      keyListEmpty: keys.length === 0,
-    }));
+    return attachSuspectError(classifyPowerSourceSetting(readPowerSourceEvidence(settings)));
   } catch (error) {
     return {
       state: 'suspect',

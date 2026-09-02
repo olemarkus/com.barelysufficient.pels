@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyPowerSourceSetting } from '../../lib/power/powerSource';
+import { classifyPowerSourceChoice, classifyPowerSourceSetting } from '../../lib/power/powerSource';
 
 describe('classifyPowerSourceSetting', () => {
   it.each([
@@ -31,5 +31,23 @@ describe('classifyPowerSourceSetting', () => {
       keyPresent,
       keyListEmpty,
     })).toEqual({ state: 'suspect', reason });
+  });
+});
+
+describe('classifyPowerSourceChoice', () => {
+  it('reports a non-null raw value as chosen, normalized (a malformed value is a Flow choice)', () => {
+    expect(classifyPowerSourceChoice({ raw: 'homey_energy', keyPresent: true, keyListEmpty: false }))
+      .toEqual({ state: 'chosen', value: 'homey_energy' });
+    expect(classifyPowerSourceChoice({ raw: 'malformed', keyPresent: true, keyListEmpty: false }))
+      .toEqual({ state: 'chosen', value: 'flow' });
+  });
+
+  it('reports a never-written key as unset only with healthy absence evidence', () => {
+    expect(classifyPowerSourceChoice({ raw: null, keyPresent: false, keyListEmpty: false }))
+      .toEqual({ state: 'unset' });
+    expect(classifyPowerSourceChoice({ raw: undefined, keyPresent: true, keyListEmpty: false }))
+      .toEqual({ state: 'suspect', reason: 'missing_existing_key' });
+    expect(classifyPowerSourceChoice({ raw: undefined, keyPresent: false, keyListEmpty: true }))
+      .toEqual({ state: 'suspect', reason: 'empty_key_list' });
   });
 });

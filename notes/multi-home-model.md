@@ -32,8 +32,10 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   more — the save seam cannot express one (`set_power_source` persists a named meter or the Flow
   source, nothing else) — so a valid current configuration cannot assign one explicit meter to
   both Main and an area, and "Main with no resolvable meter plus active areas" is only a legacy
-  Automatic shape whose owner has not picked a meter yet: Main stays fenced and the no-readings
-  banner names the remedy, and nothing rewrites the key on their behalf. Legacy, stale, or
+  Automatic shape whose owner has not picked a meter yet: Main stays fenced, the boot-time
+  sole-meter adoption fills the key when Homey Energy lists exactly one whole-home meter that no
+  area owns (the seam refuses `meter_in_use`), and otherwise the no-readings banner names the
+  remedy. Legacy, stale, or
   externally malformed cross-store state
   still fails closed at the producer-owned Main actuation predicate until repaired.
 - **Sample provenance:** a Main whole-home sample exists only for the explicitly persisted meter:

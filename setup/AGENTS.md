@@ -28,11 +28,16 @@
   transient miss. The key list can prove only whether the key is written; a listed key plus a
   `null` value still needs producer-owned last-good state, a companion marker, or a bounded grace
   policy. (The Main meter's retired "Automatic" was the canonical case; `mainMeterSettings.ts`
-  now reads every non-string as semantic `unavailable`, and a legacy stored-null install is
-  re-pointed by its owner in Limits & safety. There is deliberately no boot-time migration
-  rewriting that key: it would decide the one setting the whole app hangs on without the owner,
-  and the last one raced the power tracker's first persist on every fresh install; the commit
-  that deleted it records the reproduction.) See the
+  now reads every non-string as semantic `unavailable`. The boot-time sole-meter adoption
+  (`lib/power/soleMeterAdoption.ts`, constructed and started by `soleMeterAdoption.ts` here) is
+  the one runtime writer of that key, and it is bounded on purpose: it writes only when Homey
+  lists exactly one id-bearing whole-home meter — in the live report and the device registry —
+  on two reads 30 s apart, only through the save seam, never Flow, with no marker (the condition
+  clears itself once a meter is stored), never over readings the tracker has ever admitted (the
+  tracker's own classified read; a suspect read decides nothing), and it parses no persisted key
+  beyond the two the seam writes. Its predecessor keyed "fresh install" on the mere PRESENCE of
+  `power_tracker_state` and lost to the tracker's first prune on every boot.
+  Everything else is the owner's pick in Limits & safety.) See the
   outstanding TODO for `homeRuntime/homeOperatingMode.ts`, which still
   gates on `undefined` alone.
 - **Configured meter ownership and sampled-meter provenance are different facts.** The

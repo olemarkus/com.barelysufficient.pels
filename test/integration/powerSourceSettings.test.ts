@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
+import { readPowerSourceChoice } from '../../setup/powerSourceChoice';
 import { readConfiguredPowerSource } from '../../setup/powerSourceSettings';
 import { mockHomeyInstance } from '../mocks/homey';
 
@@ -47,5 +48,24 @@ describe('readConfiguredPowerSource', () => {
       state: 'resolved',
       value: 'flow',
     });
+  });
+});
+
+describe('readPowerSourceChoice', () => {
+  beforeEach(() => {
+    mockHomeyInstance.settings.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('keeps an unwritten key distinct from a Flow choice', () => {
+    mockHomeyInstance.settings.set('another_setting', true);
+    expect(readPowerSourceChoice(mockHomeyInstance.settings)).toEqual({ state: 'unset' });
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
+    expect(readPowerSourceChoice(mockHomeyInstance.settings)).toEqual({ state: 'chosen', value: 'flow' });
+  });
+
+  it('answers read_failed, not unset, when the settings read throws', () => {
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation(() => { throw new Error('boom'); });
+    expect(readPowerSourceChoice(mockHomeyInstance.settings)).toEqual({ state: 'suspect', reason: 'read_failed' });
   });
 });

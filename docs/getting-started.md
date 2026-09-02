@@ -30,7 +30,7 @@ Open **Apps -> PELS -> Settings** in Homey. This is where all configuration happ
 
 Live power input is what PELS plans on — connect it once and every other feature unlocks.
 
-**Easiest path — use your power meter.** If your power meter is paired with Homey, go to **Settings > Limits & safety**, set **Power source** to **Power meter**, and pick it under **Whole-home meter**. No Flow is needed. This works for Tibber Pulse, P1/HAN readers, Shelly EM, and similar.
+**Easiest path — use your power meter.** If your power meter is marked **Tracks total home energy consumption** in Homey and it is the only whole-home meter Homey lists, PELS starts reading it on its own shortly after starting, unless it has ever received readings from a Flow. No Flow and nothing to pick. This works for Tibber Pulse, P1/HAN readers, Shelly EM, and similar. If you have several meters, or you chose the Flow source earlier, go to **Settings > Limits & safety**, set **Power source** to **Power meter**, and pick the meter under **Whole-home meter**.
 
 See [Using Homey Energy](/homey-energy) for the full walkthrough, including how to also read electricity prices from Homey Energy (especially useful outside Norway).
 

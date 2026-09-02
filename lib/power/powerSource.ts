@@ -6,8 +6,12 @@
  * `normalizePowerSource` resolves the raw persisted value to the closed union —
  * only the exact string `'homey_energy'` selects Homey Energy; anything else
  * resolves to `flow`. An UNSET key is a lasting state: the runtime never
- * writes a default source, so a fresh install stays unset until the owner
- * chooses one in Limits & safety, and runs on Flow until then.
+ * writes a default source. The one runtime write is the boot-time sole-meter
+ * adoption (`lib/power/soleMeterAdoption.ts`), which persists the meter and the
+ * Power meter source together through the save seam when Homey Energy lists
+ * exactly one whole-home meter and no source has been chosen yet; it never
+ * writes Flow. Every other install stays unset until the owner chooses a
+ * source in Limits & safety, and runs on Flow until then.
  */
 export type PowerSource = 'homey_energy' | 'flow';
 
@@ -40,26 +44,50 @@ export type PowerSourceSettingClassification =
     reason: PowerSourceSettingSuspectReason;
   };
 
-/**
- * Pure classification of one persisted `power_source` read plus key-list
- * evidence. Explicit values resolve directly; malformed non-null values
- * resolve to Flow. An absent value resolves to `flow` only when a healthy,
- * non-empty key list confirms the source key was never written: the runtime
- * writes no default source, so a never-written key is an install whose
- * owner has not chosen a source yet, and it runs on Flow until they do.
- */
-export const classifyPowerSourceSetting = (evidence: {
+/** One persisted `power_source` read plus the key-list evidence that classifies its absence. */
+export type PowerSourceSettingEvidence = {
   raw: unknown;
   keyPresent: boolean;
   keyListEmpty: boolean;
-}): PowerSourceSettingClassification => {
+};
+
+/**
+ * Has the owner chosen a source? `chosen` carries what they chose (a
+ * malformed non-null value counts as a choice and normalizes to Flow);
+ * `unset` is a never-written key proven by a healthy, non-empty key list;
+ * `suspect` is absence that cannot be told from a transient read miss. This
+ * is the one question `classifyPowerSourceSetting` collapses (unset runs as
+ * Flow), asked by the one caller that must not collapse it: the boot-time
+ * sole-meter adoption adopts only where nothing was chosen.
+ */
+export type PowerSourceChoiceClassification =
+  | { state: 'chosen'; value: PowerSource }
+  | { state: 'unset' }
+  | { state: 'suspect'; reason: PowerSourceSettingSuspectReason };
+
+export const classifyPowerSourceChoice = (
+  evidence: PowerSourceSettingEvidence,
+): PowerSourceChoiceClassification => {
   const { raw, keyPresent, keyListEmpty } = evidence;
-  if (raw !== undefined && raw !== null) {
-    return { state: 'resolved', value: normalizePowerSource(raw) };
-  }
+  if (raw !== undefined && raw !== null) return { state: 'chosen', value: normalizePowerSource(raw) };
   if (keyListEmpty) return { state: 'suspect', reason: 'empty_key_list' };
   if (keyPresent) return { state: 'suspect', reason: 'missing_existing_key' };
-  return { state: 'resolved', value: 'flow' };
+  return { state: 'unset' };
+};
+
+/**
+ * Pure classification of one persisted `power_source` read plus key-list
+ * evidence, as the runtime consumes it: explicit values resolve directly,
+ * malformed non-null values resolve to Flow, and a never-written key
+ * (`classifyPowerSourceChoice`'s `unset`) resolves to `flow`: an install
+ * with no source chosen yet runs on Flow until the owner chooses one.
+ */
+export const classifyPowerSourceSetting = (
+  evidence: PowerSourceSettingEvidence,
+): PowerSourceSettingClassification => {
+  const choice = classifyPowerSourceChoice(evidence);
+  if (choice.state === 'suspect') return choice;
+  return { state: 'resolved', value: choice.state === 'chosen' ? choice.value : 'flow' };
 };
 
 /**

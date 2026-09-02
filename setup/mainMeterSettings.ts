@@ -11,8 +11,9 @@ type MainMeterSettingsPort = {
  * stored-null Automatic selection is retired and the save seam cannot write
  * it), so every non-string read — `null`, `undefined`, junk — is honestly
  * `unavailable`: a transient SDK miss, a malformed value, or a legacy
- * Automatic install whose owner has not picked a meter yet (the no-readings
- * banner names that remedy; nothing rewrites the key on their behalf). The
+ * Automatic install whose owner has not picked a meter yet (the boot-time
+ * sole-meter adoption fills it when Homey Energy lists exactly one whole-home
+ * meter; otherwise the no-readings banner names the remedy). The
  * old `getKeys()` cross-check existed only to tell a transient miss apart
  * from never-written-means-Automatic; with that meaning gone, so is the
  * cross-check. All SDK provenance is consumed here: callers receive only
