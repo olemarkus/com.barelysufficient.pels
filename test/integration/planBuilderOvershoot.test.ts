@@ -265,69 +265,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
     }
   });
 
-  it('reports attribution_inputs_incomplete when the current total is missing but a prior plan baseline exists', async () => {
-    vi.useFakeTimers();
-    try {
-      const state = createPlanEngineState();
-      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
-      vi.setSystemTime(now);
-      // A prior plan was already built this lifetime, so this is NOT a cold start.
-      state.lastPlanBuiltAtMs = now - 30_000;
-      // PELS has been up long enough to have watched the meter go silent: the
-      // producer will not escalate to fail-closed inside its startup grace,
-      // because a restart reloads a timestamp that is already old.
-      state.appStartedAtMs = now - (11 * 60_000);
-
-      const structuredLog = { info: vi.fn() };
-      // The tracker carries no `lastPowerW`, so the resolved total is null —
-      // mimicking a transient/failed whole-home power read.
-      const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
-
-      const builder = new PlanBuilder({
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
-        capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getPriceOptimizationSettings: () => ({}),
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        // Stale-but-present sample (> 10 min) drives the fail-closed pass,
-        // which forces negative headroom and an actionable overshoot even
-        // though the cycle is unmeasured — the carried watts must not be
-        // diffed into a confident attribution.
-        getPowerTracker: () => ({ lastTimestamp: now - (11 * 60_000), lastPowerW: 500 }),
-        getDailyBudgetSnapshot: () => null,
-        getDynamicSoftLimitOverride: () => 2.0,
-        getShedBehavior: () => ({ action: 'turn_off' }),
-        structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        logDebug: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-      }, state);
-
-      await builder.buildDevicePlanSnapshot([
-        buildDevice({
-          id: 'some-device',
-          name: 'Some Device',
-          currentDrawKw: 0.5,
-        }),
-      ]);
-
-      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
-        event: 'overshoot_entered',
-        overshootTotalDeltaKw: null,
-        overshootAttributionReason: 'attribution_inputs_incomplete',
-        overshootTopControlledContributors: [],
-        overshootTopUncontrolledContributors: [],
-      }));
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it('reports attribution_inputs_incomplete on a fresh sample after a stale-hold previous (previous total null, baseline exists)', async () => {
     let lastPowerW = 0;
     vi.useFakeTimers();
@@ -453,13 +390,14 @@ describe('PlanBuilder overshoot diagnostics', () => {
   it('does not emit a changed overshoot summary when same-sample skip keeps authority unchanged', async () => {
     let lastPowerW = 0;
     const state = createPlanEngineState();
-    // The sample below is stamped at epoch+500ms, i.e. long stale. Say the app
-    // has been up longer than the shed timeout so the producer is past its
-    // startup grace and actually escalates, which is what this case needs.
-    state.appStartedAtMs = 0;
+    // One measured sample, held fixed across both builds: the second build sees
+    // the very reading the first was planned from, which is the same-sample skip.
+    const sampleTs = Date.now();
     const structuredLog = { info: vi.fn() };
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
-    lastPowerW = (2.5) * 1000;
+    // A measured 1.4 kW deficit against the 2.1 kW pace: the 1.2 kW device
+    // cannot cover it alone, so the strict order proceeds to the second.
+    lastPowerW = (3.5) * 1000;
 
     const builder = new PlanBuilder({
       getInferredSurplusKw: () => 0,
@@ -472,7 +410,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({}),
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getPowerTracker: () => ({ lastTimestamp: 500 , lastPowerW }),
+      getPowerTracker: () => ({ lastTimestamp: sampleTs, lastPowerW }),
       getDailyBudgetSnapshot: () => null,
       getDynamicSoftLimitOverride: () => 2.1,
       getShedBehavior: () => ({ action: 'turn_off' }),
@@ -504,10 +442,9 @@ describe('PlanBuilder overshoot diagnostics', () => {
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'overshoot_entered',
       reasonCode: 'active_overshoot',
-      // Unmeasured: the log claims no cap verdict, not a confident negative.
-      hardCapBreached: null,
-      // The lower-priority 0.9 kW device cannot cover the stale-power 1 kW
-      // shortfall alone, so the strict order proceeds to the second device.
+      hardCapBreached: false,
+      // Both devices went in the first build; the second build sees the same
+      // sample and re-asserts without entering the overshoot again.
       remainingReducibleControlledLoad: false,
       activeControlledDevices: 2,
     }));
@@ -835,77 +772,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
         overshootAttributionReason: 'attribution_inputs_incomplete',
         overshootTopControlledContributors: [],
         overshootTopUncontrolledContributors: [],
-      }));
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  // Codex case 3: under stale_fail_closed the CapacityGuard may still hold an old cached
-  // total, so both context.total and the previous total are finite and a numeric (but
-  // STALE) delta is produced. The freshness gate must reject this and report incomplete
-  // rather than classify a confident cause from a stale delta.
-  it('reports attribution_inputs_incomplete when the total delta is computed from a stale cached total', async () => {
-    let lastPowerW = 0;
-    vi.useFakeTimers();
-    try {
-      const state = createPlanEngineState();
-      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
-      vi.setSystemTime(now);
-      // A prior plan was already built this lifetime with a finite total, so a numeric
-      // delta CAN be computed — this is not a cold start and not a null-total case.
-      state.lastPlanBuiltAtMs = now - 30_000;
-      // PELS has been up long enough to have watched the meter go silent: the
-      // producer will not escalate to fail-closed inside its startup grace,
-      // because a restart reloads a timestamp that is already old.
-      state.appStartedAtMs = now - (11 * 60_000);
-      state.lastPlanTotalKw = 0.5;
-
-      const structuredLog = { info: vi.fn() };
-      // The tracker still holds an old cached total (`resolveLastTotalPowerKw` stays finite) even
-      // though the sample timestamp is now stale.
-      const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
-      lastPowerW = (0.8) * 1000;
-
-      const builder = new PlanBuilder({
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
-        capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getPriceOptimizationSettings: () => ({}),
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        // Stale-but-present timestamp (> 10 min) drives the fail-closed freshness state,
-        // which forces an actionable overshoot off the OLD cached total of 0.8.
-        getPowerTracker: () => ({ lastTimestamp: now - (11 * 60_000) , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
-        getDynamicSoftLimitOverride: () => 0.7,
-        getShedBehavior: () => ({ action: 'turn_off' }),
-        structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        logDebug: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-      }, state);
-
-      await builder.buildDevicePlanSnapshot([
-        buildDevice({ id: 'some-device', name: 'Some Device', currentDrawKw: 0.5 }),
-      ]);
-
-      // Even though a finite total delta (0.8 - 0.5 = 0.3) COULD be computed, the sample
-      // is stale (not fresh), so the delta is untrustworthy and the verdict is incomplete
-      // rather than a confident background_load_dominant.
-      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
-        event: 'overshoot_entered',
-        overshootAttributionReason: 'attribution_inputs_incomplete',
-        overshootTopControlledContributors: [],
-        overshootTopUncontrolledContributors: [],
-      }));
-      expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
-        event: 'overshoot_entered',
-        overshootAttributionReason: 'background_load_dominant',
       }));
     } finally {
       vi.useRealTimers();

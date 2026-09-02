@@ -7,7 +7,7 @@ import type {
 } from '../diagnostics/deviceDiagnosticsService';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveStarvationSuppressionSemantics } from '../planContract/planDecisionSemantics';
-import type { PlanContext } from './planContext';
+import type { MeasuredPower, PlanContext } from './planContext';
 import { PriceLevel } from '../price/priceLevels';
 import type { RestorePlanResult } from './restore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
@@ -37,6 +37,7 @@ type StarvationSuppressionNormalization = {
 
 type BuildDeviceDiagnosticsObservationsParams = {
   context: PlanContext;
+  power: MeasuredPower;
   planDevices: DevicePlanDevice[];
   restoreResult: RestorePlanResult;
   priceOptimizationEnabled: boolean;
@@ -59,7 +60,7 @@ export const buildDeviceDiagnosticsObservations = (
     // device-reason re-attribution in `normalizeShedReasons` in lockstep — the breach
     // term is what stops the rescue widget offering "Let it run now" during a genuine
     // capacity breach while the card correctly keeps the headroom framing.
-    budgetReleasableHeadroomHold: params.context.budgetReleasableHeadroomHold,
+    budgetReleasableHeadroomHold: params.power.budgetReleasableHeadroomHold,
     priceOptimizationEnabled: params.priceOptimizationEnabled,
     priceOptimizationSettings: params.priceOptimizationSettings,
     // Producer-resolved once per build (see `PlanContext.currentHourPriceLevel`)
@@ -226,9 +227,9 @@ const resolveEligibleForStarvation = (params: {
 // cause both read the true, releasable cause — without any consumer re-deriving the
 // source. This mirrors the shed-time re-attribution `resolveShedReason`/`buildBaseReason`
 // already perform for capacity→daily. A genuine capacity-bound shortfall — physical
-// capacity, an exhausted hourly cap (which forces `softLimitSource` to 'capacity'), or a
-// non-fresh meter (stale hold/fail-closed, so there is no measured total) — keeps
-// `insufficient_headroom`.
+// capacity, or an exhausted hourly cap (which forces `softLimitSource` to 'capacity') —
+// keeps `insufficient_headroom`. (The silent-meter pass never reaches this: it plans no
+// restores and observes no diagnostics.)
 //
 // This re-attribution no longer gates anything user-facing. Until 2026-08-04 it fed the
 // flat overview `budget | capacity` bucket, which decided whether the "Let it run now"

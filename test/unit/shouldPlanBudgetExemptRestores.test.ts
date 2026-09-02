@@ -5,6 +5,7 @@ const base = {
   sheddingActive: true,
   softLimitSource: 'daily' as const,
   capacityHeadroomKw: 3,
+  hourlyBudgetExhausted: false,
   timing: { inCooldown: false, inRestoreCooldown: false, inStartupStabilization: false },
 };
 
@@ -25,12 +26,18 @@ describe('shouldPlanBudgetExemptRestores', () => {
     expect(shouldPlanBudgetExemptRestores({ ...base, softLimitSource: 'capacity' })).toBe(false);
   });
 
-  it('stays closed at zero capacity headroom (stale-hold forces exactly 0)', () => {
+  it('stays closed at zero capacity headroom', () => {
     expect(shouldPlanBudgetExemptRestores({ ...base, capacityHeadroomKw: 0 })).toBe(false);
   });
 
-  it('stays closed at negative capacity headroom (breach, exhausted hour, stale fail-closed)', () => {
+  it('stays closed at negative capacity headroom (a breach)', () => {
     expect(shouldPlanBudgetExemptRestores({ ...base, capacityHeadroomKw: -1 })).toBe(false);
+  });
+
+  it('stays closed in an exhausted hour — the FLAG, not a headroom forced negative upstream', () => {
+    // The hour's kWh is spent, so no freed capacity admits anything before it
+    // rolls over. This used to ride on the context forcing every axis to -1.
+    expect(shouldPlanBudgetExemptRestores({ ...base, hourlyBudgetExhausted: true })).toBe(false);
   });
 
   it('stays closed during the shed cooldown', () => {

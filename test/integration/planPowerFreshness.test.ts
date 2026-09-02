@@ -1,12 +1,13 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { resolvePowerCycleReading } from '../../lib/power/powerCycleReading';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { buildPlanContext } from '../../lib/plan/planContext';
+import { resolveMeasuredPower, type MeasuredPower, type PlanLimits } from '../../lib/plan/planContext';
 import {
   POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
   POWER_SAMPLE_STALE_THRESHOLD_MS,
 } from '../../lib/power/sampleFreshness';
 import { createPlanEngineState } from '../../lib/plan/planState';
+import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
@@ -16,11 +17,13 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
-// The producer resolves the reading; `buildPlanContext` receives answers. Tests
-// state the two real inputs — what the meter read and when it last sampled.
-// (In production a silent-past-timeout build only happens as the escalation's
-// one fail-closed pass — every other silent rebuild is blocked by the composed
-// gate; driving the builder directly here exercises exactly that pass.)
+// The producer resolves the reading. Tests state the two real inputs — what
+// the meter read and when it last sampled — and receive either a measured
+// reading (from which `resolveMeasuredPower` derives every axis) or the
+// silent-meter variant, which carries no headroom at all. (In production a
+// silent-past-timeout build only happens as the escalation's one fail-closed
+// pass — every other silent rebuild is blocked by the composed gate; driving
+// the builder directly below exercises exactly that pass.)
 const readingFor = (
   powerTracker: { lastTimestamp?: number; lastPowerW?: number },
 ) => resolvePowerCycleReading({
@@ -54,73 +57,73 @@ describe('power sample freshness policy', () => {
     vi.useRealTimers();
   });
 
-  const contextFor = (params: {
-    powerTracker: { lastTimestamp?: number; lastPowerW?: number };
-    devices?: PlanInputDevice[];
+  const limitsFor = (params: {
     softLimit?: number;
     capacitySoftLimit?: number;
     dailySoftLimit?: number | null;
     budgetPaceKw?: number | null;
     projectedExemptKw?: number | null;
     softLimitSource?: 'capacity' | 'daily';
-    hourlyBudgetExhausted?: boolean;
-  }) => buildPlanContext({
-    devices: params.devices ?? [],
-    power: readingFor(params.powerTracker),
-    capacitySettings: { limitKw: 6, marginKw: 0.2 },
-    powerTracker: params.powerTracker,
+  }): PlanLimits => ({
     softLimit: params.softLimit ?? 5,
     capacitySoftLimit: params.capacitySoftLimit ?? 5,
     dailySoftLimit: params.dailySoftLimit ?? null,
     budgetPaceKw: params.budgetPaceKw ?? null,
     projectedExemptKw: params.projectedExemptKw ?? null,
     softLimitSource: params.softLimitSource ?? 'capacity',
-    modeTargetCFor: (d) => d.currentTarget,
-    hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,
-    currentHourPriceLevel: PriceLevel.UNKNOWN,
   });
 
+  /** The measured cycle's numbers, or `null` when the reading is the silent variant. */
+  const powerFor = (params: {
+    powerTracker: { lastTimestamp?: number; lastPowerW?: number };
+    devices?: PlanInputDevice[];
+  } & Parameters<typeof limitsFor>[0]): MeasuredPower | null => {
+    const reading = readingFor(params.powerTracker);
+    if (!reading.isMeasured) return null;
+    return resolveMeasuredPower(reading, limitsFor(params), params.devices ?? []);
+  };
+
   it('uses real computed headroom for fresh samples', () => {
-    const context = contextFor({
+    const power = powerFor({
       powerTracker: { lastTimestamp: Date.now() - (POWER_SAMPLE_STALE_THRESHOLD_MS - 1), lastPowerW: 3.2 * 1000 },
     });
 
-    expect(context.powerIsMeasured).toBe(true);
-    expect(context.headroomRaw).toBeCloseTo(1.8, 6);
-    expect(context.headroom).toBeCloseTo(1.8, 6);
+    expect(power?.headroomKw).toBeCloseTo(1.8, 6);
+    expect(power?.drawKw).toBeCloseTo(3.2, 6);
   });
 
   // Owner ruling 2026-08-31: a short gap is a no-op, not a hold — the last
   // good value carries forward AS MEASURED until the 10-minute silence mark.
   it('carries a minutes-old reading forward as measured; a build with no sample at all fails loud', () => {
-    const carriedContext = contextFor({
+    const carried = powerFor({
       powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000), lastPowerW: 4.4 * 1000 },
     });
 
-    expect(carriedContext.powerIsMeasured).toBe(true);
-    expect(carriedContext.headroomRaw).toBeCloseTo(0.6, 6);
-    expect(carriedContext.headroom).toBeCloseTo(0.6, 6);
+    expect(carried?.headroomKw).toBeCloseTo(0.6, 6);
 
-    // Startup with NO sample is the measurement gate's case, not a context
+    // Startup with NO sample is the measurement gate's case, not a reading
     // state: a build with an unsampled tracker is a gate violation and fails
     // loud instead of synthesizing a held headroom.
-    expect(() => contextFor({ powerTracker: {} })).toThrow(/measurement gate/);
+    expect(() => readingFor({})).toThrow(/measurement gate/);
   });
 
-  it('uses fail-closed fallback headroom -1 once stale timeout is reached', () => {
-    const context = contextFor({
-      powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 4_400 },
+  it('answers the silent-meter variant once the stale timeout is reached — no headroom exists to read', () => {
+    // This used to force a sentinel -1 headroom that every consumer then did
+    // arithmetic on (owner ruling 2026-09-02). The silent variant carries no
+    // headroom; the planner takes an explicit directive instead.
+    const reading = readingFor({
+      lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 4_400,
     });
 
-    expect(context.powerIsMeasured).toBe(false);
-    expect(context.headroomRaw).toBe(-1);
-    expect(context.headroom).toBe(-1);
+    expect(reading.isMeasured).toBe(false);
+    expect(reading).not.toHaveProperty('headroomKw');
+    expect(powerFor({ powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 4_400 } })).toBeNull();
   });
 
-  // Per-axis restore-admission inputs share the binding axis's policy (measured:
-  // real difference; held: 0; fail-closed: -1) and the exhausted-hour force, so
-  // fail-closed and exhausted hours block every restore on every axis —
-  // including budget-exempt candidates on the capacity axis.
+  // Per-axis restore-admission inputs are resolved from the same measured
+  // reading as the binding axis. The exhausted hour is no longer a force on
+  // these numbers: it is a flag the restore gates read
+  // (`shouldPlanRestores`, `shouldPlanBudgetExemptRestores`).
   describe('per-axis admission headroom resolution', () => {
     const exemptRunningDevice = buildDevice({
       id: 'exempt-heater',
@@ -136,19 +139,22 @@ describe('power sample freshness policy', () => {
     };
 
     it('resolves both axes from fresh power, with the MEASURED exempt sum on the budget axis', () => {
-      const context = contextFor({
+      const power = powerFor({
         ...perAxis,
         devices: [exemptRunningDevice],
         powerTracker: { lastTimestamp: Date.now() - 1000, lastPowerW: 1.85 * 1000 },
       });
 
-      expect(context.capacityHeadroomKw).toBeCloseTo(10 - 1.85, 6);
+      expect(power?.capacityHeadroomKw).toBeCloseTo(10 - 1.85, 6);
       // budget pace (0.9) + measured exempt (1.25) - total (1.85)
-      expect(context.budgetHeadroomKw).toBeCloseTo(0.3, 6);
+      expect(power?.budgetHeadroomKw).toBeCloseTo(0.3, 6);
+      expect(power?.capacityBreached).toBe(false);
+      // Daily binding + capacity not breached: a headroom hold is budget-releasable.
+      expect(power?.budgetReleasableHeadroomHold).toBe(true);
     });
 
     it('has no budget axis without a resolved daily pace', () => {
-      const context = contextFor({
+      const power = powerFor({
         ...perAxis,
         dailySoftLimit: null,
         budgetPaceKw: null,
@@ -156,31 +162,18 @@ describe('power sample freshness policy', () => {
         powerTracker: { lastTimestamp: Date.now() - 1000, lastPowerW: 1.85 * 1000 },
       });
 
-      expect(context.budgetHeadroomKw).toBeNull();
+      expect(power?.budgetHeadroomKw).toBeNull();
+      expect(power?.budgetReleasableHeadroomHold).toBe(false);
     });
 
-    it('synthesizes -1 on both axes once the silence passes the shed timeout', () => {
-      const failClosed = contextFor({
+    it('reports a capacity breach from the measured draw, which closes the budget release', () => {
+      const power = powerFor({
         ...perAxis,
-        powerTracker: { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 1_850 },
-      });
-      expect(failClosed.capacityHeadroomKw).toBe(-1);
-      expect(failClosed.budgetHeadroomKw).toBe(-1);
-    });
-
-    // The ~0 read has to be MEASURED now: the force used to fire off the raw
-    // cached total, which survives a dropout.
-    it('forces both axes to -1 in an exhausted hour with a ~0 meter', () => {
-      const context = contextFor({
-        ...perAxis,
-        softLimit: 0,
-        hourlyBudgetExhausted: true,
-        powerTracker: { lastTimestamp: Date.now() - 1000, lastPowerW: 0 * 1000 },
+        powerTracker: { lastTimestamp: Date.now() - 1000, lastPowerW: 10.5 * 1000 },
       });
 
-      expect(context.headroom).toBe(-1);
-      expect(context.capacityHeadroomKw).toBe(-1);
-      expect(context.budgetHeadroomKw).toBe(-1);
+      expect(power?.capacityBreached).toBe(true);
+      expect(power?.budgetReleasableHeadroomHold).toBe(false);
     });
   });
 });
@@ -280,5 +273,232 @@ describe('planner behavior under stale power freshness states', () => {
     // A real difference again. The exact figure moves with the dynamic soft
     // limit, which the 10 minutes spent reaching fail-closed necessarily advanced.
     expect(expectMeasuredMeta(recoveredPlan.meta).headroomKw).toBeGreaterThan(0);
+  });
+
+  // The silent-meter pass is a DIRECTIVE — shed every candidate to its floor —
+  // not a sentinel headroom the ordinary pipeline sizes a slice against. With
+  // the old `-1` it shed "about 1 kW" of devices, a policy nobody chose; three
+  // 1.2 kW candidates would have lost one.
+  it('sheds every candidate on the silent-meter pass, not a one-kilowatt slice', async () => {
+    const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
+    const structuredLog = { info: vi.fn(), warn: vi.fn() };
+    const state = createPlanEngineState();
+    const builder = buildBuilder({ tracker, state, structuredLog });
+    const devices = [
+      buildDevice({ id: 'a', name: 'A', priority: 1, currentDrawKw: 1.2 }),
+      buildDevice({ id: 'b', name: 'B', priority: 2, currentDrawKw: 1.2 }),
+      buildDevice({ id: 'c', name: 'C', priority: 3, currentDrawKw: 1.2 }),
+    ];
+
+    const plan = await builder.buildDevicePlanSnapshot(devices);
+
+    expect(plan.devices.map((dev) => dev.plannedState)).toEqual(['shed', 'shed', 'shed']);
+    expect(plan.meta.powerIsMeasured).toBe(false);
+    // The shedding latch engages and the instability clock stamps, exactly as
+    // a measured shed would, so the first measured cycle after the meter
+    // returns re-decides before any restore lane runs.
+    expect(state.sheddingActive).toBe(true);
+    expect(state.lastInstabilityMs).toBe(Date.now());
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_silent_meter_pass',
+      shedDeviceCount: 3,
+      candidateDeviceCount: 3,
+    }));
+    // No overshoot was "entered": the pass never prices a deficit.
+    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'overshoot_entered' }));
+  });
+
+  it('sheds a budget-exempt device too on the silent-meter pass — the exemption is from the budget, not from a silent meter', async () => {
+    // Under a daily pace an exempt device is spared by ordinary shedding
+    // (`allowedByLimitPolicy`). The pass is a capacity fail-closed: the house
+    // may be over its cap for all anyone knows (Codex review on PR #2286).
+    const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
+    const state = createPlanEngineState();
+    const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
+      getCapacityDryRun: () => false,
+      setCapacityInShortfall: vi.fn(),
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => false,
+      getPriceOptimizationSettings: () => ({}),
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+      getPowerTracker: () => tracker,
+      // A daily budget that binds: 0.3 kWh planned for this hour under a 6 kW cap.
+      getDailyBudgetSnapshot: () => ({
+        todayKey: '2026-04-18',
+        days: {
+          '2026-04-18': {
+            dateKey: '2026-04-18',
+            timeZone: 'UTC',
+            nowUtc: new Date().toISOString(),
+            dayStartUtc: '2026-04-18T00:00:00.000Z',
+            currentBucketIndex: 0,
+            budget: { enabled: true, dailyBudgetKWh: 6, priceShapingEnabled: false },
+            state: {
+              usedNowKWh: 3, allowedNowKWh: 1, remainingKWh: 3, deviationKWh: 2,
+              exceeded: false, frozen: false, confidence: 1, priceShapingActive: false,
+            },
+            buckets: {
+              startUtc: ['2026-04-18T10:00:00.000Z', '2026-04-18T11:00:00.000Z'],
+              startLocalLabels: ['10', '11'],
+              plannedWeight: [0.5, 0.5],
+              plannedKWh: [0.3, 0.5],
+              plannedUncontrolledKWh: [0, 0],
+              plannedControlledKWh: [0.3, 0.5],
+              actualKWh: [0, 0],
+              actualControlledKWh: [0, 0],
+              actualUncontrolledKWh: [0, 0],
+              allowedCumKWh: [0.3, 0.8],
+            },
+          },
+        },
+      }) as never,
+      getShedBehavior: () => ({ action: 'turn_off' }),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
+    }, state);
+
+    const plan = await builder.buildDevicePlanSnapshot([
+      buildDevice({ id: 'exempt', name: 'Exempt', budgetExempt: true, currentDrawKw: 1.2 }),
+      buildDevice({ id: 'plain', name: 'Plain', currentDrawKw: 1.2 }),
+    ]);
+
+    expect(plan.meta.powerIsMeasured).toBe(false);
+    expect(plan.meta.softLimitSource).toBe('daily');
+    expect(plan.devices.find((dev) => dev.id === 'exempt')?.plannedState).toBe('shed');
+    expect(plan.devices.find((dev) => dev.id === 'plain')?.plannedState).toBe('shed');
+  });
+
+  it('keeps a thermostat at its shed setpoint on the silent-meter pass instead of raising it to the mode target', async () => {
+    // A thermostat already at its floor is not a shedding candidate (nothing
+    // left to shed), and a `keep` would materialize the mode's 21 °C — a
+    // load-adding write the pass has no measurement to admit (Codex and
+    // CodeRabbit reviews on PR #2286).
+    const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
+    const state = createPlanEngineState();
+    const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
+      getCapacityDryRun: () => false,
+      setCapacityInShortfall: vi.fn(),
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({ Home: { thermo: 21 } }),
+      getPriceOptimizationEnabled: () => false,
+      getPriceOptimizationSettings: () => ({}),
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+      getPowerTracker: () => tracker,
+      getDailyBudgetSnapshot: () => null,
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
+    }, state);
+
+    const plan = await builder.buildDevicePlanSnapshot([
+      buildDevice({
+        id: 'thermo',
+        name: 'Thermostat',
+        deviceType: 'temperature',
+        currentTemperature: 16,
+        currentTarget: 16,
+        currentDrawKw: 0,
+        targets: [{ id: 'target_temperature', value: 16, unit: 'C' }],
+      } as Partial<PlanInputDevice>),
+    ]);
+
+    const thermo = plan.devices.find((dev) => dev.id === 'thermo');
+    expect(thermo?.plannedState).toBe('shed');
+    expect(isTemperaturePlanDevice(thermo!) ? thermo.plannedTarget : undefined).toBe(16);
+  });
+
+  it('names a reason for a smart task\'s forced shed on the silent-meter pass, so the plan finalizes cleanly', async () => {
+    // A forced shed rides in through the hold merge with no reason of its
+    // own; the measured pipeline's reason normalization would name it, and
+    // the pass runs none — an unnamed shed is an invalid state/reason pair
+    // (Codex review on PR #2286).
+    const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
+    const structuredLog = { info: vi.fn(), warn: vi.fn() };
+    const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
+      getCapacityDryRun: () => false,
+      setCapacityInShortfall: vi.fn(),
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => false,
+      getPriceOptimizationSettings: () => ({}),
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+      getPowerTracker: () => tracker,
+      getDailyBudgetSnapshot: () => null,
+      getShedBehavior: () => ({ action: 'turn_off' }),
+      decorateDeferredObjectives: (input) => ({
+        admittedDevices: input.devices,
+        forceShedSet: new Set<string>(['idle-task']),
+        deferredAvoidDeviceIds: new Set<string>(),
+        deferredReleaseIntentByDeviceId: {},
+        admittedDeviceIds: new Set<string>(),
+      }),
+      structuredLog: structuredLog as never,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
+    }, createPlanEngineState());
+
+    const plan = await builder.buildDevicePlanSnapshot([
+      // Cap-off for the cycle but admitted as controllable, the shape the
+      // smart-task decoration hands the planner for a forced shed.
+      buildDevice({ id: 'idle-task', name: 'Idle task', currentOn: false, binaryControl: { on: false }, currentDrawKw: 0 }),
+    ]);
+
+    const device = plan.devices.find((dev) => dev.id === 'idle-task');
+    expect(device?.plannedState).toBe('shed');
+    expect(device?.reason?.code).not.toBe('keep');
+    expect(structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_reason_pair_invalid' }));
+  });
+
+  it('carries a smart task release on the silent-meter pass but never a binary_restore', async () => {
+    const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
+    const state = createPlanEngineState();
+    const builder = new PlanBuilder({
+      getInferredSurplusKw: () => 0,
+      getCapacityDryRun: () => false,
+      setCapacityInShortfall: vi.fn(),
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => false,
+      getPriceOptimizationSettings: () => ({}),
+      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+      getPowerTracker: () => tracker,
+      getDailyBudgetSnapshot: () => null,
+      getShedBehavior: () => ({ action: 'turn_off' }),
+      decorateDeferredObjectives: (input) => ({
+        admittedDevices: input.devices,
+        forceShedSet: new Set<string>(),
+        deferredAvoidDeviceIds: new Set<string>(),
+        // A negative release rides the plan; the one positive intent needs a
+        // measured cycle and this is not one.
+        deferredReleaseIntentByDeviceId: { release: 'binary_release', resume: 'binary_restore' },
+        admittedDeviceIds: new Set<string>(),
+      }),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
+    }, state);
+
+    const plan = await builder.buildDevicePlanSnapshot([
+      buildDevice({ id: 'release', name: 'Release', controllable: false }),
+      buildDevice({ id: 'resume', name: 'Resume', controllable: false, currentOn: false, binaryControl: { on: false } }),
+    ]);
+
+    expect(plan.devices.find((dev) => dev.id === 'release')?.deferredReleaseIntent).toBe('binary_release');
+    expect(plan.devices.find((dev) => dev.id === 'resume')?.deferredReleaseIntent).toBeUndefined();
   });
 });

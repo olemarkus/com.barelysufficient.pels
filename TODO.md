@@ -2009,7 +2009,8 @@ What remains open is below.*
       stale-meter window.** `dailyBudget` is a sticky reason (`shouldNormalizeReason` never
       normalizes it back, and the diagnostics fold maps `insufficient_headroom → daily_budget`
       but never the reverse), so in cycles where the restore pass does not run (restore cooldown,
-      `sheddingActive`, startup stabilization) while the meter is `stale_hold`/`stale_fail_closed`,
+      `sheddingActive`, startup stabilization) while the meter is silent (the last reading carries
+      forward as measured until the shed timeout; past it the silent-meter pass plans no restores),
       a device labeled `dailyBudget` in the previous fresh cycle keeps the label and the widget's
       "Let it run now" offer — the exact state the `budgetReleasableHeadroomHold` doc says must
       stay capacity-bucketed. Bounded (≤300 s restore cooldown per episode; longer under

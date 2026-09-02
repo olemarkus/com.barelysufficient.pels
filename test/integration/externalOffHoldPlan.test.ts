@@ -8,7 +8,7 @@
  * question ("was the off ours?") is settled upstream and covered in
  * `externalOffHoldDetection.test.ts`; here the hold is a given.
  */
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { describe, expect, it, vi } from 'vitest';
 import {
   applyUncontrolledBinaryRestore,
@@ -90,11 +90,7 @@ describe('external-off hold — plan reason', () => {
   });
 
   it('marks the device inactive during materialization', () => {
-    const result = applyOffStateReason({
-      planDevice: heldDevice(),
-      headroomRaw: 5,
-      guardInShortfall: false,
-    });
+    const result = applyOffStateReason(heldDevice(), { inShortfall: false });
     expect(result.plannedState).toBe('inactive');
     expect(result.reason).toEqual({ code: PLAN_REASON_CODES.externalOffHold });
   });
@@ -138,10 +134,10 @@ describe('external-off hold — plan-device propagation', () => {
   // Without this the whole suite is blind to a dropped `pickPropagatedPlanFields`
   // line: the e2e's "never resumes" assertion passes on the executor guard alone,
   // and the other plan specs build fixtures with the bit already set.
-  const buildContext = (devices: PlanContext['devices']): PlanContext => ({
+  const buildContext = (devices: PlanContext['devices']): PlanCycle => buildPlanCycleObject({
     devices,
     modeTargetCFor: (d) => d.currentTarget,
-    ...planContextPower(FIXTURE_TOTAL_KW),
+    total: FIXTURE_TOTAL_KW,
     hourBucketKey: '2026-07-25T12',
     softLimit: 10,
     capacitySoftLimit: 10,
@@ -183,7 +179,7 @@ describe('external-off hold — plan-device propagation', () => {
     shedSet: new Set<string>(),
     shedReasons: new Map(),
     shedStepTargets: new Map(),
-    guardInShortfall: false,
+    shortfall: { inShortfall: false },
     deps,
   })[0];
 

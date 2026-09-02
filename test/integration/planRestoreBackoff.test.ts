@@ -1,6 +1,6 @@
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { PlanContext } from '../../lib/plan/planContext';
+import type { MeasuredPower, PlanContext } from '../../lib/plan/planContext';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
@@ -32,7 +32,6 @@ import {
   type BinaryControlDiscriminantProbe,
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
@@ -66,42 +65,13 @@ const buildBinarySteppedPlanDevice = (
   return withBinaryDiscriminant({ ...steppedPlanDevice(rest), binaryControl }) as SteppedPlanDevice;
 };
 
-const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
-  devices: [],
-  modeTargetCFor: (d) => d.currentTarget,
-  ...planContextPower(FIXTURE_TOTAL_KW),
-  softLimit: 0,
-  capacitySoftLimit: 0,
-  dailySoftLimit: null,
-  budgetPaceKw: null,
-  projectedExemptKw: null,
-  softLimitSource: 'capacity',
-  budgetReleasableHeadroomHold: false,
-  capacityHeadroomKw: 1,
-  budgetHeadroomKw: null,
-  hourBucketKey: '1970-01-01T00',
-  budgetKWh: 0,
-  usedKWh: 0,
-  minutesRemaining: 60,
-  headroomRaw: 1,
-  headroom: 1,
-  restoreMarginPlanning: 0.2,
-  currentHourPriceLevel: PriceLevel.UNKNOWN,
-  ...overrides,
-});
-
-// Mirror the producer: unless a test pins the axes explicitly, the capacity
-// axis tracks the fixture's binding headroom (capacity-bound home, no daily
-// budget), so restore admissions see the same available power as before the
-// per-axis ledger.
-const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
-  const base = buildContextFields(overrides);
-  return {
-    ...base,
-    capacityHeadroomKw: overrides.capacityHeadroomKw ?? base.headroom,
-    budgetHeadroomKw: overrides.budgetHeadroomKw ?? null,
-  };
-};
+// The frame and the measurement are two objects now; the spec keeps spelling
+// them together and the fixture splits them. Unless a case pins the axes, the
+// capacity axis tracks the binding headroom (capacity-bound home, no daily
+// budget), so admissions see the same available power as before.
+const buildContext = (overrides: PlanCycleSpec = {}): { context: PlanContext; power: MeasuredPower } => (
+  buildPlanCycle({ total: FIXTURE_TOTAL_KW, headroom: 1, hourBucketKey: '1970-01-01T00', ...overrides })
+);
 
 describe('restore cooldown backoff', () => {
   beforeEach(() => {
@@ -132,7 +102,7 @@ describe('restore cooldown backoff', () => {
 
       const result = applyRestorePlan({
         planDevices: [],
-        context: buildContext(),
+        ...buildContext(),
         state,
         sheddingActive: false,
         deps,
@@ -170,7 +140,7 @@ describe('restore cooldown backoff', () => {
     vi.setSystemTime(now);
     let result = applyRestorePlan({
       planDevices: [],
-      context: buildContext(),
+      ...buildContext(),
       state,
       sheddingActive: false,
       deps,
@@ -185,7 +155,7 @@ describe('restore cooldown backoff', () => {
     vi.setSystemTime(now);
     result = applyRestorePlan({
       planDevices: [],
-      context: buildContext(),
+      ...buildContext(),
       state,
       sheddingActive: false,
       deps,
@@ -216,7 +186,7 @@ describe('restore cooldown backoff', () => {
         buildPlanDevice({ id: 'dev-off', name: 'Off', priority: 10, currentState: 'off', measuredPowerKw: 0, expectedPowerKw: 1 }),
         buildPlanDevice({ id: 'dev-on', name: 'On', priority: 90, currentState: 'on', measuredPowerKw: 2, expectedPowerKw: 2 }),
       ],
-      context: buildContext({ headroomRaw: 0, headroom: 0 }),
+      ...buildContext({ headroomRaw: 0, headroom: 0 }),
       state,
       sheddingActive: false,
       deps,
@@ -263,7 +233,7 @@ describe('restore cooldown backoff', () => {
           shedAction: 'turn_off',
         }),
       ],
-      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
       deps,
@@ -310,7 +280,7 @@ describe('restore cooldown backoff', () => {
           shedAction: 'set_step',
         }),
       ],
-      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
       deps,
@@ -356,7 +326,7 @@ describe('restore cooldown backoff', () => {
           shedAction: 'set_step',
         }),
       ],
-      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
       deps,
@@ -390,7 +360,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 1.0,
         headroom: 1.0,
       }),
@@ -436,7 +406,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -498,7 +468,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -547,7 +517,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -591,7 +561,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -645,7 +615,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -695,7 +665,7 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -739,7 +709,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -779,7 +749,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -822,7 +792,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -874,7 +844,7 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -910,7 +880,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 2.0,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 3.0,
         headroom: 3.0,
       }),
@@ -947,7 +917,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 3.0,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 2.0,
         headroom: 2.0,
       }),
@@ -980,7 +950,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -1021,7 +991,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -1062,7 +1032,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -1104,7 +1074,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -1146,7 +1116,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -1182,7 +1152,7 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0, expectedPowerKw: 2,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -1217,7 +1187,7 @@ describe('restore cooldown backoff', () => {
 
     const result = applyRestorePlan({
       planDevices: devices,
-      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
       deps: {
@@ -1249,7 +1219,7 @@ describe('restore cooldown backoff', () => {
         measuredPowerKw: 0,
         expectedPowerKw: 2,
       })],
-      context: buildContext({ headroomRaw: 0.1, headroom: 0.1 }),
+      ...buildContext({ headroomRaw: 0.1, headroom: 0.1 }),
       state,
       sheddingActive: false,
       deps: {
@@ -1279,7 +1249,7 @@ describe('restore cooldown backoff', () => {
         currentDrawKw: 1.25,
         planningPowerKw: 1.25,
       })],
-      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
       deps: {
@@ -1318,7 +1288,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -1381,7 +1351,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
       deps: {
@@ -1435,7 +1405,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
       deps: {
@@ -1490,7 +1460,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
       deps: {
@@ -1545,7 +1515,7 @@ describe('restore cooldown backoff', () => {
       // Headroom is too small to escalate low -> medium outright (needs ~0.95kW). The cooldown
       // preview considers direct admissions only: it must retain the power blocker and must not
       // manufacture a swap merely to decide which card receives the timer.
-      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
       deps: {
@@ -1600,7 +1570,7 @@ describe('restore cooldown backoff', () => {
       ],
       // Enough power for a direct low -> medium increase. The stale whole-home
       // sample must still prevent executable scale-up intent.
-      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
       deps: {
@@ -1643,7 +1613,7 @@ describe('restore cooldown backoff', () => {
       expectedPowerKw: 0.5,
       reason: { code: PLAN_REASON_CODES.capacity },
     }));
-    const context = buildContext({ headroomRaw: 5, headroom: 5 });
+    const { context, power } = buildContext({ headroomRaw: 5, headroom: 5 });
     const deps = {
       powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
       normalizedShedFloorCByDevice: new Map(),
@@ -1654,6 +1624,7 @@ describe('restore cooldown backoff', () => {
     const restore = applyRestorePlan({
       planDevices,
       context,
+      power,
       state,
       sheddingActive: false,
       deps,
@@ -1715,7 +1686,7 @@ describe('restore cooldown backoff', () => {
       : { action: 'turn_off' as const };
     const restore = applyRestorePlan({
       planDevices,
-      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
       deps: {
@@ -1781,7 +1752,7 @@ describe('restore cooldown backoff', () => {
     };
     const restore = applyRestorePlan({
       planDevices,
-      context: buildContext({ headroomRaw: 0.1, headroom: 0.1 }),
+      ...buildContext({ headroomRaw: 0.1, headroom: 0.1 }),
       state,
       sheddingActive: false,
       deps,
@@ -1828,7 +1799,7 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0, expectedPowerKw: 2,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -1874,7 +1845,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -1910,7 +1881,7 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0, expectedPowerKw: 2,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -1956,7 +1927,7 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0, expectedPowerKw: 2,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -2013,7 +1984,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -2042,7 +2013,7 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -2078,7 +2049,7 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -2114,7 +2085,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -2151,7 +2122,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 1.25,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -2188,7 +2159,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 0,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -2226,7 +2197,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 0,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -2264,7 +2235,7 @@ describe('restore cooldown backoff', () => {
           planningPowerKw: 0,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
       }),
@@ -2299,7 +2270,7 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
         softLimitSource: 'daily',
@@ -2336,7 +2307,7 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({
+      ...buildContext({
         headroomRaw: 5,
         headroom: 5,
         softLimitSource: 'daily',
@@ -2412,7 +2383,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2488,7 +2459,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 2.2, headroom: 2.2 }),
+      ...buildContext({ headroomRaw: 2.2, headroom: 2.2 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2508,7 +2479,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 3.5, headroom: 3.5 }),
+      ...buildContext({ headroomRaw: 3.5, headroom: 3.5 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2522,10 +2493,7 @@ describe('restore admission — headroom and penalty gates', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  const freshBatchContext = (headroomKw: number): PlanContext => buildContext({
-    headroomRaw: headroomKw,
-    headroom: headroomKw,
-  } as Partial<PlanContext>);
+  const freshBatchContext = (headroomKw: number) => buildContext({ headroomRaw: headroomKw, headroom: headroomKw });
 
   const freshBatchDeps = (now: number) => ({
     ...makeDeps(),
@@ -2603,7 +2571,7 @@ describe('restore admission — headroom and penalty gates', () => {
         batchDevice('dev-3', 30),
         batchDevice('dev-4', 40),
       ],
-      context: freshBatchContext(5),
+      ...freshBatchContext(5),
       state,
       sheddingActive: false,
       deps: freshBatchDeps(now),
@@ -2629,7 +2597,7 @@ describe('restore admission — headroom and penalty gates', () => {
         batchDevice('dev-2', 20, 0.5),
         batchDevice('dev-3', 30, 0.5),
       ],
-      context: freshBatchContext(4),
+      ...freshBatchContext(4),
       state,
       sheddingActive: false,
       deps: freshBatchDeps(now),
@@ -2641,37 +2609,6 @@ describe('restore admission — headroom and penalty gates', () => {
     const third = result.planDevices.find((d) => d.id === 'dev-3');
     expect(third?.plannedState).toBe('shed');
     expect(reasonText(third?.reason)).toBe('meter settling (60s remaining)');
-  });
-
-  it('keeps one-restore behavior when the whole-home power sample is stale', () => {
-    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
-    vi.setSystemTime(now);
-    const state = createPlanEngineState();
-
-    const result = applyRestorePlan({
-      planDevices: [
-        batchDevice('dev-1', 10),
-        batchDevice('dev-2', 20),
-      ],
-      context: buildContext({
-        headroomRaw: 5,
-        headroom: 5,
-        ...planContextPower(3, { failClosed: true }),
-      } as Partial<PlanContext>),
-      state,
-      sheddingActive: false,
-      deps: {
-        ...makeDeps(),
-        powerTracker: { lastTimestamp: now - 61_000 } as PowerTrackerState,
-        normalizedShedFloorCByDevice: new Map(),
-      },
-    });
-
-    expect(result.restoredThisCycle).toEqual(new Set(['dev-1']));
-    expect(result.planDevices.find((d) => d.id === 'dev-1')?.plannedState).toBe('keep');
-    const second = result.planDevices.find((d) => d.id === 'dev-2');
-    expect(second?.plannedState).toBe('shed');
-    expect(reasonText(second?.reason)).toBe('meter settling (60s remaining)');
   });
 
   it('allows a swap as the first restore and holds later binary restores', () => {
@@ -2692,7 +2629,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 2,
         }),
       ],
-      context: freshBatchContext(0),
+      ...freshBatchContext(0),
       state,
       sheddingActive: false,
       deps: freshBatchDeps(now),
@@ -2730,7 +2667,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: freshBatchContext(3),
+      ...freshBatchContext(3),
       state,
       sheddingActive: false,
       deps: freshBatchDeps(124),
@@ -2764,7 +2701,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 2,
         }),
       ],
-      context: freshBatchContext(3),
+      ...freshBatchContext(3),
       state,
       sheddingActive: false,
       deps: freshBatchDeps(124),
@@ -2789,7 +2726,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 2.80, headroom: 2.80 }),
+      ...buildContext({ headroomRaw: 2.80, headroom: 2.80 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2809,7 +2746,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 2.54, headroom: 2.54 }),
+      ...buildContext({ headroomRaw: 2.54, headroom: 2.54 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2833,7 +2770,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 1.1, headroom: 1.1 }),
+      ...buildContext({ headroomRaw: 1.1, headroom: 1.1 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2849,7 +2786,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 1.25, headroom: 1.25 }),
+      ...buildContext({ headroomRaw: 1.25, headroom: 1.25 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2878,7 +2815,7 @@ describe('restore admission — headroom and penalty gates', () => {
           expectedPowerKw: 2,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.25, headroom: 0.25 }),
+      ...buildContext({ headroomRaw: 0.25, headroom: 0.25 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2908,7 +2845,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 2.5, headroom: 2.5 }),
+      ...buildContext({ headroomRaw: 2.5, headroom: 2.5 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2944,7 +2881,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 3, headroom: 3 }),
+      ...buildContext({ headroomRaw: 3, headroom: 3 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -2965,7 +2902,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 5.1, headroom: 5.1 }),
+      ...buildContext({ headroomRaw: 5.1, headroom: 5.1 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -3005,7 +2942,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 3,
         }),
       ],
-      context: buildContext({ headroomRaw: 0, headroom: 0 }),
+      ...buildContext({ headroomRaw: 0, headroom: 0 }),
       state,
       sheddingActive: false,
       deps: {
@@ -3158,7 +3095,7 @@ describe('restore admission — headroom and penalty gates', () => {
         expectedPowerKw: 1,
         measuredPowerKw: 0,
       })],
-      context: buildContext({ headroomRaw: -0.5, headroom: -0.5 }),
+      ...buildContext({ headroomRaw: -0.5, headroom: -0.5 }),
       state,
       sheddingActive: false,
       guardInShortfall: true,
@@ -3193,7 +3130,7 @@ describe('restore admission — headroom and penalty gates', () => {
         targetStepId: 'max',
         currentDrawKw: 2,
       })],
-      context: buildContext({ headroomRaw: -0.5, headroom: -0.5 }),
+      ...buildContext({ headroomRaw: -0.5, headroom: -0.5 }),
       state,
       sheddingActive: false,
       guardInShortfall: true,
@@ -3232,7 +3169,7 @@ describe('restore admission — headroom and penalty gates', () => {
         targetStepId: 'max',
         currentDrawKw: 0,
       })],
-      context: buildContext({ headroomRaw: -0.5, headroom: -0.5 }),
+      ...buildContext({ headroomRaw: -0.5, headroom: -0.5 }),
       state,
       sheddingActive: false,
       guardInShortfall: true,
@@ -3274,7 +3211,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     // headroom = 1.699 → postReserveMarginKw = 1.699 - 1.2 - 0.25 = 0.249 < floor
     const result = applyRestorePlan({
       planDevices: [buildPlanDevice({ id: 'dev', name: 'Heater', currentState: 'off', expectedPowerKw: 1, measuredPowerKw: 0 })],
-      context: buildContext({ headroomRaw: 1.699, headroom: 1.699 }),
+      ...buildContext({ headroomRaw: 1.699, headroom: 1.699 }),
       state,
       sheddingActive: false,
       deps: makeDepsFloor(),
@@ -3287,7 +3224,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     // headroom = 1.700 → postReserveMarginKw = 1.700 - 1.2 - 0.25 = 0.250 = floor
     const result = applyRestorePlan({
       planDevices: [buildPlanDevice({ id: 'dev', name: 'Heater', currentState: 'off', expectedPowerKw: 1, measuredPowerKw: 0 })],
-      context: buildContext({ headroomRaw: 1.7, headroom: 1.7 }),
+      ...buildContext({ headroomRaw: 1.7, headroom: 1.7 }),
       state,
       sheddingActive: false,
       deps: makeDepsFloor(),
@@ -3354,7 +3291,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.995, headroom: 0.995 }),
+      ...buildContext({ headroomRaw: 0.995, headroom: 0.995 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4147,7 +4084,7 @@ describe('stepped-load shed invariant', () => {
           desiredStepId: 'medium',
         }),
       ],
-      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4192,7 +4129,7 @@ describe('stepped-load shed invariant', () => {
           currentDrawKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 1.975, headroom: 1.975 }),
+      ...buildContext({ headroomRaw: 1.975, headroom: 1.975 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4238,7 +4175,7 @@ describe('stepped-load shed invariant', () => {
           currentDrawKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 1.975, headroom: 1.975 }),
+      ...buildContext({ headroomRaw: 1.975, headroom: 1.975 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4284,7 +4221,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 0, expectedPowerKw: 0.1,
         }),
       ],
-      context: buildContext({ headroomRaw: 1, headroom: 1 }),
+      ...buildContext({ headroomRaw: 1, headroom: 1 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4328,7 +4265,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 1, expectedPowerKw: 1,
         }),
       ],
-      context: buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
+      ...buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4394,7 +4331,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 2, expectedPowerKw: 2,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
+      ...buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4447,7 +4384,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 2, expectedPowerKw: 2,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
+      ...buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4519,7 +4456,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 2, expectedPowerKw: 2,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
+      ...buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4569,7 +4506,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 2, expectedPowerKw: 2,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
+      ...buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4606,7 +4543,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 0, expectedPowerKw: 2,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
+      ...buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4650,7 +4587,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 0.1, expectedPowerKw: 0.1,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.4, headroom: 0.4 }),
+      ...buildContext({ headroomRaw: 0.4, headroom: 0.4 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4697,7 +4634,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 0.1, expectedPowerKw: 0.1,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.4, headroom: 0.4 }),
+      ...buildContext({ headroomRaw: 0.4, headroom: 0.4 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4748,7 +4685,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 2, expectedPowerKw: 2,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.4, headroom: 0.4 }),
+      ...buildContext({ headroomRaw: 0.4, headroom: 0.4 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4793,7 +4730,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 1, expectedPowerKw: 1,
         }),
       ],
-      context: buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
+      ...buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4860,7 +4797,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 1, expectedPowerKw: 1,
         }),
       ],
-      context: buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
+      ...buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4908,7 +4845,7 @@ describe('stepped-load shed invariant', () => {
           measuredPowerKw: 1, expectedPowerKw: 1,
         }),
       ],
-      context: buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
+      ...buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
       state,
       sheddingActive: false,
       deps: {
@@ -4974,7 +4911,7 @@ describe('a restore decision is made once, and logged once', () => {
     // searched, found wanting, and reaches the same verdict on every rebuild.
     const run = () => applyRestorePlan({
       planDevices: blockedRestoreWithSource(0.4),
-      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
       deps: swapDeps(debugStructured),
@@ -4995,7 +4932,7 @@ describe('a restore decision is made once, and logged once', () => {
     // 1.5 kW freed on top of 0.5 kW clears the 1.2 kW need and both reserves.
     const result = applyRestorePlan({
       planDevices: blockedRestoreWithSource(1.5),
-      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
       deps: swapDeps(debugStructured),
@@ -5015,7 +4952,7 @@ describe('a restore decision is made once, and logged once', () => {
     applyRestorePlan({
       // The only other device draws nothing, so it can fund no swap.
       planDevices: blockedRestoreWithSource(0),
-      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
       deps: swapDeps(debugStructured),
@@ -5062,7 +4999,7 @@ describe('a restore decision is made once, and logged once', () => {
           measuredPowerKw: 0, expectedPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.3, headroom: 0.3 }),
+      ...buildContext({ headroomRaw: 0.3, headroom: 0.3 }),
       state,
       sheddingActive: false,
       deps: swapDeps(debugStructured),
@@ -5081,7 +5018,7 @@ describe('a restore decision is made once, and logged once', () => {
     const debugStructured = debugSpy();
     applyRestorePlan({
       planDevices: blockedRestoreWithSource(0.4),
-      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
       deps: {
@@ -5110,7 +5047,7 @@ describe('a restore decision is made once, and logged once', () => {
     // of the handshake gates that keep the target pending.
     const approved = applyRestorePlan({
       planDevices: blockedRestoreWithSource(1.5),
-      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
       deps: swapDeps(debugStructured),
@@ -5118,7 +5055,7 @@ describe('a restore decision is made once, and logged once', () => {
     state.swapByDevice = approved.stateUpdates.swapByDevice;
     const result = applyRestorePlan({
       planDevices: blockedRestoreWithSource(0),
-      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
       deps: swapDeps(debugStructured),

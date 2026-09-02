@@ -17,7 +17,7 @@
 // lift when export cannot cover the device's expected draw (so a raise never tips
 // the home into import); (3) the lift releases back to baseline once export is
 // gone past the min dwell; (4) a non-willing device never lifts.
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
@@ -30,7 +30,6 @@ import {
   SURPLUS_ABSORB_MIN_DWELL_MS,
   SURPLUS_ABSORB_SETTLE_MS,
 } from '../../lib/plan/admission/surplusAbsorb';
-import type { PlanContext } from '../../lib/plan/planContext';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 const DEVICE_ID = 'tank';
@@ -43,7 +42,7 @@ const EXPORTING_KW = -2;
 const EXPORTING_TOO_LITTLE_KW = -1;
 const IMPORTING_KW = 1;
 
-const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanContext => ({
+const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanCycle => buildPlanCycleObject({
   devices: [
     buildPlanInputDevice({
       id: DEVICE_ID,
@@ -56,7 +55,7 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanContext => (
     }),
   ],
   modeTargetCFor: (d) => (({ [DEVICE_ID]: MODE_C })[d.id] ?? d.currentTarget),
-  ...planContextPower(signedNetKw),
+  total: signedNetKw,
   softLimit: 10,
   capacitySoftLimit: 10,
   dailySoftLimit: null,
@@ -97,7 +96,7 @@ const deps = (surplusWilling: boolean, surplusDelta = SURPLUS_DELTA_C): PlanDevi
 // BEFORE materialization; `buildInitialPlanDevices` only READS the resulting
 // state. This helper reproduces that exact ordering for the prep layer.
 const buildDevices = (params: {
-  context: PlanContext;
+  context: PlanCycle;
   state: PlanEngineState;
   deps: PlanDevicesDeps;
 }) => {
@@ -105,7 +104,6 @@ const buildDevices = (params: {
     devices: params.context.devices,
     state: params.state,
     signedNetKw: params.context.drawKw,
-    powerIsMeasured: params.context.powerIsMeasured,
     inferredSurplusKw: 0,
     getConfig: (deviceId) => params.deps.getPriceOptimizationSettings()[deviceId],
   });
@@ -115,7 +113,7 @@ const buildDevices = (params: {
     shedSet: new Set(),
     shedReasons: new Map(),
     shedStepTargets: new Map(),
-    guardInShortfall: false,
+    shortfall: { inShortfall: false },
     deps: params.deps,
   });
 };
@@ -155,19 +153,6 @@ const targetOf = (device: ReturnType<typeof cycleDevice>): number | undefined =>
   device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined
 );
 
-// One plan cycle with the whole-home power signal LOST (stale/unknown): the
-// allocator's `powerOk` gate fails, which is a hard-off release condition.
-const cyclePowerUnknown = (state: PlanEngineState): number | undefined => {
-  const device = buildDevices({
-    context: {
-      ...buildContext(0),
-      ...planContextPower(3, { failClosed: true }),
-    },
-    state,
-    deps: deps(true),
-  })[0];
-  return device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined;
-};
 
 describe('surplus-absorb setpoint raise (planner prep integration)', () => {
   beforeEach(() => {
@@ -257,20 +242,6 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
     expect(cycle(state, IMPORTING_KW)).toBe(MODE_C);
   });
 
-  it('releases early when whole-home power goes unknown, without waiting out the min dwell', () => {
-    const state = createPlanEngineState();
-    cycle(state, EXPORTING_KW);
-    vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
-    expect(cycle(state, EXPORTING_KW)).toBe(MODE_C + SURPLUS_DELTA_C);
-
-    // The meter goes stale: no surplus to allocate AND a hard-off condition.
-    const lostAt = SURPLUS_ABSORB_SETTLE_MS + 10_000;
-    vi.setSystemTime(lostAt);
-    expect(cyclePowerUnknown(state)).toBe(MODE_C + SURPLUS_DELTA_C); // settle still applies
-    vi.setSystemTime(lostAt + SURPLUS_ABSORB_SETTLE_MS);
-    expect(cyclePowerUnknown(state)).toBe(MODE_C);
-  });
-
   it('holds the dwell for a genuine dip: import below the hard-off bar releases only after the dwell', () => {
     const DIP_IMPORT_KW = 0.2; // below the 0.35 kW hard-off bar — a passing cloud
     const state = createPlanEngineState();
@@ -342,13 +313,9 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       state: PlanEngineState,
       signedNetKw: number,
       inferredSurplusKw: number,
-      options: { powerKnown?: boolean; debugStructured?: (payload: Record<string, unknown>) => void } = {},
+      options: { debugStructured?: (payload: Record<string, unknown>) => void } = {},
     ): number | undefined => {
-      const powerKnown = options.powerKnown ?? true;
-      const context: PlanContext = {
-        ...buildContext(signedNetKw),
-        ...(powerKnown ? {} : planContextPower(3, { failClosed: true })),
-      };
+      const context = buildContext(signedNetKw);
       // Mirror the PR-7 hoist: the builder resolves surplus eligibility (with the
       // producer-injected inferred term + debug seam) BEFORE materialization;
       // `buildInitialPlanDevices` only reads the resulting state.
@@ -356,7 +323,6 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
         devices: context.devices,
         state,
         signedNetKw: context.drawKw,
-        powerIsMeasured: context.powerIsMeasured,
         inferredSurplusKw,
         getConfig: (deviceId) => deps(true).getPriceOptimizationSettings()[deviceId],
         debugStructured: options.debugStructured,
@@ -367,7 +333,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: deps(true),
       })[0];
       return device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined;
@@ -379,13 +345,6 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       expect(cycleInferred(state, 0, 1.5)).toBe(MODE_C); // settle window opens
       vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
       expect(cycleInferred(state, 0, 1.5)).toBe(MODE_C + SURPLUS_DELTA_C);
-    });
-
-    it('never lifts on the inferred term while whole-home power is unknown (powerOk gate unchanged)', () => {
-      const state = createPlanEngineState();
-      expect(cycleInferred(state, 0, 99, { powerKnown: false })).toBe(MODE_C);
-      vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
-      expect(cycleInferred(state, 0, 99, { powerKnown: false })).toBe(MODE_C);
     });
 
     it('sustained import releases the inferred lift without waiting out the dwell once the term zeroes', () => {
@@ -443,7 +402,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       // PELS priority `1` is top, so HI (1) outranks LO (100).
       getPriceOptimizationSettings: () => ({ [HI]: surplusConfig, [LO]: surplusConfig }),
     };
-    const ctx = (): PlanContext => ({
+    const ctx = (): PlanCycle => buildPlanCycleObject({
       ...buildContext(-1.5),
       devices: [makeDevice(HI), makeDevice(LO)],
       modeTargetCFor: (d) => (({ [HI]: MODE_C, [LO]: MODE_C })[d.id] ?? d.currentTarget),

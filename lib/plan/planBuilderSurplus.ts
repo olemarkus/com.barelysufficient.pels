@@ -14,11 +14,11 @@
  */
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { PlanEngineState } from './planState';
-import type { PlanContext } from './planContext';
+import type { MeasuredPower, PlanContext } from './planContext';
 import type { PlanInputDevice } from './planTypes';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
-import { resolveSurplusEligibility, type PriceOptDeviceConfig } from './planSurplusAbsorb';
+import { resolveSurplusEligibility, withdrawSurplusEligibility, type PriceOptDeviceConfig } from './planSurplusAbsorb';
 import { resolveSurplusHold } from './shedding/surplusHold';
 
 // Re-exported so the builder's deps typing needs no extra planSurplusAbsorb import.
@@ -45,6 +45,7 @@ export function mergeHoldsIntoShedSet(shedSet: Set<string>, holds: ReadonlyArray
  */
 export function runSurplusPass(params: {
   context: PlanContext;
+  power: MeasuredPower;
   state: PlanEngineState;
   admittedDevices: PlanInputDevice[];
   shedSet: Set<string>;
@@ -65,7 +66,7 @@ export function runSurplusPass(params: {
   // shed-decision stamps agree on the millisecond.
   nowTs: number;
 }): Map<string, DeviceReason> {
-  const { context, state, admittedDevices, decoration } = params;
+  const { context, power, state, admittedDevices, decoration } = params;
   // Smart-task precedence set, applied at BOTH the allocation stage
   // (`resolveSurplusEligibility` — so a governed device never reserves the pool)
   // AND the hold stage (`resolveSurplusHold`). Computed once so the two stages
@@ -81,8 +82,7 @@ export function runSurplusPass(params: {
     state,
     // Producer-resolved pair: the signed net is always a number (the carried
     // reading), and the allocator gates every raise on the measured flag.
-    signedNetKw: context.drawKw,
-    powerIsMeasured: context.powerIsMeasured,
+    signedNetKw: power.drawKw,
     inferredSurplusKw: params.getInferredSurplusKw(),
     excludeIds,
     getConfig: params.getConfig,
@@ -119,6 +119,44 @@ export function runSurplusPass(params: {
  * Only a stepped device can carry an entry, so the binary dump loads in the same
  * id-set delete nothing.
  */
+/**
+ * The silent-meter pass's surplus stage: no measurement, so no surplus —
+ * eligibility is withdrawn for every willing device and the standing
+ * dump-load hold engages for each surplus-only device, exactly as a
+ * collapsed surplus would hold it. Returns the hold reasons the pass writes
+ * onto those devices (it runs no reason-normalization stage).
+ */
+export function runSilentMeterSurplusHold(
+  context: PlanContext,
+  state: PlanEngineState,
+  admittedDevices: PlanInputDevice[],
+  shedSet: Set<string>,
+  shedStepTargets: Map<string, string>,
+  decoration: Pick<
+    DeferredDecorationBundle,
+    'forceShedSet' | 'deferredAvoidDeviceIds' | 'deferredReleaseIntentByDeviceId' | 'admittedDeviceIds'
+  >,
+  cycle: { getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined; nowTs: number },
+): Map<string, DeviceReason> {
+  const excludeIds = new Set([
+    ...decoration.forceShedSet,
+    ...decoration.deferredAvoidDeviceIds,
+    ...Object.keys(decoration.deferredReleaseIntentByDeviceId),
+    ...decoration.admittedDeviceIds,
+  ]);
+  withdrawSurplusEligibility(context.devices, state, cycle.getConfig, excludeIds, cycle.nowTs);
+  const surplusHold = resolveSurplusHold({ devices: admittedDevices, state, excludeIds });
+  applyPostSheddingHolds({
+    shedSet,
+    shedStepTargets,
+    forceShedSet: decoration.forceShedSet,
+    surplusHoldIds: surplusHold.holdIds,
+    admittedDevices,
+    state,
+  });
+  return surplusHold.reasonById;
+}
+
 function clearShedStepTargets(
   shedStepTargets: Map<string, string>,
   surplusHoldIds: Iterable<string>,

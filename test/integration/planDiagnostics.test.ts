@@ -1,4 +1,4 @@
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnostics';
 import type { PlanContext } from '../../lib/plan/planContext';
 import type { RestorePlanResult } from '../../lib/plan/restore';
@@ -26,16 +26,12 @@ const buildContext = (
   device: PlanInputDevice,
   modeTargets: Record<string, number> = {},
   softLimitSource: PlanContext['softLimitSource'] = 'capacity',
-  // What the meter read; `unmeasured` marks the fail-closed cycle (the one
-  // build without a live measurement). The power answers follow from it
-  // (`planContextPower`), as they do in production.
   fixtureTotalKw = 4,
   currentHourPriceLevel: PlanContext['currentHourPriceLevel'] = PriceLevel.UNKNOWN,
-  unmeasured = false,
-): PlanContext => ({
+): PlanCycle => buildPlanCycleObject({
   devices: [device],
   modeTargetCFor: (d) => modeTargets[d.id] ?? d.currentTarget,
-  ...planContextPower(fixtureTotalKw, unmeasured ? { failClosed: true } : {}),
+  total: fixtureTotalKw,
   softLimit: 5,
   capacitySoftLimit: 5,
   dailySoftLimit: null,
@@ -44,7 +40,7 @@ const buildContext = (
   softLimitSource,
   // Mirrors the producer resolution in `buildPlanContext`: daily binding + fresh
   // power + no capacity breach (total 4 < capacitySoftLimit 5 in this fixture).
-  budgetReleasableHeadroomHold: softLimitSource === 'daily' && !unmeasured,
+  budgetReleasableHeadroomHold: softLimitSource === 'daily',
   capacityHeadroomKw: 1,
   budgetHeadroomKw: null,
   hourBucketKey: '2026-01-01T00',
@@ -111,30 +107,32 @@ const buildObservation = (params: {
   modeTargets?: Record<string, number>;
   softLimitSource?: PlanContext['softLimitSource'];
   fixtureTotalKw?: number;
-  unmeasured?: boolean;
   priceOptimizationEnabled?: boolean;
   priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   currentHourPriceLevel?: PlanContext['currentHourPriceLevel'];
   // Observer-resolved staleness for the device (defaults fresh). Drives the
   // diagnostics freshness gate exactly as the production observer dep does.
-}) => buildDeviceDiagnosticsObservations({
-  context: buildContext(
+}) => {
+  const cycle = buildContext(
     buildPlanInputDevice(params.inputDevice),
     params.modeTargets,
     params.softLimitSource,
     params.fixtureTotalKw,
     params.currentHourPriceLevel,
-    params.unmeasured,
-  ),
-  // Production always stamps the plan device's `deviceType` from the snapshot, so
-  // mirror the input device's modality onto the plan device the fixture builds.
-  // The temperature-cluster reads (`currentTarget` / `currentTemperature`) on the
-  // plan device narrow through `isTemperaturePlanDevice`, which keys on it.
-  planDevices: [buildPlanDevice({ deviceType: params.inputDevice.deviceType, ...params.planDevice })],
-  restoreResult: buildRestoreResult(params.restoreResult),
-  priceOptimizationEnabled: params.priceOptimizationEnabled ?? false,
-  priceOptimizationSettings: params.priceOptimizationSettings ?? {},
-})[0];
+  );
+  return buildDeviceDiagnosticsObservations({
+    context: cycle,
+    power: cycle,
+    // Production always stamps the plan device's `deviceType` from the snapshot, so
+    // mirror the input device's modality onto the plan device the fixture builds.
+    // The temperature-cluster reads (`currentTarget` / `currentTemperature`) on the
+    // plan device narrow through `isTemperaturePlanDevice`, which keys on it.
+    planDevices: [buildPlanDevice({ deviceType: params.inputDevice.deviceType, ...params.planDevice })],
+    restoreResult: buildRestoreResult(params.restoreResult),
+    priceOptimizationEnabled: params.priceOptimizationEnabled ?? false,
+    priceOptimizationSettings: params.priceOptimizationSettings ?? {},
+  })[0];
+};
 
 describe('plan diagnostics observations', () => {
   it('classifies active overshoot as headroom for temperature devices', () => {
@@ -870,60 +868,6 @@ describe('plan diagnostics observations', () => {
       },
       modeTargets: { 'heater-1': 21 },
       softLimitSource: 'capacity',
-    });
-
-    expect(observation).toMatchObject({
-      suppressionState: 'counting',
-      countingCause: 'insufficient_headroom',
-      pauseReason: null,
-    });
-  });
-
-  it('keeps a daily-bound headroom hold in the capacity bucket while power is not fresh (stale_hold)', () => {
-    // When the meter is not fresh (`stale_hold` here uses a synthetic 0 headroom; the harsher
-    // `stale_fail_closed` forces -1), `powerKnown` is false and the hold exists regardless of
-    // the daily budget. Lifting the daily budget cannot make restoring safe until a fresh power
-    // sample arrives, so the hold must NOT be re-attributed to the releasable budget bucket even
-    // though `softLimitSource === 'daily'`.
-    const observation = buildObservation({
-      inputDevice: {
-        id: 'heater-1',
-        name: 'Termostat Synne',
-        deviceClass: 'thermostat',
-        deviceType: 'temperature',
-        managed: true,
-        controllable: true,
-        available: true,
-        currentTemperature: 18,
-        binaryControl: { on: false },
-        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
-      },
-      planDevice: {
-        id: 'heater-1',
-        name: 'Termostat Synne',
-        deviceClass: 'thermostat',
-        currentState: 'off',
-        plannedState: 'keep',
-        currentTarget: 18,
-        plannedTarget: 18,
-        reason: {
-          code: PLAN_REASON_CODES.insufficientHeadroom,
-          needKw: 0.9,
-          availableKw: 0.1,
-          postReserveMarginKw: -0.1,
-          minimumRequiredPostReserveMarginKw: 0.2,
-          penaltyExtraKw: null,
-          swapReserveKw: null,
-          effectiveAvailableKw: null,
-        },
-        controllable: true,
-        available: true,
-        currentTemperature: 18,
-      },
-      modeTargets: { 'heater-1': 21 },
-      softLimitSource: 'daily',
-      // No measurement this cycle — the hold exists regardless of the budget.
-      unmeasured: true,
     });
 
     expect(observation).toMatchObject({

@@ -22,9 +22,10 @@ export type MeterSilenceMonitorDeps = {
  *   cleared by the next ADMITTED sample — the ingest moves the tracker
  *   latch this monitor reads, so nothing has to be pushed at it;
  * - the ONE fail-closed shed pass the silence window is owed: the escalation
- *   clock asks `shouldRunShedPass()`, runs the rebuild (the reading resolver
- *   answers it in synthesized kW), and reports `noteShedPassCompleted` — after
- *   which the block holds until data returns.
+ *   clock asks `shouldRunShedPass()`, runs the rebuild (the reading resolves
+ *   to its silent-meter variant and the planner takes the shed-everything
+ *   directive, `lib/plan/planBuilderSilentMeter.ts`), and reports
+ *   `noteShedPassCompleted` — after which the block holds until data returns.
  *
  * The outage clock is the sample stamp, and nothing else (owner ruling
  * 2026-09-02): ten minutes without a reading is a ten-minute outage whether or

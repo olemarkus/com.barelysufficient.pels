@@ -50,7 +50,6 @@ export type PlanEngineWiring = {
   decorateDeferredObjectives?: PlanBuilderDeps['decorateDeferredObjectives'];
   getShedBehavior: (deviceId: string) => ShedBehavior;
   getDynamicSoftLimitOverride?: () => number | null;
-  holdsModeTargetRaisesWhilePowerUnknown?: () => boolean;
   logTargetRetryComparison?: (params: {
     deviceId: string;
     name: string;

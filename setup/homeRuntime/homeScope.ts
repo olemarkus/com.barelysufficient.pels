@@ -138,19 +138,6 @@ export type HomeScope = {
    * mode. Main binds the historical app resolver; a meter-area bundle binds
    * the priority map in its coherent catalog snapshot.
    */
-  /**
-   * Does this home hold a mode-target RAISE while its own power reading is
-   * unknown? A raise ADDS load and is issued as an ordinary `target_update`, so
-   * unlike every other load-adding decision it consults neither headroom nor the
-   * restore cooldowns (`applyModeSeedModulation`, `lib/plan/planDevices.ts`).
-   *
-   * Sub-homes bind `true`: an area whose meter is offline stays unknown for as
-   * long as the meter is down, and nothing else escalates it. Main binds `false`
-   * — its unknown-power window is normally the seconds before the first Homey
-   * Energy poll, and it owns settle/dwell machinery for the power-goes-unknown
-   * transition that a blanket clamp would pre-empt.
-   */
-  holdsModeTargetRaisesWhilePowerUnknown: () => boolean;
   // ---- UI / side-effect singletons (R7b Cluster B) ----
   // Three surfaces `createPlanService` used to bind straight to `ctx` for every
   // home. Main binds the live read (byte-identical); a sub-home neutralizes so
@@ -298,10 +285,6 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
     getOperatingMode: () => ctx.operatingMode,
     getModeDeviceTargets: () => ctx.modeDeviceTargets,
-    // Main keeps its pre-existing behaviour: mode targets are commanded whether
-    // or not a power sample has landed. See the contract above for why the hold
-    // is a sub-home posture rather than a global rule.
-    holdsModeTargetRaisesWhilePowerUnknown: () => false,
     decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),
     syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation?.(source),
     // UI / side-effect singletons — the EXACT ctx reads `createPlanService`

@@ -348,6 +348,6 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     const powerTracker = { lastTimestamp: Date.now() } as PowerTrackerState;
     const timing = buildRestoreTiming(state, 6.5, powerTracker);
     expect(timing.inCooldown).toBe(false);
-    expect(shouldPlanRestores(6.5, false, timing)).toBe(true);
+    expect(shouldPlanRestores(false, timing, false)).toBe(true);
   });
 });

@@ -12,12 +12,11 @@
  * capacity axis in exactly that regime; non-exempt devices keep the ordinary
  * stay-off / stay-at-level marking.
  */
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { applyRestorePlan } from '../../lib/plan/restore';
-import type { PlanContext } from '../../lib/plan/planContext';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildPlanDevice, steppedPlanDevice, withFixtureResidualKw } from '../utils/planTestUtils';
 import { createPlanEngineState } from '../../lib/plan/planState';
@@ -32,10 +31,9 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 // MEASURED say so through the reading, the way production does.
 const FIXTURE_TOTAL_KW = 3;
 
-const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
+const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({
   devices: [],
   modeTargetCFor: (d) => d.currentTarget,
-  total: 2,
   softLimit: 1.2,
   capacitySoftLimit: 7,
   dailySoftLimit: 1.2,
@@ -47,18 +45,13 @@ const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext =
   headroom: -0.8,
   restoreMarginPlanning: 0.2,
   currentHourPriceLevel: PriceLevel.UNKNOWN,
-  ...planContextPower(FIXTURE_TOTAL_KW),
+  total: FIXTURE_TOTAL_KW,
   ...overrides,
-} as PlanContext);
+});
 
-const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
-  const base = buildContextFields(overrides);
-  return {
-    ...base,
-    capacityHeadroomKw: overrides.capacityHeadroomKw ?? 5,
-    budgetHeadroomKw: overrides.budgetHeadroomKw ?? -0.8,
-  };
-};
+const buildContext = (overrides: PlanCycleSpec = {}): PlanCycle => (
+  buildContextFields({ capacityHeadroomKw: 5, budgetHeadroomKw: -0.8, ...overrides })
+);
 
 // Restore candidates enter the pass as plannedState 'keep' observed off (the
 // shed pass leaves exempt devices alone under a daily-source overshoot);
@@ -90,13 +83,13 @@ const offThermostat = () => buildPlanDevice({
 
 const runLane = (params: {
   devices: ReturnType<typeof buildPlanDevice>[];
-  context?: Partial<PlanContext>;
+  context?: PlanCycleSpec;
   state?: ReturnType<typeof createPlanEngineState>;
 }) => {
   const state = params.state ?? createPlanEngineState();
   return applyRestorePlan({
     planDevices: params.devices,
-    context: buildContext(params.context),
+    ...cycleArgsFor(buildContext(params.context)),
     state,
     sheddingActive: true,
     deps: {

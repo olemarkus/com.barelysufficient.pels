@@ -1,6 +1,6 @@
 import type { DevicePlanDevice } from '../planTypes';
 import type { PlanEngineState } from '../planState';
-import type { PlanContext } from '../planContext';
+import type { MeasuredPower, PlanContext } from '../planContext';
 import {
   buildSwapState,
   cleanupCompletedSwaps,
@@ -52,16 +52,17 @@ export type { RestoreDeps, RestorePlanResult } from './types';
 export function applyRestorePlan(params: {
   planDevices: DevicePlanDevice[];
   context: PlanContext;
+  power: MeasuredPower;
   state: PlanEngineState;
   sheddingActive: boolean;
   guardInShortfall?: boolean;
   deps: RestoreDeps;
 }): RestorePlanResult {
-  const { planDevices, context, state, sheddingActive, guardInShortfall = false, deps } = params;
+  const { planDevices, context, power, state, sheddingActive, guardInShortfall = false, deps } = params;
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapState = buildSwapState(state);
-  const headroomReserves = resolveCycleHeadroomReserves(planDevices, context, state);
-  const timing = buildRestoreTiming(state, context.headroomRaw, deps.powerTracker);
+  const headroomReserves = resolveCycleHeadroomReserves(planDevices, state);
+  const timing = buildRestoreTiming(state, power.headroomKw, deps.powerTracker);
   const capacityStartupStabilization = timing.inStartupStabilization && context.softLimitSource === 'capacity';
   const effectiveTiming = capacityStartupStabilization
     ? timing
@@ -75,11 +76,10 @@ export function applyRestorePlan(params: {
   cleanupCompletedSwaps(swapState, deviceMap);
 
   const restoredThisCycle = new Set<string>();
-  const ledger = buildCycleHeadroomLedger({ context, planDevices, state, deps, guardInShortfall });
+  const ledger = buildCycleHeadroomLedger({ power, planDevices, state, deps, guardInShortfall });
   let restoredOneThisCycle = false;
   let restoreCooldownPreview: RestoreCooldownPreview | null = null;
   const batchState = buildRestoreBatchState({
-    context,
     timing: effectiveTiming,
     availableHeadroom: ledger.summaryAvailableKw(),
   });
@@ -87,10 +87,10 @@ export function applyRestorePlan(params: {
   if (guardInShortfall) {
     markRestoreCandidatesStayShedForShortfall({
       deviceMap,
-      headroomKw: context.headroomRaw,
+      headroomKw: power.headroomKw,
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
     });
-  } else if (shouldPlanRestores(context.headroomRaw, sheddingActive, effectiveTiming)) {
+  } else if (shouldPlanRestores(sheddingActive, effectiveTiming, state.hourlyBudgetExhausted)) {
     ({ restoredOneThisCycle } = applyFullRestorePass({
       deviceMap, swapState, state, effectiveTiming, ledger,
       restoredThisCycle, restoredOneThisCycle, batchState, deps, headroomReserves,
@@ -98,7 +98,8 @@ export function applyRestorePlan(params: {
   } else if (shouldPlanBudgetExemptRestores({
     sheddingActive,
     softLimitSource: context.softLimitSource,
-    capacityHeadroomKw: context.capacityHeadroomKw,
+    capacityHeadroomKw: power.capacityHeadroomKw,
+    hourlyBudgetExhausted: state.hourlyBudgetExhausted,
     // Raw timing on purpose: under daily source effectiveTiming clears the
     // startup-stabilization hold, but this lane runs while shedding is latched
     // — keep the conservative hold there.
@@ -133,7 +134,7 @@ export function applyRestorePlan(params: {
     });
   } else if (effectiveTiming.inRestoreCooldown) {
     ({ restoredOneThisCycle, restoreCooldownPreview } = applyRestorePlanInCooldown({
-      deviceMap, swapState, state, context, effectiveTiming, deps,
+      deviceMap, swapState, state, effectiveTiming, deps,
       ledger, restoredOneThisCycle, restoredThisCycle, headroomReserves,
     }));
   }
@@ -156,13 +157,13 @@ export function applyRestorePlan(params: {
 // equally (the shortfall guard skips the reservation exactly as it skipped the
 // old binding-scalar path).
 function buildCycleHeadroomLedger(params: {
-  context: PlanContext;
+  power: MeasuredPower;
   planDevices: DevicePlanDevice[];
   state: PlanEngineState;
   deps: RestoreDeps;
   guardInShortfall: boolean;
 }): RestoreHeadroomLedger {
-  const { context } = params;
+  const { power } = params;
   // No pending-restore reservation. It existed to hold back headroom for a restore
   // the meter had not seen yet — but a rebuild is TRIGGERED by a reading
   // (`planRebuildTrigger.ts`), and the reservation was released by
@@ -172,8 +173,8 @@ function buildCycleHeadroomLedger(params: {
   // `maxNeedKw`. OWNER RULING 2026-08-28: assume new plan = new power sample and
   // drop it (`notes/state-management/actuation-clocks-and-settle.md`).
   return buildRestoreHeadroomLedger({
-    capacityAvailableKw: context.capacityHeadroomKw,
-    budgetAvailableKw: context.budgetHeadroomKw,
+    capacityAvailableKw: power.capacityHeadroomKw,
+    budgetAvailableKw: power.budgetHeadroomKw,
   });
 }
 
@@ -182,12 +183,10 @@ function buildCycleHeadroomLedger(params: {
 // arming clock) and handed to the admission gates, which subtract it per candidate by priority.
 function resolveCycleHeadroomReserves(
   planDevices: DevicePlanDevice[],
-  context: PlanContext,
   state: PlanEngineState,
 ): HeadroomReserve[] {
   return resolveHeadroomReserves({
     devices: planDevices,
-    powerIsMeasured: context.powerIsMeasured,
     state,
     nowTs: Date.now(),
   });
@@ -258,7 +257,6 @@ function applyRestorePlanInCooldown(params: {
   deviceMap: Map<string, DevicePlanDevice>;
   swapState: SwapState;
   state: PlanEngineState;
-  context: PlanContext;
   effectiveTiming: RestoreTiming;
   deps: RestoreDeps;
   ledger: RestoreHeadroomLedger;
@@ -267,7 +265,7 @@ function applyRestorePlanInCooldown(params: {
   headroomReserves: readonly HeadroomReserve[];
 }): { restoredOneThisCycle: boolean; restoreCooldownPreview: RestoreCooldownPreview | null } {
   const {
-    deviceMap, swapState, state, context, effectiveTiming, deps, restoredThisCycle, ledger,
+    deviceMap, swapState, state, effectiveTiming, deps, restoredThisCycle, ledger,
   } = params;
   const steppedSwapExecutor = buildSteppedSwapExecutor({
     deviceMap,
@@ -322,7 +320,6 @@ function applyRestorePlanInCooldown(params: {
   const previewTiming = { ...effectiveTiming, inRestoreCooldown: false as const };
   const previewLedger = buildRestoreHeadroomLedger(ledger.axes());
   const previewBatchState = buildRestoreBatchState({
-    context,
     timing: previewTiming,
     availableHeadroom: previewLedger.summaryAvailableKw(),
   });

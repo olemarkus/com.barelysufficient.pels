@@ -58,7 +58,6 @@ const resolve = (params: {
     devices: params.devices,
     state: params.state,
     signedNetKw: params.signedNetKw,
-    powerIsMeasured: true,
     inferredSurplusKw: 0,
     getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
     debugStructured: params.debugStructured,

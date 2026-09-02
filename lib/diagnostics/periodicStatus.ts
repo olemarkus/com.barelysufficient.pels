@@ -27,12 +27,9 @@ export type PeriodicStatusLogFields = {
   capacityPaceKw: number;
   /**
    * Headroom against `capacityPaceKw`, raw. Deliberately NOT
-   * `capacityHeadroomKw`: `PlanContext` already owns that name for the
-   * restore-admission axis, which carries the fail-closed forcing (silent
-   * meter → -1) and the exhausted-hour force. These two
-   * differ by exactly the forcing that decides whether a restore is admitted, so
-   * one name for both would be the `softLimit` overload this record just renamed
-   * its way out of.
+   * `capacityHeadroomKw`: `MeasuredPower` already owns that name for the
+   * restore-admission axis, and one name for both would be the `softLimit`
+   * overload this record just renamed its way out of.
    */
   capacityPaceHeadroomKw: number | null;
   shortfallBudgetThresholdKw: number;

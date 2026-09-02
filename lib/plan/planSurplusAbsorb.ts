@@ -191,8 +191,8 @@ export function resolveSurplusTrackingPosture(params: {
 // controller's standing import can explain. The gate may then release an
 // engaged lift without waiting out the min dwell (the dwell only protects the
 // passing-cloud dip, where net hovers near zero).
-const isHardOffCondition = (powerOk: boolean, signedNetKw: number): boolean => (
-  !powerOk || signedNetKw > SURPLUS_ABSORB_HARD_OFF_IMPORT_KW
+const isHardOffCondition = (signedNetKw: number): boolean => (
+  signedNetKw > SURPLUS_ABSORB_HARD_OFF_IMPORT_KW
 );
 
 // Compose the whole-home surplus budget: measured export + the add-back of
@@ -532,13 +532,46 @@ const resolveHeldStep = (
  * remainder keeps flowing down the priority order instead of being thrown away
  * (see {@link claimForTrackingDevice}).
  */
+/**
+ * The silent-meter pass's half of eligibility: with no measurement there is no
+ * surplus to allocate, so every willing device is released — the same
+ * hard-off release a sustained import produces, without waiting out a dwell.
+ * (Owner ruling 2026-09-02: this used to be an `!powerIsMeasured` branch inside
+ * `resolveSurplusEligibility`; it is the unmeasured path's own call now.)
+ */
+export function withdrawSurplusEligibility(
+  devices: PlanInputDevice[],
+  state: PlanEngineState,
+  getConfig: (deviceId: string) => SurplusConfig | undefined,
+  excludeIds: ReadonlySet<string>,
+  nowTs: number,
+): void {
+  const willing = devices.filter(
+    (dev) => !excludeIds.has(dev.id)
+      && (dev.surplusOnly === true
+        || dev.surplusTracking
+        || (willingWithLift(getConfig(dev.id)) && supportsTemperatureLift(dev))),
+  );
+  pruneNonCandidateSurplusState(state, new Set(willing.map((dev) => dev.id)));
+  for (const dev of willing) {
+    syncSurplusEligibilityState({
+      state,
+      deviceId: dev.id,
+      willing: true,
+      availableSurplusKw: null,
+      expectedDrawKw: getHighestKnownPowerKw(dev).kw,
+      hardOff: true,
+      nowTs,
+    });
+  }
+}
+
 export function resolveSurplusEligibility(params: {
   devices: PlanInputDevice[];
   state: PlanEngineState;
-  /** Always a number (the carried reading, signed); gate every raise on `powerIsMeasured`. */
+  /** The measured whole-home draw, signed (`MeasuredPower.drawKw`). */
   signedNetKw: number;
   /** Producer-resolved: whether `signedNetKw` was measured this cycle. */
-  powerIsMeasured: boolean;
   // Producer-resolved inferred curtailed-surplus term (kW); null/undefined when
   // absent or currently suppressed. Folded into the pool as max(0, term) — it can
   // only ever ENLARGE the pool, and the `powerOk` gate below is unaffected: a
@@ -573,25 +606,7 @@ export function resolveSurplusEligibility(params: {
 
   if (willing.length === 0) return;
 
-  // Producer-resolved: an unmeasured cycle allocates nothing and releases
-  // every willing device — a carried number must never raise a lift.
-  const powerOk = params.powerIsMeasured;
-  const hardOff = isHardOffCondition(powerOk, params.signedNetKw);
-  if (!powerOk) {
-    // Power unknown/stale: no surplus to allocate — let every willing device release.
-    for (const dev of willing) {
-      syncSurplusEligibilityState({
-        state,
-        deviceId: dev.id,
-        willing: true,
-        availableSurplusKw: null,
-        expectedDrawKw: getHighestKnownPowerKw(dev).kw,
-        hardOff,
-        nowTs,
-      });
-    }
-    return;
-  }
+  const hardOff = isHardOffCondition(params.signedNetKw);
 
   let poolKw = composeSurplusPool({
     willing,

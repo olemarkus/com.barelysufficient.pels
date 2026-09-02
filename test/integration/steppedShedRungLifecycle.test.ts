@@ -16,10 +16,9 @@ import { applyRestorePlan } from '../../lib/plan/restore';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import { steppedInputDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import type CapacityGuard from '../../lib/power/capacityGuard';
-import type { PlanContext } from '../../lib/plan/planContext';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
@@ -35,9 +34,8 @@ const chargerProfile = {
   ],
 };
 
-const buildContext = (overrides: Partial<PlanContext> & { total?: number | null } = {}): PlanContext => {
-  const total = overrides.total ?? null;
-  return {
+const buildContext = (overrides: PlanCycleSpec = {}): PlanCycle => (
+  buildPlanCycleObject({
     devices: [],
     modeTargetCFor: (d) => d.currentTarget,
     softLimit: 0,
@@ -57,10 +55,10 @@ const buildContext = (overrides: Partial<PlanContext> & { total?: number | null 
     headroom: 0,
     restoreMarginPlanning: 0.2,
     currentHourPriceLevel: PriceLevel.UNKNOWN,
-    ...planContextPower(total ?? 3, total === null ? { failClosed: true } : {}),
+    total: 3,
     ...overrides,
-  } as PlanContext;
-};
+  })
+);
 
 describe('a turn_off stepped shed parked at an intermediate rung', () => {
   beforeEach(() => {
@@ -101,7 +99,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
     } as unknown as CapacityGuard;
     const getShedBehavior = () => ({ action: 'turn_off' as const });
 
-    const sheddingPlan = await buildSheddingPlan(context, state, {
+    const sheddingPlan = await buildSheddingPlan(context, context, state, {
       capacityGuard,
       shortfallThresholdKw: 10,
       powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
@@ -118,7 +116,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       shedSet: sheddingPlan.shedSet,
       shedReasons: sheddingPlan.shedReasons,
       shedStepTargets: sheddingPlan.shedStepTargets,
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior,
@@ -161,14 +159,14 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
           controllable: true,
         }),
       ],
-      context: buildContext({
+      ...cycleArgsFor(buildContext({
         total: 2.3,
         softLimit: 8,
         capacitySoftLimit: 8,
         headroomRaw: 5.7,
         headroom: 5.7,
         capacityHeadroomKw: 5.7,
-      }),
+      })),
       state,
       sheddingActive: false,
       deps: {

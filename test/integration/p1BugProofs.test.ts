@@ -1,4 +1,3 @@
-import { planContextPower } from '../utils/planContextPowerFixture';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
 import type CapacityGuard from '../../lib/power/capacityGuard';
@@ -46,7 +45,7 @@ const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
   devices,
   modeTargetCFor: (d: PlanInputDevice & TemperaturePlanInputKind) => d.currentTarget,
-  ...planContextPower(1.25),
+  total: 1.25,
   hourBucketKey: '2025-01-01T00',
   softLimit: 5,
   capacitySoftLimit: 5,
@@ -139,10 +138,10 @@ describe('P1 bug proofs', () => {
     const base = {
       shortfallThresholdKw: 5,
       capacityGuard,
-      capacitySoftLimit: 5,
       devices: [],
       shedSet: new Set<string>(),
       softLimitSource: 'capacity' as const,
+      hourlyBudgetExhausted: false,
       isBinaryCommandPending: () => false,
     };
 
@@ -150,17 +149,17 @@ describe('P1 bug proofs', () => {
     // sample 0.21 kW above the restore margin — short of the 0.4 kW clear
     // threshold — does not release it.
     const shed = await updateGuardState({
-      ...base, sheddingActive: false, headroom: -0.05, overshootActionable: true, drawKw: 5.05, powerIsMeasured: true,
+      ...base, sheddingActive: false, headroom: -0.05, overshootActionable: true, drawKw: 5.05, capacityBreached: true,
     });
     expect(shed.sheddingActive).toBe(true);
 
     const eased = await updateGuardState({
-      ...base, sheddingActive: shed.sheddingActive, headroom: 0.21, overshootActionable: false, drawKw: 4.79, powerIsMeasured: true,
+      ...base, sheddingActive: shed.sheddingActive, headroom: 0.21, overshootActionable: false, drawKw: 4.79, capacityBreached: false,
     });
     expect(eased.sheddingActive).toBe(true);
 
     const again = await updateGuardState({
-      ...base, sheddingActive: eased.sheddingActive, headroom: -0.05, overshootActionable: true, drawKw: 5.05, powerIsMeasured: true,
+      ...base, sheddingActive: eased.sheddingActive, headroom: -0.05, overshootActionable: true, drawKw: 5.05, capacityBreached: true,
     });
     expect(again.sheddingActive).toBe(true);
   });
@@ -172,12 +171,12 @@ describe('P1 bug proofs', () => {
 
     await updateGuardState({
       sheddingActive: false,
+      hourlyBudgetExhausted: false,
       shortfallThresholdKw: 5,
       capacityGuard,
       headroom: -1,
       overshootActionable: true,
-      capacitySoftLimit: 5,
-      drawKw: 6, powerIsMeasured: true,
+      drawKw: 6, capacityBreached: true,
       // In flight per the executor's command store, not per a field on the
       // device: the plan-input seam does not carry binary command state.
       isBinaryCommandPending: (deviceId) => deviceId === 'shed',
@@ -300,7 +299,7 @@ describe('P1 bug proofs', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),

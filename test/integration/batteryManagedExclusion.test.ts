@@ -14,7 +14,7 @@
 // `controllable === true` + temperature requirement) are exactly what keeps the
 // battery inert. These tests prove being managed+non-controllable+non-temperature is
 // sufficient; no new control gate is added.
-import { planContextPower } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
@@ -27,7 +27,6 @@ import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnosti
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { RestorePlanResult } from '../../lib/plan/restore';
-import type { PlanContext } from '../../lib/plan/planContext';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
@@ -78,10 +77,10 @@ const heaterInputDevice = (): PlanInputDevice =>
     targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
   });
 
-const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanContext> = {}): PlanContext => ({
+const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanCycle> = {}): PlanCycle => buildPlanCycleObject({
   devices,
   modeTargetCFor: (d) => (({ [HEATER_ID]: 21 })[d.id] ?? d.currentTarget),
-  ...planContextPower(FIXTURE_TOTAL_KW),
+  total: FIXTURE_TOTAL_KW,
   hourBucketKey: '2025-01-01T00',
   softLimit: 2,
   capacitySoftLimit: 2,
@@ -151,7 +150,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
 
@@ -184,7 +183,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
         shedSet: new Set(),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
-        guardInShortfall: false,
+        shortfall: { inShortfall: false },
         deps: priceDeps,
       });
       expect(battery.plannedState).toBe('keep');
@@ -201,7 +200,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       needed: 5, // ask for a large reduction so any eligible device is offered
       deficitKw: 5,
       limitSource: 'capacity',
-      capacityBreached: context.powerMeasuredAboveKw(context.capacitySoftLimit),
+      capacityBreached: context.capacityBreached,
       state: createPlanEngineState(),
       deps: {
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
@@ -224,7 +223,6 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       devices: [batteryInputDevice()],
       state,
       signedNetKw: -3, // 3 kW export available
-      powerIsMeasured: true,
       inferredSurplusKw: 0,
       // Even if a (nonsensical) surplus config were present, the temperature-boost
       // filter drops the battery before allocation.
@@ -261,11 +259,12 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       shedSet: new Set(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
-      guardInShortfall: false,
+      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
     const observations = buildDeviceDiagnosticsObservations({
       context,
+      power: context,
       planDevices,
       restoreResult: emptyRestoreResult,
       priceOptimizationEnabled: false,

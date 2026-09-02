@@ -1,2 +1,4 @@
 export { buildSheddingPlan } from './buildSheddingPlan';
-export type { SheddingPlan } from './types';
+export { buildSheddingCandidates } from './candidates';
+export { resolveShedReason, selectShedDevices } from './selection';
+export type { SheddingDeps, SheddingPlan } from './types';

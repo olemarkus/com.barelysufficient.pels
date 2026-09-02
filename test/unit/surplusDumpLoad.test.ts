@@ -218,7 +218,6 @@ const allocatorPass = (params: {
   devices: ReturnType<typeof buildPlanInputDevice>[];
   signedNetKw: number;
   nowTs: number;
-  powerKnown?: boolean;
   priorities?: Record<string, number>;
   configs?: Record<string, { surplusWilling?: boolean; surplusDelta?: number }>;
   excludeIds?: ReadonlySet<string>;
@@ -231,7 +230,6 @@ const allocatorPass = (params: {
   )),
   state: params.state,
   signedNetKw: params.signedNetKw,
-  powerIsMeasured: params.powerKnown ?? true,
   inferredSurplusKw: 0,
   excludeIds: params.excludeIds,
   getConfig: (deviceId) => params.configs?.[deviceId],
@@ -327,19 +325,6 @@ describe('resolveSurplusEligibility (mixed temp + binary pool)', () => {
       nowTs: SURPLUS_ABSORB_SETTLE_MS + 10_000 + SURPLUS_ABSORB_SETTLE_MS,
     });
     expect(state.surplusEligibilityByDevice.pump?.eligible).toBe(true);
-  });
-
-  it('treats unknown whole-home power as no surplus (null pool → release path, fail-closed)', () => {
-    const state = createPlanEngineState(0);
-    state.surplusEligibilityByDevice.pump = { eligible: true, sinceMs: 0 };
-    const devices = [dumpLoad('pump')];
-    // Power lost: hard-off condition; sustained a settle window it releases
-    // despite the dwell.
-    allocatorPass({ state, devices, signedNetKw: 0, powerKnown: false, nowTs: 10_000 });
-    allocatorPass({
-      state, devices, signedNetKw: 0, powerKnown: false, nowTs: 10_000 + SURPLUS_ABSORB_SETTLE_MS,
-    });
-    expect(state.surplusEligibilityByDevice.pump?.eligible ?? false).toBe(false);
   });
 
   it('prunes eligibility state when the device stops being a candidate', () => {

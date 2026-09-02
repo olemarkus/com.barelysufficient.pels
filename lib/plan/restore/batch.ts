@@ -1,20 +1,17 @@
-import type { PlanContext } from '../planContext';
 import { RESTORE_BATCH_HEADROOM_FRACTION, RESTORE_BATCH_MAX_DEVICES } from '../planConstants';
 import type { RestoreTiming } from './timing';
 import type { RestoreBatchState } from './types';
 
 export function buildRestoreBatchState(params: {
-  context: PlanContext;
   timing: RestoreTiming;
   availableHeadroom: number;
 }): RestoreBatchState {
-  const { context, timing, availableHeadroom } = params;
+  const { timing, availableHeadroom } = params;
   const enabled = availableHeadroom > 0
     && !timing.inCooldown
     && !timing.inRestoreCooldown
     && !timing.inStartupStabilization
-    && !timing.activeOvershoot
-    && context.powerIsMeasured;
+    && !timing.activeOvershoot;
   return {
     enabled,
     maxDevices: RESTORE_BATCH_MAX_DEVICES,

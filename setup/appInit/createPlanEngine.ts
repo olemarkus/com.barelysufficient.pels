@@ -73,7 +73,6 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
     getShedBehavior: deps.getShedBehavior,
     getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
-    holdsModeTargetRaisesWhilePowerUnknown: deps.holdsModeTargetRaisesWhilePowerUnknown,
     deviceDiagnostics: deps.deviceDiagnostics,
     structuredLog: deps.structuredLog,
     debugStructured: deps.debugStructured,
@@ -183,12 +182,9 @@ export function createPlanEngineComposition(
     // binds disabled constants for the PRICE/BUDGET members, so its engine is
     // capacity-only without this factory branching on which home it serves.
     // The two mode members are the exception — every home binds them live,
-    // because the mode target is the restore anchor (see `homeScope.ts`). What
-    // IS per-home is whether a mode-target RAISE is held while this home's own
-    // power reading is unknown; only a sub-home opts in.
+    // because the mode target is the restore anchor (see `homeScope.ts`).
     getOperatingMode: scope.getOperatingMode,
     getModeDeviceTargets: scope.getModeDeviceTargets,
-    holdsModeTargetRaisesWhilePowerUnknown: scope.holdsModeTargetRaisesWhilePowerUnknown,
     getPriceOptimizationEnabled: scope.getPriceOptimizationEnabled,
     getPriceOptimizationSettings: scope.getPriceOptimizationSettings,
     getCurrentHourPriceLevel: scope.getCurrentHourPriceLevel,

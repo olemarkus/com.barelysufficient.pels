@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { applyRestorePlan } from '../../lib/plan/restore';
-import type { PlanContext } from '../../lib/plan/planContext';
+import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
   buildPlanDevice,
@@ -24,7 +24,7 @@ import {
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
-const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext => ({
+const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({
   devices: [],
   modeTargetCFor: (d) => d.currentTarget,
   total: 0,
@@ -40,20 +40,13 @@ const buildContextFields = (overrides: Partial<PlanContext> = {}): PlanContext =
   restoreMarginPlanning: 0.2,
   currentHourPriceLevel: PriceLevel.UNKNOWN,
   ...overrides,
-} as PlanContext);
+});
 
 // Mirror the producer: unless a test pins the axes explicitly, the capacity
 // axis tracks the fixture's binding headroom (capacity-bound home, no daily
 // budget), so per-axis restore admission sees the same available power the
 // binding scalar used to provide.
-const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
-  const base = buildContextFields(overrides);
-  return {
-    ...base,
-    capacityHeadroomKw: overrides.capacityHeadroomKw ?? base.headroom,
-    budgetHeadroomKw: overrides.budgetHeadroomKw ?? null,
-  };
-};
+const buildContext = (overrides: PlanCycleSpec = {}): PlanCycle => buildContextFields(overrides);
 
 describe('boost bypasses the shed invariant unconditionally', () => {
   beforeEach(() => {
@@ -92,7 +85,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
           expectedPowerKw: 1,
         }),
       ],
-      context: buildContext(),
+      ...cycleArgsFor(buildContext()),
       state,
       sheddingActive: false,
       deps: {
@@ -143,7 +136,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
           expectedPowerKw: 1,
         }),
       ],
-      context: buildContext(),
+      ...cycleArgsFor(buildContext()),
       state,
       sheddingActive: false,
       deps: {
@@ -183,7 +176,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
           expectedPowerKw: 1,
         }),
       ],
-      context: buildContext(),
+      ...cycleArgsFor(buildContext()),
       state,
       sheddingActive: false,
       deps: {
