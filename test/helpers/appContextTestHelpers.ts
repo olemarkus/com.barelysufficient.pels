@@ -165,7 +165,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     // No PV device in the default fixture, so the poll never reaches the SDK.
     hasProductionCandidate: () => latestTargetSnapshot.some((d) => d.deviceClass === 'solarpanel'),
     timers,
-    readGenerationW: async () => ({ state: 'resolved' as const, generationW: null }),
+    readGenerationW: async () => ({ state: 'none' as const }),
     setGenerationW: vi.fn(),
     now: () => Date.now(),
     debugStructured: vi.fn(),

@@ -4,14 +4,14 @@ import type { PowerSource } from '../../lib/power/powerSource';
 const buildSource = (overrides: {
   powerSource?: PowerSource;
   hasProductionCandidate?: boolean;
-  readGenerationW?: () => Promise<{ state: 'resolved'; generationW: number | null } | { state: 'unavailable' }>;
+  readGenerationW?: () => Promise<{ state: 'measured'; watts: number } | { state: 'none' } | { state: 'unavailable' }>;
 } = {}) => {
   const timers = {
     registerInterval: vi.fn((_name: string, handle: unknown) => handle),
     registerTimeout: vi.fn((_name: string, handle: unknown) => handle),
     clear: vi.fn(),
   };
-  const readGenerationW = vi.fn(overrides.readGenerationW ?? (async () => ({ state: 'resolved' as const, generationW: 4200 })));
+  const readGenerationW = vi.fn(overrides.readGenerationW ?? (async () => ({ state: 'measured' as const, watts: 4200 })));
   const setGenerationW = vi.fn();
   const source = new GenerationPollSource({
     getPowerSource: () => overrides.powerSource ?? 'flow',
@@ -34,7 +34,7 @@ describe('GenerationPollSource', () => {
   });
 
   it('publishes a null reading — "the report carried no generation" is an observation', async () => {
-    const { source, setGenerationW } = buildSource({ readGenerationW: async () => ({ state: 'resolved' as const, generationW: null }) });
+    const { source, setGenerationW } = buildSource({ readGenerationW: async () => ({ state: 'none' as const }) });
     await source.pollNow();
     expect(setGenerationW).toHaveBeenCalledWith(null, 1_000);
   });
@@ -74,7 +74,7 @@ describe('GenerationPollSource', () => {
     const { source, setGenerationW } = buildSource({
       readGenerationW: async () => {
         source.stop(); // bumps the generation counter while the read is in flight
-        return { state: 'resolved' as const, generationW: 4200 };
+        return { state: 'measured' as const, watts: 4200 };
       },
     });
     await source.pollNow();
@@ -84,15 +84,15 @@ describe('GenerationPollSource', () => {
   it('discards an OVERLAPPING slow read that a newer one already answered', async () => {
     // A read slower than the 10 s interval overlaps its successor. Completing
     // last must not mean winning: its measurement is the older of the two.
-    const pending: Array<(r: { state: 'resolved'; generationW: number | null }) => void> = [];
+    const pending: Array<(r: { state: 'measured'; watts: number }) => void> = [];
     const { source, setGenerationW } = buildSource({
       readGenerationW: () => new Promise((resolve) => { pending.push(resolve); }),
     });
     const first = source.pollNow();
     const second = source.pollNow();
-    pending[1]?.({ state: 'resolved', generationW: 4200 });
+    pending[1]?.({ state: 'measured', watts: 4200 });
     await second;
-    pending[0]?.({ state: 'resolved', generationW: 1000 });
+    pending[0]?.({ state: 'measured', watts: 1000 });
     await first;
 
     expect(setGenerationW).toHaveBeenCalledTimes(1);
@@ -104,7 +104,7 @@ describe('GenerationPollSource', () => {
     // published. A newer read failing still proves a newer answer arrived, so
     // the older read completing afterwards is stale — publishing it would be
     // exactly the overlap the fence exists to stop.
-    const pending: Array<(r: { state: 'resolved'; generationW: number | null } | { state: 'unavailable' }) => void> = [];
+    const pending: Array<(r: { state: 'measured'; watts: number } | { state: 'unavailable' }) => void> = [];
     const { source, setGenerationW } = buildSource({
       readGenerationW: () => new Promise((resolve) => { pending.push(resolve); }),
     });
@@ -112,7 +112,7 @@ describe('GenerationPollSource', () => {
     const second = source.pollNow();
     pending[1]?.({ state: 'unavailable' });
     await second;
-    pending[0]?.({ state: 'resolved', generationW: 1000 });
+    pending[0]?.({ state: 'measured', watts: 1000 });
     await first;
 
     expect(setGenerationW).not.toHaveBeenCalled();
@@ -132,7 +132,7 @@ describe('GenerationPollSource', () => {
       timers: timers as never,
       readGenerationW: async () => {
         powerSource = 'homey_energy';
-        return { state: 'resolved' as const, generationW: 4200 };
+        return { state: 'measured' as const, watts: 4200 };
       },
       setGenerationW,
       now: () => 1_000,

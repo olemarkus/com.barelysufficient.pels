@@ -5,7 +5,7 @@ import {
 } from '../../lib/device/managerEnergy';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
 import { mockHomeyInstance } from '../mocks/homey';
-import { fetchLiveMeterItems, fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
+import { fetchLiveGenerationW, fetchLiveMeterItems, fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
 import {
   fetchLivePowerReport as fetchTransportLivePowerReport,
 } from '../../lib/device/transport/snapshotRefresh';
@@ -111,7 +111,7 @@ describe('extractLiveMeterItems', () => {
     ]);
   });
 
-  it('omits an id-less cumulative item (covered by Automatic) and other item types', () => {
+  it('drops an id-less item at the parse, and omits other item types', () => {
     const report = {
       items: [
         { type: 'cumulative', values: { W: 443 } },
@@ -161,12 +161,15 @@ describe('fetchLivePowerReport', () => {
       additionalMeterDeviceIds: [],
     });
 
-    expect(result.byDeviceId).toEqual({ dev1: 800 });
-    expect(result.homePowerW).toBe(3200);
-    expect(result.deviceCount).toBe(1);
+    expect(result).toMatchObject({
+      state: 'measured',
+      byDeviceId: { dev1: 800 },
+      home: { state: 'resolved', watts: 3200, meterDeviceId: 'meter-main' },
+      deviceCount: 1,
+    });
   });
 
-  it('resolves homePowerW from the selected meter, ignoring the cumulative item', async () => {
+  it('resolves the whole-home reading from the selected meter, ignoring the cumulative item', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [
         { type: 'cumulative', id: 'marked-meter', values: { W: 9999 } },
@@ -180,11 +183,13 @@ describe('fetchLivePowerReport', () => {
       additionalMeterDeviceIds: [],
     });
 
-    expect(result.homePowerW).toBe(3200);
-    expect(result.byDeviceId).toEqual({ 'han-meter': 3200 });
+    expect(result).toMatchObject({
+      home: { state: 'resolved', watts: 3200, meterDeviceId: 'han-meter' },
+      byDeviceId: { 'han-meter': 3200 },
+    });
   });
 
-  it('nulls the whole-home half on an unavailable selection while keeping the per-device lanes', async () => {
+  it('leaves the whole-home half unavailable on an unavailable selection while keeping the per-device lanes', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [
         { type: 'cumulative', id: 'meter-rental', values: { W: 5_000 } },
@@ -201,13 +206,13 @@ describe('fetchLivePowerReport', () => {
     // No guessing: there is no Automatic to fall back to, so an unknown
     // authority yields no whole-home reading — never another meter's watts.
     expect(result).toMatchObject({
-      homeMeterResolution: 'unavailable',
-      homePowerW: null,
+      state: 'measured',
+      home: { state: 'unavailable' },
+      byDeviceId: { dev1: 800 },
     });
-    expect(result.byDeviceId).toEqual({ dev1: 800 });
   });
 
-  it('resolves homePowerW to null when the selected meter is missing, keeping the rest of the report', async () => {
+  it('leaves the whole-home half unavailable when the selected meter is missing, keeping the rest of the report', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       totalGenerated: { W: 600 },
       items: [
@@ -222,12 +227,15 @@ describe('fetchLivePowerReport', () => {
       additionalMeterDeviceIds: [],
     });
 
-    expect(result.homePowerW).toBeNull();
-    expect(result.byDeviceId).toEqual({ dev1: 800 });
-    expect(result.generationW).toBe(600);
+    expect(result).toMatchObject({
+      state: 'measured',
+      home: { state: 'unavailable' },
+      byDeviceId: { dev1: 800 },
+      generation: { state: 'measured', watts: 600 },
+    });
   });
 
-  it('returns empty results when REST client is not initialized', async () => {
+  it('reports an unavailable read when REST client is not initialized', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
 
     const result = await fetchLivePowerReport({
@@ -236,12 +244,25 @@ describe('fetchLivePowerReport', () => {
       additionalMeterDeviceIds: [],
     });
 
-    expect(result.byDeviceId).toEqual({});
-    expect(result.homePowerW).toBeNull();
-    expect(result.deviceCount).toBe(0);
+    expect(result).toEqual({ state: 'unavailable' });
   });
 
-  it('returns empty results on API error', async () => {
+  it('reports an unavailable read for a payload that is not a report — never a measurement of nothing', async () => {
+    for (const payload of [undefined, '', {}, { items: 'nope' }]) {
+      vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(payload);
+      const result = await fetchLivePowerReport({
+        logger,
+        meterSelection: { state: 'resolved', meterDeviceId: 'meter-main' },
+        additionalMeterDeviceIds: [],
+      });
+      expect(result).toEqual({ state: 'unavailable' });
+      await expect(fetchLiveGenerationW(logger)).resolves.toEqual({ state: 'unavailable' });
+    }
+    expect(logger.error).toHaveBeenCalledWith({ event: 'energy_live_report_unavailable', reasonCode: 'malformed_payload' });
+    expect(logger.error).toHaveBeenCalledWith({ event: 'energy_live_generation_unavailable', reasonCode: 'malformed_payload' });
+  });
+
+  it('reports an unavailable read on API error', async () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockRejectedValue(new Error('API down'));
 
@@ -251,9 +272,7 @@ describe('fetchLivePowerReport', () => {
       additionalMeterDeviceIds: [],
     });
 
-    expect(result.byDeviceId).toEqual({});
-    expect(result.homePowerW).toBeNull();
-    expect(result.deviceCount).toBe(0);
+    expect(result).toEqual({ state: 'unavailable' });
     expect(stderrSpy).toHaveBeenCalled();
   });
 });
@@ -285,9 +304,12 @@ describe('transport Main-meter authority', () => {
 
     const report = await fetchTransportLivePowerReport(ctx, { state: 'unavailable' });
 
-    expect(report.homePowerW).toBeNull();
-    expect(report.byDeviceId).toEqual({ 'sub-meter': 1_200 });
-    expect(report.additionalMeterPowerW).toEqual({ 'sub-meter': 1_200 });
+    expect(report).toMatchObject({
+      state: 'measured',
+      home: { state: 'unavailable' },
+      byDeviceId: { 'sub-meter': 1_200 },
+      additionalMeterPowerW: { 'sub-meter': 1_200 },
+    });
   });
 
   it('stamps the poll sample with the resolved selection identity', async () => {
@@ -365,10 +387,9 @@ describe('resolved home meter identity on the sample', () => {
     });
   });
 
-  it('yields no sample for an id-less aggregate — nothing nameable can be read', async () => {
-    // The id-less whole-home aggregate is unreadable without Automatic: no
-    // selection can name it, so no whole-home sample exists. Such a home runs
-    // on the Flow source.
+  it('yields no sample for an id-less item — it is dropped at the parse', async () => {
+    // An item without an id is malformed: no selection can name it, so it
+    // resolves nothing and no whole-home sample exists.
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [{ type: 'cumulative', values: { W: 4_200 } }],
     });

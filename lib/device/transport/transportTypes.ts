@@ -126,10 +126,6 @@ export type DeviceTransportOptions = {
 
 export const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 export const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
-// Re-exported from its owner beside the `LivePowerReport` type, so adding a
-// field cannot leave a second construction site behind.
-export { buildEmptyLivePowerReport } from './managerFetch';
-
 export function summarizeSnapshotRefreshMetrics(snapshot: TransportDeviceSnapshot[]): SnapshotRefreshMetrics {
     let availableDevices = 0;
     let temperatureKnownDevices = 0;

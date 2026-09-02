@@ -1455,10 +1455,11 @@ rather than a generic failure. Three of them pin vocabulary:
   `homey_energy_required`) stay internal.
 - **Retired: the id-less aggregate refusal** (`HOMES_METER_UNNAMEABLE`,
   "Your whole-home meter doesn't report a device id"). It described the
-  Automatic selection reading an aggregate no picker could name; with the
-  explicit-meter world there is no Automatic read to refuse — such a home
-  runs on the Flow source, and the area save's remedy line points at the
-  Whole-home meter setting. Do not resurrect the string.
+  Automatic selection reading an aggregate no picker could name. There is
+  no Automatic read left to refuse, and an item without an id is malformed
+  and dropped when the report is parsed (owner ruling 2026-09-02: Homey
+  Energy names every meter it reports), so no home is in that state. Do not
+  resurrect the string.
 
 ## The no-readings banner
 

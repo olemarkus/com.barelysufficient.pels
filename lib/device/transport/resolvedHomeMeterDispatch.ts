@@ -13,7 +13,6 @@
  * mid-flight selection change) publishes nothing, and the ownership fence can
  * only ever move together with the watts it governs.
  */
-import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { TransportContext } from './transportContext';
 import type { LivePowerReport } from './managerFetch';
 
@@ -22,11 +21,11 @@ export type HomePowerSampleWithIdentity = {
   powerW: number;
   generationW?: number;
   /**
-   * Identity of the meter `powerW` was read from — by construction the
-   * resolved selection's configured id, stamped where the sample is produced.
-   * Always present: a sample cannot exist without a named meter any more.
-   * Consumers that record this sample hand the field to the ingest seam;
-   * consumers that discard the sample discard the identity claim with it.
+   * Identity of the meter `powerW` was read from — the resolved reading's own
+   * meter id, stamped where the sample is produced. Always present: a sample
+   * cannot exist without a named meter any more. Consumers that record this
+   * sample hand the field to the ingest seam; consumers that discard the
+   * sample discard the identity claim with it.
    */
   meterDeviceId: string;
 };
@@ -34,42 +33,35 @@ export type HomePowerSampleWithIdentity = {
 export function updateHomePowerFromReport(
     ctx: TransportContext,
     report: LivePowerReport,
-    selection: MainMeterSelection,
 ): HomePowerSampleWithIdentity | null {
+    // A FAILED read is not a measurement and must not be published: this
+    // snapshot path runs on flow homes too, where a thrown fetch would
+    // otherwise overwrite the companion poll's good reading with a
+    // freshly-stamped absence — defeating the freshness window, dropping
+    // `lastGenerationW`, and moving the gross-consumption split on the next
+    // Flow event. Leave the held value to age out on its own instead.
+    if (report.state !== 'measured') return null;
     // The net scalar leaves ONLY on the returned sample, which feeds the direct
     // `pollHomePowerW()` caller (homey_energy poll source), with generation
     // carried from the same report so it stays co-temporal with the net it was
-    // read beside. (The observer-holder push for net — `setHomePowerW`, PR2a of
-    // the observer/transport split — was removed as write-only: wiring takes the
-    // sample as a parameter, so the holder's read had no production caller.)
+    // read beside.
     //
     // Stamped with the read time. On THIS path net and generation are
     // co-temporal, but the holder is shared with the flow source's separate
     // generation reader (`GenerationPollSource`), whose readings are not — so
     // every writer carries a time rather than letting the holder assume one.
-    //
-    // A FAILED read is not a measurement and must not be published: this
-    // snapshot path runs on flow homes too, where a thrown fetch would
-    // otherwise overwrite the companion poll's good reading with a
-    // freshly-stamped `null` — defeating the freshness window, dropping
-    // `lastGenerationW`, and moving the gross-consumption split on the next
-    // Flow event. Leave the held value to age out on its own instead.
-    if (report.reportAvailable) {
-      ctx.observedStateDispatcher?.setGenerationW(report.generationW, Date.now());
+    // "No generator" is itself an observation the holder records as `null`;
+    // a malformed generation signal (`unavailable`) is not, and publishes
+    // nothing so the held reading carries forward.
+    const { home, generation } = report;
+    if (generation.state !== 'unavailable') {
+      ctx.observedStateDispatcher?.setGenerationW(
+        generation.state === 'measured' ? generation.watts : null,
+        Date.now(),
+      );
     }
-    // A whole-home reading only exists for a resolved selection (an
-    // `unavailable` selection nulls `homePowerW` in `resolveHomeReading`), so
-    // the sample's identity is the configured id — checked here so the
-    // invariant is structural, not assumed.
-    if (report.homePowerW === null || selection.state !== 'resolved') return null;
-    return report.generationW === null
-        ? {
-            powerW: report.homePowerW,
-            meterDeviceId: selection.meterDeviceId,
-        }
-        : {
-            powerW: report.homePowerW,
-            generationW: report.generationW,
-            meterDeviceId: selection.meterDeviceId,
-        };
+    if (home.state !== 'resolved') return null;
+    return generation.state === 'measured'
+        ? { powerW: home.watts, generationW: generation.watts, meterDeviceId: home.meterDeviceId }
+        : { powerW: home.watts, meterDeviceId: home.meterDeviceId };
 }

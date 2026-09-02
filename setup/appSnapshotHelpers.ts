@@ -400,8 +400,8 @@ export class AppSnapshotHelpers {
     if (options.recordHomeyEnergySample === false) return 'not_requested';
     if (this.deps.getPowerSource() !== 'homey_energy') return 'not_homey_energy';
     // An unavailable start selection produces NO recordable sample: the fetch
-    // falls back to Automatic for the per-device lanes but discards the
-    // whole-home value (`fetchLivePowerReport` nulls `homePowerW`), so the
+    // still fills the per-device lanes but its whole-home reading comes back
+    // `unavailable` (`fetchLivePowerReport`), so the
     // `if (sample)` guard below never records regardless of this answer. The
     // arm exists for classification honesty: without it, a selection that
     // recovers mid-flight would classify `stale_meter` and emit a mislabelled
