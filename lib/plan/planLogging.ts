@@ -11,7 +11,14 @@ import {
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isPlanDeviceObservedOn, isSteppedLoadDevice } from './planSteppedLoad';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
-import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
+import type {
+  DevicePlan,
+  DevicePlanDevice,
+  PlanInputDevice,
+  PlanMeasuredMetaFields,
+  PlanMetaBase,
+  PlanUnmeasuredMetaFields,
+} from './planTypes';
 import {
   isActivationPenaltyBlockedReason,
   isCooldownBlockedReason,
@@ -53,11 +60,8 @@ export function isPlanUnactionable(summary: PlanCapacityStateSummary): boolean {
  * instead of a silently empty diagnostic.
  */
 export type PlanCapacityStateSummaryInput = Pick<DevicePlan, 'devices'> & {
-  meta: Pick<
-    DevicePlan['meta'],
-    'controlledKw' | 'uncontrolledKw' | 'totalKw' | 'softLimitKw'
-    | 'capacitySoftLimitKw' | 'softLimitSource' | 'powerIsMeasured'
-  >;
+  meta: Pick<PlanMetaBase, 'totalKw' | 'softLimitKw' | 'capacitySoftLimitKw' | 'softLimitSource'>
+    & (PlanMeasuredMetaFields | PlanUnmeasuredMetaFields);
 };
 
 export function buildPlanCapacityStateSummary(
@@ -94,8 +98,10 @@ export function buildPlanCapacityStateSummary(
   const remainingActionableControlledLoadW = roundPowerW(remainingActionableControlledLoadKw);
   return {
     ...summary,
-    controlledPowerW: roundPowerW(plan.meta.controlledKw),
-    uncontrolledPowerW: roundPowerW(plan.meta.uncontrolledKw),
+    // The managed/background split exists only on a measured meta; the
+    // unmeasured build logs the pair as null, never as a stand-in figure.
+    controlledPowerW: plan.meta.powerIsMeasured ? roundPowerW(plan.meta.controlledKw) : null,
+    uncontrolledPowerW: plan.meta.powerIsMeasured ? roundPowerW(plan.meta.uncontrolledKw) : null,
     remainingReducibleControlledLoadW,
     remainingReducibleControlledLoad: (remainingReducibleControlledLoadW ?? 0) > 0,
     remainingActionableControlledLoadW,
@@ -382,7 +388,7 @@ export function buildPlanDebugSummaryEvent(plan: DevicePlan): PlanDebugSummaryEv
     capacitySoftLimitKw: roundPlanDebugNumber(plan.meta.capacitySoftLimitKw),
     dailySoftLimitKw: roundPlanDebugNumber(plan.meta.dailySoftLimitKw),
     softLimitSource: plan.meta.softLimitSource ?? null,
-    headroomKw: roundPlanDebugNumber(plan.meta.headroomKw),
+    headroomKw: plan.meta.powerIsMeasured ? roundPlanDebugNumber(plan.meta.headroomKw) : null,
     restoreBlockedCount: categories.restoreBlockedCount,
     restoreBlockedReasons: categories.restoreBlockedReasons,
     inactiveCount: categories.inactiveCount,

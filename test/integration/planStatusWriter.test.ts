@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlanStatusWriter } from '../../lib/plan/planStatusWriter';
 import type { DevicePlan, StatusPlanChanges } from '../../lib/plan/planTypes';
 import type { FlowPort, FlowToken, FlowTriggerCard } from '../../lib/ports/homeyRuntime';
-import { buildPlanMeta } from '../utils/planTestUtils';
+import { buildPlanMeta, buildUnmeasuredPlanMeta } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 /* -------------------------------------------------------------------------- *
@@ -111,6 +111,31 @@ describe('PlanStatusWriter posture-flip persist', () => {
     h.writer.update(plan(3), CHANGES);
     expect(h.writeSpy).toHaveBeenCalledTimes(2);
     expect(h.writeSpy.mock.calls[1][0].dryRunEffective).toBe(false);
+  });
+
+  it('forces a persist when the plan flips between measured and unmeasured inside the window', () => {
+    // The one unmeasured build (the silent-meter fail-closed pass) writes
+    // `powerKnown: false` and omits every measured figure; after it the silence
+    // block stops rebuilding, so a write swallowed by the throttle would leave
+    // the widget and the Insights capabilities asserting a measured headroom
+    // for the whole outage. Both directions bust the throttle (main home too).
+    const h = makeWriter(undefined, true);
+
+    nowSpy.mockReturnValue(BASE_MS);
+    h.writer.update(plan(3), CHANGES);
+    expect(h.writeSpy).toHaveBeenCalledTimes(1);
+    expect(h.writeSpy.mock.calls[0][0]).toMatchObject({ powerKnown: true, headroomKw: 3 });
+
+    nowSpy.mockReturnValue(BASE_MS + 5000);
+    h.writer.update({ meta: buildUnmeasuredPlanMeta({ totalKw: 3, softLimitKw: 6 }), devices: [] }, CHANGES);
+    expect(h.writeSpy).toHaveBeenCalledTimes(2);
+    expect(h.writeSpy.mock.calls[1][0]).toMatchObject({ powerKnown: false, powerNowKw: null });
+    expect(h.writeSpy.mock.calls[1][0]).not.toHaveProperty('headroomKw');
+
+    nowSpy.mockReturnValue(BASE_MS + 10_000);
+    h.writer.update(plan(3), CHANGES);
+    expect(h.writeSpy).toHaveBeenCalledTimes(3);
+    expect(h.writeSpy.mock.calls[2][0]).toMatchObject({ powerKnown: true, headroomKw: 3 });
   });
 
   it('still throttles a non-posture volatile change inside the window (sub-home)', () => {

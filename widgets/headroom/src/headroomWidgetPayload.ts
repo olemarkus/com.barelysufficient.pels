@@ -1,5 +1,6 @@
 import type { HeadroomWidgetLimitState } from '../../../packages/shared-domain/src/headroomWidgetCopy';
 import type { SettingsUiPowerStatusUnavailableReason } from '../../../packages/contracts/src/settingsUiApi';
+import { HEADROOM_WIDGET_COPY } from '../../../packages/shared-domain/src/headroomWidgetCopy';
 import { EMPTY_SUBTITLE_DEFAULT } from './headroomWidgetConstants';
 import type {
   HeadroomWidgetEmptyPayload,
@@ -91,8 +92,17 @@ const emptyPayload = (subtitle: string): HeadroomWidgetEmptyPayload => ({
 export const buildHeadroomWidgetPayload = (input: HeadroomWidgetInput): HeadroomWidgetPayload => {
   if (input.status.state !== 'live') return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
   const status = input.status.status;
+  // The planner had no measurement behind this status: the blob carries no
+  // headroom then, and nothing derived from it is honest to draw — not even
+  // dimmed as "not current". The empty state names the cause instead (owner
+  // ruling 2026-09-02; the same branch the Overview hero makes on its meta).
+  if (status.powerKnown === false) return emptyPayload(HEADROOM_WIDGET_COPY.noReadingsSubtitle);
 
   const hourBudgetKw = isFiniteNumber(status.hourlyLimitKw) ? status.hourlyLimitKw : null;
+  // Seam validation of a persisted blob: reachable for a blob written before
+  // `powerKnown` existed, or one an automation hand-edited — the app's own
+  // writer omits `headroomKw` exactly when it sets `powerKnown: false`, which
+  // the branch above already answered.
   const headroomKw = isFiniteNumber(status.headroomKw) ? status.headroomKw : null;
   if (hourBudgetKw === null || headroomKw === null) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
 
@@ -108,10 +118,9 @@ export const buildHeadroomWidgetPayload = (input: HeadroomWidgetInput): Headroom
   const lastUpdate = isFiniteNumber(status.lastPowerUpdate) ? status.lastPowerUpdate : null;
   const nowMs = isFiniteNumber(input.nowMs) ? input.nowMs : Date.now();
   const timeStale = lastUpdate === null ? true : (nowMs - lastUpdate) > STALE_AFTER_MS;
-  // Render the last known headroom (dimmed) when the planner reports
-  // `powerKnown=false`, instead of blanking. Matches the "don't delete
-  // useful state on a transient miss" pattern in lib/plan/planHistory.ts.
-  const stale = timeStale || status.powerKnown === false;
+  // Time-based only: a status the planner measured, whose stamp has since
+  // aged, is still the last real figure and dims rather than blanks.
+  const stale = timeStale;
 
   const ready: HeadroomWidgetReadyPayload = {
     state: 'ready',

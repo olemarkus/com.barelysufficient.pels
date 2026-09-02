@@ -25,7 +25,6 @@ import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import type { PowerCycleDisplay } from '../power/powerCycleReading';
 import { buildPlanCapacityStateSummary } from './planLogging';
-import { splitControlledUsageKw } from './planUsage';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { recordActivationSetback } from './admission';
@@ -35,7 +34,7 @@ import {
 } from './planConstants';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { SoftOvershootDecision } from './planOvershoot';
-import { buildPlanContextHeadroomLogFields } from './planBuilderMeta';
+import { buildPlanContextHeadroomLogFields, resolveMeasuredMetaFields } from './planBuilderMeta';
 
 const OVERSHOOT_DELTA_EPSILON_KW = 0.05;
 const OVERSHOOT_TOP_CONTRIBUTOR_LIMIT = 3;
@@ -114,7 +113,9 @@ export class OvershootTracker {
       this.deps.structuredLog?.info({
         event: 'overshoot_entered',
         reasonCode: 'active_overshoot',
-        headroomKw: context.headroom,
+        // A measured figure: the fail-closed pass enters the overshoot on its
+        // own decision, and the log says so with null rather than a number.
+        headroomKw: context.powerIsMeasured ? context.headroom : null,
         ...overshootTimingFields,
         ...buildPlanContextHeadroomLogFields(context, power, capacityLimitKw, shortfallBudgetThresholdKw),
         // Supplies exactly the meta the summary reads. It used to pass
@@ -124,11 +125,13 @@ export class OvershootTracker {
         ...buildPlanCapacityStateSummary({
           meta: {
             totalKw: power.totalKw,
-            powerIsMeasured: context.powerIsMeasured,
             softLimitKw: context.softLimit,
             capacitySoftLimitKw: context.capacitySoftLimit,
             softLimitSource: context.softLimitSource,
-            ...splitControlledUsageKw({ devices: planDevices, totalKw: power.totalKw }),
+            // The same constructor the plan meta uses, so the summary's
+            // managed/background split cannot drift from the published one
+            // (and is absent on the unmeasured build, like the meta's).
+            ...resolveMeasuredMetaFields(context, power, planDevices, capacityLimitKw, shortfallBudgetThresholdKw),
           },
           devices: planDevices,
         }),

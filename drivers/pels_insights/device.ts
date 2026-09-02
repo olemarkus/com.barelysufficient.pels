@@ -8,6 +8,13 @@ import { buildModeEnumValues, type ModeEnumValue } from './modeEnum';
 const deviceLogger = getLogger('driver/pels-insights');
 
 type StatusData = {
+  /**
+   * False when the plan behind the status had no measurement (the silent-meter
+   * fail-closed pass). The blob then omits every measured figure, and the
+   * capabilities that mirror them are CLEARED rather than left charting the
+   * last measured value through the outage (`MEASURED_CAPABILITY_IDS`).
+   */
+  powerKnown?: boolean;
   headroomKw?: number;
   hourlyLimitKw?: number;
   hourlyUsageKwh?: number;
@@ -88,6 +95,14 @@ const MODE_SOURCE_SETTING_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 const DEFAULT_MODE = 'Home';
+
+// The status figures that exist only on a measured plan (`lib/plan/pelsStatus.ts`,
+// `resolveMeasuredStatusFields`). Absent from the blob while the meter is
+// silent — and a capability that keeps its last value then is a dashboard or a
+// Flow reading available power the house does not have.
+const MEASURED_CAPABILITY_IDS: readonly string[] = [
+  'pels_headroom', 'pels_controlled_power', 'pels_uncontrolled_power',
+];
 
 const shouldSetCapability = (value: unknown, type: CapabilityEntry['type']) => {
   if (type === 'string') return typeof value === 'string' && value.length > 0;
@@ -324,6 +339,11 @@ class PelsInsightsDevice extends Homey.Device {
         const value = status[key];
         if (shouldSetCapability(value, type)) {
           await this.setCapabilityValue(id, value);
+        } else if (status.powerKnown === false && MEASURED_CAPABILITY_IDS.includes(id)) {
+          // Unmeasured: the blob omitted the figure on purpose, so the
+          // capability is cleared — a null reads as "no value" on the
+          // Insights chart, never as the last measured watts.
+          await this.setCapabilityValue(id, null);
         }
       }
     } catch (error) {

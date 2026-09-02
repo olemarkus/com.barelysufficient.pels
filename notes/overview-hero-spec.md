@@ -56,6 +56,21 @@ still surfaces it. The old freshness chip ('Delayed'/'No data') retired with
 the freshness wire fields (owner ruling 2026-08-31): staleness is the global
 no-readings banner's fact, rendered above the hero — one surface, one truth.
 
+**An unmeasured cycle draws no hero at all** (owner ruling 2026-09-02). The
+plan meta is a union on `powerIsMeasured`; the one unmeasured build — the
+silent-meter fail-closed pass, past the 10-minute shed timeout — carries the
+bare signal and no headroom or managed/background split. Nothing derived from
+a reading the meter stopped confirming is honest to draw, so the hero returns
+nothing (no chip, no subline, no bar, no decision sentence) and the no-readings
+banner above it is the whole surface; the device cards below keep rendering.
+Between the 60 s banner threshold and the shed timeout the last reading carries
+forward as measured and the hero shows those real numbers under the banner.
+The planner used to publish a sentinel `-1` headroom for the unmeasured pass,
+and the hero did arithmetic on it: `Above safe pace · 1.0 kW above safe pace`
+beside `Power now 1.5 kW` under a `2.3 kW` tick, for the whole outage. Never
+again: the hero's above-safe-pace state and its overshoot come from the two
+numbers it prints, `totalKw` against `softLimitKw` (see "Power now" below).
+
 ### Status chip
 
 | Condition | Label | Tone |
@@ -109,6 +124,10 @@ Power now
 13.5 kW
 1.5 kW above safe pace (12.0 kW · set by today's budget)
 ```
+
+The above-safe-pace state and the overshoot figure are derived from the two
+printed numbers — `totalKw - softLimitKw` — never from a planner-side headroom,
+so the sentence can never contradict the figures beside it.
 
 The trailing clause names the binding ceiling (`SAFE_PACE_SOURCE_BY_SOURCE` in
 `planHeroTooltips.ts`; `capacity` → `set by this hour's pace`, `daily` → `set by
@@ -191,10 +210,9 @@ The supporting line renders whenever the runtime resolved a split — a known
 zero included (`Managed 0.0 kW · Background 5.2 kW`). It was originally hidden
 when managed draw was 0, but that made the line come and go as managed devices
 idled, which owners read as breakage rather than "managed is currently 0"
-(owner decision 2026-08-02, PR #1970). The line is omitted only when the split
-is genuinely unknown (`controlledKw` absent from the plan meta — no managed
-device's draw could be resolved), where printing `Managed 0.0 kW` would
-present a guess as a fact — and for background-only households (no
+(owner decision 2026-08-02, PR #1970). An unmeasured cycle draws no hero at
+all (§ "Chip row"), so the line never has to decide what to print for a split
+the meta does not carry; it is omitted only for background-only households (no
 controllable device at all, e.g. observe-only battery/PV), where the known 0
 is permanent and the line would be noise rather than reassurance. Those homes
 see the gauge segments without an underline, as before.
@@ -445,6 +463,7 @@ All live state must come through API endpoints, not settings reads. Settings are
 Values needed for the hero:
 
 ```
+powerIsMeasured         meta.powerIsMeasured  (false ⇒ no hero is drawn; the rest below exist only when true)
 currentPowerKw          meta.totalKw
 managedPowerKw          meta.controlledKw
 backgroundPowerKw       meta.uncontrolledKw

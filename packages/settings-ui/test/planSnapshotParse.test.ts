@@ -245,21 +245,25 @@ describe('parsePlanSnapshot facet independence', () => {
 });
 
 describe('parsePlanSnapshot meta guard', () => {
-  const validMeta = {
+  // The fields both variants carry; `validMeta` is the measured variant on top.
+  const baseMeta = {
     totalKw: 4.2,
     softLimitKw: 9.5,
     capacitySoftLimitKw: 9.5,
     budgetPaceKw: null,
     projectedExemptKw: null,
     softLimitSource: 'capacity',
-    headroomKw: 5.3,
     hardCapLimitKw: 12,
     usedKWh: 1.2,
     hourBudgetKWh: 9.5,
     minutesRemaining: 30,
+    lastPowerUpdateMs: 1_700_000_000_000,
+  };
+  const validMeta = {
+    ...baseMeta,
+    powerIsMeasured: true,
     controlledKw: 2,
     uncontrolledKw: 2.2,
-    lastPowerUpdateMs: 1_700_000_000_000,
   };
 
   it('passes a complete meta through identity-preserving', () => {
@@ -285,7 +289,7 @@ describe('parsePlanSnapshot meta guard', () => {
   it.each([
     ['a missing required number', { hardCapLimitKw: undefined }],
     ['a null where null is not a value', { softLimitKw: null }],
-    ['NaN', { headroomKw: Number.NaN }],
+    ['NaN', { controlledKw: Number.NaN }],
     ['Infinity', { usedKWh: Number.POSITIVE_INFINITY }],
     ['a non-number', { minutesRemaining: '30' }],
     ['a non-member softLimitSource', { softLimitSource: 'both' }],
@@ -304,6 +308,21 @@ describe('parsePlanSnapshot meta guard', () => {
     // both to build its input, so it would fall to the loading skeleton while
     // the accepted payload had already replaced the last good plan.
     expect(parsePlanSnapshot({ meta: { ...validMeta, ...patch }, devices: [] })).toBeNull();
+  });
+
+  it('accepts the unmeasured variant with no derived figures, and requires them on the measured one', () => {
+    // The wire meta is a union on `powerIsMeasured`. Unmeasured carries the
+    // bare signal — the hero draws nothing from it, so there is no headroom or
+    // managed/background split to require. Measured requires all three.
+    const unmeasured = { meta: { ...baseMeta, powerIsMeasured: false }, devices: [] };
+    expect(parsePlanSnapshot(unmeasured)).toBe(unmeasured);
+    expect(parsePlanSnapshot({ meta: { ...baseMeta, powerIsMeasured: true }, devices: [] })).toBeNull();
+    expect(parsePlanSnapshot({ meta: { ...validMeta, uncontrolledKw: undefined }, devices: [] })).toBeNull();
+  });
+
+  it('rejects a meta that does not say whether it was measured', () => {
+    expect(parsePlanSnapshot({ meta: { ...validMeta, powerIsMeasured: undefined }, devices: [] })).toBeNull();
+    expect(parsePlanSnapshot({ meta: { ...validMeta, powerIsMeasured: 'yes' }, devices: [] })).toBeNull();
   });
 
   it('leaves a payload with no meta alone', () => {

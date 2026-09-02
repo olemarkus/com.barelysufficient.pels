@@ -31,22 +31,25 @@ export const buildPlanHeadroomLogFields = (
 ): Record<string, number | boolean | null> => {
   const meta = plan?.meta;
   if (!meta) return {};
-  const softHeadroomKw = typeof meta.headroomKw === 'number' ? meta.headroomKw : null;
-  const hardCapHeadroomKw = typeof meta.hardCapHeadroomKw === 'number' ? meta.hardCapHeadroomKw : null;
-  const shortfallBudgetHeadroomKw = typeof meta.shortfallBudgetHeadroomKw === 'number'
-    ? meta.shortfallBudgetHeadroomKw
-    : null;
+  // The three distances exist only on a measured meta (`PlanMeasuredMetaFields`);
+  // the unmeasured build logs them as null rather than a stand-in number. One
+  // branch on the signal; the base fields are required and read directly.
+  const measured = meta.powerIsMeasured
+    ? {
+      softHeadroomKw: meta.headroomKw,
+      shortfallBudgetHeadroomKw: meta.shortfallBudgetHeadroomKw,
+      hardCapHeadroomKw: meta.hardCapHeadroomKw,
+      hardCapBreached: meta.hardCapHeadroomKw < 0,
+    }
+    : {
+      softHeadroomKw: null, shortfallBudgetHeadroomKw: null, hardCapHeadroomKw: null, hardCapBreached: null,
+    };
   return {
-    totalKw: typeof meta.totalKw === 'number' ? meta.totalKw : null,
-    softLimitKw: typeof meta.softLimitKw === 'number' ? meta.softLimitKw : null,
-    softHeadroomKw,
-    shortfallBudgetThresholdKw: typeof meta.shortfallBudgetThresholdKw === 'number'
-      ? meta.shortfallBudgetThresholdKw
-      : null,
-    shortfallBudgetHeadroomKw,
-    hardCapHeadroomKw,
-    hardCapBreached: hardCapHeadroomKw !== null ? hardCapHeadroomKw < 0 : false,
-    capacityShortfall: meta.capacityShortfall === true,
+    totalKw: meta.totalKw,
+    softLimitKw: meta.softLimitKw,
+    shortfallBudgetThresholdKw: meta.shortfallBudgetThresholdKw ?? null,
+    ...measured,
+    capacityShortfall: meta.capacityShortfall,
   };
 };
 

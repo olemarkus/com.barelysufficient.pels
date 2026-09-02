@@ -1,4 +1,8 @@
-import type { SettingsUiPlanMetaSnapshot } from '../../../contracts/src/settingsUiApi.ts';
+import type {
+  SettingsUiPlanMetaMeasuredFields,
+  SettingsUiPlanMetaSnapshot,
+  SettingsUiPlanMetaSnapshotBase,
+} from '../../../contracts/src/settingsUiApi.ts';
 
 /**
  * A complete `SettingsUiPlanMetaSnapshot`, so a spec spells only the numbers its
@@ -17,8 +21,30 @@ import type { SettingsUiPlanMetaSnapshot } from '../../../contracts/src/settings
  * these numbers.
  */
 export const buildPlanMeta = (
-  overrides: Partial<SettingsUiPlanMetaSnapshot> = {},
+  overrides: Partial<SettingsUiPlanMetaSnapshotBase & SettingsUiPlanMetaMeasuredFields> = {},
 ): SettingsUiPlanMetaSnapshot => ({
+  ...buildPlanMetaBase(overrides),
+  powerIsMeasured: true,
+  controlledKw: 2,
+  uncontrolledKw: 2.2,
+  ...overrides,
+});
+
+/**
+ * The UNMEASURED wire meta: the silent-meter fail-closed cycle. The base
+ * fields and the bare signal — no headroom, no managed/background split —
+ * because the planner publishes none for it, and the hero draws nothing.
+ */
+export const buildUnmeasuredPlanMeta = (
+  overrides: Partial<SettingsUiPlanMetaSnapshotBase> = {},
+): SettingsUiPlanMetaSnapshot => ({
+  ...buildPlanMetaBase(overrides),
+  powerIsMeasured: false,
+});
+
+const buildPlanMetaBase = (
+  overrides: Partial<SettingsUiPlanMetaSnapshotBase>,
+): SettingsUiPlanMetaSnapshotBase => ({
   totalKw: 4.2,
   lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0),
   softLimitKw: 9.5,
@@ -26,12 +52,9 @@ export const buildPlanMeta = (
   budgetPaceKw: null,
   projectedExemptKw: null,
   softLimitSource: 'capacity',
-  headroomKw: 5.3,
   hardCapLimitKw: 12,
   usedKWh: 1.2,
   hourBudgetKWh: 9.5,
   minutesRemaining: 30,
-  controlledKw: 2,
-  uncontrolledKw: 2.2,
   ...overrides,
 });

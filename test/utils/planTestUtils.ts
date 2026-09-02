@@ -7,7 +7,13 @@ import type {
   TemperatureKind,
   SteppedPlanDevice,
 } from '../../lib/plan/planTypes';
-import { type ShedBehavior, withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
+import {
+  type PlanMeasuredMetaFields,
+  type PlanMetaBase,
+  type ShedBehavior,
+  withBinaryDiscriminant,
+  withTemperatureDiscriminant,
+} from '../../lib/plan/planTypes';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import type {
   DecoratedDeviceSnapshot,
@@ -22,7 +28,11 @@ import type {
   TargetCapabilitySnapshot,
   TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
-import type { SettingsUiPlanMetaSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type {
+  SettingsUiPlanMetaMeasuredFields,
+  SettingsUiPlanMetaSnapshot,
+  SettingsUiPlanMetaSnapshotBase,
+} from '../../packages/contracts/src/settingsUiApi';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isEvDevice } from '../../packages/shared-domain/src/evPlugState';
 import {
@@ -991,14 +1001,45 @@ export const steppedInputDevice = (
  * these numbers.
  */
 export const buildPlanMeta = (
-  overrides: Partial<DevicePlan['meta']> = {},
-): DevicePlan['meta'] => {
-  return buildPlanMetaFields(overrides);
+  overrides: Partial<PlanMetaBase & PlanMeasuredMetaFields> = {},
+): DevicePlan['meta'] => ({
+  ...buildPlanMetaBase(overrides),
+  powerIsMeasured: true,
+  headroomKw: 1,
+  shortfallBudgetHeadroomKw: 1,
+  hardCapHeadroomKw: 5,
+  controlledKw: 2,
+  uncontrolledKw: 3,
+  ...overrides,
+});
+
+/** Overrides a spec passes to {@link buildPlanMeta}: any base field, any measured figure. */
+export type PlanMetaOverrides = Partial<PlanMetaBase & PlanMeasuredMetaFields>;
+
+/**
+ * Narrow a plan meta to its measured variant for an assertion on a measured
+ * figure. Throws (fails the spec) on the unmeasured build, which carries none.
+ */
+export const expectMeasuredMeta = (meta: DevicePlan['meta']): PlanMetaBase & PlanMeasuredMetaFields => {
+  if (!meta.powerIsMeasured) throw new Error('expected a measured plan meta, got the unmeasured build');
+  return meta;
 };
 
-const buildPlanMetaFields = (
-  overrides: Partial<DevicePlan['meta']>,
+/**
+ * The UNMEASURED variant: the silent-meter fail-closed build. It carries the
+ * base fields only — no headroom, no managed/background split — because the
+ * planner publishes none on that build (`PlanMeasuredMetaFields`).
+ */
+export const buildUnmeasuredPlanMeta = (
+  overrides: Partial<PlanMetaBase> = {},
 ): DevicePlan['meta'] => ({
+  ...buildPlanMetaBase(overrides),
+  powerIsMeasured: false,
+});
+
+const buildPlanMetaBase = (
+  overrides: Partial<PlanMetaBase>,
+): PlanMetaBase => ({
   totalKw: 5,
   softLimitKw: 6,
   capacitySoftLimitKw: 6,
@@ -1006,19 +1047,13 @@ const buildPlanMetaFields = (
   budgetPaceKw: null,
   projectedExemptKw: null,
   softLimitSource: 'capacity',
-  headroomKw: 1,
-  powerIsMeasured: true,
   capacityShortfall: false,
-  shortfallBudgetHeadroomKw: 1,
   hardCapLimitKw: 10,
-  hardCapHeadroomKw: 5,
   hourlyBudgetExhausted: false,
   usedKWh: 1,
   budgetKWh: 6,
   capacityLimitKw: 10,
   minutesRemaining: 30,
-  controlledKw: 2,
-  uncontrolledKw: 3,
   lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0),
   dailyBudgetRemainingKWh: 0,
   dailyBudgetExceeded: false,
@@ -1033,21 +1068,28 @@ const buildPlanMetaFields = (
  * one is not a fixture for the other.
  */
 export const buildSettingsUiPlanMeta = (
-  overrides: Partial<SettingsUiPlanMetaSnapshot> = {},
+  overrides: Partial<SettingsUiPlanMetaSnapshotBase & SettingsUiPlanMetaMeasuredFields> = {},
 ): SettingsUiPlanMetaSnapshot => ({
+  ...buildSettingsUiPlanMetaBase(overrides),
+  powerIsMeasured: true,
+  controlledKw: 2,
+  uncontrolledKw: 3,
+  ...overrides,
+});
+
+const buildSettingsUiPlanMetaBase = (
+  overrides: Partial<SettingsUiPlanMetaSnapshotBase>,
+): SettingsUiPlanMetaSnapshotBase => ({
   totalKw: 5,
   softLimitKw: 6,
   capacitySoftLimitKw: 6,
   budgetPaceKw: null,
   projectedExemptKw: null,
   softLimitSource: 'capacity',
-  headroomKw: 1,
   hardCapLimitKw: 10,
   usedKWh: 1,
   hourBudgetKWh: 6,
   minutesRemaining: 30,
-  controlledKw: 2,
-  uncontrolledKw: 3,
   lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0),
   ...overrides,
 });

@@ -29,7 +29,6 @@ const PLAN_SNAPSHOT = {
     totalKw: -2.1,
     softLimitKw: 2.3,
     capacitySoftLimitKw: 2.3,
-    headroomKw: 4.4,
     hardCapLimitKw: 8,
   }),
   devices: [],

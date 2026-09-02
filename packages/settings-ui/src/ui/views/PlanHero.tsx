@@ -13,7 +13,6 @@ import {
   formatSafePaceSubline,
   type HeroHeadline,
   type HeroMeterMarkerLabels,
-  type PlanHeroMetaInput,
 } from '../../../../shared-domain/src/planHeroSummary.ts';
 import {
   HERO_INFO_TOOLTIP_TEXT,
@@ -519,7 +518,7 @@ const resolvePowerSubline = (
 ): string => {
   const sourceText = resolveSafePaceSourceText(softLimitSource);
   return headline.overSoftLimit
-    ? formatAboveSafePaceSubline(headline.headroomKw, headline.softLimitKw, sourceText)
+    ? formatAboveSafePaceSubline(headline.totalKw, headline.softLimitKw, sourceText)
     : formatSafePaceSubline(headline.softLimitKw, sourceText);
 };
 
@@ -772,12 +771,7 @@ export const PlanHero = ({
     ? resolveDisplayPlanDevices(plan, plan.devices ?? [], renderedAtMs, nowMs) as PlanDeviceSnapshot[]
     : [];
 
-  // A snapshot's meta always carries its reading now (a plan exists only
-  // behind the measurement gate), so the hero's only pre-render question is
-  // whether a plan has arrived at all. shared-domain sits inward of this and
-  // carries no "maybe there is no power" case.
-  const heroMeta: PlanHeroMetaInput | null = meta ?? null;
-  if (heroMeta === null || meta === undefined) {
+  if (meta === undefined) {
     return (
       <div class="plan-hero pels-hero" aria-live="polite" aria-busy="true">
         <div class="plan-hero__placeholder pels-skeleton-stack" aria-hidden="true">
@@ -790,7 +784,13 @@ export const PlanHero = ({
     );
   }
 
-  const headline = formatHeroHeadline(heroMeta);
+  // The hero's one question, asked once: was this cycle measured. When it was
+  // not, nothing computed is honest to draw — not a chip, not a subline, not a
+  // bar — and the global no-readings banner above is the whole surface (owner
+  // ruling 2026-09-02). shared-domain sits inward of this branch and carries no
+  // "maybe there is no power" case; only the measured variant fits its input.
+  if (!meta.powerIsMeasured) return null;
+  const headline = formatHeroHeadline(meta);
   const energyScale = computeEnergyBarScale(meta);
   const projectionTone = energyScale ? resolveProjectionTone(energyScale) : null;
   // The over-cap trajectory verdict is computed from the same four meta fields
@@ -798,15 +798,14 @@ export const PlanHero = ({
   // on the energy bar existing (`hourBudgetKWh > 0`). A zero-allocation
   // daily-budget hour hides the energy section but can still be on pace past
   // the cap; the chip and the widget must agree on that verdict.
-  // Reads the RESOLVED input, not the raw wire meta: `heroMeta.totalKw` is a
-  // number by construction (the view established there is a reading before
-  // building it), and `usedKWh` / `minutesRemaining` are required. The three
-  // `typeof` guards this replaces were the last place the hero re-asked whether
-  // the planner had produced its own required fields.
+  // Reads the narrowed meta: `totalKw` is a number by construction (a
+  // snapshot always carries its reading), and `usedKWh` / `minutesRemaining`
+  // are required. The three `typeof` guards this replaces were the last place
+  // the hero re-asked whether the planner had produced its own required fields.
   const projectedOverHardCap = isProjectedOverHardCap({
     projectedKWh: computeProjectedHourEnergyKWh({
       usedKWh: meta.usedKWh,
-      totalKw: heroMeta.totalKw,
+      totalKw: meta.totalKw,
       minutesRemainingInHour: meta.minutesRemaining,
     }),
     hardCapKWh: headline.hardLimitKw,

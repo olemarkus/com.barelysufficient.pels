@@ -170,12 +170,18 @@ const needsFacetSanitizing = (device: PlanDeviceSnapshot): boolean => (
 // realtime handler drops the push and logs, the scoped reader reports
 // `unavailable`.
 const REQUIRED_META_NUMBERS = [
-  'softLimitKw', 'capacitySoftLimitKw', 'headroomKw', 'hardCapLimitKw',
-  'usedKWh', 'hourBudgetKWh', 'minutesRemaining', 'controlledKw',
-  // The meter pair and its stamp: always numbers — a snapshot exists only
+  'softLimitKw', 'capacitySoftLimitKw', 'hardCapLimitKw',
+  'usedKWh', 'hourBudgetKWh', 'minutesRemaining',
+  // The meter total and its stamp: always numbers — a snapshot exists only
   // behind the measurement gate, so its cycle always carried a reading.
-  'totalKw', 'uncontrolledKw', 'lastPowerUpdateMs',
+  'totalKw', 'lastPowerUpdateMs',
 ] as const;
+
+// Present exactly when `powerIsMeasured` is true: the figures derived from
+// the total. An unmeasured meta carries none of them, and the hero draws
+// nothing computed from it — so the seam requires the discriminant itself
+// and, behind it, the numbers only on the measured variant.
+const MEASURED_META_NUMBERS = ['controlledKw', 'uncontrolledKw'] as const;
 
 // Required, but `null` is a real value: no daily-budget axis (the pace pair).
 const REQUIRED_META_NULLABLE_NUMBERS = [
@@ -190,7 +196,9 @@ const isValidPlanMeta = (value: unknown): boolean => {
     && REQUIRED_META_NULLABLE_NUMBERS.every(
       (key) => meta[key] === null || isFiniteNumber(meta[key]),
     )
-    && SOFT_LIMIT_SOURCES.has(meta.softLimitSource);
+    && SOFT_LIMIT_SOURCES.has(meta.softLimitSource)
+    && typeof meta.powerIsMeasured === 'boolean'
+    && (!meta.powerIsMeasured || MEASURED_META_NUMBERS.every((key) => isFiniteNumber(meta[key])));
 };
 
 export const parsePlanSnapshot = (value: unknown): PlanSnapshot | null => {

@@ -534,7 +534,8 @@ The standalone **Held-back devices** dashboard widget (formerly "Get power now")
 The **Available power** (headroom) dashboard widget shares vocabulary with the rest of the surfaces. Source of truth: `packages/shared-domain/src/headroomWidgetCopy.ts` (count + chip) and `packages/shared-domain/src/priceLevelChips.ts` (price pair).
 
 - **Held-back count** reads **"N held back"** (e.g. `2 held back`), not "N paused" or "N limited", so the count word matches the dedicated **Held-back devices** widget above. Helper: `headroomHeldBackLabel`.
-- **Not-current line** reads **"No recent power reading"** (`HEADROOM_WIDGET_COPY.notCurrentNote`): shown as the meta line when the widget's own aging of `pels_status.lastPowerUpdate` (or `powerKnown: false`) says the reading is not current — after a restart with a dead meter, the persisted blob is a previous run's. It REPLACES the available-power/held-back claims, and the bar/state-label tones go neutral with it: every current-state claim is withdrawn together, only the dimmed last-known numbers remain. Never "stale", never "data outdated" — say what happens.
+- **Not-current line** reads **"No recent power reading"** (`HEADROOM_WIDGET_COPY.notCurrentNote`): shown as the meta line when the widget's own aging of `pels_status.lastPowerUpdate` says the reading is not current — after a restart with a dead meter, the persisted blob is a previous run's. It REPLACES the available-power/held-back claims, and the bar/state-label tones go neutral with it: every current-state claim is withdrawn together, only the dimmed last-known numbers remain. Never "stale", never "data outdated" — say what happens.
+- **No-measurement empty state** reads **"No power readings"** (`HEADROOM_WIDGET_COPY.noReadingsSubtitle`), in the value slot beside "No data yet" / "Reopen the dashboard": shown when the status behind the tile was the silent-meter fail-closed pass (`powerKnown: false`, meter silent past the 10-minute shed timeout). The blob carries no headroom then and nothing derived from it is drawn, not even dimmed (owner ruling 2026-09-02); the bare lead matches the Overview's no-readings banner without its time qualifier.
 - **Price chip** uses the canonical **"Price low"** / **"Price high"** pair from `priceLevelChips.ts` — never the bare "Cheap" / "Expensive". The widget only ever renders the chip for `cheap` / `expensive` (`SHOW_PRICE_CHIP_FOR` in the renderer); for both `normal` and `unknown` the chip is hidden. The placeholder dash is only the `headroomPriceChipLabel` return value for `unknown` (so logging has a stable token) — the widget never paints it. The screen-reader phrase is the grammatical **"Price: low"** / **"Price: high"** (`headroomPriceAriaLabel`), never the broken "Price Cheap" / "Price Normal" form.
 
 ## Solar surplus vocabulary
@@ -1465,8 +1466,9 @@ rather than a generic failure. Three of them pin vocabulary:
 
 The global warning banner above the home-scope bar is the ONE staleness
 surface (owner ruling 2026-08-31): the hero renders the last real
-measurements with no freshness chip or age text, and the banner alone says
-readings stopped. Source of truth: `resolvePowerReadingsBannerContent`
+measurements with no freshness chip or age text until the shed timeout, then
+renders nothing at all (`notes/overview-hero-spec.md` § "Chip row", owner
+ruling 2026-09-02); the banner alone says readings stopped. Source of truth: `resolvePowerReadingsBannerContent`
 (`packages/shared-domain/src/powerReadingsBanner.ts`), fed by the power
 payload's producer-resolved readings fact (`never` | `received` + stamp) aged
 against the 60-second freshness threshold — the UI never re-derives the fact

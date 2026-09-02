@@ -642,76 +642,96 @@ type DevicePlanDeviceBase = {
   };
 };
 
+/**
+ * The fields every plan meta carries, measured or not: the limits the cycle
+ * was decided against, the hour's energy bookkeeping, the guard's shortfall
+ * state, and the reading's stamp.
+ *
+ * REQUIRED means the producer always writes it. `buildPlanMeta` copies most of
+ * this straight off `PlanContext`, where these are already non-optional — so
+ * an optional here was the guarantee being discarded one layer below the wire,
+ * and the wire then discarded it again. A consumer that hedges on one of these
+ * is defending against a state the planner cannot produce.
+ *
+ * OPTIONAL is reserved for genuine absence, and each one below says why.
+ */
+export type PlanMetaBase = {
+  /**
+   * The meter total behind this cycle. A plan exists only behind the
+   * measurement gate, so a reading always exists — on the one unmeasured build
+   * it is the CARRIED reading. What the number cannot say is whether the meter
+   * still confirms it; that is `powerIsMeasured`'s job, and every figure
+   * derived from this total lives behind that flag (`PlanMeasuredMetaFields`).
+   */
+  totalKw: number;
+  softLimitKw: number;
+  capacitySoftLimitKw: number;
+  // `null` = no daily budget configured. Always written (`?? null`).
+  dailySoftLimitKw: number | null;
+  budgetPaceKw: number | null;
+  projectedExemptKw: number | null;
+  // No `'both'`. `resolveSoftLimitSource` (`planBuilder.ts`) is total over
+  // these two — when the paces coincide within `SOFT_LIMIT_EPSILON` it answers
+  // `'capacity'`, not a third "they meet here" state — and `PlanContext`
+  // already types it `SoftLimitSource = 'capacity' | 'daily'`. The third
+  // member was declared here and on the wire with nothing able to produce it,
+  // which bought a dead branch in every consumer that switched on it.
+  softLimitSource: 'capacity' | 'daily';
+  capacityShortfall: boolean;
+  // Genuinely absent when there is no capacity guard: the threshold is the
+  // guard's own, and `getCapacityGuard()` returns `undefined` before wiring.
+  shortfallBudgetThresholdKw?: number;
+  // From `capacitySettings.limitKw`, a plain required `number` passed straight
+  // through — so neither `?` nor `| null` was ever right here.
+  hardCapLimitKw: number;
+  hourlyBudgetExhausted: boolean;
+  usedKWh: number;
+  budgetKWh: number;
+  capacityLimitKw: number;
+  minutesRemaining: number;
+  // Genuinely absent when the hour has no bucket data yet
+  // (`resolveHourlyUsageSplit` returns `{}`).
+  hourControlledKWh?: number;
+  hourUncontrolledKWh?: number;
+  dailyBudgetRemainingKWh: number;
+  dailyBudgetExceeded: boolean;
+  // Genuinely absent when the daily budget is disabled or the bucket index is
+  // out of range (`extractDailyBudgetHourKWh`).
+  dailyBudgetHourKWh?: number;
+  lastPowerUpdateMs: number;
+};
+
+/**
+ * The power-derived figures exist ONLY on a measured cycle.
+ *
+ * On the one unmeasured build — the silent-meter fail-closed pass — there is
+ * no headroom, no managed/background split and no cap distance to publish. A
+ * number computed against a reading the meter stopped confirming is not a
+ * measurement, and publishing one as if it were is how the Overview hero came
+ * to say "Above safe pace" beside a bar drawn under the tick: the pass used to
+ * write a sentinel `-1` headroom here, and every consumer did arithmetic on it.
+ * Owner ruling 2026-09-02: never encode "unmeasured" as a magic number; carry
+ * the signal, and let each consumer seam branch on it exactly once. Inward of
+ * that branch a consumer holds a measured meta and reads it without hedging.
+ */
+export type PlanMeasuredMetaFields = {
+  powerIsMeasured: true;
+  headroomKw: number;
+  shortfallBudgetHeadroomKw: number;
+  hardCapHeadroomKw: number;
+  controlledKw: number;
+  uncontrolledKw: number;
+};
+
+export type PlanUnmeasuredMetaFields = {
+  powerIsMeasured: false;
+};
+
+export type PlanMeta = PlanMetaBase & (PlanMeasuredMetaFields | PlanUnmeasuredMetaFields);
+
 export type DevicePlan = {
   generatedAtMs?: number;
-  /**
-   * REQUIRED means the producer always writes it. `buildPlanMeta` copies most of
-   * this straight off `PlanContext`, where these are already non-optional — so
-   * an optional here was the guarantee being discarded one layer below the wire,
-   * and the wire then discarded it again. A consumer that hedges on one of these
-   * is defending against a state the planner cannot produce.
-   *
-   * OPTIONAL is reserved for genuine absence, and each one below says why.
-   */
-  meta: {
-    // NULLABLE ONLY AS A RESIDUE — due to be a plain `number`.
-    //
-    // It meant "no meter reading this cycle": the guard held `null` until its
-    // meter's first sample, and again between an in-place meter swap and the
-    // new meter's first reading. The build gate (`lib/power/powerMeasurementGate.ts`)
-    // now refuses to build a plan in either state, so no plan can carry a null
-    // total for any reason a home can actually be in — a raw untrusted total has
-    // no business on a plan type in the first place.
-    totalKw: number;
-    softLimitKw: number;
-    capacitySoftLimitKw: number;
-    // `null` = no daily budget configured. Always written (`?? null`).
-    dailySoftLimitKw: number | null;
-    budgetPaceKw: number | null;
-    projectedExemptKw: number | null;
-    // No `'both'`. `resolveSoftLimitSource` (`planBuilder.ts`) is total over
-    // these two — when the paces coincide within `SOFT_LIMIT_EPSILON` it answers
-    // `'capacity'`, not a third "they meet here" state — and `PlanContext`
-    // already types it `SoftLimitSource = 'capacity' | 'daily'`. The third
-    // member was declared here and on the wire with nothing able to produce it,
-    // which bought a dead branch in every consumer that switched on it.
-    softLimitSource: 'capacity' | 'daily';
-    headroomKw: number;
-    /**
-     * Producer-resolved: did this cycle have a measurement. Downstream layers
-     * that gate a positive (turn-on) action read THIS — the plan carries no
-     * freshness label at all any more (staleness is a UI-only banner fact,
-     * owner ruling 2026-08-31).
-     */
-    powerIsMeasured: boolean;
-    capacityShortfall: boolean;
-    // Genuinely absent when there is no capacity guard: the threshold is the
-    // guard's own, and `getCapacityGuard()` returns `undefined` before wiring.
-    shortfallBudgetThresholdKw?: number;
-    shortfallBudgetHeadroomKw: number;
-    // From `capacitySettings.limitKw`, a plain required `number` passed straight
-    // through — so neither `?` nor `| null` was ever right here.
-    hardCapLimitKw: number;
-    hardCapHeadroomKw: number;
-    hourlyBudgetExhausted: boolean;
-    usedKWh: number;
-    budgetKWh: number;
-    capacityLimitKw: number;
-    minutesRemaining: number;
-    controlledKw: number;
-    uncontrolledKw: number;
-    // Genuinely absent when the hour has no bucket data yet
-    // (`resolveHourlyUsageSplit` returns `{}`).
-    hourControlledKWh?: number;
-    hourUncontrolledKWh?: number;
-    dailyBudgetRemainingKWh: number;
-    dailyBudgetExceeded: boolean;
-    // Genuinely absent when the daily budget is disabled or the bucket index is
-    // out of range (`extractDailyBudgetHourKWh`).
-    dailyBudgetHourKWh?: number;
-    // Genuinely absent before the power tracker's first timestamp.
-    lastPowerUpdateMs: number;
-  };
+  meta: PlanMeta;
   devices: DevicePlanDevice[];
 };
 

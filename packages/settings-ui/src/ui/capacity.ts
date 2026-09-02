@@ -65,6 +65,7 @@ import { logSettingsError } from './logging.ts';
 import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
+import { isPlanUnmeasured, onPlanMeasurementChange } from './planMeasurementSignal.ts';
 
 export type PowerSource = 'flow' | 'homey_energy';
 
@@ -386,6 +387,7 @@ const updateStaleDataBanner = (readings: PowerReadingsFact) => {
   const content = resolvePowerReadingsBannerContent({
     readings,
     nowMs: Date.now(),
+    planUnmeasured: isPlanUnmeasured(),
     // The select mirrors the persisted source (and a drafted Homey Energy
     // switch, where the picker hint is exactly right).
     source: normalizePowerSource(settingsPowerSourceSelect?.value),
@@ -400,6 +402,9 @@ const updateStaleDataBanner = (readings: PowerReadingsFact) => {
 export const refreshStaleDataBanner = (): void => {
   if (lastBannerReadings !== undefined) updateStaleDataBanner(lastBannerReadings);
 };
+// The plan render reports whether the current plan was measured; a flip
+// re-renders the banner at once rather than on the next refresh tick.
+onPlanMeasurementChange(refreshStaleDataBanner);
 
 export const loadStaleDataStatus = async () => {
   const power = await getPowerReadModel();

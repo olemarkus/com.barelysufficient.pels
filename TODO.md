@@ -832,6 +832,10 @@ What remains open is below.*
       speaks for: either feed it from the ACTIVE home scope's tracker timestamp (scoped read
       carries it), or add a per-area arm to the banner copy. Done when silencing an area's meter
       for >60 s shows a user-visible indication while Main stays fresh, pinned by a UI test.
+      Sharper since 2026-09-02: past the shed timeout the scoped hero renders NOTHING for an
+      unmeasured cycle (`PlanHero.tsx`, owner ruling — no computed figure is drawn), so a silent
+      area now shows only `Limited` cards under no banner and no hero; the banner arm is the
+      only surface left to carry that state.
 
 - [ ] **A fenced meter-silence shed pass logs `meter_silence_shed_pass_completed` although it
       touched nothing.** `setup/powerSampleFreshnessEscalation.ts` latches the pass when

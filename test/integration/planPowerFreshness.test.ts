@@ -11,7 +11,7 @@ import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
@@ -256,7 +256,7 @@ describe('planner behavior under stale power freshness states', () => {
     expect(plan.devices[0]?.plannedState).toBe('shed');
   });
 
-  it('sheds on the fail-closed pass and clears once a fresh sample returns', async () => {
+  it('sheds on the fail-closed pass, publishes no headroom for it, and clears once a fresh sample returns', async () => {
     const tracker: { lastTimestamp: number; lastPowerW?: number } = {
       lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
       lastPowerW: 2_000,
@@ -264,16 +264,21 @@ describe('planner behavior under stale power freshness states', () => {
     const builder = buildBuilder({ tracker });
 
     const failClosedPlan = await builder.buildDevicePlanSnapshot([buildDevice()]);
-    expect(failClosedPlan.meta.headroomKw).toBe(-1);
+    // The unmeasured build carries the signal and NO derived figure: no
+    // headroom, no managed/background split, nothing a consumer could do
+    // arithmetic on (owner ruling 2026-09-02).
+    expect(failClosedPlan.meta.powerIsMeasured).toBe(false);
+    expect(failClosedPlan.meta).not.toHaveProperty('headroomKw');
+    expect(failClosedPlan.meta).not.toHaveProperty('controlledKw');
+    expect(failClosedPlan.meta).not.toHaveProperty('hardCapHeadroomKw');
     expect(failClosedPlan.devices[0]?.plannedState).toBe('shed');
 
     tracker.lastTimestamp = Date.now();
     tracker.lastPowerW = 2 * 1000;
 
     const recoveredPlan = await builder.buildDevicePlanSnapshot([buildDevice()]);
-    // A real difference again, not the synthesized -1. The exact figure moves
-    // with the dynamic soft limit, which the 10 minutes spent reaching
-    // fail-closed necessarily advanced.
-    expect(recoveredPlan.meta.headroomKw).toBeGreaterThan(0);
+    // A real difference again. The exact figure moves with the dynamic soft
+    // limit, which the 10 minutes spent reaching fail-closed necessarily advanced.
+    expect(expectMeasuredMeta(recoveredPlan.meta).headroomKw).toBeGreaterThan(0);
   });
 });

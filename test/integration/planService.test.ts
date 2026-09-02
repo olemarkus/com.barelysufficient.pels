@@ -26,7 +26,7 @@ import {
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
-import { buildPlanMeta, openPlanBuildGate, steppedInputDevice, withFixtureResidualKw } from '../utils/planTestUtils';
+import { buildPlanMeta, openPlanBuildGate, steppedInputDevice, withFixtureResidualKw, type PlanMetaOverrides } from '../utils/planTestUtils';
 import type { BinaryControlObservation } from '../../packages/contracts/src/types';
 import * as pelsStatusModule from '../../lib/plan/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../../lib/utils/planRebuildTrace';
@@ -58,7 +58,7 @@ const unavailableBinaryConfirmations = (
 const buildPlan = (
   currentTarget: number,
   reason: string | DeviceReason,
-  metaOverrides: Partial<DevicePlan['meta']> = {},
+  metaOverrides: PlanMetaOverrides = {},
   deviceOverrides: Partial<DevicePlan['devices'][number]>
     & BinaryControlDiscriminantProbe
     & TemperatureDiscriminantProbe
@@ -866,7 +866,9 @@ describe('PlanService', () => {
       meta: expect.objectContaining({
         totalKw: 6.2,
         softLimitKw: 5,
-        headroomKw: -1.2000000000000002,
+        // The wire carries the signal, never a headroom: the hero derives its
+        // above-safe-pace state from the two numbers it prints.
+        powerIsMeasured: true,
         hardCapLimitKw: 7,
         usedKWh: 1.23,
         // Proves BOTH hour-budget inputs were rounded and the tighter one won:

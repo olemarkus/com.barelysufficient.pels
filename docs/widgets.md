@@ -22,7 +22,7 @@ The widget shows:
 - The number of devices PELS is holding back, when any are.
 - A price-level chip when prices are cheap or expensive (hidden when prices are normal).
 
-It refreshes about every 10 seconds. If no reading has arrived recently — for example after a restart, during a meter outage, or in a quiet stretch between Flow reports on the Flow power source — the widget keeps showing the last known reading (dimmed) rather than blanking, but it stops asserting the present: the coloured bar and state label go neutral and the bottom line reads **No recent power reading** instead of available power and held-back counts, so figures from before the gap are never presented as live. A new reading returns it to normal on its own.
+It refreshes about every 10 seconds. If no reading has arrived recently — for example after a restart, during a meter outage, or in a quiet stretch between Flow reports on the Flow power source — the widget keeps showing the last known reading (dimmed) rather than blanking, but it stops asserting the present: the coloured bar and state label go neutral and the bottom line reads **No recent power reading** instead of available power and held-back counts, so figures from before the gap are never presented as live. Once the meter has been silent long enough for PELS to limit devices on that account (about ten minutes), the tile stops showing the old figures altogether and reads **No power readings** until readings return. A new reading returns it to normal on its own.
 
 ## Budget and Price
 

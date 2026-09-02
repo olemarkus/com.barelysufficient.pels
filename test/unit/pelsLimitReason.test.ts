@@ -5,7 +5,7 @@ import type { DevicePlan } from '../../lib/plan/planTypes';
 import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
-import { buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
+import { buildPlanMeta, withFixtureResidualKw, buildUnmeasuredPlanMeta, type PlanMetaOverrides } from '../utils/planTestUtils';
 
 describe('pels status limit reason', () => {
   const baseDevice = {
@@ -33,15 +33,17 @@ describe('pels status limit reason', () => {
     softLimitSource: 'capacity' | 'daily';
     reason: string | DeviceReason;
     headroomKw?: number;
-    /** The producer-resolved flag; false = the -1 headroom is the fail-closed sentinel. */
+    /** The producer-resolved flag; false = the unmeasured fail-closed build, which carries no headroom. */
     powerIsMeasured?: boolean;
   }): DevicePlan => ({
-    meta: buildPlanMeta({
-      totalKw: 4.2,
-      softLimitKw: 6,
-      softLimitSource: params.softLimitSource,
-      headroomKw: params.headroomKw ?? 1.8,
-      powerIsMeasured: params.powerIsMeasured ?? true}),
+    meta: params.powerIsMeasured === false
+      ? buildUnmeasuredPlanMeta({ totalKw: 4.2, softLimitKw: 6, softLimitSource: params.softLimitSource })
+      : buildPlanMeta({
+        totalKw: 4.2,
+        softLimitKw: 6,
+        softLimitSource: params.softLimitSource,
+        headroomKw: params.headroomKw ?? 1.8,
+      }),
     devices: [
       withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
         recordRestoreOnTargetApply: false,
@@ -98,13 +100,14 @@ describe('pels status limit reason', () => {
     expect(status.devicesOff).toBe(1);
   });
 
-  it('reports none for synthetic fail-closed headroom without known power', () => {
+  it('reports none for the unmeasured fail-closed build, and publishes no measured figure for it', () => {
     const plan = buildPlan({
       softLimitSource: 'capacity',
       reason: 'keep',
-      headroomKw: -1,
-      // No measurement this cycle, so the -1 is the fail-closed SENTINEL, not a
-      // real negative headroom — the status must not read it as a limit.
+      // No measurement this cycle: the meta carries no headroom at all, so the
+      // status has nothing to read as a limit — and the persisted blob must
+      // omit every measured figure rather than write a stand-in number an
+      // automation could compare against (owner ruling 2026-09-02).
       powerIsMeasured: false,
     });
 
@@ -115,6 +118,11 @@ describe('pels status limit reason', () => {
     });
 
     expect(status.limitReason).toBe('none');
+    expect(status.powerKnown).toBe(false);
+    expect(status.powerNowKw).toBeNull();
+    for (const key of ['headroomKw', 'shortfallBudgetHeadroomKw', 'hardCapHeadroomKw', 'controlledKw', 'uncontrolledKw']) {
+      expect(status).not.toHaveProperty(key);
+    }
   });
 
   it('does not count inactive EV devices as shed or active', () => {
@@ -214,7 +222,7 @@ describe('pels status projected-over-hard-cap flag', () => {
   // Takes a PARTIAL meta and completes it via the shared fixture: the plan meta
   // is required almost throughout now, and each case here is about two or three
   // numbers, not about spelling a full meta.
-  const statusFor = (meta: Partial<DevicePlan['meta']>) => buildPelsStatus({
+  const statusFor = (meta: PlanMetaOverrides) => buildPelsStatus({
     plan: buildPlanWithMeta(buildPlanMeta(meta)),
     priceLevel: PriceLevel.NORMAL,
     lastPowerUpdate: Date.UTC(2026, 6, 5, 12, 0, 0),

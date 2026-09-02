@@ -1,6 +1,11 @@
 import type { PelsStatus } from './pelsStatus';
 import type { PriceLevel } from '../price/priceLevels';
-import type { DevicePlan } from './planTypes';
+import type {
+  DevicePlan,
+  PlanMeasuredMetaFields,
+  PlanMeta,
+  PlanUnmeasuredMetaFields,
+} from './planTypes';
 
 const PLAN_META_KW_STEP = 0.1;
 const PLAN_META_KWH_STEP = 0.01;
@@ -62,6 +67,23 @@ const normalizeDailyPaceComposition = (
   };
 };
 
+// The measured figures, rounded — or nothing, on the unmeasured build. The one
+// branch on the signal this normalizer makes; it keeps the meta's variant intact.
+const normalizeMeasuredMetaFields = (
+  meta: PlanMeta,
+): PlanMeasuredMetaFields | PlanUnmeasuredMetaFields => (
+  meta.powerIsMeasured
+    ? {
+      powerIsMeasured: true,
+      headroomKw: roundTo(meta.headroomKw, PLAN_META_KW_STEP),
+      shortfallBudgetHeadroomKw: roundTo(meta.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
+      hardCapHeadroomKw: roundTo(meta.hardCapHeadroomKw, PLAN_META_KW_STEP),
+      controlledKw: roundTo(meta.controlledKw, PLAN_META_KW_STEP),
+      uncontrolledKw: roundTo(meta.uncontrolledKw, PLAN_META_KW_STEP),
+    }
+    : { powerIsMeasured: false }
+);
+
 export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] => {
   const dailyPaceComposition = normalizeDailyPaceComposition(meta);
   return {
@@ -73,21 +95,17 @@ export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] 
     softLimitKw: roundTo(meta.softLimitKw, PLAN_META_KW_STEP),
     capacitySoftLimitKw: roundTo(meta.capacitySoftLimitKw, PLAN_META_KW_STEP),
     ...dailyPaceComposition,
-    headroomKw: roundTo(meta.headroomKw, PLAN_META_KW_STEP),
     shortfallBudgetThresholdKw: roundTo(meta.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),
-    shortfallBudgetHeadroomKw: roundTo(meta.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
     hardCapLimitKw: roundTo(meta.hardCapLimitKw, PLAN_META_KW_STEP),
-    hardCapHeadroomKw: roundTo(meta.hardCapHeadroomKw, PLAN_META_KW_STEP),
     usedKWh: roundTo(meta.usedKWh, PLAN_META_KWH_STEP),
     budgetKWh: roundTo(meta.budgetKWh, PLAN_META_KWH_STEP),
     capacityLimitKw: roundTo(meta.capacityLimitKw, PLAN_META_KW_STEP),
     minutesRemaining: normalizeMinutesRemaining(meta.minutesRemaining),
-    controlledKw: roundTo(meta.controlledKw, PLAN_META_KW_STEP),
-    uncontrolledKw: roundTo(meta.uncontrolledKw, PLAN_META_KW_STEP),
     hourControlledKWh: roundTo(meta.hourControlledKWh, PLAN_META_KWH_STEP),
     hourUncontrolledKWh: roundTo(meta.hourUncontrolledKWh, PLAN_META_KWH_STEP),
     dailyBudgetRemainingKWh: roundTo(meta.dailyBudgetRemainingKWh, PLAN_META_KWH_STEP),
     dailyBudgetHourKWh: roundTo(meta.dailyBudgetHourKWh, PLAN_META_KWH_STEP),
+    ...normalizeMeasuredMetaFields(meta),
   };
 };
 

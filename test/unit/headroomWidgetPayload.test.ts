@@ -27,12 +27,17 @@ describe('buildHeadroomWidgetPayload', () => {
     expect(payload).toEqual({ state: 'empty', subtitle: EMPTY_SUBTITLE_DEFAULT });
   });
 
-  test('renders last-known data with stale flag when power not yet known', () => {
+  test('a status the planner did not measure renders empty, naming the cause — never a derived figure', () => {
+    // `powerKnown: false` is the silent-meter fail-closed status. The blob
+    // carries no headroom for it, and even when an older blob does, nothing
+    // derived is honest to draw (owner ruling 2026-09-02) — this used to render
+    // the last-known figures dimmed, with `currentKw` computed from a headroom
+    // the planner had synthesized.
     const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { powerKnown: false, headroomKw: 1, hourlyLimitKw: 7, lastPowerUpdate: NOW - 5_000 } },
+      status: { state: 'live', status: { powerKnown: false, hourlyLimitKw: 7, lastPowerUpdate: NOW - 5_000 } },
       nowMs: NOW,
     });
-    expect(payload).toMatchObject({ state: 'ready', currentKw: 6, hourBudgetKw: 7, stale: true });
+    expect(payload).toEqual({ state: 'empty', subtitle: 'No power readings' });
   });
 
   test('derives current draw from hourly limit minus headroom', () => {
