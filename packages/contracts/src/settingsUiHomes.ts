@@ -67,8 +67,8 @@ export type SettingsUiHomesSaveRequest =
  * - `meter_in_use` — identifies the meter area that already owns a requested
  *   Main-home meter.
  * - `main_meter_required` — the Main home has no whole-home meter persisted
- *   (a legacy shape the boot-time migration defers on, or a degraded read of
- *   it), so an area save cannot prove which meter belongs to Main. One
+ *   (a legacy Automatic install that has not picked one yet, or a degraded
+ *   read of it), so an area save cannot prove which meter belongs to Main. One
  *   direction only: the picker can no longer express "no meter", so only the
  *   area save path produces this.
  * - `homey_energy_required` — meter areas and the Flow power source are

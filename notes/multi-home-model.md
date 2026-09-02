@@ -30,10 +30,11 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   every meter area. The serialized `ui_homes_save` seam requires an explicit Main meter before an
   area can run and refuses assigning that meter to an area. There is no Automatic selection any
   more — the save seam cannot express one (`set_power_source` persists a named meter or the Flow
-  source, nothing else), and the boot-time meter-authority migration retired the persisted-null
-  legacy shape — so a valid current configuration cannot assign one explicit meter to both Main
-  and an area, and "Main with no resolvable meter plus active areas" is only the deferred-legacy
-  shape the migration retries each boot. Legacy, stale, or externally malformed cross-store state
+  source, nothing else) — so a valid current configuration cannot assign one explicit meter to
+  both Main and an area, and "Main with no resolvable meter plus active areas" is only a legacy
+  Automatic shape whose owner has not picked a meter yet: Main stays fenced and the no-readings
+  banner names the remedy, and nothing rewrites the key on their behalf. Legacy, stale, or
+  externally malformed cross-store state
   still fails closed at the producer-owned Main actuation predicate until repaired.
 - **Sample provenance:** a Main whole-home sample exists only for the explicitly persisted meter:
   the producer extracts that device's reading from the Homey Energy payload and stamps the sample
@@ -85,9 +86,8 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   (including Homey's transient `null`) classifies as `unavailable`, which
   consumers treat as a no-op, never as a different selection. The old P1
   (a transient `null` momentarily read as the stored-Automatic arm) dissolved
-  with the Automatic selection itself; only the boot-time migration still
-  discriminates stored-null, and it does so behind its own confirm-twice
-  guards (`setup/mainMeterAuthorityMigration.ts`).
+  with the Automatic selection itself; nothing in the runtime discriminates
+  stored-null any more.
 - Constructor defaults are not ownership evidence. Main and sub-home control
   stay fenced until both homes and pin stores have each produced a
   non-suspect read; active meter areas additionally require a committed zone

@@ -138,7 +138,7 @@ const writeClassified = (params: {
  * (unwritten / present / suspect — see {@link HomeStoreReadResult}); writes
  * refuse implausible payloads ({@link HomeStoreWriteRefusedError}), then
  * replace the whole value and establish the marker before reporting success.
- * Used by membership, settings, migration, and the per-home runtime registry.
+ * Used by membership, settings, and the per-home runtime registry.
  */
 export const createHomesStore = (homey: Homey.App['homey']): HomesStore => ({
   read(): HomeStoreReadResult<HomeConfig> {

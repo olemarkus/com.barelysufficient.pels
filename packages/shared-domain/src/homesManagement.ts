@@ -258,7 +258,7 @@ export const validateSubHomeDraft = (params: {
   zones: HomesZoneTree;
   /** The picked meter's zone when known; `null` disables the subtree warning. */
   meterZoneId: string | null;
-  /** Main home's explicit meter; `null` means Automatic and cannot identity-clash. */
+  /** Main home's explicit meter; `null` means not chosen yet and cannot identity-clash. */
   mainMeterDeviceId?: string | null;
 }): SubHomeDraftValidation => {
   const {
@@ -325,14 +325,14 @@ export const previewAreaDeviceCount = (params: {
 
 /**
  * Whether to prompt for the Main home's own meter: once any meter area exists,
- * Automatic cannot prove which physical meter belongs to the Main home. Pure
- * display predicate — a UX nudge, never a gate.
+ * only a chosen meter can prove which physical meter belongs to the Main home.
+ * Pure display predicate — a UX nudge, never a gate.
  */
 export const shouldPromptMainHomeMeter = (params: {
   subHomeCount: number;
   /** Normalized `power_source` setting (`'homey_energy'` / `'flow'`), `null` when unknown. */
   powerSource: string | null;
-  /** Normalized `homey_energy_meter_device_id` setting; `null` = Automatic/unset. */
+  /** Normalized `homey_energy_meter_device_id` setting; `null` = not chosen yet. */
   mainMeterDeviceId: string | null;
 }): boolean => (
   params.subHomeCount > 0

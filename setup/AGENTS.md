@@ -27,9 +27,13 @@
   Where `null` is itself a stored value, the read value cannot distinguish stored-null from a
   transient miss. The key list can prove only whether the key is written; a listed key plus a
   `null` value still needs producer-owned last-good state, a companion marker, or a bounded grace
-  policy. (The Main meter's retired "Automatic" was the canonical case; since the boot-time
-  meter-authority migration, `mainMeterSettings.ts` reads every non-string as semantic
-  `unavailable`.) See the outstanding TODO for `homeRuntime/homeOperatingMode.ts`, which still
+  policy. (The Main meter's retired "Automatic" was the canonical case; `mainMeterSettings.ts`
+  now reads every non-string as semantic `unavailable`, and a legacy stored-null install is
+  re-pointed by its owner in Limits & safety. There is deliberately no boot-time migration
+  rewriting that key: it would decide the one setting the whole app hangs on without the owner,
+  and the last one raced the power tracker's first persist on every fresh install; the commit
+  that deleted it records the reproduction.) See the
+  outstanding TODO for `homeRuntime/homeOperatingMode.ts`, which still
   gates on `undefined` alone.
 - **Configured meter ownership and sampled-meter provenance are different facts.** The
   `ui_homes_save` seam requires an explicit Main meter before any meter area can run and refuses

@@ -31,7 +31,6 @@ import {
   loadTemperatureControlPolicySettingsForApp,
 } from './appSettingsHelpers';
 import { migrateManagedDevices } from './appManagedDeviceMigration';
-import { runMainMeterAuthorityMigration } from './mainMeterAuthorityMigration';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import { runBootMigrations } from './appBootMigrations';
 import { registerAppFlowCards, toObservedStateSeed } from './appInit';
@@ -228,7 +227,6 @@ abstract class AppRuntimeApi extends Base {
   protected runStartupSettingsMigrations(): void {
     migrateManagedDevices({ homey: this.homey });
     runBootMigrations({ homey: this.homey });
-    runMainMeterAuthorityMigration({ homey: this.homey, timers: this.timers });
   }
   public areFlowBackedCardsAvailable(): boolean { return this.flowBacked.areFlowBackedCardsAvailable(); }
   public loadCapacitySettings = (): void => {

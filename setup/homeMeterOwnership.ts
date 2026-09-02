@@ -73,9 +73,9 @@ const findMeterOwnershipRefusal = (
       ? { ok: false, reason: 'invalid' }
       : null;
   }
-  // `unavailable` covers both the legacy no-meter shape the boot-time
-  // migration defers on (nothing nameable to adopt) and a transient read
-  // miss of a configured meter. The picker remedy is actionable in both —
+  // `unavailable` covers both a legacy Automatic install whose owner has not
+  // picked a meter yet (nothing rewrites that key for them) and a transient
+  // read miss of a configured meter. The picker remedy is actionable in both —
   // re-picking shows the truth on a transient miss — where a `degraded`
   // "try again" would loop forever on the persistent legacy shape.
   return { ok: false, reason: 'main_meter_required' };

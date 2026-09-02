@@ -226,14 +226,14 @@ export class MainMeterAuthority {
    *   without it, a leftover selection from an earlier `homey_energy` session
    *   would latch a phantom fence from any caller that ever reached this seam.
    * - `=== undefined` is load-bearing. `lastResolvedMainMeterDeviceId` is the
-   *   last AUTHORITATIVE configured selection: `null` is a proven Automatic, a
-   *   string a proven explicit id, `undefined` never read at all. Before any
+   *   last AUTHORITATIVE configured selection: a string is a proven explicit
+   *   id, `undefined` never read at all. Before any
    *   authoritative read the sampled clause has never been the operative fence
    *   (`resolve()` returns before `readMainMeterSelection()` on flow or an
    *   unavailable source, and `isMainHomeActuationFenced` returns before
    *   `resolveForActuation` while ownership is unready or a generation is
    *   pending), so latching here would request recovery for a fence that never
-   *   closed. A PROVEN selection — Automatic OR explicit — keeps the clause
+   *   closed. A PROVEN selection keeps the clause
    *   live: right after a switch away from a colliding pick the stored sample
    *   still carries the area's watts, and the seam must not reopen on the new
    *   selection alone (watts-before-fence, see `resolve()`).

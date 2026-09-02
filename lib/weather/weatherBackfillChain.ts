@@ -75,6 +75,10 @@ export class WeatherBackfillChain {
   private meterRunning = false;
   private controlledRunning = false;
   private meterSettingsRetryTimer?: ReturnType<typeof setTimeout>;
+  // A legacy install with no chosen meter stays `unavailable` until its owner
+  // picks one, and the 60 s retry keeps running for as long as it does; log
+  // the deferral once per unavailable stretch, not once per retry.
+  private meterSelectionUnavailableLogged = false;
 
   constructor(private readonly host: WeatherBackfillHost) {}
 
@@ -264,10 +268,14 @@ export class WeatherBackfillChain {
     // election.
     const mainMeter = this.deps.readMainMeterSelection();
     if (mainMeter.state === 'unavailable') {
-      this.deps.logger.info({ event: 'weather_meter_backfill_deferred_selection_unavailable' });
+      if (!this.meterSelectionUnavailableLogged) {
+        this.deps.logger.info({ event: 'weather_meter_backfill_deferred_selection_unavailable' });
+      }
+      this.meterSelectionUnavailableLogged = true;
       this.scheduleMeterSettingsRetry();
       return;
     }
+    this.meterSelectionUnavailableLogged = false;
     this.meterRunning = true;
     const generationAtLaunch = this.host.currentRunGeneration();
     void resolveMeterDailyKwh({

@@ -3,9 +3,11 @@ export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
 export const CAPACITY_DRY_RUN = 'capacity_dry_run';
 export const POWER_SOURCE = 'power_source';
 // Explicit whole-home meter for the homey_energy power source. Device id
-// string; absent/empty = automatic (Homey's marked whole-home cumulative
-// item). Mirror of HOMEY_ENERGY_METER_DEVICE_ID in lib/utils/settingsKeys.ts —
-// keep both in sync (the settings UI can't import lib).
+// string; any non-string (never written, a legacy stored-null Automatic,
+// junk) reads as `unavailable` and the owner picks a meter under Limits &
+// safety — nothing falls back to Homey's marked cumulative item. Mirror of
+// HOMEY_ENERGY_METER_DEVICE_ID in lib/utils/settingsKeys.ts — keep both in
+// sync (the settings UI can't import lib).
 export const HOMEY_ENERGY_METER_DEVICE_ID = 'homey_energy_meter_device_id';
 // Home-scopable at runtime: a meter area may pin its own active mode under
 // `operating_mode:<homeId>` (absent = the area follows this global key). Mirror

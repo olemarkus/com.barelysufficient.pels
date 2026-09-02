@@ -833,14 +833,18 @@ What remains open is below.*
       carries it), or add a per-area arm to the banner copy. Done when silencing an area's meter
       for >60 s shows a user-visible indication while Main stays fresh, pinned by a UI test.
 
-- [ ] **The meter-authority migration's in-flight retry chain is not fenced at teardown.**
-      `runMainMeterAuthorityMigration` (`setup/mainMeterAuthorityMigration.ts`) schedules retries
-      through the `TimerRegistry` (cleared at `onUninit`), but a `readLiveEnergyReport` promise
-      already in flight when the app tears down still runs its continuation and can write
-      settings through the ownership seam after uninit. Fix: give the migration a disposed
-      check (fed from the registry or an explicit fence) consulted at the top of the `.then`
-      continuation, so a post-uninit resolve decides nothing. Done when a test that resolves
-      the report read after teardown observes zero settings writes and no marker.
+- [ ] **A fenced meter-silence shed pass logs `meter_silence_shed_pass_completed` although it
+      touched nothing.** `setup/powerSampleFreshnessEscalation.ts` latches the pass when
+      `deviceApplyFailureCount === 0`, but that counter only counts throws
+      (`lib/executor/planExecutorDispatch.ts`), and the Main-home actuation fence answers
+      `requested: false` for every device without throwing (`setup/appInit/createPlanEngine.ts`).
+      A legacy Automatic install (Homey Energy source, no meter chosen) sits behind that fence
+      until its owner picks a meter, so its log says "shed pass completed" while every device kept
+      its state. Fix: let the actuation result carry a fenced/no-op count distinct from failures,
+      withhold the completed latch (or log a distinct `meter_silence_shed_pass_fenced` event) when
+      nothing was requested. Done when an e2e booting the stored-null meter shape observes the
+      fenced event and no `meter_silence_shed_pass_completed`. Source: pels-runtime-reality on the
+      migration-removal PR (2026-09-02). [P2]
 
 - [ ] **The zone tree is refetched on every snapshot refresh — 538 Homey round-trips per 12 h for
       an answer that changed zero times — and the obvious fix (a refresh interval) is unsafe as
@@ -3460,17 +3464,18 @@ non-blocking follow-ups.*
       nothing, and the only escape (delete an area) is not something the message suggests. Source:
       multi-home finishing train, area-config invariants PR review. [P3]
 
-- [ ] **A permanently implausible pins blob makes Automatic refuse with a "try again" that never
-      comes true.** `readMultiHomeActivation` resolves activation only from a diagnostics snapshot the
+- [ ] **A permanently implausible pins blob makes the Whole-home meter pick refuse with a "try
+      again" that never comes true.** `readMultiHomeActivation` resolves activation only from a diagnostics snapshot the
       membership service can vouch for, sharing `isHomesConfigDegraded` with the read payload and the
       area write so there is one degraded condition. That predicate is true when EITHER
       `homes_config` or `device_home_assignments` classified suspect, and activation does not depend
       on the pins store, so a `device_home_assignments` blob that
-      `isPlausibleDeviceHomeAssignmentsBlob` permanently rejects leaves Whole-home meter → Automatic
-      refused with "your settings couldn't be read. Try again in a few minutes." Keeping the shared
-      predicate is deliberate (an activation-only variant would put a second, subtly different
-      "degraded" in one file), and the blast radius is bounded: single-home owners never reach the
-      branch, and picking an explicit meter stays available. Either repair/reset the pins store on a
+      `isPlausibleDeviceHomeAssignmentsBlob` permanently rejects leaves every Power source and
+      Whole-home meter pick refused with "your settings couldn't be read. Try again in a few
+      minutes." Keeping the shared predicate is deliberate (an activation-only variant would put a
+      second, subtly different "degraded" in one file), and the blast radius is bounded: the
+      activation read is consulted only for a legacy config without the current activation
+      version, so single-home owners never reach the branch. Either repair/reset the pins store on a
       durable implausible read, or say what is actually wrong. Persona: owner whose pin blob was
       corrupted or hand-edited. *Hypothesis:* the copy promises recovery that no elapsed time
       delivers. Source: multi-home finishing train, area-config invariants PR review. [P3]

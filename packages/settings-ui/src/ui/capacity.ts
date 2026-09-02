@@ -430,9 +430,7 @@ const syncLoadedPowerSource = (powerSource: unknown): void => {
     return;
   }
   // An unavailable read preserves the last-good source paint instead of
-  // fabricating Flow over a save rollback or another WebView's write. (The
-  // old onboarding cell is gone: the boot-time migration persists a source
-  // on every install, so "not configured" is no longer a steady state.)
+  // fabricating Flow over a save rollback or another WebView's write.
 };
 
 export const loadCapacitySettings = async () => {

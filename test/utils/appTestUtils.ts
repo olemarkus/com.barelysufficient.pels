@@ -3,7 +3,6 @@
 // Static import goes through Vitest's esbuild transform, which handles `export =`.
 import MyApp from '../../app.ts';
 import { mockHomeyInstance } from '../mocks/homey';
-import { MAIN_METER_AUTHORITY_MIGRATION_MARKER } from '../../setup/mainMeterAuthorityMigration';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 let appInstances: MyApp[] = [];
@@ -37,15 +36,6 @@ export function createApp(options: CreateAppOptions = {}): MyApp {
   // wrap suppresses the startup restore-stabilization window, which the
   // public API does not expose.
   const app = new MyApp();
-  // App tests represent a MIGRATED install: the one-time meter-authority
-  // migration already ran, so booting here never fetches the live energy
-  // report or rewrites power_source under a test's fixture. The migration's
-  // own suite (test/integration/mainMeterAuthorityMigration.test.ts) builds
-  // unmigrated installs explicitly; a test that wants the boot-time migration
-  // can unset this marker after createApp() and before onInit().
-  if (mockHomeyInstance.settings.get(MAIN_METER_AUTHORITY_MIGRATION_MARKER) === null) {
-    mockHomeyInstance.settings.set(MAIN_METER_AUTHORITY_MIGRATION_MARKER, true);
-  }
   if (!options.preserveStartupRestoreStabilization) {
     const originalInitPlanEngine = app['initPlanEngine'].bind(app);
     app['initPlanEngine'] = () => {

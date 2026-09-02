@@ -72,11 +72,15 @@ export const parseHomeScopedSettingsKey = (key: string): { baseKey: string; home
 };
 export const POWER_SOURCE = 'power_source';
 // Explicit whole-home meter for the homey_energy power source. Device id
-// string; absent/empty = automatic (Homey's marked whole-home cumulative
-// item). Mirror of HOMEY_ENERGY_METER_DEVICE_ID in
-// packages/contracts/src/settingsKeys.ts — keep both in sync (the settings UI
-// can't import lib).
+// string; any non-string (never written, a legacy stored-null Automatic,
+// junk) reads as `unavailable` and the owner picks a meter under Limits &
+// safety — nothing falls back to Homey's marked cumulative item. Mirror of
+// HOMEY_ENERGY_METER_DEVICE_ID in packages/contracts/src/settingsKeys.ts —
+// keep both in sync (the settings UI can't import lib).
 export const HOMEY_ENERGY_METER_DEVICE_ID = 'homey_energy_meter_device_id';
+// RETIRED, never read again: `main_meter_authority_migration_v1_done`, the
+// marker of the deleted boot-time meter-authority migration. Installs that ran
+// it still hold it as `true`; do not reuse the name for a new marker.
 // OPERATING_MODE_SETTING is declared above HOME_SCOPABLE_BASE_KEYS (it is a
 // member of that set).
 export const MANAGED_DEVICES = 'managed_devices';

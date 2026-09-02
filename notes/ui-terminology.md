@@ -1484,8 +1484,8 @@ from tracker fields or persisted-blob fallbacks.
   state where the install has nothing configured to point at.
 - Action label: `Check power source` on every arm.
 - Retired: the onboarding arm ("PELS needs to know where to read your home's
-  power use") — the boot-time migration persists a source on every install,
-  so "no source chosen" is not a steady state; and the hero's "Power
+  power use") — an install with no source chosen is the never-received Flow
+  arm, which already names both remedies; and the hero's "Power
   readings have dropped. Devices stay limited until data returns." decision
   sentence — the banner is the one surface.
 

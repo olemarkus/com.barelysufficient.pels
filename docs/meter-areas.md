@@ -57,7 +57,7 @@ entirely remotely.
   total. Add the meter to Homey first, then pick it here.
 - **The Main home's own meter picked.** Before you can save your first meter
   area, the Main home's **Whole-home meter** must be chosen under **Settings →
-  Limits & safety** (on most homes PELS chose it for you on first start). PELS
+  Limits & safety**. PELS
   refuses to save an area until then, and refuses assigning that same meter to
   an area. The
   [Giving the Main home its own meter](#giving-the-main-home-its-own-meter)
@@ -157,12 +157,11 @@ the **Showing** bar to see its live status and its own recorded history.
 
 ## Giving the Main home its own meter
 
-A single-meter home can leave the meter choice to PELS: on first start, PELS
-names the one whole-home meter it finds as the Main home's own. Once you split
-the home across meters, PELS requires the Main home's **Whole-home meter** to
-be chosen before the first area can be saved, and the same meter cannot belong
-to both the Main home and an area — that named pair is what tells the homes
-apart.
+The Main home's meter is the one chosen under **Whole-home meter** in
+**Settings → Limits & safety**. Once you split the home across meters, PELS
+requires it to be chosen before the first area can be saved, and the same meter
+cannot belong to both the Main home and an area — that named pair is what tells
+the homes apart.
 
 An explicit selection tells PELS which meter you intend to use for the Main
 home. PELS cannot infer what that physical meter covers, so choose one whose

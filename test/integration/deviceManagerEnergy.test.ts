@@ -368,7 +368,7 @@ describe('resolved home meter identity on the sample', () => {
   it('yields no sample for an id-less aggregate — nothing nameable can be read', async () => {
     // The id-less whole-home aggregate is unreadable without Automatic: no
     // selection can name it, so no whole-home sample exists. Such a home runs
-    // on the Flow source after the boot-time migration.
+    // on the Flow source.
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [{ type: 'cumulative', values: { W: 4_200 } }],
     });
