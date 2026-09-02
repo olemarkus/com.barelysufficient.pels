@@ -160,6 +160,8 @@ export type TransportContext = {
   setEmptySnapshotGrace(value: { firstSeenMs: number; reads: number } | null): void;
   getLastSnapshotRefreshMetricsKey(): string | null;
   setLastSnapshotRefreshMetricsKey(value: string | null): void;
+  /** Did the full read just committed list any raw device (`DeviceTransport.hasWarmSnapshot`)? */
+  setSnapshotWarm(warm: boolean): void;
   getLatestRawDevices(): HomeyDeviceLike[];
   setLatestRawDevices(devices: HomeyDeviceLike[]): void;
   // Zone-tree cache + fetch-generation guard, owned by the leaf. Only a

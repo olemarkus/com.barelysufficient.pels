@@ -529,12 +529,9 @@ describe('EV charger integration', { retry: 2 }, () => {
     appState.computeDynamicSoftLimit = () => 10.0;
     appState.powerTracker.lastPowerW = 400;
     appState.powerTracker.lastTimestamp = currentTimeMs - 10 * 60 * 1000;
-    // Arm the silence policy as a live process (the pipeline's admitted ingest
-    // does this in production): the rebuild below is then the escalation's one
-    // fail-closed pass — a restored pre-restart silence would instead be
-    // BLOCKED outright, with no pass owed.
-    (appState as unknown as { meterSilenceMonitor: { noteSampleAdmitted: () => void } })
-      .meterSilenceMonitor.noteSampleAdmitted();
+    // The stamp is past the silence timeout with no pass completed, so the
+    // rebuild below is the escalation's one fail-closed pass — the outage
+    // clock is the stamp alone, whether or not this process saw a sample.
     await appState.planService.rebuildPlanFromCache('ev_deadline_stale_power_test');
     await flushPromises();
 

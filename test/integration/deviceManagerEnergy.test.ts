@@ -12,6 +12,7 @@ import {
 import { pollHomePowerWithMeterFanOut } from '../../lib/device/transport/homePowerPoll';
 import type { TransportContext } from '../../lib/device/transport/transportContext';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
+import { SNAPSHOT_ABANDON_GRACE_READS } from '../../lib/device/transport/targetedSnapshotMerge';
 import type { Logger } from '../../lib/utils/types';
 
 describe('extractLiveMeterPowerWatts', () => {
@@ -520,5 +521,68 @@ describe('fetchLiveMeterItems', () => {
   it('returns an empty list on API error, never throwing', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockRejectedValue(new Error('API down'));
     await expect(fetchLiveMeterItems()).resolves.toEqual([]);
+  });
+});
+
+// The silent-meter escalation spends its one fail-closed shed pass only once
+// the transport has proven the device list is known. An empty RAW read with no
+// previous snapshot commits at once (nothing to clobber), so that commit must
+// not count as proof — a real Homey always lists at least its meter, and an
+// empty raw list at boot is the transient blip the fetch normalizes into
+// success (`feedback_homey_sdk_unreliable`).
+describe('hasWarmSnapshot — proof that the SDK listed devices', () => {
+  const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('stays cold on an empty raw read, and warms on a read that listed a device', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
+    const rawDevices = vi.spyOn(homeyApi, 'getRawDevices').mockResolvedValue([]);
+    const transport = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      logger,
+      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
+    );
+    expect(transport.hasWarmSnapshot()).toBe(false);
+
+    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    expect(transport.getSnapshot()).toEqual([]);
+    expect(transport.hasWarmSnapshot()).toBe(false);
+
+    // The SDK answers with a device that is not even managed: the list is
+    // known, so the read counts even though the parsed snapshot stays empty.
+    rawDevices.mockResolvedValue([{
+      id: 'sensor-1', name: 'Sensor', class: 'sensor', capabilities: [], capabilitiesObj: {},
+      available: true, ready: true,
+    }]);
+    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    expect(transport.hasWarmSnapshot()).toBe(true);
+  });
+
+  it('goes cold again once an empty-read streak commits []', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
+    const rawDevices = vi.spyOn(homeyApi, 'getRawDevices').mockResolvedValue([{
+      id: 'heater-1', name: 'Heater', class: 'heater', capabilities: ['onoff', 'measure_power'],
+      capabilitiesObj: { onoff: { value: true }, measure_power: { value: 1800 } }, available: true, ready: true,
+    }]);
+    const transport = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      logger,
+      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
+    );
+    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    expect(transport.hasWarmSnapshot()).toBe(true);
+
+    // The flag follows every full COMMIT: transient empties a populated
+    // snapshot holds back leave it warm, and the read that finally commits
+    // `[]` (past the abandon grace) takes it cold — the list is unknown again.
+    rawDevices.mockResolvedValue([]);
+    for (let read = 0; read <= SNAPSHOT_ABANDON_GRACE_READS; read += 1) {
+      await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    }
+    expect(transport.getSnapshot()).toEqual([]);
+    expect(transport.hasWarmSnapshot()).toBe(false);
   });
 });

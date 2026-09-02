@@ -355,7 +355,6 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
     const pipeline = createHomePowerPipeline({
       ctx,
       homeId: MAIN_HOME_ID,
-      noteSampleAdmitted: () => {},
       planRebuildScheduler: new PlanRebuildScheduler({
         getNowMs: () => nowMs,
         resolveDueAtMs: () => nowMs,

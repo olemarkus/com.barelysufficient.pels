@@ -92,6 +92,8 @@ const buildRig = (): Rig => {
     // throws and resolves `{ failed: true }`, masking the ready-edge/status paths.
     deviceManager: {
       getSnapshot: () => [],
+      // The silent-meter escalation spends its pass only on a committed full read.
+      hasWarmSnapshot: () => true,
       getBinaryCommandConfirmationSnapshot: () => [],
       getAssociatedCar: () => undefined,
       requestBinaryControl: vi.fn(async () => undefined),
@@ -1328,10 +1330,11 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(heartbeats).toBeGreaterThanOrEqual(2);
   });
 
-  it('R3#1b freshness heartbeat: a DRY-RUN rebuild is NOT latched — escalation applies once the gate opens', async () => {
+  it('R3#1b freshness heartbeat: a FENCED heartbeat does not run — escalation applies once the gate opens', async () => {
     // Persisted actuate flag ON, but membership NOT resolved: the boot-window gate
-    // is the sole dry-run source. A dry-run heartbeat did not actuate, so it must
-    // not burn the one-shot the ready-edge escalation later relies on.
+    // fences every write. The escalation spends its one pass only where it can
+    // shed, so while fenced it refuses the pass (nothing to latch, no dry-run
+    // churn every tick) and the ready-edge escalation still finds it owed.
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     rig.setMembershipReady(false);
     writeActiveHomesConfig({ subHomes: [HOME_A] });
@@ -1345,18 +1348,17 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       rebuildSpy.mock.calls.filter(([reason]) => reason === 'freshness_heartbeat').length
     );
 
-    // While dry-run (boot window) the heartbeat rebuild does NOT latch: it retries.
+    // While fenced (boot window) the heartbeat does not run at all: the pass stays owed.
     await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 30_000);
     await drainPending();
-    const whileDryRun = heartbeatCount();
-    expect(whileDryRun).toBeGreaterThanOrEqual(2);
+    expect(heartbeatCount()).toBe(0);
 
-    // Gate opens: the heartbeat can now actuate → it escalates once more and latches.
+    // Gate opens: the heartbeat can now actuate → it escalates once and latches.
     rig.setMembershipReady(true);
     await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 30_000);
     await drainPending();
     const afterReady = heartbeatCount();
-    expect(afterReady).toBeGreaterThan(whileDryRun);
+    expect(afterReady).toBe(1);
 
     // Latched now (out of dry-run): no further heartbeat rebuilds for this stale period.
     await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 30_000);
@@ -1536,6 +1538,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     const setCapability = vi.fn(async (..._args: unknown[]) => undefined);
     const deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: () => [load],
+      hasWarmSnapshot: () => true,
       getBinaryCommandConfirmationSnapshot: () => [],
       getAssociatedCar: () => undefined,
       setCapability,

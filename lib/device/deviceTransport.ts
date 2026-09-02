@@ -145,12 +145,19 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     // (never the `assembleContext` parameter). `emptySnapshotGrace` tracks a run of
     // transient empty SDK reads while a populated snapshot is held (abandon-grace);
     // `latestRawDevices` is the last full picker list; `lastSnapshotRefreshMetricsKey`
-    // dedupes the refresh-completed log.
+    // dedupes the refresh-completed log; `snapshotWarm` says whether the LAST
+    // committed full device read listed any raw device (see `hasWarmSnapshot`).
     private readonly refreshScalars: {
         emptySnapshotGrace: { firstSeenMs: number; reads: number } | null;
         latestRawDevices: HomeyDeviceLike[];
         lastSnapshotRefreshMetricsKey: string | null;
-    } = { emptySnapshotGrace: null, latestRawDevices: [], lastSnapshotRefreshMetricsKey: null };
+        snapshotWarm: boolean;
+    } = {
+        emptySnapshotGrace: null,
+        latestRawDevices: [],
+        lastSnapshotRefreshMetricsKey: null,
+        snapshotWarm: false,
+    };
     // Zone-tree cache + fetch-generation guard (see `zoneTreeCache.ts`).
     private readonly zoneTreeCache = new ZoneTreeCache();
     // Zone-tree COMMIT notification seam (multi-home membership recompute).
@@ -306,6 +313,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             setEmptySnapshotGrace: (value) => { refreshScalars.emptySnapshotGrace = value; },
             getLastSnapshotRefreshMetricsKey: () => refreshScalars.lastSnapshotRefreshMetricsKey,
             setLastSnapshotRefreshMetricsKey: (value) => { refreshScalars.lastSnapshotRefreshMetricsKey = value; },
+            setSnapshotWarm: (warm) => { refreshScalars.snapshotWarm = warm; },
             getLatestRawDevices: () => refreshScalars.latestRawDevices,
             setLatestRawDevices: (devices) => { refreshScalars.latestRawDevices = devices; },
             zoneTreeCache: t.zoneTreeCache,
@@ -359,6 +367,21 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }
+
+    /**
+     * Whether the LAST committed FULL device read listed at least one raw
+     * device. The snapshot starts as `[]`, so an empty list cannot say whether
+     * the SDK answered or the boot fetch failed or came back empty
+     * (`feedback_homey_sdk_unreliable`; the warmup gate releases on `timeout`
+     * with whatever it has, and an empty raw read with no previous snapshot
+     * commits at once); this can. It follows every full commit, so an
+     * empty-read streak that outlasts the abandon grace and commits `[]`
+     * turns it cold again — the device list is no longer known. Targeted
+     * by-id reads and the car-link producer's snapshot writes do not move it.
+     * The silent-meter escalation refuses to spend its one fail-closed shed
+     * pass while this is false (`setup/powerSampleFreshnessEscalation.ts`).
+     */
+    hasWarmSnapshot(): boolean { return this.refreshScalars.snapshotWarm; }
 
     getBinaryCommandConfirmationSnapshot() {
         return buildBinaryCommandConfirmationSnapshot(this.latestSnapshot);

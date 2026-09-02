@@ -413,12 +413,7 @@ export class AppServiceWiring {
     }
     const { planEngine, lifecycleFallbackPort } = createPlanEngineComposition(ctx, this.mainHomeScope, {
       capacityGuard: ctx.capacityGuard,
-      // Active sub-home zone membership is provisional until the first real
-      // zone tree commits. Main's plan may still contain those fallback-Main
-      // devices, so close the final write seam until ownership is trustworthy.
-      isActuationFenced: () => this.deps.isMainActuationStopped()
-        || this.deps.preparedMainReconcileFence.isSuperseded()
-        || ctx.homeMembership?.isMainHomeActuationFenced() === true,
+      isActuationFenced: () => this.isMainActuationFenced(),
     });
     ctx.planEngine = planEngine;
     ctx.lifecycleFallback = lifecycleFallbackPort;
@@ -474,7 +469,25 @@ export class AppServiceWiring {
   initPlanService(): void {
     const { ctx } = this.deps;
     ctx.planService = createPlanService(ctx, this.mainHomeScope);
-    installMainFreshnessEscalation(ctx, () => this.deps.isMainActuationStopped());
+    installMainFreshnessEscalation(
+      ctx,
+      () => this.deps.isMainActuationStopped(),
+      () => this.isMainActuationFenced(),
+    );
+  }
+
+  /**
+   * Main's home-wide write fence, read by the actuator wrapper AND the
+   * silent-meter escalation (which refuses to spend its one shed pass while
+   * every write would answer `requested: false`). Active sub-home zone
+   * membership is provisional until the first real zone tree commits; Main's
+   * plan may still contain those fallback-Main devices, so the final write
+   * seam stays closed until ownership is trustworthy.
+   */
+  private isMainActuationFenced(): boolean {
+    return this.deps.isMainActuationStopped()
+      || this.deps.preparedMainReconcileFence.isSuperseded()
+      || this.deps.ctx.homeMembership?.isMainHomeActuationFenced() === true;
   }
 
   /**

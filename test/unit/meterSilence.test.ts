@@ -23,7 +23,6 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
 
   it('neither blocks nor owes a pass while the sample is inside the timeout', () => {
     const { monitor, state } = build(T0);
-    monitor.noteSampleAdmitted();
     state.nowMs = T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS - 1;
     expect(monitor.isBlocked()).toBe(false);
     expect(monitor.shouldRunShedPass()).toBe(false);
@@ -31,7 +30,6 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
 
   it('owes exactly one shed pass at the timeout, then blocks until data returns', () => {
     const { monitor, state } = build(T0);
-    monitor.noteSampleAdmitted();
     state.nowMs = T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
 
     // The pass is owed and the gate must let it through.
@@ -42,10 +40,9 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
     expect(monitor.shouldRunShedPass()).toBe(false);
     expect(monitor.isBlocked()).toBe(true);
 
-    // Data returns: the admitted ingest moved the tracker latch and clears
-    // the block on the same edge.
+    // Data returns: the admitted ingest moved the tracker latch, and the
+    // next read of the gate sees the block gone.
     state.lastSampleAtMs = state.nowMs;
-    monitor.noteSampleAdmitted();
     expect(monitor.isBlocked()).toBe(false);
 
     // A LATER silence re-arms the protocol against the new timestamp.
@@ -55,36 +52,37 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
 
   it('a sample racing in during the pass re-arms rather than being swallowed by the latch', () => {
     const { monitor, state } = build(T0);
-    monitor.noteSampleAdmitted();
     state.nowMs = T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
     // The escalation latched against the OLD timestamp; a racing sample moved it.
     monitor.noteShedPassCompleted(T0);
     state.lastSampleAtMs = state.nowMs - 1;
-    monitor.noteSampleAdmitted();
     expect(monitor.isBlocked()).toBe(false);
     state.nowMs += POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
     expect(monitor.shouldRunShedPass()).toBe(true);
   });
 
-  it('blocks a restored pre-restart silence immediately and owes it NO shed pass', () => {
-    // A timestamp restored across a restart, already past the timeout: a
-    // boot-time blind shed is exactly what the old restart grace prevented;
-    // blocking until this process's first admitted sample replaces it.
-    const { monitor } = build(T0 - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
-    expect(monitor.isBlocked()).toBe(true);
+  it('a stamp restored across a restart already past the timeout is owed its pass at once', () => {
+    // Ten minutes without a reading is a ten-minute outage whether or not
+    // this process was up for all of it: the restored stamp ages exactly as
+    // a live one, and older evidence of a dead meter never buys LESS
+    // protection than fresher evidence.
+    const restoredTs = T0 - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
+    const { monitor } = build(restoredTs);
+    expect(monitor.shouldRunShedPass()).toBe(true);
+    expect(monitor.isBlocked()).toBe(false);
+    monitor.noteShedPassCompleted(restoredTs);
     expect(monitor.shouldRunShedPass()).toBe(false);
+    expect(monitor.isBlocked()).toBe(true);
   });
 
-  it('a restored timestamp still inside the timeout crosses as a live silence: pass owed, then blocked', () => {
+  it('a stamp restored across a restart still inside the timeout completes its silence here', () => {
     // Restart with a 2-minute-old restored latch and a meter that never
-    // reports again. The silence completes in THIS process, so it is owed
-    // its one fail-closed pass — freezing the pre-restart posture forever
-    // is the one thing this must not do.
+    // reports again: no admitted sample in this process, the timeout passes
+    // on the stamp's own clock, and the pass is owed then.
     const { monitor, state } = build(T0);
-    // A gate/escalation read while still fresh witnesses the live-ish meter.
     state.nowMs = T0 + 2 * 60_000;
     expect(monitor.isBlocked()).toBe(false);
-    // No sample is ever admitted; the timeout passes in-process.
+    expect(monitor.shouldRunShedPass()).toBe(false);
     state.nowMs = T0 + POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
     expect(monitor.shouldRunShedPass()).toBe(true);
     expect(monitor.isBlocked()).toBe(false);
@@ -95,16 +93,15 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
 
   it('logs the block edge once per engagement, and the clear once per recovery', () => {
     const { monitor, state, log } = build(T0 - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
+    monitor.noteShedPassCompleted(T0 - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
     monitor.isBlocked();
     monitor.isBlocked();
-    expect(log.warn).toHaveBeenCalledTimes(1);
-    expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'meter_silence_block_engaged',
-      reasonCode: 'restored_silence',
-    }));
+    // One warn for the completed pass, one for the block edge — never a second block edge.
+    expect(log.warn).toHaveBeenCalledTimes(2);
+    expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ event: 'meter_silence_block_engaged' }));
 
     state.lastSampleAtMs = T0;
-    monitor.noteSampleAdmitted();
+    expect(monitor.isBlocked()).toBe(false);
     expect(log.info).toHaveBeenCalledWith(expect.objectContaining({ event: 'meter_silence_block_cleared' }));
     expect(log.info).toHaveBeenCalledTimes(1);
   });

@@ -32,7 +32,6 @@ const buildPipeline = (
   };
   return new PowerSamplePipeline({
     createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),
-    noteSampleAdmitted: () => {},
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({ limitKw: 12, marginKw: 0.5 }),

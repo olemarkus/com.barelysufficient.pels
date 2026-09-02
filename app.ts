@@ -237,7 +237,6 @@ class PelsApp extends PelsAppBase implements AppContext {
   protected readonly powerSamplePipeline = createHomePowerPipeline({
     ctx: this,
     homeId: MAIN_HOME_ID,
-    noteSampleAdmitted: () => this.meterSilenceMonitor.noteSampleAdmitted(),
     planRebuildScheduler: this.planRebuildScheduler,
     getPlanEngine: () => this.planEngine,
     getPlanService: () => this.planService,
