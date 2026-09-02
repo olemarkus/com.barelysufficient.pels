@@ -16,28 +16,54 @@ export type MeterSilenceMonitorDeps = {
  * escalation" clause on the measurement gate — the "no fabricated reading"
  * half of that ruling stands).
  *
- * Owns three connected facts:
+ * Owns two connected facts:
  * - the plan-build BLOCK: engaged once a home's meter has been silent past
- *   `POWER_SAMPLE_STALE_SHED_TIMEOUT_MS`, cleared by the next ADMITTED sample
- *   (the pipeline pushes `noteSampleAdmitted` on the same ingest that moves
- *   the tracker latch);
+ *   `POWER_SAMPLE_STALE_SHED_TIMEOUT_MS` and the one shed pass has run,
+ *   cleared by the next ADMITTED sample — the ingest moves the tracker
+ *   latch this monitor reads, so nothing has to be pushed at it;
  * - the ONE fail-closed shed pass the silence window is owed: the escalation
  *   clock asks `shouldRunShedPass()`, runs the rebuild (the reading resolver
  *   answers it in synthesized kW), and reports `noteShedPassCompleted` — after
- *   which the block holds until data returns;
- * - the RESTART rule: a timestamp restored across a restart that is already
- *   past the timeout blocks immediately and is owed NO shed pass. A boot-time
- *   blind shed is exactly what the old restart grace existed to prevent;
- *   blocking until this process's first admitted sample extends the
- *   measurement gate's own philosophy instead of re-planning on watts sampled
- *   before this process existed. A restored timestamp still INSIDE the
- *   timeout is different: the silence completes in this process, watching a
- *   meter that was alive minutes ago, so the crossing is an ordinary live
- *   silence and IS owed its pass — freezing the pre-restart posture with no
- *   fail-closed shed is how a correlated failure (a power blip rebooting
- *   Homey and killing the meter feed together) leaves the house running open.
+ *   which the block holds until data returns.
  *
- * "One shed pass" is one ESCALATION pass: while the pass is owed the block is
+ * The outage clock is the sample stamp, and nothing else (owner ruling
+ * 2026-09-02): ten minutes without a reading is a ten-minute outage whether or
+ * not this process was running for all of it. (The stamp a restart hands back
+ * is the last PERSISTED one, up to a write-throttle window behind the last
+ * sample after an unclean stop — an error that only ever reads the outage as
+ * longer, i.e. towards shedding.) A stamp restored across a
+ * restart therefore ages exactly as a live one does — already past the timeout
+ * at boot, it is owed its pass at once; still inside it, the silence
+ * completes here and is owed the pass then. The earlier
+ * "restored silence is owed nothing" rule made older evidence of a dead meter
+ * buy LESS protection than fresher evidence, and left the correlated failure
+ * it worried about (a power blip rebooting Homey and killing the meter feed
+ * together) running open exactly when the stamp was oldest. There is no
+ * process-uptime grace either: that was `holdWhileStillWaiting`'s clock, and
+ * it measured how long PELS had been watching rather than how long the meter
+ * had been silent.
+ *
+ * What a restart does change is WHEN the first fail-closed shed lands: with
+ * the block not engaged, any boot-time trigger (`startup_snapshot_bootstrap`,
+ * a membership edge) builds fail-closed seconds after boot. That build sheds
+ * but does not latch — only the escalation clock's own pass does, at its next
+ * tick, and only once a full device read has committed and the write seam is
+ * open — so the block follows the tick, never the boot trigger. This only
+ * happens when the stamp was already past the timeout at boot, i.e. the meter
+ * was silent for the full window BEFORE the platform went down — a Homey
+ * firmware reboot of two or three minutes lands inside the window, and the
+ * meter app has the rest of it to report before the silence completes. A sub-home's escalation clock refuses to age a
+ * stamp whose meter source is not authorised at all
+ * (`setup/homeRuntime/homeCapacityBundleReadiness.ts`); main's clock has no
+ * such guard, so a main home whose meter stopped for good sheds once per
+ * boot and then blocks — a dead meter is an outage, and the no-readings
+ * banner is the owner's cue.
+ *
+ * "One shed pass" is one ESCALATION pass, and one that could shed: the
+ * escalation clock refuses to spend it while no full device read has
+ * committed or the write seam is fenced, so it stays owed and the next tick
+ * retries (`setup/powerSampleFreshnessEscalation.ts`). While the pass is
+ * owed the block is
  * deliberately not engaged, so a foreign trigger inside that window (a
  * settings write, a price hour) also builds fail-closed — a second identical
  * shed the executor no-ops, bounded by the shed cooldown. A home held in
@@ -54,18 +80,6 @@ export type MeterSilenceMonitorDeps = {
  * gate owns it ("no plan for a home whose meter never reported").
  */
 export class MeterSilenceMonitor {
-  private admittedThisProcess = false;
-
-  /**
-   * True once this process has SEEN the meter inside the freshness window —
-   * an admitted sample, or a restored timestamp still inside the timeout at
-   * a read. Either way the silence crossing then happens in this process
-   * watching a live-ish meter, and the crossing is owed its one shed pass.
-   * Only a timestamp already past the timeout at every read of this process
-   * keeps this false — the ruled restart case that is owed nothing.
-   */
-  private sawFreshThisProcess = false;
-
   /**
    * The sample timestamp the one shed pass was completed against. `0` = no
    * pass completed for the current silence (a real ingest stamp is a wall
@@ -78,49 +92,27 @@ export class MeterSilenceMonitor {
 
   constructor(private readonly deps: MeterSilenceMonitorDeps) {}
 
-  /** Wired from the pipeline's ADMITTED-sample ingest — never from a raw read. */
-  noteSampleAdmitted(): void {
-    this.admittedThisProcess = true;
-    if (this.blockLogged) {
-      this.blockLogged = false;
-      this.deps.structuredLog()?.info({ event: 'meter_silence_block_cleared' });
-    }
-  }
-
   /**
-   * The block, judged at READ time: silence past the timeout, and either the
-   * silence predates this process (restart — no pass owed) or the one shed
-   * pass has already run. Composed into `planBuildGate` by the wiring.
+   * The block, judged at READ time: silence past the timeout, and the one
+   * shed pass already run against this stamp. Composed into `planBuildGate`
+   * by the wiring.
    */
   isBlocked(): boolean {
     if (!this.silentPastTimeout()) {
-      if (this.blockLogged) {
-        this.blockLogged = false;
-        this.deps.structuredLog()?.info({ event: 'meter_silence_block_cleared' });
-      }
+      this.logBlockCleared();
       return false;
     }
-    const blocked = !this.crossedSilenceThisProcess()
-      || this.shedPassDoneForTs === this.deps.getLastSampleAtMs();
+    const blocked = this.shedPassDoneForTs === this.deps.getLastSampleAtMs();
     if (blocked && !this.blockLogged) {
       this.blockLogged = true;
-      this.deps.structuredLog()?.warn({
-        event: 'meter_silence_block_engaged',
-        reasonCode: this.crossedSilenceThisProcess() ? 'shed_pass_completed' : 'restored_silence',
-      });
+      this.deps.structuredLog()?.warn({ event: 'meter_silence_block_engaged' });
     }
     return blocked;
   }
 
   /** Escalation protocol: is the one fail-closed pass still owed for this silence? */
   shouldRunShedPass(): boolean {
-    if (!this.silentPastTimeout() || !this.crossedSilenceThisProcess()) return false;
-    return this.shedPassDoneForTs !== this.deps.getLastSampleAtMs();
-  }
-
-  /** Did the silence COMPLETE in this process (vs. predating it entirely)? */
-  private crossedSilenceThisProcess(): boolean {
-    return this.admittedThisProcess || this.sawFreshThisProcess;
+    return this.silentPastTimeout() && this.shedPassDoneForTs !== this.deps.getLastSampleAtMs();
   }
 
   /**
@@ -133,16 +125,16 @@ export class MeterSilenceMonitor {
     this.deps.structuredLog()?.warn({ event: 'meter_silence_shed_pass_completed' });
   }
 
+  private logBlockCleared(): void {
+    if (!this.blockLogged) return;
+    this.blockLogged = false;
+    this.deps.structuredLog()?.info({ event: 'meter_silence_block_cleared' });
+  }
+
   private silentPastTimeout(): boolean {
     const lastTs = this.deps.getLastSampleAtMs();
     // Never sampled: the measurement gate owns that answer, not this monitor.
     if (typeof lastTs !== 'number' || !Number.isFinite(lastTs)) return false;
-    const silent = this.deps.nowMs() - lastTs >= POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
-    // A fresh read latches the in-process witness: the escalation clock and
-    // the composed gate both evaluate this on a sub-minute cadence, so a
-    // restored-but-fresh timestamp is observed here long before it can age
-    // past the timeout.
-    if (!silent) this.sawFreshThisProcess = true;
-    return silent;
+    return this.deps.nowMs() - lastTs >= POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
   }
 }

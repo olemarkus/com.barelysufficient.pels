@@ -12,6 +12,7 @@ import type { PlanService } from '../../lib/plan/planService';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import { installPowerSampleFreshnessEscalation } from '../powerSampleFreshnessEscalation';
+import { requireDeviceManager } from '../appInit/contextGuards';
 import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 
 // Base freshness-heartbeat cadence (mirrors `POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS`
@@ -48,6 +49,8 @@ export type InstallBundleReadinessParams = {
   flushDeferredShortfallSideEffect: () => Promise<boolean>;
   isMembershipReady: () => boolean;
   isMeterSourceAuthorized: () => boolean;
+  /** This bundle's write fence — the predicate its `createFencedActuator` consults. */
+  isActuationFenced: () => boolean;
 };
 
 type MembershipReadyApplyResult = 'complete' | 'retry' | 'stopped';
@@ -143,7 +146,7 @@ export function installBundleReadinessAndFreshness(
     ctx, homeId, timerKey, logger, planService, getTrackerState, meterSilence,
     isTornDown, getStableSampleRevision, beginPreparedOwnershipReconcile,
     flushDeferredShortfallSideEffect,
-    isMembershipReady, isMeterSourceAuthorized,
+    isMembershipReady, isMeterSourceAuthorized, isActuationFenced,
   } = params;
   // Latch for the readiness apply-edge (one rebuild, which both plans and
   // actuates). The rebuild recomputes against the guard's freshest total power
@@ -240,6 +243,8 @@ export function installBundleReadinessAndFreshness(
     // (`routeMeterReadings` drops readings under flow), so a bundle whose source
     // has been switched to flow has an orphaned timestamp that will never refresh.
     isMeterSampled: isMeterSourceAuthorized,
+    isSnapshotWarm: () => requireDeviceManager(ctx).hasWarmSnapshot(),
+    isActuationFenced,
   });
 
   return {

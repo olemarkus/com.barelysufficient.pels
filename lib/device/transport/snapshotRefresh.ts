@@ -261,6 +261,15 @@ function commitRefreshedSnapshot(ctx: TransportContext, params: {
     const { snapshot, previousSnapshot, rawWasEmpty, nowMs } = params;
     if (shouldDeferEmptySnapshotCommit(ctx, snapshot, previousSnapshot, rawWasEmpty, nowMs)) return false;
     ctx.setSnapshot(snapshot);
+    // Warm iff this read returned at least one RAW device, re-judged on every
+    // full commit. With no previous snapshot the guard above commits an empty
+    // raw read at once (nothing to clobber), so that commit cannot prove the
+    // SDK answered: a real Homey always lists at least its meter, and an empty
+    // raw list is the transient blip `fetchDevicesWithFallback` normalizes into
+    // success. An empty streak that outlasts the grace commits `[]` and goes
+    // cold for the same reason. Devices that all filtered out (none managed)
+    // still count — the SDK spoke.
+    ctx.setSnapshotWarm(!rawWasEmpty);
     // After setSnapshot so latestSnapshotById is current. The grace-deferred
     // path returns above (before setSnapshot), so the abandon-grace invariant
     // — no refresh event on a deferred empty read — holds by construction.

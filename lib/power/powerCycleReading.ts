@@ -85,8 +85,9 @@ const FAIL_CLOSED_HEADROOM_KW = -1;
  * 2026-08-31): between the 60 s staleness threshold and the 10-minute shed
  * timeout the last good value carries forward AS MEASURED — a transient gap
  * is a no-op, not a hold — and past the timeout the wiring blocks new builds
- * outright (`lib/power/meterSilence.ts`, which also owns the restart rule
- * that replaced `holdWhileStillWaiting`). What remains here is the one
+ * outright once its one shed pass has run (`lib/power/meterSilence.ts`, whose
+ * outage clock is the sample stamp alone — `holdWhileStillWaiting`'s
+ * process-uptime grace has no successor). What remains here is the one
  * decision the reading's owner still makes: the escalation's single
  * fail-closed pass resolves −1 kW so it sheds without the planner ever
  * learning why.

@@ -436,7 +436,6 @@ function createBundleSamplePipeline(params: {
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   savePowerTracker: (state: PowerTrackerState) => void;
   getPowerTracker: () => PowerTrackerState;
-  noteSampleAdmitted: () => void;
 }): { pipeline: ReturnType<typeof createHomePowerPipeline>; scheduler: PlanRebuildScheduler } {
   const scheduler = createBundleRebuildScheduler({
     ctx: params.ctx,
@@ -458,7 +457,6 @@ function createBundleSamplePipeline(params: {
     getCapacitySettings: params.getCapacitySettings,
     getCapacityGuard: params.getCapacityGuard,
     getPowerSampleRebuildState: params.getRebuildState,
-    noteSampleAdmitted: params.noteSampleAdmitted,
     // No weather/PV/curtailment taps for sub-homes: a sub-home meter's net W is
     // not the home's grid power — feeding it to those estimators would corrupt them.
   });
@@ -552,7 +550,6 @@ function createBundlePlanningRuntime(params: {
     getCapacitySettings: scope.getCapacitySettings,
     savePowerTracker: params.tracker.save,
     getPowerTracker: params.tracker.getState,
-    noteSampleAdmitted: () => meterSilenceMonitor.noteSampleAdmitted(),
   });
   return {
     scope,
@@ -564,6 +561,7 @@ function createBundlePlanningRuntime(params: {
     holdDeferredShortfallSideEffect,
     pipeline,
     planRebuildScheduler,
+    isActuationFenced,
   };
 }
 
@@ -610,6 +608,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   const {
     scope,
     planEngine,
+    isActuationFenced,
     planService,
     guard,
     flushDeferredShortfallSideEffect,
@@ -658,19 +657,14 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     applyMembershipReadyEdge,
     markPreparedOwnershipGenerationReconciled,
   } = installBundleReadinessAndFreshness({
-    ctx,
-    homeId,
-    timerKey,
-    logger,
-    planService,
+    ctx, homeId, timerKey, logger, planService,
     getTrackerState: tracker.getState,
     meterSilence: meterSilenceMonitor,
-    isTornDown,
     getStableSampleRevision: () => pipeline.getStableSampleRevision(),
     beginPreparedOwnershipReconcile,
     isMembershipReady: deps.isMembershipReady,
     isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
-    flushDeferredShortfallSideEffect,
+    isTornDown, isActuationFenced, flushDeferredShortfallSideEffect,
   });
 
   // Initial signals build awaits the shared snapshot warmup gate; contained.

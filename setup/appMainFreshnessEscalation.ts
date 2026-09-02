@@ -1,5 +1,5 @@
 import { installPowerSampleFreshnessEscalation } from './powerSampleFreshnessEscalation';
-import { requirePlanService } from './appInit/contextGuards';
+import { requireDeviceManager, requirePlanService } from './appInit/contextGuards';
 import { MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import type { AppContext } from '../lib/app/appContext';
 
@@ -16,6 +16,7 @@ import type { AppContext } from '../lib/app/appContext';
 export function installMainFreshnessEscalation(
   ctx: AppContext,
   isTornDown: () => boolean,
+  isActuationFenced: () => boolean,
 ): void {
   installPowerSampleFreshnessEscalation({
     ctx,
@@ -27,5 +28,7 @@ export function installMainFreshnessEscalation(
     getLastSampleAtMs: () => ctx.powerTracker.lastTimestamp,
     isTornDown,
     isMeterSampled: () => true,
+    isSnapshotWarm: () => requireDeviceManager(ctx).hasWarmSnapshot(),
+    isActuationFenced,
   });
 }

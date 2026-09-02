@@ -39,6 +39,24 @@ export type FreshnessEscalationParams = {
    * must not keep aging into a shed on a dead reading.
    */
   isMeterSampled: () => boolean;
+  /**
+   * Whether the last committed full device read listed any device
+   * (`DeviceTransport.hasWarmSnapshot`). The pass is refused —
+   * and stays owed — while it has not: the boot fetch can fail and the warmup
+   * gate then releases on `timeout` with an empty snapshot, and a pass run
+   * against that "succeeds" with nothing governed, latches, and engages the
+   * block until data returns — so the devices the 5-minute poll then lands
+   * are never shed. The stamp-only outage clock (`lib/power/meterSilence.ts`)
+   * makes this the ordinary post-outage reboot, not an edge case.
+   */
+  isSnapshotWarm: () => boolean;
+  /**
+   * Whether this home's final write seam is fenced right now (the same
+   * predicate `createFencedActuator` consults). A fenced write answers
+   * `requested: false` and is not an apply failure, so a pass run while fenced
+   * would latch with nothing written; refusing it keeps the pass owed.
+   */
+  isActuationFenced: () => boolean;
 };
 
 /**
@@ -56,6 +74,11 @@ export type FreshnessEscalationParams = {
  * When the meter is the thing that died, nothing else is guaranteed to fire —
  * a quiet install may see no settings write and no price hour for a long time.
  *
+ * The pass is only ever spent where it can shed: with a full device read
+ * committed and the write seam open (`isSnapshotWarm`, `isActuationFenced`).
+ * Otherwise it stays owed and the clock retries — never latching a pass that
+ * governed or wrote nothing, since the latch is what engages the block.
+ *
  * Bounded by design: an in-flight latch (no overlapping rebuild), and exactly one
  * rebuild per stale period, latched in the home's `MeterSilenceMonitor` against
  * the sample timestamp the escalation was taken against — the same monitor the
@@ -66,16 +89,29 @@ export type FreshnessEscalationParams = {
 export function installPowerSampleFreshnessEscalation(params: FreshnessEscalationParams): void {
   const {
     ctx, homeId, timerKey, logger, rebuild, meterSilence, getLastSampleAtMs, isTornDown, isMeterSampled,
+    isSnapshotWarm, isActuationFenced,
   } = params;
   let inFlight = false;
 
   const maybeEscalate = (): void => {
     if (isTornDown() || inFlight) return;
     if (!isMeterSampled()) return;
-    // The one-shot policy — silence past the timeout, exactly one owed pass,
-    // no pass for silence restored across a restart — lives in the monitor,
-    // shared with the composed plan-build gate.
+    // The one-shot policy — silence past the timeout on the stamp's own clock
+    // (a restart does not reset it), exactly one owed pass — lives in the
+    // monitor, shared with the composed plan-build gate.
     if (!meterSilence.shouldRunShedPass()) return;
+    // The pass exists to shed. Refuse it — it stays owed and the next tick
+    // retries — while it provably could not: no full device read has committed
+    // (a boot-time SDK failure leaves an empty snapshot until the 5-minute poll),
+    // or the write seam is fenced (every write would answer `requested: false`).
+    if (!isSnapshotWarm()) {
+      logger()?.warn({ event: 'home_freshness_heartbeat_snapshot_cold', homeId });
+      return;
+    }
+    if (isActuationFenced()) {
+      logger()?.warn({ event: 'home_freshness_heartbeat_actuation_fenced', homeId });
+      return;
+    }
     const lastTs = getLastSampleAtMs();
     if (typeof lastTs !== 'number' || !Number.isFinite(lastTs)) return;
     inFlight = true;
@@ -108,6 +144,16 @@ export function installPowerSampleFreshnessEscalation(params: FreshnessEscalatio
             homeId,
             deviceApplyFailureCount: outcome.deviceApplyFailureCount,
           });
+          return;
+        }
+        // The preconditions are re-judged at completion: a fence that closed
+        // (or a snapshot that went cold) DURING the rebuild turned its writes
+        // into `requested: false` no-ops, which count as neither writes nor
+        // failures, so latching now would engage the block with load still
+        // running. A fence that closed and reopened inside one rebuild is the
+        // residual this cannot see; the executor does not report fenced writes.
+        if (!isSnapshotWarm() || isActuationFenced()) {
+          logger()?.warn({ event: 'home_freshness_heartbeat_precondition_lost', homeId });
           return;
         }
         // Still stale on completion (a sample racing in would have moved the
