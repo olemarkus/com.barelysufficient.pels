@@ -49,10 +49,9 @@ export type LiveMeterItem = { id: string; type: LiveMeterItemType };
  * `cumulative` or `device` item that carries an id is a meter a selection can
  * resolve via `extractLiveMeterPowerWatts` (which matches BOTH types), so this
  * lists exactly those. Order and duplicates from the report are preserved-then-
- * deduped by id (first wins). An id-less cumulative item (some Homey setups
- * emit the whole-home aggregate without an id) is intentionally omitted: it
- * can't be pinned to a selection, so PELS cannot read it — such a home runs
- * on the Flow source. Names are NOT carried here — the report has none;
+ * deduped by id (first wins). An item without an id is malformed and dropped
+ * here, at the parse: nothing PELS reads can name it. Names are NOT carried
+ * here — the report has none;
  * the adapter joins id→name from the device list.
  */
 export const extractLiveMeterItems = (liveReport: unknown): LiveMeterItem[] => {
@@ -72,27 +71,58 @@ export const extractLiveMeterItems = (liveReport: unknown): LiveMeterItem[] => {
 };
 
 /**
- * Gross PV generation in watts from the same `manager/energy/live` payload, or
- * `null` when no generation signal is present. PELS's whole-home `cumulative.W`
- * is NET grid power (consumption minus generation); to recover the authoritative
- * whole-home *actual consumption* (`net + generation`) for the managed/unmanaged
- * split, accounting needs the production term. Source per the solar plan: the
- * top-level `totalGenerated.W` aggregate, falling back to the `generator`-type
- * item. Generation is `+`-only; this never feeds the hard-cap import path.
+ * The parsed shape of one `manager/energy/live` payload: a record carrying an
+ * `items` array. That is the ONE shape gate for the live report — anything
+ * else (an empty 2xx body resolving `undefined`, a string, a record with no
+ * `items`) is a malformed read the adapter reports as `unavailable`, never as
+ * a measurement that happens to contain nothing.
  */
-export const extractLiveGenerationWatts = (liveReport: unknown): number | null => {
-  const report = asRecord(liveReport);
-  if (!report) return null;
-  const topLevel = toFiniteNumber(asRecord(report.totalGenerated)?.W);
-  if (topLevel !== null) return Math.max(0, topLevel);
-  if (!Array.isArray(report.items)) return null;
+export type LiveEnergyReport = UnknownRecord & { readonly items: readonly unknown[] };
+
+export const asLiveEnergyReport = (value: unknown): LiveEnergyReport | null => {
+  const report = asRecord(value);
+  return report !== null && Array.isArray(report.items) ? (report as LiveEnergyReport) : null;
+};
+
+/**
+ * Gross PV generation resolved from a parsed live report: `+`-only watts when
+ * the report carries a finite generation signal, `none` when it carries no
+ * generator at all, `unavailable` when it carries a generation signal whose
+ * every reading is malformed. Homey always emits the `totalGenerated`
+ * aggregate, and encodes "nothing generates" as `{ W: null }` — that is the
+ * ordinary no-PV home, so a null aggregate is no signal, never a malformed one.
+ * Absence is a state, not a `null`, and each state is only ever the answer for
+ * a report that parsed — so no consumer has to tell "no generator" apart from
+ * a read that failed, and a junk reading stays the no-op the root guide
+ * requires (the last good reading carries forward) instead of becoming a fresh
+ * "producing nothing".
+ */
+export type LiveGeneration =
+  | { readonly state: 'measured'; readonly watts: number }
+  | { readonly state: 'none' }
+  | { readonly state: 'unavailable' };
+
+/**
+ * PELS's whole-home `cumulative.W` is NET grid power (consumption minus
+ * generation); to recover the authoritative whole-home *actual consumption*
+ * (`net + generation`) for the managed/unmanaged split, accounting needs the
+ * production term. Source per the solar plan: the top-level `totalGenerated.W`
+ * aggregate, falling back to the `generator`-type item. Generation is `+`-only;
+ * this never feeds the hard-cap import path.
+ */
+export const resolveLiveGeneration = (report: LiveEnergyReport): LiveGeneration => {
+  const topLevelW = asRecord(report.totalGenerated)?.W;
+  const topLevelWatts = toFiniteNumber(topLevelW);
+  if (topLevelWatts !== null) return { state: 'measured', watts: Math.max(0, topLevelWatts) };
+  let signalPresent = topLevelW !== null && topLevelW !== undefined;
   for (const rawItem of report.items) {
     const item = asRecord(rawItem);
     if (!item || item.type !== 'generator') continue;
+    signalPresent = true;
     const watts = toFiniteNumber(asRecord(item.values)?.W);
-    if (watts !== null) return Math.max(0, watts);
+    if (watts !== null) return { state: 'measured', watts: Math.max(0, watts) };
   }
-  return null;
+  return signalPresent ? { state: 'unavailable' } : { state: 'none' };
 };
 
 /**
@@ -288,7 +318,7 @@ export const extractBatteryState = (devices: readonly HomeyDeviceLike[]): Batter
  *     noisy negative sample is floored to 0 per device.
  *
  * READ-ONLY telemetry: this NEVER feeds the hard-cap import path NOR the whole-home
- * generation aggregate (`extractLiveGenerationWatts`, which grosses up the
+ * generation aggregate (`resolveLiveGeneration`, which grosses up the
  * managed/unmanaged split from the SEPARATE `totalGenerated.W` energy report) — feeding
  * per-device PV here would double-count. It is surfaced purely as the
  * `solar_production_observed` event for a future consumer (savings-viz / per-inverter

@@ -15,7 +15,11 @@ export async function pollHomePowerWithMeterFanOut(
   const report = await fetchLivePowerReport(ctx, selection);
   const authorized = authorizeFanOut === undefined || authorizeFanOut();
   const onAdditionalMeterReadings = ctx.providers.onAdditionalMeterReadings;
-  if (onAdditionalMeterReadings && authorized && Object.keys(report.additionalMeterPowerW).length > 0) {
+  if (
+    report.state === 'measured'
+    && onAdditionalMeterReadings && authorized
+    && Object.keys(report.additionalMeterPowerW).length > 0
+  ) {
     try {
       onAdditionalMeterReadings(report.additionalMeterPowerW, Date.now());
     } catch (error) {
@@ -25,5 +29,5 @@ export async function pollHomePowerWithMeterFanOut(
       });
     }
   }
-  return updateHomePowerFromReport(ctx, report, selection);
+  return updateHomePowerFromReport(ctx, report);
 }

@@ -3,12 +3,14 @@ import type { TimerRegistry } from '../../utils/timerRegistry';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 
 /**
- * Producer-resolved outcome of one generation read: a value (`null` = the report
- * carried no generation signal) or an explicit failure. Structural so this
- * module keeps its zero dependency on `lib/device/`.
+ * Producer-resolved outcome of one generation read: a measured value, `none`
+ * when the report carried no generation signal, or `unavailable` — a failed
+ * read or a present-but-malformed signal, the same no-op to this source.
+ * Structural so this module keeps its zero dependency on `lib/device/`.
  */
 export type GenerationReadResult =
-  | { readonly state: 'resolved'; readonly generationW: number | null }
+  | { readonly state: 'measured'; readonly watts: number }
+  | { readonly state: 'none' }
   | { readonly state: 'unavailable' };
 
 const GENERATION_POLL_INTERVAL_MS = 10_000;
@@ -85,7 +87,7 @@ export class GenerationPollSource {
      * is delivered at all. Injected so this source never imports `lib/device/`
      * (the power mandate in `.dependency-cruiser.cjs`).
      *
-     * `unavailable` is a FAILED read, which must never be published: on this
+     * `unavailable` is a failed read or a malformed signal, which must never be published: on this
      * source net keeps arriving from the Flow card regardless, so publishing a
      * failure as "producing nothing" would overwrite a good reading with a fresh
      * timestamp — sailing past the freshness window into the accrual. Declining
@@ -196,7 +198,10 @@ export class GenerationPollSource {
       this.deps.debugStructured({ event: 'generation_poll_unavailable' });
       return;
     }
-    this.deps.setGenerationW(read.generationW, readAtMs);
-    this.deps.debugStructured({ event: 'generation_poll', generationW: read.generationW });
+    // "No generator" is itself an observation, which the holder records as
+    // `null` against the read time.
+    const generationW = read.state === 'measured' ? read.watts : null;
+    this.deps.setGenerationW(generationW, readAtMs);
+    this.deps.debugStructured({ event: 'generation_poll', generationW });
   }
 }

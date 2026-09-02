@@ -41,7 +41,6 @@ import {
   fetchDevicesWithFallback,
   type DeviceFetchResult,
   type DeviceFetchSource,
-  type LivePowerReport,
 } from './managerFetch';
 import { fetchLivePowerReport } from './livePowerReport';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
@@ -62,7 +61,6 @@ import {
   type ParseDevicePurpose,
 } from './managerParseDevice';
 import {
-  buildEmptyLivePowerReport,
   summarizeSnapshotRefreshMetrics,
   type SnapshotRefreshMetrics,
 } from './transportTypes';
@@ -552,24 +550,25 @@ async function refreshZoneTreeCache(ctx: TransportContext): Promise<void> {
     }
 }
 
-// Live-power half of the refresh inputs: the report feeds per-device parse
-// attribution; the sample (null when live power is skipped) is the caller's
-// home-power return value.
+// Live-power half of the refresh inputs: the per-device lanes feed parse
+// attribution; the sample (null when live power is skipped or the read
+// produced no whole-home reading) is the caller's home-power return value.
+type RefreshLivePower = {
+    byDeviceId: LiveDevicePowerWatts;
+    homePowerSample: HomePowerSampleWithIdentity | null;
+};
+
 async function resolveLivePowerForRefresh(
     ctx: TransportContext,
     includeLivePower: boolean,
     mainMeterSelection: MainMeterSelection,
-): Promise<{
-    livePowerReport: LivePowerReport;
-    homePowerSample: HomePowerSampleWithIdentity | null;
-}> {
-    const livePowerReport = includeLivePower
-        ? await fetchLivePowerReport(ctx, mainMeterSelection)
-        : buildEmptyLivePowerReport();
-    const homePowerSample = includeLivePower
-        ? updateHomePowerFromReport(ctx, livePowerReport, mainMeterSelection)
-        : null;
-    return { livePowerReport, homePowerSample };
+): Promise<RefreshLivePower> {
+    if (!includeLivePower) return { byDeviceId: {}, homePowerSample: null };
+    const report = await fetchLivePowerReport(ctx, mainMeterSelection);
+    return {
+        byDeviceId: report.state === 'measured' ? report.byDeviceId : {},
+        homePowerSample: updateHomePowerFromReport(ctx, report),
+    };
 }
 
 export async function refreshSnapshot(
@@ -584,7 +583,7 @@ export async function refreshSnapshot(
         const fetchResult = await fetchDevicesForSnapshotRefresh(ctx, isTargetedRefresh);
         if (!fetchResult) return null;
         const { devices: list, fetchSource, failedIds } = fetchResult;
-        const { livePowerReport, homePowerSample } = await resolveLivePowerForRefresh(
+        const { byDeviceId: livePowerByDeviceId, homePowerSample } = await resolveLivePowerForRefresh(
             ctx,
             options.includeLivePower !== false,
             options.mainMeterSelection,
@@ -594,7 +593,7 @@ export async function refreshSnapshot(
             list.map((device) => ctx.applyDeviceDriverOverride(device)),
             fetchSource,
         );
-        const presentSnapshot = parseSnapshotDeviceList(ctx, effectiveList, livePowerReport.byDeviceId);
+        const presentSnapshot = parseSnapshotDeviceList(ctx, effectiveList, livePowerByDeviceId);
         mergeFresherCapabilityObservations({
             state: ctx.observationState,
             previousSnapshot,
@@ -646,8 +645,8 @@ export async function refreshSnapshot(
             devicesTotal: snapshot.length,
             targetedRefresh: isTargetedRefresh,
             fetchSource,
-            homePowerW: livePowerReport.homePowerW,
-            livePowerDeviceCount: livePowerReport.deviceCount,
+            ...(homePowerSample ? { homePowerW: homePowerSample.powerW } : {}),
+            livePowerDeviceCount: Object.keys(livePowerByDeviceId).length,
         });
         if (ctx.logger.structuredLog) {
             const metrics = summarizeSnapshotRefreshMetrics(snapshot);
