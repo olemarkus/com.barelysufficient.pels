@@ -89,6 +89,21 @@ the observation revision the plan was built from; and `observedBinaryState` spli
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
+- [ ] **A suspect boot read of `power_tracker_state` is wiped by the tracker's first prune 10 s
+      later.** `setup/settingsRepository.ts` `loadPowerTrackerState` answers `undefined` for a
+      null, malformed, or throwing read, `setup/appPowerTracker.ts` `loadPowerTracker` then leaves
+      the in-memory tracker at its blank initial state, and `prunePowerTrackerHistory` persists
+      that blank state unconditionally at `POWER_TRACKER_PRUNE_INITIAL_DELAY_MS` — the hourly and
+      daily history, the last Flow sample, everything the owner's Usage tab shows, gone on one
+      transient SDK miss. The sub-home trackers already do this right (`SuffixedTrackerPersistence`
+      latches every write closed after a suspect reload); the Main home does not. Fix: classify the
+      boot load with `readPersistedHomeTracker` and latch persist closed (prune included) after a
+      suspect read until a later reload succeeds, the abandon-grace `AGENTS.md` already promises.
+      Done when a test that makes the boot read of `power_tracker_state` suspect and advances past
+      the initial prune observes the persisted blob unchanged. Source: pels-runtime-reality and
+      Codex on the sole-meter adoption PR (2026-09-02), where the adoption reads its Flow-history
+      evidence at start precisely because the prune may erase it. [P1]
+
 - [ ] **The restore cooldown's base window does not reach the measured restore-latency tail.**
       With the pending-restore reservation removed (2026-08-28), `RESTORE_COOLDOWN_MS = 60 s`
       (`lib/plan/planConstants.ts`) is the only thing pacing a second restore behind a first.
