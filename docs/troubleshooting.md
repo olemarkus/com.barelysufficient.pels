@@ -141,6 +141,22 @@ PELS plans on a live whole-home power reading. If the Overview shows nothing:
 - **Using a Flow?** Make sure a Flow calls **Report power usage** (in watts)
   every time your meter updates.
 
+### What PELS does while readings are missing
+
+A gap of a few seconds changes nothing: PELS carries the last good reading
+forward and keeps acting on the decision it already made. A missing reading is
+never counted as zero.
+
+After **10 minutes with no reading**, PELS fails closed rather than keep
+trusting a decision it made before the meter went quiet. It limits every
+managed device to its floor (lowest step, limited setpoint, or off) and pauses
+planning until a reading arrives. Devices stay limited until the meter reports
+again, so a meter that has quietly stopped is worth fixing promptly.
+
+The banner above the Overview tells you which state you are in: **No power
+readings yet** means PELS has never received one, and **No power readings in
+the last minute** means they stopped.
+
 ## No price data, or cheap hours aren't being used
 
 - Confirm a **Price source** is selected and shows data available (Settings →
