@@ -22,7 +22,8 @@ PELS must keep these concepts separate:
 - `planned` state: what the current plan wants
 - `commanded` state: what PELS most recently asked Homey/device to do
 - `observed` state: what trusted telemetry most recently says the device is doing
-- `effective planning` state: what the planner should conservatively assume right now
+- `effective planning` state: what the producer resolves as the planner's input right now — a
+  conservative still-on/still-high figure the planner reads as given
 - `pending` state: requested but not yet confirmed
 
 Most bugs in this area come from collapsing two of those into one.
@@ -43,8 +44,8 @@ Use these meanings consistently at their owning layer:
 
 - observed step: trusted step telemetry from native reporting or admitted flow feedback.
 - target step: the step PELS currently wants. This is planner/runtime intent.
-- planning assumption: a conservative fallback used only to keep planning possible when no
-  observed step exists.
+- planning assumption: a conservative fallback, resolved by the producer, used only to keep
+  planning possible when no observed step exists.
 - restore preparation: explicit evidence that the device is already at the pre-restore step.
 
 Internally, stepped-load feedback and intent use synthetic PELS capability IDs:
@@ -193,9 +194,8 @@ Contributor rules:
   and that adaptation belongs in the executable stepped-load boundary, not in executor command or
   restore logic
 - fallback lowest-active-step assumptions are planning inputs only, never restore proof
-- the planner may consume a best available effective/planning step when provenance does not change
-  the planning decision; trust/provenance belongs at the observer/reconcile boundary and the
-  executor restore gate
+- the planner consumes the producer's best available effective/planning step and does not weigh
+  its provenance; trust/provenance belongs at the observer boundary and the executor restore gate
 - a just-issued pre-restore step command is pending intent, not preparation proof for the same
   executor pass
 - restore preparation must come from explicit reported evidence or narrowly admitted suppressed
@@ -500,13 +500,15 @@ Trust:
 
 Local write intent does not answer this question.
 
-### "What should the planner assume right now?"
+### "What is the planner handed?"
 
-Trust depends on direction and risk:
+The producer resolves this before the plan build; the planner applies no trust rule of its own:
 
-- for restore/upward movement, pending state may justify "requested, unconfirmed"
-- for shed/downward movement, use the conservative still-high/still-on assumption until confirmation unless there is stronger evidence
-- for hard-cap safety, trust whole-home power over device attribution
+- for restore/upward movement, the producer's admission bits already account for a requested,
+  unconfirmed command
+- for shed/downward movement, the producer hands over the conservative still-high/still-on figure
+- for hard-cap safety, whole-home power outranks per-device attribution, and `lib/power` answers
+  with it
 
 ### "Did the command succeed?"
 

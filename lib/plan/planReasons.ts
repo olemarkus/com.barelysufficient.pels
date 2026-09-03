@@ -160,8 +160,8 @@ export function normalizeShedReasons(params: {
   // is binding. Resolved by the producer (`isCapacityBreached`) so consumers never
   // re-derive it; see the re-attribution guards in `resolveDailyBindingReattribution`.
   capacityBreached?: boolean;
-  // Producer-resolved on `PlanContext` (see the field doc there): daily pace
-  // binding AND fresh power AND capacity not also breached. Gates the
+  // Producer-resolved on `MeasuredPower` (see the field doc there): daily pace
+  // binding AND capacity not also breached. Gates the
   // `insufficientHeadroom` → `dailyBudget` re-attribution, and is the SAME flat
   // field `planDiagnostics` reads for the starvation counting cause and rescue
   // gating, so the card label and the rescue widget cannot disagree about

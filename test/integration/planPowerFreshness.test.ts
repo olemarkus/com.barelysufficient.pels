@@ -178,7 +178,7 @@ describe('power sample freshness policy', () => {
   });
 });
 
-describe('planner behavior under stale power freshness states', () => {
+describe('planner behavior on the silent-meter fail-closed pass', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-18T10:00:00.000Z'));

@@ -56,10 +56,9 @@ export const formatHeroHeadline = (
   hardLimitKw: meta.hardCapLimitKw,
   controlledKw: meta.controlledKw,
   uncontrolledKw: meta.uncontrolledKw,
-  // From the printed pair, never from a headroom figure: a planner-side
-  // headroom that disagreed with `softLimitKw - totalKw` (the silent-meter
-  // sentinel, the exhausted-hour override) is exactly how the chip once said
-  // "Above safe pace" over a bar drawn under the tick.
+  // From the printed pair, so the sentence can never contradict the figures
+  // beside it — there is no headroom on the meta wire to read instead
+  // (owner ruling 2026-09-02).
   overSoftLimit: meta.totalKw > meta.softLimitKw,
 });
 

@@ -53,8 +53,8 @@ export const buildDeviceDiagnosticsObservations = (
     inputDevice: inputDeviceById.get(device.id),
     device,
     restoreResult: params.restoreResult,
-    // Producer-resolved on `PlanContext` (see the field doc there): daily pace binding
-    // AND fresh power AND capacity not also breached. Hourly-cap exhaustion forces
+    // Producer-resolved on `MeasuredPower` (see the field doc there): daily pace binding
+    // AND capacity not also breached. Hourly-cap exhaustion forces
     // `softLimitSource` to 'capacity' (capacitySoftLimit → 0), so exhausted hours stay
     // in the capacity bucket too. Reading the shared field keeps this fold and the
     // device-reason re-attribution in `normalizeShedReasons` in lockstep — the breach
@@ -219,8 +219,8 @@ const resolveEligibleForStarvation = (params: {
 };
 
 // A restore held for `insufficient_headroom` is blocked against the binding soft limit.
-// When that hold is BUDGET-RELEASABLE — the daily budget is the binding limit and the
-// power sample is trustworthy (`budgetReleasableHeadroomHold`, resolved in the producer)
+// When that hold is BUDGET-RELEASABLE — the daily budget is the binding limit and
+// capacity is not also breached (`budgetReleasableHeadroomHold`, producer-resolved)
 // — the physical capacity cap is not the constraint doing the work; the daily budget is,
 // and it is the releasable lever the owner can rescue against. Re-attribute the counting
 // cause to `daily_budget` so device detail and the emitted `device_starvation_started`

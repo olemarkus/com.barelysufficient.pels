@@ -53,7 +53,6 @@ export type PlanMaterializationDeps = {
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
   getInferredSurplusKw: () => number;
-  // Per-home mode-target raise hold while power is unknown; absent = no hold.
   getOperatingMode: () => string;
   getPowerTracker: () => PowerTrackerState;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
@@ -296,8 +295,6 @@ export class PlanMaterializationStages {
         restoreResult: params.restoreResult,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         priceOptimizationSettings: this.priceOptimizationSettings,
-        // No staleness dep wired (e.g. tests) ⇒ treat every device as fresh, so the
-        // freshness gate is a no-op and starvation counts as before.
       });
       this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs });
     });

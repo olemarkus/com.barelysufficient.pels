@@ -39,10 +39,6 @@ export type SettingsOverviewReadModelDeps = {
   // reading it was made from.
   getObservedStateOfCharge?: (deviceId: string) => DeviceStateOfChargeSnapshot | undefined;
   getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
-  // Observation staleness is observer-owned freshness state — the plan device no
-  // longer carries it (the plan has no right to distrust observer data). The
-  // gray-state UI label is a display concern, so the read model sources staleness
-  // from the observer projection here, NOT off the plan device.
   // Observational device kind, for the temperature card. Supplied as a
   // built-once map sourced from the raw, undecorated snapshot so there is no
   // re-decoration side effect. Stepped-ness is NOT resolved from a map: it is

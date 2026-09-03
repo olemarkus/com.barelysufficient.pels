@@ -21,7 +21,7 @@ The redesigned Overview uses a compact state word on each device card:
 | **Limited** | PELS is currently lowering, pausing, turning off, or making the device wait for power — to stay within the hard cap or daily budget pace, or because a scheduled smart task has power reserved. |
 | **Resuming** | PELS is trying to bring the device back when there is available power. |
 | **Manual** | The device is managed, but PELS cannot use power-limit control for it right now. |
-| **Unavailable** | PELS cannot currently trust the device state enough to plan with it. |
+| **Unavailable** | Homey reports the device as unavailable, so PELS cannot act on it. |
 | **Unknown** | PELS does not have enough current state to choose a more specific label. |
 
 The state row pairs that word with the current power fact. Cards add one

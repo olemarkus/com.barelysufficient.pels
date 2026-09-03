@@ -576,7 +576,7 @@ function resolveRestoreFromContribution(params: {
 }): number {
   // Only override with measured when it is *positive* — a zero reading is not
   // evidence that the device is currently idle at this step (it may be
-  // mid-cycle, throttled, or reporting stale data). In those cases the
+  // mid-cycle, or throttled). In those cases the
   // calibrated delivery / nameplate estimate is the safer proxy for "what this
   // device contributes right now."
   const { device, measured, deliveryFromKw } = params;

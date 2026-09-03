@@ -269,18 +269,17 @@ type ResolvedPowerSource = 'measured' | 'expected' | 'planning' | 'off' | 'unkno
 // detail.
 //  - no_previous_snapshot: true cold start — there is no prior plan baseline to
 //    diff against (the engine has not built a plan yet this lifetime).
-//  - attribution_inputs_incomplete: the attribution inputs were not complete-and-fresh
+//  - attribution_inputs_incomplete: the attribution inputs were not complete
 //    this cycle, so no confident cause can be proven. This single honest reason folds
-//    every uncertainty: a missing/stale current whole-home sample (the diff would be
-//    computed off a stale cached total), a missing previous total, OR a tracked device
+//    every uncertainty: a missing previous total, OR a tracked device
 //    (controllable or uncontrolled) that plausibly carried the rise — its current read
 //    sits above the attribution epsilon — but could not be diffed (current or previous
 //    power unresolvable). Any of these means the rise could be a device PELS merely
 //    failed to read, so we never blame background load.
-//  - background_load_dominant: the sample was fresh, a prior baseline existed, and every
+//  - background_load_dominant: a prior baseline existed, and every
 //    tracked device that could plausibly have contributed was diffable, yet the rise
 //    lives in unmanaged/background load that PELS does not track per-device.
-//  - all_deltas_below_epsilon: inputs were complete-and-fresh and no managed device rose
+//  - all_deltas_below_epsilon: inputs were complete and no managed device rose
 //    above the attribution epsilon (the whole-home rise itself stayed below epsilon).
 type OvershootAttributionReason =
   | 'no_previous_snapshot'
@@ -341,8 +340,8 @@ function buildOvershootEntryDiagnostics(params: {
     contributors,
     totalDeltaKw,
     hasPriorPlanBaseline: previousBuiltAtMs !== null || Object.keys(previousDevicesById).length > 0,
-    // A confident cause may only be emitted when the attribution inputs were both
-    // FRESH and COMPLETE this cycle. Any uncertainty collapses to one honest
+    // A confident cause may only be emitted when the attribution inputs were
+    // COMPLETE this cycle. Any uncertainty collapses to one honest
     // `attribution_inputs_incomplete` reason rather than a confident-but-wrong cause.
     attributionInputsComplete: areAttributionInputsComplete({
       totalDeltaKw,
@@ -391,13 +390,13 @@ function resolveOvershootAttributionReason(params: {
   if (contributors.length > 0) return null;
   // Reserve `no_previous_snapshot` for a TRUE cold start (no prior plan baseline at
   // all). It is the only reason emitted when nothing could be diffed for a reason
-  // other than incomplete/stale inputs.
+  // other than incomplete inputs.
   if (!hasPriorPlanBaseline) return 'no_previous_snapshot';
-  // A confident cause requires fresh + complete + diffable inputs. Anything short of
+  // A confident cause requires complete + diffable inputs. Anything short of
   // that is one honest reason rather than a confident-but-wrong cause.
   if (!attributionInputsComplete) return 'attribution_inputs_incomplete';
-  // Inputs are complete-and-fresh, so `totalDeltaKw` is a finite, trustworthy number
-  // and the unattributed delta equals the total delta. Classify directly off it.
+  // Inputs are complete, so `totalDeltaKw` is a finite number and the unattributed
+  // delta equals the total delta. Classify directly off it.
   if (totalDeltaKw !== null && totalDeltaKw > OVERSHOOT_DELTA_EPSILON_KW) {
     return 'background_load_dominant';
   }
@@ -415,7 +414,7 @@ function resolveOvershootAttributionReason(params: {
 //  (b) every tracked device that could PLAUSIBLY have carried the rise — controllable
 //      OR uncontrolled, with a current reading above the attribution epsilon — was
 //      diffable (both current and previous power resolvable).
-// (a) guards the stale-total / missing-sample cases; (b) guards the undiffable
+// (a) guards the undiffable-previous-total case; (b) guards the undiffable
 // managed-or-uncontrolled device and the zero-current newcomer (whose 0/off current
 // read could not have caused the rise, so its undiffability is harmless).
 function areAttributionInputsComplete(params: {

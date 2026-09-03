@@ -2697,8 +2697,9 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
           vi.advanceTimersByTime(POWER_SAMPLE_STALE_THRESHOLD_MS - 1);
           expect(service.isMainHomeActuationFenced()).toBe(true);
 
-          // At the threshold the planner stops trusting the sample, but the
-          // already-committed shed still cannot be executed.
+          // Past the 60 s threshold the sample is still a measured reading (it
+          // carries forward until the shed timeout), and the already-committed
+          // shed still cannot be executed while the fence holds.
           vi.advanceTimersByTime(1);
           expect(service.isMainHomeActuationFenced()).toBe(true);
 

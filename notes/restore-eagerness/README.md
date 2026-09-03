@@ -55,8 +55,8 @@ narrows the upper-bound estimate as evidence accrues.
 
 ## Bounded Restore Batching
 
-PELS may restore more than one binary device in a single planning cycle only when whole-home power
-is fresh and the normal restore gates are otherwise clear. This is intended for recovery after a
+PELS may restore more than one binary device in a single planning cycle only when the normal
+restore gates are otherwise clear. This is intended for recovery after a
 capacity limit or margin increase, where many devices can be shed despite abundant headroom.
 
 Batching is intentionally narrow:
@@ -64,8 +64,8 @@ Batching is intentionally narrow:
 - the first restore still follows the normal admission rule
 - at most three binary restores can be admitted in one cycle
 - cumulative admitted restore need is capped at 50% of the starting available headroom
-- stale whole-home power, startup stabilization, shortfall, overshoot, shed cooldown, and restore
-  cooldown keep the previous one-at-a-time behavior
+- startup stabilization, shortfall, overshoot, shed cooldown, and restore cooldown keep the
+  previous one-at-a-time behavior
 - the budget-exempt restore lane (admissions while shedding stays latched on a budget-driven
   overshoot) is always one-at-a-time: its batch state is explicitly disabled, independent of the
   overshoot flag, so the hysteresis band cannot re-enable continuation there

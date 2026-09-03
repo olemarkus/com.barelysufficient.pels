@@ -131,9 +131,9 @@ so the sentence can never contradict the figures beside it.
 
 The trailing clause names the binding ceiling (`SAFE_PACE_SOURCE_BY_SOURCE` in
 `planHeroTooltips.ts`; `capacity` → `set by this hour's pace`, `daily` → `set by
-today's budget`, `both` → `this hour's pace and today's budget meet here`). It
-is omitted when `meta.softLimitSource` is unknown — guessing risks naming the
-hard cap when it is not binding.
+today's budget`). `meta.softLimitSource` is required on the wire and total over
+those two members, so on a measured cycle the clause always renders — there is no
+unknown source to omit it for.
 
 This clause is load-bearing as of 2026-08-02: device cards no longer name the
 ceiling (`notes/ui-terminology.md` § "Device cards say what a device needs"), so
@@ -372,8 +372,8 @@ Priority order (first matching condition wins):
    the first viewport. It stays hypothetical (`would`), never implying PELS
    acted.
 3. Actively limiting: `Holding back 2 devices so the house stays under 12.0 kW.`
-   The safe-pace clause is dropped when the value is unavailable
-   (`Holding back 2 devices.`). Two more-specific variants win over the
+   The safe pace is always available on a measured cycle (`meta.softLimitKw` is
+   required), so this variant always names it. Two more-specific variants win over the
    safe-pace clause when they describe the whole limited set: all limited
    devices smart-task waiting → `Waiting for cheaper hours before running
    2 devices.` (blended comma-join when only some are); all limited devices

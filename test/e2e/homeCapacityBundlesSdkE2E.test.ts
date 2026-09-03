@@ -741,8 +741,8 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
   // actuating rebuild, with the area's draw completely unknown — and a
   // never-sampled bundle is invisible to the freshness heartbeat (no aging
   // timestamp), so nothing escalated it later. This is the SDK-boundary proof
-  // that the planner's unknown-power clamp reaches an area bundle; the clamp's
-  // direction rule is pinned in test/integration/planDevices.test.ts.
+  // that lib/power's measurement gate holds an area bundle planless until its
+  // meter reports — the planner is never entered, so no clamp inside it applies.
   it('holds an area heater at its current setpoint until the area meter has reported, then applies the mode target', async () => {
     const heater = await buildHeaterDevice('device-sub-heat', 'z2', 18);
     const mainDevice = await buildOnOffDevice('device-main', 'z1');

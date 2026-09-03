@@ -272,9 +272,11 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const state = createPlanEngineState();
       const now = new Date('2026-04-15T11:04:01.000Z').getTime();
       vi.setSystemTime(now);
-      // Simulate the prior cycle having been a stale-hold / missing-total build:
-      // `rememberPlanSnapshot` recorded a build timestamp (a baseline EXISTS) but the
-      // total was null, so there is no previous total to diff a fresh sample against.
+      // Stamp a build timestamp with no total, so there is no previous total to
+      // diff this sample against. `rememberPlanSnapshot` writes both fields
+      // together, so this pair is constructed rather than reachable — the point is
+      // to exercise the undiffable-previous-total branch in isolation, not to
+      // depict a real first build (which starts with BOTH fields null).
       state.lastPlanBuiltAtMs = now - 30_000;
       // PELS has been up long enough to have watched the meter go silent: the
       // producer will not escalate to fail-closed inside its startup grace,
@@ -296,8 +298,8 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
         getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        // Fresh power sample this cycle, so the current total IS a finite number — only
-        // the PREVIOUS total is missing, which is what must drive power_sample_unavailable.
+        // A sample this cycle, so the current total IS a finite number — only the
+        // PREVIOUS total is missing, which is what must drive attribution_inputs_incomplete.
         getPowerTracker: () => ({ lastTimestamp: now , lastPowerW }),
         getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 0.7,
@@ -1155,7 +1157,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     }
   });
 
-  it('does not close restore attribution on a stale-hold rebuild with non-negative synthetic headroom', async () => {
+  it('does not close restore attribution across a minutes-old carried sample with non-negative headroom', async () => {
     let lastPowerW = 0;
     vi.useFakeTimers();
     try {

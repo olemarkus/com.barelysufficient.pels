@@ -749,13 +749,16 @@ What remains open is below.*
       (`UNCHANGED_READING_SHED_HOLD_MS`). Exact equality is deliberate — it is the signature of a
       re-delivered aggregate — but it means a meter that moves a watt or two while still not
       reflecting the shed (4351 → 4348 with the ~1.08 kW relief unaccounted) slips through and the
-      planner cuts deeper than the real deficit needs. The complete fix compares the realised drop
-      against the relief actually credited for the devices shed last cycle, and only escalates when
-      the drop falls short — bigger than this hold because it needs per-device credited relief
-      carried across cycles. Field case: 2026-08-01, hard cap 3.0 kW, total 4.351 kW; #4 shed at
+      planner cuts deeper than the real deficit needs. The complete fix splits across two layers:
+      recognising a re-delivered or lagging aggregate is a meter question and belongs in
+      `lib/power`, which owns the reading; comparing the realised drop against the relief actually
+      credited for the devices shed last cycle is shed bookkeeping and stays in the planner, which
+      is the only layer holding `lastShedPlanShedIds` and the credited figures. Do not push the
+      second half into `lib/power` — it cannot see them. Field case: 2026-08-01, hard cap 3.0 kW, total 4.351 kW; #4 shed at
       11:03:44 credited ≥1.81 kW but realised ~1.08 kW; the 11:03:54 repeat then took both #2 and
       the user's #1. Persona: the owner who ranked their priority list and expects #1 to survive;
-      hypothesis: "PELS ignores my priorities" when it is really over-cutting on a stale total. [P2]
+      hypothesis: "PELS ignores my priorities" when it is really over-cutting on a reading that
+      has not yet reflected the shed. [P2]
 
 - [ ] **The unchanged-reading shed hold freezes shed membership, not shed depth, so a stepped device
       still deepens one notch per held cycle.** `holdSheddingAtLastDecision` re-asserts the decided
@@ -796,7 +799,7 @@ What remains open is below.*
       investigation. [P2]
 
 - [ ] **`budgetReleasableHeadroomHold` does not check that lifting the budget would actually admit
-      the candidate.** The flag is plan-wide (daily pace binding + fresh power + no capacity
+      the candidate.** The flag is plan-wide (daily pace binding + no capacity
       breach), so in the band where capacity sits between the budget pace and the candidate's
       restore need (e.g. capacity pace 5 kW, draw 4 kW, daily pace 4.5 kW, need 1.2 kW), the
       held-back widget offers "Let it run now" but the release still leaves the restore blocked on
@@ -1220,7 +1223,7 @@ split follow-ups from this batch are fixed by the solar-accounting follow-up; re
 - [ ] **Bound the startup reservation on time spent HOLDING, not wall-clock since first sighting.**
       `resolveCycleHeadroomReserves` runs at the top of `applyRestorePlan` (`lib/plan/restore/index.ts`),
       so `HEADROOM_RESERVE_MAX_MS` burns during every window in which the reserve enforces nothing:
-      `powerKnown === false`, `guardInShortfall`, active overshoot, shed cooldown (60 s), restore
+      `guardInShortfall`, active overshoot, shed cooldown (60 s), restore
       cooldown (60–300 s), startup stabilization. *Hypothesis:* a capacity-tight hour with three
       shed/restore cycles can consume most of the 15 minutes without the reserve ever holding a
       device back; the home then calms, a real contiguous block appears, and the reserve has already

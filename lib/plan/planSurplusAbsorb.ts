@@ -571,12 +571,11 @@ export function resolveSurplusEligibility(params: {
   state: PlanEngineState;
   /** The measured whole-home draw, signed (`MeasuredPower.drawKw`). */
   signedNetKw: number;
-  /** Producer-resolved: whether `signedNetKw` was measured this cycle. */
   // Producer-resolved inferred curtailed-surplus term (kW); null/undefined when
-  // absent or currently suppressed. Folded into the pool as max(0, term) — it can
-  // only ever ENLARGE the pool, and the `powerOk` gate below is unaffected: a
-  // fresh measured meter is still required before any raise (never raise blind
-  // on inference alone).
+  // absent or currently suppressed. `composeSurplusPool` sums it with measured
+  // export and the add-back, so on a zero-export home — where the meter is pinned
+  // near zero and reports no export — a positive inferred term is precisely what
+  // opens the pool. It only ever adds.
   inferredSurplusKw: number;
   getConfig: (deviceId: string) => SurplusConfig | undefined;
   // Smart-task precedence at the ALLOCATION stage (mirrors the hold exclusion):

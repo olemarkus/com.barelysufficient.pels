@@ -1,7 +1,7 @@
 /**
  * Plan assembly pipeline. One `buildDevicePlanSnapshot` call turns the live
  * device inputs into a `DevicePlan` through fixed stages: deferred-objective
- * decoration → plan context (soft limit, headroom, power freshness) →
+ * decoration → plan context (the cycle's limits) → measurement →
  * shedding selection → initial device materialization → restore →
  * shed-temperature hold → reason normalization → finalization, followed by
  * overshoot bookkeeping, plan meta, and diagnostics observation. The builder
@@ -83,11 +83,6 @@ export class PlanBuilder {
 
   /** The unmeasured path — see `planBuilderSilentMeter.ts`. */
   private readonly silentMeter: SilentMeterPlanBuilder;
-
-  /**
-   * Per builder, so a main home and its meter areas keep separate freshness
-   * histories. Owned by `lib/power`; the builder only drives it once per cycle.
-   */
 
   constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) {
     this.overshootTracker = new OvershootTracker(state, deps);

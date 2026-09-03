@@ -141,7 +141,7 @@ const isTrackingStopped = (
 //     gone stays HELD — it must not be turned on from grid headroom by the generic
 //     restore lane before its ON has materialized on real export.
 // A non-binary surplusOnly device is invariant-impossible (candidacy requires a
-// binary control capability); it defensively reads `currentOn` as false.
+// binary control capability), so the binary read is total.
 // Exported so the plan-side keep-invariant predicate (`isSurplusOnlyHoldShed` in
 // planDevices.ts) mirrors this EXACT condition — a device held here for surplus
 // (still-off + release-pending, or not eligible) must not be counted as capacity

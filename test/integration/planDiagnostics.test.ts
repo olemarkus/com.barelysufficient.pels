@@ -110,8 +110,6 @@ const buildObservation = (params: {
   priceOptimizationEnabled?: boolean;
   priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   currentHourPriceLevel?: PlanContext['currentHourPriceLevel'];
-  // Observer-resolved staleness for the device (defaults fresh). Drives the
-  // diagnostics freshness gate exactly as the production observer dep does.
 }) => {
   const cycle = buildContext(
     buildPlanInputDevice(params.inputDevice),
