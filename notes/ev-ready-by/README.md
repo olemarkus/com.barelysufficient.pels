@@ -180,7 +180,11 @@ does not enter the key), with no knowledge of device class or plug-state:
 - **Arming.** `onDispatchFailed` and `onTimedOut` both record a failure and
   schedule a rebuild at `now + RETRY_DELAYS_MS[failures - 1]`, where
   `RETRY_DELAYS_MS = [15, 30, 60]` minutes — the same ladder the probe used. The
-  failure count saturates at three, so the wait never exceeds 60 minutes.
+  failure count saturates at three, so the wait never exceeds 60 minutes. Only
+  `onDispatchFailed` additionally requests an IMMEDIATE rebuild: a transport
+  answer is PELS's own command outcome, whereas `onTimedOut` is raised by the
+  reconcile sweep, which the observation lane also runs — and an observation may
+  not drive the planner.
 - **Effect.** While the timer is pending, `project` answers
   `{ commandableNow: false, reason: 'binary_command_retry' }` — for a device that
   was otherwise commandable; one already blocked keeps its own `reason: 'none'`.
@@ -218,11 +222,13 @@ and reports `plugged_in`, say. That one waits out the remaining 15/30/60-minute
 timer. **That is latency, not deadlock**: the timer always expires and the wait is
 capped at 60 minutes.
 
-It is also unpaid so far. The back-off arms only through `recordFailure`, which
-is the sole emitter of the plan-rebuild reason `binary_command_reachability_changed`
-— that reason is the one always-logged signal it produces, since
-`binary_command_retry` is a `commandabilityReason` value that never reaches a log
-line. In the 2026-08-11→23 production log it appears **four times, all on
+It is also unpaid so far. The back-off arms only through `recordFailure`, and the
+dispatch-failure lane that wraps it is the sole emitter of the plan-rebuild reason
+`binary_command_reachability_changed` — that reason is the one always-logged signal
+it produces, since `binary_command_retry` is a `commandabilityReason` value that
+never reaches a log line. Since 2026-09-03 a TIMEOUT arms the back-off without
+emitting that reason (only the dispatch lane emits it), so read an absence as
+"no transport rejection", not as "the back-off never armed". In the 2026-08-11→23 production log it appears **four times, all on
 2026-08-13, under commit `748a2337e`** — the pre-unify EV probe, which had its own
 failure-only rebuild request. The unified code first ran on 2026-08-15 (`f09dc988a`,
 the first deploy containing `7edb9517b`), and there has been **no occurrence since**.

@@ -49,6 +49,47 @@ describe('binary command reachability', () => {
     vi.useRealTimers();
   });
 
+  /**
+   * `onDispatchFailed` and `onTimedOut` used to be the same function, and that
+   * is what let a device observation drive the planner: the sweep that raises
+   * `onTimedOut` runs on whichever lane called it, including the observation
+   * lane (`setup/appInit/planObservedStateSubscription.ts` →
+   * `syncLivePlanState`). The bookkeeping is identical on both lanes; only the
+   * immediate rebuild request differs.
+   */
+  it('records a timeout failure and arms the retry without requesting a rebuild', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const { reachability, requestRebuild, scheduleRebuild } = buildReachability();
+
+    reachability.lifecycle.onTimedOut?.({ deviceId: 'heater', desired: true });
+
+    // The lane that must stay silent...
+    expect(requestRebuild).not.toHaveBeenCalled();
+    // ...while losing none of the escalation it is responsible for.
+    expect(scheduleRebuild).toHaveBeenCalledWith('heater', 910_000);
+    expect(reachability.project({ deviceId: 'heater', base: true, observedOn: false, available: true }))
+      .toEqual({ commandableNow: false, reason: 'binary_command_retry' });
+    vi.useRealTimers();
+  });
+
+  it('keeps the dispatch lane requesting a rebuild, and counts both lanes the same', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const { reachability, requestRebuild, scheduleRebuild } = buildReachability();
+
+    // A transport answer is not an observation, so this one still asks.
+    reachability.lifecycle.onDispatchFailed?.({ deviceId: 'heater', desired: true });
+    expect(requestRebuild).toHaveBeenCalledOnce();
+
+    // Second failure, other lane: the backoff still advances to the 30 min rung,
+    // so staying quiet cost no bookkeeping.
+    reachability.lifecycle.onTimedOut?.({ deviceId: 'heater', desired: true });
+    expect(requestRebuild).toHaveBeenCalledOnce();
+    expect(scheduleRebuild).toHaveBeenLastCalledWith('heater', 1_810_000);
+    vi.useRealTimers();
+  });
+
   it('does not apply resume reachability to turn-off commands', () => {
     const { reachability, requestRebuild, scheduleRebuild } = buildReachability();
 

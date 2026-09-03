@@ -3523,3 +3523,45 @@ describe('PlanService', () => {
     expect(schedulePostActuationRefresh).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The sweep-before-device-read ordering is the whole safety argument for the
+ * observation lane not requesting a rebuild
+ * (`lib/plan/admission/binaryCommandReachability.ts`, `onTimedOut`). `onTimedOut`
+ * records the reachability failure synchronously but asks for no rebuild, and
+ * that is only safe because every rebuild runs the pending-binary sweep BEFORE
+ * it reads the devices — so a timeout raised by the sweep is projected
+ * uncommandable in the SAME pass that would otherwise have acted on the device.
+ *
+ * Swapping these two statements in `buildPlanForRebuild` would break that
+ * silently, with no other test failing, so it is pinned here rather than left to
+ * a comment. See `test/integration/observationLaneNoPlanRebuild.test.ts` for the
+ * invariant this ordering protects.
+ */
+describe('rebuild ordering', () => {
+  it('sweeps pending binary commands before reading plan devices', async () => {
+    const syncPendingBinaryCommands = vi.fn(() => false);
+    const getPlanDevices = vi.fn(() => []);
+    const { service } = createPlanService({
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>({
+        ...createMockPlanEngine(),
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+        syncPendingBinaryCommands,
+      }),
+      getPlanDevices,
+    });
+
+    await service.rebuildPlanFromCache('power_delta');
+
+    expect(syncPendingBinaryCommands).toHaveBeenCalled();
+    expect(getPlanDevices).toHaveBeenCalled();
+    expect(syncPendingBinaryCommands.mock.invocationCallOrder[0])
+      .toBeLessThan(getPlanDevices.mock.invocationCallOrder[0]!);
+  });
+});
