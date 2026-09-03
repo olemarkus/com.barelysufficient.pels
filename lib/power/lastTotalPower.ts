@@ -42,7 +42,7 @@ export function resolveLastTotalPowerKw(
  * the single power latch — and because the guard's `resetLastTotalPower`, which
  * the gate's own docblock named as the meter-swap mechanism, never had a
  * production caller. The reset that does run on an in-place swap is
- * `SuffixedTrackerPersistence.resetFreshness`, which clears `lastPowerW` and
+ * `HomeTrackerPersistence.resetFreshness`, which clears `lastPowerW` and
  * `lastTimestamp` together, so this answers false again exactly when it should.
  */
 export function hasPowerMeasurement(

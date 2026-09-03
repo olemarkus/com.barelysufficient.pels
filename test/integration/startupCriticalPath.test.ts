@@ -35,7 +35,7 @@ const buildContext = () => {
     getStructuredLogger: (component: string): Logger | undefined =>
       component === 'startup' ? (startupLogger as unknown as Logger) : undefined,
   });
-  const loadPowerTracker = vi.mocked(ctx.loadPowerTracker);
+  const hydratePowerTracker = vi.mocked(ctx.hydratePowerTracker);
   const loadPriceOptimizationSettings = vi.mocked(ctx.loadPriceOptimizationSettings);
   const updateOverheadToken = vi.mocked(ctx.updateOverheadToken);
   const updateDailyBudgetState = vi.mocked(ctx.dailyBudgetService!.updateState);
@@ -51,7 +51,7 @@ const buildContext = () => {
   const startPriceOptimization = vi.mocked(ctx.priceCoordinator!.startPriceOptimization);
   const rebuildPlanFromCache = vi.mocked(ctx.planService!.rebuildPlanFromCache);
 
-  loadPowerTracker.mockImplementation(() => undefined);
+  hydratePowerTracker.mockImplementation(() => undefined);
   loadPriceOptimizationSettings.mockImplementation(() => undefined);
   updateOverheadToken.mockImplementation(async () => undefined);
   updateDailyBudgetState.mockImplementation(() => undefined);
@@ -68,7 +68,7 @@ const buildContext = () => {
 
   return {
     startupLogger,
-    loadPowerTracker,
+    hydratePowerTracker,
     loadPriceOptimizationSettings,
     initOptimizer,
     updateOverheadToken,
@@ -93,8 +93,8 @@ describe('startup critical path perf guardrails', () => {
     await startAppServices(params.ctx);
     await flushMicrotasks();
 
-    expect(params.loadPowerTracker).toHaveBeenCalledTimes(1);
-    expect(params.loadPowerTracker).toHaveBeenCalledWith({ skipDailyBudgetUpdate: true });
+    expect(params.hydratePowerTracker).toHaveBeenCalledTimes(1);
+    expect(params.hydratePowerTracker).toHaveBeenCalledWith();
     expect(params.loadPriceOptimizationSettings).toHaveBeenCalledTimes(1);
     expect(params.initOptimizer).toHaveBeenCalledTimes(1);
     expect(params.updateOverheadToken).toHaveBeenCalledTimes(1);

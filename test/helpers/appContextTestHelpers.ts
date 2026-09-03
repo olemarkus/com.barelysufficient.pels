@@ -194,6 +194,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getTimeZone: () => 'Europe/Oslo',
     notifyOperatingModeChanged: vi.fn(),
     loadPowerTracker: vi.fn(),
+    hydratePowerTracker: vi.fn(),
     loadCapacitySettings: vi.fn(),
     loadTemperatureControlPolicySettings: vi.fn(),
     loadPriceOptimizationSettings: vi.fn(),

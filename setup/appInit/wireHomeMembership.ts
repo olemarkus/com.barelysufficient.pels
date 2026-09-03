@@ -524,13 +524,13 @@ export const wireHomeMembership = (
     })),
     getLogger: () => ctx.getStructuredLogger('homes'),
     // Restart fence anchor: the stamp of the sample Main's tracker currently
-    // serves. `loadPowerTracker` reloads the durable `lastPowerW`/
+    // serves. `hydratePowerTracker` restores the durable `lastPowerW`/
     // `lastTimestamp`, so after a restart inside the freshness window the
     // planner treats pre-restart watts as live while the sampled-identity owner
     // starts empty — the authority reads this to fence Main until its own first
-    // ingest re-proves provenance. Lazy: the tracker may load after this wiring,
-    // and an unloaded `{}` honestly reports no restored sample.
-    getRestoredSampleAtMs: () => ctx.powerTracker?.lastTimestamp,
+    // ingest re-proves provenance. Lazy: the tracker may hydrate after this
+    // wiring, and a not-yet-hydrated tracker honestly reports no restored sample.
+    getRestoredSampleAtMs: () => ctx.powerTracker.lastTimestamp,
     // Change-gated plan invalidation, mirroring the settings-change rebuild
     // path (`rebuildPlanFromSettings` → `planService.rebuildPlanFromCache`): a
     // changed membership map means the committed plan governs the wrong device

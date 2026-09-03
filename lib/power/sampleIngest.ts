@@ -1,4 +1,3 @@
-import type { HomeyRuntime } from '../ports/homeyRuntime';
 import type { PowerTrackerState } from './tracker';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
@@ -6,7 +5,6 @@ import { resolveUsableCapacityKw } from './capacityModel';
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
-import { POWER_TRACKER_STATE } from '../utils/settingsKeys';
 
 /**
  * Whole-home power sample ingest pipeline.
@@ -271,24 +269,6 @@ export async function recordPowerSampleForApp(params: {
     rebuildPlanFromCache: schedulePlanRebuild,
     saveState,
   });
-}
-
-export function persistPowerTrackerStateForApp(params: {
-  homey: HomeyRuntime;
-  powerTracker: PowerTrackerState;
-  reason?: PowerTrackerPersistReason;
-  error: (msg: string, err: Error) => void;
-}): void {
-  const { homey, powerTracker, reason, error } = params;
-  const writeStart = Date.now();
-  try {
-    homey.settings.set(POWER_TRACKER_STATE, powerTracker);
-    addPerfDuration('settings_write_ms', Date.now() - writeStart);
-    incPerfCounter('settings_set.power_tracker_state');
-    if (reason) incPerfCounter(`settings_set.power_tracker_state_reason.${reason}_total`);
-  } catch (err) {
-    error('Failed to persist power tracker', err as Error);
-  }
 }
 
 export function prunePowerTrackerHistoryForApp(params: {

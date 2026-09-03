@@ -352,6 +352,7 @@ describe('post-refresh recompute through the transport seam', () => {
       deviceManager: transport,
       timers: new TimerRegistry(),
       getStructuredLogger: () => logger,
+      powerTracker: {},
     } as unknown as AppContext;
     const onSubHomeMembershipChanged = vi.fn();
     const wiring = wireHomeMembership(

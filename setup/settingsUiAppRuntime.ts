@@ -228,8 +228,10 @@ const isValidPlanSnapshot = (value: unknown): value is SettingsUiPlanSnapshot =>
 };
 
 export const getPowerTrackerForUiFromApp = (homey: Homey.App['homey']): PowerTrackerState | null => {
+  // The app handle crosses the WebView bridge untrusted: the tracker is a
+  // fact of THIS app, not of any `Homey.App`, so its absence is classified here.
   const tracker = getRuntimeApp(homey)?.powerTracker;
-  return tracker && typeof tracker === 'object' ? tracker : null;
+  return tracker && typeof tracker === 'object' && !Array.isArray(tracker) ? tracker : null;
 };
 
 /**
@@ -313,7 +315,7 @@ export const resetSettingsUiPowerStatsForApp = async (homey: Homey.App['homey'])
     throw appNotReadyError('Reset power stats');
   }
 
-  const currentState = app.powerTracker || {};
+  const currentState = app.powerTracker ?? {};
   const currentHourKey = getHourBucketKey();
   const preserveCurrentHour = (collection?: Record<string, number>): Record<string, number> => (
     collection && collection[currentHourKey] !== undefined

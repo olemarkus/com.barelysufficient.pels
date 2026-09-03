@@ -3,7 +3,6 @@ import {
   isFiniteNumber,
   isNumberMap,
   isPlausiblePowerTrackerState,
-  isPowerTrackerState,
   isPrioritySettings,
   isStringMap,
   sanitizePowerTrackerSolarFields,
@@ -68,25 +67,25 @@ describe('appTypeGuards plain-object handling', () => {
     });
   });
 
-  describe('isPowerTrackerState — solar family shapes', () => {
+  describe('isPlausiblePowerTrackerState — solar family shapes', () => {
     it('accepts a typed meter identity and rejects malformed provenance', () => {
-      expect(isPowerTrackerState({
+      expect(isPlausiblePowerTrackerState({
         meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'meter-a' },
       })).toBe(true);
-      expect(isPowerTrackerState({
+      expect(isPlausiblePowerTrackerState({
         meterIdentity: { powerSource: 'flow', meterDeviceId: null },
       })).toBe(true);
-      expect(isPowerTrackerState({
+      expect(isPlausiblePowerTrackerState({
         meterIdentity: { powerSource: 'other', meterDeviceId: 'meter-a' },
       })).toBe(false);
-      expect(isPowerTrackerState({
+      expect(isPlausiblePowerTrackerState({
         meterIdentity: { powerSource: 'homey_energy', meterDeviceId: '' },
       })).toBe(false);
-      expect(isPowerTrackerState({ meterIdentity: ['homey_energy', 'meter-a'] })).toBe(false);
+      expect(isPlausiblePowerTrackerState({ meterIdentity: ['homey_energy', 'meter-a'] })).toBe(false);
     });
 
     it('accepts a state carrying the solar bucket families and generation latch', () => {
-      expect(isPowerTrackerState({
+      expect(isPlausiblePowerTrackerState({
         buckets: { '2026-06-01T10:00:00.000Z': 0.5 },
         generationBuckets: { '2026-06-01T10:00:00.000Z': 2.4 },
         exportBuckets: { '2026-06-01T10:00:00.000Z': 0.8 },
@@ -97,15 +96,15 @@ describe('appTypeGuards plain-object handling', () => {
     });
 
     it('accepts a state with all solar fields absent (non-solar home)', () => {
-      expect(isPowerTrackerState({ buckets: {} })).toBe(true);
+      expect(isPlausiblePowerTrackerState({ buckets: {} })).toBe(true);
     });
 
     it('rejects non-record solar families and a non-numeric generation latch', () => {
-      expect(isPowerTrackerState({ generationBuckets: 'junk' })).toBe(false);
-      expect(isPowerTrackerState({ exportBuckets: 4 })).toBe(false);
-      expect(isPowerTrackerState({ generationDailyTotals: true })).toBe(false);
-      expect(isPowerTrackerState({ exportDailyTotals: 'x' })).toBe(false);
-      expect(isPowerTrackerState({ lastGenerationW: 'high' })).toBe(false);
+      expect(isPlausiblePowerTrackerState({ generationBuckets: 'junk' })).toBe(false);
+      expect(isPlausiblePowerTrackerState({ exportBuckets: 4 })).toBe(false);
+      expect(isPlausiblePowerTrackerState({ generationDailyTotals: true })).toBe(false);
+      expect(isPlausiblePowerTrackerState({ exportDailyTotals: 'x' })).toBe(false);
+      expect(isPlausiblePowerTrackerState({ lastGenerationW: 'high' })).toBe(false);
     });
   });
 
@@ -207,7 +206,7 @@ describe('appTypeGuards plain-object handling', () => {
       expect(sanitized.exportBuckets).toEqual({ '2026-06-01T10:00:00.000Z': 0.8 });
       // …and the sanitized blob now passes the guard instead of losing the
       // whole tracker to an all-or-nothing reject.
-      expect(isPowerTrackerState(sanitized)).toBe(true);
+      expect(isPlausiblePowerTrackerState(sanitized)).toBe(true);
     });
 
     it('returns clean and non-object inputs untouched (same reference)', () => {

@@ -30,7 +30,7 @@ import type {
   HomeCapacityBundleDeps,
   HomeCapacityBundleDiagnostics,
 } from './createHomeCapacityBundle';
-import type { SuffixedTrackerPersistence } from '../../lib/power/suffixedTrackerPersistence';
+import type { HomeTrackerPersistence } from '../../lib/power/homeTrackerPersistence';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import { invalidateRebuildSuppressionForObservation } from '../../lib/plan/rebuildScheduler/observationSuppression';
 import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';
@@ -269,7 +269,7 @@ const buildHomeCapacityBundleReads = (params: {
   readEffectiveDryRun: () => boolean;
   /** THIS home's effective mode (scope accessor — pure resolution, no recovery arming). */
   getOperatingMode: () => string;
-  tracker: SuffixedTrackerPersistence;
+  tracker: HomeTrackerPersistence;
   getHome: () => SubHomeConfig;
   getScalars: () => CapacityScalarSettings;
 }): Pick<HomeCapacityBundle, 'getDiagnostics' | 'getReadModel'> => {
@@ -310,7 +310,7 @@ const buildScopedBundleReads = (params: {
   guard: CapacityGuard;
   planEngine: ReturnType<typeof createPlanEngine>;
   planService: PlanService;
-  tracker: SuffixedTrackerPersistence;
+  tracker: HomeTrackerPersistence;
   getHome: () => SubHomeConfig;
   getScalars: () => CapacityScalarSettings;
   getOperatingMode: () => string;
@@ -350,7 +350,7 @@ type HomeCapacityBundleApiParams = {
    * being asked, so the READ surface resolves its dry-run through these.
    */
   readDryRunGates: Pick<HomeCapacityBundleDeps, 'isMembershipReady' | 'isMeterSourceAuthorized'>;
-  tracker: SuffixedTrackerPersistence;
+  tracker: HomeTrackerPersistence;
   pipeline: ReturnType<typeof createHomePowerPipeline>;
   planRebuildScheduler: PlanRebuildScheduler;
   capacityStore: ReturnType<typeof createCapacitySettingsStore>;

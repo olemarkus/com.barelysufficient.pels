@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import { AppPowerTracker, type AppPowerTrackerDeps } from '../../setup/appPowerTracker';
+import { createHomeTrackerPersistence } from '../../lib/power/homeTrackerPersistence';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import {
   PowerCalibrationStore,
@@ -40,6 +41,22 @@ describe('AppPowerTracker calibration persist guard', () => {
       },
     } as never as Homey.App['homey'];
     const active = { store: new PowerCalibrationStore({ persistDebounceMs: 0 }) };
+    const tracker = createHomeTrackerPersistence({
+      deps: {
+        settings: homey.settings,
+        timers,
+        getLogger: () => undefined,
+        getPruneDebugEmitter: () => () => {},
+        reportError: vi.fn(),
+        getTimeZone: () => 'Europe/Oslo',
+        isTornDown: () => false,
+        onRecovered: () => {},
+      },
+      homeId: 'main',
+      initialState: {},
+      meterBinding: { kind: 'unbound' },
+      timerKey: (suffix) => suffix,
+    });
     // Only the members the pruning/guard start path exercises get real
     // behaviour; everything else either throws (so an unexpected call fails
     // the test loudly) or is a spy.
@@ -47,16 +64,13 @@ describe('AppPowerTracker calibration persist guard', () => {
       homey,
       settingsRepository: new SettingsRepository(homey),
       timers,
-      getPowerTracker: () => ({}),
-      setPowerTracker: vi.fn(),
+      getTracker: () => tracker,
       getPowerCalibrationStore: () => active.store,
       setPowerCalibrationStore: vi.fn(),
       getDailyBudgetService: () => { throw new Error('not exercised'); },
-      getStructuredDebugEmitter: () => () => {},
-      getTimeZone: () => 'Europe/Oslo',
+      getPlanService: () => undefined,
       error: vi.fn(),
       updateDailyBudgetAndRecordCap: vi.fn(),
-      persistPowerTrackerState: vi.fn(),
       // Routed the way app.ts routes it: back into the real persist function,
       // resolving the store at CALL time — the app replaces its store after
       // boot, and a guard that captured the boot-time store would silently
@@ -69,7 +83,6 @@ describe('AppPowerTracker calibration persist guard', () => {
         });
       },
       flushPowerCalibration: vi.fn(),
-      prunePowerTrackerHistory: vi.fn(),
     };
     return {
       tracker: new AppPowerTracker(deps),

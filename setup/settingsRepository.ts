@@ -17,15 +17,12 @@ import {
   type LearnedPeaksRead,
   type PersistedRecordReadEvidence,
 } from '../lib/device/devicePowerPeak';
-import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
-import { isPowerTrackerState, sanitizePowerTrackerSolarFields } from '../lib/utils/appTypeGuards';
 import { readMainMeterSelection } from './mainMeterSettings';
 import {
   DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_POWER_PEAKS,
   FLOW_REPORTED_DEVICE_CAPABILITIES,
-  POWER_TRACKER_STATE,
 } from '../lib/utils/settingsKeys';
 
 /**
@@ -40,23 +37,6 @@ import {
  */
 export class SettingsRepository {
   constructor(private readonly homey: Homey.App['homey']) {}
-
-  /**
-   * Returns the persisted power-tracker snapshot if it parses, otherwise
-   * `undefined`. Caller decides whether to keep the existing in-memory
-   * state (`undefined` return) or adopt the parsed state.
-   *
-   * The optional solar families are field-level sanitized FIRST: a junk value
-   * in one of them drops that field only, so corrupt solar data can never
-   * fail the whole guard and cost the billed import history on the next
-   * persist.
-   */
-  loadPowerTrackerState(): PowerTrackerState | undefined {
-    const stored = sanitizePowerTrackerSolarFields(
-      this.homey.settings.get(POWER_TRACKER_STATE) as unknown,
-    );
-    return isPowerTrackerState(stored) ? stored : undefined;
-  }
 
   /**
    * Materialises the per-device power calibration store from persisted

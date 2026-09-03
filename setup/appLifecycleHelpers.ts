@@ -113,7 +113,7 @@ export async function startAppServices(ctx: InitializedAppContext): Promise<void
       : undefined,
     ...appContext.startupBootstrap,
   };
-  await runStep('loadPowerTracker', async () => appContext.loadPowerTracker({ skipDailyBudgetUpdate: true }));
+  await runStep('hydratePowerTracker', async () => appContext.hydratePowerTracker());
   await runStep('loadPriceOptimizationSettings', async () => appContext.loadPriceOptimizationSettings());
   await runStep('initOptimizer', async () => priceCoordinator.initOptimizer());
   scheduleBackgroundTask(

@@ -52,8 +52,9 @@ Sampled the `objective_profile_*` structured events:
 - **The buffer is persisted.** It rides in `power_tracker_state`
   (`PowerTrackerState.objectiveProfiles`), saved every persist tick and
   reloaded at startup; retention is 30 days (`OBJECTIVE_PROFILE_RETENTION_MS`).
-  A transient empty SDK read leaves the in-memory state untouched (`app.ts`
-  `loadPowerTracker` only assigns when `isPowerTrackerState` passes).
+  A suspect SDK read fences persistence and leaves the in-memory state
+  untouched (`lib/power/homeTrackerPersistence.ts`, the same component every
+  home's tracker runs through).
 
 So the original P0 sub-causes about *convergence/storage* don't hold: samples
 converge, bands fit, storage persists. But the samples are **not clean** — see

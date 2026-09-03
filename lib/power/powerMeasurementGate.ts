@@ -21,7 +21,7 @@ import type { ConfiguredPowerSourceRead } from './powerSource';
  * 2026-08-31 — superseding the 2026-08-16 "no escalation" clause below; the
  * "no fabricated reading" half stands). This gate shuts again only when the
  * measurement itself goes away: an in-place meter swap clears the tracker latch
- * (`SuffixedTrackerPersistence.resetFreshness`), putting the bundle back to "no
+ * (`HomeTrackerPersistence.resetFreshness`), putting the bundle back to "no
  * reading from THIS meter yet".
  *
  * The planner sees only `isOpen()` and never learns what it is waiting on.

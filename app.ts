@@ -89,7 +89,8 @@ class PelsApp extends PelsAppBase implements AppContext {
   public deferredObjectiveBackfillPending?: boolean;
   public readonly combinedPricesReader
     = createCombinedPricesReaderForApp(this.homey, () => this.priceCoordinator);
-  public powerTracker: PowerTrackerState = {};
+  public get powerTracker(): PowerTrackerState { return this.mainTracker.getState(); }
+  public set powerTracker(value: PowerTrackerState) { this.mainTracker.adopt(value); }
   protected powerCalibrationStore: PowerCalibrationStore = new PowerCalibrationStore();
   public capacityGuard!: CapacityGuard;
   public readonly deferredObjectiveStatusBus: DeferredObjectiveStatusBus = createDeferredObjectiveStatusBus();
@@ -285,6 +286,22 @@ class PelsApp extends PelsAppBase implements AppContext {
 
   protected structuredLogger?: PinoLogger;
   public readonly timers = new TimerRegistry();
+  /**
+   * The Main home's power tracker: the same classified persistence component
+   * every meter area runs, on the unsuffixed key (`homeScopedSettingsKey` is
+   * the identity for `'main'`) and unbound from any one meter — the Main-meter
+   * authority governs which meter its samples come from.
+   */
+  public readonly mainTracker = AppPowerTracker.createMainTracker({
+    settings: this.homey.settings,
+    timers: this.timers,
+    getLogger: () => this.getStructuredLogger('power'),
+    getPruneDebugEmitter: () => this.getStructuredDebugEmitter('perf', 'perf'),
+    reportError: (message, error) => this.error(message, error),
+    getTimeZone: () => this.getTimeZone(),
+    isTornDown: () => this.mainActuationStopped,
+    onRecovered: () => this.powerTrackerHelpers.onPowerTrackerRecovered(),
+  });
 
   private readonly targetPowerReachabilityWiring = createTargetPowerReachabilityAppWiring(this);
   public readonly snapshotHelpers: AppSnapshotHelpers = new AppSnapshotHelpers({
@@ -374,19 +391,15 @@ class PelsApp extends PelsAppBase implements AppContext {
     homey: this.homey,
     settingsRepository: this.settingsRepository,
     timers: this.timers,
-    getPowerTracker: () => this.powerTracker,
-    setPowerTracker: (state) => { this.powerTracker = state; },
+    getTracker: () => this.mainTracker,
     getPowerCalibrationStore: () => this.powerCalibrationStore,
     setPowerCalibrationStore: (store) => { this.powerCalibrationStore = store; },
     getDailyBudgetService: () => this.dailyBudgetService,
-    getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
-    getTimeZone: () => this.getTimeZone(),
+    getPlanService: () => this.planService,
     error: (...args) => this.error(...args),
     updateDailyBudgetAndRecordCap: (options) => this.updateDailyBudgetAndRecordCap(options),
-    persistPowerTrackerState: (reason) => this.persistPowerTrackerState(reason),
     persistPowerCalibrationIfDue: (nowMs) => this.persistPowerCalibrationIfDue(nowMs),
     flushPowerCalibration: (nowMs) => this.flushPowerCalibration(nowMs),
-    prunePowerTrackerHistory: () => this.prunePowerTrackerHistory(),
   });
   private readonly ctx = this.context;
   // Smart-task (deferred-objective) preview/create/cancel/rescue + history
@@ -466,7 +479,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     flushLearnedPowerPeaks: () => this.flowBacked.flushLearnedPeaks(),
     loadPowerCalibrationStore: () => this.loadPowerCalibrationStore(),
     startPowerTrackerPruning: () => this.startPowerTrackerPruning(),
-    persistPowerTrackerState: (reason) => this.persistPowerTrackerState(reason),
+    stopPowerTracker: () => this.stopPowerTracker(),
     flushPowerCalibration: () => this.flushPowerCalibration(),
     runStartupSettingsMigrations: () => this.runStartupSettingsMigrations(),
     initPlanEngine: () => this.initPlanEngine(),

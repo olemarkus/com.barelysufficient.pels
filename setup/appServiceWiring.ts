@@ -18,7 +18,6 @@ import { createHomeyDestination } from '../lib/logging/homeyDestination';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { WeatherCollector } from '../lib/weather/weatherCollector';
-import type { PowerTrackerPersistReason } from '../lib/power/sampleIngest';
 import {
   requireInitializedAppContext,
   type AppContext,
@@ -165,7 +164,7 @@ export type AppServiceWiringDeps = {
   flushLearnedPowerPeaks: () => void;
   loadPowerCalibrationStore: () => void;
   startPowerTrackerPruning: () => void;
-  persistPowerTrackerState: (reason: PowerTrackerPersistReason) => void;
+  stopPowerTracker: () => void;
   flushPowerCalibration: () => void;
   runStartupSettingsMigrations: () => void;
   // Routed through the app so test seams that reassign the instance method are
@@ -655,9 +654,7 @@ export class AppServiceWiring {
 
   private clearUninitTimers(): void {
     const { ctx } = this.deps;
-    if (this.deps.timers.has('powerTrackerSave')) {
-      this.deps.persistPowerTrackerState('uninit');
-    }
+    this.deps.stopPowerTracker();
     this.deps.timers.clearAll();
     ctx.snapshotHelpers.stop();
     ctx.homeyEnergyHelpers.stop();

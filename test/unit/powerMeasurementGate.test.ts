@@ -86,7 +86,7 @@ describe('PowerMeasurementGate', () => {
   });
 
   // An in-place meter swap clears the tracker latch
-  // (`SuffixedTrackerPersistence.resetFreshness`), which is the one way an open
+  // (`HomeTrackerPersistence.resetFreshness`), which is the one way an open
   // gate shuts again.
   it('re-gates after a meter swap and re-arms the warning', () => {
     const tracker: PowerTrackerState = {};

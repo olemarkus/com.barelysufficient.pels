@@ -79,7 +79,7 @@ export class SampledMeterIdentity {
   private sampleAtMs: number | null = null;
 
   /**
-   * True until this process admits its first ingest. `loadPowerTracker`
+   * True until this process admits its first ingest. `hydratePowerTracker`
    * restores the durable `lastPowerW`/`lastTimestamp` across a restart, but
    * nothing restores the identity that governed them — so between boot and the
    * first ingest the tracker can be serving an AREA meter's watts while this

@@ -91,7 +91,7 @@ describe('power tracker integration', () => {
     };
 
     // Call prunePowerTrackerHistory which triggers aggregation
-    app['prunePowerTrackerHistory']();
+    app.mainTracker.prune();
 
     const state = mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState;
 
@@ -134,7 +134,7 @@ describe('power tracker integration', () => {
     };
 
     // Pruning shouldn't affect recent buckets
-    app['prunePowerTrackerHistory']();
+    app.mainTracker.prune();
 
     const state = mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState;
 
