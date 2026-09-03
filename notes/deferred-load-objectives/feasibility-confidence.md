@@ -8,9 +8,9 @@
 > shaped this way; the step markers below record what landed.
 
 Why smart-task verdicts (`cannot_meet` / `on_track`) flip on a volatile learned
-rate, and what the fix actually is. This corrects the original P0 framing in
-`TODO.md` ("rate never converges / fix sample-rejection / make bands engage"),
-which the prod logs disprove.
+rate, and what the fix actually is. This corrects the original P0 framing ("rate
+never converges / fix sample-rejection / make bands engage"), which the prod logs
+disprove.
 
 Companion to `feasibility-floor-vs-climbed-band.md` (Slice 1, shipped): that note
 handles the *step* axis (floor vs climbed band); this one handles the *rate*

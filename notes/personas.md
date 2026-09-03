@@ -402,7 +402,7 @@ leads with — not the persona list.
 
 ## Old → new mapping
 
-For updating cross-references (`TODO.md`, `notes/smart-task-ui/README.md`,
+For updating cross-references (`notes/smart-task-ui/README.md` and
 `notes/widget-review.md` cite the old `#1`–`#6`):
 
 | Old engagement-state persona | New home |

@@ -209,8 +209,8 @@ units when the current reading is unknown, smart-task recourse hints are no
 longer imperative when the row has no tap target, and the public widget docs now
 cover all five widgets.
 
-### Deliberately deferred (tracked in `TODO.md`)
+### Deliberately deferred
 - **`plan_budget` `--pels-*` namespace divergence** (P3) — ~~it defines its own token layer + a `.homey-dark-mode` block while the other four consume `--homey-*` directly.~~ RESOLVED 2026-05-31 (widget token-strategy train): all five widgets now share `widgets/_shared/widget-tokens.css` (`--pw-*`, composed only from Homey base tokens); plan_budget's local layer + dark-mode block retired onto the sibling translucent-tint recipe, enforced by a stylelint font-token guard.
 - **Flat-surface / height-adaptive / one focal tile** (P1-new from the fresh render) — the chart refresh + amber at-limit added some colour energy, but the five-near-identical-dark-cards gestalt and the fixed-240 px dead space on passive tiles were not tackled.
-- **Device-detail diagnostics still says "Starved"** — `notes/ui-terminology.md` records this as a deliberate advanced-surface fork vs the widget's "Held back"; decide explicitly later (own TODO item).
-- **`settings.test.ts` full-suite flake** — "renders devices with target temperature capabilities" fails intermittently under full-suite load (passes in isolation); cost three pre-push retries this train. Own TODO item.
+- **Device-detail diagnostics still says "Starved"** — `notes/ui-terminology.md` records this as a deliberate advanced-surface fork vs the widget's "Held back"; decide explicitly later.
+- **`settings.test.ts` full-suite flake** — "renders devices with target temperature capabilities" fails intermittently under full-suite load (passes in isolation); cost three pre-push retries this train.

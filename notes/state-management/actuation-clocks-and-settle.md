@@ -10,8 +10,8 @@ model and the `planned / commanded / observed / pending` vocabulary.
 
 > Status: PR 1 (executor stops enforcing planner pacing) and PR 2 (executor stops round-tripping
 > through the planner for its own command state) are shipped. The pending-restore reservation is
-> removed (below). The remaining open item is not in this note — it is the cooldown-sizing question
-> in `TODO.md`.
+> removed (below). The remaining open item is not in this note: it is whether the restore
+> cooldown's base 60 s is long enough, recorded under "Accepted, and open" below.
 
 ---
 
@@ -185,8 +185,8 @@ window stopped at 3.
 **Accepted, and open:** the cooldown's base 60 s does not reach the measured p90 of 129.7 s, and it
 extends only via a backoff keyed on instability rather than on restore latency. Removing the
 reservation therefore keeps the protection that was actually load-bearing and loses none that was —
-but whether that protection is *enough* is a separate question, carried in `TODO.md` with the
-measurements attached.
+but whether that protection is *enough* is a separate question, still open: that p90 is the
+measurement any resizing of the cooldown has to answer to.
 
 ### The rule this leaves behind
 

@@ -13,9 +13,8 @@ applies only "while the current bucket is a planned bucket … idle/background
 cycles stay normal," matching the `limitLowerPriorityApplied` companion. The
 background-squeeze copy-routing follow-up (thread the producer-resolved
 budget-bound signal onto the persisted active-plan revision so squeeze-case copy
-reads budget-side) is tracked in `TODO.md` as "Name the daily budget when it is a
-contributing cause of a smart-task miss" — it had gone missing from `TODO.md` and
-was re-filed 2026-08-09.
+reads budget-side) is still open: the daily budget is not yet named when it is a
+contributing cause of a smart-task miss.
 
 **Prong E (2026-08-09): the squeeze no longer stands the device down.** A second
 consequence of the same mechanism: an hour squeezed to a 0 cap was read by

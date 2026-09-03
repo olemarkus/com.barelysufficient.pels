@@ -195,8 +195,8 @@ mechanical change for affected flows. Two options were considered:
    shape doesn't compose with the richer-token redesign anyway.
 
 A reviewer asking for soft deprecation is reading this as a 1.0+ stable
-surface; it isn't. The decision lives in `TODO.md` along with the rest of
-the redesign work.
+surface; it isn't. The decision is sequenced with the rest of the redesign
+work, not settled ahead of it.
 
 ## Related notes
 

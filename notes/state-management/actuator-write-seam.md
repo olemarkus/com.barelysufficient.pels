@@ -367,8 +367,8 @@ Split into sub-PRs so each is independently shippable and behavior-preserving:
   producer-resolved flag the command already had, so the three sites read
   `outcome.flowBacked` and no longer call `isFlowBackedBinaryControl`. The symbol is
   gone from `lib/executor/**` entirely; the `binary:seam` guard
-  (`scripts/check-binary-seam.mjs`, in `ci:checks`) keeps it that way. This closed
-  the "Finish the planner/executor/device-transport state boundary split" TODO.
+  (`scripts/check-binary-seam.mjs`, in `ci:checks`) keeps it that way. This finished
+  the planner/executor/device-transport state boundary split.
 
 **PR 2 — move the read model to observer.** Split into PR2a (shipped) and PR2b
 (deferred by decision) once the two halves were found to have very different

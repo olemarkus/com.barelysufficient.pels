@@ -208,7 +208,7 @@ npm run ci:checks           # Full static analysis suite (all lints + typecheck 
 3. **Execution** — `PlanExecutor` converges observed state onto the plan's desired state: it applies targets (setTemperature, on/off, stepped dimming) whenever the two disagree. There is one actuation path — no privileged mode that re-applies a committed plan without re-deciding it.
 4. **Adjustment** — Next cycle adapts to actual measured results.
 
-**There is no separate reconciliation phase.** There used to be: a device whose observed state changed was compared against the committed plan and that plan was re-applied. A plan built before the observation has not been decided against it, and re-applying one caused a hard-cap breach in production (`TODO.md`, inc_26449fb9 — the re-assert beat the re-decide by 281 ms and wrote a step-up its own admission gate would have rejected). Drift is just a changed input: the planner may decide to put the device back, *or* to leave it where it landed and shed something else. Do not reintroduce an apply-without-decide path.
+**There is no separate reconciliation phase.** There used to be: a device whose observed state changed was compared against the committed plan and that plan was re-applied. A plan built before the observation has not been decided against it, and re-applying one caused a hard-cap breach in production (inc_26449fb9 — the re-assert beat the re-decide by 281 ms and wrote a step-up its own admission gate would have rejected). Drift is just a changed input: the planner may decide to put the device back, *or* to leave it where it landed and shed something else. Do not reintroduce an apply-without-decide path.
 
 **A device observation may un-suppress a rebuild; it may not trigger one.** Two throttles skip rebuilds that provably cannot change anything — the unactionable throttle and the tight-noop backoff — and both derive that verdict from the device set as it was. A device that just turned on invalidates it, so an observed control-state change clears those suppressions (`invalidateRebuildSuppressionForObservation`). That changes *whether* the next reading decides, never *what* it decides from, so both honest answers stay available: the reading the planner then sees includes the drifted device, and it may put it back or leave it and shed something else. What it never does is re-apply a plan built before the observation.
 
@@ -305,6 +305,13 @@ names where the defect is, what change closes it, and how you would know it is d
 cannot say all three is not a backlog item — fix it now, settle the question, or drop it. A durable
 constraint (rather than a change someone will make) belongs in the governing `AGENTS.md` or the code
 it constrains.
+
+**Nothing outside `TODO.md` may cite `TODO.md`.** Not a code comment, not a note, not a doc. The
+file carries no ids and no stable anchors, and its entries are rewritten and deleted as work lands,
+so every pointer into it rots, and once the entry is gone the pointer is an outright lie about work
+someone still owes. A comment that wants to record a gap states the gap in its own words instead,
+where it stays true on its own. Filing findings *into* `TODO.md` is unaffected; what is banned is
+pointing back at it from anywhere else.
 
 ---
 

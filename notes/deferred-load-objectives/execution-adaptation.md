@@ -340,7 +340,7 @@ free/negative current price).
 real deliverable rate, so the feasibility proof is exact — no upper-bound optimism. Reserve hours
 excluded; re-checked each cycle. Throttleable kinds (`ev_soc`) are deliberately excluded: there the
 max step is an upper bound a capacity-shed device may not reach, which could erode the deadline;
-bringing them in safely needs observed-rate feasibility (TODO). Two independent reviewers
+bringing them in safely needs observed-rate feasibility, not yet built. Two independent reviewers
 (`pels-runtime-reality`, Codex) flagged the unscoped version; the kind-scoping is the resolution.
 
 ### Interaction with the per-cycle frozen read — the misread almost every reviewer makes
@@ -420,10 +420,10 @@ expected steps, so an external step change is invisible for the gap's duration �
 a hole). Bootstrap — no commitment to serve — still resolves `unknown`. The frozen serve is
 bounded by the commitment: once the last committed hour elapses with the ladder still missing,
 the diagnostic legitimately reverts to `unknown` — re-establishing the ladder after a restart is
-the open P1 in TODO.md.
+still open.
 Regression harness: `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts` (SDK-boundary, restart
 simulated as a new recorder loading the persisted payload). The rate-lane analogue
-(`profileEnergy.reasonCode` short-circuits one step earlier) is still open — see TODO.
+(`profileEnergy.reasonCode` short-circuits one step earlier) is still open.
 
 Recorder interaction: a frozen-served diagnostic can now coincide with a `:58` settle for the whole
 gap (previously only transiently, on a price-horizon gap). The frozen plan declares itself via

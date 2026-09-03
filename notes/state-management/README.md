@@ -519,7 +519,8 @@ Local write alone is not success.
 
 ## Observed Homey Challenges
 
-These are the recurring patterns behind the current TODO items.
+These are the recurring patterns behind the open problem areas listed at the
+end of this note.
 
 ### Homey can be stale in both directions
 
@@ -611,5 +612,3 @@ This note does not solve the implementation by itself. The active backlog still 
 - provisional post-command state for laggy devices
 - binary drift/reconcile consistency
 - explicit source-of-truth logging for stepped devices
-
-See `TODO.md` for the executable backlog.

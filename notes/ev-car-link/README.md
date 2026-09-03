@@ -325,7 +325,7 @@ mind:
 - **A car can be invisible rather than mis-read.** A car whose plug state is unreadable on the
   first fetch, one whose by-id reads flake three times, and one whose app is installed after
   startup are all untracked until a full refresh or restart. "No events for that car" therefore
-  does not mean "detection failed" — check the car was tracked at all. Tracked in `TODO.md`.
+  does not mean "detection failed" — check the car was tracked at all.
 - **Coincidence quality depends on the live feed.** With it, edges are timestamped when they
   happened. Without it, both sides land in the same :25/:55 refresh tick and "coincidence"
   degrades to "same refresh" — much weaker. Links formed during a feed outage deserve suspicion.
@@ -357,4 +357,4 @@ Read `/tmp/pels` with the `pels-log-review` skill and check, in order:
   associated. That stays the probe's call.
 - Suspending smart-task accounting on self-stop. The producer lives in `lib/device`, a peer
   that may not reach `lib/objectives`, so tying `ev_car_self_stopped` to a running smart
-  task is a log-review exercise for now. Tracked in `TODO.md`.
+  task is a log-review exercise for now.

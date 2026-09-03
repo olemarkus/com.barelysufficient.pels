@@ -234,8 +234,8 @@ vocabulary back into `lib/plan`, which `scripts/check-ev-vocab.mjs` forbids
 outright, and that guard exists precisely because consumers reading `plugged_*`
 strings is how PELS kept re-deriving semantics the producer had already resolved.
 Bounded latency in a path that has never fired does not justify reopening that
-door, and the alternative shape is an undecided design call — which the TODO
-Entry Bar excludes.
+door, and the alternative shape is an undecided design call, which the Entry
+Bar excludes.
 
 ### The `plugged_in` / `plugged_in_paused` mapping still matters, for other reasons
 
@@ -320,8 +320,7 @@ adds user agency.
 
 ## Topic map
 
-Sequencing and priority for the topics below live in `TODO.md`; this note
-describes *what* each topic is, not *when* it should ship.
+This note describes *what* each topic below is, not *when* it should ship.
 
 ### EV admission landed (shipped v1)
 
@@ -388,7 +387,7 @@ Files: `packages/contracts/src/deferredObjectiveSettings.ts`,
 `.homeycompose/flow/actions/set_ev_charge_deadline.json`, contract and
 bridge tests.
 
-Tracked in `TODO.md` (EV deadline kWh target).
+Still open: the EV deadline kWh target is not shipped.
 
 #### Observability: expanded trigger tokens
 
@@ -411,7 +410,7 @@ deliver notifications directly.
 Files: `flowCards/smartTaskTokens.ts`, `flowCards/deadlineObjectiveCards.ts`,
 `.homeycompose/flow/triggers/deadline_status_changed.json`, related tests.
 
-Tracked in `TODO.md` (smart task expanded trigger tokens).
+Still open: the expanded smart-task trigger tokens are not shipped.
 
 ### Open shape — automation and overrides
 
@@ -460,7 +459,7 @@ deferred-objective admission/status logic for urgency.
 ## Out of Scope (v1)
 
 - Direct creation on the Smart tasks page was excluded from v1. The later product direction
-  is tracked in `notes/smart-task-ui/README.md` and `TODO.md`; it reuses the shipped
+  is described in `notes/smart-task-ui/README.md`; it reuses the shipped
   preview/write paths rather than changing the v1 objective model.
 - Native push notifications. PELS does not deliver notifications; it exposes trigger tokens
   with enough text content for the user's own flow to compose a message.
@@ -474,11 +473,10 @@ deferred-objective admission/status logic for urgency.
 
 ## Sequencing
 
-This note describes design topics; sequencing and priority live in `TODO.md`.
-The shipped EV admission slice is in v1. Trust-surface follow-ups (device-card
-state, planning speed / duration), feature extensions (kWh target,
-observability tokens), and the open-shape automation/override slices are
-tracked there.
+This note describes design topics, not a schedule. The shipped EV admission
+slice is in v1. Trust-surface follow-ups (device-card state, planning speed /
+duration), feature extensions (kWh target, observability tokens), and the
+open-shape automation/override slices are all still unsequenced.
 
 ## Acceptance Criteria
 
