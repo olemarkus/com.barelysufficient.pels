@@ -102,13 +102,13 @@ One rule, two faces (`docs/architecture.md` § "Clean and trusted interfaces bet
 | `lib/power/` | Power sampling and capacity tracking |
 | `lib/price/` | Spot price fetching (Norwegian Nordpool), Homey Energy API integration, price levels |
 | `lib/dailyBudget/` | Soft daily kWh budget constraints |
-| `lib/home/` | Multi-home model: home config, zone-subtree membership, and mode-ownership transfer. `MAIN_HOME_ID` names the complement — every device not inside a sub-home's root zone |
+| `lib/home/` | Multi-home model: home config, zone-subtree membership, and mode-ownership transfer. Under the zone rule `MAIN_HOME_ID` names the complement (every device outside a sub-home's root-zone subtree), and an explicit pin to `main` or unusable zone data resolves there too — see the rule of record in `membership.ts` |
 | `lib/solar/` | PV forecast (Homey Energy and Open-Meteo sources) plus the curtailment-surplus estimator, which infers the production a zero-export home throttles away and never exports |
 | `lib/weather/` | Weather insight: MET forecast, the energy signature learned from outdoor temperature, and the daily-budget suggestion it feeds |
-| `lib/actuator/` | The single device write seam — every runtime write maps intent onto an SDK call here, and nothing else may. See `notes/state-management/actuator-write-seam.md` |
+| `lib/actuator/` | The single write seam for **managed-device control**: every control intent maps onto an SDK call here, and nothing else may. A driver publishing its own capabilities (`drivers/pels_insights/`) is not a control write and is outside this seam. See `notes/state-management/actuator-write-seam.md` |
 | `lib/flowApi/` | Reads the owner's Homey Flows and classifies conflicts between what a Flow writes and what PELS would write natively |
 | `lib/planContract/` | Neutral boundary contract shared by planner and executor; imports nothing from `lib/**` but itself, `logging`, and `utils`. See `lib/planContract/AGENTS.md` |
-| `lib/ports/` | SDK-free structural ports for the Homey runtime object, so domain code never type-imports the Homey SDK |
+| `lib/ports/` | SDK-free structural ports for the Homey runtime object, so a consumer can declare the narrow slice it needs instead of type-importing the SDK. `lib/device`'s transport remains the deliberate SDK leaf (`deviceTransport.ts`, `liveFeed.ts` type-import `Homey.App` on purpose) |
 | `lib/app/` | Dissolved. Holds only `appContext.ts` (the shared `AppContext` type). Wiring lives in `setup/` (and Flow-card registration in `flowCards/`); nothing new belongs here. |
 | `lib/utils/` | Pure helpers, type guards, math utilities, debug logging, settings keys |
 | `lib/diagnostics/` | Per-device diagnostics recording |
