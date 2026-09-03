@@ -450,7 +450,7 @@ describe('above-threshold subline formatters', () => {
 });
 
 describe('computeEnergyBarScaleKWh — projected marker alignment', () => {
-  // Regression for TODO #5 (2026-05-16): when projected is below budget, the
+  // Regression for the 2026-05-16 fix: when projected is below budget, the
   // marker's visual position must match the printed `projected / budget`
   // ratio. Earlier behaviour multiplied the scale by 1.05 even in the
   // under-budget branch, so the dot sat ~5 % low.

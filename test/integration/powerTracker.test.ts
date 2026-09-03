@@ -76,7 +76,7 @@ describe('power tracker integration', () => {
     const oldHourStart = truncateToUtcHour(oldTimestamp);
     const oldBucketKey = new Date(oldHourStart).toISOString();
     // Mock Homey reports Europe/Oslo, so the runtime now keys dailyTotals and
-    // hourlyAverages by the local calendar date / hour (TODO `power-tracker-tz-fix`).
+    // hourlyAverages by the local calendar date / hour, not by UTC.
     const oldDateKey = getDateKeyInTimeZone(new Date(oldHourStart), 'Europe/Oslo');
     // formatDateUtc is still exported and used by back-compat callers; keep it imported.
     void formatDateUtc;

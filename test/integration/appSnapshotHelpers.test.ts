@@ -521,7 +521,7 @@ describe('appSnapshotHelpers', () => {
 
     const firstRefresh = helper.refreshTargetDevicesSnapshot();
     await Promise.resolve();
-    // Overlapping callers await the in-flight refresh now (TODO 728), so do
+    // Overlapping callers await the in-flight refresh now, so do
     // not block the test on the second call before releasing the first cycle.
     const secondRefresh = helper.refreshTargetDevicesSnapshot();
     deferred.resolve();
@@ -576,7 +576,7 @@ describe('appSnapshotHelpers', () => {
     let secondSettled = false;
     void secondRefresh.then(() => { secondSettled = true; });
     // The second call must not resolve before the in-flight cycle (still
-    // gated on `deferred`) completes — that is the contract behind TODO 728:
+    // gated on `deferred`) completes — that is the contract here:
     // overlapping `/ui_refresh_devices` calls must see the post-refresh
     // snapshot, not the pre-refresh stale snapshot.
     await Promise.resolve();

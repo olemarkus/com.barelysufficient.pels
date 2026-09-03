@@ -1850,7 +1850,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
   });
 
   it('freezes initialPlanningSpeedKw and initialEstimatedDurationText at first-revision time', () => {
-    // Regression for TODO 597: the recorder formats `estimatedDurationText`
+    // Regression: the recorder formats `estimatedDurationText`
     // from `energyNeededKWh / planningSpeedKw` on every revision and
     // `energyNeededKWh` shrinks every cycle as the device consumes energy
     // (`diagnosticsBridge.ts` recomputes it from `progress.remainingUnits`).
@@ -1895,7 +1895,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
   });
 
   it('resets the plan-level duration snapshot when the objective changes', () => {
-    // Regression for TODO 597: `objective_changed` represents a fresh plan
+    // Regression: `objective_changed` represents a fresh plan
     // from the user's perspective (target/deadline shift). The plan-level
     // snapshot must follow the new revision so the hero meta line reflects
     // the new commitment, not the stale prior plan.
