@@ -278,16 +278,18 @@ What remains open is below.*
       the current map. Source: adversarial review of the measured-draw collapse,
       2026-08-08. [P2]
 
-- [ ] **Retire the `suppressed_flow` step-state machinery.** `lib/plan/planSteppedLoadState.ts`
-      still carries the `source: 'suppressed_flow'` arm, `SuppressedFlowStepInput`,
-      `SuppressedFlowRestorePreparationPolicy`, and the suppressed branch of
-      `resolveRestorePreparation`; `restorePreparedStepId` is declared in
-      `setup/appDeviceControlSteppedState.ts` and never read. The only production entry point
-      (`serializeLegacyStepFieldsFromEvidence`) never passes those params, so the branch is
-      unreachable and only `test/unit/planSteppedLoadState.test.ts` constructs it — which is why
-      knip stays green. Its reserved purpose ("suppressed flow feedback may be considered later
-      only as explicit restore-preparation evidence") was retired when flow reports became
-      admissible on 2026-07-25. Source: adversarial review, 2026-07-25. [P2]
+- [ ] **`restorePreparedStepId` is declared and never assigned.** The field is on
+      `setup/appDeviceControlSteppedState.ts` and on the legacy field shapes in
+      `lib/plan/planSteppedLoadState.ts`, but nothing in `lib/**` or `setup/**` ever writes it, so
+      `normalizeSteppedLoadStepStateFromLegacyFields` never takes its override branch and
+      `restorePreparation` is always derived from the observation. Either wire a producer or drop
+      the field and the branch, and check whether `restorePreparation` still earns its place on
+      `NormalizedSteppedLoadStepState` afterwards — its only remaining reader is
+      `serializeLegacyStepFields`, which round-trips it straight back out. Done when no declared
+      step field lacks a writer. (The `suppressed_flow` arm, `SuppressedFlowStepInput`,
+      `SuppressedFlowRestorePreparationPolicy` and the age-gated suppressed branch this item used
+      to cover are gone — they were a freshness call inside `lib/plan`.) Source: adversarial
+      review, 2026-07-25. [P2]
 
 - [ ] **A shed device waiting out a restore gate can carry no gate reason, so it defaults to
       `capacity`.** `buildBaseReason` (`lib/plan/planReasons.ts` ~42) ends with

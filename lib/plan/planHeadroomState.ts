@@ -35,7 +35,6 @@ const removeHeadroomCardStateForDevice = (
   if (!entry) return;
   if (!options.keepLastObserved) {
     delete entry.lastUsageKw;
-    delete entry.lastUsageFreshnessMs;
   }
   delete entry.lastStepDownMs;
   if (Object.keys(entry).length === 0) {
@@ -83,21 +82,6 @@ const wasRecentlySteppedDown = (
   const lastStepDownMs = state.headroomCardByDevice[deviceId]?.lastStepDownMs;
   if (!isFiniteNumber(lastStepDownMs)) return false;
   return nowTs - lastStepDownMs < ACTIVATION_BACKOFF_CLEAR_WINDOW_MS;
-};
-
-const shouldSyncActivationPenaltyForDevice = (params: {
-  state: PlanEngineState;
-  deviceId: string;
-  device: Pick<HeadroomCardDeviceLike, 'lastFreshDataMs'>;
-}): boolean => {
-  const previousFreshnessMs = params.state.headroomCardByDevice[params.deviceId]?.lastUsageFreshnessMs;
-  const incomingFreshnessMs = params.device.lastFreshDataMs;
-  const hasPreviousFreshness = isFiniteNumber(previousFreshnessMs);
-  const hasIncomingFreshness = isFiniteNumber(incomingFreshnessMs);
-
-  if (hasPreviousFreshness && !hasIncomingFreshness) return false;
-  if (hasPreviousFreshness && hasIncomingFreshness && incomingFreshnessMs < previousFreshnessMs) return false;
-  return true;
 };
 
 const shouldStartTrackedActivationAttempt = (params: {
@@ -277,14 +261,6 @@ const syncHeadroomUsageObservationEntry = (params: {
   });
   if (mergeDecision.outcome !== 'win') {
     incPerfCounter('tracked_usage_update_skipped_noop');
-    if (mergeDecision.outcome === 'tie_refresh') {
-      updateHeadroomCardUsageObservation({
-        state,
-        deviceId,
-        usageObservation,
-        deviceName: resolveHeadroomDeviceName({ state, deviceId, device, deviceName }),
-      });
-    }
     return false;
   }
 
@@ -342,32 +318,24 @@ const syncHeadroomCardDevice = (params: {
   reconciliationContext?: HeadroomTrackedTransitionContext;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => {
-  const shouldSyncPenalty = shouldSyncActivationPenaltyForDevice({
+  // Every build syncs the penalty, unconditionally. This used to be gated on the
+  // incoming observation's timestamp being no older than the stored one — the
+  // planner deciding an observation was not worth acting on, which is the
+  // observer's call and not its own. The observer publishes the trusted current
+  // value; there is no stamp here to weigh it by.
+  const penaltyInfo = syncActivationPenaltyState({
     state: params.state,
     deviceId: params.device.id,
-    device: params.device,
+    nowTs: params.nowTs,
+    observation: params.device,
   });
-  let penaltyStateChanged = false;
-  let attemptOpen = false;
-  if (shouldSyncPenalty) {
-    const penaltyInfo = syncActivationPenaltyState({
-      state: params.state,
-      deviceId: params.device.id,
-      nowTs: params.nowTs,
-      observation: params.device,
-    });
-    emitActivationTransitions(params.diagnostics, params.device.name, penaltyInfo.transitions);
-    penaltyStateChanged = penaltyInfo.stateChanged;
-    attemptOpen = penaltyInfo.attemptOpen;
-  }
+  emitActivationTransitions(params.diagnostics, params.device.name, penaltyInfo.transitions);
+  const { stateChanged: penaltyStateChanged, attemptOpen } = penaltyInfo;
 
   const usageStateChanged = syncHeadroomUsageObservationEntry({
     state: params.state,
     deviceId: params.device.id,
-    usageObservation: {
-      kw: params.device.currentDrawKw,
-      freshnessMs: params.device.lastFreshDataMs,
-    },
+    usageObservation: { kw: params.device.currentDrawKw },
     nowTs: params.nowTs,
     device: params.device,
     deviceName: params.device.name,

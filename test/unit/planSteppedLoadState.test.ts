@@ -64,51 +64,10 @@ describe('planSteppedLoadState', () => {
     });
   });
 
-  it('allows suppressed flow feedback as restore preparation only when tied to current intent', () => {
-    const state = normalizeSteppedLoadStepState({
-      nowMs: 2_000,
-      targetStep: { stepId: 'low', changedAtMs: 1_500, status: 'pending' },
-      suppressedFlowStep: { stepId: 'low', observedAtMs: 1_600 },
-      suppressedFlowPreparationPolicy: { kind: 'intent_match', maxAgeMs: 1_000 },
-    });
-
-    expect(state.observation).toEqual({ kind: 'unknown' });
-    expect(state.restorePreparation).toEqual({
-      kind: 'prepared',
-      stepId: 'low',
-      source: 'suppressed_flow',
-      observedAtMs: 1_600,
-    });
-  });
-
-  it('does not let stale suppressed flow feedback prepare restore', () => {
-    const state = normalizeSteppedLoadStepState({
-      nowMs: 4_000,
-      targetStep: { stepId: 'low', changedAtMs: 1_500, status: 'pending' },
-      suppressedFlowStep: { stepId: 'low', observedAtMs: 1_600 },
-      suppressedFlowPreparationPolicy: { kind: 'intent_match', maxAgeMs: 1_000 },
-    });
-
-    expect(state.restorePreparation).toEqual({ kind: 'not_prepared' });
-  });
-
-  it('does not let future-dated suppressed flow feedback prepare restore', () => {
-    const state = normalizeSteppedLoadStepState({
-      nowMs: 2_000,
-      targetStep: { stepId: 'low', changedAtMs: 1_500, status: 'pending' },
-      suppressedFlowStep: { stepId: 'low', observedAtMs: 2_100 },
-      suppressedFlowPreparationPolicy: { kind: 'intent_match', maxAgeMs: 1_000 },
-    });
-
-    expect(state.restorePreparation).toEqual({ kind: 'not_prepared' });
-  });
-
-  it('does not let fallback matching the lowest active step prepare restore without runtime intent', () => {
+  it('does not let a planning fallback prepare restore without a reported step', () => {
     const state = normalizeSteppedLoadStepState({
       nowMs: 2_000,
       planningFallback: { stepId: 'low', reason: 'lowest_active_step' },
-      suppressedFlowStep: { stepId: 'low', observedAtMs: 1_900 },
-      suppressedFlowPreparationPolicy: { kind: 'intent_match', maxAgeMs: 1_000 },
     });
 
     expect(resolveEffectiveStepId(state)).toBe('low');
@@ -116,30 +75,20 @@ describe('planSteppedLoadState', () => {
     expect(state.restorePreparation).toEqual({ kind: 'not_prepared' });
   });
 
-  it('does not let mismatched suppressed flow feedback prepare restore', () => {
+  it('prepares restore from a reported step however long ago it was observed', () => {
+    // No age test anywhere: `lib/plan` holds no concept of observation freshness,
+    // and a Homey driver only republishes on CHANGE, so an old stamp means
+    // "unchanged", not "unknown".
     const state = normalizeSteppedLoadStepState({
-      nowMs: 2_000,
-      targetStep: { stepId: 'low', changedAtMs: 1_500, status: 'pending' },
-      suppressedFlowStep: { stepId: 'max', observedAtMs: 1_600 },
-      suppressedFlowPreparationPolicy: { kind: 'intent_match', maxAgeMs: 1_000 },
+      nowMs: 9_000_000,
+      reportedStep: { stepId: 'low', source: 'flow', observedAtMs: 1_600 },
     });
 
-    expect(state.restorePreparation).toEqual({ kind: 'not_prepared' });
-  });
-
-  it('keeps explicit freshness policy separate from intent-tied suppressed flow policy', () => {
-    const state = normalizeSteppedLoadStepState({
-      nowMs: 2_000,
-      suppressedFlowStep: { stepId: 'low', observedAtMs: 1_900 },
-      suppressedFlowPreparationPolicy: { kind: 'fresh', maxAgeMs: 200 },
-    });
-
-    expect(state.intent).toEqual({ kind: 'none' });
     expect(state.restorePreparation).toEqual({
       kind: 'prepared',
       stepId: 'low',
-      source: 'suppressed_flow',
-      observedAtMs: 1_900,
+      source: 'reported',
+      observedAtMs: 1_600,
     });
   });
 });

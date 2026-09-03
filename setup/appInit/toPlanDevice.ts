@@ -614,6 +614,15 @@ export function toPlanDevice(
     binaryControlObservation: _binaryControlObservation,
     evChargingState: _evChargingState,
     temperature: _temperature,
+    // `lastFreshDataMs` is deliberately NOT stripped, for the same reason as
+    // `stateOfCharge` below: `lib/objectives` reads it off this object
+    // (`ObjectiveDeviceInput`, which is structurally assignable from
+    // `PlanInputDevice`) to tell "never reported" from "reported", and to gate
+    // learned-rate sampling. Stripping it here would turn every temperature
+    // smart task's progress into "never reported". It is gone from the PLANNER's
+    // types instead (`PlanInputDevice`, `DevicePlanDevice`,
+    // `HeadroomCardDeviceLike`), so no `lib/plan` code can reach it — the
+    // objectives layer owns its own clocks, the planner owns none.
     // `stateOfCharge` is deliberately NOT stripped, despite the base type's
     // comment claiming a plan device carries none. The objectives layer reads it
     // straight off the plan device (`ObjectiveDeviceInput`, consumed by

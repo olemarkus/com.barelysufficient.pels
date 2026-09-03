@@ -104,7 +104,6 @@ export const resolveSurplusCeilingStepId = (
 
 export type HeadroomCardState = {
   lastUsageKw?: number;
-  lastUsageFreshnessMs?: number;
   deviceName?: string;
   lastStepDownMs?: number;
 };

@@ -444,7 +444,6 @@ export type PlanInputDeviceBase = {
   /** Producer-resolved device reachability; absence is not a planner state. */
   available: boolean;
   zone?: string;
-  lastFreshDataMs?: number;
   lastLocalWriteMs?: number;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;

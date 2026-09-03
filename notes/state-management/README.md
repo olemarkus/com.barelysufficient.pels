@@ -64,6 +64,13 @@ It has no optional step-state fields:
 - planning assumption is either `fallback` or `none`
 - restore preparation is either `prepared` or `not_prepared`
 
+What was removed (2026-09-03) and must not come back: a second restore-preparation source
+(`suppressed_flow`) admitted only when its observation was younger than a `maxAgeMs` policy. That
+age test was the one real freshness call inside `lib/plan`, and it was unreachable — no production
+caller ever passed the policy, so only unit tests constructed it. A reported step prepares restore
+however long ago it arrived; the planner has no clock to weigh an observation by, and a Homey
+driver only republishes on CHANGE, so an old stamp means "unchanged", not "unknown".
+
 Unknown is represented explicitly. A missing field is only allowed at raw Homey, flow, persisted,
 API, or settings-UI boundaries before those inputs are normalized. The normalized state does not
 store an "effective step"; planner code must resolve that through a helper so the derived value
