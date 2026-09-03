@@ -34,8 +34,9 @@ export const resolveSampleGenerationW = (generationW: unknown): number | undefin
  * Longest sample interval the solar families will integrate across — the same
  * 60-minute rule `resolveUnreliablePeriods` uses to flag a gap as unreliable.
  * The billed import bucket integrates such gaps anyway and FLAGS them via
- * `unreliablePeriods`; the solar families have no unreliable flag yet (TODO
- * `unreliablePeriods`-on-solar-buckets), so they skip instead. Deliberate
+ * `unreliablePeriods`; the solar families have no unreliable flag of their own
+ * yet, so they skip instead — extending that awareness to the solar bucket
+ * families is what would let them integrate a flagged gap. Deliberate
  * trade-off: across a skipped gap the per-hour identity
  * importKWh − exportKWh ≡ net no longer holds (import accrues, export does
  * not) — under-counting an unobserved interval is the honest floor, minting

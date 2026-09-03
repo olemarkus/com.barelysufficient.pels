@@ -89,8 +89,9 @@ export const resolveHorizonPlanWithRescue = (params: {
   //     so the capacity guard would catch the wall but verdicts would
   //     oscillate. Active devices are projected to relative ranks before this
   //     clock runs, so `1` already means the highest-priority device present in
-  //     this home. Promoting lower relative ranks needs the richer forecast
-  //     tracked in TODO.
+  //     this home. Promoting lower relative ranks needs a richer forecast —
+  //     one that also accounts for the higher-priority controlled devices this
+  //     clock cannot displace — and no such forecast exists yet.
   // Anything weaker stays at the min-step floor.
   const fullyReserved = params.devicePriority === 1
     && objective.rescue?.exemptFromBudget === 'always'

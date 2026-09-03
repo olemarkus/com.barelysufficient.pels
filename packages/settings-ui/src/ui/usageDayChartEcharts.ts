@@ -456,7 +456,7 @@ const buildBarSeries = (params: {
     // Zero-data dummy series so the legend's "Warning" entry has a real
     // series to bind to. The "Measured" series colours warning bars
     // per-item, so without this stub ECharts silently drops the legend
-    // label (TODO 1122 — fixed v2.7.0). Empty `data` produces no bars, so
+    // label (fixed in v2.7.0). Empty `data` produces no bars, so
     // adding the series only affects the legend; the `barMaxWidth` cap on
     // every series prevents any width competition. Only added when warn
     // bars exist so the legend stays terse in the common case.

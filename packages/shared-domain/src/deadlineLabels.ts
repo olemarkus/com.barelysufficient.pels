@@ -88,8 +88,8 @@ export type SmartTaskListStatusId =
 // Stable chip label strings for list card status — kind-agnostic.
 // Sourced here (shared-domain) so runtime logging and UI use the same strings.
 // Note: the internal status id `queued` is kept stable for log schemas /
-// contracts; only the user-visible chip label changed (`Queued` → `Scheduled`
-// in TODO 691, then `Scheduled` → `On track` in the 2026-07 coherence sweep:
+// contracts; only the user-visible chip label changed (`Queued` → `Scheduled`,
+// then `Scheduled` → `On track` in the 2026-07 coherence sweep:
 // an allocated, healthy plan whose first hour is still ahead answers "am I on
 // track?" the same way the detail hero does — one state, one word across the
 // two surfaces; see notes/ui-terminology.md § Smart task list status chips).
@@ -2213,7 +2213,7 @@ export type SmartTaskStatusNotificationId =
 // `freshnessOfMs` is set only on the "Latest reading used" row so the view can
 // re-derive both `value` and `tone` on a 60s tick (without it the rendered
 // "Updated 5 min ago" would freeze on the original render's `nowMs` until the
-// next plan refresh — see TODO ~line 1160, v2.8.0 adversarial-review). The
+// next plan refresh — the freeze the v2.8.0 adversarial review caught). The
 // producer still emits a pre-formatted `value`/`tone` pair so non-React
 // consumers (runtime breadcrumbs, the producer-side test) keep working
 // unchanged. The view recomputes via `formatLastSampleValue` when this field
@@ -2668,7 +2668,7 @@ export const SMART_TASK_HERO_STAT_LABELS = {
 //
 // `targetUnit` is `°C` / `%` and matches `DeadlineLabels.targetUnit`. This
 // line takes no deadline: the cannot-meet branch dropped its `· won't reach
-// by` tail (TODO ~1586) because the chip ("Cannot finish") + meta line ("Not
+// by` tail because the chip ("Cannot finish") + meta line ("Not
 // enough time for this target. …") already announce the verdict, and restating
 // it as a third tail read as alarm spam in the 2026-05-16 live walk. The
 // "still {curr} of {target}" stem (vs the on-track "now …") still tonally

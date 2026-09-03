@@ -123,7 +123,7 @@ export const initDeviceDetailPriceOptHandlers = (params: {
     // Snapshot only this device's three fields before the optimistic mutation
     // so a failed Homey write can be rolled back. Replacing the whole map
     // (the earlier approach) clobbered newer persisted edits from overlapping
-    // handlers (TODO 735 follow-up).
+    // handlers.
     const config = ensurePriceOptimizationConfig(deviceId);
     const previousValues = {
       enabled: config.enabled,
@@ -149,7 +149,7 @@ export const initDeviceDetailPriceOptHandlers = (params: {
       }
       // Re-bind the inputs and toggle only if the user is still on this
       // device's detail panel. Otherwise the rollback would overwrite the
-      // visible inputs with values from the previous device (TODO 735 follow-up).
+      // visible inputs with values from the previous device.
       if (params.getCurrentDetailDeviceId() === deviceId) {
         setDeviceDetailDeltaValues(deviceId);
         const restored = state.priceOptimizationSettings[deviceId];

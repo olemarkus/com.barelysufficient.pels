@@ -591,8 +591,9 @@ export class DeferredObjectiveActivePlanRecorder {
     // planned, so the committed bucket allocation's energy assumption is stale.
     // Gated on a learned rate both sides (see `hasLearnedRateDeviated`), so
     // bootstrap/cold-start and idle live-power readings never reach it.
-    // TODO: device_unavailable trigger — wired here once device-level metering
-    // distinguishes "unreachable" from a slow reading.
+    // A `device_unavailable` trigger belongs alongside this one, but it cannot
+    // be wired until device-level metering distinguishes "unreachable" from a
+    // slow reading.
     const measuredDeviation = hasLearnedRateDeviated({ current, diag, objectiveChanged });
     if (!shouldWriteReplanRevision({
       objectiveChanged,

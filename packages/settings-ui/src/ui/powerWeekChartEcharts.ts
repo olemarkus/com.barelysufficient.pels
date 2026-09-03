@@ -369,7 +369,7 @@ const buildOption = (params: {
       itemHeight: 80,
       // The visualMap legend on the right edge shows the kWh range that maps
       // to the colour ramp. Without the `kWh` unit label users can't tell
-      // whether the numbers are kWh, kr/kWh, or W (TODO 2026-05-16 live walk).
+      // whether the numbers are kWh, kr/kWh, or W (2026-05-16 live walk).
       // Append `kWh` to the top label only — the bottom is always 0 (or near
       // it) and the unit is implied by the top sibling 6 px above.
       text: [`${globalMaxKWh.toFixed(1)} kWh`, `${globalMinKWh.toFixed(1)}`],

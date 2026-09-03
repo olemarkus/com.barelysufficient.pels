@@ -152,8 +152,8 @@ export type DeadlinePlanPayload = {
     // third time. Matches the history-detail hero, which dropped its same-word
     // kicker in the navigation-chrome unification.
     // Null on the cannot-finish branch so the chip + body postmortem aren't
-    // accompanied by a redundant "Cannot finish" headline echo (per TODO 1569
-    // / lived-walk 2026-05-16). The view suppresses the headline render slot
+    // accompanied by a redundant "Cannot finish" headline echo (per the
+    // 2026-05-16 lived walk). The view suppresses the headline render slot
     // when this is `null`.
     headline: string | null;
     // "Why" subline beneath the queued headline ("Cheaper than now — starts at
@@ -178,9 +178,9 @@ export type DeadlinePlanPayload = {
     // `Delivered X of Y kWh · …` subline. Two visible branches collapse the
     // planner status union: cannot-meet renders the `still {curr} of {target}`
     // stem (the alert chip + meta line already say "Cannot finish" / "Not
-    // enough time …" so this line stays magnitude-only, per TODO ~1586 /
-    // 2026-05-16 live walk), every other status renders the on-track-shaped
-    // form with `now …` or the `start → current` arrow. Null when there is no
+    // enough time …" so this line stays magnitude-only, per the 2026-05-16 live
+    // walk), every other status renders the on-track-shaped form with `now …`
+    // or the `start → current` arrow. Null when there is no
     // plan to summarise (queued without allocation, no current reading, etc.).
     deliveredSoFarLine: string | null;
     // Recourse action surfaced below the meta line on cannot-finish heroes.
@@ -1026,7 +1026,7 @@ const ScheduleQuestionCards = ({ payload }: { payload: DeadlinePlanPayload }) =>
 // the user sees the counter advance roughly as their wall clock crosses the
 // next minute boundary. Anything faster would just re-render with the same
 // string; anything slower would leave the user staring at "Updated just now"
-// for too long (the bug TODO ~line 1160 was opened against).
+// for too long (the bug this tick exists to fix).
 const FRESHNESS_TICK_MS = 60 * 1000;
 
 // Subscribes the calling component to a `nowMs` value that updates every

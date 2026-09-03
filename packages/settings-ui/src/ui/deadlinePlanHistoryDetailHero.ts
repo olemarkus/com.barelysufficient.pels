@@ -202,12 +202,12 @@ export const buildHistoryDetailHero = (
       // v2.9.x batch 47 — `overshootLine` is the exception. The receipt
       // timeline answers "what happened" but never names the final reading; a
       // Succeeded run that overshot by > 5 °C / > 10 % (e.g. the lived-state
-      // `29.3 → 77.7 °C · target 65 °C` regression in `TODO.md` ~L2724) reads
+      // `29.3 → 77.7 °C · target 65 °C` overshoot regression) reads
       // as a normal success without it. The producer resolves `null` for runs
       // that stayed within the threshold, so the line stays quiet on the
       // common path and only surfaces when the user needs to spot a tuning
       // problem. Muted styling carries the "informational, not alarming"
-      // intent (per the TODO rationale: passive support-cost reduction).
+      // intent (the rationale being passive support-cost reduction).
       progressLine: null,
       reachedAtLine: null,
       overshootLine,

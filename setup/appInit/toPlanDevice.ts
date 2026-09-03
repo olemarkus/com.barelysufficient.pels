@@ -619,7 +619,8 @@ export function toPlanDevice(
     // straight off the plan device (`ObjectiveDeviceInput`, consumed by
     // `deferredObjectives/diagnosticProgress.ts`), so removing it here silently
     // turned every EV smart task's progress into `objective_progress_stale`.
-    // The contract and the runtime disagree about this field; see the TODO.
+    // The contract and the runtime disagree about this field; until the two are
+    // reconciled, this producer follows the runtime.
     ...deviceFields
   } = device as typeof device & TransportControlBindingProbe & EvObservedProbe & TemperatureObservedProbe;
   return withSteppedDiscriminant({
