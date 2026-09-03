@@ -17,7 +17,7 @@ energy the floor allocation could not place became `unplannedUsefulEnergyKWh`,
 and `resolveStatus` reported a flat `cannot_meet`. Meanwhile the executor
 opportunistically climbs to higher steps whenever capacity allows, so the device
 very often finishes anyway. The result was chronic false `Cannot finish`
-verdicts (see the P0 in `TODO.md`, surfaced by the 2026-05-22 prod walk).
+verdicts, surfaced by the 2026-05-22 prod walk.
 
 The fix must **not** plan against the max step — that trades a false
 `cannot_meet` for a false `on_track`, because peak steps are not guaranteed.

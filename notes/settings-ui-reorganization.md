@@ -1,10 +1,10 @@
 # Settings UI Reorganization
 
-> **Status: partially shipped** (see `TODO.md` "settings UI" section). The nav
-> shell, Budget (Plan/Adjust), Smart tasks list, and the Settings card/list are
-> in place; remaining work is Usage cleanup, per-device price ownership, Material
-> consolidation, and polish. This note still governs the ownership boundaries for
-> the in-flight PRs — read it as the target model, not a wholly-future plan.
+> **Status: partially shipped.** The nav shell, Budget (Plan/Adjust), Smart tasks
+> list, and the Settings card/list are in place; remaining work is Usage cleanup,
+> per-device price ownership, Material consolidation, and polish. This note still
+> governs the ownership boundaries for the in-flight PRs — read it as the target
+> model, not a wholly-future plan.
 
 This note captures the target product direction for reorganizing the PELS Settings UI.
 It describes the target ownership model; large parts have shipped (see status above).

@@ -311,7 +311,7 @@ direct MET Norway fetch, so provenance is binary, resolved as `forecastStatus`:
 >   Detail footer forecast half: still `Weather data from MET Norway` (the
 >   attribution is fixed; the source line carries the fallback).
 > No-location is folded into `recent_days` copy for now; a location-aware hint is
-> a tracked follow-up (see `TODO.md`).
+> a deferred follow-up.
 
 **S8 — colder than anything observed.**
 > Tomorrow card chip: `Rough estimate`; reason line: `Tomorrow looks colder than any day PELS has measured — the range is wider than usual.`
@@ -361,7 +361,7 @@ the trigger-emits-the-thing-that-changed flow-card rule.)
 Documented future follow-ups: deep-link from a budget-overshoot postmortem
 (persona 5), money on the Tomorrow card once same-evening price completeness
 exists (persona 4). The UI enable switch (master switch on the sub-page) has
-shipped; remaining pre-promotion polish lives in `TODO.md`.
+shipped; pre-promotion polish is still outstanding.
 
 Evening "tomorrow's budget" preview Flow trigger (follow-up to the apply-time
 `daily_budget_weather_adjusted` trigger): the auto-apply only writes the ACTIVE

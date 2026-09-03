@@ -379,7 +379,7 @@ The exempt device set is the same on both axes: `sumBudgetExemptProjectedUsageKw
 (`lib/plan/planUsage.ts`) gates the energy accrual at `lib/power/sampleIngest.ts`
 and the power term at `lib/plan/planBuilder.ts`. Feeding the PROJECTED sum to the
 energy accrual is a known defect — it books an off exempt device's nameplate into
-a persisted kWh bucket — tracked in `TODO.md`.
+a persisted kWh bucket.
 
 The gap is that the energy side materialises `P_nonExempt`'s kWh equivalent as the
 bucket's `usedKWh`, while the power side never materialises `P_nonExempt` at all.
@@ -781,13 +781,13 @@ sections above as answering them.
   the slab is measured-only. Either the display needs its own stated semantics or
   the projected/measured delta has to be visualised.
 - **Whether the observed-off projection is right for control is not settled
-  here.** The open TODO item on observed-off usage attribution deliberately leaves
-  the choice open between attributing the restore step and attributing zero with a
-  separate restore reservation. An off exempt charger projected at 7 kW against
-  8 kW of real non-exempt import and a 5 kW budget pace yields a control value of
-  1 kW and suppresses daily shedding. Calling the projection "right for control"
-  pre-empts that decision; resolve the attribution item first, or keep restore
-  reservation separate from live budget accounting.
+  here.** Observed-off usage attribution is unresolved on purpose: the choice
+  between attributing the restore step and attributing zero with a separate
+  restore reservation is still live. An off exempt charger projected at 7 kW
+  against 8 kW of real non-exempt import and a 5 kW budget pace yields a control
+  value of 1 kW and suppresses daily shedding. Calling the projection "right for
+  control" pre-empts that decision; resolve the attribution question first, or
+  keep restore reservation separate from live budget accounting.
 
 ## Revisit trigger
 

@@ -651,12 +651,12 @@ The smart-task list uses one chip per task. Source: `SMART_TASK_LIST_STATUS_LABE
 | `Cannot finish` | Not enough usable time or energy delivery before the deadline. |
 | `Satisfied` | The observed target is met. PELS resumes tracking if a later reading drops below it. |
 
-**`Scheduled` is retired as a status chip** (2026-07 coherence sweep, TODO
-402): a task whose plan is allocated and healthy answered "am I on track?"
-with `Scheduled` on the list card and `On track` on the detail hero — two
-words for one state read as a discrepancy. The list chip now says `On track`
-(same `ok` tone as the `on_track` id); the card's `Starts` row still carries
-the start time. `Scheduled` remains valid as a plain **schedule/when-window
+**`Scheduled` is retired as a status chip** (2026-07 coherence sweep): a task
+whose plan is allocated and healthy answered "am I on track?" with
+`Scheduled` on the list card and `On track` on the detail hero — two words
+for one state read as a discrepancy. The list chip now says `On track` (same
+`ok` tone as the `on_track` id); the card's `Starts` row still carries the
+start time. `Scheduled` remains valid as a plain **schedule/when-window
 label** — the create-widget preview row, the Held-back-devices rescue
 preview's when-row, the smart-tasks widget trajectory's run-band key, and
 "N scheduled hours" prose — just never as a status chip.

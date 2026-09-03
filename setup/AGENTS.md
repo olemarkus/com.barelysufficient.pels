@@ -37,8 +37,8 @@
   tracker's own classified read; a suspect read decides nothing), and it parses no persisted key
   beyond the two the seam writes. Its predecessor keyed "fresh install" on the mere PRESENCE of
   `power_tracker_state` and lost to the tracker's first prune on every boot.
-  Everything else is the owner's pick in Limits & safety.) See the
-  outstanding TODO for `homeRuntime/homeOperatingMode.ts`, which still
+  Everything else is the owner's pick in Limits & safety.)
+  `homeRuntime/homeOperatingMode.ts` has not had the same treatment: it still
   gates on `undefined` alone.
 - **Configured meter ownership and sampled-meter provenance are different facts.** The
   `ui_homes_save` seam requires an explicit Main meter before any meter area can run and refuses

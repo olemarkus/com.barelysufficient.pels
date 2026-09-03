@@ -4,7 +4,7 @@
 
 ## Map
 
-- `deviceTransport.ts` — the hub class: syncs Homey state back, detects external changes, owns the actuation transport (split tracked in `TODO.md`).
+- `deviceTransport.ts` — the hub class: syncs Homey state back, detects external changes, owns the actuation transport (splitting the two halves is still open work).
 - `transport/` — snapshot fetch/parse, realtime capability handlers, freshness, and retained-observation accounting (`managerObservation.ts`).
 - `deviceObservation.ts` — read-only view over the snapshot store; plan/executor read consumers depend on this interface, not the concrete class. House-style docblock reference.
 - `deviceActionProjection.ts` — the producer that resolves observed/planner-facing bits onto `PlanInputDevice`; consumers must not re-branch on source/provenance/evidence.

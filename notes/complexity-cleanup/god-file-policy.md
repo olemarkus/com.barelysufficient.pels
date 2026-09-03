@@ -16,8 +16,8 @@ remaining cleanup is to remove broad file-level pragmas or classify them as expl
 
 Each oversized file should land in one of two buckets:
 
-- **Bucket A - must shrink to <=500 LOC.** The file accumulated accidentally. Keep the TODO until
-  the planned shrink lands, then remove the pragma or override.
+- **Bucket A - must shrink to <=500 LOC.** The file accumulated accidentally. The pragma or
+  override stays only until the planned shrink lands, and goes with it.
 - **Bucket B - documented exception with a concrete raised ceiling.** The file stays over 500
   because the concept is intentionally centralized. The exception lives in `eslint.config.mjs`
   with a comment and a target ceiling.
@@ -48,7 +48,7 @@ Bucket B reason:
 | File | LOC (2026-08-30) | Where the exception lives |
 |---|---:|---|
 | `packages/shared-domain/src/deadlineLabels.ts` | 2868 | The one remaining blanket `/* eslint-disable max-lines */` pragma. Single home for kind-aware smart-task copy, colocated so runtime logs and the UI read the same strings. Per step 3 below it should move to a config-level ceiling. |
-| `packages/settings-ui/src/ui/deviceDetail/index.ts` | 542 raw / ceiling 505 | Config-level ceiling in `eslint.config.mjs`, with a named TODO target of <=500. |
+| `packages/settings-ui/src/ui/deviceDetail/index.ts` | 542 raw / ceiling 505 | Config-level ceiling in `eslint.config.mjs`, which records <=500 as the target it must reach. |
 
 The 2026-05-30 revision of this table listed nine Bucket B files; none of them carries an
 exception today. Five have shrunk under 500 and need none (`deviceDiagnosticsService.ts` 467,

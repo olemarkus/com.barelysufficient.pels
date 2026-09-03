@@ -67,7 +67,7 @@
   (`PlanActuationMode = 'plan' | 'reconcile'`) for re-applying a committed plan after drift. It
   bypassed pending-target retry suppression and skipped stamping the restore cooldown, and together
   those let a re-assert outrun the planner's own admission gate and breach the hard cap in
-  production (`TODO.md`, inc_26449fb9). Ordinary actuation now respects retry suppression and stamps
+  production (inc_26449fb9). Ordinary actuation now respects retry suppression and stamps
   its cooldowns; the one documented exception is the post-activation `force` below, which bypasses
   the pending/back-off skips for a reason grounded in device behaviour rather than in provenance.
 

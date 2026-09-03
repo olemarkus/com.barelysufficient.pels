@@ -2,14 +2,14 @@
 
 A product-level review of the Smart tasks surface (landing list, live
 plan, history detail) based on a live-Homey walk through Connected 300
-real data on 2026-05-16. Captures the design thinking behind the
-discrete TODO entries that came out of the pass, so future contributors
-can see *why* the punch list is shaped the way it is.
+real data on 2026-05-16. Captures the design thinking behind the changes
+that came out of the pass, so future contributors can see *why* the punch
+list is shaped the way it is.
 
-This note is intentionally analysis-shaped, not a checklist. The
-per-item TODO entries (mine + the broader polish punch list landed in
-`b1e67f31`, "TODO: capture smart-task UI polish punch-list + 9-unit
-verification pass") are the executable side.
+This note is intentionally analysis-shaped, not a checklist. It describes
+the work; when each piece ships is not stated here. The broader polish
+punch list from the same pass (~50 items, plus a 9-unit verification
+pass) landed in commit `b1e67f31`.
 
 ## Background
 
@@ -95,7 +95,7 @@ already captured:
   shortfall, `objective_invalid_session`, abandoned-by-user. The
   postmortem sentence can be composed from these without a contract
   change. (A future polish adds `deliveredKWh` and `totalCost` to the
-  entry to make this round-trip cheaper — see TODO upstream entry.)
+  entry to make this round-trip cheaper.)
 - **Overshoot line on Succeeded** — `startProgressC`, `finalProgressC`,
   `targetTemperatureC` already on the entry. `finalProgressC - target
   > 5 °C` is a one-line resolver.
@@ -107,7 +107,7 @@ already captured:
 - **Confidence chip tooltip** — the chip already exists on the hero;
   a popover with one-line explanation is pure rendering.
 
-What needs *new* data (contract additions, tracked in upstream TODO):
+What needs *new* data (contract additions, none of them made yet):
 
 - Per-revision reason list on the history entry (currently only count
   is persisted, not the reasons).
@@ -173,8 +173,8 @@ aren't asking task-shaped questions.
 Two parities pull in different directions:
 
 1. **Information parity** (history reaches back to match live). Today
-   history is a subset; the existing TODO entry "Bring the smart-task
-   history detail view to full live-plan chart parity" closes this.
+   history is a subset; closing the gap means bringing the history detail
+   view to full live-plan chart parity.
    Worth noting: parity in *what is shown* should not mean parity in
    *what is emphasized*. Live = "what's next". History = "what
    happened." Same chart, different hero shape.
@@ -208,7 +208,7 @@ observations; don't render `Cannot finish` next to an `On track` chip).
 The vNext work focuses on **trust signals** (cost, postmortem, picked-
 N-of-M) that turn a fine surface into a trusted one.
 
-See `TODO.md` for the discrete entries. The split (loosely):
+The work splits (loosely):
 
 - **v1 / next patch**: items that fix misleading current state — recorder
   null-progress regression; `Cannot finish` meta line restoring energy
@@ -228,10 +228,10 @@ See `TODO.md` for the discrete entries. The split (loosely):
   emit a `notification_text` token on any trigger.
 - `notes/ev-ready-by/README.md` — EV-specific UX slice, references this
   surface.
-- `TODO.md` P0/P1 entries from commit `b1e67f31` cover the polish punch
-  list (~50 items) that this review overlaps with substantially. The
-  new entries this review adds are the ones whose framing depends on
-  the personas/asymmetric-treatment thesis above.
+- The polish punch list (~50 items) filed from commit `b1e67f31` overlaps
+  substantially with this review. What this review adds beyond it are the
+  items whose framing depends on the personas/asymmetric-treatment thesis
+  above.
 
 ## Addendum — 2026-07-26: creation and immediate intent
 

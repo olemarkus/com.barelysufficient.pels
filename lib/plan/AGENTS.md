@@ -32,8 +32,7 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   `toPlanDevice` deliberately does not strip it, because `ObjectiveDeviceInput` reads it in
   `lib/objectives/deferredObjectives/diagnosticProgress.ts`, and removing it turned every EV smart
   task's progress into `objective_progress_stale`. The contract and the runtime disagree about that
-  field on purpose until someone reconciles them; see the TODO item "`stateOfCharge` rides the plan
-  device undeclared".
+  field on purpose, and the mismatch stays until someone reconciles the two spellings deliberately.
 - **No `lib/device` imports** except the producer seams `deviceObservation.ts`,
   `deviceActionProjection.ts`, `deviceResidualKw.ts` (`no-plan-to-device`). Resolution happens in
   the producer projection; the planner consumes flat `PlanInputDevice` fields, never source/evidence.
@@ -102,12 +101,12 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   no decisions should actuate anyway. That is a cost optimization, not a decision, and it is a drift
   question on the planner's side of the wall; the boundary is about imports until it is gone.
   Removing it means actuating unconditionally on every non-dry-run rebuild and letting the executor
-  no-op per device; see the P2 in `TODO.md`.
+  no-op per device; that trade has not been made yet.
 
   What the planner no longer does is supply the live side of that verdict. It used to pass the same
   `PlanInputDevice[]` the plan was built from, which meant the executor never saw an observation —
   only a plan with observations folded into it, and one whose `observedBinaryState` therefore meant
-  two different things by construction path (`TODO.md`, the drift P0). The executor now reads the
+  two different things by construction path (the drift P0). The executor now reads the
   observation from the observer and the in-flight command state from its own stores. Do not hand it
   a device list again: the moment a plan-layer shape carries the live side, the executor is once
   more comparing intent against something the planner produced.
@@ -115,7 +114,7 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   A device that moved on its own is an ordinary input, so the honest answers include *"put it back"*
   and *"leave it there and shed something else instead"*. The second one is why this matters: a lane
   that re-applies the committed plan can only ever produce the first, and it caused a hard-cap
-  breach in production (`TODO.md`, inc_26449fb9). `PlanService` therefore has exactly one way to
+  breach in production (inc_26449fb9). `PlanService` therefore has exactly one way to
   converge a device — `rebuildPlanFromCache`. Do not add an apply-without-decide path back; if a
   rebuild is too slow for some caller, make the rebuild cheaper.
 
