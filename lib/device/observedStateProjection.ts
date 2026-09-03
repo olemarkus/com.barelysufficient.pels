@@ -12,7 +12,7 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
  * Lives in `lib/device/` rather than `packages/contracts/src/` because it is a
  * runtime *function*, and `packages/contracts/src/**` is deploy-excluded source
  * that Homey runtime code may only `import type` from (enforced by
- * `test/runtimePackaging.test.ts`). Transport is the only runtime caller — it
+ * `test/integration/runtimePackaging.test.ts`). Transport is the only runtime caller — it
  * builds the decided observed value here before pushing it onto the observer
  * emitter — so transport's own layer is the honest home.
  *

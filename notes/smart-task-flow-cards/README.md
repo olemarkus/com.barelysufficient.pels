@@ -171,7 +171,7 @@ rejected-expansion note above.
 Shipped across `.homeycompose/flow/triggers/deadline_*.json` (dropdown args
 dropped, stable-id token bags added), `flowCards/deadlineObjectiveCards.ts`
 (runlistener filtering removed), and `flowCards/smartTaskTokens.ts` (the token
-builder). Stable-id values are asserted in `test/deadlineObjectiveCards.test.ts`
+builder). Stable-id values are asserted in `test/integration/deadlineObjectiveCards.test.ts`
 so a future rename breaks the test rather than user flows silently. The proposal
 to also emit `outcome_id` / numeric introspection tokens (`delivered_kwh`,
 `revisions_count`) was trimmed and not shipped.

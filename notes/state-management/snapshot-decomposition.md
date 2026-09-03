@@ -265,7 +265,7 @@ store, because:
      Shared refresh-event *types* live in `packages/contracts`; the `projectObservedState`
      *function* lives in `lib/device/observedStateProjection.ts` — runtime functions can't
      live in `packages/contracts/src/**` (deploy-excluded source; runtime may only
-     `import type` from it, enforced by `test/runtimePackaging.test.ts`).
+     `import type` from it, enforced by `test/integration/runtimePackaging.test.ts`).
    - **4b — IN PROGRESS:** route real readers onto the projection (wiring-side observed
      reads first). **First reader wired:** `toPlanDevice` (`setup/appInit.ts`) resolved
      `observationStale` from `ctx.getObservedState(id)` (the projection's maintained truth)

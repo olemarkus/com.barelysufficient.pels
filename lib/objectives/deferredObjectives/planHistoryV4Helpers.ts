@@ -49,7 +49,7 @@ export type HourPriceResolver = (
 // Runtime cap on persisted progress samples per entry. The contract module
 // documents a matching constant (intentionally not exported there — runtime
 // must not value-import contract source files; see
-// `test/runtimePackaging.test.ts`). Keep both copies in sync.
+// `test/integration/runtimePackaging.test.ts`). Keep both copies in sync.
 //
 // 200 covers ~50 h at the 15-minute base grid — wider than any same-day
 // deadline. Runs longer than that are re-bucketed onto a coarser grid (see

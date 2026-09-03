@@ -159,7 +159,7 @@ const buildHarness = (
     // Approximates the production hook (`ctx.reloadWeatherCollector`), which
     // goes through `BackgroundTasksController.startWeatherCollector` — that
     // path also swaps the teardown registration, and the ordering it depends on
-    // is pinned in `test/unit/backgroundTasksTeardown.test.ts` rather than here.
+    // is pinned in `test/integration/backgroundTasksTeardown.test.ts` rather than here.
     reloadWeatherAdvisor: () => { collector.start(); },
   };
   const handler = createSettingsHandler(deps);

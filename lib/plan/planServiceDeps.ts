@@ -66,7 +66,7 @@ export type PlanServiceDeps = {
   // Minimal observer projection for binary confirmation; never raw transport
   // snapshots or plan devices.
   getSettleDevices: () => PendingBinaryLiveDevice[];
-  /** The stepped axis's settle evidence; see `lib/device/steppedSettleSnapshot.ts`. */
+  /** The stepped axis's settle evidence; see `lib/observer/steppedSettleSnapshot.ts`. */
   getSteppedSettleDevices: () => readonly SteppedSettleDevice[];
   // EV charging state for the settings-UI read model, sourced from the observer
   // (its canonical owner — `ObservedDeviceState`), not the plan device. The
