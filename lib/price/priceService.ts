@@ -324,6 +324,19 @@ export default class PriceService {
     this.onCombinedPricesUpdated?.('changed');
   }
 
+  /**
+   * Rebuilt on every call, deliberately. Memoizing this is DECIDED AGAINST as
+   * specified: an invalidation-based cache is unsafe while `price_area`,
+   * `nettleie_fylke`, `nettleie_orgnr` and `nettleie_tariffgruppe` are written by
+   * the settings UI (`packages/settings-ui/src/ui/priceConfig.ts`) but have no
+   * entry in the `lib/utils/settingsHandlers.ts` routing table, so nothing calls
+   * `updateCombinedPrices()` when they change. The live rebuild is what keeps a
+   * price-area or grid-operator change visible; a cache invalidated at that
+   * funnel would serve stale prices. Precondition for revisiting: route those
+   * four keys through `refreshPriceDerivedState` first, which is a behaviour
+   * change of its own since it makes them trigger a plan rebuild. The cost of
+   * leaving it is about two builds (~50 ms) per rebuild.
+   */
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {
     // Export (feed-in) pricing is kept separate from the import scheme and applied
     // scheme-independently to the import series — see `applyExportPrices`. The
