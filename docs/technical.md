@@ -320,6 +320,12 @@ PELS is purpose-built for devices with thermal mass — rooms, tanks, floor loop
 
 PELS reacts to your power meter in real time. With a fast, steady meter you can run tight safety margins; with a slower meter, widen the margin and PELS will pace accordingly.
 
+A whole-home reading is what drives every planning cycle, so PELS is deliberate about what a gap in readings means. A short gap changes nothing: the last good reading carries forward and PELS keeps acting on the decision it already made. A missing reading is never read as zero, because zero is a more favourable number than anything PELS has actually measured.
+
+If readings stop for **10 minutes**, PELS stops trusting that decision and fails closed. It runs one final planning pass that limits every managed device to its floor: stepped devices drop to their lowest step, thermostats and water heaters go to their limited setpoint, and on/off loads turn off. Planning then pauses until a reading arrives, and nothing resumes while the meter is silent, because resuming safely means knowing the current draw. When readings return, the next cycle plans normally and devices resume in priority order under the usual resume cooldown.
+
+A home whose meter has never reported at all is a different case: PELS builds no plan and leaves every device exactly as it is.
+
 ### Device Response Time
 
 Heaters and chargers on local protocols respond within seconds; cloud-mediated device apps can take longer to acknowledge. Either way, PELS waits a cooldown cycle for the meter reading to settle before the next move, so every decision is grounded in a measurement that already reflects the previous action.
