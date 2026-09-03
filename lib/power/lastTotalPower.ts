@@ -58,6 +58,25 @@ export function hasPowerMeasurement(
 }
 
 /**
+ * The latched whole-home total, for consumers reached only from an ADMITTED
+ * sample — the tracker persists `lastPowerW` before it awaits them, and every
+ * producer into `recordPowerSample` finiteness-gates its watts first (the Flow
+ * card via `readFlowNumberArg`, Homey Energy via `extractLiveMeterPowerWatts`).
+ * So absence here is a contract violation, not a reading to interpret, and it
+ * fails loud rather than handing a nullable — or a fabricated stand-in — onward.
+ * The twin of `requireLastSampleAtMs` below, and of `resolvePowerCycleReading`.
+ */
+export function requireLastTotalPowerKw(
+  powerTracker: Pick<PowerTrackerState, 'lastPowerW'>,
+): number {
+  const totalKw = resolveLastTotalPowerKw(powerTracker);
+  if (totalKw === null) {
+    throw new Error('whole-home total required — a consumer of an admitted sample read an unsampled tracker');
+  }
+  return totalKw;
+}
+
+/**
  * The latched sample's stamp, for consumers that exist only behind the
  * measurement gate (a plan build, a status write computed from one). The gate
  * (`hasPowerMeasurement`) implies a latched sample, and ingest stamps

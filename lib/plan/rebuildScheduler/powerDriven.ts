@@ -1,5 +1,5 @@
 import type { PlanRebuildScheduler } from './scheduler';
-import type { HardCapBreach } from './policy';
+import type { HardCapBreach, PowerRebuildSignal } from './rebuildSignal';
 import type { PowerSampleRebuildTrigger } from '../planRebuildTrigger';
 import {
   handleSkippedRebuildDecision,
@@ -11,6 +11,14 @@ export {
   cancelPendingPowerRebuild,
   executePendingPowerRebuild,
 } from './powerDrivenScheduling';
+
+/**
+ * Reports a hard-cap breach that did NOT earn a rebuild, so the guard still
+ * sees the deficit. Per-sample rather than part of the port: it answers with
+ * THIS reading's totals, and a breach the guard never hears about is
+ * indistinguishable from no breach.
+ */
+export type TightNoopHardCapReporter = (deficitKw: number) => Promise<void>;
 
 export type PowerSampleRebuildState = {
   lastMs: number;
@@ -42,73 +50,39 @@ export type PowerSampleRebuildState = {
   pendingDueMs?: number;
   pendingHardCapBreach?: HardCapBreach;
   pendingIsInShortfall?: boolean;
-  pendingOnTightNoopHardCapBreach?: (deficitKw: number) => Promise<void>;
+  pendingOnTightNoopHardCapBreach?: TightNoopHardCapReporter;
 };
 
-export function schedulePlanRebuildFromPowerSample(params: {
-  scheduler: PlanRebuildScheduler;
+/**
+ * The scheduler and everything it needs to reach the outside world: its state
+ * and its clock. Built by the wiring layer per sample and passed as a unit — it
+ * is the scheduler's environment, not an argument list.
+ */
+export type PowerSampleRebuildStore = {
   getState: () => PowerSampleRebuildState;
   setState: (state: PowerSampleRebuildState) => void;
-  getNowMs?: () => number;
-  minIntervalMs: number;
-  maxIntervalMs: number;
-  currentPowerW?: number;
-  powerDeltaW?: number;
-  limitKw: number;
-  capacityPaceKw?: number;
-  headroomKw?: number | null;
-  isInShortfall?: boolean;
-  planConvergenceActive?: boolean;
-  hardCapBreach?: HardCapBreach;
-  onTightNoopHardCapBreach?: (deficitKw: number) => Promise<void>;
-  unactionable?: boolean;
-}): Promise<void | string> {
-  const {
-    scheduler,
-    getState,
-    setState,
-    getNowMs = Date.now,
-    minIntervalMs,
-    maxIntervalMs,
-    currentPowerW,
-    powerDeltaW,
-    limitKw,
-    capacityPaceKw,
-    headroomKw,
-    isInShortfall,
-    planConvergenceActive,
-    hardCapBreach,
-    onTightNoopHardCapBreach,
-    unactionable,
-  } = params;
+};
+
+export type PowerRebuildSchedulerPort = PowerSampleRebuildStore & {
+  scheduler: PlanRebuildScheduler;
+  getNowMs: () => number;
+};
+
+export function schedulePlanRebuildFromPowerSample(
+  port: PowerRebuildSchedulerPort,
+  signal: PowerRebuildSignal,
+  minIntervalMs: number,
+  maxIntervalMs: number,
+  reportTightNoopHardCap: TightNoopHardCapReporter,
+): Promise<void | string> {
+  const { getState, getNowMs } = port;
   const state = getState();
   const now = getNowMs();
-  const elapsedMs = now - state.lastMs;
 
-  const { decision, triggerReason } = resolvePowerSampleDecision({
-    state,
-    nowMs: now,
-    elapsedMs,
-    maxIntervalMs,
-    limitKw,
-    currentPowerW,
-    powerDeltaW,
-    headroomKw,
-    isInShortfall,
-    hardCapBreach,
-    planConvergenceActive,
-    unactionable,
-  });
+  const outcome = resolvePowerSampleDecision(signal, state, now, maxIntervalMs);
 
-  if (!decision.shouldRebuild) {
-    handleSkippedRebuildDecision({
-      state,
-      decision,
-      now,
-      hardCapBreach,
-      isInShortfall,
-      setState,
-    });
+  if (!outcome.decision.shouldRebuild) {
+    handleSkippedRebuildDecision(port, signal, state, outcome.decision, now);
     // Deliberately do NOT drive `checkShortfall` from the throttled skip: entering
     // shortfall without a rebuild having observed the live device state would let a
     // stale "unactionable" summary keep the unrecoverable-shortfall skip bypassing
@@ -119,19 +93,5 @@ export function schedulePlanRebuildFromPowerSample(params: {
     return Promise.resolve();
   }
 
-  return requestPowerSampleRebuild({
-    resolvedScheduler: scheduler,
-    getState,
-    setState,
-    fallbackState: state,
-    decision,
-    nowMs: now,
-    minIntervalMs,
-    currentPowerW,
-    capacityPaceKw,
-    triggerReason,
-    hardCapBreach,
-    isInShortfall,
-    onTightNoopHardCapBreach,
-  });
+  return requestPowerSampleRebuild(port, signal, outcome, now, minIntervalMs, reportTightNoopHardCap);
 }

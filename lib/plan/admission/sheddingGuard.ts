@@ -20,7 +20,7 @@ function handleShortfallCheck(
     capacityGuard: CapacityGuard;
     remaining: number;
     deficitKw: number;
-    totalKw: number | null;
+    totalKw: number;
     shortfallThresholdKw: number;
     capacityStateSummary: PlanCapacityStateSummary;
   },

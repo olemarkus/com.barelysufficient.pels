@@ -80,14 +80,16 @@ export class PlanRebuildIntentPolicy {
 
   executeIntent(intent: RebuildIntent): Promise<void> {
     if (intent.kind === 'signal' || intent.kind === 'hardCap') {
-      return executePendingPowerRebuild({
-        getState: () => this.deps.getPowerSampleRebuildState(),
-        setState: (state) => {
-          this.deps.setPowerSampleRebuildState(state);
+      return executePendingPowerRebuild(
+        {
+          getState: () => this.deps.getPowerSampleRebuildState(),
+          setState: (state) => {
+            this.deps.setPowerSampleRebuildState(state);
+          },
         },
-        getNowMs: () => this.deps.getPlanRebuildNowMs(),
-        rebuildPlanFromCache: (trigger) => this.deps.getPlanService().rebuildPlanFromCache(trigger),
-      });
+        () => this.deps.getPlanRebuildNowMs(),
+        (trigger) => this.deps.getPlanService().rebuildPlanFromCache(trigger),
+      );
     }
     return this.deps.getPlanService()
       .rebuildPlanFromCache(intent.reason, { detail: intent.detail })

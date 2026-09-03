@@ -346,12 +346,11 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
     // Mirrors `PlanRebuildIntentPolicy.executeIntent`: the sample promise is a
     // deferred on `powerSampleRebuildState` that ONLY this executor resolves —
     // an inert executeIntent stub would hang the recordPowerSample await.
-    const executeIntent = () => executePendingPowerRebuild({
-      getState: () => ctx.powerSampleRebuildState,
-      setState: (state) => { ctx.powerSampleRebuildState = state; },
-      getNowMs: () => nowMs,
-      rebuildPlanFromCache: async () => undefined,
-    });
+    const executeIntent = () => executePendingPowerRebuild(
+      { getState: () => ctx.powerSampleRebuildState, setState: (state) => { ctx.powerSampleRebuildState = state; } },
+      () => nowMs,
+      async () => undefined,
+    );
     const pipeline = createHomePowerPipeline({
       ctx,
       homeId: MAIN_HOME_ID,
@@ -365,7 +364,9 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
       getPlanService: () => planService,
       getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
       getPlanRebuildNowMs: () => nowMs,
-      savePowerTracker: (state) => { saved = state; },
+      // Write back as production does (`savePowerTracker` -> `setPowerTracker`),
+      // so the latch the scheduler reads is the sample just admitted.
+      savePowerTracker: (state) => { saved = state; ctx.powerTracker = state; },
       setPowerSampleRebuildState: (state) => { ctx.powerSampleRebuildState = state; },
     });
     await pipeline.recordPowerSample(5000, nowMs);

@@ -265,12 +265,11 @@ function createBundleRebuildScheduler(params: {
     resolveDueAtMs,
     executeIntent: (intent) => {
       if (intent.kind === 'signal' || intent.kind === 'hardCap') {
-        return executePendingPowerRebuild({
-          getState: getRebuildState,
-          setState: setRebuildState,
-          getNowMs: nowMs,
-          rebuildPlanFromCache: (trigger) => getPlanService().rebuildPlanFromCache(trigger),
-        });
+        return executePendingPowerRebuild(
+          { getState: getRebuildState, setState: setRebuildState },
+          nowMs,
+          (trigger) => getPlanService().rebuildPlanFromCache(trigger),
+        );
       }
       return getPlanService()
         .rebuildPlanFromCache(intent.reason, { detail: intent.detail })

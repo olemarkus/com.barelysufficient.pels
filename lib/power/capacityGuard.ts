@@ -110,7 +110,13 @@ export default class CapacityGuard {
     hasCandidates: boolean;
     /** Current kW above the shortfall threshold. */
     deficitKw: number;
-    totalKw: number | null;
+    /**
+     * The caller's resolved whole-home total. Both control-path callers hold a
+     * plain number — `MeasuredPower.drawKw` in `lib/plan/admission/sheddingGuard`,
+     * the finiteness-gated tracker latch in `lib/plan/rebuildScheduler`. There is
+     * no absence to model here, so there is no branch for one.
+     */
+    totalKw: number;
     /**
      * `capacityPaceKw` on the hard-cap budget — resolved by the caller from
      * `computeShortfallThreshold`, which is a pure function of capacity
@@ -124,27 +130,6 @@ export default class CapacityGuard {
       hasCandidates, deficitKw, totalKw, shortfallThresholdKw, capacityStateSummary,
     } = params;
     this.shortfallHasCandidates = hasCandidates;
-
-    // An unmeasured cycle is a no-op, the way a missing device read is: it
-    // carries the previous understanding forward rather than deciding anything
-    // new. Nothing enters, nothing clears, and the recovery sustain is neither
-    // advanced nor restarted.
-    //
-    // The defect this closes was never "absence advanced recovery" — it was that
-    // absence was read as 0 kW, a *more recovered* value than anything the meter
-    // had reported, so a house that had never been measured out of a breach
-    // recovered on the strength of a missing reading. Deciding nothing leaves the
-    // last real reading standing, which is what the guard did before it stopped
-    // keeping its own copy: `mainPowerKw` was a last-known-value latch production
-    // never cleared, so absence was unreachable here after the first sample and
-    // the `?? 0` below was dead defensive code.
-    //
-    // Restarting the sustain instead would be a destructive read of a transient
-    // gap: under `power_source = flow` a rebuild between two events is ordinary
-    // cadence, and a home whose events are more than 60 s apart could then never
-    // finish a sustain and would stay latched in an incident it had physically
-    // left. Gated once here so the helpers can take a plain number.
-    if (totalKw === null) return;
 
     const alertConditionActive = !hasCandidates
       && isOverShortfallThreshold(totalKw, shortfallThresholdKw);

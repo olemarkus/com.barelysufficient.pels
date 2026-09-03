@@ -220,11 +220,6 @@ lib/plan/planSteppedRestorePending.ts 2
 lib/plan/planSteppedShedResolution.ts 3
 lib/plan/planSurplusAbsorb.ts 8
 lib/plan/planTargetControl.ts 7
-lib/plan/rebuildScheduler/policy.ts 8
-lib/plan/rebuildScheduler/powerDriven.ts 1
-lib/plan/rebuildScheduler/powerDrivenScheduling.ts 7
-lib/plan/rebuildScheduler/shortfallSuppression.ts 2
-lib/plan/rebuildScheduler/signalDriven.ts 2
 lib/plan/restore/accounting.ts 2
 lib/plan/restore/candidateLoop.ts 5
 lib/plan/restore/cooldownPreview.ts 2

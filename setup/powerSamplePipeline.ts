@@ -12,7 +12,7 @@ import {
 } from '../lib/power/sampleIngest';
 import { PowerSampleRebuildState } from '../lib/plan/rebuildScheduler/powerDriven';
 import { schedulePlanRebuildFromSignal } from '../lib/plan/rebuildScheduler/signalDriven';
-import { resolveLastTotalPowerKw } from '../lib/power/lastTotalPower';
+import { requireLastTotalPowerKw } from '../lib/power/lastTotalPower';
 import { computeShortfallThreshold } from '../lib/plan/planBudget';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
@@ -309,10 +309,10 @@ export class PowerSamplePipeline {
           summarySourceAtMs: planService.getLatestPlanSnapshotUpdatedAtMs(),
         },
       );
-      const skipWhileShortfallUnrecoverable = shouldSkipShortfallRebuildFromPlanSummary({
-        summary: latestPlanSummary,
-        state: this.deps.getPowerSampleRebuildState(),
-      });
+      const skipWhileShortfallUnrecoverable = shouldSkipShortfallRebuildFromPlanSummary(
+        latestPlanSummary,
+        this.deps.getPowerSampleRebuildState(),
+      );
       // Unwinnable state: a full rebuild cannot change any action, so the
       // scheduler throttles it to the max-interval cadence rather than burning
       // ~1.4s of CPU on every power sample (which trips Homey's cpuwarn watchdog).
@@ -345,27 +345,37 @@ export class PowerSamplePipeline {
           // identity - Main commanding from an area's watts. Publication is
           // contained, so a membership failure can never break the rebuild.
           this.publishResolvedHomeMeter(request);
-          await schedulePlanRebuildFromSignal({
-            scheduler: this.deps.planRebuildScheduler,
-            getState: () => this.deps.getPowerSampleRebuildState(),
-            setState: (state) => this.deps.setPowerSampleRebuildState(state),
-            getNowMs: () => this.deps.getPlanRebuildNowMs(),
-            minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
-            stableMinIntervalMs: POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS,
-            maxIntervalMs: POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS,
-            currentPowerW,
-            capacitySettings,
-            capacityGuard,
-            latchedTotalKw: resolveLastTotalPowerKw(this.deps.getPowerTracker()),
-            capacityPaceKw: planService.computeDynamicSoftLimit(),
-            shortfallThresholdKw: computeShortfallThreshold({
-              capacitySettings,
-              powerTracker: this.deps.getPowerTracker(),
-            }),
-            planConvergenceActive,
+          // Producer-side resolution (root `AGENTS.md` § Clean and trusted
+          // interfaces): the scheduler is handed ONE whole-home total, already
+          // finiteness-gated by `lib/power`, and no nullable crosses the seam.
+          // This runs inside the tracker's post-`saveState` callback, so the
+          // latch is this sample by construction.
+          await schedulePlanRebuildFromSignal(
+            {
+              scheduler: this.deps.planRebuildScheduler,
+              getState: () => this.deps.getPowerSampleRebuildState(),
+              setState: (state) => this.deps.setPowerSampleRebuildState(state),
+              getNowMs: () => this.deps.getPlanRebuildNowMs(),
+            },
+            {
+              minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
+              stableMinIntervalMs: POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS,
+              maxIntervalMs: POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS,
+            },
+            {
+              currentPowerW,
+              totalKw: requireLastTotalPowerKw(this.deps.getPowerTracker()),
+              limitKw: capacitySettings.limitKw,
+              capacityPaceKw: planService.computeDynamicSoftLimit(),
+              shortfallThresholdKw: computeShortfallThreshold({
+                capacitySettings,
+                powerTracker: this.deps.getPowerTracker(),
+              }),
+            },
+            { planConvergenceActive, unactionable: planUnactionable },
             skipWhileShortfallUnrecoverable,
-            unactionable: planUnactionable,
-          });
+            capacityGuard,
+          );
         },
         saveState: (state) => this.deps.savePowerTracker(state),
       });

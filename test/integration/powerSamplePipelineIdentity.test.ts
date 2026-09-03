@@ -22,7 +22,12 @@ const buildPipeline = (
   savedStates: PowerTrackerState[] = [],
   onRebuildRequest?: () => void,
 ) => {
-  const powerTracker: PowerTrackerState = {};
+  // Mirrors production: `savePowerTracker` calls `setPowerTracker`, so the very
+  // next `getPowerTracker()` sees the sample that was just latched
+  // (`setup/appPowerTracker.ts`). A stub that only records the write leaves the
+  // tracker permanently empty, which no admitted sample can produce — and the
+  // scheduler reads that latch to decide it has a measurement to plan on.
+  let powerTracker: PowerTrackerState = {};
   // Power-driven scheduling stages a pending promise on this state and awaits
   // it; the scheduler stub below "executes" each accepted intent immediately by
   // resolving that staged promise, so the ingest path settles like production.
@@ -63,7 +68,7 @@ const buildPipeline = (
     setPowerSampleRebuildState: (state) => { rebuildState = state as typeof rebuildState; },
     getLatestTargetSnapshot: () => [],
     getPlanRebuildNowMs: () => Date.now(),
-    savePowerTracker: (state) => { savedStates.push(state); },
+    savePowerTracker: (state) => { powerTracker = state; savedStates.push(state); },
     getStructuredDebugEmitter: () => vi.fn(),
     ...(noteResolvedHomeMeter === undefined ? {} : { noteResolvedHomeMeter }),
   });
