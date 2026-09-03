@@ -240,10 +240,17 @@ may still have been delivering it — so the dispatcher keeps the entry armed an
 treats it as accepted rather than clearing it (`binaryControlDispatch.ts`). The
 90 s window comfortably outlasts the transport's own 30 s timeout, so telemetry
 still has room to settle it; if nothing arrives, the ordinary expiry fires
-`onTimedOut` and the reachability backoff escalates exactly as a dispatch
-failure would have. Note this means the early-echo gate refuses settlement only
-for a *rejected* dispatch, never for an unanswered one: a rejection makes the
-echo untrustworthy, a timeout leaves it the best evidence available.
+`onTimedOut` and the reachability backoff escalates as a dispatch failure would
+have. Note this means the early-echo gate refuses settlement only for a
+*rejected* dispatch, never for an unanswered one: a rejection makes the echo
+untrustworthy, a timeout leaves it the best evidence available.
+
+The two lanes differ in exactly one way, and deliberately: `onTimedOut` does NOT
+request an immediate rebuild. The sweep that raises it runs on whichever lane
+called it, including the observation lane, and an observation may not drive the
+planner. The failure count, the backoff and the retry rebuild are identical on
+both lanes; only the immediate request differs
+(`lib/plan/admission/binaryCommandReachability.ts`).
 
 **What this window does not answer.** Whether the device then draws. Nothing answers
 that any more, and nothing should try from here: the pending-restore reservation that

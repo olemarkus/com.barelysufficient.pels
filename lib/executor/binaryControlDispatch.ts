@@ -165,9 +165,7 @@ export async function dispatchBinaryControlDecision(params: {
       transport.pendingBinaryCommandStore.clear(decision.deviceId);
       return { ok: false, reason: 'not_requested' };
     }
-    if (transport.pendingBinaryCommandStore.peek(decision.deviceId)) {
-      transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
-    }
+    transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
     emitBinaryCommandSuccess({
       decision,
     });
@@ -192,9 +190,7 @@ export async function dispatchBinaryControlDecision(params: {
         transport.pendingBinaryCommandStore.clear(decision.deviceId);
         return { ok: false, reason: 'not_requested' };
       }
-      if (transport.pendingBinaryCommandStore.peek(decision.deviceId)) {
-        transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
-      }
+      transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
       emitBinaryCommandOutcomeUnknown({
         decision,
         err: caughtError,

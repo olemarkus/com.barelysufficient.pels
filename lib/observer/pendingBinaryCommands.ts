@@ -184,6 +184,11 @@ export class PendingBinaryCommandStore {
     const recent = this.recentConfirmedOffByDevice.get(deviceId);
     if (!recent) return false;
     if ((nowMs - recent.confirmedAtMs) >= RECENT_CONFIRMED_BINARY_OFF_MS) {
+      // This is NOT the eviction `hasActiveCommand` forbids a predicate: the map
+      // is private to the store, so the delete fires no lifecycle callback and
+      // requests no rebuild. Every production caller reads wall-clock time, for
+      // which an expired window never un-expires, so the delete only reclaims
+      // memory.
       this.recentConfirmedOffByDevice.delete(deviceId);
       return false;
     }
@@ -202,10 +207,43 @@ export class PendingBinaryCommandStore {
     }
   }
 
+  /**
+   * The provenance question — "was this binary change PELS's own?" — asked on
+   * the OBSERVATION path: `setup/externalOffHoldDetection.ts` routes every
+   * `observedControlStateChanged` event through
+   * `composedPlanEngine.hasAttributablePendingBinaryCommand` to here, to decide
+   * whether an OFF may start an external-off hold.
+   *
+   * A query, so it may not command. Reading through the freshness-evicting
+   * `get` made this `is…` method mutate the shared backing record and fire
+   * {@link lifecycleTimedOut}, whose listener `createBinaryCommandReachability`
+   * (`lib/plan/admission/binaryCommandReachability.ts`) counts a reachability
+   * failure, arms a retry backoff and calls `requestRebuild()`. Expiring a
+   * command is a lifecycle decision, and it belongs to the two callers that own
+   * it — `get` and `reconcilePendingEntry`. Asking who actuated a device is not
+   * an occasion to make it. Same rule as {@link hasActiveCommand}, and the two
+   * predicates answer identically for an expired entry — `false` — so nothing
+   * downstream sees a different verdict; only the side effect is gone.
+   *
+   * Reading `get` here was one of two ways an observation reached the planner,
+   * and it was the narrower one. The same Homey event also emits
+   * `observedStateChanged` (`lib/device/transport/managerRealtimeHandlers.ts`
+   * emits it first, and unconditionally), which
+   * `setup/appInit/planObservedStateSubscription.ts` turns into
+   * `syncLivePlanState`; that runs the reconcile sweep for EVERY pending entry,
+   * so it reached the same escalation for devices this observation said nothing
+   * about. Both are closed: `createBinaryCommandReachability` no longer
+   * requests an immediate rebuild from `onTimedOut`, only from the dispatch
+   * lane (it still arms the retry timer, which is bookkeeping, not a
+   * device-picked moment to re-plan). Keep it
+   * that way — an observation may refresh the UI and drive the executor's
+   * settlement, and it may un-suppress a rebuild, but the capacity decision
+   * belongs to the whole-home reading.
+   */
   isBinaryChangeAttributableToPels(
     deviceId: string,
   ): boolean {
-    return this.get(deviceId) !== undefined || this.hasRecentConfirmedOff(deviceId);
+    return this.hasActiveCommand(deviceId) || this.hasRecentConfirmedOff(deviceId);
   }
 
   /** Clear the pending entry for a device, if any. */

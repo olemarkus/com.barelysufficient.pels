@@ -43,12 +43,33 @@ export type PlanObservedStateSubscriptionDeps = {
  * in that gap had its work silently dropped. Ordering removes the window
  * instead of guarding it: keep this step after `initPlanService`.
  *
- * **No listener here requests a plan rebuild.** An observed device change is
- * planner input, not a capacity trigger — the decision is about the whole-home
- * reading, and a rebuild driven by a device event runs against a reading taken
- * before the change (root `AGENTS.md` § Control Flow). What an observation may
- * do is stop the reading already on its way from being throttled away, which is
- * `invalidateRebuildSuppressionForObservation`.
+ * **No listener here requests an IMMEDIATE plan rebuild.** An observed device
+ * change is planner input, not a capacity trigger — the decision is about the
+ * whole-home reading, and a rebuild driven by a device event runs against a
+ * reading taken before the change (root `AGENTS.md` § Control Flow). What an
+ * observation may do is refresh the UI's read model, drive the executor's
+ * settlement of a pending command, and stop the reading already on its way from
+ * being throttled away (`invalidateRebuildSuppressionForObservation`).
+ *
+ * "Immediate" is the load-bearing word, and it was once false.
+ * `syncLivePlanState` below runs the pending-command reconcile sweep, whose
+ * timeout fired `createBinaryCommandReachability`'s `onTimedOut`, which called
+ * `requestRebuild()` — so an observation of one device re-planned the house on
+ * behalf of any OTHER device whose command happened to expire. That listener
+ * now records the failure without asking; the dispatch lane keeps its request,
+ * because a transport answer is not an observation.
+ * `test/integration/observationLaneNoPlanRebuild.test.ts` pins it.
+ *
+ * It is "immediate" rather than "directly or transitively" because two DEFERRED
+ * arms survive here, and both are meant to. The sweep above still arms the
+ * reachability RETRY timer (`recordFailure` → `scheduleRebuild`, 15/30/60 min) —
+ * recording the failure is the whole point, and a timer that fires minutes later
+ * is not this observation deciding anything. And `getPlanDevices()` re-reads home
+ * membership, whose meter-authority read schedules a recovery pass when the SDK
+ * hands back a suspect value (`setup/homeMainMeterAuthority.ts`). Neither lets a
+ * device event pick the moment the planner runs. Do not weaken this to a bare
+ * "never rebuilds" — one grep falsifies that, and then the whole comment is
+ * distrusted.
  */
 export function subscribePlanObservedState(deps: PlanObservedStateSubscriptionDeps): void {
   const { ctx } = deps;
