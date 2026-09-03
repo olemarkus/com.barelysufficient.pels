@@ -1,6 +1,6 @@
 import { aggregateAndPruneHistory } from '../../lib/power/tracker';
 
-// Regression suite for TODO `power-tracker-tz-fix`: dailyTotals must be keyed by the
+// Regression suite for the timezone keying fix: dailyTotals must be keyed by the
 // Homey-local calendar day. Without the timezone option, samples that fall on the wrong
 // side of UTC midnight from the user's perspective end up on the previous or next day,
 // double-counting at the local/UTC boundary and mis-aligning with bucket-derived

@@ -778,7 +778,7 @@ describe('resolvePlanHistory7DayHitRateStrip', () => {
   });
 });
 
-// Guards the structural move (TODO #887 / `feedback_ui_text_shared_with_logs`):
+// Guards the structural move (`feedback_ui_text_shared_with_logs`):
 // the receipt producer must compose its user-visible strings from the shared
 // `deferredPlanHistoryReceiptStrings` module, not re-inline them. These assert
 // the rendered output is keyed off the canonical constants/formatters so a

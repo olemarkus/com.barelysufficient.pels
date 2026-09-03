@@ -451,7 +451,7 @@ describe('observed power boundary — current draw vs restore draw', () => {
     });
     // Shedding an already-off device gives no immediate relief.
     expect(offDevice.currentDrawKw).toBe(0);
-    // Restore admission reserves the device's configured peak (TODO #43 — the
+    // Restore admission reserves the device's configured peak (the
     // configured load stays the stable expected demand even when measured is 0).
     expect(getHighestKnownPowerKw(offDevice).kw).toBe(2.5);
     expect(estimateRestorePower(offDevice)).toBe(2.5);
