@@ -42,9 +42,11 @@ Entry Points          app.ts, drivers/**, packages/settings-ui/src/script.ts
       ↓
 App Wiring (stateless) setup/**, flowCards/**
       ↓
-Domain Modules        lib/plan/**, lib/device/**, lib/observer/**, lib/executor/**, lib/objectives/**, lib/power/**, lib/price/**, lib/dailyBudget/**
+Domain Modules        lib/plan/**, lib/device/**, lib/observer/**, lib/executor/**, lib/objectives/**,
+                      lib/power/**, lib/price/**, lib/dailyBudget/**, lib/actuator/**,
+                      lib/home/**, lib/solar/**, lib/weather/**, lib/flowApi/**
       ↓
-Shared Utilities      lib/utils/**, packages/contracts/src/**, packages/shared-domain/src/**
+Shared Utilities      lib/utils/**, lib/planContract/**, lib/ports/**, packages/contracts/src/**, packages/shared-domain/src/**
       ↓
 Test Code             test/**, packages/settings-ui/test/**, packages/settings-ui/tests/**
 ```
@@ -54,7 +56,7 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 - Runtime code must not import test code.
 - Runtime backend (`app.ts`, `lib/**`, `setup/**`, `flowCards/**`, `drivers/**`) must not import settings UI code.
 - Settings UI must only consume shared contracts and shared-domain — never import runtime backend directly.
-- Domain modules (`lib/device`, `lib/power`, `lib/objectives`, `lib/plan`, `lib/price`, `lib/dailyBudget`, `lib/observer`, `lib/executor`, `lib/actuator`) must not import `lib/app/**` (`no-domain-to-app-layer`).
+- Domain modules (`lib/device`, `lib/power`, `lib/objectives`, `lib/plan`, `lib/price`, `lib/dailyBudget`, `lib/observer`, `lib/executor`, `lib/actuator`, `lib/weather`, `lib/solar`, `lib/home`) must not import `lib/app/**` (`no-domain-to-app-layer`). Those twelve are the domain peer set the rule matches — keep this list and the `from` path in `.dependency-cruiser.cjs` in step.
 - `setup/**` may import `lib/**` and `packages/**`; the reverse is forbidden by the `no-lib-to-setup` dep-cruiser rule.
 - **The wiring layer holds no state.** `setup/**` gets no mutable field, no module-level `let` or `var`, no field holding a mutable container. It constructs and connects; anything that changes as the app runs is a component owned by a `lib/` module. State in the wiring layer sits above these boundaries, so it becomes a back-channel between modules forbidden to talk with no import edge for `arch:check` to see. Enforced by `npm run setup:stateless`; the shrinking allowlist of files predating the rule is `scripts/setup-stateless-allowlist.txt`. Full rule: `setup/AGENTS.md` § "No state".
 - `flowCards/**` must not import `packages/settings-ui/**` or `drivers/**`.
@@ -100,6 +102,13 @@ One rule, two faces (`docs/architecture.md` § "Clean and trusted interfaces bet
 | `lib/power/` | Power sampling and capacity tracking |
 | `lib/price/` | Spot price fetching (Norwegian Nordpool), Homey Energy API integration, price levels |
 | `lib/dailyBudget/` | Soft daily kWh budget constraints |
+| `lib/home/` | Multi-home model: home config, zone-subtree membership, and mode-ownership transfer. `MAIN_HOME_ID` names the complement — every device not inside a sub-home's root zone |
+| `lib/solar/` | PV forecast (Homey Energy and Open-Meteo sources) plus the curtailment-surplus estimator, which infers the production a zero-export home throttles away and never exports |
+| `lib/weather/` | Weather insight: MET forecast, the energy signature learned from outdoor temperature, and the daily-budget suggestion it feeds |
+| `lib/actuator/` | The single device write seam — every runtime write maps intent onto an SDK call here, and nothing else may. See `notes/state-management/actuator-write-seam.md` |
+| `lib/flowApi/` | Reads the owner's Homey Flows and classifies conflicts between what a Flow writes and what PELS would write natively |
+| `lib/planContract/` | Neutral boundary contract shared by planner and executor; imports nothing from `lib/**` but itself, `logging`, and `utils`. See `lib/planContract/AGENTS.md` |
+| `lib/ports/` | SDK-free structural ports for the Homey runtime object, so domain code never type-imports the Homey SDK |
 | `lib/app/` | Dissolved. Holds only `appContext.ts` (the shared `AppContext` type). Wiring lives in `setup/` (and Flow-card registration in `flowCards/`); nothing new belongs here. |
 | `lib/utils/` | Pure helpers, type guards, math utilities, debug logging, settings keys |
 | `lib/diagnostics/` | Per-device diagnostics recording |
