@@ -1168,9 +1168,9 @@ describe('activation backoff', () => {
     syncHeadroomCardState({
       state,
       devices: [
-        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2, lastFreshDataMs: start + 1_000 }),
-        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4, lastFreshDataMs: start + 1_500 }),
-        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8, lastFreshDataMs: start + 2_000 }),
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2 }),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4 }),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8 }),
       ],
       nowTs: start,
     });
@@ -1179,9 +1179,9 @@ describe('activation backoff', () => {
     expect(syncHeadroomCardState({
       state,
       devices: [
-        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2, lastFreshDataMs: start + 4_000 }),
-        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4, lastFreshDataMs: start + 4_500 }),
-        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8, lastFreshDataMs: start + 5_000 }),
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2 }),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4 }),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8 }),
       ],
       nowTs: start + 5_000,
       reconciliationContext: 'snapshot_refresh',
@@ -1190,14 +1190,15 @@ describe('activation backoff', () => {
 
     const after = getPerfSnapshot();
     expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
-    expect(state.headroomCardByDevice['dev-1']?.lastUsageFreshnessMs).toBe(start + 4_000);
-    expect(state.headroomCardByDevice['dev-2']?.lastUsageFreshnessMs).toBe(start + 4_500);
-    expect(state.headroomCardByDevice['dev-3']?.lastUsageFreshnessMs).toBe(start + 5_000);
     expect((after.counts.tracked_usage_update_skipped_noop || 0) - (before.counts.tracked_usage_update_skipped_noop || 0))
       .toBe(3);
   });
 
-  it('ignores older tracked usage inputs when a trusted merged freshness is newer', () => {
+  it('acts on a changed draw regardless of when the observation was stamped', () => {
+    // The planner holds no observation clock. It used to drop this second
+    // reading because its stamp was older than the stored one — the planner
+    // deciding the observer had handed it a value not worth acting on. The
+    // observer publishes the trusted current draw; a CHANGED draw is news.
     const state = createPlanEngineState();
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
@@ -1209,34 +1210,28 @@ describe('activation backoff', () => {
         name: 'Heater',
         currentDrawKw: 1.2,
         expectedPowerKw: 1.2,
-        lastFreshDataMs: start + 5_000,
       })],
       nowTs: start,
     });
     const before = getPerfSnapshot();
 
-    expect(syncHeadroomCardState({
+    syncHeadroomCardState({
       state,
       devices: [buildTrackedDevice({
         id: 'dev-1',
         name: 'Heater',
         currentDrawKw: 0.2,
         expectedPowerKw: 0.2,
-        lastFreshDataMs: start + 1_000,
       })],
       nowTs: start + 6_000,
       reconciliationContext: 'snapshot_refresh',
       diagnostics,
-    })).toBe(false);
+    });
 
     const after = getPerfSnapshot();
-    expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
-    expect(state.headroomCardByDevice['dev-1']).toMatchObject({
-      lastUsageKw: 1.2,
-      lastUsageFreshnessMs: start + 5_000,
-    });
+    expect(state.headroomCardByDevice['dev-1']).toMatchObject({ lastUsageKw: 0.2 });
     expect((after.counts.tracked_usage_update_skipped_noop || 0) - (before.counts.tracked_usage_update_skipped_noop || 0))
-      .toBe(1);
+      .toBe(0);
   });
 
   it('ignores stale snapshot-refresh observations before they can close an open activation attempt', () => {
@@ -1355,7 +1350,7 @@ describe('activation backoff', () => {
     // `HeadroomCardDeviceLike` gains or renames a field, this regression must
     // fail to compile instead of quietly exercising a shape production cannot
     // produce.
-    const buildOffDevice = (atMs: number): HeadroomCardDeviceLike[] => [{
+    const buildOffDevice = (): HeadroomCardDeviceLike[] => [{
       id: 'dev-1',
       name: 'Heater',
       currentOn: false,
@@ -1363,14 +1358,13 @@ describe('activation backoff', () => {
       available: true,
       expectedPowerKw: 0,
       currentDrawKw: 0,
-      lastFreshDataMs: atMs,
     }];
 
     // The post-actuation snapshot refresh reads zero draw ~1 s after the attempt
     // opened. It cannot have seen the command land, so the attempt must survive.
     syncHeadroomCardState({
       state,
-      devices: buildOffDevice(start + 7_000),
+      devices: buildOffDevice(),
       nowTs: start + 7_000,
       reconciliationContext: 'snapshot_refresh',
       diagnostics,
@@ -1382,7 +1376,7 @@ describe('activation backoff', () => {
     const closesAt = start + 6_000 + ACTIVATION_INACTIVE_MIN_ELAPSED_MS;
     expect(syncHeadroomCardState({
       state,
-      devices: buildOffDevice(closesAt),
+      devices: buildOffDevice(),
       nowTs: closesAt,
       reconciliationContext: 'snapshot_refresh',
       diagnostics,
@@ -1399,7 +1393,10 @@ describe('activation backoff', () => {
     expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
   });
 
-  it('does not let an untrusted usage observation override a trusted merged observation', () => {
+  it('records a direct usage observation that differs from the tracked one', () => {
+    // There is no "trusted vs untrusted" observation any more. The stamped one
+    // used to win because the planner compared observation timestamps; it now
+    // holds no clock, so the later call simply carries the current draw.
     const state = createPlanEngineState();
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
@@ -1413,29 +1410,23 @@ describe('activation backoff', () => {
         currentState: 'on',
         currentDrawKw: 1.2,
         expectedPowerKw: 1.2,
-        lastFreshDataMs: start + 5_000,
       })],
       nowTs: start,
     });
     const before = getPerfSnapshot();
 
-    expect(syncHeadroomUsageObservation({
+    syncHeadroomUsageObservation({
       state,
       deviceId: 'dev-1',
       usageObservation: { kw: 2.4 },
       nowTs: start + 6_000,
       diagnostics,
-    })).toBe(false);
+    });
 
     const after = getPerfSnapshot();
-    expect(state.headroomCardByDevice['dev-1']).toMatchObject({
-      lastUsageKw: 1.2,
-      lastUsageFreshnessMs: start + 5_000,
-    });
-    expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
-    expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
+    expect(state.headroomCardByDevice['dev-1']).toMatchObject({ lastUsageKw: 2.4 });
     expect((after.counts.tracked_usage_update_skipped_noop || 0) - (before.counts.tracked_usage_update_skipped_noop || 0))
-      .toBe(1);
+      .toBe(0);
   });
 
   it('tags snapshot-refresh tracked transitions during startup with snapshot_refresh reconciliation', () => {

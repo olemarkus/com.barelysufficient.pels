@@ -42,7 +42,7 @@ export function withHeadroomCurrentOn<T extends RawHeadroomDevice>(
 }
 
 export type HeadroomCardCooldownSource = 'pels_shed' | 'pels_restore';
-export type HeadroomUsageObservation = { kw: number; freshnessMs?: number };
+export type HeadroomUsageObservation = { kw: number };
 export type HeadroomTrackedTransitionContext = Extract<
   DeviceDiagnosticsTrackedTransitionReconciliation,
   'snapshot_refresh'
@@ -58,7 +58,6 @@ export type HeadroomCardDeviceLike = {
   name: string;
   expectedPowerKw?: number;
   currentDrawKw: number;
-  lastFreshDataMs?: number;
   // Producer-resolved on/off truth (present iff binary). The activation in/active
   // reads consume this; the seams that feed raw snapshots (appSnapshotHelpers,
   // the Flow headroom card) stamp it before the device reaches this path. A
@@ -122,60 +121,30 @@ export const updateHeadroomCardUsageObservation = (params: {
   } = params;
   const entry = ensureHeadroomEntry(state, deviceId);
   entry.lastUsageKw = usageObservation.kw;
-  if (isFiniteNumber(usageObservation.freshnessMs)) {
-    entry.lastUsageFreshnessMs = usageObservation.freshnessMs;
-  } else {
-    delete entry.lastUsageFreshnessMs;
-  }
   if (deviceName) {
     entry.deviceName = deviceName;
   }
 };
 
-export type UsageObservationMergeOutcome = 'lose' | 'tie' | 'tie_refresh' | 'win';
+export type UsageObservationMergeOutcome = 'tie' | 'win';
 
 export type TrackedUsageMergeDecision = {
   outcome: UsageObservationMergeOutcome;
 };
 
+// The draw alone decides. This used to compare the incoming observation's
+// timestamp against the stored one and drop an older or unstamped reading — the
+// planner second-guessing the order the observer handed it values in, which is
+// the provenance branch the root `AGENTS.md` forbids. The observer publishes the
+// trusted current value; an unchanged value is a no-op, a changed one is news.
 export const resolveUsageObservationMergeDecision = (params: {
-  entry?: Pick<HeadroomCardState, 'lastUsageKw' | 'lastUsageFreshnessMs'>;
+  entry?: Pick<HeadroomCardState, 'lastUsageKw'>;
   usageObservation: HeadroomUsageObservation;
 }): TrackedUsageMergeDecision => {
-  const {
-    entry,
-    usageObservation,
-  } = params;
-  const previousUsageKw = entry?.lastUsageKw;
-  const previousUsageFreshnessMs = entry?.lastUsageFreshnessMs;
-  const incomingUsageFreshnessMs = usageObservation.freshnessMs;
-  const hasPreviousFreshness = isFiniteNumber(previousUsageFreshnessMs);
-  const hasIncomingFreshness = isFiniteNumber(incomingUsageFreshnessMs);
-
-  if (hasPreviousFreshness && !hasIncomingFreshness) {
-    return { outcome: 'lose' };
-  }
-
-  if (
-    hasPreviousFreshness
-    && hasIncomingFreshness
-    && incomingUsageFreshnessMs < previousUsageFreshnessMs
-  ) {
-    return { outcome: 'lose' };
-  }
-
-  const semanticNoop = previousUsageKw === usageObservation.kw;
-  if (semanticNoop) {
-    if (
-      hasIncomingFreshness
-      && (!hasPreviousFreshness || incomingUsageFreshnessMs > previousUsageFreshnessMs)
-    ) {
-      return { outcome: 'tie_refresh' };
-    }
-    return { outcome: 'tie' };
-  }
-
-  return { outcome: 'win' };
+  const { entry, usageObservation } = params;
+  return entry?.lastUsageKw === usageObservation.kw
+    ? { outcome: 'tie' }
+    : { outcome: 'win' };
 };
 
 export const resolveHeadroomDeviceName = (params: {

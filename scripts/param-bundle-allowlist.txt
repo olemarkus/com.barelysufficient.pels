@@ -13,7 +13,7 @@
 # Regenerate with `node scripts/check-param-bundles.mjs --seed` — never by hand,
 # and never with a second script.
 #
-# Seeded 2026-09-03: 409 files, 1100 bundles.
+# Seeded 2026-09-03: 408 files, 1096 bundles.
 flowCards/deviceSettingsCards.ts 3
 flowCards/expectedPower.ts 1
 flowCards/flowBackedDeviceCards.ts 4
@@ -147,7 +147,6 @@ lib/objectives/deferredObjectives/currentHourClaim.ts 1
 lib/objectives/deferredObjectives/deadline.ts 5
 lib/objectives/deferredObjectives/diagnosticAnnounce.ts 2
 lib/objectives/deferredObjectives/diagnosticFields.ts 3
-lib/objectives/deferredObjectives/diagnosticProgress.ts 1
 lib/objectives/deferredObjectives/diagnosticsBridge.ts 4
 lib/objectives/deferredObjectives/freshDiagnostic.ts 3
 lib/objectives/deferredObjectives/frozenDiagnostic.ts 3
@@ -198,7 +197,7 @@ lib/plan/planDevicesBase.ts 3
 lib/plan/planDiagnostics.ts 6
 lib/plan/planEngine.ts 3
 lib/plan/planHeadroomDevice.ts 1
-lib/plan/planHeadroomState.ts 9
+lib/plan/planHeadroomState.ts 8
 lib/plan/planHeadroomSupport.ts 3
 lib/plan/planLogging.ts 1
 lib/plan/planOvershoot.ts 1
@@ -215,7 +214,7 @@ lib/plan/planState.ts 1
 lib/plan/planStatusHelpers.ts 1
 lib/plan/planStatusWriter.ts 1
 lib/plan/planSteppedLoad.ts 9
-lib/plan/planSteppedLoadState.ts 4
+lib/plan/planSteppedLoadState.ts 2
 lib/plan/planSteppedRestoreHold.ts 1
 lib/plan/planSteppedRestorePending.ts 2
 lib/plan/planSteppedShedResolution.ts 3

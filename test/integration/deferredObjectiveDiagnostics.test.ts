@@ -1,3 +1,4 @@
+import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
 import { resolveCurrentHourClaim } from '../../lib/objectives/deferredObjectives/currentHourClaim';
 import { resolveFloorShortfallCause } from '../../lib/objectives/deferredObjectives/floorShortfallCause';
 import {
@@ -88,9 +89,15 @@ const buildDevice = (
   available: overrides.available ?? true,
 })) as PlanInputDevice;
 
+// `lastFreshDataMs` is an OBJECTIVES-layer field, not a planner one: `lib/plan`
+// carries no observation freshness, while `ObjectiveDeviceInput` declares this
+// and reads it off the same object to tell "never reported" from "reported".
+// These fixtures feed the objectives layer, so they are typed for both.
+type ObjectiveFixtureDevice = PlanInputDevice & Pick<ObjectiveDeviceInput, 'lastFreshDataMs'>;
+
 const buildTemperatureDevice = (
-  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe = {},
-): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
+  overrides: Partial<ObjectiveFixtureDevice> & TemperatureDiscriminantProbe = {},
+): ObjectiveFixtureDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
   id: 'heater-1',
   expectedPowerKw: 1,
   name: 'Connected 300',
@@ -110,7 +117,7 @@ const buildTemperatureDevice = (
   ...overrides,
   controllable: overrides.controllable ?? true,
   available: overrides.available ?? true,
-}))) as PlanInputDevice;
+}))) as ObjectiveFixtureDevice;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
   const resolution = resolveDeferredObjectiveDeadline({
@@ -2392,38 +2399,33 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
   });
 
-  it('does not plan a temperature objective when lastFreshDataMs is non-positive', () => {
-    // An epoch <= 0 is treated as uninitialized, not a valid observation
-    // timestamp — the device has never reported, which is the one honest
-    // "we do not know" state (age never produces one).
+  it('plans a temperature objective from the reading alone, whatever the observation stamp says', () => {
+    // The "ever observed" proof is the temperature itself: the producer emits
+    // `currentTemperature` only for a device carrying the observed temperature
+    // facet. The resolver used to also demand a positive `lastFreshDataMs` — a
+    // consumer hedge against a shape the transport cannot produce, since
+    // `observationApply` stamps `lastFreshDataMs` on every observation that
+    // lands a facet.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
-      devices: [buildTemperatureDevice({
-        currentTemperature: 55,
-        lastFreshDataMs: 0,
-      })],
+      devices: [buildTemperatureDevice({ currentTemperature: 55, lastFreshDataMs: 0 })],
       settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
     });
 
-    expect(diagnostic).toMatchObject({
-      objectiveKind: 'temperature',
-      trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
-      reasonCode: 'objective_progress_stale',
-      currentTemperatureC: 55,
-      energyNeededKWh: null,
-    });
+    expect(diagnostic?.objectiveKind).toBe('temperature');
+    expect(diagnostic?.reasonCode).not.toBe('objective_progress_stale');
+    expect(diagnostic?.currentTemperatureC).toBe(55);
   });
 
-  it('does not plan a temperature objective when currentTemperature is present but lastFreshDataMs is missing', () => {
-    // Asymmetric cold-start guard: a partial snapshot hydration (or older
-    // persisted state) might land a `currentTemperature` without a paired
-    // timestamp. The "ever observed" gate requires both, so the resolver
-    // falls back to `objective_progress_stale` rather than admitting a
-    // value with no observation lineage.
+  it('plans a temperature objective with no observation stamp at all', () => {
+    // Same rule from the other side: absence of the stamp is not a reason to
+    // refuse a reading. If a partial hydration could ever produce a temperature
+    // with no lineage, that is a producer defect to fix at the seam — not a
+    // freshness gate for this consumer to carry.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
@@ -2437,13 +2439,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: true,
     });
 
-    expect(diagnostic).toMatchObject({
-      objectiveKind: 'temperature',
-      trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
-      reasonCode: 'objective_progress_stale',
-      currentTemperatureC: 55,
-      energyNeededKWh: null,
-    });
+    expect(diagnostic?.objectiveKind).toBe('temperature');
+    expect(diagnostic?.reasonCode).not.toBe('objective_progress_stale');
+    expect(diagnostic?.currentTemperatureC).toBe(55);
   });
 
   it('plans for a bare-connected charger (plugged_in) instead of refusing to', () => {

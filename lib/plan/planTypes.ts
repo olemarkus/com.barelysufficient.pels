@@ -612,7 +612,6 @@ type DevicePlanDeviceBase = {
    * this field as proof Homey said yes.
    */
   available: boolean;
-  lastFreshDataMs?: number;
   lastLocalWriteMs?: number;
   pendingTargetCommand?: PendingTargetCommandSummary;
   stepPowerCalibration?: Record<string, StepPowerCalibrationView>;

@@ -426,7 +426,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   const withDeadline = base;
   // Allocation-horizon price source, resolved by the wiring-injected producer.
   const priceHorizon = buildPriceHorizon(nowMs, objective.deadlineAtMs);
-  const progress = resolveObjectiveProgress({ objective, device, nowMs });
+  const progress = resolveObjectiveProgress({ objective, device });
   if (!progress.reasonCode && progress.remainingUnits <= 0) {
     return withRawActuationSatisfaction(buildDiagnosticWithPolicyHorizon({
       nowMs,

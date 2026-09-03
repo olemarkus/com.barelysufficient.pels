@@ -16,7 +16,7 @@ export type StepPlanningAssumption =
   | { kind: 'none' };
 
 export type RestoreStepPreparation =
-  | { kind: 'prepared'; stepId: StepId; source: 'reported' | 'suppressed_flow'; observedAtMs: number }
+  | { kind: 'prepared'; stepId: StepId; source: 'reported'; observedAtMs: number }
   | { kind: 'not_prepared' };
 
 export type NormalizedSteppedLoadStepState = {
@@ -43,23 +43,11 @@ type PlanningFallbackInput = {
   reason: 'lowest_active_step';
 };
 
-type SuppressedFlowStepInput = {
-  stepId?: string | null;
-  observedAtMs?: number | null;
-};
-
-type SuppressedFlowRestorePreparationPolicy =
-  | { kind: 'disabled' }
-  | { kind: 'intent_match'; maxAgeMs: number }
-  | { kind: 'fresh'; maxAgeMs: number };
-
 type NormalizeSteppedLoadStepStateParams = {
   nowMs: number;
   reportedStep?: ReportedStepEvidenceInput | null;
   targetStep?: TargetStepIntentInput | null;
   planningFallback?: PlanningFallbackInput | null;
-  suppressedFlowStep?: SuppressedFlowStepInput | null;
-  suppressedFlowPreparationPolicy?: SuppressedFlowRestorePreparationPolicy | null;
 };
 
 /**
@@ -132,13 +120,7 @@ export function normalizeSteppedLoadStepState(
     observation,
     intent,
     planningAssumption,
-    restorePreparation: resolveRestorePreparation({
-      observation,
-      intent,
-      suppressedFlowStep: params.suppressedFlowStep,
-      policy: params.suppressedFlowPreparationPolicy ?? { kind: 'disabled' },
-      nowMs: params.nowMs,
-    }),
+    restorePreparation: resolveRestorePreparation(observation),
   };
 }
 
@@ -267,56 +249,18 @@ function normalizePlanningAssumption(
   };
 }
 
-function resolveRestorePreparation(params: {
-  observation: StepObservation;
-  intent: StepIntent;
-  suppressedFlowStep: SuppressedFlowStepInput | null | undefined;
-  policy: SuppressedFlowRestorePreparationPolicy;
-  nowMs: number;
-}): RestoreStepPreparation {
-  const { observation, intent, suppressedFlowStep, policy, nowMs } = params;
-  if (observation.kind === 'reported') {
-    return {
-      kind: 'prepared',
-      stepId: observation.stepId,
-      source: 'reported',
-      observedAtMs: observation.observedAtMs,
-    };
-  }
-  const suppressed = normalizeSuppressedFlowStep(suppressedFlowStep);
-  if (!suppressed || policy.kind === 'disabled') return { kind: 'not_prepared' };
-  if (!isFreshEnough({ observedAtMs: suppressed.observedAtMs, nowMs, maxAgeMs: policy.maxAgeMs })) {
-    return { kind: 'not_prepared' };
-  }
-  if (policy.kind === 'intent_match') {
-    if (intent.kind !== 'target') return { kind: 'not_prepared' };
-    if (intent.stepId !== suppressed.stepId) return { kind: 'not_prepared' };
-    if (suppressed.observedAtMs < intent.changedAtMs) return { kind: 'not_prepared' };
-  }
+// A step is prepared for restore when the device REPORTED it. There is no age
+// test and no second evidence source: `lib/plan` holds no concept of observation
+// freshness, and a reported step is the trusted last-known step however long ago
+// it arrived (`lib/observer/AGENTS.md` — silence means "unchanged").
+function resolveRestorePreparation(observation: StepObservation): RestoreStepPreparation {
+  if (observation.kind !== 'reported') return { kind: 'not_prepared' };
   return {
     kind: 'prepared',
-    stepId: suppressed.stepId,
-    source: 'suppressed_flow',
-    observedAtMs: suppressed.observedAtMs,
+    stepId: observation.stepId,
+    source: 'reported',
+    observedAtMs: observation.observedAtMs,
   };
-}
-
-function normalizeSuppressedFlowStep(
-  evidence: SuppressedFlowStepInput | null | undefined,
-): { stepId: StepId; observedAtMs: number } | null {
-  const stepId = normalizeStepId(evidence?.stepId);
-  if (!stepId || !Number.isFinite(evidence?.observedAtMs)) return null;
-  return {
-    stepId,
-    observedAtMs: Number(evidence?.observedAtMs),
-  };
-}
-
-function isFreshEnough(params: { observedAtMs: number; nowMs: number; maxAgeMs: number }): boolean {
-  const { observedAtMs, nowMs, maxAgeMs } = params;
-  if (!Number.isFinite(maxAgeMs) || maxAgeMs < 0) return false;
-  if (observedAtMs > nowMs) return false;
-  return nowMs - observedAtMs <= maxAgeMs;
 }
 
 function normalizeTimestamp(value: number | null | undefined, fallbackMs: number): number {

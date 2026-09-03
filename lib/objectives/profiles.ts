@@ -22,10 +22,6 @@ export type {
   DeviceObjectiveProfileSample,
 } from './types';
 
-export {
-  OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS,
-} from './samples';
-
 export const OBJECTIVE_PROFILE_MAX_DEVICES = 64;
 export const OBJECTIVE_PROFILE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MIN_INTERVAL_MS = 5 * 60 * 1000;

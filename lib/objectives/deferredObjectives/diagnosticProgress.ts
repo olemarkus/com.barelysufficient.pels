@@ -9,10 +9,14 @@
  * Temperature thermostats only push capability updates on value change, so a
  * perfectly working device steady at setpoint falls silent for hours. Smart-task
  * planning therefore credits the last-seen temperature for any device that has
- * ever produced a trusted observation, and only suppresses planning when the
- * device has never reported a value at all (`lastFreshDataMs` absent). It does
- * not suppress on the reading's AGE, and nothing else in the app does either —
- * PELS has no timeout that turns a quiet device into an untrusted one.
+ * ever produced one, and only suppresses planning when the device has never
+ * reported a value at all. That question is answered by the temperature itself:
+ * the producer emits `currentTemperature` only when the device carries the
+ * observed temperature facet (`resolveTemperatureInputFields` in
+ * `setup/appInit/toPlanDevice.ts` — no facet plans as `'onoff'`), so a finite
+ * reading IS the proof, and no timestamp is consulted. It does not suppress on
+ * the reading's AGE, and nothing else in the app does either — PELS has no
+ * timeout that turns a quiet device into an untrusted one.
  *
  * EV SoC stays strictly fresh because charger session validity genuinely
  * requires per-session telemetry.
@@ -26,7 +30,6 @@
  * between the sensor and reality is visible to the user. PELS specifically
  * does not try to detect this.
  */
-import { OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS } from '../../objectives/profiles';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import type { DeferredObjectiveSettingsEntry } from './settings';
 
@@ -88,34 +91,25 @@ const resolveEvObjectiveProgress = (device: ObjectiveDeviceInput): EvProgress =>
 
 const hasUsableTemperatureProgress = (params: {
   device: ObjectiveDeviceInput;
-  nowMs: number;
 }): params is {
-  device: ObjectiveDeviceInput & { currentTemperature: number; lastFreshDataMs: number };
-  nowMs: number;
+  device: ObjectiveDeviceInput & { currentTemperature: number };
 } => {
-  const { device, nowMs } = params;
-  // A finite `currentTemperature` paired with a finite `lastFreshDataMs` is
-  // proof the device has produced at least one trusted observation. That is
-  // the only gate this resolver needs: aged-out readings are still useful
-  // because thermostats fall silent at setpoint, but a device that never
-  // reported anything has no value to credit.
-  if (typeof device.currentTemperature !== 'number' || !Number.isFinite(device.currentTemperature)) return false;
-  if (
-    typeof device.lastFreshDataMs !== 'number'
-    || !Number.isFinite(device.lastFreshDataMs)
-    || device.lastFreshDataMs <= 0
-  ) return false;
-  // Future-skew guard catches clock errors. No age-based gate: a thermostat
-  // that hasn't reported in hours is most likely simply at setpoint.
-  return device.lastFreshDataMs <= nowMs + OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS;
+  // A finite `currentTemperature` is proof the device has produced at least one
+  // observation — the producer emits the field only for a device carrying the
+  // temperature facet. That is the only gate this resolver needs: aged-out
+  // readings are still useful because thermostats fall silent at setpoint, and
+  // a device that never reported has no field to read.
+  const { device } = params;
+  return typeof device.currentTemperature === 'number' && Number.isFinite(device.currentTemperature);
 };
 
+// No `nowMs`: neither axis asks how old a reading is. EV SoC rejects on session
+// validity, temperature on the absence of the facet — both value questions.
 export const resolveObjectiveProgress = (params: {
   objective: DeferredObjectiveSettingsEntry;
   device: ObjectiveDeviceInput;
-  nowMs: number;
 }): DeferredObjectiveProgressResolution => {
-  const { objective, device, nowMs } = params;
+  const { objective, device } = params;
   if (objective.kind === 'ev_soc') {
     const progress = resolveEvObjectiveProgress(device);
     if (progress.reasonCode) {
@@ -153,17 +147,17 @@ export const resolveObjectiveProgress = (params: {
     };
   }
 
-  const currentTemperatureC = device.currentTemperature;
-  if (!hasUsableTemperatureProgress({ device, nowMs })) {
+  if (!hasUsableTemperatureProgress({ device })) {
+    // Only one way to fail now: the device carries no temperature facet, so it
+    // has never reported one. A finite reading is never rejected — there is no
+    // age test here, so `objective_progress_stale` is not reachable on this
+    // axis (it remains the EV-SoC answer, where session validity does need
+    // per-session telemetry).
     return {
       remainingUnits: 0,
       currentPercent: null,
-      currentTemperatureC: typeof currentTemperatureC === 'number' && Number.isFinite(currentTemperatureC)
-        ? currentTemperatureC
-        : null,
-      reasonCode: typeof currentTemperatureC === 'number' && Number.isFinite(currentTemperatureC)
-        ? 'objective_progress_stale'
-        : 'objective_missing_temperature',
+      currentTemperatureC: null,
+      reasonCode: 'objective_missing_temperature',
     };
   }
   const usableTemperatureC = Number(device.currentTemperature);

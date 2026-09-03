@@ -998,7 +998,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           binaryControl: { on: true },
           currentDrawKw: 0.2,
-          lastFreshDataMs: start + 10_000,
         }),
       ]);
 
@@ -1011,7 +1010,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           binaryControl: { on: true },
           currentDrawKw: 0.2,
-          lastFreshDataMs: start + 20_000,
         }),
       ]);
 
@@ -1026,7 +1024,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           binaryControl: { on: true },
           currentDrawKw: 0.8,
-          lastFreshDataMs: start + 30_000,
         }),
       ]);
 
@@ -1107,7 +1104,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0.2,
-          lastFreshDataMs: start + 10_000,
         }),
       ]);
 
@@ -1121,7 +1117,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0.25,
-          lastFreshDataMs: start + 20_000,
         }),
       ]);
 
@@ -1141,7 +1136,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0.8,
-          lastFreshDataMs: start + 30_000,
         }),
       ]);
 
@@ -1220,7 +1214,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0.2,
-          lastFreshDataMs: start + 10_000,
         }),
       ]);
 
@@ -1235,7 +1228,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0.2,
-          lastFreshDataMs: start + 10_000,
         }),
       ]);
 
@@ -1256,7 +1248,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
           currentState: 'on',
           binaryControl: { on: true },
           currentDrawKw: 0.8,
-          lastFreshDataMs: start + 100_000,
         }),
       ]);
 
@@ -1328,7 +1319,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           binaryControl: { on: true },
           currentDrawKw: 0.2,
-          lastFreshDataMs: start - 5_000,
         }),
       ]);
 
@@ -1343,7 +1333,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
           deviceClass: 'thermostat',
           binaryControl: { on: true },
           currentDrawKw: 0.8,
-          lastFreshDataMs: start - 5_000,
         }),
       ]);
 

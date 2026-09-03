@@ -56,7 +56,6 @@ export type ActivationBackoffObservation = {
   // Producer-resolved draw. Required: every shape that reaches an activation
   // read (plan device, headroom snapshot view) carries it.
   currentDrawKw: number;
-  lastFreshDataMs?: number;
 };
 
 export type ActivationPenaltyInfo = {
