@@ -38,10 +38,9 @@ const CHIP_TONE_CLASSES: readonly string[] = [
 // auditable without re-reading the implementation.
 //
 // `PROJECTION_ON_TRACK_KWH` is reused by the chip + the prose so both surfaces
-// agree on the "On track" dead-band — TODO 490 was about the chip ("vs pace")
-// and the prose ("vs typical") publishing two different numbers in the same
-// card; they now share the projected-vs-typical baseline so the card surfaces
-// a single delta.
+// agree on the "On track" dead-band — the chip ("vs pace") and the prose ("vs
+// typical") used to publish two different numbers in the same card; they now
+// share the projected-vs-typical baseline so the card surfaces a single delta.
 //
 // The two dead-band constants are deliberately distinct. `PACE_ON_PACE_KWH`
 // (0.2) is compared to the elapsed-vs-expected delta — small absolute kWh
@@ -119,7 +118,7 @@ const resolveOverDeltaTone = (overDelta: number, base: number): ChipTone => {
 };
 
 // Chip + prose share the projected-vs-typical baseline so the card surfaces
-// a single delta (TODO 490). When the projection window is suppressed (first
+// a single delta. When the projection window is suppressed (first
 // ~2.4 h of the day — see `MIN_PROJECTION_FRACTION`) the chip falls back to
 // the elapsed-pace delta, since projecting from a handful of minutes amplifies
 // noise; the comparison subline still names the typical-day target so users

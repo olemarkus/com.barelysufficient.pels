@@ -89,7 +89,7 @@ const buildMeasuredDevicePowerWById = (params: {
     // This is why the seam reads the raw cluster rather than `currentDrawKw`,
     // which deliberately collapses "no meter" and "meter reads zero" into 0.
     //
-    // The per-capability AGE gate that used to follow is gone (TODO 2026-08-08).
+    // The per-capability AGE gate that used to follow was removed on 2026-08-08.
     // Homey reports capabilities ON CHANGE, so an old `lastUpdated` means
     // "nothing has happened", not "the reading was lost" — the gate made the
     // longer a reading stayed stable the less PELS trusted it, and dropped a
@@ -276,9 +276,9 @@ export function prunePowerTrackerHistoryForApp(params: {
   debugStructured: StructuredDebugEmitter;
   error: (msg: string, err: Error) => void;
   // Optional Homey timezone — when present, dailyTotals/hourlyAverages are aggregated
-  // by the Homey-local calendar day instead of UTC. Fix for TODO
-  // `power-tracker-tz-fix`: in non-UTC zones, UTC-keyed dailyTotals were off by one
-  // day for samples that straddled the UTC/local midnight boundary.
+  // by the Homey-local calendar day instead of UTC. Without it, in non-UTC zones,
+  // UTC-keyed dailyTotals were off by one day for samples that straddled the
+  // UTC/local midnight boundary.
   timeZone?: string;
 }): PowerTrackerState {
   const { powerTracker, debugStructured, error, timeZone } = params;

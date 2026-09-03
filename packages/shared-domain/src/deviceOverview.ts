@@ -464,7 +464,7 @@ const appendOverviewStatus = (statusMsg: string, extraStatus: string | null): st
   if (!extraStatus) return statusMsg;
   if (statusMsg === '' || statusMsg === DEVICE_OVERVIEW_WAITING_FOR_AVAILABLE_POWER) return extraStatus;
   // Em-dash separator matches the device-card status copy convention. Spec:
-  // notes/ui-terminology.md:9, TODO #8 (2026-05-16).
+  // notes/ui-terminology.md:9 (2026-05-16).
   return `${statusMsg} — ${extraStatus}`;
 };
 

@@ -344,7 +344,8 @@ export const openDeviceDetail = (deviceId: string) => {
   resetDeviceDetailDiagnosticsRequests();
   resetDeviceDetailActivityLogRequests();
   // Do not drop drafts here: switching from device A's pane to device B's must
-  // preserve A's in-progress edits per TODO `stepped-load-draft-close-handler`.
+  // preserve A's in-progress edits — only `closeSteppedLoadDraft`, called from
+  // `closeDeviceDetail` when the pane itself closes, drops a device's draft.
   // The draft for B (if any) is loaded via renderSteppedLoadDraft below.
   retainPendingNativeWiringEnable(deviceId);
   currentDetailDeviceId = deviceId;

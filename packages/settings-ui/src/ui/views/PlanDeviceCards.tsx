@@ -115,7 +115,7 @@ export const DeadlineChip = (
   // Screen readers otherwise hear only the chip text ("Smart task") + link
   // role; in a clickable card the chip's destination is then ambiguous.
   // Naming it after the device disambiguates from the parent card-navigation
-  // hit-target. Spec: TODO #3 (2026-05-16).
+  // hit-target. Spec dated 2026-05-16.
   const displayName = deviceName ? formatDisplayDeviceName(deviceName) : '';
   const ariaLabel = displayName !== '' ? `Smart task for ${displayName}` : 'Smart task';
   return (

@@ -105,7 +105,7 @@ export const resolveDeadlineHeroTone = (
 // (returns `null`) only on true cannot-finish heroes (`tone === 'alert'`)
 // because the cannot-finish chip already says the same words and the body
 // postmortem expands on the cause — repeating "Cannot finish" at headline
-// height (per `TODO 1569` / lived-walk 2026-05-16) read as alarm spam rather
+// height (per the 2026-05-16 lived walk) read as alarm spam rather
 // than information. The chip + body pair carries the entire signal on that
 // branch so the section flows chip → subline → meta line directly. At-risk
 // heroes (`tone === 'warn'`) keep their live-state headline ("Heating from

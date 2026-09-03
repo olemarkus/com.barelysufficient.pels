@@ -156,10 +156,11 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
 // planning-price horizon (`budgetPrice ?? total` via
 // `buildPriceHorizonFromCombined`), while this cost map stays on the money
 // price — so for a prosumer the preview's price curve/cost can diverge from the
-// planner's ranking (TODO-tracked with the preview migration). Returns an empty
+// planner's ranking until the preview migration lands. Returns an empty
 // map when the snapshot has no usable price buckets. Used by the plan-preview
 // composition, which needs the raw per-bucket price to cost the plan.
-// TODO: preview reader still sources price from the daily-budget snapshot pending the preview migration.
+// The preview reader still sources price from the daily-budget snapshot rather
+// than the price horizon; the preview migration is what closes that gap.
 export const buildDeferredObjectivePolicyBucketPrices = (
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
 ): Map<string, number> => {
@@ -196,7 +197,8 @@ const floorToHourMs = (ms: number): number => Math.floor(ms / PRICE_WINDOW_HOUR_
 // across the gap and the time axis stays true), NOT dropped — dropping would
 // collapse the array indices the chart lays out by and skew the x-axis. Returns
 // an empty array when no priced buckets fall in the window.
-// TODO: preview reader still sources price from the daily-budget snapshot pending the preview migration.
+// The preview reader still sources price from the daily-budget snapshot rather
+// than the price horizon; the preview migration is what closes that gap.
 export const buildDeferredObjectivePolicyWindowPrices = (
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
   nowMs: number,
@@ -376,7 +378,8 @@ const collectDayBudgetOverlays = (
 
 // Preview-only snapshot price buckets (id/price/budget keyed off the snapshot's
 // own `startUtc`). The ALLOCATION path no longer uses this — it reads the price
-// layer via `buildPriceHorizonFromCombined`. See the preview-reader TODOs.
+// layer via `buildPriceHorizonFromCombined`. See the preview-reader notes on the
+// two builders above.
 const collectSnapshotPriceBuckets = (snapshot: DailyBudgetUiPayload): PolicyBucketSource[] => (
   [snapshot.todayKey, snapshot.tomorrowKey]
     .flatMap((dateKey) => {

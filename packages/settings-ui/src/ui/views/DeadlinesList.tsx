@@ -292,9 +292,9 @@ const Hero = ({ copy }: { copy: DeadlinesListHeroCopy }) => {
 // Baseline header rendered in loading / error / empty states. The four sibling
 // panels (Overview / Budget / Usage / Settings) all keep a persistent header
 // when their body is in a non-populated state; Smart tasks lost that header
-// when the v2.7.2 hero PR dropped the static `<h2>Smart tasks</h2>` (TODO
-// #1041). Reusing the `.pels-hero` / `.plan-hero` primitive keeps the rhythm
-// identical to the populated hero (which already supplies eyebrow + headline),
+// when the v2.7.2 hero PR dropped the static `<h2>Smart tasks</h2>`. Reusing the
+// `.pels-hero` / `.plan-hero` primitive keeps the rhythm identical to the
+// populated hero (which already supplies eyebrow + headline),
 // so the header height stays consistent as the body swaps below.
 //
 // Eyebrow is the section label (matching the populated hero's fixed `eyebrow`

@@ -402,7 +402,7 @@ const handleDeviceCheapDeltaChange = async (deviceId: string, val: number) => {
     // Roll back only this device's `cheapDelta`, and only if a later
     // successful save has not already overwritten it. Replacing the whole
     // map (the earlier approach) clobbered newer persisted edits from
-    // overlapping handlers (TODO 735 follow-up).
+    // overlapping handlers.
     const current = state.priceOptimizationSettings[deviceId];
     if (current && current.cheapDelta === val) {
       state.priceOptimizationSettings[deviceId] = { ...current, cheapDelta: previousCheapDelta };

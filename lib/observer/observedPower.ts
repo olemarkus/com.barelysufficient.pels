@@ -65,7 +65,7 @@ export const MIN_ACTIVE_MEASURED_POWER_KW = 0.05;
  * arm and no fallback constant, because `expectedPowerKw` is a required,
  * always-positive producer output. The old `getRestoreDrawKw` wrapper existed
  * only to answer the case where every candidate was absent; the producer no
- * longer emits that case, so the two functions are one. Closes TODO §43.
+ * longer emits that case, so the two functions are one.
  *
  * The `'configured'` rung is gone with `powerKw`: it carried the same number as
  * `'expected'` except on the last rung of the estimator, where it smuggled an

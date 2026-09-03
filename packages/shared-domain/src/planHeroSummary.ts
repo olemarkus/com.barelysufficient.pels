@@ -203,7 +203,7 @@ export const formatSafePaceSubline = (
 // budget the budget marker sits at 100 % so the projected dot's visual position
 // matches the printed `projected / budget` ratio; when projected overshoots,
 // the scale tracks the projection (with 5 % headroom) so the overshoot is
-// visible past the budget marker. Source: TODO #5 fix, 2026-05-17.
+// visible past the budget marker. Source: the 2026-05-17 fix.
 export const computeEnergyBarScaleKWh = (
   budgetKWh: number,
   projectedKWh: number | null,

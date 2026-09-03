@@ -213,7 +213,7 @@ const renderPowerAverages = (stats: PowerStatsSummary) => {
 };
 
 // Show only the metric matching the active Weekdays / Weekend segment so the
-// stat strip reflects the chart (TODO 585 — fixed v2.7.0). With the two
+// stat strip reflects the chart (fixed in v2.7.0). With the two
 // averages often within 0.1 kWh, leaving both visible made the segmented
 // control feel purposeless. The `data-pattern-metric` attribute values
 // ('weekday' / 'weekend') match the corresponding `HourlyPatternView` strings.

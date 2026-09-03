@@ -31,7 +31,7 @@ import { writeShedBehaviors } from './shedBehavior.ts';
 
 // Drafts are keyed by deviceId so the editor state for one device cannot bleed
 // into another's session. A single module-global draft used to make fallback
-// chains depend on whichever device wrote the draft last (TODO 740).
+// chains depend on whichever device wrote the draft last.
 const steppedLoadDraftsByDeviceId = new Map<string, SteppedLoadProfile>();
 
 const getSteppedLoadDraft = (deviceId: string): SteppedLoadProfile | null => (
@@ -313,9 +313,9 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
 
 // Drop the closing device's draft so its next open starts fresh from the persisted
 // profile. Drafts for any other device the user has touched remain intact — the
-// per-device map shipped in TODO 740 explicitly advertises that isolation guarantee,
-// and a blanket .clear() here used to erase unsaved edits on every other device when
-// the user merely switched panes.
+// per-device map at the top of this module explicitly advertises that isolation
+// guarantee, and a blanket .clear() here used to erase unsaved edits on every other
+// device when the user merely switched panes.
 export const closeSteppedLoadDraft = (deviceId: string): void => {
   if (!deviceId) return;
   steppedLoadDraftsByDeviceId.delete(deviceId);
