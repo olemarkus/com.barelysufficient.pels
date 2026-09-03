@@ -1,12 +1,16 @@
 /**
- * Plan-state-aware `ResolvedCurrentState` projection used by reason rendering.
- * Pure observed-state resolution lives in `lib/observer/observedState.ts`;
- * this module adds the `pendingInfluence` plan/executor concept on top.
+ * Plan-state-aware `ResolvedCurrentState` projection. Pure observed-state
+ * resolution lives in `lib/observer/observedState.ts`; this module adds the
+ * `pendingInfluence` plan/executor concept on top.
+ *
+ * Despite the shape, nothing renders a reason from this today: the only
+ * production caller is `resolveEffectiveCurrentOn`, read for its `isOn` boolean
+ * by `lib/executor/executableSteppedLoadProjection.ts`. The `currentState`,
+ * `source`, `reasonCode`, and `pendingInfluence` fields have no production
+ * reader — see the `TODO.md` entry that asks whether that surface is intended.
  */
 import {
-  resolveObservedCurrentState,
   resolveObservedCurrentStateValue,
-  resolveObservedSteppedLoadCurrentState,
   type CurrentStateInput,
 } from '../observer/observedState';
 import { isBinaryControlled, getBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
@@ -22,12 +26,6 @@ export type ResolvedCurrentState = {
   reasonCode: string;
   pendingInfluence: PlannerPendingInfluence;
 };
-
-export {
-  resolveObservedCurrentState,
-  resolveObservedSteppedLoadCurrentState,
-};
-export type { CurrentStateInput };
 
 type ResolveCurrentStateOptions = {
   pendingPresent?: boolean;

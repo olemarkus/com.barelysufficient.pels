@@ -69,4 +69,40 @@ describe('resolveObservedCurrentState — four-valued label (separate from the o
       selectedStepId: 'medium',
     })).toBe('on');
   });
+
+  // The contract that makes a whole card branch unreachable, pinned here so the
+  // branch cannot quietly come back. `not_applicable` means "this device has no
+  // on/off truth", and for a STEPPED device that can only happen when its rung
+  // is unknown — the stepped label is consulted first and only falls through on
+  // 'unknown'. So "stepped, rung known, yet not_applicable" is not a state the
+  // producer can emit, which is why the held-card verb no longer has a
+  // target-only-at-a-non-off-step arm.
+  it('never answers not_applicable for a stepped device whose rung is known', () => {
+    expect(resolveObservedCurrentState({
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'low',
+    })).toBe('on');
+    expect(resolveObservedCurrentState({
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'off',
+    })).toBe('off');
+  });
+
+  it('answers not_applicable for a stepped device only when the rung is unknown', () => {
+    expect(resolveObservedCurrentState({
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: undefined,
+    })).toBe('not_applicable');
+  });
+
+  it('counts a rung the profile does not recognise as unknown, not as known', () => {
+    // The boundary of "known" in the two cases above: known means RESOLVABLE in
+    // the profile, not merely set. An id the ladder does not carry resolves to
+    // 'unknown' on the stepped axis and falls through to the same label, so it
+    // is not a counterexample to the contract — it is the other side of it.
+    expect(resolveObservedCurrentState({
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'ghost',
+    })).toBe('not_applicable');
+  });
 });

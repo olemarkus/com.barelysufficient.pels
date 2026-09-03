@@ -15,11 +15,14 @@
  *    makes no binary intent for it and routes through the target/temperature
  *    paths.
  *
- * `resolveObservedCurrentState` produces the SEPARATE four-valued `currentState`
- * label (`on`/`off`/`unknown`/`not_applicable`) for reason/UI rendering only —
- * it must never be consulted as the on/off truth. The producer never emits
- * 'unknown' from staleness — that label is reserved for the STRUCTURAL stepped
- * "step not known" case; a stale binary read resolves to its latched on/off.
+ * `resolveObservedCurrentState` produces the SEPARATE `currentState` label for
+ * reason/UI rendering only — it must never be consulted as the on/off truth. It
+ * is THREE-valued: `on` / `off` / `not_applicable`. It never emits 'unknown' at
+ * all — not from staleness (a stale binary read resolves to its latched on/off),
+ * and not from the STRUCTURAL stepped "step not known" case either, because its
+ * own guard drops that value and falls through to the binary arms. The only
+ * resolver here that returns 'unknown' is
+ * `resolveObservedSteppedLoadCurrentState`, and only for that structural case.
  */
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
@@ -35,17 +38,25 @@ export type ObservedCurrentStateInput = {
   selectedStepId?: string;
 };
 
-export type CurrentStateInput = Partial<ObservedCurrentStateInput> & {
+/**
+ * The same observation plus the precomputed `currentState` label that a
+ * `DevicePlanDevice` already carries. Only `resolveObservedCurrentStateValue`
+ * (and its plan-layer callers) reads that cache; every other resolver here takes
+ * the bare observation. No `Partial<>` wrapper — every field of the base is
+ * already optional, so wrapping it said nothing.
+ */
+export type CurrentStateInput = ObservedCurrentStateInput & {
   currentState?: string;
 };
 
-type StepCurrentStateInput = Pick<
-  ObservedCurrentStateInput,
-  'steppedLoadProfile' | 'selectedStepId' | 'binaryControl'
->;
-
+// Deliberately narrower than `ObservedCurrentStateInput`: the off-step question
+// is answered on the stepped axis alone. Withholding `binaryControl` keeps this
+// BODY from reading it, so a defaulted binary bit cannot mask the step state
+// here — the hazard `resolveObservedSteppedLoadCurrentState` guards in prose.
+// It constrains the body only; the sole caller passes its whole device, which
+// structural typing accepts silently.
 function stepIsAtOff(
-  device: Pick<CurrentStateInput, 'steppedLoadProfile' | 'selectedStepId'>,
+  device: Pick<ObservedCurrentStateInput, 'steppedLoadProfile' | 'selectedStepId'>,
 ): boolean {
   if (!device.steppedLoadProfile || !device.selectedStepId) return false;
   const step = getSteppedLoadStep(device.steppedLoadProfile, device.selectedStepId);
@@ -74,7 +85,7 @@ function stepIsAtOff(
  * first and read `currentOn` directly in that specialised branch.
  */
 export function resolveCurrentOn(
-  device: Pick<ObservedCurrentStateInput, 'binaryControl' | 'steppedLoadProfile' | 'selectedStepId'>,
+  device: ObservedCurrentStateInput,
 ): boolean {
   const binaryOff = device.binaryControl?.on === false;
   const steppedOff = isSteppedLoadSnapshot(device) && stepIsAtOff(device);
@@ -88,7 +99,7 @@ export function resolveCurrentOn(
  * in sync by construction.
  */
 export function resolveObservedSteppedLoadCurrentState(
-  device: StepCurrentStateInput,
+  device: ObservedCurrentStateInput,
 ): string {
   const profile = isSteppedLoadSnapshot(device) ? device.steppedLoadProfile : null;
   if (!profile) {
@@ -124,14 +135,12 @@ export function resolveObservedCurrentState(
   // The producer resolves the CONCRETE latched label — it never emits 'unknown'
   // from staleness (the plan has no right to distrust observer data, and a stale
   // binary read is still the latched bit: Homey reports capabilities on change).
-  // The only 'unknown' here is the STRUCTURAL stepped "step not known" case below
-  // (`resolveObservedSteppedLoadCurrentState` with no selectedStepId).
+  // It never emits 'unknown' at all: this function is THREE-valued
+  // (`on` / `off` / `not_applicable`). The stepped resolver's STRUCTURAL "step
+  // not known" 'unknown' is dropped by the guard below and falls through to the
+  // binary arms, so it never leaves this function.
   if (isSteppedLoadSnapshot(device)) {
-    const steppedState = resolveObservedSteppedLoadCurrentState({
-      steppedLoadProfile: device.steppedLoadProfile,
-      selectedStepId: device.selectedStepId,
-      binaryControl: device.binaryControl,
-    });
+    const steppedState = resolveObservedSteppedLoadCurrentState(device);
     if (steppedState !== 'unknown') return steppedState;
   }
   if (device.binaryControl === undefined) {

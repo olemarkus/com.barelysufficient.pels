@@ -392,6 +392,14 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    `appRealtimeDeviceReconcileRuntime.ts` is gone. See `lib/plan/planRebuildTrigger.ts`,
    root `AGENTS.md` § Control Flow, and `README.md` in this directory.)
 
+   Still open (2026-09-03): the no-dispatcher fallback above never went away, so
+   this step is not fully shipped. Production always injects a dispatcher, which
+   leaves transport's own EventEmitter with zero production subscribers — every
+   subscription to it is a test. Removing it (dispatcher required, the three
+   `this.emit` fallbacks deleted, `extends EventEmitter` dropped) is tracked in
+   `TODO.md` under "`DeviceTransport` still extends `EventEmitter` to serve a
+   fallback with zero production subscribers".
+
 ## Secondary cleanups surfaced during review
 
 These are not strictly part of the split but block it in subtle ways:

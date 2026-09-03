@@ -82,7 +82,7 @@ describe('device-detail live status restore waits', () => {
     // stepped-with-a-known-rung AND not-applicable at once, which the producer
     // cannot emit — a stepped device with a known rung resolves to on/off. The
     // card branch that combination reached is gone; the contract is pinned in
-    // `test/unit/observedStateResolution.test.ts`.
+    // `test/unit/observedState.test.ts` (`resolveObservedCurrentState`).
     const payload = planWithReason({ code: 'waiting_for_other_devices' });
     getApiReadModelMock.mockResolvedValue(payload);
 

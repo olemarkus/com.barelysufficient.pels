@@ -9,7 +9,7 @@ import {
   resolveSteppedLoadRestoreDeltaKw,
   resolveSteppedLoadSheddingTarget,
 } from '../../lib/plan/planSteppedLoad';
-import { resolveObservedSteppedLoadCurrentState } from '../../lib/plan/planCurrentState';
+import { resolveObservedSteppedLoadCurrentState } from '../../lib/observer/observedState';
 import { steppedInputDevice, steppedPlanDevice, steppedProfile } from '../utils/planTestUtils';
 
 // This fixture feeds the OBSERVER resolver `resolveObservedSteppedLoadCurrentState`,

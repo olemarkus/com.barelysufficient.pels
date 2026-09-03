@@ -1,8 +1,8 @@
 import {
   resolveEffectiveCurrentOn,
   resolveEffectiveCurrentState,
-  resolveObservedCurrentState,
 } from '../../lib/plan/planCurrentState';
+import { resolveObservedCurrentState } from '../../lib/observer/observedState';
 import { steppedProfile } from '../utils/planTestUtils';
 
 describe('planCurrentState', () => {

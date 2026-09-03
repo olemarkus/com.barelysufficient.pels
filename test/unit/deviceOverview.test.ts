@@ -404,7 +404,7 @@ describe('device overview formatter', () => {
   // with the card branch it pinned. The producer cannot emit that combination:
   // a stepped device with a known rung resolves to on/off, and only an unknown
   // rung falls through to `not_applicable`. That contract is pinned directly in
-  // `test/unit/observedStateResolution.test.ts`.
+  // `test/unit/observedState.test.ts` (`resolveObservedCurrentState`).
 
   it('keeps off-like stepped restores in restoring state', () => {
     expect(formatDeviceOverview(buildSteppedOverviewDevice({
