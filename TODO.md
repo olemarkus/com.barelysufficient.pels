@@ -916,10 +916,12 @@ What remains open is below.*
 
 - [ ] **Flow stepped-load runtime state still duplicates exact watts after transport admission.**
       `reportSteppedLoadActualStep` admits exact power into the transport-owned reported-step
-      cluster, but `SteppedLoadReportedRuntimeState.planningPowerW` keeps a second setup-layer copy
-      solely to distinguish same-step reports. Replace that change detection with the transport
-      admission outcome, then remove the duplicate field so setup retains only command lifecycle
-      and the reported step id. Source: layering review of EV target-power reachability delivery.
+      cluster, but `SteppedLoadReportedRuntimeState.planningPowerW` keeps a second copy
+      (`lib/observer/steppedReportedStep.ts`, re-exported from setup) solely to distinguish
+      same-step reports. Replace that change detection with the transport
+      admission outcome, then remove the duplicate field so the observer retains only the
+      reported-step observation (the commanded axis already lives in
+      `lib/executor/steppedCommandState.ts`). Source: layering review of EV target-power reachability delivery.
       [P2]
 
 - [ ] **Nothing in CI ever inspects the packaged tree that actually ships.** `npm run validate` is
@@ -1408,20 +1410,6 @@ What remains open is below.*
       moves; the rescue is inert rather than harmful. Source: Codex review on PR #1953,
       2026-08-02. [P2]
 
-- [ ] **A carried-forward `dailyBudget` hold keeps its budget-releasable framing through a
-      stale-meter window.** `dailyBudget` is a sticky reason (`shouldNormalizeReason` never
-      normalizes it back, and the diagnostics fold maps `insufficient_headroom → daily_budget`
-      but never the reverse), so in cycles where the restore pass does not run (restore cooldown,
-      `sheddingActive`, startup stabilization) while the meter is silent (the last reading carries
-      forward as measured until the shed timeout; past it the silent-meter pass plans no restores),
-      a device labeled `dailyBudget` in the previous fresh cycle keeps the label and the widget's
-      "Let it run now" offer — the exact state the `budgetReleasableHeadroomHold` doc says must
-      stay capacity-bucketed. Bounded (≤300 s restore cooldown per episode; longer under
-      `power_source=flow` sparse events) and the rescue action is inert until power is fresh, so
-      P2 not P1. Candidate fix: normalize a carried `dailyBudget` hold back to the headroom
-      framing when `powerKnown` is false. Source: pels-runtime-reality on the 2026-08-01
-      budget-hold re-attribution. [P2]
-
 - [ ] **A reserve-blocked hold is attributed to the wrong counting cause when the restore lane
       did not run.**
       *Persona:* owner (`notes/personas.md`) opening device detail on a device that is held
@@ -1535,20 +1523,16 @@ What remains open is below.*
       "it never saw the device". Source: Codex round 9 on PR #1895. [P2]
 
 - [ ] **"Leave off until turned on again": sub-home plan paths are not driven by hold changes.**
-      Three related gaps, all multi-home-only and all with the same shape — the hold store is
-      shared across homes but the plan paths are not, so a sub-home keeps a stale
-      `inactive/external_off_hold` plan until an unrelated sample or rebuild reaches it (which
-      in flow mode can be a long wait):
-      (a) realtime observed-state settlement (`setup/appServiceWiring.ts`) invokes only the MAIN
-      `ctx.planService`, so a sub-home bundle's pending ON stays active past its confirmation and
-      a genuine off inside the 15 s/75 s window is misread as PELS's;
-      (b) a sub-home ON event reaches `scope.getPlanDevices()`, whose pre-pass releases the hold
-      before `syncExternalOffHoldForDevice` sees it, so the detector reports `none` and no release
-      rebuild is scheduled for that bundle;
-      (c) the `respect_external_off_devices` settings handler rebuilds only main after
-      `releaseDeOptedHolds()`, ignoring the returned device ids.
-      Fix together: route settlement to the owning bundle, and use the released ids to rebuild
-      each owning home. Single-home installs — the overwhelming majority — are unaffected.
+      One remaining gap, multi-home-only: the hold store is shared across homes but the plan
+      paths are not, so a sub-home keeps a stale `inactive/external_off_hold` plan until an
+      unrelated sample or rebuild reaches it (which in flow mode can be a long wait). The
+      `respect_external_off_devices` settings handler (`lib/utils/settingsHandlers.ts`) rebuilds
+      only main after `releaseDeOptedHolds()`, ignoring the returned device ids. Fix: use the
+      released ids to rebuild each owning home, the way `TEMPERATURE_CONTROL_DISABLED_DEVICES`
+      fans out. (Realtime settlement now routes to the owning bundle in
+      `setup/appObservedControlStateRuntime.ts`, and observations no longer trigger rebuilds, so
+      the two gaps once listed beside this one are gone.) Single-home installs — the overwhelming
+      majority — are unaffected.
 
 - [ ] **"Leave off until turned on again": UI write can resurrect opt-ins cleared elsewhere.**
       `writeFreshSetting` skips `readFresh` for nullish values, so when another WebView or the
@@ -1556,17 +1540,9 @@ What remains open is below.*
       lands mutates the stale in-memory snapshot and writes the cleared opt-ins back. Distinguish
       a resolved-absent setting from an unavailable read before applying the fallback snapshot.
 
-- [ ] **"Leave off until turned on again": the smart-task warning goes stale.**
-      `reloadObjectivesIfObjectiveKey` updates `state.deferredObjectiveSettings` but neither
-      refreshes the open detail controls nor emits `devices-updated`, and the `plan-updated`
-      handler refreshes only live status and diagnostics. A task created, disabled, or cleared
-      from another WebView therefore leaves the switch's "a Smart task may not finish on time"
-      hint showing the previous state — the user can enable the switch without the warning, or
-      keep seeing it after the task is gone. Refresh the open detail after the objective reload.
-
 - [ ] **"Leave off until turned on again" is missing from Advanced → Clear device data.**
       `collectDeviceIdsFromSettings`, `clearDeviceSettings`, and `clearMultipleDeviceSettings`
-      (`packages/settings-ui/src/ui/advanced.ts`) neither enumerate nor clear
+      (`packages/settings-ui/src/ui/advancedDeviceDataPurge.ts`) neither enumerate nor clear
       `respect_external_off_devices`, so clearing a device leaves the flag (and any persisted
       hold) behind, and a deleted device known only through this map is never offered by
       "Clear unknown devices". Re-adding the device silently reactivates the old behaviour.
@@ -1614,10 +1590,7 @@ What remains open is below.*
       below would add a third. `validateDraftName` should delegate to `findHomeAreaNameRejection` and
       map the rejection into `SubHomeDraftError`. Held out of the enforcing PR: the mapping needs new
       `SubHomeDraftError` kinds and `composeDraftErrorLine` branches in files a concurrent branch owns.
-      Same edge: `validateDraftMeter` (`homesManagement.ts`) still hand-spells `'Main home'` for its
-      `meter_in_use` payload, while the reserved-name rule now reads it from
-      `HOME_LIMITS_MAIN_HOME_OPTION` — point that one at the constant too, so a rename cannot leave
-      the two disagreeing. Persona: contributor changing a name rule (or the Main home's label) in one
+      Persona: contributor changing a name rule (or the Main home's label) in one
       place only. Source: multi-home finishing train, area-config invariants PR. [P2]
 
 - [ ] **Area rules refuse on save instead of guiding in the editor.** The name-length cap, the
@@ -1917,17 +1890,17 @@ split follow-ups from this batch are fixed by the solar-accounting follow-up; re
 - [ ] **Settings-UI structural consolidation train (deferred by the 2026-07 coherence review).**
       A designed, not-yet-executed train that unwinds the two-rendering-paradigms mess within the
       approved map `notes/settings-ui-semantic-map.md`. Order: shared Preact primitives in
-      `src/ui/views/components/` — `Chip` (absorb `chipModifier.ts`, `usageHero.ts`
+      `src/ui/views/components/` — `Chip` (absorb `views/chipModifier.ts`, `usageHero.ts`
       `CHIP_TONE_CLASSES`, `BudgetOverview.tsx` `deltaChipClass`; canonical tone set, migrate `ok`→
       `good`, then drop the CSS alias) → `SegmentedControl` (extract `ToggleGroup` from
       `BudgetOverview.tsx` + the roving-tabindex keyboard model from `segmentedControl.ts`) →
-      `Card` (fix `DeadlinePlan.tsx`'s `budget-redesign-card` misuse) → `Hero` (the four Preact
+      `Card` (fix the `budget-redesign-card` misuse in `DeadlinePlan.tsx` and `WeatherInsight.tsx`) → `Hero` (the four Preact
       heroes; unblocks future hero-content work) → `DeviceRow` scaffold (from
       `PriceAwareDevicesView.tsx`) — then imperative→Preact migrations: Usage hero (kills the last
       static-HTML hero in `index.html`) → Usage day view (deletes `createToggleGroup`, segmented
       impl 2/3) → Devices list (converges `buildRedesignDeviceRow`, rides the toggle-ring-contrast
       P2) → device-detail overlay slice-by-slice (Power-limiting slice first: rehome the hidden
-      `md-filled-select` state store in `shedBehavior.ts` + `index.html`, deleting
+      `md-filled-select` state store in `deviceDetail/shedBehavior.ts` + `index.html`, deleting
       `segmentedControl.ts`, segmented impl 3/3) → Modes (Sortable.js needs an imperative island) →
       Advanced. Plus a boot.ts quick win: replace the `budget-adjust`/`budget-weather` virtual-
       target if-chains with a declarative map. One surface/primitive per PR, screenshot-gated on
@@ -2432,7 +2405,7 @@ non-blocking follow-ups.*
 
 - [ ] **Extend the growth-only principle from the area cap to root disjointness.** The area cap now
       bounds GROWTH, so a config already over it can still be renamed or re-metered
-      (`homeMeterOwnership.ts`). The root-overlap rule one line below it still evaluates
+      (`setup/homeMeterOwnership.ts`; the rule itself is `lib/home/homeConfig.ts`). The root-overlap rule one line below it still evaluates
       `findNestedSubHomeRoots` over the WHOLE composed list, so a persisted config containing one
       overlapping pair refuses every upsert, including a rename of a third, unrelated area. Reachable
       the same way the over-cap config is: `isPlausibleHomesConfigBlob` validates shapes, unique
@@ -2481,8 +2454,9 @@ non-blocking follow-ups.*
       persisted cap while the reaction readout keeps tracking the input.
       Source: pels-m3-critic review, 2026-07-26.
 
-- [ ] **Share the bounded exponential-retry delay calculation.** `homeyEnergyPoll.ts`,
-      `flowPowerSampleFreshnessClock.ts`, and `homeRuntimeRegistry.ts` each implement the same
+- [ ] **Share the bounded exponential-retry delay calculation.** `lib/power/sources/homeyEnergyPoll.ts`,
+      `lib/power/flowPowerSampleFreshnessClock.ts`, and `setup/homeRuntime/homeRuntimeRegistry.ts`
+      each implement the same
       1-second-to-60-second capped exponential delay. *Persona:* maintainer tuning transient-failure
       recovery. *Hypothesis:* the three copies can drift when retry policy changes, producing
       inconsistent recovery cadence without an intentional product decision. *Why:* one pure helper
