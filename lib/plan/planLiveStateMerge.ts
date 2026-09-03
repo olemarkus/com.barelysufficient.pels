@@ -5,8 +5,7 @@ import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
-import { resolveCurrentOn } from '../observer/observedState';
-import { resolveObservedCurrentState } from './planCurrentState';
+import { resolveCurrentOn, resolveObservedCurrentState } from '../observer/observedState';
 import {
   normalizeSteppedLoadStepStateFromLegacyFields,
   resolveKnownEffectiveStepId,

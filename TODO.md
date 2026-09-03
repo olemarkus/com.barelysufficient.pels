@@ -345,6 +345,137 @@ What remains open is below.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Four of `ResolvedCurrentState`'s five fields have no production reader — decide whether
+      that surface is intended or spent.** `lib/plan/planCurrentState.ts` builds a five-field
+      projection (`currentState`, `isOn`, `source`, `reasonCode`, `pendingInfluence`), but the only
+      production path into it is `resolveEffectiveCurrentOn(device).isOn`, called from
+      `lib/executor/executableSteppedLoadProjection.ts`. `resolveEffectiveCurrentState` itself has
+      no production caller, and every `reasonCode` literal it can emit
+      (`observed_target_only`, `observed_step_active`, `observed_step_off`, `observed_binary_on`,
+      `observed_binary_off`, `observed_binary_off_not_applicable`) appears only in this file and in
+      `test/unit/planCurrentState.test.ts`; three of them
+      (`observed_binary_on_not_applicable`, `observed_state_unknown`,
+      `observed_state_unrecognized`) appear only in the producer, not even in the spec. Corollary:
+      the `currentState === 'unknown' ? 'observed_state_unknown' : 'observed_state_unrecognized'`
+      arm cannot be reached from the production producer at all, because
+      `setup/appInit/toPlanDevice.ts` writes `resolveObservedCurrentState`'s output into the cache
+      and that function is three-valued — it never returns `'unknown'` or anything unrecognised.
+      This is NOT filed as a deletion. "Never armed in production" is not by itself grounds for
+      removal in this repo, and a reason-code vocabulary is exactly the kind of surface that is
+      built ahead of the UI that will read it. The question to answer is which of these it is:
+      (a) an intended contract awaiting a consumer — in which case say so in the module docblock,
+      name the consumer it is waiting for, and keep the spec as its executable specification; or
+      (b) a projection that outlived the reason-rendering path it was built for — in which case the
+      unread fields and their literals go, and `resolveEffectiveCurrentOn` collapses to the boolean
+      the executor actually asks for.
+      How to tell: check whether any planned or in-flight surface consumes a device-level reason
+      code (the plan-preview widget and the device-card reason line are the candidates —
+      `packages/shared-domain/src/planCardReasonLine.ts` renders reasons today WITHOUT this
+      projection, which is evidence for (b)); and check git history for whether a consumer was
+      removed rather than never written. Done when the docblock states the answer and the code
+      matches it — either the waiting-for clause is documented, or the unread fields are gone.
+      P2 — no misbehaviour; it is a maintenance cost and a trap, since the dead `'unknown'` arm
+      reads as live handling for a producer state that cannot occur. Source: pels-layering-guardian
+      on PR #2295, 2026-09-03.
+
+- [ ] **The reachability confirmation timer and the retry timer share one key, so whichever is
+      armed second silently cancels the first.** `createBinaryCommandReachability`
+      (`lib/plan/admission/binaryCommandReachability.ts`) arms two different timers through the same
+      `scheduleRebuild` dep: `onDispatchAccepted` schedules the confirmation deadline at
+      `startedAtMs + CONTROL_COMMAND_CONFIRMATION_MS`, and `recordFailure` schedules the 15/30/60-minute
+      retry. Both wiring implementations build the handle as
+      `binaryCommandReachability:<homeId>:<deviceId>` (`setup/homeRuntime/homeScope.ts` and
+      `setup/homeRuntime/createHomeCapacityBundle.ts`), and `TimerRegistry.register`
+      (`lib/utils/timerRegistry.ts`) clears the existing handle before registering — so the retry
+      REPLACES the deadline. The two are different events about the same device and should not
+      contend for one slot.
+      Change: give the dep a purpose (`scheduleRebuild(deviceId, dueAtMs, kind)` where `kind` is the
+      `'confirmation' | 'retry'` the state machine already tracks as `scheduledKind`), key the timer
+      `…:confirmation:` / `…:retry:`, and make `clearScheduledRebuild` clear both. It is not the
+      one-liner it looks like: the dep signature is shared by two wiring implementations and the
+      `clear` path is what `project`/`prune`/`dispose` all funnel through, so all four call sites
+      move together.
+      Not urgent, and deliberately not a blocker: the observation-lane fix (2026-09-03) rests on the
+      sweep-before-device-read ordering in `buildPlanForRebuild`, which is now pinned by a test, and
+      NOT on either timer — the comment in `binaryCommandReachability.ts` says so explicitly. The
+      collision costs a delayed un-block, never a missed escalation. Done when the two timers can be
+      armed for one device simultaneously without cancelling each other, pinned by a test that arms
+      the confirmation deadline, times the command out, and asserts both handles are still
+      distinguishable. P2. Source: pels-runtime-reality on PR #2290, 2026-09-03.
+
+- [ ] **`DeviceTransport` still extends `EventEmitter` to serve a fallback with zero production
+      subscribers.** `lib/device/deviceTransport.ts` declares
+      `class DeviceTransport extends EventEmitter`, and its three dispatch helpers
+      (`dispatchObservedStateChanged`, `dispatchObservedStateRefresh`,
+      `dispatchObservedControlStateChanged`) each keep an else-branch that emits on it when no
+      `observedStateDispatcher` was injected. Production always injects one — the single
+      construction path (`setup/appInit/wireDeviceTransport.ts`) passes
+      `getObservedStateEmitter().asDispatcher(...)` — so those branches are unreachable in the app
+      and exist only for specs: all 83 `.on()` subscriptions to `PLAN_LIVE_STATE_OBSERVED_EVENT` /
+      `OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT` are in tests (76 in
+      `test/integration/deviceManager.test.ts`, 7 in
+      `test/integration/nativeSteppedLoadWiring.test.ts`; zero in `lib/**` or `setup/**`). The cost
+      is a second, untyped event surface on transport shadowing the observer-owned
+      `ObservedStateEmitter` that the split made canonical — a reader cannot tell from
+      `DeviceTransport` alone which one carries the events.
+      Change: force the dispatcher in, delete the three `this.emit(...)` fallbacks, drop
+      `extends EventEmitter`, and migrate the test subscriptions onto `ObservedStateEmitter` through
+      `emitter.asDispatcher(...)` — the shape `test/integration/observedDeviceStateProjection.test.ts`
+      and `test/integration/homeMembershipService.test.ts` already use. Note the obvious first move
+      does NOT work: making `observedStateDispatcher` required inside `DeviceTransportOptions`
+      (`lib/device/transport/transportTypes.ts`) changes nothing, because `options` is itself the
+      OPTIONAL fifth constructor parameter (`deviceTransport.ts`, `options?: DeviceTransportOptions`),
+      so `new DeviceTransport(homey, logger)` still compiles with no dispatcher — and many specs do
+      exactly that. Forcing injection means making `options` itself required, which puts all 142
+      `new DeviceTransport(` call sites across 12 spec files in the blast radius on top of the 83
+      subscriptions. That, not the emit-deletion, is the work: land a shared construct-and-subscribe
+      test helper first and migrate onto it, rather than hand-editing ~225 sites.
+      Done when `DeviceTransport` no longer extends `EventEmitter`, the three
+      `this.emit` calls are gone, and neither `PLAN_LIVE_STATE_OBSERVED_EVENT` nor
+      `OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT` is exported from
+      `lib/device/deviceTransport.ts`. P2 — no user-visible defect and no live bug; it is the
+      unfinished last mile of the observer/transport split
+      (`notes/state-management/observer-transport-split.md` step 7), and the dead branch will read
+      as a supported mode to whoever touches transport next. Source: observer cleanup sweep,
+      2026-09-03.
+
+- [ ] **The observed-state label is a closed set returned as `string`, so consumers hedge against
+      their own producer.** `lib/observer/observedState.ts` states the set in prose
+      (`on` / `off` / `unknown` / `not_applicable`) while every resolver's signature says `string`,
+      and downstream code defends accordingly: `normalizeDeviceState`
+      (`packages/shared-domain/src/deviceStatePredicates.ts`) trims and lowercases a value the
+      producer emits as a bare literal, `packages/shared-domain/src/deviceOverview.ts` re-defaults
+      it as `normalizeDeviceState(device.currentState) || 'unknown'` at two sites, and three
+      separate production tables carry a `'disappeared'` member no producer ever emits —
+      `deviceStatePredicates.ts`, `planStateLabels.ts` (a duplicated `isOnLike`/`isGray` pair), and
+      `planSteppedCardText.ts` (`isSteppedCardOffLikeState`, whose comment declares it deliberately
+      un-unified). That inverts the clean/trusted rule in root `AGENTS.md` — the producer resolves,
+      the consumer reads.
+      Settle one thing first, because it changes the type: `resolveObservedCurrentState` can never
+      return `'unknown'`. Its stepped branch is guarded by `if (steppedState !== 'unknown')`, so the
+      one case its own docblock names as the sole source of `'unknown'` is exactly the case that
+      falls through to `not_applicable` / `on` / `off`. That function is THREE-valued; only
+      `resolveObservedSteppedLoadCurrentState` is four-valued. So do not declare one shared union
+      across the resolvers — that would bake the inaccuracy into the type. Either give each resolver
+      its own accurate union, or fix the guard if the fall-through is the bug; the docblock and the
+      inline comment both currently assert the four-value set and are wrong about this function.
+      Change: declare the accurate union per resolver, return it, then tighten inward one layer per
+      PR; 27 non-test sites declare `currentState` as `string` (18 of them in `lib/**` + `setup/**`,
+      `lib/plan/planSteppedLoad.ts` holding 5), across 45 non-test source files that read it (125
+      including specs). This is a ratchet, not an edit, and it belongs with the existing
+      strict-typing ratchet work.
+      IMPORTANT — the target is not "delete all normalization". The Homey API bridge into the
+      WebView is an untrusted transport seam, where root `AGENTS.md` requires validation, so the
+      settings-UI hedging is legitimate and must survive. The shape to land is: accurate unions at
+      the producer, tightened inward, with exactly ONE validating adapter at the WebView seam.
+      `'disappeared'` is a separate ruling inside the same work — either a producer emits it or it
+      leaves all three tables; it must not stay as an unowned member in any of them.
+      Done when each resolver returns its own accurate union rather than `string`, no `lib/**` or
+      `setup/**` consumer calls `normalizeDeviceState` on a producer-resolved label, and the sole
+      surviving normalization site is the WebView-seam adapter. P2 — it is a maintainability ratchet
+      with no current misbehaviour, but every new consumer copies the hedge, so the cost compounds.
+      Source: observer cleanup sweep, 2026-09-03.
+
 - [ ] **A silent meter AREA has no staleness indication — the no-readings banner speaks only for
       Main.** The banner (`packages/shared-domain/src/powerReadingsBanner.ts`, fed by the
       deliberately Main-only `getPowerReadModel` in `packages/settings-ui/src/ui/power.ts`) is the
@@ -1291,6 +1422,36 @@ non-blocking follow-ups.*
       adversarial review of the device lane, 2026-09-01. [P2]
 
 ## P3 Future and Exploratory Work
+
+- [ ] **`hasPendingPlanWork` counts EXPIRED pending commands, costing one un-throttled rebuild
+      per timeout.** `lib/plan/planStateHelpers.ts` — `hasPendingPlanWork` asks
+      `Object.keys(planState.pendingBinaryCommands).length > 0` (and the same for
+      `pendingTargetCommands`), a raw key count with no freshness test. `isPlanActivelyConverging`
+      returns true whenever that is true, and lets the rebuild scheduler bypass the
+      unrecoverable-shortfall skip, the unactionable throttle and the tight-unactionable floor. An
+      expired command cannot change anything, so it is exactly the case that contract excludes.
+      **Bounded, and NOT the watchdog scenario.** An earlier draft of this entry claimed the flag
+      could stay stuck true and reproduce the `cpuwarn` kill its docblock records. It cannot:
+      `reconcilePendingEntry` (`lib/observer/pendingBinaryCommands.ts`) clears an expired entry, and
+      `buildPlanForRebuild` runs that sweep BEFORE it builds
+      (`lib/plan/planServiceRebuild.ts`) — so the first rebuild the bypass buys is also the rebuild
+      that clears the entry. The cost is at most one extra un-throttled rebuild per timeout, not a
+      loop. Corrected after Codex and `pels-runtime-reality` independently made this point on
+      PR #2290.
+      Change: ask freshness rather than presence for the BINARY half — the store already exposes the
+      vocabulary (`isPendingBinaryCommandActive`, and the `hasActiveCommand` / `hasActiveTurnOn` /
+      `hasActiveTurnOff` family). **Do not give `pendingTargetCommands` the same treatment without
+      checking what "expired" means there:** a target entry sits at `status:
+      'temporary_unavailable'` with a scheduled `nextRetryAtMs`, and an elapsed retry time is
+      ACTIONABLE work rather than a dead command, so a naive active-only predicate would suppress
+      real convergence — the opposite defect, and a worse one. The two halves need different
+      predicates, or the target half needs none.
+      Done when an expired-only BINARY pending map makes `isPlanActivelyConverging` return false,
+      pinned by a unit test that seeds one expired entry and asserts the guards are not bypassed,
+      with a companion test proving a target entry past its `nextRetryAtMs` still counts as pending
+      work. P3 — bounded to one rebuild, no demonstrated misbehaviour, and the honest value is
+      removing a contract violation that reads worse than it is. Source: observer cleanup sweep,
+      2026-09-03.
 
 - [ ] **A sub-home meter area under `power_source = flow` renders nothing, forever.**
       `routeMeterReadings` (`setup/homeRuntime/homeRuntimeRegistry.ts`) drops every reading unless
