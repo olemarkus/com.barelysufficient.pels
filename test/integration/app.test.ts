@@ -14,7 +14,7 @@ import {
   MockDevice,
   MockDriver,
 } from '../mocks/homey';
-import { schedulePlanRebuildFromPowerSample } from '../../lib/plan/rebuildScheduler/powerDriven';
+import { schedulePowerSampleForTest } from '../helpers/powerRebuildScheduler';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type { StateOfChargeObservedProbe } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
@@ -892,7 +892,7 @@ describe('MyApp initialization', () => {
       lastMs: app['getPlanRebuildNowMs'](),
     };
     let powerSampleRebuildState = app.powerSampleRebuildState;
-    const pending = schedulePlanRebuildFromPowerSample({
+    const pending = schedulePowerSampleForTest({
       limitKw: 10,
       scheduler: app['planRebuildScheduler'],
       getState: () => powerSampleRebuildState,
@@ -905,7 +905,6 @@ describe('MyApp initialization', () => {
       maxIntervalMs: 10_000,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
     });
 
     expect(app['planRebuildScheduler'].now().hasTimer).toBe(true);

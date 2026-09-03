@@ -32,7 +32,7 @@ type Taps = {
 };
 
 const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePipeline; taps: Taps } => {
-  const powerTracker: PowerTrackerState = {};
+  let powerTracker: PowerTrackerState = {};
   let rebuildState: { lastMs: number; lastRebuildPowerW: number; pendingResolve?: (r?: string) => void } = {
     lastMs: 0,
     lastRebuildPowerW: 0,
@@ -73,7 +73,10 @@ const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePi
     setPowerSampleRebuildState: (state) => { rebuildState = state as typeof rebuildState; },
     getLatestTargetSnapshot: () => [],
     getPlanRebuildNowMs: () => Date.now(),
-    savePowerTracker: () => undefined,
+    // Production's `savePowerTracker` calls `setPowerTracker`, so the next
+    // `getPowerTracker()` sees the admitted sample. Discarding the write leaves
+    // the tracker permanently unlatched — a state no admitted sample produces.
+    savePowerTracker: (state) => { powerTracker = state; },
     getStructuredDebugEmitter: () => vi.fn(),
     recordCurtailmentSample: taps.curtailment,
     recordPvGenerationSample: taps.pvForecast,

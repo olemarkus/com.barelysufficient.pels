@@ -23,9 +23,7 @@ import {
 } from '../../lib/power/sampleIngest';
 import {
   type PowerSampleRebuildState,
-  schedulePlanRebuildFromPowerSample,
 } from '../../lib/plan/rebuildScheduler/powerDriven';
-import { schedulePlanRebuildFromSignal } from '../../lib/plan/rebuildScheduler/signalDriven';
 import { isPlanActivelyConverging } from '../../lib/plan/planStateHelpers';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
@@ -40,7 +38,11 @@ import type {
 } from '../../packages/contracts/src/types';
 import { shouldSkipShortfallRebuildFromPlanSummary } from '../../lib/plan/rebuildScheduler/shortfallSuppression';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
-import { createTestPowerRebuildScheduler } from '../helpers/powerRebuildScheduler';
+import {
+  createTestPowerRebuildScheduler,
+  schedulePowerSampleForTest,
+  scheduleSignalForTest,
+} from '../helpers/powerRebuildScheduler';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
@@ -132,7 +134,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -143,7 +145,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -162,7 +163,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       logError,
     });
 
-    const first = schedulePlanRebuildFromPowerSample({
+    const first = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -173,9 +174,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
     });
-    const second = schedulePlanRebuildFromPowerSample({
+    const second = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -186,7 +186,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9700,
       capacityPaceKw: 9,
-      headroomKw: -0.7,
     });
 
     expect(second).toBe(first);
@@ -207,7 +206,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    const pending = schedulePlanRebuildFromPowerSample({
+    const pending = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -218,10 +217,9 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
     });
 
-    schedulePlanRebuildFromPowerSample({
+    schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -232,7 +230,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9700,
       capacityPaceKw: 8.7,
-      headroomKw: -0.7,
     });
 
     vi.advanceTimersByTime(1000);
@@ -252,7 +249,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    const pending = schedulePlanRebuildFromPowerSample({
+    const pending = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -263,7 +260,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
     });
 
     expect(pending).toBe(state.pending);
@@ -280,7 +276,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    const pending = schedulePlanRebuildFromPowerSample({
+    const pending = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -291,7 +287,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
     });
 
     scheduler.cancelAll('test_cancel');
@@ -311,7 +306,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       executeIntent: async () => undefined,
     });
 
-    const hardCapPending = schedulePlanRebuildFromPowerSample({
+    const hardCapPending = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -322,11 +317,10 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 10_600,
       capacityPaceKw: 9,
-      headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
     });
 
-    const signalPending = schedulePlanRebuildFromPowerSample({
+    const signalPending = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -337,7 +331,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9_200,
       capacityPaceKw: 9,
-      headroomKw: -0.2,
     });
 
     expect(signalPending).toBe(hardCapPending);
@@ -357,7 +350,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       logError,
     });
 
-    const pending = schedulePlanRebuildFromPowerSample({
+    const pending = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -368,7 +361,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
     });
 
     vi.advanceTimersByTime(1000);
@@ -386,7 +378,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -397,7 +389,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 5050,
       capacityPaceKw: 9,
-      headroomKw: 3.95,
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
@@ -412,7 +403,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -423,7 +414,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 5000,
       capacityPaceKw: 8.2,
-      headroomKw: 3.2,
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
@@ -442,7 +432,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -452,8 +442,10 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       maxIntervalMs: 10000,
       limitKw: 10,
       currentPowerW: 9010,  // 30 W above danger threshold, but only 30 W delta
-      capacityPaceKw: 9,
-      headroomKw: 0.99,
+      // Pace 10, not 9: these specs pinned a +0.99 kW headroom, which is what a
+      // 10 kW pace derives. Against a 9 kW pace the reading is tight (-0.01) and
+      // the rebuild they assert against would fire on the control boundary.
+      capacityPaceKw: 10,
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
@@ -469,7 +461,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -479,8 +471,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       maxIntervalMs: 10000,
       limitKw: 10,
       currentPowerW: 9060,  // only 10 W delta — below 100 W threshold
-      capacityPaceKw: 9,
-      headroomKw: 0.94,
+      capacityPaceKw: 10,
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
@@ -495,7 +486,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -505,8 +496,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       maxIntervalMs: 10000,  // 10 s elapsed > 10 s max
       limitKw: 10,
       currentPowerW: 9060,
-      capacityPaceKw: 9,
-      headroomKw: 0.94,
+      capacityPaceKw: 10,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -521,7 +511,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -532,7 +522,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 6200,
       capacityPaceKw: 9,
-      headroomKw: 2.8,
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
@@ -547,7 +536,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -558,13 +547,15 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 5050,
       capacityPaceKw: 9,
-      headroomKw: 3.95,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 
-  it('uses last rebuild power when current power is missing', async () => {
+  // The delta is measured against the last rebuild's own sample. It used to be
+  // possible to hand one in as a `powerDeltaW` hint instead, but no producer
+  // ever did, so the sample is now the only source.
+  it('rebuilds on a meaningful delta from the last rebuild power and stamps the new sample', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastCapacityPaceKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
     const scheduler = createTestPowerRebuildScheduler({
@@ -573,34 +564,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
-      scheduler,
-      getState: () => state,
-      setState: (next) => {
-        state = next;
-      },
-      minIntervalMs: 0,
-      maxIntervalMs: 10000,
-      limitKw: 10,
-      powerDeltaW: 200,
-      capacityPaceKw: 9,
-      headroomKw: -0.2,
-    });
-
-    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-    expect(state.lastRebuildPowerW).toBe(5000);
-  });
-
-  it('keeps last soft limit when soft limit is missing', async () => {
-    let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastCapacityPaceKw: 8 };
-    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
-    const scheduler = createTestPowerRebuildScheduler({
-      getState: () => state,
-      setState: (next) => { state = next; },
-      rebuildPlanFromCache,
-    });
-
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -610,12 +574,45 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       maxIntervalMs: 10000,
       limitKw: 10,
       currentPowerW: 5200,
-      powerDeltaW: 200,
-      headroomKw: -0.2,
+      capacityPaceKw: 9,
+      // Headroom is left to derive (9 - 5.2 = +3.8 kW, NOT tight) so the rebuild
+      // can only come from the delta branch, which is gated behind convergence
+      // (`shouldRebuildFromDecision`). Pinning a contradictory `headroomKw` here
+      // would pass through `controlBoundaryActive` instead and the spec would be
+      // asserting a cause that never fired.
+      planConvergenceActive: true,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-    expect(state.lastCapacityPaceKw).toBe(8);
+    expect(state.lastRebuildPowerW).toBe(5200);
+  });
+
+  it('stamps the sample capacity pace on the rebuild', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastCapacityPaceKw: 8 };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = createTestPowerRebuildScheduler({
+      getState: () => state,
+      setState: (next) => { state = next; },
+      rebuildPlanFromCache,
+    });
+
+    await schedulePowerSampleForTest({
+      scheduler,
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 0,
+      maxIntervalMs: 10000,
+      limitKw: 10,
+      // 9.0 kW against an 8.5 kW pace derives -0.5 kW: genuinely tight, so the
+      // rebuild fires for the reason the numbers state.
+      currentPowerW: 9000,
+      capacityPaceKw: 8.5,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(state.lastCapacityPaceKw).toBe(8.5);
   });
 
   it('preserves a follow-up pending rebuild when a new boundary sample arrives during a timed rebuild', async () => {
@@ -634,7 +631,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       logError,
     });
 
-    const first = schedulePlanRebuildFromPowerSample({
+    const first = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -645,13 +642,12 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
     });
 
     vi.advanceTimersByTime(1000);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
-    const second = schedulePlanRebuildFromPowerSample({
+    const second = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -662,7 +658,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9700,
       capacityPaceKw: 8.7,
-      headroomKw: -0.7,
     });
 
     expect(second).not.toBe(first);
@@ -696,7 +691,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       logError,
     });
 
-    const first = schedulePlanRebuildFromPowerSample({
+    const first = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -707,13 +702,12 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
     });
 
     expect(state.pending).toBeDefined();
     state = { ...state, lastMs: Date.now() - 2000 };
 
-    const second = schedulePlanRebuildFromPowerSample({
+    const second = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -724,7 +718,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9700,
       capacityPaceKw: 8.8,
-      headroomKw: -0.7,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -752,7 +745,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -763,14 +756,13 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
     expect(state.tightNoopStreak).toBe(1);
     expect(state.backoffUntilMs).toBe(Date.now() + 15_000);
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -781,7 +773,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -806,7 +797,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -817,7 +808,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9700,
       capacityPaceKw: 9,
-      headroomKw: -0.7,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -842,7 +832,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -853,7 +843,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -875,7 +864,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -886,13 +875,12 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
       isInShortfall: true,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -903,7 +891,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
       isInShortfall: true,
     });
 
@@ -928,7 +915,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -939,7 +926,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9700,
       capacityPaceKw: 9,
-      headroomKw: -0.7,
       isInShortfall: true,
     });
 
@@ -965,7 +951,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -976,7 +962,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9300,
       capacityPaceKw: 9.5,
-      headroomKw: 0.2,
       isInShortfall: true,
       hardCapBreach: { breached: true, deficitKw: 0.1 },
     });
@@ -1003,7 +988,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -1014,7 +999,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9300,
       capacityPaceKw: 9.5,
-      headroomKw: 0.2,
       hardCapBreach: { breached: true, deficitKw: 0.1 },
     });
 
@@ -1036,7 +1020,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -1047,7 +1031,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9300,
       capacityPaceKw: 9.5,
-      headroomKw: 0.2,
       hardCapBreach: { breached: true, deficitKw: 0.1 },
     });
 
@@ -1069,7 +1052,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -1080,7 +1063,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9450,
       capacityPaceKw: 9.5,
-      headroomKw: 0.05,
       hardCapBreach: { breached: true, deficitKw: 0.25 },
     });
 
@@ -1103,7 +1085,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -1114,7 +1096,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9000,
       capacityPaceKw: 9.5,
-      headroomKw: 0.5,
       hardCapBreach: { breached: false, deficitKw: 0 },
     });
 
@@ -1135,7 +1116,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -1146,7 +1127,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 9500,
       capacityPaceKw: 9,
-      headroomKw: -0.5,
       isInShortfall: true,
     });
 
@@ -1173,7 +1153,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     });
     const onTightNoopHardCapBreach = vi.fn().mockResolvedValue(undefined);
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -1184,7 +1164,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 10_600, // 200 W delta vs last — "meaningful", but nothing to shed
       capacityPaceKw: 9,
-      headroomKw: -1.6,
       isInShortfall: false,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
       onTightNoopHardCapBreach,
@@ -1208,7 +1187,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -1219,7 +1198,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 10_600,
       capacityPaceKw: 9,
-      headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
       unactionable: true,
     });
@@ -1240,7 +1218,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -1251,7 +1229,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 10_600,
       capacityPaceKw: 9,
-      headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
       unactionable: false,
     });
@@ -1272,7 +1249,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -1283,7 +1260,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 10_600,
       capacityPaceKw: 9,
-      headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
       planConvergenceActive: true,
       unactionable: true,
@@ -1306,7 +1282,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -1317,7 +1293,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 10_600,
       capacityPaceKw: 9,
-      headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
       unactionable: true,
     });
@@ -1341,7 +1316,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     });
 
     await expect(
-      schedulePlanRebuildFromPowerSample({
+      schedulePowerSampleForTest({
       scheduler,
         getState: () => state,
         setState: (next) => {
@@ -1352,7 +1327,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
         limitKw: 10,
         currentPowerW: 10_600,
         capacityPaceKw: 9,
-        headroomKw: -1.6,
         hardCapBreach: { breached: true, deficitKw: 0.6 },
         unactionable: true,
       }),
@@ -1376,7 +1350,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    const pending = schedulePlanRebuildFromPowerSample({
+    const pending = schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -1387,7 +1361,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 10_600,
       capacityPaceKw: 9,
-      headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
       unactionable: true,
     });
@@ -1421,7 +1394,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromPowerSample({
+    await schedulePowerSampleForTest({
       scheduler,
       getState: () => state,
       setState: (next) => {
@@ -1433,7 +1406,6 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       limitKw: 10,
       currentPowerW: 10_600,
       capacityPaceKw: 9,
-      headroomKw: -1.6,
       hardCapBreach: { breached: true, deficitKw: 0.6 },
       unactionable: true,
     });
@@ -1452,10 +1424,7 @@ describe('shouldSkipShortfallRebuildFromPlanSummary', () => {
       blockedByCooldownDevices: 1,
     };
 
-    expect(shouldSkipShortfallRebuildFromPlanSummary({
-      summary,
-      state: { lastMs: 0 },
-    })).toBe(true);
+    expect(shouldSkipShortfallRebuildFromPlanSummary(summary, { lastMs: 0 })).toBe(true);
   });
 
   it('suppresses when unrelated restore activation backoff blockers are counted', () => {
@@ -1467,10 +1436,7 @@ describe('shouldSkipShortfallRebuildFromPlanSummary', () => {
       blockedByPenaltyDevices: 1,
     };
 
-    expect(shouldSkipShortfallRebuildFromPlanSummary({
-      summary,
-      state: { lastMs: 0 },
-    })).toBe(true);
+    expect(shouldSkipShortfallRebuildFromPlanSummary(summary, { lastMs: 0 })).toBe(true);
   });
 
   it('suppresses when no actionable shortfall load remains', () => {
@@ -1481,10 +1447,7 @@ describe('shouldSkipShortfallRebuildFromPlanSummary', () => {
       remainingActionableControlledLoad: false,
     };
 
-    expect(shouldSkipShortfallRebuildFromPlanSummary({
-      summary,
-      state: { lastMs: 0 },
-    })).toBe(true);
+    expect(shouldSkipShortfallRebuildFromPlanSummary(summary, { lastMs: 0 })).toBe(true);
   });
 
   it('suppresses while actuation is still marked in-flight once no actionable load remains', () => {
@@ -1496,10 +1459,7 @@ describe('shouldSkipShortfallRebuildFromPlanSummary', () => {
       actuationInFlight: true,
     };
 
-    expect(shouldSkipShortfallRebuildFromPlanSummary({
-      summary,
-      state: { lastMs: 0 },
-    })).toBe(true);
+    expect(shouldSkipShortfallRebuildFromPlanSummary(summary, { lastMs: 0 })).toBe(true);
   });
 });
 
@@ -1522,12 +1482,11 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    const pending = schedulePlanRebuildFromSignal({
+    const pending = scheduleSignalForTest({
       scheduler,
       capacityGuard: createCapacityGuardMock(),
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 10,
-      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1558,11 +1517,10 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 10,
-      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1594,12 +1552,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 10,
       shortfallThresholdKw: 10,
       capacityGuard,
-      latchedTotalKw: 11,
+      totalKw: 11,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1637,12 +1595,12 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
     const beforeSkippedBackoff = getPerfSnapshot().counts.plan_rebuild_skipped_tight_noop_backoff_total ?? 0;
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 9.2,
       capacityGuard,
-      latchedTotalKw: 9.3,
+      totalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1676,12 +1634,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 9.2,
       capacityGuard,
-      latchedTotalKw: 9.3,
+      totalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1713,12 +1671,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 9.0,
       capacityGuard,
-      latchedTotalKw: 9.3,
+      totalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1751,12 +1709,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 9.2,
       capacityGuard,
-      latchedTotalKw: 9.3,
+      totalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1787,12 +1745,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 9.2,
       capacityGuard,
-      latchedTotalKw: 9.3,
+      totalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1821,11 +1779,10 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    const pending = schedulePlanRebuildFromSignal({
+    const pending = scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 10,
-      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1858,11 +1815,10 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 10,
-      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1888,11 +1844,10 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 10,
-      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1923,12 +1878,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 9.2,
       capacityGuard,
-      latchedTotalKw: 9.3,
+      totalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1958,12 +1913,11 @@ describe('schedulePlanRebuildFromSignal', () => {
       setState: (next) => { state = next; },
       rebuildPlanFromCache,
     });
-    const pending = schedulePlanRebuildFromSignal({
+    const pending = scheduleSignalForTest({
       scheduler,
       capacityGuard: createCapacityGuardMock(),
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 10,
-      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -1980,12 +1934,12 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     const urgentCapacityGuard = createTestCapacityGuard({ homeId: 'main', onShortfall: vi.fn() });
 
-    void schedulePlanRebuildFromSignal({
+    void scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 9.2,
       capacityGuard: urgentCapacityGuard,
-      latchedTotalKw: 9.3,
+      totalKw: 9.3,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2017,12 +1971,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 10,
       shortfallThresholdKw: 10,
       capacityGuard,
-      latchedTotalKw: 11,
+      totalKw: 11,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2053,12 +2007,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 10,
       shortfallThresholdKw: 10,
       capacityGuard,
-      latchedTotalKw: 9.6,
+      totalKw: 9.6,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2096,12 +2050,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 3.9,
       shortfallThresholdKw: 4.961,
       capacityGuard,
-      latchedTotalKw: 5.267,
+      totalKw: 5.267,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2154,12 +2108,12 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     // ≥100 W jitter per sample — "meaningful" deltas that used to force a rebuild each time.
     for (const powerW of [5450, 5300, 5480]) {
-      await schedulePlanRebuildFromSignal({
+      await scheduleSignalForTest({
       scheduler,
         capacityPaceKw: 3.9,
         shortfallThresholdKw: 4.961,
         capacityGuard,
-        latchedTotalKw: 5.267,
+        totalKw: 5.267,
         getState: () => state,
         setState: (next) => {
           state = next;
@@ -2203,12 +2157,12 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     // Within the max interval, the unrecoverable-shortfall skip suppresses the full
     // rebuild but still drives `checkShortfall`, so recovery detection stays alive.
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 3.9,
       shortfallThresholdKw: 4.961,
       capacityGuard,
-      latchedTotalKw: 4.6,
+      totalKw: 4.6,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2228,12 +2182,12 @@ describe('schedulePlanRebuildFromSignal', () => {
     // Past the max interval, the escape yields a real rebuild rather than suppressing
     // forever — otherwise a stale "unactionable" summary could deadlock the skip.
     vi.advanceTimersByTime(60_000);
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 3.9,
       shortfallThresholdKw: 4.961,
       capacityGuard,
-      latchedTotalKw: 4.6,
+      totalKw: 4.6,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2275,12 +2229,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    await schedulePlanRebuildFromSignal({
+    await scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 3.9,
       shortfallThresholdKw: 4.961,
       capacityGuard,
-      latchedTotalKw: 6.1,
+      totalKw: 6.1,
       getState: () => state,
       setState: (next) => {
         state = next;
@@ -2310,11 +2264,10 @@ describe('schedulePlanRebuildFromSignal', () => {
       rebuildPlanFromCache,
     });
 
-    const pending = schedulePlanRebuildFromSignal({
+    const pending = scheduleSignalForTest({
       scheduler,
       capacityPaceKw: 9.5,
       shortfallThresholdKw: 10,
-      latchedTotalKw: null,
       getState: () => state,
       setState: (next) => {
         state = next;

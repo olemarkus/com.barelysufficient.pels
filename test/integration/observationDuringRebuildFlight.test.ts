@@ -34,17 +34,16 @@ const runRebuild = async (params: {
   let state = buildState();
   const getState = (): PowerSampleRebuildState => state;
   const setState = (next: PowerSampleRebuildState): void => { state = next; };
-  const run = executePendingPowerRebuild({
-    getState,
-    setState,
-    getNowMs: () => 50_000,
-    rebuildPlanFromCache: async () => {
+  const run = executePendingPowerRebuild(
+    { getState, setState },
+    () => 50_000,
+    async () => {
       // Mid-flight: the observation lands after the rebuild read its devices.
       params.onFlight?.(setState, getState);
       if (params.reject) throw new Error('build exploded');
       return params.outcome ?? TIGHT_NOOP;
     },
-  });
+  );
   await (params.reject ? run.catch(() => undefined) : run);
   return state;
 };
@@ -112,14 +111,13 @@ describe('a device observation landing during an in-flight rebuild', () => {
     const getState = (): PowerSampleRebuildState => state;
     const setState = (next: PowerSampleRebuildState): void => { state = next; };
 
-    await executePendingPowerRebuild({
-      getState,
-      setState,
-      getNowMs: () => 50_000,
-      rebuildPlanFromCache: async () => TIGHT_NOOP,
+    await executePendingPowerRebuild(
+      { getState, setState },
+      () => 50_000,
       // Observation happened BEFORE dispatch, so the rebuild did see it: the
       // latch is a one-shot and must be spent here.
-    });
+      async () => TIGHT_NOOP,
+    );
 
     expect(state.shortfallSuppressionInvalidated).toBe(false);
   });

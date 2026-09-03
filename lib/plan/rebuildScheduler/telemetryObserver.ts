@@ -71,11 +71,13 @@ export class SchedulerTelemetryObserver {
 
   readonly onIntentCancelled = (intent: RebuildIntent, reason: string): void => {
     if (intent.kind === 'signal' || intent.kind === 'hardCap') {
-      cancelPendingPowerRebuild({
-        getState: () => this.deps.getPowerSampleRebuildState(),
-        setState: (state) => this.deps.setPowerSampleRebuildState(state),
+      cancelPendingPowerRebuild(
+        {
+          getState: () => this.deps.getPowerSampleRebuildState(),
+          setState: (state) => this.deps.setPowerSampleRebuildState(state),
+        },
         reason,
-      });
+      );
     }
   };
 

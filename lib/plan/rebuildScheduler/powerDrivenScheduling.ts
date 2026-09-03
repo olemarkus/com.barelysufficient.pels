@@ -1,5 +1,5 @@
 import { incPerfCounter, incPerfCounters } from '../../utils/perfCounters';
-import { PlanRebuildScheduler, type RebuildIntent } from './scheduler';
+import type { RebuildIntent } from './scheduler';
 import { clearShortfallSuppressionInvalidation } from './shortfallSuppression';
 import {
   resolvePendingOrInFlight,
@@ -17,11 +17,16 @@ import {
   shouldApplyTightMitigationHoldoff,
   shouldApplyTightNoopBackoff,
   TIGHT_MITIGATION_HOLDOFF_MS,
-  type HardCapBreach,
   type RebuildDecision,
   type RebuildOutcome,
 } from './policy';
-import type { PowerSampleRebuildState } from './powerDriven';
+import type { PowerRebuildSignal } from './rebuildSignal';
+import type {
+  PowerRebuildSchedulerPort,
+  PowerSampleRebuildState,
+  PowerSampleRebuildStore,
+  TightNoopHardCapReporter,
+} from './powerDriven';
 import type { PlanRebuildTrigger, PowerSampleRebuildTrigger } from '../planRebuildTrigger';
 
 const hasTightNoopBackoffState = (state: PowerSampleRebuildState): boolean => (
@@ -30,20 +35,20 @@ const hasTightNoopBackoffState = (state: PowerSampleRebuildState): boolean => (
   || state.mitigationHoldoffUntilMs !== undefined
 );
 
-export const handleSkippedRebuildDecision = (params: {
-  state: PowerSampleRebuildState;
-  decision: RebuildDecision;
-  now: number;
-  hardCapBreach?: HardCapBreach;
-  isInShortfall?: boolean;
-  setState: (state: PowerSampleRebuildState) => void;
-}): void => {
-  const { state, decision, now, hardCapBreach, isInShortfall, setState } = params;
+export const handleSkippedRebuildDecision = (
+  store: PowerSampleRebuildStore,
+  signal: PowerRebuildSignal,
+  state: PowerSampleRebuildState,
+  decision: RebuildDecision,
+  now: number,
+): void => {
+  const { setState } = store;
+  const breached = signal.hardCapBreach.breached;
   let nextState = state;
-  if (!decision.headroomTight && !isInShortfall && !hardCapBreach?.breached && hasTightNoopBackoffState(nextState)) {
+  if (!decision.headroomTight && !signal.isInShortfall && !breached && hasTightNoopBackoffState(nextState)) {
     nextState = resetTightNoopBackoff(nextState);
   }
-  if (hardCapBreach?.breached !== true && nextState.lastHardCapBreached === true) {
+  if (!breached && nextState.lastHardCapBreached === true) {
     nextState = { ...nextState, lastHardCapBreached: false, lastHardCapDeficitKw: undefined };
   }
   // Keep the persisted execution-floor flag in sync on skips too (requests stamp it
@@ -205,40 +210,25 @@ const createPendingPromiseState = (
   };
 };
 
-const stagePendingRebuildRequest = (params: {
-  state: PowerSampleRebuildState;
-  decision: RebuildDecision;
-  nowMs: number;
-  minIntervalMs: number;
-  currentPowerW?: number;
-  capacityPaceKw?: number;
-  triggerReason: PowerSampleRebuildTrigger;
-  hardCapBreach?: HardCapBreach;
-  isInShortfall?: boolean;
-  onTightNoopHardCapBreach?: (deficitKw: number) => Promise<void>;
-}): {
+const stagePendingRebuildRequest = (
+  signal: PowerRebuildSignal,
+  state: PowerSampleRebuildState,
+  outcome: RebuildDecisionOutcome,
+  nowMs: number,
+  minIntervalMs: number,
+  reportTightNoopHardCap: TightNoopHardCapReporter,
+): {
   nextState: PowerSampleRebuildState;
   intentKind: RebuildIntent['kind'];
   hadPending: boolean;
   previousDueMs?: number;
 } => {
-  const {
-    state,
-    decision,
-    nowMs,
-    minIntervalMs,
-    currentPowerW,
-    capacityPaceKw,
-    triggerReason,
-    hardCapBreach,
-    isInShortfall,
-    onTightNoopHardCapBreach,
-  } = params;
+  const { decision, triggerReason } = outcome;
   let nextState = state;
   if (decision.deltaMeaningful && hasTightNoopBackoffState(nextState)) {
     nextState = resetTightNoopBackoff(nextState);
   }
-  const intentKind = resolveRebuildIntentKind({ hardCapBreach });
+  const intentKind = resolveRebuildIntentKind(signal.hardCapBreach);
   const dueMs = intentKind === 'hardCap'
     ? nowMs
     : Math.max(nowMs, nextState.lastMs + minIntervalMs);
@@ -247,13 +237,13 @@ const stagePendingRebuildRequest = (params: {
   nextState = createPendingPromiseState(nextState);
   nextState = {
     ...nextState,
-    pendingPowerW: typeof currentPowerW === 'number' ? currentPowerW : nextState.pendingPowerW,
-    pendingCapacityPaceKw: typeof capacityPaceKw === 'number' ? capacityPaceKw : nextState.pendingCapacityPaceKw,
+    pendingPowerW: signal.currentPowerW,
+    pendingCapacityPaceKw: signal.capacityPaceKw,
     pendingReason: triggerReason,
     pendingDueMs: typeof previousDueMs === 'number' ? Math.min(previousDueMs, dueMs) : dueMs,
-    pendingHardCapBreach: hardCapBreach,
-    pendingIsInShortfall: isInShortfall,
-    pendingOnTightNoopHardCapBreach: onTightNoopHardCapBreach,
+    pendingHardCapBreach: signal.hardCapBreach,
+    pendingIsInShortfall: signal.isInShortfall,
+    pendingOnTightNoopHardCapBreach: reportTightNoopHardCap,
     tightUnactionable: decision.tightUnactionable,
   };
   if (intentKind === 'hardCap' && hasTightNoopBackoffState(nextState)) {
@@ -267,18 +257,12 @@ const stagePendingRebuildRequest = (params: {
   };
 };
 
-const recordPendingRebuildQueueState = (params: {
-  triggerReason: PowerSampleRebuildTrigger;
-  hadPending: boolean;
-  previousDueMs?: number;
-  pendingDueMs?: number;
-}): void => {
-  const {
-    triggerReason,
-    hadPending,
-    previousDueMs,
-    pendingDueMs,
-  } = params;
+const recordPendingRebuildQueueState = (
+  triggerReason: PowerSampleRebuildTrigger,
+  hadPending: boolean,
+  previousDueMs: number | undefined,
+  pendingDueMs: number | undefined,
+): void => {
   recordPowerSampleRebuildRequest(triggerReason);
   if (!hadPending) {
     incPerfCounter('plan_rebuild_pending_created_total');
@@ -307,18 +291,12 @@ const recordPowerSampleRebuildExecution = (reason: PowerSampleRebuildTrigger): v
   incReasonCounter('plan_rebuild_execute.power_sample_reason', reason);
 };
 
-export function executePendingPowerRebuild(params: {
-  getState: () => PowerSampleRebuildState;
-  setState: (state: PowerSampleRebuildState) => void;
-  getNowMs: () => number;
-  rebuildPlanFromCache: (trigger: PowerSampleRebuildTrigger) => Promise<RebuildOutcome | void>;
-}): Promise<void> {
-  const {
-    getState,
-    setState,
-    getNowMs,
-    rebuildPlanFromCache,
-  } = params;
+export function executePendingPowerRebuild(
+  store: PowerSampleRebuildStore,
+  getNowMs: () => number,
+  rebuildPlanFromCache: (trigger: PowerSampleRebuildTrigger) => Promise<RebuildOutcome | void>,
+): Promise<void> {
+  const { getState, setState } = store;
   const snapshot = getState();
   const reason = snapshot.pendingReason ?? 'unknown';
   const pendingResolve = snapshot.pendingResolve;
@@ -385,134 +363,64 @@ export function executePendingPowerRebuild(params: {
     });
 }
 
-export function cancelPendingPowerRebuild(params: {
-  getState: () => PowerSampleRebuildState;
-  setState: (state: PowerSampleRebuildState) => void;
-  reason?: string;
-}): void {
-  const {
-    getState,
-    setState,
-    reason,
-  } = params;
+export function cancelPendingPowerRebuild(store: PowerSampleRebuildStore, reason: string): void {
+  const { getState, setState } = store;
   const state = getState();
   state.pendingResolve?.(reason);
   setState(clearPendingState(state));
 }
 
-export const resolvePowerSampleDecision = (params: {
-  state: PowerSampleRebuildState;
-  nowMs: number;
-  elapsedMs: number;
-  maxIntervalMs: number;
-  limitKw: number;
-  currentPowerW?: number;
-  powerDeltaW?: number;
-  headroomKw?: number | null;
-  isInShortfall?: boolean;
-  hardCapBreach?: HardCapBreach;
-  planConvergenceActive?: boolean;
-  unactionable?: boolean;
-}): { decision: RebuildDecision; triggerReason: PowerSampleRebuildTrigger } => {
-  const {
-    state,
-    nowMs,
-    elapsedMs,
-    maxIntervalMs,
-    limitKw,
-    currentPowerW,
-    powerDeltaW,
-    headroomKw,
-    isInShortfall,
-    hardCapBreach,
-    planConvergenceActive,
-    unactionable,
-  } = params;
-  const decision = resolveRebuildDecision({
-    state,
-    nowMs,
-    elapsedMs,
-    maxIntervalMs,
-    limitKw,
-    currentPowerW,
-    powerDeltaW,
-    headroomKw,
-    isInShortfall,
-    hardCapBreach,
-    planConvergenceActive,
-    unactionable,
-  });
-  const triggerReason = resolveRebuildReason({
-    state,
-    decision,
-    isInShortfall,
-    hardCapBreach,
-    planConvergenceActive,
-  });
-  return { decision, triggerReason };
+/** The decision step's verdict and the trigger label that explains it. */
+export type RebuildDecisionOutcome = {
+  decision: RebuildDecision;
+  triggerReason: PowerSampleRebuildTrigger;
 };
 
-export const requestPowerSampleRebuild = (params: {
-  resolvedScheduler: PlanRebuildScheduler;
-  getState: () => PowerSampleRebuildState;
-  setState: (state: PowerSampleRebuildState) => void;
-  fallbackState: PowerSampleRebuildState;
-  decision: RebuildDecision;
-  nowMs: number;
-  minIntervalMs: number;
-  currentPowerW?: number;
-  capacityPaceKw?: number;
-  triggerReason: PowerSampleRebuildTrigger;
-  hardCapBreach?: HardCapBreach;
-  isInShortfall?: boolean;
-  onTightNoopHardCapBreach?: (deficitKw: number) => Promise<void>;
-}): Promise<void | string> => {
-  const {
-    resolvedScheduler,
-    getState,
-    setState,
-    fallbackState,
-    decision,
-    nowMs,
-    minIntervalMs,
-    currentPowerW,
-    capacityPaceKw,
-    triggerReason,
-    hardCapBreach,
-    isInShortfall,
-    onTightNoopHardCapBreach,
-  } = params;
+export const resolvePowerSampleDecision = (
+  signal: PowerRebuildSignal,
+  state: PowerSampleRebuildState,
+  nowMs: number,
+  maxIntervalMs: number,
+): RebuildDecisionOutcome => {
+  const decision = resolveRebuildDecision(signal, state, nowMs, maxIntervalMs);
+  return { decision, triggerReason: resolveRebuildReason(signal, state, decision) };
+};
+
+export const requestPowerSampleRebuild = (
+  port: PowerRebuildSchedulerPort,
+  signal: PowerRebuildSignal,
+  outcome: RebuildDecisionOutcome,
+  nowMs: number,
+  minIntervalMs: number,
+  reportTightNoopHardCap: TightNoopHardCapReporter,
+): Promise<void | string> => {
+  const { getState, setState, scheduler } = port;
+  const { triggerReason } = outcome;
+  // The snapshot staged from is also the one restored when the scheduler drops
+  // the intent: nothing writes state between the two.
+  const fallbackState = getState();
   const {
     nextState,
     intentKind,
     hadPending,
     previousDueMs,
-  } = stagePendingRebuildRequest({
-    state: getState(),
-    decision,
+  } = stagePendingRebuildRequest(
+    signal,
+    fallbackState,
+    outcome,
     nowMs,
     minIntervalMs,
-    currentPowerW,
-    capacityPaceKw,
-    triggerReason,
-    hardCapBreach,
-    isInShortfall,
-    onTightNoopHardCapBreach,
-  });
+    reportTightNoopHardCap,
+  );
   setState(nextState);
 
   const pending = nextState.pending ?? Promise.resolve();
   const intent: RebuildIntent = { kind: intentKind, reason: triggerReason };
-  const requestResult = resolvedScheduler.request(intent);
+  const requestResult = scheduler.request(intent);
   if (requestResult.status === 'dropped') {
     setState(fallbackState);
     return resolvePendingOrInFlight(fallbackState);
   }
-  recordPendingRebuildQueueState({
-    triggerReason,
-    hadPending,
-    previousDueMs,
-    pendingDueMs: nextState.pendingDueMs,
-  });
+  recordPendingRebuildQueueState(triggerReason, hadPending, previousDueMs, nextState.pendingDueMs);
   return pending;
 };
