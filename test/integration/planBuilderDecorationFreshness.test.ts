@@ -1,9 +1,8 @@
 /**
  * A deferred `binary_restore` (an EV deadline resume) is the only release intent
- * that drives a positive, turn-ON command, so it must not be attached to a plan
- * built on a stale power sample — issuing it would race the capacity guard on
- * data it cannot trust. `binary_release` and `shed_release` are negative commands
- * and stay safe under stale power.
+ * that drives a positive, turn-ON command, so it rides only a plan built from a
+ * MEASUREMENT — the silent-meter pass has no headroom to admit it against.
+ * `binary_release` and `shed_release` are negative commands and ride either pass.
  *
  * The guard sits at build time, in the producer of the intent, as a seam
  * argument: the measured pipeline passes `true`, the silent-meter pass `false`.

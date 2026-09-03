@@ -150,8 +150,8 @@ change to this lane that breaks one is a regression, not a tuning choice**:
 6. **Once per day, idempotently.** `throughDateKey` makes repeat rollups and boot
    catch-ups no-ops; an unmeasurable day holds rather than growing or decaying.
 
-The planner itself is still not a party to any of it: it reads
-`daily_budget_kwh` exactly as before and knows nothing about starvation.
+The planner itself is still not a party to any of it: it consumes the resolved
+daily-budget snapshot exactly as before and knows nothing about starvation.
 
 The path:
 

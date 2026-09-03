@@ -54,8 +54,8 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   is repaired, when an adapter temporarily misclassifies the configured selection, or when an
   earlier in-flight read lands during that repair. The
   identity is in-memory only, so a restart inside that lifetime is fenced too:
-  the tracker reloads durable watts the planner still treats as fresh while no
-  ingest of the new process has attested them. That restart fence means only "the current sample's
+  the tracker reloads durable watts that no ingest of the new process has
+  attested. That restart fence means only "the current sample's
   provenance did not survive restart"; it is not evidence that Main actually read an area's meter.
   The sampled clause holds Main closed until the first admitted sample re-proves provenance. One
   physical sample must never drive two independent controllers
@@ -240,65 +240,35 @@ indefinitely. Price optimization and surplus absorb stay off for a sub-home inde
 `getPriceOptimizationSettings: () => ({})`: both require a per-device config
 entry, and an empty map has none.
 
-Binding those targets live for a sub-home also opened a LOAD-ADDING write, so
-one more per-home posture rides alongside them: **`holdsModeTargetRaisesWhile
-PowerUnknown`** (sub-homes `true`, main `false`). When it is on and
-`context.planningTotalKw` is `null` — the producer-resolved "no trustworthy
-meter total this cycle" — a load-adding mode-target change is held at the
-device's own current setpoint (`applyModeSeedModulation`,
-`lib/plan/planDevices.ts`). It read the `context.powerKnown` flag until
-2026-08-07; the resolved field replaced it so the condition is the absence of
-the number rather than a boolean beside one that can disagree with it.
+Binding those targets live for a sub-home also opened a LOAD-ADDING write. A mode
+target is the one load-adding thing the planner commands as an ordinary
+`target_update`, so it consults neither headroom nor the restore cooldowns and
+startup stabilization: `lib/executor/executableTargetProjection.ts` advances the
+restore clocks only for a write the producer stamped `recordRestoreOnTargetApply`,
+so an 18→22 raise is not a restore.
 
-A mode target is the one load-adding thing the planner commands as an ordinary
-`target_update`, so it consults neither headroom — 0 or negative whenever power
-is unknown — nor the restore cooldowns and startup stabilization:
-`lib/executor/executableTargetProjection.ts` advances the restore clocks only for
-a write the producer stamped `recordRestoreOnTargetApply`, so an 18→22 raise is
-not a restore. The hold's shape (rather than blanking `getModeDeviceTargets`) is
-load-bearing in these ways:
+There is no per-home "hold raises while power is unknown" posture. One was
+described here against `context.planningTotalKw`; neither that field nor the
+posture exists, and `applyModeSeedModulation` (`lib/plan/planDevices.ts`) applies
+price and surplus deltas only. Do not reintroduce one: an unmeasured cycle is not
+a state the ordinary pipeline can be in, and withholding a write because a sample
+went missing is the transient-gap hedge the root `AGENTS.md` forbids.
 
-- **Class-aware direction.** For heat-direction devices a RAISE is held and a
-  LOWERING still applies — blanking the map would strand an area consuming
-  *more* than the user configured. For cooling-capable classes
-  (`isCoolingCapableTemperatureDeviceClass`: heat pump, air conditioning, air
-  treatment) BOTH directions are held, because lowering adds compressor load in
-  cooling mode and PELS cannot observe which mode a reversible unit is in.
-- **Exact observed value, not its normalization.** The hold emits the device's
-  reported setpoint verbatim (an off-step 18.6 with a 1° step would otherwise
-  round to 19 — a load-adding write the executor could not drop). Planned equals
-  observed is by construction the no-op `Object.is(observedValue, desired)`
-  drops.
-- **Fail closed without an observation.** When the current setpoint is
-  unreadable (`buildTargets` omits `value` on a malformed read), no target is
-  planned at all: any emitted value would reach the executor with
-  `observedValue` undefined, where the no-op fence cannot trip.
-- **Honest to the planner.** The hold modulates the resolved mode target rather
-  than replacing it, so nothing downstream sees the device as unconfigured. (It
-  once mattered more: a device that fell through to the old fallback seed was
-  routed past price and surplus modulation entirely. The mode catalog owner now
-  answers for every temperature device, so there is no fallback path left to
-  fall into — `notes/temperature-ownership.md`.)
-- **Freshness-based, not "never sampled".** `planningTotalKw` returns to `null`
-  on every stale window, so an area meter that reports once and then dies stops
-  earning raises.
+Two facts that section carried do stand on their own:
 
-Because the hold deliberately lets heat-device lowerings through, those
-lowerings must actually reach a silent-meter area: every suffixed area-catalog
-write reloads the owning bundle and explicitly rebuilds its planner. A silent
-meter produces no power-driven rebuilds and the freshness heartbeat fires at
-most once per stale period, so relying on a future sample could leave a
-cooler-mode lowering unapplied indefinitely. The Main-catalog fan-out remains
-only for a pre-migration area still following Main.
-
-Main binds `false` deliberately. Its unknown-power window is normally the
-seconds before the first Homey Energy poll, where an area's unknown-power window lasts as long as its
-meter is offline; and main owns settle/dwell machinery for the
-power-goes-unknown transition (`lib/plan/planSurplusAbsorb.ts`) that a blanket
-clamp would pre-empt. Two exemptions apply to both homes: the deadline floor is
-applied after the hold (a smart task's floor is a promise, not opportunistic
-load), and a shed setpoint is written regardless, since `planDevicesBase.ts`
-overrides `plannedTarget` without consulting the mode map.
+- A heat-device lowering must actually reach a silent-meter area, so every
+  suffixed area-catalog write reloads the owning bundle and asks its planner to
+  rebuild. A silent meter produces no power-driven rebuilds and the freshness
+  heartbeat fires at most once per stale period, so relying on a future sample
+  could leave a cooler-mode lowering unapplied indefinitely. The request is not a
+  guarantee: `PlanService.rebuildPlanFromCache` returns `gated: true` without
+  building whenever the composed build gate is shut, which is exactly an area
+  whose meter has never reported or one past its fail-closed pass. Reaching those
+  areas needs the gate to open, not a louder rebuild request. The Main-catalog
+  fan-out remains only for a pre-migration area still following Main.
+- A shed setpoint is written regardless of the mode map — `planDevicesBase.ts`
+  overrides `plannedTarget` without consulting it — and a deadline floor is a
+  promise rather than opportunistic load.
 
 Main-home-only, on purpose: **daily budget, price optimization, smart
 tasks.** The daily budget is a **Main-home** budget, not a whole-home one:

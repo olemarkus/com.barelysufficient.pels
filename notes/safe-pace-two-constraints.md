@@ -453,33 +453,21 @@ In the ordinary case it does not, and the reasoning is worth recording so nobody
 capacityPaceKw`, so `headroom < 0` implies `P_import > capacityPaceKw`, which makes
 `capacityBreached` true and admits the exempt device by that clause anyway.
 
-**But the two clauses are not equivalent in general.** Two branches force
-`headroom = -1` while `P_import > capacityPaceKw` is false or unknowable, so
-shedding runs with `overCapacityPace` false. They must be handled **differently**,
-and conflating them is a trap:
+**But the two clauses are not equivalent in general.** The exhausted hour sheds
+while `P_import > capacityPaceKw` is false, so shedding runs with
+`overCapacityPace` false and the predicate has to carry it explicitly:
 
-- **An unmeasured cycle.** Since 2026-08-16 the planner is not told *why* a
-  headroom is what it is: `lib/power` owns the meter and answers
-  `headroomKw(limitKw)` with a number, forcing −1 once the sample has aged past
-  the shed timeout and holding at 0 before that (`lib/power/powerCycleReading.ts`).
-  The one thing the planner may know is `powerIsMeasured` — measured or the
-  producer's hold, never which stale state produced it. The source stays
-  `context.softLimitSource`. If that is `'capacity'`, the `limitSource !== 'daily'`
-  clause admits budget-exempt candidates today, so keying candidacy on a bare
-  `overCapacityPace` would reject them and a fail-closed meter would stop shedding
-  exactly the devices it most needs to. This branch needs an explicit
-  forced-breach term.
-- **Exhausted hour.** The opposite. `buildSheddingPlan.ts:103` deliberately
-  overrides the source to `'daily'` (`candidateLimitSource = hourlyBudgetExhausted
+- **Exhausted hour.** `buildSheddingPlan.ts:44` deliberately
+  overrides the source to `'daily'` (`sheddingLimitSource = hourlyBudgetExhausted
   ? 'daily' : context.softLimitSource`) precisely so exempt devices stay
-  protected, and `test/integration/planShedding.test.ts:3424-3488` pins that only
+  protected, and `test/integration/planShedding.test.ts:4089` pins that only
   non-exempt devices are selected even when the context source is capacity. Adding
   this branch to a forced-breach term would let `shedAllCandidates` shed "Get power
   now" devices, which is a behaviour change, not a preservation.
 
-So the rule is: carry the forced-breach term into the predicate, and leave the
-exhausted-hour override exactly where it is. Note what the rule may NOT be
-written as any more — "carry `stale_fail_closed` into the predicate", its
+So the rule is: carry the exhausted-hour term into the predicate, and leave the
+override in `buildSheddingPlan.ts` exactly where it is. Note what the rule may NOT
+be written as any more — "carry `stale_fail_closed` into the predicate", its
 original wording. That name does not exist inside `lib/plan`, by design: a
 planner branch on a freshness label is the provenance branch the root
 `AGENTS.md` forbids, and it was how four control paths came to re-derive
@@ -522,13 +510,11 @@ that from a source string that was itself computed from a collapsed scalar. That
 is worth having, for the reason copy and the starvation attribution in particular,
 but it is a legibility win, not a decoupling one.
 
-The identity covers the deficit only. `buildPlanContext` layers two overrides on
-top of the collapsed scalar, and a re-expression has to carry both: an unmeasured
-cycle past the shed timeout resolves `headroomRaw = -1` inside `lib/power`, and
-`hourlyBudgetExhausted && bindingPaceKw <= 0 && measuredAtOrBelowKw(0.01)` forces
-`headroom = -1` so an exhausted hour still sheds when the meter reads ~0. The
-second one is MEASURED now — it used to test the raw cached total, which survives
-a dropout.
+The identity covers the deficit only. One forcing sits on top of the collapsed
+scalar and a re-expression has to carry it: an exhausted hour still sheds when the
+meter reads ~0. It is MEASURED — it used to test the raw cached total, which
+survives a dropout. (The unmeasured cycle is not a second one: since 2026-09-02
+that pass never enters this pipeline at all.)
 
 ### The display threshold stays rebased, and that is not fixable by renaming
 
@@ -588,11 +574,11 @@ sense, so adopting the argmin reading means rewording it. Take that through
 
 Two further consequences:
 
-- `softLimitSource` can finally emit `'both'`. The value is already defined in the
-  contract (`packages/contracts/src/settingsUiApi.ts:156`), in the tooltip map
-  (`packages/shared-domain/src/planHeroTooltips.ts:24`), and in
-  `notes/ui-terminology.md`, but `resolveSoftLimitSource` can only ever return
-  `'capacity'` or `'daily'`, so that copy is unreachable today.
+- `softLimitSource` could emit `'both'`. It cannot today, and reviving it is a
+  separate decision: the member was deleted on 2026-08-15 for having no producer at
+  any layer, and both the contract (`packages/contracts/src/settingsUiApi.ts`) and
+  the tooltip map (`packages/shared-domain/src/planHeroTooltips.ts`) are now
+  two-member. `notes/ui-terminology.md` rules there are exactly two, never a third.
 
   Do not build a second fold for it. `resolveLimitReason`
   (`lib/plan/pelsStatus.ts:265-291`) already computes a three-way
@@ -612,9 +598,10 @@ Two further consequences:
   that pass no longer runs this predicate at all, it is its own path that sheds every
   candidate, `lib/plan/planBuilderSilentMeter.ts`.)
 
-The `?? 0` in item 3 is independent of this and should be fixed first: the producer
-needs to return an "exempt draw unresolved" state that the planner handles
-explicitly rather than defaulting to zero.
+The `?? 0` in item 3 is independent of this and should be fixed first — in the
+producer, by removing the unavailability rather than modelling it
+(`notes/state-management/snapshot-decomposition.md`, "Absence stops here"). The
+planner must not be handed an "exempt draw unresolved" state to branch on.
 
 ## What this means for the Overview hero
 

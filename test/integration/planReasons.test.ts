@@ -297,9 +297,9 @@ describe('normalizeShedReasons', () => {
   // carried `insufficientHeadroom`, so the cards read "Waiting to resume — X kW
   // more needed" while nothing else was running and the freeable power was zero.
   // The hold is budget pacing; say so. `budgetReleasableHeadroomHold` is the
-  // producer-resolved flat semantic from `PlanContext` (daily binding + fresh
-  // power + no capacity breach); a stale-hold / fail-closed meter or a genuine
-  // capacity breach resolves it false upstream, keeping the headroom framing.
+  // producer-resolved flat semantic on `MeasuredPower` (daily binding + no
+  // capacity breach); a genuine capacity breach resolves it false upstream,
+  // keeping the headroom framing.
   it('re-attributes a budget-bound insufficientHeadroom restore hold to dailyBudget', () => {
     const build = (budgetReleasableHeadroomHold: boolean) => normalizeShedReasons({
       planDevices: [buildPlanDevice({
@@ -327,9 +327,8 @@ describe('normalizeShedReasons', () => {
   });
 
   // The breach carve-out sits inside the shared helper, ahead of the flat-field
-  // gate: even a stale `budgetReleasableHeadroomHold: true` (impossible from the
-  // producer, which folds the breach in — belt and suspenders here) must not
-  // re-attribute while capacity is breached.
+  // gate: a caller passing `budgetReleasableHeadroomHold: true` alongside a breach
+  // (a pair the producer never emits) must still not re-attribute.
   it('keeps insufficientHeadroom holds numeric while capacity is breached', () => {
     const [device] = normalizeShedReasons({
       planDevices: [buildPlanDevice({

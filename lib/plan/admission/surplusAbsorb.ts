@@ -35,12 +35,14 @@ const isFiniteNumber = (value: unknown): value is number => (
  *   current state to have held the minimum dwell: the chatter / passing-cloud
  *   guard, reusing the observer settle's timestamp-window shape rather than a
  *   bespoke tick counter.
- * - `availableSurplusKw === null` (power unknown / stale) yields "no surplus",
- *   which can only release or block engage — never raise blind.
+ * - `availableSurplusKw === null` (not a willing absorber, or the silent-meter pass
+ *   withdrawing eligibility) yields "no surplus", which can only release or block
+ *   engage — never raise blind.
  * - Hard-off (release direction only): when the caller flags the release
- *   condition as unambiguous (`hardOff` — power signal lost, or sustained
- *   whole-home import beyond `SURPLUS_ABSORB_HARD_OFF_IMPORT_KW`) and it has
- *   been sustained for a full settle window, the release skips the min dwell.
+ *   condition as unambiguous (`hardOff` — the silent-meter pass withdrawing
+ *   eligibility, or sustained whole-home import beyond
+ *   `SURPLUS_ABSORB_HARD_OFF_IMPORT_KW`) and it has been sustained for a full
+ *   settle window, the release skips the min dwell.
  *   The settle confirmation always applies, and the bypass term never applies
  *   in the engage direction. The dwell keeps guarding the ordinary dip
  *   (surplus collapsed but the home is not clearly importing).
@@ -215,13 +217,15 @@ export function syncSurplusEligibilityState(params: {
   state: PlanEngineState;
   deviceId: string;
   willing: boolean;
-  // Surplus the allocator has reserved for this device, in kW; null when power
-  // is unknown/stale (treated as no surplus).
+  // Surplus the allocator has reserved for this device, in kW; null when the device
+  // is not a willing absorber, or the unmeasured pass withdrew it (treated as no
+  // surplus).
   availableSurplusKw: number | null;
   expectedDrawKw: number;
-  // True when the release condition is unambiguous (power signal lost, or
-  // sustained whole-home import beyond SURPLUS_ABSORB_HARD_OFF_IMPORT_KW):
-  // sustained for a settle window it lets a release skip the min dwell. Must
+  // True when the release condition is unambiguous (the silent-meter pass
+  // withdrawing eligibility, or sustained whole-home import beyond
+  // SURPLUS_ABSORB_HARD_OFF_IMPORT_KW): sustained for a settle window it lets a
+  // release skip the min dwell. Must
   // stay false for the ordinary passing-cloud dip, which keeps the dwell.
   hardOff: boolean;
   nowTs?: number;

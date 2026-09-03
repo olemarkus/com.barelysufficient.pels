@@ -87,8 +87,8 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   is the twin of the plan kinds carrying no device-observation freshness, and it exists
   because four control paths had each re-derived "is power observable" from a
   freshness label, disagreeing with the producer's own answer. Display facts
-  (`powerFreshnessState`, the raw total) travel BESIDE the context to the meta
-  writer, never on it — a field a builder can reach is a field a builder will
+  (the raw total, `lastPowerUpdateMs`, `powerIsMeasured`) travel BESIDE the context
+  to the meta writer, never on it — a field a builder can reach is a field a builder will
   branch on. Owner ruling 2026-08-16; `notes/safe-pace-two-constraints.md`.
 - Shed cooldown ≥60 s; restore cooldown 60–300 s. Plan materialization copies `shedSet` but never selects new sheds.
 - **The planner does not import the executor.** Setup composes planner and executor behind the

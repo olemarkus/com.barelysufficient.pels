@@ -365,8 +365,8 @@ export function syncActivationPenaltyState(params: {
     // evidence the cautious admission held: the household was actually
     // measured to be within budget while this device was admitted at the
     // inflated bar. Without a clean sample, "no overshoot attributed" could
-    // just mean the main meter was stale for the full window — absence of
-    // attribution is not evidence of capacity compliance.
+    // just mean no cycle in the window measured the household within its limits
+    // — absence of attribution is not evidence of capacity compliance.
     //
     // We deliberately do NOT also require evidence of device-side load draw.
     // The penalty exists to learn about household-level overshoot risk, not
@@ -453,8 +453,8 @@ export function syncConfirmedRestoreAttributionState(params: {
   // `syncActivationPenaltyState`'s window-expiry branch — it consults this
   // timestamp as the "cautious admission proved itself" evidence. Without a
   // sample recorded for this window, "no overshoot attributed" could just
-  // mean the main meter was stale for the full window — absence of
-  // attribution is not evidence of capacity compliance.
+  // mean no cycle in the window measured the household within its limits —
+  // absence of attribution is not evidence of capacity compliance.
   if (
     params.cleanWholeHomeSample
     && isFiniteNumber(params.wholeHomePowerSampleAtMs)

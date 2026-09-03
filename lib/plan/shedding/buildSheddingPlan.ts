@@ -276,7 +276,7 @@ function skipSheddingAwaitingMeasurement(params: {
  * plans a shed it never actuates, so losing it from the plan loses the pending
  * command the activation path force-applies. Narrowing selection to
  * `lastShedPlanShedIds` freezes the decision instead: devices already chosen stay
- * chosen, the deficit that the stale reading still claims buys no additional
+ * chosen, the deficit that the unchanged reading still claims buys no additional
  * device. No `updates` are returned — nothing was mitigated this cycle, so the
  * hold window keeps running from the real shed and expires on schedule.
  *

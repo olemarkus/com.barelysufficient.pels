@@ -66,8 +66,11 @@ export function schedulePlanRebuildFromSignal(params: {
   capacityPaceKw: number;
   /**
    * The tracker's latched whole-home total in kW, resolved by the caller
-   * (`resolveLastTotalPowerKw`). `null` = no trustworthy reading, in which case
-   * headroom falls back to the incoming sample.
+   * (`resolveLastTotalPowerKw`). `null` = the latch holds no value: before the
+   * first reading, or after a reset clears it (`homeTrackerPersistence` blanks
+   * `lastPowerW` on an owner change). It is not an age verdict — an old reading
+   * is still a measurement (`lib/power/lastTotalPower.ts`). Headroom falls back
+   * to the incoming sample in that case.
    *
    * Same sample as `currentPowerW`, not an older one: the tracker core calls
    * `saveState` before it awaits the rebuild this path serves

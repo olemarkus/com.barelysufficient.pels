@@ -93,7 +93,8 @@ Revisit if:
   relative to native (different trust levels in scheduling decisions).
 - Diagnostics surfaces want to render "value from flow" badges to the user.
 - A future SoC contract carries multi-source consensus (e.g. native vs
-  flow disagreement) and the planner has to act on the divergence.
+  flow disagreement). The resolution stays in the observation layer — it
+  publishes one resolved level, never a divergence for a consumer to arbitrate.
 
 When that happens, the right move is to introduce a typed source field
 again (or a richer per-source snapshot) — not to retrofit a `source` flag

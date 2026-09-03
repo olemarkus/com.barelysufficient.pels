@@ -35,8 +35,8 @@
     noReadingsSubtitle: "No power readings",
     /**
      * Meta line while the tile's reading is not current — the payload builder
-     * aged the persisted status by its own `lastPowerUpdate` (or the planner
-     * reported no live sample). The numbers above it are from before, so the
+     * aged the persisted status by its own `lastPowerUpdate`. The numbers above
+     * it are from before, so the
      * available-power / held-back claims are withheld and this line says so.
      * The AGING is what makes this honest: across the persisted-blob transport
      * the widget cannot ask the runtime's gate, so the blob's own timestamp is

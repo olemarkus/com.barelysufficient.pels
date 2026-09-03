@@ -172,10 +172,12 @@ fallback actuation stays on the independent lifecycle clock:
 Cap-on temperature admission is still future work. Priority-ordered contention across multiple
 deferred objectives and EV pause/resume admission are shipped — see `notes/ev-ready-by/README.md`.
 
-EV admission has one additional safety gate beyond the temperature path: `binary_restore` intents
-are dropped by `planBuilder.attachDeferredReleaseIntents` when
-`context.powerFreshnessState !== 'fresh'`. Stale whole-home power readings can't justify
-restoring an EV charger — the gate is one-way (pause is always safe and isn't gated).
+EV admission has one additional safety gate beyond the temperature path: `binary_restore` is the
+only intent that drives a positive (turn-on) command, so it rides only a MEASURED cycle's plan.
+`attachDeferredReleaseIntents` takes a `binaryRestoreAllowed` flag from its caller — `true` on the
+ordinary measured build, `false` on the silent-meter fail-closed pass — and drops `binary_restore`
+when it is false. The gate is one-way: `binary_release` and `shed_release` are negative commands
+and ride either plan.
 
 ### Active plan persistence and replan policy
 
@@ -520,7 +522,11 @@ This gives PELS one planner contract for both EVs and heaters:
 - How fast can this device conservatively add useful energy?
 - How much time remains?
 - What is the minimum step/mode/action required to remain on plan?
-- Is the answer trustworthy enough to act on?
+
+Trustworthiness is deliberately NOT on this contract: admission
+(`lib/objectives/deferredObjectives/admission.ts`, `PLANNABLE_STATUSES` /
+`resolveDecision`) resolves a `satisfied`, `unknown` or `invalid` objective to
+`inactive` before the plan build, so nothing untrusted reaches the planner to judge.
 
 ## State vs Evaluation
 
@@ -1122,7 +1128,7 @@ Inputs:
 - device snapshots
 - objective state
 - current time
-- totalKw and freshness
+- the resolved whole-home reading for this cycle (present only on a measured cycle)
 - capacity soft limit
 - effective soft limit
 - expected/planning power
