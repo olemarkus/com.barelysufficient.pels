@@ -9,7 +9,7 @@
 # THIS FILE — the guard then requires its absence.
 #
 # Each line is grouped under the lane that will take it. The lane comments name
-# the destination, not a promise about when: see TODO.md for the entries.
+# the destination, not a promise about when.
 # Declaration counts are as of the guard's introduction (21 files, 104 declarations).
 
 # --- Power lane (→ lib/power) ----------------------------------------------
@@ -17,8 +17,7 @@
 # it WAS a power concept, and lives in lib/power/sampleIngestQueue.ts now. The
 # file stays because it fans a reading out across plan, objectives, solar and
 # home membership, and no peer module may import both lib/plan and
-# lib/objectives. What is left is its reference to the injected queue; see
-# TODO.md for what reaching zero takes.
+# lib/objectives. What is left is its reference to the injected queue.
 setup/powerSamplePipeline.ts 1
 
 # --- Device/snapshot lane (→ lib/device) -----------------------------------
