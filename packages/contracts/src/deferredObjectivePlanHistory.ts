@@ -349,7 +349,7 @@ export type DeferredObjectivePlanHistoryEntry = {
 // Runtime cap on `progressSamples` per entry (200) lives in
 // `lib/objectives/deferredObjectives/planHistoryV4Helpers.ts` as a local
 // constant (`PROGRESS_SAMPLES_PER_ENTRY_CAP`) — runtime code must not
-// value-import contract source files (see `test/runtimePackaging.test.ts`).
+// value-import contract source files (see `test/integration/runtimePackaging.test.ts`).
 // The Settings UI reads the array length directly, so we deliberately don't
 // export the cap here until a consumer needs it.
 

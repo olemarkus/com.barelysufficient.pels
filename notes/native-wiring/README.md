@@ -208,5 +208,5 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
 
 Real fixtures for tests come from the SHS test Homey advanced flows
 `Zaptec stepped load` and `Easee stepped load` (see
-`test/flowApiUserFlows.test.ts`). The in-app token was confirmed able to read
+`test/unit/flowApiUserFlows.test.ts`). The in-app token was confirmed able to read
 both endpoints during the PR1 spike.

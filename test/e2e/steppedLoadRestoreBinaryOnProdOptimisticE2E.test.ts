@@ -160,7 +160,8 @@ const parseHoiaxSnapshot = (params: {
   return parsed;
 };
 
-// ── The executor harness (mirrors test/planExecutor.test.ts buildExecutor) ───
+// ── The executor harness (mirrors test/integration/planExecutor.test.ts
+// buildExecutor) ──────────────────────────────────────────────────────────────
 // `getSnapshot` reads a mutable holder so between-cycle re-parses are visible to
 // both `getSnapshot` and `getSnapshotByDeviceId`, matching the live transport.
 const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) => {

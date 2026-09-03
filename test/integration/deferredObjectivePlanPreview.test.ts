@@ -31,9 +31,9 @@ import type {
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 
-// ── Fixtures (mirroring test/deferredObjectiveDiagnostics.test.ts so the
-// preview is exercised against the same device/profile/snapshot shapes the
-// live diagnostic path uses) ────────────────────────────────────────────────
+// ── Fixtures (mirroring test/integration/deferredObjectiveDiagnostics.test.ts
+// so the preview is exercised against the same device/profile/snapshot shapes
+// the live diagnostic path uses) ────────────────────────────────────────────
 
 const buildEvDevice = (
   overrides: Partial<PlanInputDevice> & FixtureBoostFields & { evChargingState?: string } = {},
