@@ -143,9 +143,10 @@ PELS plans on a live whole-home power reading. If the Overview shows nothing:
 
 ### What PELS does while readings are missing
 
-A gap of a few seconds changes nothing: PELS carries the last good reading
-forward and keeps acting on the decision it already made. A missing reading is
-never counted as zero.
+A short gap changes nothing. PELS counts a reading as current for **60
+seconds**, and beyond that it carries the last good one forward and keeps
+acting on the decision it already made. A missing reading is never counted as
+zero.
 
 After **10 minutes with no reading**, PELS fails closed rather than keep
 trusting a decision it made before the meter went quiet. It limits every
@@ -153,9 +154,16 @@ managed device to its floor (lowest step, limited setpoint, or off) and pauses
 planning until a reading arrives. Devices stay limited until the meter reports
 again, so a meter that has quietly stopped is worth fixing promptly.
 
-The banner above the Overview tells you which state you are in: **No power
-readings yet** means PELS has never received one, and **No power readings in
-the last minute** means they stopped.
+In **Simulation mode** nothing is switched. PELS still shows what it would
+limit, and planning carries on as usual.
+
+The banner above the Overview tells you which state you are in:
+
+| Banner | Meaning |
+| --- | --- |
+| **No power readings yet.** | PELS has never received a reading. |
+| **No power readings in the last minute.** | Readings have stopped. |
+| **No power readings for over 10 minutes. Managed devices stay limited until readings return.** | The fail-closed pass has run. |
 
 ## No price data, or cheap hours aren't being used
 
