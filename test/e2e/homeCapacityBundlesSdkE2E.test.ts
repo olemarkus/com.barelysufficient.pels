@@ -694,7 +694,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     // write IS load-bearing: `persistFilledModeTargets` returns early on an absent
     // or empty `mode_device_targets` blob (`setup/appDeviceSupport.ts`), so
     // nothing would auto-seed it here. That unanchored case is a separate open
-    // defect (TODO: setpoint-shed device with no mode target stays stranded);
+    // defect (a setpoint-shed device with no mode target stays stranded);
     // what this test pins is the RELEASE write for an ANCHORED device.
     mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'device-sub-heat': 22 } });

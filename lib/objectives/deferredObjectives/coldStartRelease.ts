@@ -32,7 +32,7 @@ import type { DeferredObjectiveKind, DeferredObjectiveStep } from './types';
 // Throttleable kinds (`ev_soc` amp steps) may not reach the max step when
 // capacity-shed in the cheaper hours, so releasing on that upper bound could keep
 // deferring until the window can no longer finish — excluded until observed-rate
-// feasibility lands (see TODO.md).
+// feasibility lands.
 export const resolveColdStartReleaseEligible = (params: {
   objectiveKind: DeferredObjectiveKind;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];

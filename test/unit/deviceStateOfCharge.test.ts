@@ -203,8 +203,8 @@ describe('resolveStateOfChargeSnapshot', () => {
   // A reconnect anchors only on REAL evidence. Substituting the refresh time was
   // tried and reverted: a refresh can carry a cached connected state older than a
   // newer realtime plug-out, and a fabricated future `sessionStartedAtMs` cannot
-  // be undone by reapplying that plug-out. The cost — the reading stays stale
-  // until a timestamped observation arrives — is tracked as a P1 in TODO.md.
+  // be undone by reapplying that plug-out. The cost is accepted: the reading
+  // stays stale until a timestamped observation arrives.
   it('does not anchor a reconnect from a connected state carrying no timestamp', () => {
     const unplugged = resolve({
       chargingState: 'plugged_out',

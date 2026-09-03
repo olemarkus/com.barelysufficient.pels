@@ -178,7 +178,7 @@ const expectNoViewSideIntervals = (intervals: FakeIntervalHandle[]): void => {
 
 describe('DeadlinePlan plan-inputs freshness tick', () => {
   it('re-derives the "Latest reading used" row when the 60s interval fires instead of freezing on the producer-seeded value', async () => {
-    // Regression for the v2.8.0 release-review finding (TODO ~line 1160):
+    // Regression for the v2.8.0 release-review finding:
     // `Updated N min ago` was frozen at the value `buildPlanInputs` computed
     // at render time, so a user staring at the Smart-task detail page saw
     // "Updated just now" for the entire session. The view now owns a 60s

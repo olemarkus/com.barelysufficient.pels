@@ -255,7 +255,7 @@ function measureStatusUpdate(host: PlanRebuildHost, plan: DevicePlan, changes: P
  * unchanged action signature short-circuits the apply, and the only thing left
  * that could correct the device is the reconcile lane — which re-asserts a plan
  * nobody re-decided against the new observation. That is how PELS breached its
- * own hard cap (`TODO.md`, inc_26449fb9): the reconcile beat the planner to the
+ * own hard cap (inc_26449fb9): the reconcile beat the planner to the
  * device by 281 ms and re-asserted a step-up its own admission gate would have
  * rejected.
  *
@@ -271,12 +271,12 @@ function measureStatusUpdate(host: PlanRebuildHost, plan: DevicePlan, changes: P
  * reasoning protected the wrong thing: the risk it named is re-asserting a
  * DECISION nobody re-made, and the plan being applied here is the one just
  * built. Meanwhile it forced the executor's live side to be a plan-layer shape,
- * which is what gave `observedBinaryState` two meanings (`TODO.md`, the drift
- * P0). The executor now reads the observation from the observer and the
- * in-flight command state from its own stores, so this asks "does the device
- * disagree with what we decided?" against the freshest answer available — and
- * an observation that landed since the build is a reason to act, not one to
- * discard.
+ * which is what gave `observedBinaryState` two meanings — one of the
+ * drift/reconcile layering inversions. The executor now reads the observation
+ * from the observer and the in-flight command state from its own stores, so
+ * this asks "does the device disagree with what we decided?" against the
+ * freshest answer available — and an observation that landed since the build is
+ * a reason to act, not one to discard.
  *
  * `shouldApplyStablePlanActions` stays alongside it rather than being subsumed:
  * it covers cases the intent-drift predicate deliberately excludes — an

@@ -84,9 +84,9 @@ describe('computePaceContext', () => {
 
 describe('formatDeltaChipLabel', () => {
   // When the projection window is open the chip mirrors the projected-vs-
-  // typical baseline so it never disagrees with the projection prose
-  // (TODO 490). Inside the early-morning window the chip falls back to the
-  // elapsed-pace baseline since projection is suppressed.
+  // typical baseline so it never disagrees with the projection prose. Inside
+  // the early-morning window the chip falls back to the elapsed-pace baseline
+  // since projection is suppressed.
   it('says "On track" inside the projected dead-band', () => {
     const ctx = computePaceContext(6.05, 12, atUtcHour(12), 'UTC');
     expect(formatDeltaChipLabel(ctx)).toEqual({ label: 'On track', tone: 'ok' });

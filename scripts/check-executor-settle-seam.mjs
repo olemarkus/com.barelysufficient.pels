@@ -6,7 +6,7 @@
 // snapshots, never for deciding to actuate" (`lib/plan/AGENTS.md`). Consulting it
 // from an actuation decision would be an apply-without-decide path, the exact
 // shape that let a re-assert outrun the planner's admission gate and breach the
-// hard cap in production (`TODO.md`, inc_26449fb9).
+// hard cap in production (inc_26449fb9).
 //
 // It is reachable today from exactly one place — `canRefreshPlanSnapshotFromLiveState`
 // in the same module, a SETTLE question whose callers only adopt a refreshed

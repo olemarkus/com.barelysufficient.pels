@@ -26,7 +26,7 @@
  *   which `lib/plan/AGENTS.md` calls "by construction the OLD decision seen
  *   freshly … for publishing snapshots, never for deciding to actuate". Acting
  *   on it would be an apply-without-decide path, the shape that breached the
- *   hard cap in production (`TODO.md`, inc_26449fb9).
+ *   hard cap in production (inc_26449fb9).
  *
  *   No actuation path reaches it, and that is enforced rather than trusted:
  *   its only caller is `canRefreshPlanSnapshotFromLiveState` below, whose two

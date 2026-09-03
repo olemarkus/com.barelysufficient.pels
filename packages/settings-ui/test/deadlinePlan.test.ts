@@ -996,7 +996,7 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.metaLine).toMatch(/not enough time for this target/i);
     expect(payload.hero.stats.find((stat) => stat.label === 'Needs')?.value).toMatch(/kwh/i);
     // The misleading "Short by about 41.9 °C" magnitude must not surface in
-    // user copy (TODO 434 in TODO.md).
+    // user copy.
     expect(payload.hero.metaLine).not.toMatch(/short by about/i);
     expect(payload.hero.tone).toBe('alert');
     // Recourse-action surfaces on cannot-meet; shortfall route picks the
@@ -1094,7 +1094,7 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.recourse?.label).toBe('Adjust device');
     expect(payload.hero.recourse?.deviceId).toBe('heater');
     // The reasoned sentence is followed by the rich `Needs N kWh · …` meta
-    // (TODO 1276) so users see both "why it's failing" and "how bad".
+    // so users see both "why it's failing" and "how bad".
     expect(payload.hero.stats.find((stat) => stat.label === 'Needs')?.value).toMatch(/kwh/i);
   });
 
@@ -2949,7 +2949,7 @@ describe('deadline plan page payload', () => {
   });
 
   // Live hero chip ordering — canonical `[kind, ?status, ?confidence]`.
-  // The state chip is no longer rendered on the live hero (TODO 674): the
+  // The state chip is no longer rendered on the live hero: the
   // headline already carries the live state (`Heating from HH:MM`,
   // `Charging now`, `On track …`, `Cannot finish`). Pending heroes still emit
   // the state chip in their own builder. High-confidence learned profiles
@@ -3083,7 +3083,7 @@ describe('deadline plan page payload', () => {
     // sentence — never the old "can't determine why" dead-end. The planner has
     // already classified the plan as cannot-meet, so the UI must not contradict
     // that with an "unknown cause" admission just because its own (learned-rate)
-    // projection landed at-or-above target (TODO 344; smart-task hero walk).
+    // projection landed at-or-above target (smart-task hero walk).
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 2);
     const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -4311,7 +4311,7 @@ describe('buildHeroChips', () => {
       statusChip: null,
       confidenceChipText: null,
     });
-    // No chip text should equal any of the live-state labels (TODO 674): the
+    // No chip text should equal any of the live-state labels: the
     // headline already says "Heating from HH:MM" / "On track …" / etc.
     const liveStateTexts = Object.values(labels.liveStateChipLabel);
     for (const text of liveStateTexts) {
@@ -5344,7 +5344,7 @@ describe('cost + delivered-so-far hero lines', () => {
   });
 
   it('cannot-meet: delivered line uses the magnitude-only `still …` stem (no verdict restatement)', () => {
-    // Per TODO ~1586 / 2026-05-16 live walk: the alarm verdict is already
+    // Per the 2026-05-16 live walk: the alarm verdict is already
     // announced by the alert chip ("Cannot finish") and the meta line ("Not
     // enough time for this target. …"), so the magnitude line drops the
     // `· won't reach by HH:MM` tail it previously carried. The `still` stem
@@ -5531,7 +5531,7 @@ describe('shared-domain hero-line formatters', () => {
   });
 
   it('formatDeadlineDeliveredSoFarLine renders the magnitude-only `still …` stem on cannot-meet', async () => {
-    // Per TODO ~1586 / 2026-05-16 live walk: the chip ("Cannot finish") + meta
+    // Per the 2026-05-16 live walk: the chip ("Cannot finish") + meta
     // line ("Not enough time for this target …") already carry the verdict, so
     // the magnitude line drops the `· won't reach by HH:MM` tail and stays
     // information-only. The `still` stem (vs the on-track `now`) keeps the

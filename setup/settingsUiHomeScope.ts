@@ -153,8 +153,8 @@ export class SettingsUiHomeScopeAdapter {
   /**
    * That home's own live status blob (`pels_status:<homeId>`), object-guarded —
    * the same depth of guard main's unsuffixed `pels_status` read applies
-   * (`getSettingsUiPower`); the per-field resolution of both blobs is a shared
-   * follow-up tracked in TODO.md.
+   * (`getSettingsUiPower`); neither path resolves the blob per field yet, and
+   * doing so is one shared change across both.
    *
    * The suffixed key is built from a scope the parser resolved, and callers run
    * it only after {@link readRuntime} proved the runtime owns the home. A

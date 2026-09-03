@@ -477,7 +477,7 @@ export default class PriceService {
    * not currently safe: `price_area` and the `nettleie_*` keys are written by
    * the settings UI and are NOT on any `updateCombinedPrices()` invalidation
    * path (see `lib/utils/settingsHandlers.ts`), so the live rebuild is what
-   * keeps a price-area or grid-operator change visible. See `TODO.md`.
+   * keeps a price-area or grid-operator change visible.
    */
   getCurrentHourPriceLevel(): PriceLevel {
     return resolveCurrentHourPriceLevel({

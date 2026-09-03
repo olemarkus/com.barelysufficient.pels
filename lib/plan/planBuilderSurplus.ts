@@ -211,7 +211,7 @@ export function applyPostSheddingHolds(params: {
  * generic restore lane runs off managed binary devices under available power
  * (pre-existing behaviour, independent of this feature and of `shedDecidedMs`).
  * Persisting a released dump load's OFF baseline needs a managed-restore policy
- * change and is tracked in TODO.md.
+ * change and is deliberately out of scope here.
  *
  * `lastDeviceShedMs` is intentionally NOT cleared here: if PELS actually turned
  * the device off, that shed-cooldown clock is legitimate and clearing it would
@@ -223,10 +223,10 @@ export function applyPostSheddingHolds(params: {
  * A device that left the SNAPSHOT entirely is covered, and the loop shape is why:
  * it iterates the stamp map, not `admittedDevices`. An absent device is in
  * neither `surplusOnlyNow` nor `shedSet`, so it falls through both guards to the
- * clear. An earlier version of this comment said the case was unhandled and sent
- * readers to TODO.md for it; that was a misreading of this loop, and the two
- * prune pins in `test/integration/surplusDumpLoadPlan.test.ts` exist so it cannot
- * be made true by accident.
+ * clear. An earlier version of this comment wrongly said the case was unhandled;
+ * that was a misreading of this loop, and the two prune pins in
+ * `test/integration/surplusDumpLoadPlan.test.ts` exist so it cannot be made true
+ * by accident.
  */
 export function releaseAbandonedSurplusPosture(params: {
   state: Pick<PlanEngineState, 'surplusOnlyShedByDevice' | 'clearShedDecision'>;

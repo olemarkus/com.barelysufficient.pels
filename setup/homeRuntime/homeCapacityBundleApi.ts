@@ -479,8 +479,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       // there, and the binary axis reads `on` as expected. Such a plan still
       // depends on `changes.actionChanged`. That hole predates this change (the
       // deleted reconcile lane used the same predicate), and closing it means
-      // comparing against `desiredStepId` for an unexecuted shed — tracked in
-      // `TODO.md`.
+      // comparing against `desiredStepId` for an unexecuted shed.
       //
       // Direct rebuild, mirroring the main home's settings path
       // (`handleCapacityLimitChange` also bypasses the sample scheduler).

@@ -172,8 +172,8 @@ export const initDeviceDetailSurplusOptHandlers = (params: {
 // mirrors the runtime candidacy (`resolveSurplusOnlyPosture`): managed +
 // power-limit-controllable binary device, not temperature, not stepped, not EV —
 // and, unlike the temperature sections above, ALSO `canManageDevice` from day
-// one (TODO.md "Gate the device-detail Price-response + Solar-surplus sections
-// on canManageDevice": fixed here for the new section; the pre-existing
+// one (gating the device-detail Price-response + Solar-surplus sections on
+// `canManageDevice` is fixed here for the new section; the pre-existing
 // temperature gating is deliberately left unchanged in this PR).
 
 const hasActiveSmartTask = (deviceId: string): boolean => hasActiveDeadlineObjective(deviceId);

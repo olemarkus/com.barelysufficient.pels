@@ -300,8 +300,8 @@ function buildAcceptedProfileSample(params: {
     ? resolveProfileConfidence(nextProfile.kwhPerUnit)
     : null;
   // Once the bands are merged in, re-resolve the overall kWh/unit confidence
-  // against the pooled within-band residual (Step 2 of the Cause-#1 fix in
-  // `TODO.md`). The plain `updateProfileStat` above used the global `m2`,
+  // against the pooled within-band residual (Step 2 of the banded-confidence
+  // fix). The plain `updateProfileStat` above used the global `m2`,
   // which on multi-step devices is inflated by between-step spread and pins
   // confidence at `low` even when each step's rate has converged tightly.
   // Per-band confidences are unchanged.

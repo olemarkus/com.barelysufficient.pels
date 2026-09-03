@@ -39,8 +39,9 @@
  * block, and a spread is exempt from excess-property checking, so the new field
  * ships in the payload while staying invisible in this contract — a silent
  * widening, not a silent omission. Widening the block therefore stays a
- * deliberate act on both sides. TODO.md carries the consolidation (move the
- * scalar block to `lib/utils`, the precedent `HomeId` already set).
+ * deliberate act on both sides. The consolidation that would end the duplicate
+ * is to move the scalar block to `lib/utils`, the precedent `HomeId` already
+ * set.
  */
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';

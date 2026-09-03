@@ -352,7 +352,7 @@ describe('createDeferredObjective (app)', () => {
       // Documented contract: the create screen rebuilds an entry from goal/deadline
       // and never carries a device's existing standing permission, so a create with
       // both toggles off must NOT wipe a permission set elsewhere (e.g. via Flow or
-      // the rescue lane). See the create-screen opt-out follow-up in TODO.md.
+      // the rescue lane).
       const app = await initApp(); // non-stepped heater → standing exemption is budget-only
       app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(60));
       expect(readStored().objectivesByDeviceId['heater-1'].rescue).toEqual({ exemptFromBudget: 'always' });

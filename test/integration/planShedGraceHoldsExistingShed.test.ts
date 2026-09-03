@@ -31,7 +31,7 @@ const buildDevice = (
 };
 
 /**
- * Regression cover for the 2026-08-16 restore-all (`TODO.md`).
+ * Regression cover for the 2026-08-16 restore-all.
  *
  * The shed grace defers a shed while a restore PELS issued may still be ramping.
  * It was wired so that deferring the shed also left the shedding-active latch

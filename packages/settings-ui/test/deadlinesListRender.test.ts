@@ -396,8 +396,8 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, { status: 'ready', cards: [] });
     // The populated hero (with a status-derived headline and the navigation
     // subline button) must not mount on the empty state — only the baseline
-    // header variant is allowed there. Per TODO #1041 the panel still keeps
-    // a visible "Smart tasks" header in every state, so we assert specifically
+    // header variant is allowed there. The panel still keeps a visible
+    // "Smart tasks" header in every state, so we assert specifically
     // that the populated-hero affordance is absent rather than the entire
     // `.deadlines-list-hero` shell.
     expect(mount.querySelector('.deadlines-list-hero__nav-target')).toBeNull();
@@ -456,9 +456,9 @@ describe('DeadlinesList', () => {
 
   // Header-persistence parity: the panel must keep a visible title/header in
   // every state (loading / error / empty / ready) so the Smart tasks tab
-  // matches the Overview / Budget / Usage / Settings rhythm. Regression guard
-  // for TODO #1041 — the v2.7.2 hero PR dropped the static `<h2>Smart tasks</h2>`
-  // and left the panel headerless in non-populated states.
+  // matches the Overview / Budget / Usage / Settings rhythm. Regression guard:
+  // the v2.7.2 hero PR dropped the static `<h2>Smart tasks</h2>` and left the
+  // panel headerless in non-populated states.
   describe('header persistence across states', () => {
     const expectHeaderVisible = (mount: HTMLElement): void => {
       // A persistent header has both the eyebrow ("Smart tasks") and a

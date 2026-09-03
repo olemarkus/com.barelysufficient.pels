@@ -2279,8 +2279,8 @@ describe('PlanExecutor stepped loads', () => {
 
   it('marks a prepared stepped restore-from-off actuatable for an EV charger regrouped like production', () => {
     // The motivating device is an EV charger, and the plan device carries no
-    // `evChargingState` at all, so `isCommandableNow(dev)` is always false here
-    // (TODO.md P1). Guard that this gate never starts depending on it again.
+    // `evChargingState` at all, so `isCommandableNow(dev)` is always false
+    // here. Guard that this gate never starts depending on it again.
     const { executor } = buildExecutor();
     const plan = preparedRestoreFromOffPlan({
       deviceClass: 'evcharger',

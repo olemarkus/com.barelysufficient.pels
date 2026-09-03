@@ -37,8 +37,8 @@ describe('resolveBandedProfileConfidence', () => {
     // by between-step spread. Global model: n=200, mean=0.27, m2=5.0 →
     // RSD≈0.59 → 'medium' (≤0.75, not ≤0.35). Banded model with two converged
     // step-bands (each n=100, m2=0.05, total within-band variance pooled over
-    // 198 dof) → RSD≈0.083 → 'high'. This is exactly the Cause-#1 gap
-    // (`TODO.md`) — the global model can't reach `high` even on a converged,
+    // 198 dof) → RSD≈0.083 → 'high'. This is exactly the banded-confidence
+    // gap — the global model can't reach `high` even on a converged,
     // banded profile; the band-aware model can.
     const globalConfidence = resolveProfileConfidence({ sampleCount: 200, mean: 0.27, m2: 5.0 });
     expect(globalConfidence).toBe('medium');

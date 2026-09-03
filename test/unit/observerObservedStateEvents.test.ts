@@ -24,8 +24,8 @@ import {
 // will silently typecheck at the binding site but route the wrong shape at
 // runtime. The asserted-true assignments below force a *strict* bidirectional
 // `extends` check; if shapes diverge, this file will fail compilation BEFORE
-// it ever runs as a test. Added per the TODO entry produced by the
-// post-merge cumulative review of the observer/transport split train.
+// it ever runs as a test. Added per the post-merge cumulative review of the
+// observer/transport split train.
 type _MutuallyAssignable<A, B> = [
   A extends B ? true : false,
   B extends A ? true : false,

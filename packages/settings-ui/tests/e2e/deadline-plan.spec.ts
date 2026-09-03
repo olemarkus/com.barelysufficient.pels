@@ -273,7 +273,7 @@ test.describe('Deadline plan', () => {
   // Regression: clicking a smart-task chip on an Overview device card used to
   // leave the "Overview" tab marked as selected even though the plan-detail
   // panel had taken over. The router now keeps the shell-nav visible and
-  // lights up "Smart tasks" so the user keeps the breadcrumb. (TODO ~line 2308)
+  // lights up "Smart tasks" so the user keeps the breadcrumb.
   test.describe('Tab indicator follows the deep-link', () => {
     const overviewTab = (page: Page): Locator => page.getByRole('tab', { name: 'Overview' });
     const smartTasksTab = (page: Page): Locator => page.getByRole('tab', { name: 'Smart tasks' });

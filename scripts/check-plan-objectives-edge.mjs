@@ -12,7 +12,7 @@
 // executor modules, covering value AND type imports in every specifier shape.
 // Flipping tsPreCompilationDeps to true was deliberately rejected (it surfaces
 // ~18 pre-existing type-only no-circular violations and doubles the cruised
-// graph) — see TODO.md.
+// graph).
 //
 // Implementation uses the TypeScript compiler API rather than a raw-text
 // regex. The AST natively ignores comments (so a commented-out objectives

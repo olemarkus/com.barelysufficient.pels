@@ -119,8 +119,8 @@ export type InProgressRecord = Omit<
   // `latest.revision` index increases. Bounded implicitly by the active-plan
   // recorder's per-cycle dedupe — `prices_revised` and `rate_refined` only
   // fire when the underlying inputs actually changed, so realistic runs see
-  // ~5-10 entries at most. No explicit cap; tracked in `TODO.md` as a v2.7.2
-  // follow-up if a pathological replan loop ever surfaces.
+  // ~5-10 entries at most. No explicit cap; adding one is only worth doing if a
+  // pathological replan loop ever surfaces.
   revisions: DeferredObjectivePlanHistoryRevisionLogEntry[];
   // Per-hour delivery contributions appended on every closed hour. Each entry
   // mirrors one contribution: hour-aligned `atMs`, delivered kWh, the

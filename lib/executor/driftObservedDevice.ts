@@ -9,7 +9,7 @@
  * consequence was concrete: `ExecutableObservedDeviceState.observedBinaryState`
  * had to mean two different things depending on which construction path built
  * it, because one path had `currentOn` and no `binaryControl` and the other had
- * the reverse (`TODO.md`, the drift P0).
+ * the reverse.
  *
  * Ownership, per field:
  * - **Observed** (`lib/observer`, live per-device read): availability, the

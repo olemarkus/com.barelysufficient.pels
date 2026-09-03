@@ -87,8 +87,9 @@ export type HandleRealtimeDeviceUpdateResult = {
    *
    * Formerly `shouldReconcilePlan` — a producer naming a plan operation, which
    * is inversion #1 of the drift/reconcile layering problem. Do not reintroduce
-   * an imperative name here. Splitting the observation fact from the
-   * dispatch-suppression bit is tracked in `TODO.md`.
+   * an imperative name here. The flag still carries two things — the
+   * observation fact and the dispatch-suppression bit — and they want
+   * splitting into separate fields.
    */
   observedControlStateChanged: boolean;
   changes: RealtimeDeviceReconcileChange[];

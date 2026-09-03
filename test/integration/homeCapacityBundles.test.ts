@@ -2163,7 +2163,7 @@ describe('fail-closed sub-home device path (filterDevicesForHome)', () => {
   });
 });
 
-// Orphaned-shed adoption (carried TODO): the generic restore lanes must accept
+// Orphaned-shed adoption: the generic restore lanes must accept
 // an observed-off device on observed state ALONE — no shed-provenance fields —
 // so a device shed by MAIN before relocating into a sub-home is an ordinary
 // restore candidate for its NEW bundle's planner. Verified per modality; the

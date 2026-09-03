@@ -26,7 +26,7 @@
 // What it deliberately does NOT cover: the plan layer. An `unclaimed` device is
 // modelled here as running, because this harness has no `PlanBuilder` to hold it.
 // That the daily-budget pace really does hold it is the design's load-bearing
-// assumption and is TODO-tracked for its own spec.
+// assumption and wants a spec of its own.
 //
 // The scenario is ONE run of a single task, watched across the transition it makes
 // on its own: a cold tank at 18:00 cannot finish by 06:00 at its floor step, and as

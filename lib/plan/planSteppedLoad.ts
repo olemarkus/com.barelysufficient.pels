@@ -661,7 +661,7 @@ export function resolveSteppedCandidatePower(
   // calibrated/nameplate fallback when the reading was ABSENT, this takes it when
   // the device is drawing nothing. Unreachable today — `buildSteppedCandidate`
   // rejects a zero draw before this runs — but if that gate ever loosens, a device
-  // drawing nothing would be credited nameplate shed relief. Tracked in TODO.md.
+  // drawing nothing would be credited nameplate shed relief.
   if (device.currentDrawKw <= 0) {
     // Fall back to calibrated delta when available, else nameplate delta —
     // both bound by zero so a calibrated "to" estimate that exceeds the
