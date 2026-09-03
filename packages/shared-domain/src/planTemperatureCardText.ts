@@ -67,7 +67,7 @@ export const resolveTemperatureLine = (device: TemperatureDevice): string | null
   if (!device.temperature) return null;
   const targetText = resolveTemperatureTargetText(device.temperature);
   // Middle-dot separator for the data line — em-dash is reserved for status
-  // copy (see notes/ui-terminology.md:9).
+  // copy (see notes/ui-terminology.md § "Core principle").
   return `${device.temperature.currentTemperature.toFixed(1)} °C · target ${targetText}`;
 };
 
