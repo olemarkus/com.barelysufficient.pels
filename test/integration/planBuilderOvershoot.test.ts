@@ -186,8 +186,8 @@ describe('PlanBuilder overshoot diagnostics', () => {
   // power read drops to null'. Its precondition — a managed device present in the
   // plan with no READABLE power — is no longer producible: the producer always
   // resolves a number, from the meter or from the declared load, so a device
-  // cannot arrive unreadable. Disappearance is a different case, tracked in
-  // TODO.md.
+  // cannot arrive unreadable. Disappearance is a different case and is not
+  // covered by this file.
   it('reports attribution_inputs_incomplete when a managed device has a readable current but missing previous baseline', async () => {
     let lastPowerW = 0;
     vi.useFakeTimers();

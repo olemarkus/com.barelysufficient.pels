@@ -35,8 +35,9 @@ export const ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS = OVERSHOOT_RESTORE_ATTRIB
  * tests inactive before expiry, so an inactive observation arriving at or after
  * the attribution window closes as `inactive` (penalty preserved) rather than
  * taking the `quiet` expiry path (which can clear it). That precedence predates
- * this floor and is pinned below; the semantic question it raises is tracked in
- * `TODO.md`.
+ * this floor and is pinned below; whether that late inactive observation should
+ * preserve the penalty at all, rather than expiring as quiet, is still an open
+ * question.
  */
 export const ACTIVATION_INACTIVE_MIN_ELAPSED_MS = 60 * 1000;
 export const ACTIVATION_SETBACK_RESTORE_BLOCK_MS = 5 * 60 * 1000;

@@ -23,7 +23,7 @@ import type { FlowReportedCapabilitiesByDevice } from './transport/flowReportedC
  * (`FlowBackedDeviceState.loadFlowReportedCapabilities`) carries a
  * keep-what-we-hold heuristic for an empty parse: the hedge is load-bearing
  * until this read is promoted to the same discriminated shape, and deleting it
- * as a redundant defence restores a wipe-on-transient-miss bug. See TODO.md.
+ * as a redundant defence restores a wipe-on-transient-miss bug.
  */
 export type DevicePersistencePort = {
   loadFlowReportedCapabilities(): FlowReportedCapabilitiesByDevice;

@@ -435,10 +435,10 @@ describe('DeadlinePlanHistoryDetail', () => {
 
   // v2.9.x batch 47 — muted Overshoot line surfaces on Succeeded entries whose
   // final reading exceeded the target by > 5 °C / > 10 % (lived-state Connected
-  // 300 regression: `29.3 → 77.7 °C · target 65 °C`, 12.7 °C overshoot — flagged
-  // in `TODO.md` ~L2724 as a passive support-cost surface). Producer-resolved
+  // 300 regression: `29.3 → 77.7 °C · target 65 °C`, 12.7 °C overshoot — a
+  // passive support-cost surface). Producer-resolved
   // by `formatPlanHistoryOvershootLine`; the view only renders the string.
-  describe('overshoot line on Succeeded entries (TODO ~L2724)', () => {
+  describe('overshoot line on Succeeded entries', () => {
     it('renders the muted overshoot line when a Succeeded thermal run overshoots > 5 °C', async () => {
       const root = await mount(buildEntry({
         outcome: 'met',

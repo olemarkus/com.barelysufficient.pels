@@ -28,7 +28,7 @@ import { HOMES_MAIN_HOME_NAME } from './homeNames';
  * A WRITE-PATH convention, not a runtime bound: neither the registry nor
  * `normalizeHomesConfig` caps anything, so a `homes_config` written outside
  * the UI still spawns one bundle per area. Enforcing it where the memory is
- * actually consumed is tracked in TODO.md.
+ * actually consumed — in the registry itself — is still undone.
  *
  * It bounds GROWTH only. A config already over the cap can still be repaired
  * (rename, re-meter, re-zone) without deleting an area first; refusing that

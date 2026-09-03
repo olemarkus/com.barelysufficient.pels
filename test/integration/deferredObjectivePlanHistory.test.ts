@@ -1316,7 +1316,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
   // never back-fills, so a run that begins with a null diagnostic (transient
   // SDK miss / `objective_progress_stale` / `objective_missing_temperature`)
   // keeps the field null for the lifetime of the run even when later cycles
-  // report a real reading. See TODO.md P0 item 5 and notes/smart-task-ui/README.md.
+  // report a real reading. See notes/smart-task-ui/README.md.
   describe('back-fills start progress from the first non-null observation', () => {
     it('temperature path: stamps `startProgressC` once a real reading arrives', () => {
       const { deps, saved } = buildPersistDeps();
@@ -2887,7 +2887,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     });
 
     it('Connected 300 capped-internally end-to-end: classifier-driven capped_idle promotes to succeeded', async () => {
-      // Full reproducer of the TODO bug: Connected 300 capped internally
+      // Full reproducer of the bug: Connected 300 capped internally
       // at ~60 °C with a 65 °C smart-task target. The classifier
       // observes a cycling+stable-temp+gap-too-big pattern over the
       // window and reports `capped_idle`; the recorder's
@@ -2940,8 +2940,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
-      // Run finalises as succeeded — not the buggy "missed" verdict the
-      // TODO entry describes. The metReason names the device cap so
+      // Run finalises as succeeded — not the buggy "missed" verdict this
+      // pattern used to produce. The metReason names the device cap so
       // the postmortem can route to the correct recourse copy.
       expect(entry.outcome).toBe('met');
       expect(entry.metReason).toBe('stalled_device_capped');

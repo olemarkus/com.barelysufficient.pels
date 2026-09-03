@@ -63,7 +63,7 @@ const parseDeviceList = (value: unknown): SettingsUiDeviceListItem[] => {
 // gates, so a future scoped read must not funnel through here — a sub-home
 // payload assigning them would retract the whole home's solar surfaces. The
 // scope-selector PR adds its own scoped reader that discriminates
-// `payload.homeScope` before touching any flat field (see TODO.md).
+// `payload.homeScope` before touching any flat field.
 export const getTargetDevices = async (): Promise<SettingsUiDeviceListItem[]> => {
   // Badges are additive metadata, never authority for the device list. Fetch
   // them independently so a slow Homey callback cannot blank Devices, Modes,

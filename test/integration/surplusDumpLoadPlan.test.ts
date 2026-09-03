@@ -183,7 +183,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     // NOTE: the device then returns to PELS's generic managed-restore behaviour
     // (off managed binary devices are run under available power) — keeping a
     // released dump load's OFF baseline is a separate managed-restore policy
-    // change tracked in TODO.md, not asserted here.
+    // change, not asserted here.
   });
 
   it('keeps the surplus-hold reason through a plan-wide shed cooldown and stays exempt from the stepped-restore-block', async () => {

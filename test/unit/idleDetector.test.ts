@@ -408,8 +408,8 @@ describe('classifyIdleState — capped_idle', () => {
     // strictly greater than the 6 °C `NEAR_TARGET_TEMPERATURE_DELTA_C`
     // threshold, so not near_target_idle) while power cycles on and off
     // over the 20-min window. (NB: the Connected 300 is no longer the
-    // example here — it has no cap and holds flat, not cycling; see the
-    // capped_idle re-document/retire TODO.)
+    // example here — it has no cap and holds flat, not cycling, which
+    // leaves capped_idle in want of a real example or of retirement.)
     const state: IdleDetectorState = new Map();
     const t0 = 1_000_000;
     const cursor = driveCycling(state, {

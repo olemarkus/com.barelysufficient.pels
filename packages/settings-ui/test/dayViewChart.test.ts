@@ -13,19 +13,19 @@ describe('roundedAxisMaxToInterval', () => {
     expect(roundedAxisMaxToInterval(-0.5, 4)).toEqual({ max: 1, interval: 0.25 });
   });
 
-  // Regression: TODO 559. Live walk 2026-05-16 showed Today=3.7 producing
+  // Regression: Live walk 2026-05-16 showed Today=3.7 producing
   // ticks 0,1,2,3,3.7 because the old helper pinned max=3.7 with splitNumber=4
   // and ECharts gave up trying to find a clean interval.
   it('rounds max up so splitNumber clean ticks fit (3.7 → 4)', () => {
     expect(roundedAxisMaxToInterval(3.7, 4)).toEqual({ max: 4, interval: 1 });
   });
 
-  // Regression: TODO 559. Daily usage chart at 71 produced ticks 0,20,40,60,71.
+  // Regression: Daily usage chart at 71 produced ticks 0,20,40,60,71.
   it('rounds large kWh totals to a nice 20-step grid (71 → 80)', () => {
     expect(roundedAxisMaxToInterval(71, 4)).toEqual({ max: 80, interval: 20 });
   });
 
-  // Regression: TODO 559. Typical day at 1 → ticks 0,0.3,0.6,0.9,1.
+  // Regression: Typical day at 1 → ticks 0,0.3,0.6,0.9,1.
   it('keeps a 1 kWh max on a clean 0.25-step grid', () => {
     expect(roundedAxisMaxToInterval(1, 4)).toEqual({ max: 1, interval: 0.25 });
   });

@@ -438,7 +438,7 @@ test.describe('Settings UI chart layout', () => {
     ).toBe(true);
   });
 
-  // Regression: TODO 573. The unreliable-data legend swatch in `#power-legend`
+  // Regression: the unreliable-data legend swatch in `#power-legend`
   // must read from the same `--pels-chart-*` tokens the heatmap cell uses, so
   // a user pattern-matching legend → cell sees a single rectangle, not two
   // different shapes/colours.

@@ -309,7 +309,7 @@ const minConfidence = (values: ObjectiveProfileConfidence[]): ObjectiveProfileCo
 // interval to integrate over, and fabricating one would put a plausible-looking
 // energy figure on untrustworthy progress. That guard is doing three jobs at
 // once (no band dimension for `generic_energy`, untrustworthy progress, missing
-// measurement) and wants splitting — see TODO.md.
+// measurement) and wants splitting into three distinct answers.
 const integrateBands = (params: {
   bands: ObjectiveProfileBand[] | undefined;
   globalMean: number;

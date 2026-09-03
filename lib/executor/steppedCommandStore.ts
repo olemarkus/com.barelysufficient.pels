@@ -23,7 +23,7 @@
  * questions and neither is derived from the other — see the module docblock in
  * `steppedCommandState.ts`.
  *
- * **Still to move (`TODO.md`, P1):** the confirm/expire/prune lifecycle is
+ * **Still to move:** the confirm/expire/prune lifecycle is
  * currently driven by the plan-input producer, so a command settles when the
  * planner asks for its devices rather than when the executor observes
  * materialization. This class makes that visible — those methods have exactly

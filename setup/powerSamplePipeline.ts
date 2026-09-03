@@ -171,7 +171,7 @@ const buildPowerSampleRequest = (
  * allowed to import both: `arch:grep` bars `lib/plan -> lib/objectives`, and
  * `no-objectives-to-peer-except-power` bars the reverse. `lib/power` and
  * `lib/device` are barred from `lib/plan` in turn. So there is no domain module
- * this can live in — see the orchestration entry in `TODO.md`. The domain work
+ * this can live in without relaxing one of those bars. The domain work
  * itself is one call into `recordPowerSampleForApp` (`lib/power/sampleIngest.ts`).
  *
  * It no longer owns the coalescing or the sample-revision ledger: both are

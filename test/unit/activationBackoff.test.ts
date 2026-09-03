@@ -1293,7 +1293,8 @@ describe('activation backoff', () => {
     // the inactive path (penalty preserved) rather than the quiet path (which
     // can clear it). Pinned because the elapsed floor makes an attempt more
     // likely to still be open when a late off reading lands. Pre-existing
-    // ordering — see the TODO on reconciling the two paths' semantics.
+    // ordering; whether the two paths' semantics should be reconciled is still
+    // an open question.
     const state = createPlanEngineState();
     const start = Date.now();
     state.activationAttemptByDevice['dev-1'] = { penaltyLevel: 1, lastSetbackMs: start - 60_000 };

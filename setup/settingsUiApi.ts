@@ -281,7 +281,7 @@ const LIVE_OBSERVED_FIELDS = [
  *   device that means "not observed yet" (boot). It is also the permanent state
  *   of an unmanaged PICKER device: the projection is fed from the committed
  *   runtime snapshot, which drops unmanaged devices, so picker rows are served
- *   from their cached parse and are NOT refreshed here. See `TODO.md`.
+ *   from their cached parse and are NOT refreshed here.
  * - a field the projection does not carry keeps its stored value, rather than
  *   being blanked to `undefined`.
  */

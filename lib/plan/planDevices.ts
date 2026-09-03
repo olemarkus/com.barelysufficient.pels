@@ -281,8 +281,7 @@ function isRecentlyRestored(lastRestoreMs: number | undefined): boolean {
 }
 // Mirrors isDroppedUnderspecifiedSetStepShed at plan-build time, minus the
 // !isHeldByRestoreAdmission conjunct: plan reasons aren't computed at this pre-pass.
-// Mild inverse-direction asymmetry vs. lib/executor/executablePlanProjection.ts:126-135 —
-// tracked as a P3 in TODO.md.
+// Mild inverse-direction asymmetry vs. lib/executor/executablePlanProjection.ts:126-135.
 //
 // This is the one place that still RECOMPUTES a shed step, and deliberately so.
 // It runs before selection, over every stepped `set_step` device rather than the

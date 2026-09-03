@@ -31,8 +31,9 @@ const stringOr = (value: unknown, fallback: string): string => (
  * NOTE for anyone adding a cache over the combined series: these four keys
  * (`price_area`, `nettleie_*`) have no entry in `lib/utils/settingsHandlers.ts`,
  * so changing them fires no `updateCombinedPrices()`. The live re-read on every
- * build is what makes a price-area or grid-operator change take effect. See
- * `TODO.md` under the plan-rebuild CPU entry.
+ * build is what makes a price-area or grid-operator change take effect, and it
+ * is also what such a cache would remove — wire these keys to an invalidation
+ * path before trading that re-read away for plan-rebuild CPU.
  */
 export const readNorwaySchemeSettings = (read: {
   getRaw: (key: string) => unknown;

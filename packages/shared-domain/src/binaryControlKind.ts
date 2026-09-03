@@ -10,7 +10,7 @@
  * It is in shared-domain for reach, not for the UI — observer and executor may
  * not import `lib/plan`, so the plan layer could not host it. Unlike its sibling
  * `isSteppedLoadSnapshot`, it does not yet serve the settings UI: three
- * device-detail sites still inline the test, tracked in `TODO.md`.
+ * device-detail sites still inline the test.
  *
  * NOT the same question as `isBinaryControlled` (`binaryControlState.ts`), and
  * the two must not be swapped for each other. This one asks whether the device

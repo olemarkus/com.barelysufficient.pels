@@ -267,7 +267,8 @@ describe('callApi', () => {
 
     // POST is normally not retried for transient transport errors, but
     // the App-Not-Ready sentinel is a runtime-only signal (not a partial
-    // write), so retrying is safe and matches TODO 744's "loading state".
+    // write), so retrying is safe and keeps the caller in a loading state
+    // instead of surfacing a startup error.
     const pending = callApi('POST', '/ui_refresh_devices', {});
     await vi.advanceTimersByTimeAsync(1000); // 250 + 500
     await expect(pending).resolves.toEqual({ devices: [] });

@@ -7,8 +7,7 @@
 // (`lib/plan/pelsStatus.ts`) so the "Above hard cap" trajectory judgement
 // shares one formula AND one predicate across surfaces. (The two sides still
 // evaluate slightly different inputs — the hero reads the rounded plan
-// snapshot, the producer raw meta — so near-boundary flicker is possible;
-// tracked in TODO.md.)
+// snapshot, the producer raw meta — so near-boundary flicker is possible.)
 //
 // Own module (not `planHeroSummary.ts`): the runtime imports this, and the
 // hero-summary module uses settings-ui-style `.ts`-suffixed imports the root

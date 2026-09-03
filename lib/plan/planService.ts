@@ -24,7 +24,7 @@
  * re-applied the EXISTING committed plan without re-deciding it. It is gone: a
  * plan that predates the observation which triggered it has not been decided
  * against that observation, and re-applying one breached the hard cap in
- * production (`TODO.md`, inc_26449fb9). Do not reintroduce an apply-without-
+ * production (inc_26449fb9). Do not reintroduce an apply-without-
  * decide path here; if a rebuild is too slow for some caller, make the rebuild
  * cheaper.
  *

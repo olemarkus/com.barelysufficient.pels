@@ -116,7 +116,7 @@ describe('power page stats (buckets-only)', () => {
     expect(chartRoot?.querySelector('.usage-row--pattern')).toBeNull();
   });
 
-  // Regression: TODO 585. The Typical-day Weekdays / Weekend segmented control
+  // Regression: the Typical-day Weekdays / Weekend segmented control
   // must hide the non-selected metric from the stat strip so the strip
   // reinforces which segment is active.
   it('hides the weekend stat when Weekdays segment is selected', async () => {
@@ -639,7 +639,7 @@ describe('power page stats (buckets-only)', () => {
     expect(option.series?.find((series) => series.type === 'scatter')).toBeUndefined();
   });
 
-  // Regression: TODO 1122. Legend listed "Warning" but no series bound to it,
+  // Regression: the legend listed "Warning" but no series bound to it,
   // so ECharts silently dropped the entry. The chart now adds a zero-data
   // dummy series named "Warning" only when warn bars are present.
   it('binds the Warning legend entry to a real series when warn bars exist', async () => {
@@ -686,7 +686,7 @@ describe('power page stats (buckets-only)', () => {
     expect(warningSeries?.data).toEqual([]);
   });
 
-  // Regression: TODO 1122. Without warn bars the chart should not register a
+  // Regression: without warn bars the chart should not register a
   // ghost "Warning" entry — and a would-be single-item legend (a lone
   // "Measured" chip under one-colour bars) is hidden entirely: one entry
   // explains nothing.

@@ -91,7 +91,7 @@ describe('canTurnOnDevice — migrated to commandableNow + canSetControl produce
     // The legacy fallback path: the snapshot may not set `canSetControl`
     // but a stale `canSetOnOff === false` field from older devices still
     // blocks writes on the onoff capability. The migration must preserve
-    // this guard (the original chunk-2 TODO explicitly called it out).
+    // this guard.
     expect(canTurnOnDevice(baseSnapshot({
       deviceClass: 'thermostat',
       available: true,

@@ -124,9 +124,9 @@ describe('DeadlinePlan pending branch', () => {
     // building?" copy — the most actionable string on the surface. It must
     // render via `plan-hero__subline--action` (primary text colour) instead
     // of the secondary `--muted` tone the ready hero uses for its recap
-    // meta/cost lines. Regression for the P2 contrast issue called out in
-    // TODO ~2301: muted secondary on a dark surface demoted the most
-    // important call-to-action on the panel.
+    // meta/cost lines. Regression for the P2 contrast issue where muted
+    // secondary on a dark surface demoted the most important call-to-action on
+    // the panel.
     const mount = mountIntoBody();
     renderDeadlinePlan(mount, {
       status: 'pending',

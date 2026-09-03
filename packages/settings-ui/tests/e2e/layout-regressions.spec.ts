@@ -78,8 +78,8 @@ test.describe('settings shell layout regressions', () => {
   });
 
   // Lock in the a11y-tree invariant: each top destination must be reachable
-  // exactly once. The TODO entry (~line 1899) suspected a hidden mobile-nav
-  // surface duplicated tabs at narrow widths; a CDP / getByRole audit at
+  // exactly once. An earlier report suspected a hidden mobile-nav surface
+  // duplicated tabs at narrow widths; a CDP / getByRole audit at
   // 320 px and 480 px found a single `md-tabs` shell and zero duplicates, so
   // this test pins that contract in case a future mobile-nav redesign adds a
   // second surface without hiding the inactive one from assistive tech.

@@ -128,7 +128,7 @@ export const shouldPlanRestores = (
  * `sheddingActive` is a latch, so a capacity-latched shed whose binding source
  * flips to `daily` mid-latch opens the lane while capacity headroom sits in
  * the hysteresis band. Bounded by the admission floor and the shed/restore
- * cooldowns; recording the latch cause would close it (tracked in TODO.md).
+ * cooldowns; recording the latch cause would close it.
  */
 export const shouldPlanBudgetExemptRestores = (params: {
   sheddingActive: boolean;

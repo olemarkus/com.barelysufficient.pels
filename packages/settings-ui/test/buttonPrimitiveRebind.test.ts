@@ -18,8 +18,7 @@ import { describe, expect, it } from 'vitest';
  * The "ghost decoration" classes (`.btn`, `.btn ghost`, `.btn secondary`)
  * that double up on MD Web hosts are intentionally NOT in scope here -- they
  * paint nothing on the MD Web shadow surface, so retiring them is a fan-out
- * cleanup with no visible delta. Routed to the TODO follow-up sub-bullets
- * (see the parent P1 entry in `TODO.md`).
+ * cleanup with no visible delta, deferred to a pass of its own.
  *
  * Assertions are lightweight DOM / source-text checks so the suite catches
  * accidental regressions (someone resurrects `.plan-hero__recourse-button`

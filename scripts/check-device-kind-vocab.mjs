@@ -104,8 +104,8 @@ function isNullishOperand(node) {
 // axis presence is also how an ordinary optional-field null guard is spelled
 // before a dereference — `stepIsAtOff` in `lib/observer/observedState.ts` reads
 // the profile, not the kind — and a rule that cannot tell those apart would push
-// authors into worse shapes rather than toward the predicate. Tracked as a
-// follow-up in TODO.md; review still catches the classification form.
+// authors into worse shapes rather than toward the predicate. No automated rule
+// covers that axis; review still catches the classification form.
 //
 // Note this is now the ONLY stepped rule that could exist. `model` was deleted
 // with the field (see the header), so the comparison form is unrepresentable

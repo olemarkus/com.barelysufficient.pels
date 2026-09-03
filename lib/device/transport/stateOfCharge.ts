@@ -547,8 +547,8 @@ function resolveEvSessionBoundary(params: {
  * retained fresher observations), and a fabricated `sessionStartedAtMs` in the
  * future cannot be undone by reapplying that plug-out, so the next genuine
  * reconnect goes unrecognised and a same-value SoC report stays trusted for a
- * different car. The cost of requiring evidence — a timestamp-less reconnect
- * leaving the reading stale — is tracked as a P1 in TODO.md.
+ * different car. The cost of requiring evidence is accepted: a timestamp-less
+ * reconnect leaves the reading stale until a timestamped observation arrives.
  */
 function resolveReconnectAtMs(params: {
   chargingState?: string;

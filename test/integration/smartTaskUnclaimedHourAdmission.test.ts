@@ -6,8 +6,8 @@
 // drives them by calling `planDeferredObjectiveHorizon` /
 // `applyDeferredObjectiveAdmission` and asserts on the returned decision, so it is
 // integration, not SDK-in/logs-out. An SDK-boundary companion driving the real
-// bridge + recorder + frozen dispatch does not exist yet (tracked in `TODO.md`,
-// "Pin that the daily-budget pace still holds an `unclaimed` smart-task device").
+// bridge + recorder + frozen dispatch does not exist yet — nothing yet pins that
+// the daily-budget pace still holds an `unclaimed` smart-task device.
 // This spec earns its place either way, because it can name the expected hours
 // EXACTLY, which an aggregate energy comparison through the full stack cannot.
 //

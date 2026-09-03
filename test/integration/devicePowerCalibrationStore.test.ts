@@ -83,7 +83,7 @@ describe('PowerCalibrationStore.ingestDeviceSnapshot', () => {
   // decomposition: `stepCommandPending` is app-layer decoration the raw
   // `getSnapshot()` ingest path never carried, so the guard was an
   // always-false no-op in production. A real pending signal will be wired in a
-  // later slice (see TODO in devicePowerCalibrationStore.ts).
+  // later slice (see the note in `lib/device/devicePowerCalibrationStore.ts`).
 
   it('returns null for off-step reports (planning 0W)', () => {
     const store = new PowerCalibrationStore();

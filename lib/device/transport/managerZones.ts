@@ -14,7 +14,7 @@
  * member is held out of actuation. AFTER that first commit an unknown zone is
  * no longer held — it resolves to Main — so the tree rides every snapshot
  * refresh rather than a slower cadence of its own: Homey publishes no zone
- * event, so a stale tree has nothing to correct it. See `TODO.md`.
+ * event, so a stale tree has nothing to correct it.
  */
 import type { Logger } from '../../utils/types';
 import { isUnknownRecord } from '../../utils/types';

@@ -18,7 +18,8 @@
  * reports capabilities ON CHANGE, so a device sitting steady at its peak stops
  * republishing and its `lastUpdated` ages without anything having happened.
  * Keying expiry on that would retire the peak of the steadiest devices first —
- * the same inversion recorded against per-capability staleness in `TODO.md`.
+ * the same inversion that keying per-capability staleness on `lastUpdated`
+ * produces.
  * `observedAtMs` here is when PELS took the reading, not when the device last
  * changed its mind.
  */

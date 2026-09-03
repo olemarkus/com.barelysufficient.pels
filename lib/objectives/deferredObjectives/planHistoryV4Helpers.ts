@@ -478,7 +478,7 @@ export type HourRolloverResult = {
 // observed), leaving intermediate hours blank rather than fabricating
 // intermediate bars. Proration across an unobserved window would require
 // independent power telemetry per hour and is deliberately out of scope
-// here. See `TODO.md` for the follow-up.
+// here.
 export const detectHourRollover = (params: {
   opening: HourProgressSnapshot | null;
   nowProgress: number;
@@ -509,7 +509,7 @@ export const detectHourRollover = (params: {
   // `opening.hourMs` rather than back-dated to the new hour. When observations
   // skip intervening hours entirely, those hours stay blank rather than
   // receiving a fabricated split — proration would require independent
-  // per-hour power telemetry (see the contract note above and `TODO.md`).
+  // per-hour power telemetry (see the contract note above).
   const deliveredUnits = nowProgress - opening.value;
   const nextOpening: HourProgressSnapshot = { hourMs: currentHourMs, value: nowProgress };
   if (deliveredUnits <= 0) {
