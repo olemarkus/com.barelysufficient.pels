@@ -189,7 +189,7 @@ module.exports = {
     },
     {
       name: 'todo-tighten-utils-layering',
-      comment: 'TODO: remove remaining utils -> core/plan dependencies.',
+      comment: 'Transitional: the remaining utils -> device/power/plan dependencies are type-only and must not grow.',
       severity: 'warn',
       from: { path: '^lib/utils/' },
       to: { path: '^lib/(device|power|plan)/' },
@@ -322,7 +322,7 @@ module.exports = {
         + '(`npm run arch:grep` → scripts/check-plan-objectives-edge.mjs), wired into ci:checks and '
         + 'the CI checks job, which fails on ANY lib/plan -> objectives from-specifier (value OR type). '
         + 'tsPreCompilationDeps was deliberately NOT flipped (it surfaces ~18 pre-existing type-only '
-        + 'no-circular violations and doubles the cruised graph — see TODO.md). Run `npm run arch:grep` '
+        + 'no-circular violations and doubles the cruised graph). Run `npm run arch:grep` '
         + 'before adding any lib/plan import that the cruiser might wave through as type-only.',
       severity: 'error',
       from: { path: '^lib/plan/' },

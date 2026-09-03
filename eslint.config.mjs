@@ -366,7 +366,8 @@ export default tseslint.config(
       // Perf-focused loop refactors may use local mutation; immutability is still enforced elsewhere.
       'functional/immutable-data': 'off',
       'unicorn/no-for-each': 'error',
-      // TODO(perf): tighten to { allowSimpleOperations: false } after remaining reducers are migrated.
+      // Tighten to { allowSimpleOperations: false } once the remaining reducers are migrated;
+      // simple operations are allowed only because those callers still exist.
       'unicorn/no-array-reduce': ['error', { allowSimpleOperations: true }],
       'no-restricted-syntax': [
         'error',
@@ -666,7 +667,7 @@ export default tseslint.config(
     // floor for adding a control — the alternative is laundering the same lines
     // into another file that would breach the same cap. Ceiling just above
     // current. Target: <=500 needs the Setup-control registrations extracted
-    // into a table-driven registry (TODO "Thin deviceDetail/index.ts ...").
+    // into a table-driven registry, at which point this override goes away.
     files: ['packages/settings-ui/src/ui/deviceDetail/index.ts'],
     rules: {
       'max-lines': ['warn', { max: 505, skipBlankLines: true, skipComments: true }],
