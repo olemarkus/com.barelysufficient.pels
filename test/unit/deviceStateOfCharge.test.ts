@@ -203,8 +203,10 @@ describe('resolveStateOfChargeSnapshot', () => {
   // A reconnect anchors only on REAL evidence. Substituting the refresh time was
   // tried and reverted: a refresh can carry a cached connected state older than a
   // newer realtime plug-out, and a fabricated future `sessionStartedAtMs` cannot
-  // be undone by reapplying that plug-out. The cost is accepted: the reading
-  // stays stale until a timestamped observation arrives.
+  // be undone by reapplying that plug-out. Requiring real evidence is the safer
+  // half of a gap that is still open: the reading stays stale, and a later
+  // timestamped observation is not guaranteed because `measure_battery` is
+  // change-only.
   it('does not anchor a reconnect from a connected state carrying no timestamp', () => {
     const unplugged = resolve({
       chargingState: 'plugged_out',
