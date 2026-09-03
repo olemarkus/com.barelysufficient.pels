@@ -547,8 +547,11 @@ function resolveEvSessionBoundary(params: {
  * retained fresher observations), and a fabricated `sessionStartedAtMs` in the
  * future cannot be undone by reapplying that plug-out, so the next genuine
  * reconnect goes unrecognised and a same-value SoC report stays trusted for a
- * different car. The cost of requiring evidence is accepted: a timestamp-less
- * reconnect leaves the reading stale until a timestamped observation arrives.
+ * different car. Requiring real evidence is therefore the safer half of a gap
+ * that is still open, not a settled trade: a timestamp-less reconnect leaves
+ * the reading stale, and because `measure_battery` is change-only a later
+ * timestamped observation is not guaranteed to arrive, which can leave an EV
+ * smart task unable to plan. The refresh path is where that gets fixed.
  */
 function resolveReconnectAtMs(params: {
   chargingState?: string;
