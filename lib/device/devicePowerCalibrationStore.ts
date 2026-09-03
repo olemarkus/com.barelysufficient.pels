@@ -153,8 +153,9 @@ export class PowerCalibrationStore {
    * Resolve the pending recovery re-read before the first post-grace write.
    * The abandon-grace window blocks writes while a transiently unreadable
    * boot read might still recover, but blocking alone only postpones the
-   * overwrite — this re-read is what actually recovers the value (TODO
-   * "Persisted-store load grace only postpones a destructive reset").
+   * overwrite — this re-read is what actually recovers the value, which is the
+   * whole point of the pairing: grace alone defers the damage, the re-read
+   * undoes it.
    * Decision table:
    *  - Value present → normalise (prune mirrors what the load path would
    *    have done, honouring the configured retention) and merge under the

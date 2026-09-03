@@ -738,8 +738,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
   });
 
   it('a latch ONSET during an UNREADABLE boot read persists nothing — the blank ladder never lands', () => {
-    // The recorded defect (TODO "Curtailment hold-state read failure resets the
-    // refute ladder"): a latch onset is a transition, but its write carries
+    // The recorded defect: a latch onset is a transition, but its write carries
     // `holdLevel: 0`. Ending the abandon-grace on it stamped that blank over
     // the retained ladder — a 60-min hold reset to 15-min on the next refute.
     // A latch onset is NOT ladder evidence: the write stays suppressed, the
@@ -771,7 +770,7 @@ describe('CurtailmentSurplusEstimator — persisted refute ladder (crash-loop re
 
   it('suppresses the blank-ladder persist for the WHOLE process lifetime when the read never recovers', () => {
     // Reads stay down while writes would land — `settings.get` and `.set` fail
-    // independently, which is exactly the TODO hazard. Every transition this
+    // independently, which is exactly the hazard. Every transition this
     // session carries `holdLevel: 0`, so nothing may ever be written: the next
     // clean restart must rehydrate the untouched on-disk blob.
     const writes: CurtailmentPersistedHoldState[] = [];
