@@ -195,8 +195,9 @@ mechanical change for affected flows. Two options were considered:
    shape doesn't compose with the richer-token redesign anyway.
 
 A reviewer asking for soft deprecation is reading this as a 1.0+ stable
-surface; it isn't. The decision is sequenced with the rest of the redesign
-work, not settled ahead of it.
+surface; it isn't. The hard cut is the settled path and it shipped
+(2026-05-15); soft deprecation was considered and rejected above, so do not
+reopen it.
 
 ## Related notes
 
