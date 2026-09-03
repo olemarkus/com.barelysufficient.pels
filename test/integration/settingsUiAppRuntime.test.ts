@@ -65,7 +65,7 @@ describe('settings UI app runtime helpers', () => {
     vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const appWithPrivates = app as unknown as Record<string, (...args: unknown[]) => unknown>;
     const updateDailyBudgetAndRecordCap = vi.spyOn(appWithPrivates, 'updateDailyBudgetAndRecordCap').mockImplementation(() => {});
-    const persistPowerTrackerState = vi.spyOn(appWithPrivates, 'persistPowerTrackerState').mockImplementation(() => {});
+    const settingsSet = vi.spyOn(mockHomeyInstance.settings, 'set');
 
     (app as { powerTracker: Record<string, unknown> }).powerTracker = {
       lastPowerW: 4300,
@@ -135,6 +135,7 @@ describe('settings UI app runtime helpers', () => {
       forcePlanRebuild: true,
       persistReason: 'manual',
     });
-    expect(persistPowerTrackerState).toHaveBeenCalledTimes(1);
+    // The owner's reset is persisted at once, exactly one write of the tracker key.
+    expect(settingsSet.mock.calls.filter(([key]) => key === 'power_tracker_state')).toHaveLength(1);
   });
 });

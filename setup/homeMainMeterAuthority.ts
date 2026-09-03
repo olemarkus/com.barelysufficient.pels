@@ -20,7 +20,7 @@
  * admitted Flow sample replaces them after a source switch.
  *
  * A RESTART inside that same window is the third case, and the reason the
- * sampled clause has a fail-closed state at all: `loadPowerTracker` restores
+ * sampled clause has a fail-closed state at all: `hydratePowerTracker` restores
  * the durable `lastPowerW`/`lastTimestamp`, so the tracker resumes serving —
  * and the planner resumes treating as fresh — watts that were sampled before
  * this process existed, while nothing restores the identity that governed them.

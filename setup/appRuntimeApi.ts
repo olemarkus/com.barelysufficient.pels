@@ -10,7 +10,6 @@ import type { PlanService } from '../lib/plan/planService';
 import type { DailyBudgetUpdateStateOptions } from '../lib/dailyBudget/dailyBudgetTypes';
 import {
   updateDailyBudgetAndRecordCapForApp,
-  type PowerTrackerPersistReason,
 } from '../lib/power/sampleIngest';
 import type {
   FlowReportedCapabilityId,
@@ -214,8 +213,11 @@ abstract class AppRuntimeApi extends Base {
     }
     this.context.lastNotifiedOperatingMode = trimmed;
   }
-  public loadPowerTracker(options: { skipDailyBudgetUpdate?: boolean } = {}): void {
-    this.powerTrackerHelpers.loadPowerTracker(options);
+  public loadPowerTracker(): void {
+    this.powerTrackerHelpers.loadPowerTracker();
+  }
+  public hydratePowerTracker(): void {
+    this.powerTrackerHelpers.hydratePowerTracker();
   }
   protected loadPowerCalibrationStore(): void { this.powerTrackerHelpers.loadPowerCalibrationStore(); }
   protected persistPowerCalibrationIfDue(nowMs: number = Date.now()): void {
@@ -281,10 +283,7 @@ abstract class AppRuntimeApi extends Base {
       });
     }
   };
-  protected persistPowerTrackerState(reason: PowerTrackerPersistReason = 'write'): void {
-    this.powerTrackerHelpers.persistPowerTrackerState(reason);
-  }
-  protected prunePowerTrackerHistory(): void { this.powerTrackerHelpers.prunePowerTrackerHistory(); }
+  protected stopPowerTracker(): void { this.powerTrackerHelpers.stopPowerTracker(); }
   protected startPowerTrackerPruning(): void { this.powerTrackerHelpers.startPowerTrackerPruning(); }
   protected savePowerTracker(nextState: AppContext['powerTracker']): void {
     this.powerTrackerHelpers.savePowerTracker(nextState);

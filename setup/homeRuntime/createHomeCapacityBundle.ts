@@ -87,8 +87,8 @@ import {
 import { installHomeCapacityBundleSourceRecovery } from './homeCapacityBundleSourceRecovery';
 import type { HomeScope } from './homeScope';
 import {
-  createSuffixedTrackerPersistence,
-} from '../../lib/power/suffixedTrackerPersistence';
+  createHomeTrackerPersistence,
+} from '../../lib/power/homeTrackerPersistence';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import { createBundleCapacityGuard } from './createBundleCapacityGuard';
 import type { PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
@@ -463,7 +463,7 @@ function createBundlePlanningRuntime(params: {
   isMeterSourceEpochDiscarded: () => boolean;
   isMeterSourceAuthorizedForExecution: () => boolean;
   preparedSampleFence: ReturnType<typeof createPreparedBundleSampleFence>;
-  tracker: ReturnType<typeof createSuffixedTrackerPersistence>;
+  tracker: ReturnType<typeof createHomeTrackerPersistence>;
   getHome: () => SubHomeConfig;
   getCapacityScalars: () => CapacityScalarSettings;
   getRebuildState: () => PowerSampleRebuildState;
@@ -573,7 +573,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   capacityScalars = capacityStore.read();
   let rebuildState: PowerSampleRebuildState = { lastMs: 0 };
 
-  const tracker = createSuffixedTrackerPersistence({
+  const tracker = createHomeTrackerPersistence({
     deps: {
       settings: ctx.homey.settings,
       timers: ctx.timers,
@@ -581,12 +581,16 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
       getPruneDebugEmitter: () => ctx.getStructuredDebugEmitter('perf', 'perf'),
       reportError: (message, error) => ctx.error(message, error),
       getTimeZone: () => ctx.getTimeZone(),
+      isTornDown,
+      // An area is hydrated before construction and refuses to build on a
+      // suspect read, so a runtime recovery only reopens persistence; its
+      // planning cadence is the Homey Energy poll, which never stopped.
+      onRecovered: () => undefined,
     },
     homeId,
     initialState: deps.initialPowerTrackerState,
-    meterIdentity: deps.powerTrackerMeterIdentity,
+    meterBinding: { kind: 'bound', identity: deps.powerTrackerMeterIdentity },
     timerKey,
-    isTornDown,
   });
   const modeCatalog = createHomeModeCatalog(ctx, homeId);
   let scheduleSourceActuationRetry = (): void => undefined;

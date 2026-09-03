@@ -86,7 +86,7 @@ function sanitizeSolarRecord(field: unknown): Record<string, unknown> | null {
 
 /**
  * Field- and key-level normalization for the optional solar families: a junk
- * value never fails the whole `isPowerTrackerState` guard — an all-or-nothing
+ * value never fails the whole `isPlausiblePowerTrackerState` guard — an all-or-nothing
  * reject there would discard the entire tracker (billed import history
  * included) and let the next persist overwrite it. Granularity:
  *
@@ -294,10 +294,10 @@ const FINITE_NUMBER_FIELDS = [
 ] as const;
 
 /**
- * Strict whole-shape plausibility for sub-home tracker safety boundaries.
- * Those paths classify a rejected persisted blob as suspect and leave it
- * untouched, so rejecting one malformed nested field cannot erase otherwise
- * recoverable accounting.
+ * Strict whole-shape plausibility for every home's tracker persistence
+ * (`lib/power/homeTrackerPersistence.ts`). A rejected persisted blob is
+ * classified suspect and left untouched, so rejecting one malformed nested
+ * field cannot erase otherwise recoverable accounting.
  */
 export function isPlausiblePowerTrackerState(value: unknown): value is PowerTrackerState {
   if (!isPlainObjectRecord(value)) return false;
@@ -319,48 +319,3 @@ export function isPlausiblePowerTrackerState(value: unknown): value is PowerTrac
     );
 }
 
-/**
- * Backward-compatible main-tracker loader guard. The main tracker has no
- * classified, refuse-to-overwrite persistence state yet: tightening this
- * guard would make one newly rejected nested field leave boot state at `{}`,
- * which the scheduled prune would then persist over all accounting history.
- * Sub-home safety boundaries must use {@link isPlausiblePowerTrackerState}.
- */
-export function isPowerTrackerState(value: unknown): value is PowerTrackerState {
-  if (!value || typeof value !== 'object') return false;
-  const state = value as PowerTrackerState;
-  const isOptionalRecord = (entry: unknown) => entry === undefined || typeof entry === 'object';
-  const isOptionalNumber = (entry: unknown) => entry === undefined || typeof entry === 'number';
-  const isOptionalMeterIdentity = (entry: unknown): boolean => (
-    entry === undefined || isPowerTrackerMeterIdentity(entry)
-  );
-  const checks = [
-    isOptionalMeterIdentity(state.meterIdentity),
-    isOptionalRecord(state.buckets),
-    isOptionalRecord(state.hourlyBudgets),
-    isOptionalRecord(state.dailyBudgetCaps),
-    isOptionalRecord(state.dailyTotals),
-    isOptionalRecord(state.hourlyAverages),
-    isOptionalRecord(state.controlledBuckets),
-    isOptionalRecord(state.uncontrolledBuckets),
-    isOptionalRecord(state.exemptBuckets),
-    isOptionalRecord(state.objectiveProfiles),
-    isOptionalRecord(state.controlledDailyTotals),
-    isOptionalRecord(state.uncontrolledDailyTotals),
-    isOptionalRecord(state.exemptDailyTotals),
-    isOptionalRecord(state.controlledHourlyAverages),
-    isOptionalRecord(state.uncontrolledHourlyAverages),
-    isOptionalRecord(state.exemptHourlyAverages),
-    isOptionalRecord(state.generationBuckets),
-    isOptionalRecord(state.exportBuckets),
-    isOptionalRecord(state.generationDailyTotals),
-    isOptionalRecord(state.exportDailyTotals),
-    isOptionalNumber(state.lastGenerationW),
-    isOptionalNumber(state.lastPowerW),
-    isOptionalNumber(state.lastControlledPowerW),
-    isOptionalNumber(state.lastUncontrolledPowerW),
-    isOptionalNumber(state.lastExemptPowerW),
-    isOptionalNumber(state.lastTimestamp),
-  ];
-  return checks.every(Boolean);
-}

@@ -3985,7 +3985,7 @@ describe('periodic snapshot refresh scheduling', () => {
     await initApp(app);
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
-    const persistSpy = vi.spyOn(app as unknown as Record<'persistPowerTrackerState', (...args: never[]) => unknown>, 'persistPowerTrackerState');
+    const settingsSet = vi.spyOn(mockHomeyInstance.settings, 'set');
     const disposeReachabilitySpy = vi.spyOn(
       app['serviceWiring']['mainHomeScope'],
       'disposeBinaryCommandReachability',
@@ -4001,7 +4001,8 @@ describe('periodic snapshot refresh scheduling', () => {
 
     await app.onUninit?.();
 
-    expect(persistSpy).toHaveBeenCalled();
+    // The pending debounced tracker persist is flushed at the settings seam.
+    expect(settingsSet.mock.calls.some(([key]) => key === 'power_tracker_state')).toBe(true);
     expect(disposeReachabilitySpy).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -4030,17 +4031,17 @@ describe('periodic snapshot refresh scheduling', () => {
   it('clears the one-shot prune timer registry entry after the initial prune fires', async () => {
     vi.useFakeTimers();
     const app = createApp();
-    const pruneSpy = vi.spyOn(app as unknown as Record<'prunePowerTrackerHistory', (...args: never[]) => unknown>, 'prunePowerTrackerHistory').mockImplementation(() => {});
+    const pruneSpy = vi.spyOn(app.mainTracker, 'prune').mockImplementation(() => {});
 
     try {
       app['startPowerTrackerPruning']();
 
-      expect(app.timers.has('powerTrackerPruneInitial')).toBe(true);
+      expect(app.timers.has('trackerPruneInitial')).toBe(true);
 
       await vi.advanceTimersByTimeAsync(10 * 1000);
 
       expect(pruneSpy).toHaveBeenCalledTimes(1);
-      expect(app.timers.has('powerTrackerPruneInitial')).toBe(false);
+      expect(app.timers.has('trackerPruneInitial')).toBe(false);
     } finally {
       vi.useRealTimers();
     }

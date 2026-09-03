@@ -371,7 +371,7 @@ const latchEvidence = (measured: boolean): PowerMeasurementEvidence => (
 /**
  * The whole-home classification asks the LIVE tracker, never the persisted
  * `POWER_TRACKER_STATE` fallback. The live latch is itself restored across an
- * ordinary restart (`loadPowerTracker`) — that is the planner's own
+ * ordinary restart (`hydratePowerTracker`) — that is the planner's own
  * restored-sample policy, and the open gate then rewrites the blob promptly.
  * What this classification closes is the truly gated home: first-ever boot,
  * post-meter-swap, or a corrupt tracker restore, where nothing this run will

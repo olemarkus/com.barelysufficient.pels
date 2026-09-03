@@ -99,7 +99,8 @@ export type AppContext = {
   getNow: () => Date;
   getTimeZone: () => string;
   notifyOperatingModeChanged: (mode: string) => void;
-  loadPowerTracker: (options?: { skipDailyBudgetUpdate?: boolean }) => void;
+  loadPowerTracker: () => void;
+  hydratePowerTracker: () => void;
   loadCapacitySettings: () => void;
   /** Re-read only the validated live temperature-command authorization map. */
   loadTemperatureControlPolicySettings: () => void;

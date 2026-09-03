@@ -89,21 +89,6 @@ the observation revision the plan was built from; and `observedBinaryState` spli
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
-- [ ] **A suspect boot read of `power_tracker_state` is wiped by the tracker's first prune 10 s
-      later.** `setup/settingsRepository.ts` `loadPowerTrackerState` answers `undefined` for a
-      null, malformed, or throwing read, `setup/appPowerTracker.ts` `loadPowerTracker` then leaves
-      the in-memory tracker at its blank initial state, and `prunePowerTrackerHistory` persists
-      that blank state unconditionally at `POWER_TRACKER_PRUNE_INITIAL_DELAY_MS` — the hourly and
-      daily history, the last Flow sample, everything the owner's Usage tab shows, gone on one
-      transient SDK miss. The sub-home trackers already do this right (`SuffixedTrackerPersistence`
-      latches every write closed after a suspect reload); the Main home does not. Fix: classify the
-      boot load with `readPersistedHomeTracker` and latch persist closed (prune included) after a
-      suspect read until a later reload succeeds, the abandon-grace `AGENTS.md` already promises.
-      Done when a test that makes the boot read of `power_tracker_state` suspect and advances past
-      the initial prune observes the persisted blob unchanged. Source: pels-runtime-reality and
-      Codex on the sole-meter adoption PR (2026-09-02), where the adoption reads its Flow-history
-      evidence at start precisely because the prune may erase it. [P1]
-
 - [ ] **The restore cooldown's base window does not reach the measured restore-latency tail.**
       With the pending-restore reservation removed (2026-08-28), `RESTORE_COOLDOWN_MS = 60 s`
       (`lib/plan/planConstants.ts`) is the only thing pacing a second restore behind a first.
@@ -4081,7 +4066,7 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       Settings → Advanced" resets Main's tracker; a per-home reset through the bundle's persistence
       API is not built. Either scope the footer copy per home or build the per-home reset (route it
       through the bundle's persistence API, never a raw suffixed settings write — it collides with
-      `SuffixedTrackerPersistenceController`'s echo-suppression latch). Persona: meter-area owner
+      `HomeTrackerPersistenceController`'s echo-suppression latch). Persona: meter-area owner
       wanting a clean slate for one rental unit. *Hypothesis:* the owner follows the footer, resets
       the wrong home's history, and loses Main's data without clearing the area's. Files:
       `packages/settings-ui/src/ui/power.ts` (footer), `setup/homeRuntime/` (persistence API).
