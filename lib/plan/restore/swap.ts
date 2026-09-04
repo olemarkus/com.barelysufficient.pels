@@ -1,6 +1,5 @@
 import { getLogger } from '../../logging/logger';
 import type { DevicePlanDevice } from '../planTypes';
-import type { PlanEngineState } from '../planState';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
 import {
@@ -18,11 +17,12 @@ import {
 import { buildInsufficientHeadroomUpdate, resolveRestorePowerSource } from './accounting';
 import { isOffSteppedRestoreCandidate } from './devices';
 import { setRestorePlanDevice as setDevice } from './helpers';
+import type { RestoreNeed } from './support';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { buildRestoreAdmissionLogFields, buildRestoreAdmissionMetrics } from '../admission';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
-import type { RestoreDeps } from './types';
+import type { RestoreCycle, RestoreDeps } from './types';
 
 /**
  * What a swap attempt did with the device.
@@ -43,43 +43,35 @@ export type SwapRestoreOutcome =
 
 const logger = getLogger('plan/restore');
 
-export function attemptSwapRestore(params: {
-  dev: DevicePlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-  onDevices: DevicePlanDevice[];
-  swapState: SwapState;
-  state: PlanEngineState;
+/**
+ * What to merge onto the device on each swap outcome. Both are always present:
+ * an empty partial means "nothing extra to merge", which is a value, not an
+ * absent one — the stepped lane supplies rung fields, the binary lane does not.
+ */
+export type SwapDeviceUpdates = {
+  admitted: Partial<DevicePlanDevice>;
+  rejected: Partial<DevicePlanDevice>;
+};
+
+export function attemptSwapRestore(
+  cycle: RestoreCycle,
+  /** Only the on-devices half of the lane: taking the whole lane would make the
+   *  stepped-swap executor depend on a lane that contains itself. */
+  onDevices: DevicePlanDevice[],
+  dev: DevicePlanDevice,
+  availableHeadroom: number,
+  restoreNeed: RestoreNeed,
   /** The caller's per-device restore-decision key. Shared on purpose: a device
    *  has one restore decision per cycle, so direct and swap rejections dedupe
    *  against each other and a move between them re-emits. */
-  restoreDebugKey: string;
-  phase: 'startup' | 'runtime';
-  availableHeadroom: number;
-  restoreNeed: { needed: number; devPower: number; penaltyLevel: number; penaltyExtraKw: number };
-  measurementTs: number | null;
-  restoredThisCycle: Set<string>;
-  deps: RestoreDeps;
-  admittedDeviceUpdate?: Partial<DevicePlanDevice>;
-  rejectedDeviceUpdate?: Partial<DevicePlanDevice>;
-}): SwapRestoreOutcome {
-  const {
-    dev,
-    deviceMap,
-    onDevices,
-    swapState,
-    state,
-    restoreDebugKey,
-    phase,
-    availableHeadroom,
-    restoreNeed,
-    measurementTs,
-    restoredThisCycle,
-    deps,
-    admittedDeviceUpdate,
-    rejectedDeviceUpdate,
-  } = params;
+  restoreDebugKey: string,
+  updates: SwapDeviceUpdates,
+): SwapRestoreOutcome {
+  const { deviceMap, swapState, state, restoredThisCycle, deps } = cycle;
+  const measurementTs = cycle.timing.measurementTs;
+  const { admitted: admittedDeviceUpdate, rejected: rejectedDeviceUpdate } = updates;
 
-  if (hasPendingSwapSourcesStillOn({ swapState, targetDeviceId: dev.id, deviceMap })) {
+  if (hasPendingSwapSourcesStillOn(swapState, dev.id, deviceMap)) {
     setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
     return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
   }
@@ -92,18 +84,16 @@ export function attemptSwapRestore(params: {
   // `insufficient_headroom` — but the shortfall is not why the swap stood down,
   // and once the pre-announcement went they would have gone silent entirely.
   if (shouldDeferSwapAdmissionForMeasurement({ swapState, deviceId: dev.id, measurementTs })) {
-    return rejectSwapRestoreForMeasurement({
-      dev, deviceMap, state, restoreDebugKey, phase,
-      availableHeadroom, restoreNeed, rejectedDeviceUpdate, deps,
-      rejectionReason: 'awaiting_fresh_measurement',
-    });
+    return rejectSwapRestoreForMeasurement(
+      cycle, dev, availableHeadroom, restoreNeed, restoreDebugKey,
+      rejectedDeviceUpdate, 'awaiting_fresh_measurement',
+    );
   }
   if (measurementTs === null) {
-    return rejectSwapRestoreForMeasurement({
-      dev, deviceMap, state, restoreDebugKey, phase,
-      availableHeadroom, restoreNeed, rejectedDeviceUpdate, deps,
-      rejectionReason: 'no_measurement',
-    });
+    return rejectSwapRestoreForMeasurement(
+      cycle, dev, availableHeadroom, restoreNeed, restoreDebugKey,
+      rejectedDeviceUpdate, 'no_measurement',
+    );
   }
 
   // Nothing is running that this cycle could pause, so the search below would
@@ -126,26 +116,17 @@ export function attemptSwapRestore(params: {
     restoredThisCycle,
   });
   if (!swap.ready) {
-    return rejectSwapRestoreWithCandidates({
-      dev,
-      deviceMap,
-      state,
-      restoreDebugKey,
-      phase,
-      availableHeadroom,
-      restoreNeed,
-      swap,
-      rejectedDeviceUpdate,
-      deps,
-    });
+    return rejectSwapRestoreWithCandidates(
+      cycle, dev, availableHeadroom, restoreNeed, swap, restoreDebugKey, rejectedDeviceUpdate,
+    );
   }
 
   // An approval retires whatever rejection the key was holding, so a swap that
   // is later undone re-announces the block instead of being deduped against the
   // decision it replaced.
   clearRestoreDebugEvent(state, restoreDebugKey);
-  emitSwapApprovedDebug({ dev, phase, restoreNeed, swap, deps });
-  markApprovedSwapTarget({ swapState, dev, measurementTs, admittedDeviceUpdate });
+  emitSwapApprovedDebug(cycle, dev, restoreNeed, swap);
+  markApprovedSwapTarget(swapState, dev, measurementTs, admittedDeviceUpdate);
   for (const shedDev of swap.toShed) {
     setDevice(deviceMap, shedDev.id, {
       plannedState: 'shed',
@@ -164,12 +145,11 @@ export function attemptSwapRestore(params: {
   return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
 }
 
-function hasPendingSwapSourcesStillOn(params: {
-  swapState: SwapState;
-  targetDeviceId: string;
-  deviceMap: ReadonlyMap<string, DevicePlanDevice>;
-}): boolean {
-  const { swapState, targetDeviceId, deviceMap } = params;
+function hasPendingSwapSourcesStillOn(
+  swapState: SwapState,
+  targetDeviceId: string,
+  deviceMap: ReadonlyMap<string, DevicePlanDevice>,
+): boolean {
   for (const [deviceId, swappedOutFor] of swapState.swappedOutFor) {
     if (swappedOutFor !== targetDeviceId) continue;
     const sourceDevice = deviceMap.get(deviceId);
@@ -186,24 +166,22 @@ function hasPendingSwapSourcesStillOn(params: {
   return false;
 }
 
-export function holdPendingSwapTargetUntilSourcesAreOff(params: {
-  swapState: SwapState;
-  targetDevice: DevicePlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-}): boolean {
-  const { swapState, targetDevice, deviceMap } = params;
-  if (!hasPendingSwapSourcesStillOn({ swapState, targetDeviceId: targetDevice.id, deviceMap })) return false;
+export function holdPendingSwapTargetUntilSourcesAreOff(
+  swapState: SwapState,
+  targetDevice: DevicePlanDevice,
+  deviceMap: Map<string, DevicePlanDevice>,
+): boolean {
+  if (!hasPendingSwapSourcesStillOn(swapState, targetDevice.id, deviceMap)) return false;
   setDevice(deviceMap, targetDevice.id, buildSwapPendingTargetUpdate(targetDevice));
   return true;
 }
 
-function markApprovedSwapTarget(params: {
-  swapState: SwapState;
-  dev: DevicePlanDevice;
-  measurementTs: number;
-  admittedDeviceUpdate?: Partial<DevicePlanDevice>;
-}): void {
-  const { swapState, dev, measurementTs, admittedDeviceUpdate } = params;
+function markApprovedSwapTarget(
+  swapState: SwapState,
+  dev: DevicePlanDevice,
+  measurementTs: number,
+  admittedDeviceUpdate: Partial<DevicePlanDevice>,
+): void {
   markSwapTargetPending(swapState, dev.id);
   recordSwapPlanMeasurement(swapState, dev.id, measurementTs);
   recordRequestedTarget(
@@ -213,28 +191,19 @@ function markApprovedSwapTarget(params: {
   );
 }
 
-function rejectSwapRestoreWithCandidates(params: {
-  dev: DevicePlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-  state: PlanEngineState;
-  restoreDebugKey: string;
-  phase: 'startup' | 'runtime';
-  availableHeadroom: number;
-  restoreNeed: { needed: number; devPower: number; penaltyLevel: number; penaltyExtraKw: number };
-  swap: ReturnType<typeof buildSwapCandidates>;
-  rejectedDeviceUpdate?: Partial<DevicePlanDevice>;
-  deps: RestoreDeps;
-}): SwapRestoreOutcome {
-  const {
-    dev, deviceMap, state, restoreDebugKey, phase,
-    availableHeadroom, restoreNeed, swap, rejectedDeviceUpdate, deps,
-  } = params;
-  setDevice(deviceMap, dev.id, buildRejectedSwapUpdate({
-    availableHeadroom,
-    restoreNeed,
-    swap,
-    rejectedDeviceUpdate,
-  }));
+function rejectSwapRestoreWithCandidates(
+  cycle: RestoreCycle,
+  dev: DevicePlanDevice,
+  availableHeadroom: number,
+  restoreNeed: RestoreNeed,
+  swap: ReturnType<typeof buildSwapCandidates>,
+  restoreDebugKey: string,
+  rejectedDeviceUpdate: Partial<DevicePlanDevice>,
+): SwapRestoreOutcome {
+  const { deviceMap, state, deps, phase } = cycle;
+  setDevice(deviceMap, dev.id, buildRejectedSwapUpdate(
+    availableHeadroom, restoreNeed, rejectedDeviceUpdate, swap,
+  ));
   // Change-gated like every other restore decision. This was the one emitter
   // that wrote unconditionally, so a house pinned under its budget re-announced
   // the same rejection for every shed device on every rebuild: 39.8k of these
@@ -266,14 +235,13 @@ function rejectSwapRestoreWithCandidates(params: {
   return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
 }
 
-function emitSwapApprovedDebug(params: {
-  dev: DevicePlanDevice;
-  phase: 'startup' | 'runtime';
-  restoreNeed: { needed: number; devPower: number; penaltyLevel: number; penaltyExtraKw: number };
-  swap: ReturnType<typeof buildSwapCandidates>;
-  deps: RestoreDeps;
-}): void {
-  const { dev, phase, restoreNeed, swap, deps } = params;
+function emitSwapApprovedDebug(
+  cycle: RestoreCycle,
+  dev: DevicePlanDevice,
+  restoreNeed: RestoreNeed,
+  swap: ReturnType<typeof buildSwapCandidates>,
+): void {
+  const { deps, phase } = cycle;
   emitSwapDebug(deps, {
     event: 'restore_swap_approved',
     restoreType: 'swap',
@@ -311,27 +279,19 @@ function emitSwapDebug(deps: RestoreDeps, payload: Record<string, unknown>): voi
  * (`awaiting_fresh_measurement`). No candidate search runs, so the card carries
  * the direct shortfall and the log carries the real cause.
  */
-function rejectSwapRestoreForMeasurement(params: {
-  dev: DevicePlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-  state: PlanEngineState;
-  restoreDebugKey: string;
-  phase: 'startup' | 'runtime';
-  availableHeadroom: number;
-  restoreNeed: { needed: number; devPower: number; penaltyExtraKw: number };
-  rejectedDeviceUpdate?: Partial<DevicePlanDevice>;
-  deps: RestoreDeps;
-  rejectionReason: 'no_measurement' | 'awaiting_fresh_measurement';
-}): SwapRestoreOutcome {
-  const {
-    dev, deviceMap, state, restoreDebugKey, phase,
-    availableHeadroom, restoreNeed, rejectedDeviceUpdate, deps, rejectionReason,
-  } = params;
-  setDevice(deviceMap, dev.id, buildRejectedSwapUpdate({
-    availableHeadroom,
-    restoreNeed,
-    rejectedDeviceUpdate,
-  }));
+function rejectSwapRestoreForMeasurement(
+  cycle: RestoreCycle,
+  dev: DevicePlanDevice,
+  availableHeadroom: number,
+  restoreNeed: RestoreNeed,
+  restoreDebugKey: string,
+  rejectedDeviceUpdate: Partial<DevicePlanDevice>,
+  rejectionReason: 'no_measurement' | 'awaiting_fresh_measurement',
+): SwapRestoreOutcome {
+  const { deviceMap, state, deps, phase } = cycle;
+  setDevice(deviceMap, dev.id, buildRejectedSwapUpdate(
+    availableHeadroom, restoreNeed, rejectedDeviceUpdate, null,
+  ));
   emitRestoreDebugEventOnChange({
     state,
     key: restoreDebugKey,
@@ -361,18 +321,22 @@ function buildSwapPendingTargetUpdate(dev: DevicePlanDevice): Partial<DevicePlan
   return { plannedState: 'shed', reason };
 }
 
-function buildRejectedSwapUpdate(params: {
-  availableHeadroom: number;
-  restoreNeed: { needed: number; penaltyExtraKw: number };
-  swap?: ReturnType<typeof buildSwapCandidates>;
-  rejectedDeviceUpdate?: Partial<DevicePlanDevice>;
-}): Partial<DevicePlanDevice> {
-  const { availableHeadroom, restoreNeed, swap, rejectedDeviceUpdate } = params;
+/**
+ * `swap` is null on the paths that reject before candidates are ever built (the
+ * two measurement stand-downs). That is a genuine domain absence — there is no
+ * swap to describe — not a missing input.
+ */
+function buildRejectedSwapUpdate(
+  availableHeadroom: number,
+  restoreNeed: RestoreNeed,
+  rejectedDeviceUpdate: Partial<DevicePlanDevice>,
+  swap: ReturnType<typeof buildSwapCandidates> | null,
+): Partial<DevicePlanDevice> {
   const directAdmission = buildRestoreAdmissionMetrics({
     availableKw: availableHeadroom,
     neededKw: restoreNeed.needed,
   });
-  const shouldDescribeSwapReserve = (swap?.toShed.length ?? 0) > 0;
+  const shouldDescribeSwapReserve = swap !== null && swap.toShed.length > 0;
   return {
     ...buildInsufficientHeadroomUpdate({
       neededKw: restoreNeed.needed,

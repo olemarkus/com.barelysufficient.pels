@@ -12,11 +12,23 @@ import {
 } from './accounting';
 
 
+/**
+ * What one device needs to be restored: the kW it would draw, the kW admission
+ * must find, and the activation penalty inflating the latter. Named because
+ * five signatures across the restore pass were re-spelling it inline.
+ */
+export type RestoreNeed = {
+  needed: number;
+  devPower: number;
+  penaltyLevel: number;
+  penaltyExtraKw: number;
+};
+
 export function getRestoreNeed(
   dev: DevicePlanDevice,
   state: PlanEngineState,
   diagnostics?: DeviceDiagnosticsRecorder,
-): { needed: number; devPower: number; penaltyLevel: number; penaltyExtraKw: number } {
+): RestoreNeed {
   const { power: devPower, needed: baseNeeded } = computeBaseRestoreNeed(dev);
   const recentShedNeeded = applyRecentShedInflation({
     baseNeededKw: baseNeeded,

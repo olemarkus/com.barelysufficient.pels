@@ -1,10 +1,6 @@
 import type { DevicePlanDevice } from '../planTypes';
-import type { PlanEngineState } from '../planState';
-import type { SwapState } from '../swap';
 import { getRestoreCandidates, markOffDevicesStayOff } from './devices';
 import { markSteppedDevicesStayAtCurrentLevel, setRestorePlanDevice as setDevice } from './helpers';
-import type { RestoreTiming } from './timing';
-import type { HeadroomReserve } from '../admission';
 import type { RestoreHeadroomLedger } from './headroomLedger';
 import { buildDisabledRestoreBatchState } from './batch';
 import {
@@ -12,7 +8,7 @@ import {
   applyRestoreCandidates,
   buildSteppedSwapExecutor,
 } from './candidateLoop';
-import type { RestoreDeps } from './types';
+import type { RestoreCycle, RestoreLane } from './types';
 
 const isBudgetExempt = (dev: DevicePlanDevice): boolean => dev.budgetExempt === true;
 
@@ -35,19 +31,21 @@ const isBudgetExempt = (dev: DevicePlanDevice): boolean => dev.budgetExempt === 
  * binary and stepped candidates, matching the ledger's admission surface.
  * Governing note: `notes/safe-pace-two-constraints.md` § "Proposed model".
  */
-export function applyBudgetExemptRestorePass(params: {
-  deviceMap: Map<string, DevicePlanDevice>;
-  swapState: SwapState;
-  state: PlanEngineState;
-  timing: RestoreTiming;
-  ledger: RestoreHeadroomLedger;
-  restoredThisCycle: Set<string>;
-  restoredOneThisCycle: boolean;
-  headroomReserves: readonly HeadroomReserve[];
-  deps: RestoreDeps;
-}): { restoredOneThisCycle: boolean } {
-  const { deviceMap, swapState, state, timing, ledger, restoredThisCycle, headroomReserves, deps } = params;
-  let { restoredOneThisCycle } = params;
+export function applyBudgetExemptRestorePass(
+  cycle: RestoreCycle,
+  ledger: RestoreHeadroomLedger,
+  restoredOne: boolean,
+): { restoredOneThisCycle: boolean } {
+  const { deviceMap, state, timing } = cycle;
+  let restoredOneThisCycle = restoredOne;
+  // No swap sources: `attemptSwapRestore` finds nothing and falls through to the
+  // ordinary insufficient-headroom reject. The batch throttle is disabled here,
+  // so this lane derives its own cycle rather than borrowing the caller's.
+  const laneCycle: RestoreCycle = { ...cycle, batchState: buildDisabledRestoreBatchState() };
+  const lane: RestoreLane = {
+    onDevices: [],
+    steppedSwapExecutor: buildSteppedSwapExecutor(laneCycle, []),
+  };
 
   // Mark non-exempt devices FIRST (and only them): an admitted exempt device is
   // still observed off this cycle, so an unfiltered mark afterwards would
@@ -66,45 +64,13 @@ export function applyBudgetExemptRestorePass(params: {
     deviceFilter: (dev) => !isBudgetExempt(dev),
   });
 
-  // No swap sources: attemptSwapRestore finds nothing and falls through to the
-  // ordinary insufficient-headroom reject.
-  const steppedSwapExecutor = buildSteppedSwapExecutor({
-    deviceMap,
-    onDevices: [],
-    swapState,
-    state,
-    timing,
-    restoredThisCycle,
-    deps,
-  });
   const restoreCandidates = getRestoreCandidates(Array.from(deviceMap.values()))
     .filter((candidate) => isBudgetExempt(candidate.device));
-  ({ restoredOneThisCycle } = applyRestoreCandidates({
-    restoreCandidates,
-    deviceMap,
-    onDevices: [],
-    swapState,
-    state,
-    timing,
-    ledger,
-    restoredThisCycle,
-    restoredOneThisCycle,
-    batchState: buildDisabledRestoreBatchState(),
-    deps,
-    steppedSwapExecutor,
-    headroomReserves,
-  }));
-  ({ restoredOneThisCycle } = applyActiveSteppedRestoreCandidates({
-    deviceMap,
-    swapState,
-    state,
-    timing,
-    ledger,
-    restoredOneThisCycle,
-    debugStructured: deps.debugStructured,
-    steppedSwapExecutor,
-    headroomReserves,
-    candidateFilter: isBudgetExempt,
-  }));
+  ({ restoredOneThisCycle } = applyRestoreCandidates(
+    laneCycle, lane, restoreCandidates, ledger, restoredOneThisCycle,
+  ));
+  ({ restoredOneThisCycle } = applyActiveSteppedRestoreCandidates(
+    laneCycle, lane, ledger, restoredOneThisCycle, isBudgetExempt,
+  ));
   return { restoredOneThisCycle };
 }

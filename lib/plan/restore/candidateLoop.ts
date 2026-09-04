@@ -1,7 +1,5 @@
 import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
-import type { PlanEngineState } from '../planState';
-import type { SwapState } from '../swap';
 import {
   getSteppedRestoreCandidates,
   isActiveSteppedRestoreCandidate,
@@ -13,55 +11,32 @@ import {
   planRestoreForSteppedDevice,
   type SteppedSwapExecutor,
 } from './helpers';
-import type { RestoreTiming } from './timing';
-import { resolveRestoreDecisionPhase, type HeadroomReserve } from '../admission';
 import type { RestoreHeadroomLedger } from './headroomLedger';
 import { attemptSwapRestore, holdPendingSwapTargetUntilSourcesAreOff } from './swap';
 import { planRestoreForDevice } from './gating';
-import type { RestoreAdmissionMode, RestoreBatchState, RestoreDeps, RestoreLoopState } from './types';
+import type { RestoreCycle, RestoreLane, RestoreLoopState } from './types';
 
-export function applyRestoreCandidates(params: {
-  restoreCandidates: RestoreCandidate[];
-  deviceMap: Map<string, DevicePlanDevice>;
-  onDevices: DevicePlanDevice[];
-  swapState: SwapState;
-  state: PlanEngineState;
-  timing: Parameters<typeof planRestoreForDevice>[0]['timing'];
-  ledger: RestoreHeadroomLedger;
-  restoredThisCycle: Set<string>;
-  restoredOneThisCycle: boolean;
-  batchState: RestoreBatchState;
-  deps: RestoreDeps;
-  steppedSwapExecutor: SteppedSwapExecutor;
-  headroomReserves: readonly HeadroomReserve[];
-  admissionMode?: RestoreAdmissionMode;
-}): { restoredOneThisCycle: boolean } {
-  let { restoredOneThisCycle } = params;
-  for (const candidate of params.restoreCandidates) {
+export function applyRestoreCandidates(
+  cycle: RestoreCycle,
+  lane: RestoreLane,
+  restoreCandidates: RestoreCandidate[],
+  ledger: RestoreHeadroomLedger,
+  restoredOneThisCycle: boolean,
+): { restoredOneThisCycle: boolean } {
+  let restoredOne = restoredOneThisCycle;
+  for (const candidate of restoreCandidates) {
     // Ledger translation: the inner gates keep their single availableKw scalar;
     // the axis choice (exempt → capacity, else min with the measured-exempt
     // budget axis) and the per-axis debit live here.
-    const availableForCandidate = params.ledger.availableFor(candidate.device);
-    const result = applyRestoreCandidate({
-      candidate,
-      deviceMap: params.deviceMap,
-      onDevices: params.onDevices,
-      swapState: params.swapState,
-      state: params.state,
-      timing: params.timing,
+    const availableForCandidate = ledger.availableFor(candidate.device);
+    const result = applyRestoreCandidate(cycle, lane, candidate, {
       availableHeadroom: availableForCandidate,
-      restoredThisCycle: params.restoredThisCycle,
-      restoredOneThisCycle,
-      batchState: params.batchState,
-      deps: params.deps,
-      steppedSwapExecutor: params.steppedSwapExecutor,
-      headroomReserves: params.headroomReserves,
-      admissionMode: params.admissionMode,
+      restoredOneThisCycle: restoredOne,
     });
-    params.ledger.commit(candidate.device, availableForCandidate - result.availableHeadroom);
-    restoredOneThisCycle = result.restoredOneThisCycle;
+    ledger.commit(candidate.device, availableForCandidate - result.availableHeadroom);
+    restoredOne = result.restoredOneThisCycle;
   }
-  return { restoredOneThisCycle };
+  return { restoredOneThisCycle: restoredOne };
 }
 
 // Single shared entry for every stepped-restore path. It applies the pending-swap source-off
@@ -69,166 +44,84 @@ export function applyRestoreCandidates(params: {
 // and then routes through planRestoreForSteppedDevice with the stepped-swap executor context.
 // Funnelling normal restore, restore cooldown, meter-settling, and active stepped-upgrade paths
 // through here keeps both admission wrappers applied uniformly.
-export function planSteppedRestoreThroughSourceHold(params: {
-  dev: SteppedPlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-  swapState: SwapState;
-  state: PlanEngineState;
-  timing: Parameters<typeof planRestoreForSteppedDevice>[0]['timing'];
-  availableHeadroom: number;
-  restoredOneThisCycle: boolean;
-  debugStructured: RestoreDeps['debugStructured'];
-  steppedSwapExecutor: SteppedSwapExecutor;
-  headroomReserves: readonly HeadroomReserve[];
-  admissionMode?: RestoreAdmissionMode;
-}): RestoreLoopState {
-  const { dev, deviceMap, swapState, availableHeadroom, restoredOneThisCycle } = params;
-  if (holdPendingSwapTargetUntilSourcesAreOff({ swapState, targetDevice: dev, deviceMap })) {
-    return { availableHeadroom, restoredOneThisCycle };
-  }
+export function planSteppedRestoreThroughSourceHold(
+  cycle: RestoreCycle,
+  lane: RestoreLane,
+  dev: SteppedPlanDevice,
+  loop: RestoreLoopState,
+): RestoreLoopState {
+  if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapState, dev, cycle.deviceMap)) return loop;
   return planRestoreForSteppedDevice({
     dev,
-    deviceMap,
-    state: params.state,
-    timing: params.timing,
-    availableHeadroom,
-    restoredOneThisCycle,
-    debugStructured: params.debugStructured,
-    swapExecutor: params.steppedSwapExecutor,
-    headroomReserves: params.headroomReserves,
-    admissionMode: params.admissionMode,
+    deviceMap: cycle.deviceMap,
+    state: cycle.state,
+    timing: cycle.timing,
+    availableHeadroom: loop.availableHeadroom,
+    restoredOneThisCycle: loop.restoredOneThisCycle,
+    debugStructured: cycle.deps.debugStructured,
+    swapExecutor: lane.steppedSwapExecutor,
+    headroomReserves: cycle.headroomReserves,
+    admissionMode: cycle.admissionMode,
   });
 }
 
-export function applyActiveSteppedRestoreCandidates(params: {
-  deviceMap: Map<string, DevicePlanDevice>;
-  swapState: SwapState;
-  state: PlanEngineState;
-  timing: Parameters<typeof planRestoreForSteppedDevice>[0]['timing'];
-  ledger: RestoreHeadroomLedger;
-  restoredOneThisCycle: boolean;
-  debugStructured: RestoreDeps['debugStructured'];
-  steppedSwapExecutor: SteppedSwapExecutor;
-  headroomReserves: readonly HeadroomReserve[];
-  candidateFilter?: (dev: DevicePlanDevice) => boolean;
-  admissionMode?: RestoreAdmissionMode;
-}): { restoredOneThisCycle: boolean } {
-  let { restoredOneThisCycle } = params;
-  const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(params.deviceMap.values()))
+export function applyActiveSteppedRestoreCandidates(
+  cycle: RestoreCycle,
+  lane: RestoreLane,
+  ledger: RestoreHeadroomLedger,
+  restoredOneThisCycle: boolean,
+  candidateFilter?: (dev: DevicePlanDevice) => boolean,
+): { restoredOneThisCycle: boolean } {
+  let restoredOne = restoredOneThisCycle;
+  const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(cycle.deviceMap.values()))
     .filter((dev) => isActiveSteppedRestoreCandidate(dev))
-    .filter((dev) => params.candidateFilter?.(dev) ?? true);
+    .filter((dev) => candidateFilter?.(dev) ?? true);
   for (const dev of activeSteppedDevices) {
-    const availableForCandidate = params.ledger.availableFor(dev);
-    const result = planSteppedRestoreThroughSourceHold({
-      dev,
-      deviceMap: params.deviceMap,
-      swapState: params.swapState,
-      state: params.state,
-      timing: params.timing,
+    const availableForCandidate = ledger.availableFor(dev);
+    const result = planSteppedRestoreThroughSourceHold(cycle, lane, dev, {
       availableHeadroom: availableForCandidate,
-      restoredOneThisCycle,
-      debugStructured: params.debugStructured,
-      steppedSwapExecutor: params.steppedSwapExecutor,
-      headroomReserves: params.headroomReserves,
-      admissionMode: params.admissionMode,
+      restoredOneThisCycle: restoredOne,
     });
-    params.ledger.commit(dev, availableForCandidate - result.availableHeadroom);
-    restoredOneThisCycle = result.restoredOneThisCycle;
+    ledger.commit(dev, availableForCandidate - result.availableHeadroom);
+    restoredOne = result.restoredOneThisCycle;
   }
-  return { restoredOneThisCycle };
+  return { restoredOneThisCycle: restoredOne };
 }
 
-function applyRestoreCandidate(params: {
-  candidate: RestoreCandidate;
-  deviceMap: Map<string, DevicePlanDevice>;
-  onDevices: DevicePlanDevice[];
-  swapState: SwapState;
-  state: PlanEngineState;
-  timing: Parameters<typeof planRestoreForDevice>[0]['timing'];
-  availableHeadroom: number;
-  restoredThisCycle: Set<string>;
-  restoredOneThisCycle: boolean;
-  batchState: RestoreBatchState;
-  deps: RestoreDeps;
-  steppedSwapExecutor: SteppedSwapExecutor;
-  headroomReserves: readonly HeadroomReserve[];
-  admissionMode?: RestoreAdmissionMode;
-}): RestoreLoopState {
-  const dev = params.deviceMap.get(params.candidate.device.id);
-  const currentState = {
-    availableHeadroom: params.availableHeadroom,
-    restoredOneThisCycle: params.restoredOneThisCycle,
-  };
-  if (!dev) return currentState;
-  if (holdPendingSwapTargetUntilSourcesAreOff({
-    swapState: params.swapState,
-    targetDevice: dev,
-    deviceMap: params.deviceMap,
-  })) return currentState;
-  if (params.candidate.kind === 'binary' && isBinaryRestoreCandidate(dev)) {
-    return planRestoreForDevice({
-      dev,
-      deviceMap: params.deviceMap,
-      onDevices: params.onDevices,
-      swapState: params.swapState,
-      state: params.state,
-      timing: params.timing,
-      availableHeadroom: params.availableHeadroom,
-      restoredThisCycle: params.restoredThisCycle,
-      restoredOneThisCycle: params.restoredOneThisCycle,
-      batchState: params.batchState,
-      deps: params.deps,
-      headroomReserves: params.headroomReserves,
-      admissionMode: params.admissionMode,
-    });
+function applyRestoreCandidate(
+  cycle: RestoreCycle,
+  lane: RestoreLane,
+  candidate: RestoreCandidate,
+  loop: RestoreLoopState,
+): RestoreLoopState {
+  const dev = cycle.deviceMap.get(candidate.device.id);
+  if (!dev) return loop;
+  if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapState, dev, cycle.deviceMap)) return loop;
+  if (candidate.kind === 'binary' && isBinaryRestoreCandidate(dev)) {
+    return planRestoreForDevice(cycle, lane, dev, loop);
   }
-  if (params.candidate.kind === 'stepped' && isSteppedLoadDevice(dev) && isOffSteppedRestoreCandidate(dev)) {
-    return planSteppedRestoreThroughSourceHold({
-      dev,
-      deviceMap: params.deviceMap,
-      swapState: params.swapState,
-      state: params.state,
-      timing: params.timing,
-      availableHeadroom: params.availableHeadroom,
-      restoredOneThisCycle: params.restoredOneThisCycle,
-      debugStructured: params.deps.debugStructured,
-      steppedSwapExecutor: params.steppedSwapExecutor,
-      headroomReserves: params.headroomReserves,
-      admissionMode: params.admissionMode,
-    });
+  if (candidate.kind === 'stepped' && isSteppedLoadDevice(dev) && isOffSteppedRestoreCandidate(dev)) {
+    return planSteppedRestoreThroughSourceHold(cycle, lane, dev, loop);
   }
-  return currentState;
+  return loop;
 }
 
-export function buildSteppedSwapExecutor(params: {
-  deviceMap: Map<string, DevicePlanDevice>;
-  onDevices: DevicePlanDevice[];
-  swapState: SwapState;
-  state: PlanEngineState;
-  timing: Pick<RestoreTiming, 'measurementTs'>;
-  restoredThisCycle: Set<string>;
-  deps: RestoreDeps;
-}): SteppedSwapExecutor {
-  const { deviceMap, onDevices, swapState, state, timing, restoredThisCycle, deps } = params;
+export function buildSteppedSwapExecutor(
+  cycle: RestoreCycle,
+  onDevices: DevicePlanDevice[],
+): SteppedSwapExecutor {
   return ({
     dev, needed, devPower, availableHeadroom, restoreDebugKey,
     admittedDeviceUpdate, rejectedDeviceUpdate,
   }) => (
-    attemptSwapRestore({
-      dev,
-      deviceMap,
+    attemptSwapRestore(
+      cycle,
       onDevices,
-      swapState,
-      state,
-      restoreDebugKey,
-      phase: resolveRestoreDecisionPhase(state.currentRebuildTrigger),
+      dev,
       availableHeadroom,
-      restoreNeed: { needed, devPower, penaltyLevel: 0, penaltyExtraKw: 0 },
-      measurementTs: timing.measurementTs,
-      restoredThisCycle,
-      deps,
-      admittedDeviceUpdate,
-      rejectedDeviceUpdate,
-    })
+      { needed, devPower, penaltyLevel: 0, penaltyExtraKw: 0 },
+      restoreDebugKey,
+      { admitted: admittedDeviceUpdate ?? {}, rejected: rejectedDeviceUpdate ?? {} },
+    )
   );
 }
