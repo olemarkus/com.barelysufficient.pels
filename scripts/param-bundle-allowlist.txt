@@ -213,7 +213,7 @@ lib/plan/planServiceRebuild.ts 1
 lib/plan/planState.ts 1
 lib/plan/planStatusHelpers.ts 1
 lib/plan/planStatusWriter.ts 1
-lib/plan/planSteppedLoad.ts 9
+lib/plan/planSteppedLoad.ts 6
 lib/plan/planSteppedLoadState.ts 2
 lib/plan/planSteppedRestoreHold.ts 1
 lib/plan/planSteppedRestorePending.ts 2

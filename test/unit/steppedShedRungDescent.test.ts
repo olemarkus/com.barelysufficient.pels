@@ -126,6 +126,25 @@ describe('stepped shed ladder pricing', () => {
     expect(result.rungsTried).toEqual(['medium', 'low']);
   });
 
+  it('prices the ladder off the meter when the STEP REPORT is the stale half', () => {
+    // The 11-17 Aug trim decisions: the charger reports `6a` (1.38 kW) while the
+    // meter reads 3.645 kW — about 16 A single-phase, so the report is what
+    // lagged. Clamping the from-side to the step model priced a full turn-off at
+    // 1.38 kW, and the selection loop then kept shedding devices the owner
+    // ranked higher against 2.27 kW of deficit it had already freed.
+    const laggingStepReport = charger({ selectedStepId: '6a', currentDrawKw: 3.645 });
+    const result = ladderFor(laggingStepReport, chargerProfile, 'turn_off');
+
+    expect(result.kind).toBe('ladder');
+    if (result.kind !== 'ladder') return;
+    // `6a` is the lowest ACTIVE rung, so the off step is the only way down —
+    // and it releases every watt the meter can see.
+    expect(result.rungs).toEqual([{ toStepId: 'off', reliefKw: expect.closeTo(3.645, 6) }]);
+    // A 3 kW deficit is covered outright, so nothing behind this candidate is
+    // asked to shed for watts that have already gone.
+    expect(chooseShedRung(result.rungs, 3)?.reliefKw).toBeCloseTo(3.645, 6);
+  });
+
   it('never offers a set_step device the off step, however deep it descends', () => {
     // `set_step` means "as far down the ladder as needed, never off". The 6.44 kW
     // charger has six rungs below `28a` and every one of them prices positive, so

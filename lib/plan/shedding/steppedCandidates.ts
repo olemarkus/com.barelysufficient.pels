@@ -4,12 +4,10 @@
  *
  * `getSteppedLoadShedTargetStep` answers "one rung down from here", and pricing
  * that single rung is not the same question as "does limiting this device
- * release power". `resolveSteppedLoadImmediateReliefKw` caps both sides of the
- * step delta by the current measurement, so the moment the measured draw sits at
- * or below the next rung's admission estimate the delta collapses to exactly
- * zero — for any from-step. Reading that zero as "limiting this frees nothing"
- * drops a device the meter shows drawing, when a deeper rung would release those
- * watts.
+ * release power". A rung whose admission estimate sits at or above the measured
+ * draw prices at exactly zero, and reading that zero as "limiting this frees
+ * nothing" drops a device the meter shows drawing, when a deeper rung would
+ * release those watts.
  *
  * That is what left a 2.9 kW water heater running through a 4.5-minute hard-cap
  * breach in production on 2026-08-05 (`inc_26449fb9`): its per-device
@@ -19,10 +17,11 @@
  *
  * So `resolveSteppedShedLadder` prices the whole ladder instead of sampling one
  * rung, and offers every step down that releases power. It never invents relief:
- * every rung goes through the same `resolveSteppedCandidatePower`, so the answer
- * stays bounded by what the meter reports. It only widens the search, which keeps
- * the module rule in `lib/plan/shedding/AGENTS.md` intact — a device may only be
- * selected when limiting it releases power.
+ * every rung goes through the same `resolveStepChangeKw`, whose descent arm is
+ * bounded by the meter, so the answer stays bounded by what the device is
+ * actually drawing. It only widens the search, which keeps the module rule in
+ * `lib/plan/shedding/AGENTS.md` intact — a device may only be selected when
+ * limiting it releases power.
  *
  * WHICH of those rungs a shed takes is decided when the candidate is spent, by
  * `chooseShedRung` from `selection.ts`, against the deficit still open at that
@@ -36,7 +35,7 @@ import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryComm
 import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
-  resolveSteppedCandidatePower,
+  resolveStepChangeKw,
   resolveSteppedLoadPlanningKw,
   resolveSteppedLoadSheddingTarget,
 } from '../planSteppedLoad';
@@ -148,9 +147,10 @@ function buildSteppedShedDescentTargets(params: {
  * releases. Rungs that release nothing are dropped, so the result is exactly
  * "the ways this device can help, cheapest first".
  *
- * It stays bounded by the meter: every rung is priced by
- * `resolveSteppedCandidatePower`, so the deepest rung buys the device's whole
- * reported draw and no more.
+ * It stays bounded by the meter: every rung is priced by `resolveStepChangeKw`,
+ * whose descent arm bounds the before-side at the MEASURED draw, so the deepest
+ * rung buys what the meter says the device is pulling and no more. Not what the
+ * reported step's model says — that is the half which can be stale.
  *
  * Which rung a shed actually takes is NOT decided here — `selectShedDevices`
  * decides it, against the deficit still open when this candidate's turn comes.
@@ -180,9 +180,12 @@ export function resolveSteppedShedLadder(params: {
     rungsTried.push(clampedTargetStep.id);
     fromStepId = selectedStep.id;
     unconfirmedRelief = hasUnconfirmedLowerDesiredStep;
-    const reliefKw = resolveSteppedCandidatePower(device, selectedStep, clampedTargetStep);
-    if (reliefKw <= 0) continue;
-    rungs.push({ toStepId: clampedTargetStep.id, reliefKw });
+    const change = resolveStepChangeKw(device, selectedStep.id, clampedTargetStep.id);
+    // A rung the clamp turned into a climb (or into standing still) is not a
+    // way to shed. Skipping it explicitly beats letting it price at zero and
+    // reading that as "this device frees nothing".
+    if (change.direction !== 'down' || change.deltaKw <= 0) continue;
+    rungs.push({ toStepId: clampedTargetStep.id, reliefKw: change.deltaKw });
   }
   if (rungs.length > 0 && fromStepId !== undefined) {
     return { kind: 'ladder', fromStepId, rungs, unconfirmedRelief };

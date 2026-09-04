@@ -4,9 +4,8 @@ import {
   isSteppedLoadDevice,
   resolveSteppedKeepDesiredStepId,
   resolveSteppedLoadTransition,
-  resolveSteppedLoadImmediateReliefKw,
+  resolveStepChangeKw,
   resolveSteppedLoadInitialDesiredStepId,
-  resolveSteppedLoadRestoreDeltaKw,
   resolveSteppedLoadSheddingTarget,
 } from '../../lib/plan/planSteppedLoad';
 import { resolveObservedSteppedLoadCurrentState } from '../../lib/observer/observedState';
@@ -347,46 +346,121 @@ describe('planSteppedLoad', () => {
     expect(resolveObservedSteppedLoadCurrentState({ binaryControl: { on: false } })).toBe('off');
   });
 
-  it('uses planning power for restore math and measured power for immediate shed relief', () => {
-    expect(resolveSteppedLoadRestoreDeltaKw({
-      device: steppedInputDevice(),
-      fromStepId: 'low',
-      toStepId: 'max',
-    })).toBeCloseTo(1.75, 6);
-    expect(resolveSteppedLoadRestoreDeltaKw({
-      device: steppedPlanDevice({ currentState: 'off' }),
-      fromStepId: 'medium',
-      toStepId: 'low',
-    })).toBeCloseTo(1.25, 6);
-    expect(resolveSteppedLoadRestoreDeltaKw({
-      device: steppedInputDevice(),
-      fromStepId: 'max',
-      toStepId: 'low',
-    })).toBe(0);
-    expect(resolveSteppedLoadRestoreDeltaKw({
-      device: steppedInputDevice({
-        controlModel: 'binary_power',
-        steppedLoadProfile: undefined,
-      }),
-      fromStepId: 'low',
-      toStepId: 'max',
-    })).toBe(0);
+  it('prices a climb up the ladder as the draw it commits', () => {
+    // `low` -> `max` on the shared 0/1.25/2.0/3.0 profile.
+    expect(resolveStepChangeKw(steppedInputDevice(), 'low', 'max'))
+      .toEqual({ direction: 'up', deltaKw: expect.closeTo(1.75, 6) });
 
-    expect(resolveSteppedLoadImmediateReliefKw({
-      device: steppedInputDevice({ currentDrawKw: 2.5 }),
-      toStepId: 'low',
-    })).toBeCloseTo(1.25, 6);
-    expect(resolveSteppedLoadImmediateReliefKw({
-      device: steppedInputDevice({ selectedStepId: 'low', currentDrawKw: 0.5, binaryCapabilityId: undefined }),
-      toStepId: 'off',
-    })).toBeCloseTo(0.5, 6);
-    expect(resolveSteppedLoadImmediateReliefKw({
-      device: steppedInputDevice({
-        controlModel: 'binary_power',
-        steppedLoadProfile: undefined,
-      }),
-      toStepId: 'low',
-    })).toBe(0);
+    // An OFF device is at its off step, whatever step it reports. `medium` ->
+    // `low` runs DOWN the profile, but from off it is a climb that commits the
+    // whole 1.25 kW — pricing it by the reported step would answer zero for a
+    // device about to start drawing.
+    expect(resolveStepChangeKw(steppedPlanDevice({ currentState: 'off' }), 'medium', 'low'))
+      .toEqual({ direction: 'up', deltaKw: expect.closeTo(1.25, 6) });
+  });
+
+  it('prices a descent as the relief it releases, and names the direction', () => {
+    // Measured 2.5 kW is in `max`'s band (above `medium`, at or below
+    // nameplate), so the meter and the reported step agree and the meter is
+    // the answer: 2.5 now, 1.25 after.
+    expect(resolveStepChangeKw(steppedInputDevice({ currentDrawKw: 2.5 }), undefined, 'low'))
+      .toEqual({ direction: 'down', deltaKw: expect.closeTo(1.25, 6) });
+
+    // Turning a device off releases exactly what it is drawing.
+    expect(resolveStepChangeKw(
+      steppedInputDevice({ selectedStepId: 'low', currentDrawKw: 0.5, binaryCapabilityId: undefined }),
+      undefined,
+      'off',
+    )).toEqual({ direction: 'down', deltaKw: expect.closeTo(0.5, 6) });
+
+    // The direction is reported, not folded into a zero: `max` -> `low` is a
+    // descent even when the caller asking is the restore lane, which reads
+    // anything but `up` as nothing to do.
+    expect(resolveStepChangeKw(steppedInputDevice(), 'max', 'low').direction).toBe('down');
+  });
+
+  it('answers no change for a device with no ladder, and for a step that goes nowhere', () => {
+    expect(resolveStepChangeKw(
+      steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined }),
+      'low',
+      'max',
+    )).toEqual({ direction: 'none', deltaKw: 0 });
+    expect(resolveStepChangeKw(steppedInputDevice(), 'low', 'low'))
+      .toEqual({ direction: 'none', deltaKw: 0 });
+  });
+
+  it('treats two rungs configured at the same watts as different rungs', () => {
+    // `normalizeSteppedLoadProfile` dedupes step IDs but NOT wattages, so a
+    // hand-configured ladder can carry two rungs at the same `planningPowerW`.
+    // `sortSteppedLoadSteps` breaks the tie by id, so `a` -> `b` is a real climb
+    // that the restore lane must be able to command. Deriving direction from
+    // watts called it "no change", and the device then stalled below `b` and
+    // every rung above it forever.
+    const tiedRungs = steppedInputDevice({
+      selectedStepId: 'a',
+      currentDrawKw: 2,
+      steppedLoadProfile: {
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'a', planningPowerW: 2000 },
+          { id: 'b', planningPowerW: 2000 },
+          { id: 'c', planningPowerW: 3000 },
+        ],
+      },
+      stepPowerCalibration: { b: { admissionPowerKw: 2.4, deliveryPowerKw: 2.4 } },
+    });
+
+    // Same watts on the profile, a higher learned draw on `b`: a climb worth
+    // 0.4 kW, not nothing.
+    expect(resolveStepChangeKw(tiedRungs, 'a', 'b'))
+      .toEqual({ direction: 'up', deltaKw: expect.closeTo(0.4, 6) });
+    // And the reverse is a descent, not a no-op.
+    expect(resolveStepChangeKw(tiedRungs, 'b', 'a').direction).toBe('down');
+    // A rung against itself is still no change.
+    expect(resolveStepChangeKw(tiedRungs, 'a', 'a'))
+      .toEqual({ direction: 'none', deltaKw: 0 });
+  });
+
+  it('prices an observed-off device from zero even when its ladder has no off step', () => {
+    // A hand-configured profile with no zero-power rung and none named `off`.
+    // The device is off, so it is at position ZERO and `medium` -> `low` is a
+    // CLIMB that commits the whole 1.25 kW — reading the reported step as the
+    // from-position would call it a descent and admit the device on nothing.
+    const noOffStep = steppedPlanDevice({
+      currentState: 'off',
+      steppedLoadProfile: {
+        steps: [
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'medium', planningPowerW: 2000 },
+        ],
+      },
+    });
+
+    expect(resolveStepChangeKw(noOffStep, 'medium', 'low'))
+      .toEqual({ direction: 'up', deltaKw: expect.closeTo(1.25, 6) });
+  });
+
+  it('bounds a descent by the meter, not by what the reported step should draw', () => {
+    // The 11-17 Aug shape: a charger reporting a 1.25 kW rung while the meter
+    // reads 3.645 kW — the STEP REPORT is the stale half. A full turn-off
+    // releases the 3.645 kW that is actually flowing. Clamping the from-side to
+    // the step model priced it at 1.25 kW, and the selection loop then went on
+    // shedding devices the owner ranked higher against relief it had already won.
+    const laggingStepReport = steppedInputDevice({ selectedStepId: 'low', currentDrawKw: 3.645 });
+    expect(resolveStepChangeKw(laggingStepReport, undefined, 'off'))
+      .toEqual({ direction: 'down', deltaKw: expect.closeTo(3.645, 6) });
+
+    // Same device, opposite direction: a climb takes the SMALLER of the two, so
+    // the commitment it books is the full step up from the modelled 1.25 kW
+    // rather than a sliver measured from a reading that may be a spike.
+    expect(resolveStepChangeKw(laggingStepReport, undefined, 'max'))
+      .toEqual({ direction: 'up', deltaKw: expect.closeTo(1.75, 6) });
+
+    // And the meter is a BOUND, not merely a preference: a device measured
+    // below what its rung should draw — idle at setpoint, or a stale reading —
+    // is credited what is flowing and no more.
+    expect(resolveStepChangeKw(steppedInputDevice({ selectedStepId: 'max', currentDrawKw: 1.193 }), undefined, 'off'))
+      .toEqual({ direction: 'down', deltaKw: expect.closeTo(1.193, 6) });
   });
 
   it('isSteppedLoadDevice identifies stepped devices', () => {
