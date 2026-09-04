@@ -203,9 +203,6 @@ lib/plan/planLogging.ts 1
 lib/plan/planOvershoot.ts 1
 lib/plan/planReasonShortfall.ts 1
 lib/plan/planReasonStrings.ts 1
-lib/plan/planReasons.ts 8
-lib/plan/planReasonsHoldDecisions.ts 6
-lib/plan/planReasonsRestoreGating.ts 6
 lib/plan/planRebuildMetrics.ts 1
 lib/plan/planRemainingSheddableLoad.ts 1
 lib/plan/planService.ts 3

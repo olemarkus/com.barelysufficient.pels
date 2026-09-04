@@ -14,6 +14,7 @@ import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildPlanDevice } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
+import { reasonContext } from '../helpers/reasonContext';
 
 // Reads the moved `plannedTarget` off a plan device by narrowing through the
 // temperature guard (the field lives on `TemperatureKind`, not the base).
@@ -27,108 +28,102 @@ const withBinaryOn = (device: DevicePlanDevice, on: boolean): DevicePlanDevice =
 
 describe('normalizeShedReasons', () => {
   it('normalizes placeholder reasons to the mapped shed reason', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-1',
         plannedState: 'shed',
         reason: fixtureDeviceReason('restore low -> high (need 1.20kW)')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map([['dev-1', fixtureDeviceReason('shed due to hourly budget')!]]),
       guardInShortfall: false,
       headroomRaw: 0,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-    });
+    }));
 
     expect(reasonText(device?.reason)).toBe('shed due to hourly budget');
   });
 
   it('preserves swap reasons instead of replacing them with cooldown text', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         plannedState: 'shed',
         reason: fixtureDeviceReason('swapped out for Water Heater')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0,
       inCooldown: true,
       activeOvershoot: false,
       shedCooldownRemainingSec: 25,
-    });
+    }));
 
     expect(reasonText(device?.reason)).toBe('swapped out for Water Heater');
   });
 
   it('applies a shortfall reason only when the current reason is generic', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         plannedState: 'shed',
         reason: fixtureDeviceReason('keep')!,
         expectedPowerKw: 1,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: true,
       headroomRaw: 0.15,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-    });
+    }));
 
     expect(reasonText(device?.reason)).toBe('shortfall (need 1.20kW, headroom 0.15kW)');
   });
 
   it('does not replace budget reasons with shortfall text', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         plannedState: 'shed',
         reason: fixtureDeviceReason('shed due to daily budget')!,
         expectedPowerKw: 1,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: true,
       headroomRaw: 0.15,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-    });
+    }));
 
     expect(reasonText(device?.reason)).toBe('shed due to daily budget');
   });
 
   it('does not rewrite capacity shed reasons during restore cooldown for another device', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-1',
         plannedState: 'shed',
         reason: fixtureDeviceReason('shed due to capacity')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map([['dev-1', fixtureDeviceReason('shed due to capacity')!]]),
       guardInShortfall: false,
       headroomRaw: 1.5,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-    });
+    }));
 
     expect(reasonText(device?.reason)).toBe('shed due to capacity');
   });
 
   it('preserves neutral startup holds during shed cooldown normalization', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-neutral',
         plannedState: 'shed',
         reason: NEUTRAL_STARTUP_HOLD_REASON,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0,
       inCooldown: true,
       activeOvershoot: false,
       shedCooldownRemainingSec: 25,
-    });
+    }));
 
     expect(device?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
   });
@@ -139,49 +134,46 @@ describe('normalizeShedReasons', () => {
   // read "will try to resume in Ns" for any boot where some device happened to
   // be shed inside the last 60 s — hiding the longer, real cause.
   it('preserves startup stabilization during shed cooldown normalization', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-startup',
         plannedState: 'shed',
         reason: { code: PLAN_REASON_CODES.startupStabilization },
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0,
       inCooldown: true,
       activeOvershoot: false,
       shedCooldownRemainingSec: 25,
-    });
+    }));
 
     expect(device?.reason.code).toBe(PLAN_REASON_CODES.startupStabilization);
   });
 
   it('preserves neutral startup holds during shortfall normalization', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-neutral',
         plannedState: 'shed',
         reason: NEUTRAL_STARTUP_HOLD_REASON,
         expectedPowerKw: 1,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: true,
       headroomRaw: 0.15,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-    });
+    }));
 
     expect(device?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
   });
 
   it('re-attributes carry-forward capacity to dailyBudget when softLimitSource is daily', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-stale-capacity',
         plannedState: 'shed',
         reason: fixtureDeviceReason('shed due to capacity')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0,
@@ -189,7 +181,7 @@ describe('normalizeShedReasons', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
       softLimitSource: 'daily',
-    });
+    }));
 
     expect(reasonText(device?.reason)).toBe('shed due to daily budget');
   });
@@ -202,12 +194,11 @@ describe('normalizeShedReasons', () => {
   // because the breach overrode the exemption), and offered a "Let it run now"
   // release that cannot create capacity headroom.
   it('does not re-attribute carry-forward capacity to dailyBudget while capacity is breached', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-breached-capacity',
         plannedState: 'shed',
         reason: fixtureDeviceReason('shed due to capacity')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0,
@@ -216,7 +207,7 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: null,
       softLimitSource: 'daily',
       capacityBreached: true,
-    });
+    }));
 
     expect(reasonText(device?.reason)).toBe('shed due to capacity');
   });
@@ -227,12 +218,11 @@ describe('normalizeShedReasons', () => {
   // capacity fixture above never reaches it (`normalizeDeviceReason` returns from
   // the sibling guard first). Without this the production hot path is untested.
   it('applies the capacity-breach carve-out on the keep-reason carry-forward path too', () => {
-    const build = (capacityBreached: boolean) => normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const build = (capacityBreached: boolean) => normalizeShedReasons([buildPlanDevice({
         id: 'dev-carry-forward',
         plannedState: 'shed',
         reason: fixtureDeviceReason('keep')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0,
@@ -241,7 +231,7 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: null,
       softLimitSource: 'daily',
       capacityBreached,
-    })[0];
+    }))[0];
 
     expect(reasonText(build(true)?.reason)).toBe('shed due to capacity');
     // Daily genuinely binding and not breached: naming the daily budget is right,
@@ -251,12 +241,11 @@ describe('normalizeShedReasons', () => {
   });
 
   it('leaves capacity reasons alone when softLimitSource is capacity', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-fresh-capacity',
         plannedState: 'shed',
         reason: fixtureDeviceReason('shed due to capacity')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0,
@@ -264,7 +253,7 @@ describe('normalizeShedReasons', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
       softLimitSource: 'capacity',
-    });
+    }));
 
     expect(reasonText(device?.reason)).toBe('shed due to capacity');
   });
@@ -274,12 +263,11 @@ describe('normalizeShedReasons', () => {
     // the current cycle; if it set `capacity` despite daily binding, the
     // selector knows something the normalizer doesn't, and we should not
     // override it.
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-fresh',
         plannedState: 'shed',
         reason: fixtureDeviceReason('keep')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map([['dev-fresh', { code: 'capacity' }]]),
       guardInShortfall: false,
       headroomRaw: 0,
@@ -287,7 +275,7 @@ describe('normalizeShedReasons', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
       softLimitSource: 'daily',
-    });
+    }));
 
     expect(reasonText(device?.reason)).toBe('shed due to capacity');
   });
@@ -301,8 +289,7 @@ describe('normalizeShedReasons', () => {
   // capacity breach); a genuine capacity breach resolves it false upstream,
   // keeping the headroom framing.
   it('re-attributes a budget-bound insufficientHeadroom restore hold to dailyBudget', () => {
-    const build = (budgetReleasableHeadroomHold: boolean) => normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const build = (budgetReleasableHeadroomHold: boolean) => normalizeShedReasons([buildPlanDevice({
         id: 'dev-budget-hold',
         plannedState: 'shed',
         reason: buildRestoreHeadroomReason({
@@ -311,7 +298,7 @@ describe('normalizeShedReasons', () => {
           postReserveMarginKw: -0.75,
           minimumRequiredPostReserveMarginKw: 0.25,
         }),
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0.7,
@@ -320,7 +307,7 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: null,
       softLimitSource: 'daily',
       budgetReleasableHeadroomHold,
-    })[0];
+    }))[0];
 
     expect(reasonText(build(true)?.reason)).toBe('shed due to daily budget');
     expect(reasonText(build(false)?.reason)).toContain('insufficient headroom');
@@ -330,8 +317,7 @@ describe('normalizeShedReasons', () => {
   // gate: a caller passing `budgetReleasableHeadroomHold: true` alongside a breach
   // (a pair the producer never emits) must still not re-attribute.
   it('keeps insufficientHeadroom holds numeric while capacity is breached', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-breach-hold',
         plannedState: 'shed',
         reason: buildRestoreHeadroomReason({
@@ -340,7 +326,7 @@ describe('normalizeShedReasons', () => {
           postReserveMarginKw: -0.75,
           minimumRequiredPostReserveMarginKw: 0.25,
         }),
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0.7,
@@ -350,7 +336,7 @@ describe('normalizeShedReasons', () => {
       softLimitSource: 'daily',
       capacityBreached: true,
       budgetReleasableHeadroomHold: true,
-    });
+    }));
 
     expect(reasonText(device?.reason)).toContain('insufficient headroom');
   });
@@ -359,8 +345,7 @@ describe('normalizeShedReasons', () => {
   // axis, so its holds are capacity holds — folding them to dailyBudget would
   // offer the budget rescue to a device that is already exempt (a no-op lever).
   it('never folds a budget-exempt device\'s headroom hold to dailyBudget', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-exempt-hold',
         plannedState: 'shed',
         budgetExempt: true,
@@ -370,7 +355,7 @@ describe('normalizeShedReasons', () => {
           postReserveMarginKw: -0.28,
           minimumRequiredPostReserveMarginKw: 0.25,
         }),
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 1.7,
@@ -379,14 +364,13 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: null,
       softLimitSource: 'daily',
       budgetReleasableHeadroomHold: true,
-    });
+    }));
 
     expect(reasonText(device?.reason)).toContain('insufficient headroom');
   });
 
   it('keeps insufficientHeadroom holds numeric when softLimitSource is capacity', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-capacity-hold',
         plannedState: 'shed',
         reason: buildRestoreHeadroomReason({
@@ -395,7 +379,7 @@ describe('normalizeShedReasons', () => {
           postReserveMarginKw: -0.75,
           minimumRequiredPostReserveMarginKw: 0.25,
         }),
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0.7,
@@ -404,18 +388,17 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: null,
       softLimitSource: 'capacity',
       budgetReleasableHeadroomHold: false,
-    });
+    }));
 
     expect(reasonText(device?.reason)).toContain('insufficient headroom');
   });
 
   it('overrides capacity with deferredObjectiveAvoid when the device is in an avoid bucket', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-smart-task',
         plannedState: 'shed',
         reason: fixtureDeviceReason('shed due to capacity')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0,
@@ -423,18 +406,17 @@ describe('normalizeShedReasons', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
       deferredObjectiveAvoidDeviceIds: new Set(['dev-smart-task']),
-    });
+    }));
 
     expect(reasonText(device?.reason)).toBe('waiting for cheaper hours');
   });
 
   it('prefers deferredObjectiveAvoid over dailyBudget when both apply', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-smart-task-on-daily',
         plannedState: 'shed',
         reason: fixtureDeviceReason('shed due to capacity')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0,
@@ -443,18 +425,17 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: null,
       softLimitSource: 'daily',
       deferredObjectiveAvoidDeviceIds: new Set(['dev-smart-task-on-daily']),
-    });
+    }));
 
     expect(reasonText(device?.reason)).toBe('waiting for cheaper hours');
   });
 
   it('does not override shortfall or swap with the deferred-avoid framing', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-swap',
         plannedState: 'shed',
         reason: fixtureDeviceReason('swapped out for Water Heater')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0,
@@ -462,7 +443,7 @@ describe('normalizeShedReasons', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
       deferredObjectiveAvoidDeviceIds: new Set(['dev-swap']),
-    });
+    }));
 
     expect(reasonText(device?.reason)).toBe('swapped out for Water Heater');
   });
@@ -475,13 +456,12 @@ describe('normalizeShedReasons', () => {
     // earlier stage (markOffDevicesStayOff) already stamped cooldown_shedding on it.
     // The surplus framing must win — the device is held for surplus, not the cooldown,
     // and the stepped-restore-block invariant keys on `reason.code === awaitingSolarSurplus`.
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'pool-pump',
         plannedState: 'shed',
         surplusOnly: true,
         reason: fixtureDeviceReason('cooldown (shedding, 25s remaining)')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0,
@@ -489,19 +469,18 @@ describe('normalizeShedReasons', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: 25,
       surplusHoldReasonById: new Map([['pool-pump', AWAITING]]),
-    });
+    }));
 
     expect(device?.reason).toEqual(AWAITING);
   });
 
   it('leaves a genuine capacity-cooldown device on cooldown_shedding (not a surplus hold)', () => {
     // Control: a device NOT in the surplus-hold set keeps the cooldown framing.
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-capacity',
         plannedState: 'shed',
         reason: fixtureDeviceReason('shed due to capacity')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0,
@@ -509,7 +488,7 @@ describe('normalizeShedReasons', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: 25,
       surplusHoldReasonById: new Map([['pool-pump', AWAITING]]),
-    });
+    }));
 
     expect(device?.reason.code).toBe(PLAN_REASON_CODES.cooldownShedding);
   });
@@ -517,13 +496,12 @@ describe('normalizeShedReasons', () => {
   it('lets a FRESH capacity shed decision win over the surplus hold even during cooldown', () => {
     // A dump load genuinely capacity-shed this cycle (fresh shedReason) is real pressure;
     // it must NOT read awaiting_solar_surplus, so the stepped-restore-block still counts it.
-    const [device] = normalizeShedReasons({
-      planDevices: [buildPlanDevice({
+    const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'pool-pump',
         plannedState: 'shed',
         surplusOnly: true,
         reason: fixtureDeviceReason('shed due to capacity')!,
-      })],
+      })], reasonContext({
       shedReasons: new Map([['pool-pump', fixtureDeviceReason('shed due to capacity')!]]),
       guardInShortfall: false,
       headroomRaw: 0,
@@ -531,7 +509,7 @@ describe('normalizeShedReasons', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
       surplusHoldReasonById: new Map([['pool-pump', AWAITING]]),
-    });
+    }));
 
     expect(device?.reason.code).not.toBe(PLAN_REASON_CODES.awaitingSolarSurplus);
   });
@@ -568,17 +546,16 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     softLimitSource?: 'capacity' | 'daily' | null;
     capacityBreached?: boolean;
     lastDeviceShedMsById?: Readonly<Record<string, number>>;
-  }) => normalizeShedReasons({
-    planDevices: params.devices,
-    shedReasons: new Map(),
-    guardInShortfall: false,
-    headroomRaw: params.capacityAvailableKw,
-    inCooldown: false,
-    activeOvershoot: false,
-    shedCooldownRemainingSec: null,
-    softLimitSource: params.softLimitSource ?? null,
-    capacityBreached: params.capacityBreached ?? false,
-    admissionInputs: buildCeilingShortfallInputs({
+  }) => normalizeShedReasons(params.devices, reasonContext({
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: params.capacityAvailableKw,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      softLimitSource: params.softLimitSource ?? null,
+      capacityBreached: params.capacityBreached ?? false,
+      admissionInputs: buildCeilingShortfallInputs({
       ledgerAxes: {
         capacityAvailableKw: params.capacityAvailableKw,
         budgetAvailableKw: params.budgetAvailableKw ?? null,
@@ -590,8 +567,8 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
       nowMs: SHORTFALL_NOW_MS,
     }),
-    hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,
-  });
+      hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,
+    }));
 
   it('attaches the admission gap to a carry-forward capacity hold', () => {
     // gap = 0.25 − (0.5 − 1.2 − 0.25) = 1.2 kW
@@ -629,15 +606,14 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
   });
 
   it('keeps the producer number only when the per-axis inputs are absent', () => {
-    const [device] = normalizeShedReasons({
-      planDevices: [heldDevice({ reason: { code: 'daily_budget', shortfallKw: 0.8 } })],
+    const [device] = normalizeShedReasons([heldDevice({ reason: { code: 'daily_budget', shortfallKw: 0.8 } })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
       headroomRaw: 0.5,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-    });
+    }));
     expect(device?.reason).toEqual({ code: 'daily_budget', shortfallKw: 0.8 });
   });
 
@@ -1114,15 +1090,14 @@ describe('applyShedTemperatureHold', () => {
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     });
 
-    const [device] = normalizeShedReasons({
-      planDevices: held.planDevices,
+    const [device] = normalizeShedReasons(held.planDevices, reasonContext({
       shedReasons: new Map(),
       guardInShortfall: true,
       headroomRaw: -0.5,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-    });
+    }));
 
     expect(device?.plannedState).toBe('shed');
     expect(plannedTargetOf(device)).toBe(16);
