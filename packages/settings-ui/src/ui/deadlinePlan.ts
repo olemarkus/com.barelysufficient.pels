@@ -195,7 +195,7 @@ const prepareObjectivePayload = (
   // "not renderable" rather than misleading `already_satisfied`.
   if (!ctx.activePlan?.latest) return null;
 
-  const profile = resolveProfile(params.bootstrap.power.tracker, ctx.deviceId, ctx.objective.kind);
+  const profile = resolveProfile(params.bootstrap.power.tracker, ctx.deviceId);
   const progress = resolveProgress({ device: ctx.device, objective: ctx.objective, profile });
   if (!progress) return { kind: 'unavailable', reason: 'no_current_reading' };
   if (progress.remainingUnits <= 0) return { kind: 'unavailable', reason: 'already_satisfied' };

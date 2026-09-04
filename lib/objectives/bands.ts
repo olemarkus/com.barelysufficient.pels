@@ -1,4 +1,3 @@
-import type { ObjectiveProfileKind } from '../../packages/contracts/src/objectiveProfileTypes';
 import { resolveProfileConfidence } from './stats';
 import type {
   ObjectiveProfileBand,
@@ -23,10 +22,13 @@ export const OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE = 64;
 export const OBJECTIVE_PROFILE_MIN_BAND_SAMPLES = 8;
 export const OBJECTIVE_PROFILE_MAX_BANDS = 4;
 
-// EV charging tapers around 80% SoC (CV phase). Force a band edge there when
-// data straddles it so the post-taper region is never averaged with the
-// constant-power region below it.
-const EV_SOC_TAPER_ANCHOR = 80;
+// No forced band edge anywhere. A charging taper is real — kWh per unit worsens
+// past the knee — but WHERE the knee sits varies car to car (chemistry, BMS,
+// charger), so a fleet-wide anchor splits most cars in the wrong place and hands
+// `greedyRefine` a partition whose every band straddles the real knee. The knee is
+// learnt instead: `pickBestSplit` finds it from the samples, for whatever value
+// this particular device tapers at, and finds nothing when the data does not
+// support a split.
 
 // A candidate split only commits if it reduces the sum of squared error by at
 // least this fraction of the parent band's SSE. Prevents fragmenting bands
@@ -55,14 +57,12 @@ export function appendSampleToBuffer(
 
 export function fitBandsFromSamples(params: {
   samples: ObjectiveProfileSampleObservation[];
-  kind: ObjectiveProfileKind;
 }): ObjectiveProfileBand[] | undefined {
-  const { samples, kind } = params;
+  const { samples } = params;
   if (samples.length < OBJECTIVE_PROFILE_MIN_BAND_SAMPLES * 2) return undefined;
   const sorted = [...samples].sort((left, right) => left.inputValue - right.inputValue);
   const initial = [buildBandFromSlice(sorted, 0, sorted.length)];
-  const anchored = kind === 'ev_soc' ? applyEvAnchorSplit(sorted, initial) : initial;
-  return greedyRefine(sorted, anchored);
+  return greedyRefine(sorted, initial);
 }
 
 function greedyRefine(
@@ -177,30 +177,6 @@ function applySplit(
   return next;
 }
 
-function applyEvAnchorSplit(
-  sorted: SortedSamples,
-  initial: ObjectiveProfileBand[],
-): ObjectiveProfileBand[] {
-  const anchorIdx = findFirstIndexAtOrAbove(sorted, EV_SOC_TAPER_ANCHOR);
-  if (anchorIdx === null) return initial;
-  const leftCount = anchorIdx;
-  const rightCount = sorted.length - anchorIdx;
-  if (leftCount < OBJECTIVE_PROFILE_MIN_BAND_SAMPLES) return initial;
-  if (rightCount < OBJECTIVE_PROFILE_MIN_BAND_SAMPLES) return initial;
-  const [parent] = initial;
-  if (!parent) return initial;
-  const leftStats = buildBandFromSlice(sorted, 0, anchorIdx);
-  const rightStats = buildBandFromSlice(sorted, anchorIdx, sorted.length);
-  return [
-    { ...leftStats, lowerInclusive: parent.lowerInclusive, upperExclusive: EV_SOC_TAPER_ANCHOR },
-    { ...rightStats, lowerInclusive: EV_SOC_TAPER_ANCHOR, upperExclusive: parent.upperExclusive },
-  ];
-}
-
-function findFirstIndexAtOrAbove(sorted: SortedSamples, threshold: number): number | null {
-  const index = sorted.findIndex((sample) => sample.inputValue >= threshold);
-  return index < 0 ? null : index;
-}
 
 function sliceRangeForBand(
   sorted: SortedSamples,

@@ -13,7 +13,6 @@ export type ObjectiveProfileStat = {
 };
 
 export type DeviceObjectiveProfile = {
-  kind: ObjectiveProfileKind;
   updatedAtMs: number;
   lastSample: DeviceObjectiveProfileSample;
   kwhPerUnit?: ObjectiveProfileStat;
@@ -96,7 +95,6 @@ export type ObjectiveProfileBand = {
 export type DeviceObjectiveProfileSample = {
   observedAtMs: number;
   value: number;
-  unit: 'degree_c' | 'percent';
   crediblePowerW?: number;
   powerSource?: 'measured' | 'reported_step_planning';
 };

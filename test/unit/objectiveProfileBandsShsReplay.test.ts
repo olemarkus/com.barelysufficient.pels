@@ -32,7 +32,6 @@ describe('fitBandsFromSamples — SHS multi-band replay (2026-05-23)', () => {
     expect(
       fitBandsFromSamples({
         samples: [...SHS_BUFFERED_SAMPLES],
-        kind: 'temperature',
       }),
     ).toBeUndefined();
   });

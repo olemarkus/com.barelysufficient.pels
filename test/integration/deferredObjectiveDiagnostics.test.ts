@@ -160,9 +160,8 @@ const buildTemperatureSettings = (overrides: Record<string, unknown> = {}) => {
 const buildPowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTrackerState => ({
   objectiveProfiles: {
     'ev-1': {
-      kind: 'ev_soc',
       updatedAtMs: NOW_MS,
-      lastSample: { observedAtMs: NOW_MS, value: 40, unit: 'percent' },
+      lastSample: { observedAtMs: NOW_MS, value: 40 },
       kwhPerUnit: {
         sampleCount: 4,
         mean: 0.2,
@@ -196,9 +195,8 @@ const buildHistoryRecorder = (): {
 const buildTemperaturePowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTrackerState => ({
   objectiveProfiles: {
     'heater-1': {
-      kind: 'temperature',
       updatedAtMs: NOW_MS,
-      lastSample: { observedAtMs: NOW_MS, value: 55, unit: 'degree_c' },
+      lastSample: { observedAtMs: NOW_MS, value: 55 },
       kwhPerUnit: {
         sampleCount: 6,
         mean: 0.8,
@@ -2002,9 +2000,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       powerTracker: buildPowerTracker({
         objectiveProfiles: {
           'ev-1': {
-            kind: 'ev_soc',
             updatedAtMs: settleNowMs,
-            lastSample: { observedAtMs: settleNowMs, value: 43, unit: 'percent' },
+            lastSample: { observedAtMs: settleNowMs, value: 43 },
             kwhPerUnit: {
               sampleCount: 4,
               mean: 0.2,
@@ -2185,9 +2182,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const buildVarianceTracker = (m2: number): PowerTrackerState => buildTemperaturePowerTracker({
       objectiveProfiles: {
         'heater-1': {
-          kind: 'temperature',
           updatedAtMs: NOW_MS,
-          lastSample: { observedAtMs: NOW_MS, value: 55, unit: 'degree_c' },
+          lastSample: { observedAtMs: NOW_MS, value: 55 },
           kwhPerUnit: {
             sampleCount: 4, mean: 0.8, m2, min: 0.4, max: 1.2, confidence: 'low', lastUpdatedMs: NOW_MS,
           },
@@ -2223,9 +2219,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const tracker = buildPowerTracker({
       objectiveProfiles: {
         'ev-1': {
-          kind: 'ev_soc',
           updatedAtMs: NOW_MS,
-          lastSample: { observedAtMs: NOW_MS, value: 40, unit: 'percent' },
+          lastSample: { observedAtMs: NOW_MS, value: 40 },
           kwhPerUnit: {
             sampleCount: 4, mean: 0.2, m2: 0.03, min: 0.1, max: 0.3, confidence: 'low', lastUpdatedMs: NOW_MS,
           },
@@ -2269,9 +2264,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       powerTracker: buildTemperaturePowerTracker({
         objectiveProfiles: {
           'heater-1': {
-            kind: 'temperature',
             updatedAtMs: NOW_MS,
-            lastSample: { observedAtMs: NOW_MS, value: 20, unit: 'degree_c' },
+            lastSample: { observedAtMs: NOW_MS, value: 20 },
             kwhPerUnit: {
               sampleCount: 6,
               mean: 0.62,
@@ -2871,9 +2865,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
         'heater-1': {
-          kind: 'temperature',
           updatedAtMs: NOW_MS,
-          lastSample: { observedAtMs: NOW_MS, value: 19, unit: 'degree_c' },
+          lastSample: { observedAtMs: NOW_MS, value: 19 },
           // Mill v2 reproducer: 0.30040 kWh/°C, 4 accepted samples, medium
           // confidence; matches the SHS live-walk artifact captured against
           // PELS v2.9.0.
@@ -2963,9 +2956,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
         'heater-1': {
-          kind: 'temperature',
           updatedAtMs: NOW_MS,
-          lastSample: { observedAtMs: NOW_MS, value: 19, unit: 'degree_c' },
+          lastSample: { observedAtMs: NOW_MS, value: 19 },
           kwhPerUnit: {
             sampleCount: 4, mean: 0.3, m2: 0, min: 0.3, max: 0.3, confidence: 'medium', lastUpdatedMs: NOW_MS,
           },
@@ -3036,9 +3028,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
         'heater-1': {
-          kind: 'temperature',
           updatedAtMs: NOW_MS,
-          lastSample: { observedAtMs: NOW_MS, value: 19, unit: 'degree_c' },
+          lastSample: { observedAtMs: NOW_MS, value: 19 },
           kwhPerUnit: {
             sampleCount: 4, mean: 0.3, m2: 0, min: 0.3, max: 0.3, confidence: 'medium', lastUpdatedMs: NOW_MS,
           },
@@ -3120,9 +3111,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       powerTracker: {
         objectiveProfiles: {
           'heater-1': {
-            kind: 'temperature',
             updatedAtMs: NOW_MS,
-            lastSample: { observedAtMs: NOW_MS, value: 19, unit: 'degree_c' },
+            lastSample: { observedAtMs: NOW_MS, value: 19 },
             kwhPerUnit: {
               sampleCount: 4, mean: 0.3, m2: 0, min: 0.3, max: 0.3, confidence: 'medium', lastUpdatedMs: NOW_MS,
             },
@@ -3333,9 +3323,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     const buildPromotableTracker = (deviceIds: string[]): PowerTrackerState => ({
       objectiveProfiles: Object.fromEntries(deviceIds.map((id) => [id, {
-        kind: 'ev_soc',
         updatedAtMs: NOW_MS,
-        lastSample: { observedAtMs: NOW_MS, value: 40, unit: 'percent' },
+        lastSample: { observedAtMs: NOW_MS, value: 40 },
         kwhPerUnit: {
           sampleCount: 4,
           mean: 0.2,

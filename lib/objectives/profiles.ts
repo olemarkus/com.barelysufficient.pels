@@ -26,10 +26,14 @@ export const OBJECTIVE_PROFILE_MAX_DEVICES = 64;
 export const OBJECTIVE_PROFILE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MIN_INTERVAL_MS = 5 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MAX_INTERVAL_MS = 6 * 60 * 60 * 1000;
-const MIN_TEMPERATURE_RISE_C = 0.2;
-const MIN_SOC_RISE_PERCENT = 0.2;
-const MAX_KWH_PER_DEGREE_C = 10;
-const MAX_KWH_PER_PERCENT = 5;
+// One floor and one ceiling, on the value's own scale — this layer has no unit to
+// pick between. The rise floor was already the same number for both (0.2). The
+// energy ceiling is an outlier filter on the learned rate: a window yielding more
+// than this per unit was contaminated (mis-paired power, bogus delta), not
+// informative. It takes the tighter of the two previous values, which still sits
+// far above anything physical — a 200 L tank is ~0.23 kWh/°C, an EV ~0.5 kWh/%.
+const MIN_VALUE_RISE = 0.2;
+const MAX_KWH_PER_UNIT = 5;
 const MAX_UNIT_PER_HOUR = 100;
 
 export type ObjectiveProfileDebugEmitter = (payload: Record<string, unknown>) => void;
@@ -104,9 +108,7 @@ export function updateDeviceObjectiveProfile(params: {
   outdoorTemperatureC?: number;
 }): DeviceObjectiveProfile {
   const { previous, sample, deviceId, deviceName, debugStructured, outdoorTemperatureC } = params;
-  if (!previous || previous.kind !== resolveKindForSample(sample)) {
-    return buildInitialProfile(sample);
-  }
+  if (!previous) return buildInitialProfile(sample);
 
   const previousSample = previous.lastSample;
   const intervalMs = getProfileIntervalMs(previousSample, sample);
@@ -309,7 +311,6 @@ function buildAcceptedProfileSample(params: {
     event: 'objective_profile_sample_recorded',
     deviceId,
     ...(deviceName ? { deviceName } : {}),
-    profileKind: nextProfile.kind,
     intervalMs,
     valueDelta,
     unitPerHour,
@@ -325,7 +326,7 @@ function buildAcceptedProfileSample(params: {
   });
   emitObjectiveProfileNoPowerSourceIfNeeded({
     deviceId, deviceName, sample, debugStructured,
-    profileKind: nextProfile.kind, acceptedSamples: nextProfile.acceptedSamples,
+    acceptedSamples: nextProfile.acceptedSamples,
   });
   return nextProfile;
 }
@@ -390,7 +391,6 @@ function emitRecoveryStateEvent(params: {
     ...(disarmReason ? { disarmReason } : {}),
     deviceId,
     ...(deviceName ? { deviceName } : {}),
-    profileKind: previous.kind,
     sampleValue: sample.value,
     previousValue: previous.lastSample.value,
     recoveryTargetValue,
@@ -407,7 +407,6 @@ function emitRejectedProfileSample(params: {
   rejectionReason: string;
 }): void {
   const {
-    previous,
     deviceId,
     deviceName,
     debugStructured,
@@ -421,7 +420,6 @@ function emitRejectedProfileSample(params: {
     reasonCode: rejectionReason,
     deviceId,
     ...(deviceName ? { deviceName } : {}),
-    profileKind: previous.kind,
     intervalMs,
     valueDelta,
   });
@@ -448,7 +446,7 @@ function resolveProfileIntervalRejectionReason(params: {
   if (sample.observedAtMs <= previousSample.observedAtMs) return 'objective_profile_non_monotonic_time';
   if (intervalMs < OBJECTIVE_PROFILE_MIN_INTERVAL_MS) return 'objective_profile_interval_too_short';
   if (intervalMs > OBJECTIVE_PROFILE_MAX_INTERVAL_MS) return 'objective_profile_interval_too_long';
-  return sample.unit !== previousSample.unit ? 'objective_profile_unit_changed' : null;
+  return null;
 }
 
 function resolveProfileValueRejectionReason(params: {
@@ -456,8 +454,8 @@ function resolveProfileValueRejectionReason(params: {
   intervalMs: number;
   valueDelta: number;
 }): string | null {
-  const { sample, intervalMs, valueDelta } = params;
-  const minRise = sample.unit === 'degree_c' ? MIN_TEMPERATURE_RISE_C : MIN_SOC_RISE_PERCENT;
+  const { intervalMs, valueDelta } = params;
+  const minRise = MIN_VALUE_RISE;
   if (valueDelta < minRise) return valueDelta >= 0
     ? 'objective_profile_rise_too_small'
     : 'objective_profile_value_fell';
@@ -473,13 +471,13 @@ function resolveProfileEnergyRejectionReason(params: {
   valueDelta: number;
   windowEnergyKwh: number | undefined;
 }): string | null {
-  const { sample, valueDelta, windowEnergyKwh } = params;
+  const { valueDelta, windowEnergyKwh } = params;
   // No credible power across the window (device idle / coasting) → no energy
   // estimate to range-check; the sample can still be accepted on its value rise
   // and simply contributes no `kwhPerUnit`.
   if (windowEnergyKwh === undefined) return null;
   const kwhPerUnit = calculateKwhPerUnit({ energyKwh: windowEnergyKwh, valueDelta });
-  const maxKwhPerUnit = sample.unit === 'degree_c' ? MAX_KWH_PER_DEGREE_C : MAX_KWH_PER_PERCENT;
+  const maxKwhPerUnit = MAX_KWH_PER_UNIT;
   if (!Number.isFinite(kwhPerUnit) || kwhPerUnit <= 0 || kwhPerUnit > maxKwhPerUnit) {
     return 'objective_profile_energy_per_unit_out_of_range';
   }
@@ -523,7 +521,7 @@ function resolveBandedUpdate(params: {
     kwhPerUnit,
     ...(outdoorTemperatureC !== undefined ? { outdoorTemperatureC } : {}),
   });
-  const bands = fitBandsFromSamples({ samples, kind: previous.kind });
+  const bands = fitBandsFromSamples({ samples });
   // Explicit `bands: undefined` clears any prior layout if the fitter declines
   // to publish one (e.g., the buffer dipped under the split threshold). The
   // undefined key is dropped on JSON serialization for `power_tracker_state`.
@@ -532,7 +530,6 @@ function resolveBandedUpdate(params: {
 
 function buildInitialProfile(sample: DeviceObjectiveProfileSample): DeviceObjectiveProfile {
   return {
-    kind: resolveKindForSample(sample),
     updatedAtMs: sample.observedAtMs,
     lastSample: sample,
     acceptedSamples: 0,
@@ -540,9 +537,6 @@ function buildInitialProfile(sample: DeviceObjectiveProfileSample): DeviceObject
   };
 }
 
-function resolveKindForSample(sample: DeviceObjectiveProfileSample): DeviceObjectiveProfile['kind'] {
-  return sample.unit === 'degree_c' ? 'temperature' : 'ev_soc';
-}
 
 function pruneObjectiveProfiles(params: {
   profiles: Record<string, DeviceObjectiveProfile>;

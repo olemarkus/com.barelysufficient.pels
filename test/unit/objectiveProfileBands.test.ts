@@ -48,12 +48,12 @@ describe('appendSampleToBuffer', () => {
 describe('fitBandsFromSamples', () => {
   it('returns undefined when the buffer is below the split threshold', () => {
     const samples = buildLinearSamples(OBJECTIVE_PROFILE_MIN_BAND_SAMPLES * 2 - 1, 0.5);
-    expect(fitBandsFromSamples({ samples, kind: 'temperature' })).toBeUndefined();
+    expect(fitBandsFromSamples({ samples })).toBeUndefined();
   });
 
   it('returns a single band when the data is homogeneous', () => {
     const samples = buildLinearSamples(20, 0.5);
-    const bands = fitBandsFromSamples({ samples, kind: 'temperature' });
+    const bands = fitBandsFromSamples({ samples });
     expect(bands).toBeDefined();
     expect(bands).toHaveLength(1);
     expect(bands?.[0].mean).toBeCloseTo(0.5, 6);
@@ -65,7 +65,7 @@ describe('fitBandsFromSamples', () => {
     const samples: ObjectiveProfileSampleObservation[] = [];
     for (let i = 0; i < 12; i += 1) samples.push(sample(30 + i, 0.1, i));
     for (let i = 0; i < 12; i += 1) samples.push(sample(42 + i, 0.5, 12 + i));
-    const bands = fitBandsFromSamples({ samples, kind: 'temperature' });
+    const bands = fitBandsFromSamples({ samples });
     expect(bands).toBeDefined();
     expect(bands!.length).toBeGreaterThanOrEqual(2);
     const sortedBands = [...bands!].sort((a, b) => a.lowerInclusive - b.lowerInclusive);
@@ -81,7 +81,7 @@ describe('fitBandsFromSamples', () => {
     const samples: ObjectiveProfileSampleObservation[] = [];
     for (let i = 0; i < 8; i += 1) samples.push(sample(30 + i, 0.1, i));
     for (let i = 0; i < 12; i += 1) samples.push(sample(40 + i, 0.9, 8 + i));
-    const bands = fitBandsFromSamples({ samples, kind: 'temperature' });
+    const bands = fitBandsFromSamples({ samples });
     expect(bands).toBeDefined();
     for (const band of bands!) {
       expect(band.sampleCount).toBeGreaterThanOrEqual(OBJECTIVE_PROFILE_MIN_BAND_SAMPLES);
@@ -97,23 +97,34 @@ describe('fitBandsFromSamples', () => {
         samples.push(sample(clusterIdx * 20 + i, mean, clusterIdx * 10 + i));
       }
     });
-    const bands = fitBandsFromSamples({ samples, kind: 'temperature' });
+    const bands = fitBandsFromSamples({ samples });
     expect(bands).toBeDefined();
     expect(bands!.length).toBeLessThanOrEqual(OBJECTIVE_PROFILE_MAX_BANDS);
   });
 
-  it('forces an anchor split at 80% SoC for EV profiles when data straddles taper', () => {
-    // Constant 0.15 kWh/% on both sides — without the anchor, no split would
-    // be picked because there is no variance to reduce.
+  it('finds a taper knee where the data puts it, not at an assumed 80%', () => {
+    // A real taper: cheap below the knee, expensive above it. The knee here is at
+    // 74, not 80 — chemistry and BMS differ car to car, which is why the fixed
+    // 80% anchor was removed. The learner must find THIS device's knee.
     const samples: ObjectiveProfileSampleObservation[] = [];
-    for (let i = 0; i < 12; i += 1) samples.push(sample(60 + i, 0.15, i));
-    for (let i = 0; i < 12; i += 1) samples.push(sample(80 + i, 0.15, 12 + i));
-    const bands = fitBandsFromSamples({ samples, kind: 'ev_soc' });
+    for (let i = 0; i < 12; i += 1) samples.push(sample(62 + i, 0.15, i));
+    for (let i = 0; i < 12; i += 1) samples.push(sample(74 + i, 0.45, 12 + i));
+    const bands = fitBandsFromSamples({ samples });
     expect(bands).toBeDefined();
     expect(bands!.length).toBeGreaterThanOrEqual(2);
     const sortedBands = [...bands!].sort((a, b) => a.lowerInclusive - b.lowerInclusive);
-    expect(sortedBands[0].upperExclusive).toBe(80);
-    expect(sortedBands[1].lowerInclusive).toBe(80);
+    expect(sortedBands[0].upperExclusive).toBe(74);
+    expect(sortedBands[1].lowerInclusive).toBe(74);
+  });
+
+  it('splits nothing when the rate is uniform, however the data straddles 80%', () => {
+    // The old anchor split here regardless, manufacturing two bands with the same
+    // mean. Constant rate means one regime, and one band is the honest answer.
+    const samples: ObjectiveProfileSampleObservation[] = [];
+    for (let i = 0; i < 12; i += 1) samples.push(sample(60 + i, 0.15, i));
+    for (let i = 0; i < 12; i += 1) samples.push(sample(80 + i, 0.15, 12 + i));
+    const bands = fitBandsFromSamples({ samples });
+    expect(bands).toHaveLength(1);
   });
 
   it('does not force a band edge at 80% when one side is too sparse', () => {
@@ -124,7 +135,7 @@ describe('fitBandsFromSamples', () => {
     const samples: ObjectiveProfileSampleObservation[] = [];
     for (let i = 0; i < 16; i += 1) samples.push(sample(60 + i, 0.15, i));
     for (let i = 0; i < 3; i += 1) samples.push(sample(82 + i, 0.5, 16 + i));
-    const bands = fitBandsFromSamples({ samples, kind: 'ev_soc' });
+    const bands = fitBandsFromSamples({ samples });
     expect(bands).toBeDefined();
     for (const band of bands!) {
       expect(band.lowerInclusive).not.toBe(80);

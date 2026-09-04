@@ -110,9 +110,8 @@ const seedPowerTracker = (): void => {
     buckets,
     objectiveProfiles: {
       [TANK]: {
-        kind: 'temperature' as const,
         updatedAtMs: DAY_START_UTC_MS,
-        lastSample: { observedAtMs: DAY_START_UTC_MS, value: CURRENT_C, unit: 'degree_c' as const },
+        lastSample: { observedAtMs: DAY_START_UTC_MS, value: CURRENT_C },
         kwhPerUnit: {
           sampleCount: 50,
           mean: KWH_PER_DEGREE,

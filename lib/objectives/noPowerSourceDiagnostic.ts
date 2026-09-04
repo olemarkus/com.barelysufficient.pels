@@ -9,10 +9,7 @@
 // drops `measuredPowerKw` should not have to fight persisted state on restart.
 // The flag re-arms on next process start, which is the right cadence for
 // "configuration is still missing".
-import type {
-  DeviceObjectiveProfile,
-  DeviceObjectiveProfileSample,
-} from './types';
+import type { DeviceObjectiveProfileSample } from './types';
 
 export const OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD = 20;
 
@@ -38,7 +35,6 @@ const deviceStates = new Map<string, DeviceState>();
 export function emitObjectiveProfileNoPowerSourceIfNeeded(params: {
   deviceId?: string;
   deviceName?: string;
-  profileKind: DeviceObjectiveProfile['kind'];
   acceptedSamples: number;
   sample: DeviceObjectiveProfileSample;
   debugStructured?: NoPowerSourceDiagnosticEmitter;
@@ -46,7 +42,6 @@ export function emitObjectiveProfileNoPowerSourceIfNeeded(params: {
   const {
     deviceId,
     deviceName,
-    profileKind,
     acceptedSamples,
     sample,
     debugStructured,
@@ -64,7 +59,6 @@ export function emitObjectiveProfileNoPowerSourceIfNeeded(params: {
     event: 'objective_profile_no_power_source',
     deviceId,
     ...(deviceName ? { deviceName } : {}),
-    profileKind,
     acceptedSamples,
     consecutiveSamplesWithoutPower: unresolvedCount,
     threshold: OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD,

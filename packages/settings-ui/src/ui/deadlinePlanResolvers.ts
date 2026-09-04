@@ -50,11 +50,14 @@ export const resolveLowestActiveStepKw = (device: LowestActiveStepInput): number
     : null;
 };
 
+// No unit filter: a profile records a value, and the caller is already inside the
+// branch that knows what the objective measures. The UI is one of the two places
+// that legitimately knows what the number is — it takes that from the objective,
+// not from the reading.
 const resolveProfileSampleValue = (
   profile: DeviceObjectiveProfile | null,
-  unit: DeviceObjectiveProfile['lastSample']['unit'],
 ): number | null => {
-  if (!profile || profile.lastSample.unit !== unit) return null;
+  if (!profile) return null;
   return isFiniteNumber(profile.lastSample.value) ? profile.lastSample.value : null;
 };
 
@@ -83,7 +86,7 @@ export const resolveProgress = (params: {
         objective.targetTemperatureC,
       );
     }
-    const currentTemperature = resolveProfileSampleValue(profile, 'degree_c');
+    const currentTemperature = resolveProfileSampleValue(profile);
     if (!isFiniteNumber(currentTemperature)) return null;
     return buildTemperatureProgress(currentTemperature, objective.targetTemperatureC);
   }
@@ -95,7 +98,7 @@ export const resolveProgress = (params: {
   // `percent` should that invariant ever regress, rather than rendering it.
   const percent = hasObservedStateOfCharge(device)
     ? device.stateOfCharge.percent
-    : resolveProfileSampleValue(profile, 'percent');
+    : resolveProfileSampleValue(profile);
   if (!isFiniteNumber(percent)) return null;
   return {
     currentValue: Math.min(100, Math.max(0, percent)),
@@ -120,11 +123,9 @@ function buildTemperatureProgress(
 export const resolveProfile = (
   powerTracker: PowerTrackerState | null,
   deviceId: string,
-  objectiveKind: DeferredObjectiveSettingsEntry['kind'],
-): DeviceObjectiveProfile | null => {
-  const profile = powerTracker?.objectiveProfiles?.[deviceId];
-  return profile?.kind === objectiveKind ? profile : null;
-};
+): DeviceObjectiveProfile | null => (
+  powerTracker?.objectiveProfiles?.[deviceId] ?? null
+);
 
 // Reads the producer-resolved flat display fields (`rateMean` / `speedMode`)
 // off the latest revision, with a back-compat fallback for legacy revisions
