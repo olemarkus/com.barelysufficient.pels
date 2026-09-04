@@ -192,7 +192,6 @@ const isObjectiveProfileSample = (value: unknown): boolean => (
   isPlainObjectRecord(value)
   && isFiniteNumber(value.observedAtMs)
   && isFiniteNumber(value.value)
-  && (value.unit === 'degree_c' || value.unit === 'percent')
   && isOptionalFiniteNumber(value.crediblePowerW)
   && (
     value.powerSource === undefined
@@ -219,10 +218,6 @@ const isObjectiveProfileBand = (value: unknown): boolean => (
   && isObjectiveProfileConfidence(value.confidence)
 );
 
-const isObjectiveProfileKind = (value: unknown): boolean => (
-  value === 'temperature' || value === 'ev_soc'
-);
-
 const OBJECTIVE_PROFILE_REQUIRED_FINITE_FIELDS = [
   'updatedAtMs',
   'acceptedSamples',
@@ -240,8 +235,10 @@ const OBJECTIVE_PROFILE_OPTIONAL_FINITE_FIELDS = [
 
 const isDeviceObjectiveProfile = (value: unknown): boolean => {
   if (!isPlainObjectRecord(value)) return false;
-  return isObjectiveProfileKind(value.kind)
-    && OBJECTIVE_PROFILE_REQUIRED_FINITE_FIELDS.every(
+  // No `kind` or sample `unit`: a profile records a value and a time, and this
+  // layer has no notion of what the value measures. A blob persisted before they
+  // were removed still validates — the extra keys are ignored, not rejected.
+  return OBJECTIVE_PROFILE_REQUIRED_FINITE_FIELDS.every(
       (field) => isFiniteNumber(value[field]),
     )
     && isObjectiveProfileSample(value.lastSample)

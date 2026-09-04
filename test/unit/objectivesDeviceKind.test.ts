@@ -1,6 +1,7 @@
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, expect, it } from 'vitest';
 import { buildObjectiveProfileSample, type ObjectiveSampleDevice } from '../../lib/objectives/samples';
+import { resolveObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 import { resolveObjectiveSteps } from '../../lib/objectives/deferredObjectives/objectiveSteps';
 import { resolvePlanningSpeedKw } from '../../lib/objectives/deferredObjectives/planningSpeed';
 import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
@@ -44,17 +45,28 @@ describe('lib/objectives de-kind — capability-only EV takes the EV branch', ()
   });
 
   it('buildObjectiveProfileSample emits an SoC sample for a capability-only EV', () => {
-    const device = {
+    const observed = {
       id: 'ev-cap',
       name: 'EV (capability only)',
       deviceClass: 'evcharger',
+      targets: [],
+      available: true,
       stateOfCharge: stateOfChargeFixture({ percent: 55, observedAtMs: NOW }),
       lastFreshDataMs: NOW,
+    };
+    // Through the real seam rather than a cast: `observedQuantity` is what the
+    // sampler reads, and hand-building it would test the fixture instead of the
+    // resolution that decides a charger reports its charge.
+    const device: ObjectiveSampleDevice = {
+      ...observed,
       // Producer-resolved: this charger has no meter, which resolves to 0 kW.
       currentDrawKw: 0,
-    } as unknown as ObjectiveSampleDevice;
+      observedQuantity: resolveObjectiveObservedQuantity({
+        device: observed,
+        deviceObservedAtMs: observed.lastFreshDataMs,
+      }),
+    };
     const sample = buildObjectiveProfileSample(device, NOW);
     expect(sample?.value).toBe(55);
-    expect(sample?.unit).toBe('percent');
   });
 });

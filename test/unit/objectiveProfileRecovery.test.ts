@@ -1,3 +1,4 @@
+import type { ObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 import { withResolvedCurrentDraw } from '../utils/objectiveSampleDevice';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
@@ -10,8 +11,6 @@ import {
   RECOVERY_PROGRESS_EPSILON,
   RECOVERY_PROGRESS_RESET_MULTIPLIER,
   RECOVERY_SAFETY_TIMEOUT_MS,
-  SHARP_FALL_SOC_PERCENT,
-  SHARP_FALL_TEMPERATURE_C,
 } from '../../lib/objectives/recovery';
 import type { DeviceObjectiveProfile } from '../../lib/objectives/types';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -23,7 +22,7 @@ const hourMs = 60 * 60 * 1000;
 type TemperatureDeviceOverrides = Partial<TargetDeviceSnapshot & TemperatureObservedProbe
   & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> & { currentTemperature?: number };
 
-const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedAtMs: number | undefined } => {
+const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity | null } => {
   const { currentTemperature = 50, ...rest } = overrides;
   const target = { id: 'target_temperature' as const, value: 55, unit: '°C' };
   return withResolvedCurrentDraw({
@@ -41,7 +40,7 @@ const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDe
   });
 };
 
-const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedAtMs: number | undefined } => withResolvedCurrentDraw({
+const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity | null } => withResolvedCurrentDraw({
   available: true,
   id: 'ev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -54,6 +53,46 @@ const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedP
   ...overrides,
 });
 
+// A drop is a draw when it exceeds what the device is learned to gain over the
+// interval; on the unlearned profiles these tests build, that is any real fall.
+// Kept as named magnitudes so the fixtures still read as "a clear drop".
+// Falls large enough to read as a draw against the relative floor (2% of the
+// value held): 2 °C of 55, and 5 % of 80.
+const SHARP_FALL_TEMPERATURE_C = 2.0;
+const SHARP_FALL_SOC_PERCENT = 5.0;
+
+
+// A recovery window only means something for a device that has learned how fast
+// it rises — that is what a fall is now measured against. Seeding a rate is what
+// a real device brings to its first draw; a zero-knowledge profile has nothing to
+// protect and deliberately arms nothing.
+const withLearnedRate = (
+  state: PowerTrackerState,
+  deviceId: string,
+  unitPerHourMean: number,
+): PowerTrackerState => {
+  const profile = state.objectiveProfiles?.[deviceId];
+  if (!profile) throw new Error(`no profile seeded for ${deviceId}`);
+  return {
+    ...state,
+    objectiveProfiles: {
+      ...state.objectiveProfiles,
+      [deviceId]: {
+        ...profile,
+        unitPerHour: {
+          sampleCount: 10,
+          mean: unitPerHourMean,
+          m2: 0,
+          min: unitPerHourMean,
+          max: unitPerHourMean,
+          confidence: 'high',
+          lastUpdatedMs: startMs,
+        },
+      },
+    },
+  };
+};
+
 describe('objective profile recovery window', () => {
   it('arms a recovery window when a thermostat drops by the sharp-fall threshold', () => {
     const debugStructured = vi.fn();
@@ -64,6 +103,7 @@ describe('objective profile recovery window', () => {
       nowMs: startMs,
       debugStructured,
     });
+    state = withLearnedRate(state, 'heater-1', 0.5);
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [temperatureDevice({
@@ -97,7 +137,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs + hourMs,
         value: 55,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -109,7 +148,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs,
         value: 55 - SHARP_FALL_TEMPERATURE_C - 0.5,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -169,6 +207,7 @@ describe('objective profile recovery window', () => {
       devices: [temperatureDevice({ currentTemperature: 55 })],
       nowMs: startMs,
     });
+    state = withLearnedRate(state, 'heater-1', 0.5);
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [temperatureDevice({
@@ -190,6 +229,7 @@ describe('objective profile recovery window', () => {
       devices: [temperatureDevice({ currentTemperature: 60 })],
       nowMs: startMs,
     });
+    state = withLearnedRate(state, 'heater-1', 0.5);
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [temperatureDevice({
@@ -199,6 +239,7 @@ describe('objective profile recovery window', () => {
       })],
       nowMs: startMs + hourMs,
     });
+    state = withLearnedRate(state, 'heater-1', 0.5);
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [temperatureDevice({
@@ -225,6 +266,7 @@ describe('objective profile recovery window', () => {
       nowMs: startMs,
       debugStructured,
     });
+    state = withLearnedRate(state, 'heater-1', 0.5);
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [temperatureDevice({
@@ -234,6 +276,7 @@ describe('objective profile recovery window', () => {
       nowMs: startMs + hourMs,
       debugStructured,
     });
+    state = withLearnedRate(state, 'heater-1', 0.5);
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [temperatureDevice({
@@ -278,7 +321,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs,
         value: 60.1,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -289,7 +331,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs + hourMs,
         value: 45.3,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -307,7 +348,6 @@ describe('objective profile recovery window', () => {
         sample: {
           observedAtMs: startMs + hourMs + (step + 1) * hourMs,
           value: coolingTrack[step],
-          unit: 'degree_c',
           crediblePowerW: 2000,
           powerSource: 'measured',
         },
@@ -334,7 +374,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs + hourMs + (coolingTrack.length + 1) * hourMs,
         value: coolingTrack[coolingTrack.length - 1] + 1.0,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -362,7 +401,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs,
         value: 60,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -373,7 +411,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs + hourMs,
         value: 45,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -400,7 +437,6 @@ describe('objective profile recovery window', () => {
         sample: {
           observedAtMs: sampleMs,
           value: noiseTrack[step],
-          unit: 'degree_c',
           crediblePowerW: 2000,
           powerSource: 'measured',
         },
@@ -432,7 +468,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: refillMs,
         value: 47,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -457,7 +492,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs,
         value: 60,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -467,7 +501,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs + hourMs,
         value: 45,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -485,7 +518,6 @@ describe('objective profile recovery window', () => {
         sample: {
           observedAtMs: startMs + hourMs + (step + 1) * hourMs,
           value: nextValue,
-          unit: 'degree_c',
           crediblePowerW: 2000,
           powerSource: 'measured',
         },
@@ -507,7 +539,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs,
         value: 60,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -517,7 +548,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs + hourMs,
         value: 45,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -533,7 +563,6 @@ describe('objective profile recovery window', () => {
         sample: {
           observedAtMs: startMs + hourMs + (step + 1) * hourMs,
           value: reheatTrack[step],
-          unit: 'degree_c',
           crediblePowerW: 2000,
           powerSource: 'measured',
         },
@@ -549,7 +578,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs,
         value: 60,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -559,7 +587,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs + hourMs,
         value: 45,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -574,7 +601,6 @@ describe('objective profile recovery window', () => {
         sample: {
           observedAtMs: startMs + hourMs + step * 5 * hourMs,
           value: 50,
-          unit: 'degree_c',
           crediblePowerW: 2000,
           powerSource: 'measured',
         },
@@ -588,7 +614,6 @@ describe('objective profile recovery window', () => {
       sample: {
         observedAtMs: startMs + hourMs + RECOVERY_SAFETY_TIMEOUT_MS + hourMs,
         value: 50,
-        unit: 'degree_c',
         crediblePowerW: 2000,
         powerSource: 'measured',
       },
@@ -625,6 +650,7 @@ describe('objective profile recovery window', () => {
       })],
       nowMs: startMs + 2 * hourMs,
     });
+    state = withLearnedRate(state, 'heater-1', 0.5);
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [temperatureDevice({
@@ -643,7 +669,7 @@ describe('objective profile recovery window', () => {
 });
 
 describe('EV charger sharp-drop handling', () => {
-  it('resets baseline without arming a recovery window when SoC drops past the threshold', () => {
+  it('arms a recovery window when SoC drops past the threshold, exactly as a tank does', () => {
     const debugStructured = vi.fn();
     let state: PowerTrackerState = {};
     state = updateObjectiveProfilesFromSnapshot({
@@ -654,6 +680,7 @@ describe('EV charger sharp-drop handling', () => {
       nowMs: startMs,
       debugStructured,
     });
+    state = withLearnedRate(state, 'ev-1', 2);
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [evDevice({
@@ -663,22 +690,38 @@ describe('EV charger sharp-drop handling', () => {
       debugStructured,
     });
 
+    // A battery losing charge and a tank losing heat are the same event, and the
+    // refill after either is unrepresentative. The EV-only `reset_baseline` branch
+    // was a device-type distinction this layer no longer draws.
     const profile = state.objectiveProfiles?.['ev-1'];
-    expect(profile?.recoveryTargetValue).toBeUndefined();
-    expect(profile?.recoveryArmedAtMs).toBeUndefined();
+    expect(profile?.recoveryTargetValue).toBe(80);
+    expect(profile?.recoveryArmedAtMs).toBe(startMs + hourMs);
     expect(profile?.lastSample.value).toBe(80 - SHARP_FALL_SOC_PERCENT);
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'objective_profile_recovery_state',
-      action: 'reset_baseline',
+      action: 'arm_recovery',
     }));
 
-    // The next charging cycle is representative and should learn normally.
+    // Charging back to the pre-drop level disarms the window; the refill itself is
+    // still not learned from, which is the whole point of arming.
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [evDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: startMs + 2 * hourMs }),
       })],
       nowMs: startMs + 2 * hourMs,
+    });
+    const afterRefill = state.objectiveProfiles?.['ev-1'];
+    expect(afterRefill?.recoveryTargetValue).toBeUndefined();
+    expect(afterRefill?.recoveryArmedAtMs).toBeUndefined();
+
+    // With the window closed, ordinary charging learns again.
+    state = updateObjectiveProfilesFromSnapshot({
+      state,
+      devices: [evDevice({
+        stateOfCharge: stateOfChargeFixture({ percent: 90, observedAtMs: startMs + 3 * hourMs }),
+      })],
+      nowMs: startMs + 3 * hourMs,
     });
     const afterCharge = state.objectiveProfiles?.['ev-1'];
     expect(afterCharge?.acceptedSamples).toBe(1);

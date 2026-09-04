@@ -1,3 +1,4 @@
+import type { ObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 import { withResolvedCurrentDraw } from '../utils/objectiveSampleDevice';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
@@ -27,7 +28,7 @@ const MIN_SOC_RISE_PERCENT = 0.2;
 
 const evDevice = (
   overrides: Partial<TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe> = {},
-): TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedAtMs: number | undefined } => withResolvedCurrentDraw({
+): TargetDeviceSnapshot & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity | null } => withResolvedCurrentDraw({
   available: true,
   id: 'ev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -127,7 +128,6 @@ describe('EV kWhPerUnit learning', () => {
       });
 
       const profile = state.objectiveProfiles?.['ev-1'];
-      expect(profile?.kind).toBe('ev_soc');
       expect(profile?.acceptedSamples).toBe(1);
       expect(profile?.kwhPerUnit?.sampleCount).toBe(1);
       expect(profile?.kwhPerUnit?.mean).toBeCloseTo(0.7, 6);

@@ -130,7 +130,7 @@ export const resolveProfileEnergy = (params: {
   currentValue?: number;
 }): DeferredObjectiveEnergyResolution => {
   const profile = params.powerTracker.objectiveProfiles?.[params.deviceId];
-  const kWhPerUnit = profile?.kind === params.objectiveKind ? profile.kwhPerUnit : undefined;
+  const kWhPerUnit = profile?.kwhPerUnit;
   if (kWhPerUnit && Number.isFinite(kWhPerUnit.mean) && kWhPerUnit.mean > 0) {
     return buildLearnedResolution({
       profile,

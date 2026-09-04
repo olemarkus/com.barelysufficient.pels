@@ -17,6 +17,7 @@ import { computeShortfallThreshold } from '../lib/plan/planBudget';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
+import { resolveObjectiveObservedQuantity } from '../packages/shared-domain/src/objectiveObservedQuantity';
 import { isPlanActivelyConverging } from '../lib/plan/planStateHelpers';
 import { buildPlanCapacityStateSummary, isPlanUnactionable } from '../lib/plan/planLogging';
 import { shouldSkipShortfallRebuildFromPlanSummary } from '../lib/plan/rebuildScheduler/shortfallSuppression';
@@ -228,18 +229,23 @@ export class PowerSamplePipeline {
   // sees a raw reading — and because `ObjectiveSampleDevice.currentDrawKw` is
   // required, dropping this map is a compile error rather than a fleet learning
   // at 0 W.
-  // Stamps the objectives seam's `observedAtMs` from the transport's
-  // `lastFreshDataMs` (Homey's highest per-capability `lastUpdated`). The rename
-  // is the point: inside `lib/objectives` it is a sample's time coordinate — the
-  // left edge of the interval `calculateWindowEnergyKwh` bills — not a freshness
-  // or trust signal, and nothing there should reach for a field named after
-  // freshness to get it.
+  // Resolves each device's measured quantity — temperature or SoC, one shape —
+  // before the objectives layer sees it. The device-level `lastFreshDataMs`
+  // (Homey's highest per-capability `lastUpdated`) is passed as the temperature
+  // stamp, since `TemperatureObservation` carries none of its own; a SoC snapshot
+  // brings its own. Inside `lib/objectives` that timestamp is a sample's time
+  // coordinate — the left edge of the interval `calculateWindowEnergyKwh` bills —
+  // never a freshness or trust signal, which is why it is not handed over under a
+  // name that suggests one.
   private readonly updateObjectiveProfiles: UpdateObjectiveProfiles = (params) => (
     updateObjectiveProfilesFromSnapshot({
       ...params,
       devices: params.devices.map((device) => ({
         ...withHeadroomCurrentOn(device),
-        observedAtMs: device.lastFreshDataMs,
+        observedQuantity: resolveObjectiveObservedQuantity({
+          device,
+          deviceObservedAtMs: device.lastFreshDataMs,
+        }),
       })),
       debugStructured: this.deps.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
       outdoorTemperatureC: this.deps.getOutdoorTemperatureC?.(),

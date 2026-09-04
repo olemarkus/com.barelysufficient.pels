@@ -99,9 +99,8 @@ const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_M
 const buildEvPowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTrackerState => ({
   objectiveProfiles: {
     'ev-1': {
-      kind: 'ev_soc',
       updatedAtMs: NOW_MS,
-      lastSample: { observedAtMs: NOW_MS, value: 40, unit: 'percent' },
+      lastSample: { observedAtMs: NOW_MS, value: 40 },
       kwhPerUnit: {
         sampleCount: 4, mean: 0.2, m2: 0, min: 0.2, max: 0.2, confidence: 'medium', lastUpdatedMs: NOW_MS,
       },
@@ -115,9 +114,8 @@ const buildEvPowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerT
 const buildTemperaturePowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTrackerState => ({
   objectiveProfiles: {
     'heater-1': {
-      kind: 'temperature',
       updatedAtMs: NOW_MS,
-      lastSample: { observedAtMs: NOW_MS, value: 55, unit: 'degree_c' },
+      lastSample: { observedAtMs: NOW_MS, value: 55 },
       kwhPerUnit: {
         sampleCount: 6, mean: 0.8, m2: 0, min: 0.7, max: 0.9, confidence: 'high', lastUpdatedMs: NOW_MS,
       },

@@ -47,6 +47,7 @@ import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../../lib/objectives/profiles';
+import { resolveObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 import { buildNullCapacityStateSummary } from '../../lib/power/capacityStateSummary';
 
 // The guard no longer resolves the hard-cap budget itself; callers pass it in.
@@ -2671,7 +2672,10 @@ describe('recordPowerSampleForApp', () => {
         ...params,
         devices: params.devices.map((device) => ({
           ...withHeadroomCurrentOn(device),
-          observedAtMs: device.lastFreshDataMs,
+          observedQuantity: resolveObjectiveObservedQuantity({
+            device,
+            deviceObservedAtMs: device.lastFreshDataMs,
+          }),
         })),
         debugStructured,
       })

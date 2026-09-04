@@ -3,10 +3,20 @@ import type {
   DeviceObjectiveProfileSample,
 } from './types';
 
-// Magnitude thresholds that classify a sample-to-sample drop as a draw/refill
-// event rather than ordinary measurement noise.
-export const SHARP_FALL_TEMPERATURE_C = 1.0;
-export const SHARP_FALL_SOC_PERCENT = 5.0;
+// A drop counts as a draw/refill event when it is large relative to what the
+// device holds, or larger than it could have gained over the interval.
+//
+// Both terms are scale-free, which is the point: this layer has no unit and no
+// device type, so it cannot pick between a "1.0 °C" and a "5.0 %" constant — and
+// those constants were wrong anyway, asserting that every tank and every battery
+// behaves like every other.
+//
+// The fraction is the floor and does the work at short sample intervals, where a
+// gain-based figure alone would shrink toward zero and read sensor jitter as a
+// draw. The learned term takes over across long intervals, where a device that
+// genuinely rises fast should not have an ordinary climb-and-dip called a draw.
+const SHARP_FALL_VALUE_FRACTION = 0.02;
+const SHARP_FALL_GAIN_MULTIPLE = 1;
 export const RECOVERY_SAFETY_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 // After this many consecutive armed-window samples with no positive movement
 // toward `recoveryTargetValue`, disarm the recovery window. Protects against
@@ -73,27 +83,15 @@ export function resolveRecoveryState(params: {
   const { previous, sample } = params;
   const previousValue = previous.lastSample.value;
   const valueDelta = sample.value - previousValue;
-  const isThermostat = previous.kind === 'temperature';
 
   if (previous.recoveryTargetValue !== undefined && previous.recoveryArmedAtMs !== undefined) {
     return resolveArmedRecovery({ previous, sample });
   }
 
-  const sharpFallThreshold = isThermostat ? SHARP_FALL_TEMPERATURE_C : SHARP_FALL_SOC_PERCENT;
+  const intervalMs = sample.observedAtMs - previous.lastSample.observedAtMs;
+  const sharpFallThreshold = resolveSharpFallThreshold(previous, intervalMs);
   if (-valueDelta < sharpFallThreshold) {
     return { action: 'noop' };
-  }
-
-  if (!isThermostat) {
-    return {
-      action: 'reset_baseline',
-      nextProfile: {
-        ...previous,
-        updatedAtMs: sample.observedAtMs,
-        lastSample: sample,
-        rejectedSamples: previous.rejectedSamples + 1,
-      },
-    };
   }
 
   return {
@@ -185,4 +183,25 @@ function disarm(
       rejectedSamples: previous.rejectedSamples + 1,
     },
   };
+}
+
+/**
+ * The larger of: a fixed fraction of what the device currently holds, and what it
+ * is learned to gain over this interval. A fall beyond that is a draw rather than
+ * jitter or an ordinary dip.
+ *
+ * Neither term needs to know what the value measures, which is the requirement —
+ * a percent and a degree are the same thing here.
+ */
+function resolveSharpFallThreshold(
+  previous: DeviceObjectiveProfile,
+  intervalMs: number,
+): number {
+  const relativeFloor = Math.abs(previous.lastSample.value) * SHARP_FALL_VALUE_FRACTION;
+  const learnedPerHour = previous.unitPerHour?.mean;
+  if (typeof learnedPerHour !== 'number' || !Number.isFinite(learnedPerHour) || learnedPerHour <= 0) {
+    return relativeFloor;
+  }
+  const learnedGain = SHARP_FALL_GAIN_MULTIPLE * learnedPerHour * (intervalMs / 3_600_000);
+  return Math.max(relativeFloor, learnedGain);
 }

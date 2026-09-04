@@ -180,7 +180,7 @@ const resolveProfileSnapshot = (params: {
   objectiveKind: DeferredObjectiveSettingsEntry['kind'];
 }): { acceptedSamples: number; lastAcceptedAtMs: number | null } => {
   const profile = params.powerTracker.objectiveProfiles?.[params.deviceId];
-  if (!profile || profile.kind !== params.objectiveKind) {
+  if (!profile) {
     return { acceptedSamples: 0, lastAcceptedAtMs: null };
   }
   const lastAcceptedAtMs = profile.kwhPerUnit?.lastUpdatedMs ?? null;

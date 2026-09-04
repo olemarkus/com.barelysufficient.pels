@@ -1,3 +1,4 @@
+import type { ObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 import { withResolvedCurrentDraw } from '../utils/objectiveSampleDevice';
 import {
   updateDeviceObjectiveProfile,
@@ -13,7 +14,6 @@ const HALF_HOUR_MS = 30 * 60 * 1000;
 const sampleAt = (observedAtMs: number, value: number): DeviceObjectiveProfileSample => ({
   observedAtMs,
   value,
-  unit: 'degree_c',
   crediblePowerW: 2000,
   powerSource: 'measured',
 });
@@ -21,7 +21,7 @@ const sampleAt = (observedAtMs: number, value: number): DeviceObjectiveProfileSa
 type TemperatureDeviceOverrides = Partial<TargetDeviceSnapshot & TemperatureObservedProbe
   & MeasuredPowerObservedProbe> & { currentTemperature?: number };
 
-const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedAtMs: number | undefined } => {
+const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity | null } => {
   const { currentTemperature = 50, ...rest } = overrides;
   const target = { id: 'target_temperature' as const, value: 55, unit: '°C' };
   return withResolvedCurrentDraw({

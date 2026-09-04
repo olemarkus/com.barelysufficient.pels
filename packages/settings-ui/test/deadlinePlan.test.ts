@@ -120,12 +120,10 @@ const buildBootstrap = (
     tracker: {
       objectiveProfiles: {
         heater: {
-          kind: 'temperature',
           updatedAtMs: Date.now(),
           lastSample: {
             observedAtMs: Date.now(),
             value: 18,
-            unit: 'degree_c',
           },
           kwhPerUnit: {
             sampleCount: 8,
@@ -2204,9 +2202,8 @@ describe('deadline plan page payload', () => {
     bootstrap.power.tracker = {
       objectiveProfiles: {
         ev: {
-          kind: 'ev_soc',
           updatedAtMs: now.getTime(),
-          lastSample: { observedAtMs: now.getTime(), value: 41, unit: 'percent' },
+          lastSample: { observedAtMs: now.getTime(), value: 41 },
           kwhPerUnit: {
             sampleCount: 3,
             mean: 0.15,
@@ -2312,9 +2309,8 @@ describe('deadline plan page payload', () => {
     bootstrap.power.tracker = {
       objectiveProfiles: {
         ev: {
-          kind: 'ev_soc',
           updatedAtMs: now.getTime(),
-          lastSample: { observedAtMs: now.getTime(), value: 41, unit: 'percent' },
+          lastSample: { observedAtMs: now.getTime(), value: 41 },
           kwhPerUnit: {
             sampleCount: 5,
             mean: 0.40,

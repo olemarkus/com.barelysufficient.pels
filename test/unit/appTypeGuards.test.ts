@@ -124,12 +124,10 @@ describe('appTypeGuards plain-object handling', () => {
         unreliablePeriods: [{ start: 1_750_000_000_000, end: 1_750_000_030_000 }],
         objectiveProfiles: {
           heater: {
-            kind: 'temperature',
             updatedAtMs: 1_750_000_030_000,
             lastSample: {
               observedAtMs: 1_750_000_030_000,
               value: 55,
-              unit: 'degree_c',
               crediblePowerW: 900,
               powerSource: 'measured',
             },
@@ -173,9 +171,8 @@ describe('appTypeGuards plain-object handling', () => {
       ['a malformed objective profile', {
         objectiveProfiles: {
           heater: {
-            kind: 'temperature',
             updatedAtMs: 1,
-            lastSample: { observedAtMs: 1, value: Number.NaN, unit: 'degree_c' },
+            lastSample: { observedAtMs: 1, value: Number.NaN },
             acceptedSamples: 0,
             rejectedSamples: 0,
           },
