@@ -432,7 +432,7 @@ describe('appDebugHelpers', () => {
               plannedTarget: 21,
               controllable: true,
               stepPowerCalibration: {
-                low: { admissionPowerKw: 1.2, deliveryPowerKw: 1.1 },
+                low: 1.2,
               },
               reason: { code: 'keep', detail: null },
             },
@@ -485,7 +485,7 @@ describe('appDebugHelpers', () => {
         plannedTarget: 21,
         reason: 'keep',
         stepPowerCalibration: {
-          low: { admissionPowerKw: 1.2, deliveryPowerKw: 1.1 },
+          low: 1.2,
         },
       }),
       powerCalibration: {

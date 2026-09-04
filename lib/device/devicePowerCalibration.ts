@@ -7,11 +7,9 @@
  * dispatches samples; this module only contains the EMA math, gating
  * policy, and query helpers.
  *
- * Two query primitives are exposed for admission / delivery decisions.
- * Samples are accepted only inside the configured step band, so learned
- * values never exceed the configured step ceiling. Step-aware delta helpers
- * preserve the "use live measurement for the 'from' side when available"
- * rule.
+ * One query primitive is exposed for a step's learned power. Samples are
+ * accepted only inside the configured step band, so learned values never
+ * exceed the configured step ceiling.
  */
 
 import type {
@@ -151,27 +149,19 @@ export function recordSample(
 }
 
 /**
- * Learned power for "is it safe to admit this draw?" decisions. Samples
- * above the caller-provided nameplate are rejected before they reach the EMA,
- * so a confident estimate may learn below the configured step power but never
- * above it.
+ * The learned power for one `(device, step)` pair, in kW — the ONE number the
+ * calibration store has about a rung.
+ *
+ * There used to be two, `getAdmissionPowerKw` ("is it safe to admit this
+ * draw?") and `getDeliveryPowerKw` ("how much will I actually deliver?"), and
+ * they were the same body. The names promised a band the data never held:
+ * samples above the caller-provided nameplate are rejected before they reach
+ * the EMA, so one estimate comes out — at or below the configured step power,
+ * and the nameplate itself below confidence. Consumers that pick "the
+ * conservative end" have to do it against something else (the meter), not
+ * against a second calibration figure that does not exist.
  */
-export function getAdmissionPowerKw(
-  snapshot: PowerCalibrationSnapshot,
-  deviceId: string,
-  stepId: string,
-  nameplateKw: number,
-): number {
-  return getBoundedConfidentPowerKw(snapshot, deviceId, stepId, nameplateKw);
-}
-
-/**
- * Conservative-low power for "how much energy will I actually deliver?"
- * decisions. Below confidence the nameplate is returned. When confident, the
- * observed EMA can only lower the configured step power because samples above
- * that ceiling are rejected before they reach the EMA.
- */
-export function getDeliveryPowerKw(
+export function getStepPowerKw(
   snapshot: PowerCalibrationSnapshot,
   deviceId: string,
   stepId: string,

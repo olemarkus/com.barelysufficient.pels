@@ -463,15 +463,19 @@ export type PlanInputDeviceBase = {
   // carries that bit, resolved through the store's predicate; the plan INPUT
   // does not carry it at all.
   /**
-   * Per-step calibrated power view, populated at plan-build time from the
-   * persisted power-calibration store. When a `(deviceId, stepId)` pair has
-   * confident observations, admission and delivery estimates are learned from
-   * samples inside that configured step's power band and bounded by its
-   * configured step power.
+   * The calibrated power for each step, in kW, populated at plan-build time
+   * from the persisted power-calibration store. When a `(deviceId, stepId)`
+   * pair has confident observations the value is learned from samples inside
+   * that configured step's power band and bounded by its configured step
+   * power; otherwise it is the configured step power itself.
+   *
+   * ONE number per step, not a band. It used to be a two-field view whose
+   * fields were produced by the same function, which invited consumers to read
+   * an "admission" and a "delivery" end that were always equal.
    * Missing entries mean the planner should fall back to `planningPowerW`
    * from the profile.
    */
-  stepPowerCalibration?: Record<string, StepPowerCalibrationView>;
+  stepPowerCalibration?: Record<string, number>;
   /**
    * Producer-resolved: the calibration store is confident this device is
    * drawing nothing right now — the idle-at-setpoint signature (no recent
@@ -487,9 +491,4 @@ export type PlanInputDeviceBase = {
    * `resolveConfirmedNotDrawing` (`setup/appInit/calibrationViews.ts`).
    */
   confirmedNotDrawing: boolean;
-};
-
-export type StepPowerCalibrationView = {
-  admissionPowerKw: number;
-  deliveryPowerKw: number;
 };

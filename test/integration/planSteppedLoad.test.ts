@@ -407,7 +407,7 @@ describe('planSteppedLoad', () => {
           { id: 'c', planningPowerW: 3000 },
         ],
       },
-      stepPowerCalibration: { b: { admissionPowerKw: 2.4, deliveryPowerKw: 2.4 } },
+      stepPowerCalibration: { b: 2.4 },
     });
 
     // Same watts on the profile, a higher learned draw on `b`: a climb worth

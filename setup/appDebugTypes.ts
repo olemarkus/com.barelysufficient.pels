@@ -1,5 +1,5 @@
 import type { DeviceCalibration } from '../packages/contracts/src/powerCalibration';
-import type { DevicePlan, StepPowerCalibrationView } from '../lib/plan/planTypes';
+import type { DevicePlan } from '../lib/plan/planTypes';
 import type {
   SteppedLoadProfile,
   TargetDeviceSnapshot,
@@ -114,7 +114,7 @@ export type PelsPlanDeviceSummary = {
   plannedTarget?: number;
   reason?: string;
   controllable?: boolean;
-  stepPowerCalibration?: Record<string, StepPowerCalibrationView>;
+  stepPowerCalibration?: Record<string, number>;
   pendingTargetCommand?: DevicePlan['devices'][number]['pendingTargetCommand'];
 };
 

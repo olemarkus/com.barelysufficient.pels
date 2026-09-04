@@ -3847,9 +3847,9 @@ describe('buildSheddingPlan', () => {
             desiredStepId: 'max',
             currentDrawKw: 1.193,
             stepPowerCalibration: {
-              low: { admissionPowerKw: 1.193, deliveryPowerKw: 1.193 },
-              medium: { admissionPowerKw: 1.671, deliveryPowerKw: 1.671 },
-              max: { admissionPowerKw: 3, deliveryPowerKw: 3 },
+              low: 1.193,
+              medium: 1.671,
+              max: 3,
             },
             steppedLoadProfile: {
               steps: [
@@ -3971,9 +3971,9 @@ describe('buildSheddingPlan', () => {
             desiredStepId: 'max',
             currentDrawKw: 1.193,
             stepPowerCalibration: {
-              low: { admissionPowerKw: 1.193, deliveryPowerKw: 1.193 },
-              medium: { admissionPowerKw: 1.671, deliveryPowerKw: 1.671 },
-              max: { admissionPowerKw: 3, deliveryPowerKw: 3 },
+              low: 1.193,
+              medium: 1.671,
+              max: 3,
             },
             steppedLoadProfile: {
               steps: [
@@ -4046,9 +4046,9 @@ describe('buildSheddingPlan', () => {
             desiredStepId: 'max',
             currentDrawKw: 1.5,
             stepPowerCalibration: {
-              low: { admissionPowerKw: 1.193, deliveryPowerKw: 1.193 },
-              medium: { admissionPowerKw: 1.671, deliveryPowerKw: 1.671 },
-              max: { admissionPowerKw: 3, deliveryPowerKw: 3 },
+              low: 1.193,
+              medium: 1.671,
+              max: 3,
             },
             steppedLoadProfile: {
               steps: [

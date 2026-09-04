@@ -19,9 +19,9 @@ const waterHeaterProfile: SteppedLoadProfile = {
 // 1.193 kW reading, and `medium` sits above it. That ordering is what collapses
 // the `max -> medium` delta to zero while the measurement lags.
 const waterHeaterCalibration = {
-  low: { admissionPowerKw: 1.193, deliveryPowerKw: 1.193 },
-  medium: { admissionPowerKw: 1.671, deliveryPowerKw: 1.671 },
-  max: { admissionPowerKw: 3, deliveryPowerKw: 3 },
+  low: 1.193,
+  medium: 1.671,
+  max: 3,
 };
 
 const heater = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => steppedInputDevice({

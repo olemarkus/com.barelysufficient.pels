@@ -35,10 +35,9 @@ export type {
  *
  * Kept deliberately separate from `PlanInputDevice` per the architecture
  * boundary (AGENTS.md: accept duplication when consolidation would cross a
- * layering boundary). `stepPowerCalibration` carries both calibrated views the
- * controller reads: delivery power sizes objective energy, while admission
- * power reserves physical capacity. The planner's richer
- * `StepPowerCalibrationView` value type remains assignable.
+ * layering boundary). `stepPowerCalibration` carries the one calibrated figure
+ * per step that the controller reads — it sizes objective energy and reserves
+ * physical capacity from the same number, because the store learns only one.
  *
  * See notes/state-management/deferred-objective-lifecycle-carveout.md.
  */
@@ -102,5 +101,5 @@ export type ObjectiveDeviceInput = {
   currentTemperature?: number;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
   lastFreshDataMs?: number;
-  stepPowerCalibration?: Record<string, { admissionPowerKw: number; deliveryPowerKw: number }>;
+  stepPowerCalibration?: Record<string, number>;
 };
