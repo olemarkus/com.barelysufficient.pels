@@ -29,6 +29,7 @@ import {
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, buildPlanInputDevice, steppedProfile } from '../utils/planTestUtils';
+import { reasonContext } from '../helpers/reasonContext';
 
 const AWAITING: DeviceReason = { code: PLAN_REASON_CODES.awaitingSolarSurplus };
 
@@ -345,16 +346,15 @@ const normalizeHeld = (params: {
   guardInShortfall?: boolean;
   inCooldown?: boolean;
   holdIds?: string[];
-}) => normalizeShedReasons({
-  planDevices: [params.dev],
-  shedReasons: params.shedReasons ?? new Map(),
-  guardInShortfall: params.guardInShortfall ?? false,
-  headroomRaw: 1,
-  inCooldown: params.inCooldown ?? false,
-  activeOvershoot: false,
-  shedCooldownRemainingSec: null,
-  surplusHoldReasonById: new Map((params.holdIds ?? ['dev']).map((id) => [id, AWAITING])),
-})[0];
+}) => normalizeShedReasons([params.dev], reasonContext({
+      shedReasons: params.shedReasons ?? new Map(),
+      guardInShortfall: params.guardInShortfall ?? false,
+      headroomRaw: 1,
+      inCooldown: params.inCooldown ?? false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      surplusHoldReasonById: new Map((params.holdIds ?? ['dev']).map((id) => [id, AWAITING])),
+    }))[0];
 
 describe('awaitingSolarSurplus reason adoption', () => {
   const heldDevice = () => buildPlanDevice({

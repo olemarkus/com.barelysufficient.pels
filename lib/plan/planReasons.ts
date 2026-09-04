@@ -38,38 +38,76 @@ export type ShedReasonHoldInputs = {
   surplusHoldReasonById: ReadonlyMap<string, DeviceReason>;
 };
 
-function buildBaseReason(
-  dev: DevicePlanDevice,
-  shedReasons: Map<string, DeviceReason>,
-  softLimitSource: 'capacity' | 'daily' | null,
-  capacityBreached: boolean,
-  budgetReleasableHeadroomHold: boolean,
-): DeviceReason {
+function buildBaseReason(ctx: ReasonContext, dev: DevicePlanDevice): DeviceReason {
+  const { shedReasons } = ctx;
   const classifiedReason = classifyPlanReason(dev.reason);
   const keepReason = shouldNormalizeReason(classifiedReason) ? null : classifiedReason.reason;
   const resolved = shedReasons.get(dev.id) ?? keepReason ?? { code: PLAN_REASON_CODES.capacity };
   // Shared fold with `normalizeDeviceReason` — the full rationale (carry-forward
   // capacity, budget-bound restore holds, the prod-2026-07-25 breach carve-out)
   // lives on `resolveDailyBindingReattribution`.
-  const reattributed = resolveDailyBindingReattribution({
-    reasonCode: resolved.code,
-    sourceShortfallKw: resolveRestoreShortfallKw(resolved),
-    shedReasonFresh: shedReasons.has(dev.id),
-    budgetExempt: dev.budgetExempt === true,
-    softLimitSource,
-    capacityBreached,
-    budgetReleasableHeadroomHold,
-  });
+  const reattributed = resolveDailyBindingReattribution(
+    ctx,
+    resolved.code,
+    resolveRestoreShortfallKw(resolved),
+    shedReasons.has(dev.id),
+    dev.budgetExempt === true,
+  );
   return reattributed ?? resolved;
 }
 
-function maybeApplyShortfallReason(params: {
-  dev: DevicePlanDevice;
-  guardInShortfall: boolean;
-  currentReason: ClassifiedPlanReason;
-  headroomRaw: number;
-}): PlanReasonDecision | null {
-  const { dev, guardInShortfall, currentReason, headroomRaw } = params;
+/**
+ * The cycle's explanation facts — everything a device reason is normalized
+ * against, resolved once by the producer and read by every stage of the pass.
+ *
+ * Each field was previously re-declared inline on up to five signatures:
+ * `normalizeShedReasons` declared sixteen members and forwarded fourteen of
+ * them, unread, straight into `normalizeDeviceReason`, which redeclared the
+ * same fourteen. Nothing here is optional any more — the defaults that used to
+ * sit on those bags existed "so scalar-only callers/tests keep the pre-existing
+ * behaviour", which is test-shaped optionality on a production contract.
+ */
+export type ReasonContext = {
+  readonly shedReasons: Map<string, DeviceReason>;
+  readonly guardInShortfall: boolean;
+  readonly headroomRaw: number;
+  readonly inCooldown: boolean;
+  readonly activeOvershoot: boolean;
+  readonly shedCooldownRemainingSec: number | null;
+  readonly shedCooldownStartedAtMs: number | null;
+  readonly shedCooldownTotalSec: number | null;
+  /**
+   * Devices whose active smart task is between planned hours. When such a device
+   * ends up held this cycle, that framing wins over capacity/dailyBudget because
+   * it reflects the owner's opt-in to the price-aware plan.
+   */
+  readonly deferredObjectiveAvoidDeviceIds: ReadonlySet<string>;
+  /**
+   * Devices held OFF by the standing "Run on solar surplus" dump-load posture,
+   * with the producer-built stable `awaitingSolarSurplus` reason. Adopted like
+   * the deferred-avoid framing: it wins over the capacity/dailyBudget default,
+   * but never over a fresh shed decision or the richer shortfall/cooldown/swap
+   * reasons.
+   */
+  readonly surplusHoldReasonById: ReadonlyMap<string, DeviceReason>;
+  /** Plan-level binding constraint; `'daily'` re-attributes carried `capacity` reasons. */
+  readonly softLimitSource: 'capacity' | 'daily' | null;
+  /** Over the CAPACITY soft limit, whichever limit binds. Producer-resolved. */
+  readonly capacityBreached: boolean;
+  /** Daily pace binding AND capacity not also breached. Producer-resolved. */
+  readonly budgetReleasableHeadroomHold: boolean;
+  /** The hour's energy budget is spent; folds every ceiling hold to `hourlyBudget`. */
+  readonly hourlyBudgetExhausted: boolean;
+  /** Post-hold per-axis availability + startup reservations, for ceiling shortfalls. */
+  readonly admissionInputs: CeilingShortfallInputs | null;
+};
+
+function maybeApplyShortfallReason(
+  ctx: ReasonContext,
+  dev: DevicePlanDevice,
+  currentReason: ClassifiedPlanReason,
+): PlanReasonDecision | null {
+  const { guardInShortfall, headroomRaw } = ctx;
   if (!guardInShortfall || isSwapReason(currentReason) || isBudgetReason(currentReason)) return null;
   if (currentReason.code === PLAN_REASON_CODES.neutralStartupHold) return null;
   if (isShortfallReason(currentReason)) return null;
@@ -77,22 +115,14 @@ function maybeApplyShortfallReason(params: {
   return { code: 'shortfall', neededKw: estimatedNeed, headroomKw: headroomRaw };
 }
 
-function maybeApplyCooldownReason(params: {
-  currentReason: ClassifiedPlanReason;
-  inCooldown: boolean;
-  activeOvershoot: boolean;
-  shedCooldownRemainingSec: number | null;
-  shedCooldownStartedAtMs?: number | null;
-  shedCooldownTotalSec?: number | null;
-}): PlanReasonDecision | null {
+function maybeApplyCooldownReason(
+  ctx: ReasonContext,
+  currentReason: ClassifiedPlanReason,
+): PlanReasonDecision | null {
   const {
-    currentReason,
-    inCooldown,
-    activeOvershoot,
-    shedCooldownRemainingSec,
-    shedCooldownStartedAtMs,
-    shedCooldownTotalSec,
-  } = params;
+    inCooldown, activeOvershoot, shedCooldownRemainingSec,
+    shedCooldownStartedAtMs, shedCooldownTotalSec,
+  } = ctx;
   if (
     inCooldown
     && !activeOvershoot
@@ -123,102 +153,16 @@ function maybeApplyCooldownReason(params: {
   return null;
 }
 
-export function normalizeShedReasons(params: {
-  planDevices: DevicePlanDevice[];
-  shedReasons: Map<string, DeviceReason>;
-  guardInShortfall: boolean;
-  headroomRaw: number;
-  inCooldown: boolean;
-  activeOvershoot: boolean;
-  shedCooldownRemainingSec: number | null;
-  shedCooldownStartedAtMs?: number | null;
-  shedCooldownTotalSec?: number | null;
-  // Devices whose active smart task is between planned hours: the current hour
-  // was relatively expensive so the load was booked into cheaper hours, or the
-  // task has not started yet, or it has already finished. When the device ends up
-  // held this cycle, this framing wins over capacity/dailyBudget because it
-  // reflects the user's opt-in to the price-aware plan. See
-  // `packages/shared-domain/src/planStateLabels.ts` §
-  // PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS.
-  deferredObjectiveAvoidDeviceIds?: ReadonlySet<string>;
-  // Devices held OFF by the standing "Run on solar surplus" dump-load posture
-  // this cycle (`resolveSurplusHold`), with the producer-built stable
-  // `awaitingSolarSurplus` reason. Adopted like the deferred-avoid framing:
-  // it wins over the capacity/dailyBudget default, but never over a fresh
-  // shed decision (`shedReasons`) or the richer shortfall/cooldown/swap
-  // reasons. (A fresh `hourlyBudget` shed IS a `shedReasons` entry, so a
-  // surplus dump load fresh-shed during an exhausted hour shows the hourly
-  // copy for that cycle and re-adopts the surplus framing on the next —
-  // parity with the old dailyBudget-under-exhaustion behaviour.)
-  surplusHoldReasonById?: ReadonlyMap<string, DeviceReason>;
-  // Plan-level binding-constraint signal. When `'daily'`, carry-forward
-  // `capacity` reasons re-attribute to `dailyBudget` so the device card label
-  // matches the current binding constraint instead of the constraint that was
-  // binding when the device was first shed.
-  softLimitSource?: 'capacity' | 'daily' | null;
-  // True when the draw is over the CAPACITY soft limit, regardless of which limit
-  // is binding. Resolved by the producer (`isCapacityBreached`) so consumers never
-  // re-derive it; see the re-attribution guards in `resolveDailyBindingReattribution`.
-  capacityBreached?: boolean;
-  // Producer-resolved on `MeasuredPower` (see the field doc there): daily pace
-  // binding AND capacity not also breached. Gates the
-  // `insufficientHeadroom` → `dailyBudget` re-attribution, and is the SAME flat
-  // field `planDiagnostics` reads for the starvation counting cause and rescue
-  // gating, so the card label and the rescue widget cannot disagree about
-  // whether a hold is budget-releasable.
-  budgetReleasableHeadroomHold?: boolean;
-  // Post-hold per-axis availability + startup reservations, for the uniform
-  // per-cycle shortfall on ceiling holds (`finalizeCeilingReason`). Optional so
-  // scalar-only callers/tests keep the pre-existing behaviour (no attachment).
-  admissionInputs?: CeilingShortfallInputs;
-  // Producer-resolved on `PlanEngineState`: the hour's energy budget is spent.
-  // Folds every ceiling hold to `hourlyBudget` (time-based copy) — spent kWh
-  // cannot be un-spent, so a kW figure would be dishonest for the rest of the
-  // hour.
-  hourlyBudgetExhausted?: boolean;
-}): DevicePlanDevice[] {
-  const {
-    planDevices,
-    shedReasons,
-    guardInShortfall,
-    headroomRaw,
-    inCooldown,
-    activeOvershoot,
-    shedCooldownRemainingSec,
-    shedCooldownStartedAtMs,
-    shedCooldownTotalSec,
-    deferredObjectiveAvoidDeviceIds,
-    surplusHoldReasonById,
-    softLimitSource = null,
-    capacityBreached = false,
-    budgetReleasableHeadroomHold = false,
-    admissionInputs,
-    hourlyBudgetExhausted = false,
-  } = params;
+export function normalizeShedReasons(
+  planDevices: DevicePlanDevice[],
+  ctx: ReasonContext,
+): DevicePlanDevice[] {
 
-  return planDevices.map((dev) => finalizeCeilingReason({
-    dev: normalizeDeviceReason({
-      dev,
-      shedReasons,
-      guardInShortfall,
-      headroomRaw,
-      inCooldown,
-      activeOvershoot,
-      shedCooldownRemainingSec,
-      shedCooldownStartedAtMs,
-      shedCooldownTotalSec,
-      deferredObjectiveAvoidDeviceIds,
-      surplusHoldReasonById,
-      softLimitSource,
-      capacityBreached,
-      budgetReleasableHeadroomHold,
-    }),
-    shedReasonFresh: shedReasons.has(dev.id),
-    admissionInputs,
-    hourlyBudgetExhausted,
-    softLimitSource,
-    capacityBreached,
-  }));
+  return planDevices.map((dev) => finalizeCeilingReason(
+    ctx,
+    normalizeDeviceReason(ctx, dev),
+    ctx.shedReasons.has(dev.id),
+  ));
 }
 
 // Reason codes the hourly-exhausted fold rewrites to `hourlyBudget`. Swap
@@ -268,25 +212,18 @@ const SHORTFALL_ATTACH_REASON_CODES: ReadonlySet<DeviceReason['code']> = new Set
 // is stripped): spent kWh cannot be un-spent, so a gap figure would be
 // dishonest until the hour rolls over — the same rule that gives `hourlyBudget`
 // its time-based copy. Swap holds keep their framing and simply render bare.
-function finalizeCeilingReason(params: {
-  dev: DevicePlanDevice;
-  shedReasonFresh: boolean;
-  admissionInputs?: CeilingShortfallInputs;
-  hourlyBudgetExhausted: boolean;
-  softLimitSource: 'capacity' | 'daily' | null;
-  capacityBreached: boolean;
-}): DevicePlanDevice {
-  const {
-    dev, shedReasonFresh, admissionInputs, hourlyBudgetExhausted, softLimitSource, capacityBreached,
-  } = params;
+function finalizeCeilingReason(
+  ctx: ReasonContext,
+  dev: DevicePlanDevice,
+  shedReasonFresh: boolean,
+): DevicePlanDevice {
+  const { admissionInputs, hourlyBudgetExhausted } = ctx;
   if (dev.plannedState !== 'shed') return dev;
   const withReason = (reason: DeviceReason): DevicePlanDevice => (
     reason === dev.reason ? dev : { ...dev, reason }
   );
 
-  const folded = resolveHourlyFold({
-    dev, shedReasonFresh, hourlyBudgetExhausted, softLimitSource, capacityBreached,
-  });
+  const folded = resolveHourlyFold(ctx, dev, shedReasonFresh);
   if (hourlyBudgetExhausted || folded.code === PLAN_REASON_CODES.hourlyBudget) {
     return withReason(stripCycleAnnotations(folded));
   }
@@ -361,14 +298,12 @@ function stripCycleAnnotations(reason: DeviceReason): DeviceReason {
 // are capacity holds by per-axis admission). A fresh-this-cycle `shedReasons`
 // entry is left alone, same as the daily re-attribution: the selector set it
 // with the current cycle's facts.
-function resolveHourlyFold(params: {
-  dev: DevicePlanDevice;
-  shedReasonFresh: boolean;
-  hourlyBudgetExhausted: boolean;
-  softLimitSource: 'capacity' | 'daily' | null;
-  capacityBreached: boolean;
-}): DeviceReason {
-  const { dev, shedReasonFresh, hourlyBudgetExhausted, softLimitSource, capacityBreached } = params;
+function resolveHourlyFold(
+  ctx: ReasonContext,
+  dev: DevicePlanDevice,
+  shedReasonFresh: boolean,
+): DeviceReason {
+  const { hourlyBudgetExhausted, softLimitSource, capacityBreached } = ctx;
   if (hourlyBudgetExhausted) {
     if (dev.reason.code === PLAN_REASON_CODES.hourlyBudget) return dev.reason;
     if (HOURLY_FOLD_REASON_CODES.has(dev.reason.code)) {
@@ -416,54 +351,15 @@ function attachShortfall(reason: DeviceReason, shortfallKw: number): DeviceReaso
   }
 }
 
-function normalizeDeviceReason(params: {
-  dev: DevicePlanDevice;
-  shedReasons: Map<string, DeviceReason>;
-  guardInShortfall: boolean;
-  headroomRaw: number;
-  inCooldown: boolean;
-  activeOvershoot: boolean;
-  shedCooldownRemainingSec: number | null;
-  shedCooldownStartedAtMs?: number | null;
-  shedCooldownTotalSec?: number | null;
-  deferredObjectiveAvoidDeviceIds?: ReadonlySet<string>;
-  surplusHoldReasonById?: ReadonlyMap<string, DeviceReason>;
-  softLimitSource?: 'capacity' | 'daily' | null;
-  // True when the draw is over the CAPACITY soft limit, regardless of which limit
-  // is binding. Resolved by the producer (`isCapacityBreached`) so consumers never
-  // re-derive it; see the re-attribution guards in `resolveDailyBindingReattribution`.
-  capacityBreached?: boolean;
-  // Producer-resolved flat semantic — see `normalizeShedReasons` param doc.
-  budgetReleasableHeadroomHold?: boolean;
-}): DevicePlanDevice {
-  const {
-    dev,
-    shedReasons,
-    guardInShortfall,
-    headroomRaw,
-    inCooldown,
-    activeOvershoot,
-    shedCooldownRemainingSec,
-    shedCooldownStartedAtMs,
-    shedCooldownTotalSec,
-    deferredObjectiveAvoidDeviceIds,
-    surplusHoldReasonById,
-    softLimitSource = null,
-    capacityBreached = false,
-    budgetReleasableHeadroomHold = false,
-  } = params;
+function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): DevicePlanDevice {
+  const { shedReasons, deferredObjectiveAvoidDeviceIds } = ctx;
 
   if (dev.plannedState !== 'shed') return dev;
 
   const currentReason = classifyPlanReason(dev.reason);
-  const baseReason = buildBaseReason(dev, shedReasons, softLimitSource, capacityBreached, budgetReleasableHeadroomHold);
+  const baseReason = buildBaseReason(ctx, dev);
 
-  const shortfallReason = maybeApplyShortfallReason({
-    dev,
-    guardInShortfall,
-    currentReason,
-    headroomRaw,
-  });
+  const shortfallReason = maybeApplyShortfallReason(ctx, dev, currentReason);
   if (shortfallReason) return { ...dev, reason: renderPlanReasonDecision(shortfallReason) };
 
   // Surplus-hold framing takes precedence over the plan-wide shed cooldown for a
@@ -478,19 +374,10 @@ function normalizeDeviceReason(params: {
   // ONLY for a genuine surplus hold (device in `surplusHoldReasonById`, no fresh
   // `shedReasons` entry), so a device genuinely in a capacity cooldown still
   // falls through to `cooldown_shedding` below.
-  const surplusHoldReason = resolveSurplusHoldReasonAdoption({
-    dev, shedReasons, surplusHoldReasonById, currentReason,
-  });
+  const surplusHoldReason = resolveSurplusHoldReasonAdoption(ctx, dev, currentReason);
   if (surplusHoldReason) return { ...dev, reason: surplusHoldReason };
 
-  const cooldownReason = maybeApplyCooldownReason({
-    currentReason,
-    inCooldown,
-    activeOvershoot,
-    shedCooldownRemainingSec,
-    shedCooldownStartedAtMs,
-    shedCooldownTotalSec,
-  });
+  const cooldownReason = maybeApplyCooldownReason(ctx, currentReason);
   if (cooldownReason) return { ...dev, reason: renderPlanReasonDecision(cooldownReason) };
 
   // Smart-task framing wins over capacity / dailyBudget framing when both
@@ -505,15 +392,13 @@ function normalizeDeviceReason(params: {
     return { ...dev, reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid } };
   }
 
-  const dailyReattribution = resolveDailyBindingReattribution({
-    reasonCode: currentReason.code,
-    sourceShortfallKw: resolveRestoreShortfallKw(currentReason.reason),
-    shedReasonFresh: shedReasons.has(dev.id),
-    budgetExempt: dev.budgetExempt === true,
-    softLimitSource,
-    capacityBreached,
-    budgetReleasableHeadroomHold,
-  });
+  const dailyReattribution = resolveDailyBindingReattribution(
+    ctx,
+    currentReason.code,
+    resolveRestoreShortfallKw(currentReason.reason),
+    shedReasons.has(dev.id),
+    dev.budgetExempt === true,
+  );
   if (dailyReattribution) return { ...dev, reason: dailyReattribution };
 
   if (shouldNormalizeReason(currentReason)) {
@@ -574,25 +459,14 @@ function normalizeDeviceReason(params: {
 // hold is a shed device, so a smart-task binary_restore cannot lift these holds
 // through this fold. Pinned in `test/unit/planDecisionSemantics.test.ts`; if
 // budget holds ever ride keep-state devices, revisit that set deliberately.
-function resolveDailyBindingReattribution(params: {
-  // `PlanReasonCode`, not `DeviceReason['code']`: the caller passes a
-  // `ClassifiedPlanReason` code, whose `none` absent-marker is not a
-  // `DeviceReason` member. It simply matches no branch below.
-  reasonCode: PlanReasonCode;
-  // Admission shortfall read off the reason being re-attributed, so the
-  // re-labelled hold keeps the kW the card renders. `null` for the
-  // carry-forward `capacity` shape, which never had admission metrics.
-  sourceShortfallKw: number | null;
-  shedReasonFresh: boolean;
-  budgetExempt: boolean;
-  softLimitSource: 'capacity' | 'daily' | null;
-  capacityBreached: boolean;
-  budgetReleasableHeadroomHold: boolean;
-}): DeviceReason | null {
-  const {
-    reasonCode, sourceShortfallKw, shedReasonFresh, budgetExempt, softLimitSource,
-    capacityBreached, budgetReleasableHeadroomHold,
-  } = params;
+function resolveDailyBindingReattribution(
+  ctx: ReasonContext,
+  reasonCode: PlanReasonCode,
+  sourceShortfallKw: number | null,
+  shedReasonFresh: boolean,
+  budgetExempt: boolean,
+): DeviceReason | null {
+  const { softLimitSource, capacityBreached, budgetReleasableHeadroomHold } = ctx;
   if (softLimitSource !== 'daily' || capacityBreached) return null;
   // Never fold a budget-exempt device's hold to `dailyBudget`: per-axis restore
   // admission evaluates exempt candidates on the CAPACITY axis, so their holds
@@ -627,16 +501,15 @@ function resolveDailyBindingReattribution(params: {
 //   - a swap reason (the device is being swapped for a higher-priority load): richer
 //     user-actionable info. (Shortfall already returned in the caller before this.)
 // The adopted reason is producer-built and stable across cycles (no numbers).
-function resolveSurplusHoldReasonAdoption(params: {
-  dev: DevicePlanDevice;
-  shedReasons: Map<string, DeviceReason>;
-  surplusHoldReasonById?: ReadonlyMap<string, DeviceReason>;
-  currentReason: ClassifiedPlanReason;
-}): DeviceReason | null {
-  const reason = params.surplusHoldReasonById?.get(params.dev.id);
+function resolveSurplusHoldReasonAdoption(
+  ctx: ReasonContext,
+  dev: DevicePlanDevice,
+  currentReason: ClassifiedPlanReason,
+): DeviceReason | null {
+  const reason = ctx.surplusHoldReasonById.get(dev.id);
   if (!reason) return null;
-  if (params.shedReasons.has(params.dev.id)) return null;
-  if (isSwapReason(params.currentReason)) return null;
+  if (ctx.shedReasons.has(dev.id)) return null;
+  if (isSwapReason(currentReason)) return null;
   return reason;
 }
 
