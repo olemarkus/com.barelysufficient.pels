@@ -29,7 +29,7 @@ type TemperatureDeviceOverrides = Partial<TargetDeviceSnapshot & TemperatureObse
   & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe
   & ReportedStepObservedProbe> & { currentTemperature?: number };
 
-const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number } => {
+const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number; observedAtMs: number | undefined } => {
   const { currentTemperature = 50, ...rest } = overrides;
   const target = { id: 'target_temperature' as const, value: 55, unit: '°C' };
   return withResolvedCurrentDraw({
@@ -47,7 +47,7 @@ const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDe
   });
 };
 
-const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number } => withResolvedCurrentDraw({
+const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number; observedAtMs: number | undefined } => withResolvedCurrentDraw({
   available: true,
   id: 'ev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',

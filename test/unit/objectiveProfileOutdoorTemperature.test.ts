@@ -21,7 +21,7 @@ const sampleAt = (observedAtMs: number, value: number): DeviceObjectiveProfileSa
 type TemperatureDeviceOverrides = Partial<TargetDeviceSnapshot & TemperatureObservedProbe
   & MeasuredPowerObservedProbe> & { currentTemperature?: number };
 
-const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number } => {
+const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe & { currentDrawKw: number; observedAtMs: number | undefined } => {
   const { currentTemperature = 50, ...rest } = overrides;
   const target = { id: 'target_temperature' as const, value: 55, unit: '°C' };
   return withResolvedCurrentDraw({

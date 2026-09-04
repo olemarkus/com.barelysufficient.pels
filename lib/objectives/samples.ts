@@ -57,7 +57,24 @@ export type ObjectiveSampleDevice = ObservedDeviceState
   & SteppedLoadDescriptorProbe
   & ReportedStepObservedProbe
   & Pick<DeviceDescriptor, 'deviceClass' | 'deviceType'>
-  & { currentDrawKw: number };
+  & {
+    currentDrawKw: number;
+    /**
+     * When the sensor last reported, as the x-axis of this sample — NOT a
+     * freshness or trust signal. A sample is a `(value, time, power)` triple and
+     * `calculateWindowEnergyKwh` bills
+     * `previousSample.crediblePowerW × (thisSample.observedAtMs − previous)`, so
+     * this is the interval's left edge. Stamped at the objectives seam
+     * (`setup/powerSamplePipeline.ts`) from Homey's per-capability `lastUpdated`;
+     * the sampler never reaches for a device-wide freshness field itself.
+     *
+     * REQUIRED, like `currentDrawKw` above and for the same reason: a caller that
+     * forgets it must be a compile error, not a fleet of devices that silently
+     * build no samples at all. `undefined` is a real answer — the device has
+     * never reported — and the caller has to say so.
+     */
+    observedAtMs: number | undefined;
+  };
 
 export const OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS = 5 * 1000;
@@ -66,9 +83,9 @@ export function buildObjectiveProfileSample(
   device: ObjectiveSampleDevice,
   nowMs: number,
 ): DeviceObjectiveProfileSample | null {
-  if (isFreshTemperatureDevice(device, nowMs)) {
+  if (isSampleableTemperatureDevice(device, nowMs)) {
     return {
-      observedAtMs: device.lastFreshDataMs,
+      observedAtMs: device.observedAtMs,
       value: Math.round(device.temperature.currentTemperature * 10) / 10,
       unit: 'degree_c',
       ...resolveCredibleDevicePower(device),
@@ -80,7 +97,7 @@ export function buildObjectiveProfileSample(
     // the producer stands behind the level or reports none.
     const { level } = device.stateOfCharge;
     if (level.kind !== 'known') return null;
-    const observedAtMs = device.stateOfCharge.observedAtMs ?? device.lastFreshDataMs;
+    const observedAtMs = device.stateOfCharge.observedAtMs ?? device.observedAtMs;
     if (typeof observedAtMs !== 'number' || !Number.isFinite(observedAtMs)) return null;
     // The age bound stays, and it is NOT a freshness gate on the level. A sample
     // is a (level, time, power) triple, and the profile bills energy as
@@ -105,22 +122,22 @@ export function buildObjectiveProfileSample(
   return null;
 }
 
-function isFreshTemperatureDevice(
+// Not a freshness gate on the temperature: the reading stays usable everywhere
+// else however old it is. This asks whether the stamp and a power reading taken
+// NOW describe one interval, which is the only question a sample's x-axis has to
+// answer (see `observedAtMs` on `ObjectiveSampleDevice`).
+function isSampleableTemperatureDevice(
   device: ObjectiveSampleDevice,
   nowMs: number,
-): device is ObjectiveSampleDevice & TemperatureObservedFields & { lastFreshDataMs: number } {
+): device is ObjectiveSampleDevice & TemperatureObservedFields & { observedAtMs: number } {
   // `hasObservedTemperature` proves both exact temperature values are finite
   // (producer invariant), so no `typeof`/`Number.isFinite` re-check here — the
   // kind question is asked separately via `isTemperatureControlDevice`.
   return isTemperatureControlDevice(device)
     && hasObservedTemperature(device)
-    && typeof device.lastFreshDataMs === 'number'
-    && Number.isFinite(device.lastFreshDataMs)
-    && isFreshObservationTime(device.lastFreshDataMs, nowMs);
-}
-
-function isFreshObservationTime(observedAtMs: number, nowMs: number): boolean {
-  return isUsableSampleObservationTime(observedAtMs, nowMs);
+    && typeof device.observedAtMs === 'number'
+    && Number.isFinite(device.observedAtMs)
+    && isUsableSampleObservationTime(device.observedAtMs, nowMs);
 }
 
 /**
