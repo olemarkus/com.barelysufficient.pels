@@ -1415,11 +1415,13 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       *Why it's needed:* "Service reason unknown" is the one string in that view that tells the
       owner nothing, and it is reachable today. Pre-existing — neither introduced nor worsened
       by the ruling. Source: starvation-rule change, 2026-08-08.
-      **Check the framing before starting.** Against `planReasonsValidation.ts`, only
-      `neutralStartupHold` is shed-legal; `shedInvariant` is keep-only, and
-      `capacityControlOff` and `startupStabilization` are in neither rule set. So "a
-      `plannedState: 'shed'` device carrying one" holds for one of the four. Establish how
-      each code actually reaches a device before classifying it. [P3]
+      **Check the framing before starting.** Against `planReasonsValidation.ts:26-64`, the four
+      codes do not all arrive the same way: `neutralStartupHold` is shed-legal only,
+      `startupStabilization` is legal on BOTH `keep` and `shed`, and `shedInvariant` and
+      `capacityControlOff` are keep-legal only. So "a `plannedState: 'shed'` device carrying
+      one" holds for two of the four; the other two reach a device through `keep`. Establish
+      which state each code actually arrives in before classifying it, because a code that only
+      ever rides `keep` needs a different classification argument from one that rides `shed`. [P3]
 
 ## Architecture and tooling debt
 
