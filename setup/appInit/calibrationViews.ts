@@ -1,11 +1,9 @@
 import {
-  getAdmissionPowerKw,
-  getDeliveryPowerKw,
+  getStepPowerKw,
   hasRecentDrawAt,
   isStepCalibrationConfident,
 } from '../../lib/device/devicePowerCalibration';
 import { firstPositiveFinite } from '../../lib/objectives/deferredObjectives/planningSpeed';
-import type { StepPowerCalibrationView } from '../../lib/plan/planTypes';
 import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
 import { MIN_ACTIVE_MEASURED_POWER_KW } from '../../lib/observer/observedPower';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
@@ -24,7 +22,7 @@ const MEASURED_DRAW_FRESHNESS_WINDOW_MS = 60 * 1000;
 export function buildStepPowerCalibrationView(
   ctx: AppContext,
   device: DecoratedDeviceSnapshot,
-): Record<string, StepPowerCalibrationView> | undefined {
+): Record<string, number> | undefined {
   const profile = device.steppedLoadProfile;
   if (profile && Array.isArray(profile.steps) && profile.steps.length > 0) {
     return buildSteppedCalibrationView(ctx, device, profile.steps);
@@ -45,19 +43,16 @@ function buildSteppedCalibrationView(
   ctx: AppContext,
   device: DecoratedDeviceSnapshot,
   steps: NonNullable<DecoratedDeviceSnapshot['steppedLoadProfile']>['steps'],
-): Record<string, StepPowerCalibrationView> | undefined {
+): Record<string, number> | undefined {
   const snapshot = ctx.getPowerCalibrationSnapshot();
   const deviceEntry = snapshot.devices[device.id];
   if (!deviceEntry) return undefined;
-  const entries = steps.flatMap((step): Array<[string, StepPowerCalibrationView]> => {
+  const entries = steps.flatMap((step): Array<[string, number]> => {
     if (!step || typeof step.id !== 'string') return [];
     if (step.planningPowerW <= 0) return [];
     if (!deviceEntry.steps[step.id]) return [];
     const nameplateKw = step.planningPowerW / 1000;
-    return [[step.id, {
-      admissionPowerKw: getAdmissionPowerKw(snapshot, device.id, step.id, nameplateKw),
-      deliveryPowerKw: getDeliveryPowerKw(snapshot, device.id, step.id, nameplateKw),
-    }]];
+    return [[step.id, getStepPowerKw(snapshot, device.id, step.id, nameplateKw)]];
   });
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
@@ -65,7 +60,7 @@ function buildSteppedCalibrationView(
 function buildEvChargerCalibrationView(
   ctx: AppContext,
   device: DecoratedDeviceSnapshot,
-): Record<string, StepPowerCalibrationView> | undefined {
+): Record<string, number> | undefined {
   // `planningPowerKw` is the decorated per-step figure and still wins when the
   // decorator supplied one; otherwise the producer's resolved expected power is
   // the answer. No `?? powerKw` tail and no null arm — `expectedPowerKw` is
@@ -77,12 +72,7 @@ function buildEvChargerCalibrationView(
   // values so the hero planning-speed reading has a useful default. The
   // calibration accessors fall back to nameplate when no confident sample
   // exists, so this stays consistent with stepped devices.
-  return {
-    [stepId]: {
-      admissionPowerKw: getAdmissionPowerKw(snapshot, device.id, stepId, nameplateKw),
-      deliveryPowerKw: getDeliveryPowerKw(snapshot, device.id, stepId, nameplateKw),
-    },
-  };
+  return { [stepId]: getStepPowerKw(snapshot, device.id, stepId, nameplateKw) };
 }
 
 /**

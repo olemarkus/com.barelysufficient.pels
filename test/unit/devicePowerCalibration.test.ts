@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createEmptyPowerCalibrationSnapshot,
-  getAdmissionPowerKw,
-  getDeliveryPowerKw,
+  getStepPowerKw,
   hasRecentDrawAt,
   isStepCalibrationConfident,
   mergeRecoveredCalibrationHistory,
@@ -124,11 +123,10 @@ describe('EMA updates and confidence gates', () => {
     let snapshot = createEmptyPowerCalibrationSnapshot();
     const outcome = recordSample(snapshot, baseSample({ measuredPowerKw: 2.5 }));
     if (outcome.accepted) snapshot = outcome.snapshot;
-    expect(getDeliveryPowerKw(snapshot, 'dev1', 'high', 3)).toBe(3);
-    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBe(3);
+    expect(getStepPowerKw(snapshot, 'dev1', 'high', 3)).toBe(3);
   });
 
-  it('once confident, admission and delivery can learn below the configured step ceiling', () => {
+  it('once confident, the learned power can sit below the configured step ceiling', () => {
     let snapshot = createEmptyPowerCalibrationSnapshot();
     for (let i = 0; i < 6; i += 1) {
       const outcome = recordSample(snapshot, baseSample({
@@ -137,8 +135,7 @@ describe('EMA updates and confidence gates', () => {
       }));
       if (outcome.accepted) snapshot = outcome.snapshot;
     }
-    expect(getDeliveryPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.5, 1);
-    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.5, 1);
+    expect(getStepPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.5, 1);
   });
 
   it('falls back to current nameplate when a confident entry was learned for different step watts', () => {
@@ -152,10 +149,8 @@ describe('EMA updates and confidence gates', () => {
       if (outcome.accepted) snapshot = outcome.snapshot;
     }
 
-    expect(getDeliveryPowerKw(snapshot, 'dev1', 'high', 2)).toBeCloseTo(1.7, 1);
-    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 2)).toBeCloseTo(1.7, 1);
-    expect(getDeliveryPowerKw(snapshot, 'dev1', 'high', 3)).toBe(3);
-    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBe(3);
+    expect(getStepPowerKw(snapshot, 'dev1', 'high', 2)).toBeCloseTo(1.7, 1);
+    expect(getStepPowerKw(snapshot, 'dev1', 'high', 3)).toBe(3);
     expect(isStepCalibrationConfident(snapshot, 'dev1', 'high', 3)).toBe(false);
   });
 
@@ -169,8 +164,7 @@ describe('EMA updates and confidence gates', () => {
       }));
       if (outcome.accepted) snapshot = outcome.snapshot;
     }
-    expect(getDeliveryPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.9, 1);
-    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.9, 1);
+    expect(getStepPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.9, 1);
 
     const overCeiling = recordSample(snapshot, baseSample({
       nowMs: 7 * 70_000,
@@ -179,7 +173,7 @@ describe('EMA updates and confidence gates', () => {
     }));
     expect(overCeiling.accepted).toBe(false);
     if (!overCeiling.accepted) expect(overCeiling.reason).toBe('above_step_ceiling');
-    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.9, 1);
+    expect(getStepPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.9, 1);
   });
 });
 

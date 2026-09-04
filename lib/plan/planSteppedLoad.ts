@@ -382,12 +382,12 @@ const clampToLowestActiveWhenOtherDevicesLimited = (params: {
 };
 
 /**
- * The highest ACTIVE rung whose calibrated admission power fits inside
+ * The highest ACTIVE rung whose calibrated power fits inside
  * `budgetKw`, or `null` when even the ladder floor does not fit. Off steps are
  * never answered — "no rung fits" is the caller's decision to make, and for the
  * surplus allocator it is exactly the question the floor policy settles.
  *
- * Admission power, not nameplate: `resolveStepAdmissionKw` prefers the
+ * Calibrated power, not nameplate: `resolveStepPowerKw` prefers the
  * calibrated draw the device actually pulls at that rung and falls back to the
  * profile's planning watts only where the calibration view has no entry. A
  * ladder is not monotonic in calibrated terms — a mis-sampled rung can price
@@ -406,7 +406,7 @@ export const resolveHighestStepWithinKw = (
   for (const step of sortSteppedLoadSteps(profile.steps)) {
     if (isSteppedLoadOffStep(profile, step.id)) continue;
     if (step.planningPowerW <= 0) continue;
-    if (resolveStepAdmissionKw(device, step.id) > budgetKw) continue;
+    if (resolveStepPowerKw(device, step.id) > budgetKw) continue;
     if (best === null || step.planningPowerW > best.planningPowerW) best = step;
   }
   return best;
@@ -597,7 +597,7 @@ export function resolveStepChangeKw(
   const beforeKw = observedOff
     ? 0
     : resolveStepChangeBeforeKw(device, effectiveFromStepId, direction);
-  const afterKw = resolveStepAdmissionKw(device, toStepId);
+  const afterKw = resolveStepPowerKw(device, toStepId);
   const deltaKw = direction === 'down'
     ? Math.max(0, beforeKw - afterKw)
     : Math.max(0, afterKw - beforeKw);
@@ -628,7 +628,7 @@ function resolveStepChangeBeforeKw(
   fromStepId: string | undefined,
   direction: 'down' | 'up',
 ): number {
-  const modelKw = resolveStepDeliveryKw(device, fromStepId);
+  const modelKw = resolveStepPowerKw(device, fromStepId);
   const measuredKw = Math.max(0, device.currentDrawKw);
   // A zero reading at a running step is not evidence of idleness — an
   // unreadable meter resolves to 0 as well, and a device mid-cycle or throttled
@@ -639,26 +639,19 @@ function resolveStepChangeBeforeKw(
 }
 
 // Per the "resolution belongs in producer" rule, the producer
-// (`appInit.buildStepPowerCalibrationView`) has already bound each
-// calibrated value to samples inside the configured step's power band. The
-// plan layer trusts the view; helpers here only fall back to nameplate when
-// no view entry is present.
-export function resolveStepAdmissionKw(
+// (`appInit.buildStepPowerCalibrationView`) has already bound the calibrated
+// value to samples inside the configured step's power band. The plan layer
+// trusts the view; this only falls back to nameplate when no entry is present.
+//
+// One figure, not two ends of a band: the store learns a single number per
+// rung, so a caller wanting the conservative end has to find it against the
+// meter, never against a second calibration value.
+export function resolveStepPowerKw(
   device: Pick<StepCapableDevice, 'steppedLoadProfile' | 'stepPowerCalibration'>,
   stepId: string | undefined,
 ): number {
   if (stepId === undefined) return resolveSteppedLoadPlanningKw(device, stepId);
-  const calibrated = device.stepPowerCalibration?.[stepId]?.admissionPowerKw;
-  if (typeof calibrated === 'number' && Number.isFinite(calibrated)) return calibrated;
-  return resolveSteppedLoadPlanningKw(device, stepId);
-}
-
-function resolveStepDeliveryKw(
-  device: Pick<StepCapableDevice, 'steppedLoadProfile' | 'stepPowerCalibration'>,
-  stepId: string | undefined,
-): number {
-  if (stepId === undefined) return resolveSteppedLoadPlanningKw(device, stepId);
-  const calibrated = device.stepPowerCalibration?.[stepId]?.deliveryPowerKw;
+  const calibrated = device.stepPowerCalibration?.[stepId];
   if (typeof calibrated === 'number' && Number.isFinite(calibrated)) return calibrated;
   return resolveSteppedLoadPlanningKw(device, stepId);
 }

@@ -25,7 +25,7 @@ import {
 import {
   isSteppedLoadDevice,
   resolveHighestStepWithinKw,
-  resolveStepAdmissionKw,
+  resolveStepPowerKw,
 } from './planSteppedLoad';
 
 // A surplus LIFT is a setpoint raise, so it only means anything on a device with
@@ -418,7 +418,7 @@ function claimForTrackingDevice(params: {
     clearSurplusTracking(state, dev.id);
     return 0;
   }
-  const floorKw = resolveStepAdmissionKw(dev, floorStep.id);
+  const floorKw = resolveStepPowerKw(dev, floorStep.id);
 
   const { eligible } = syncSurplusEligibilityState({
     state,
@@ -434,7 +434,7 @@ function claimForTrackingDevice(params: {
     const paced = paceCeilingClimb({
       dev, state, target: resolveTrackingRung({ dev, state, poolKw, floorStep }), nowTs,
     });
-    const rungKw = resolveStepAdmissionKw(dev, paced.id);
+    const rungKw = resolveStepPowerKw(dev, paced.id);
     state.surplusTrackingByDevice[dev.id] = {
       kind: 'rung', stepId: paced.id, funded: rungKw <= poolKw,
     };
@@ -472,7 +472,7 @@ function resolveTrackingRung(params: {
   // What the pool would buy from scratch, reserve included.
   const affordable = resolveHighestStepWithinKw(dev, poolKw - SURPLUS_ABSORB_RESERVE_KW);
   const held = resolveHeldStep(dev, state);
-  if (held && resolveStepAdmissionKw(dev, held.id) <= poolKw) {
+  if (held && resolveStepPowerKw(dev, held.id) <= poolKw) {
     // The held rung is still covered on the bare pool, so keep it — and move
     // only for something strictly HIGHER. Answering `affordable` here instead
     // would step the device DOWN the moment the pool dipped inside the reserve,

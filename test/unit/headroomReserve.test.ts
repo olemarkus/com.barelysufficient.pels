@@ -64,7 +64,7 @@ describe('resolveHeadroomReserves', () => {
       priority: 1,
       reservesStartupPower: true,
       steppedLoadProfile: steppedProfile,
-      stepPowerCalibration: { low: { admissionPowerKw: 1.9, deliveryPowerKw: 1.9 } },
+      stepPowerCalibration: { low: 1.9 },
     })]);
     expect(reserves[0]?.kw).toBe(1.9);
   });

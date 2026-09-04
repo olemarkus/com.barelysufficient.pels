@@ -99,8 +99,12 @@ export type DeferredObjective = {
  * guarantee, not a hope: `resolveObjectiveSteps` (from a device's calibrated
  * profile) and `normalizeObjectiveSteps` (from planner input) are the only two
  * ways a step is built, and each resolves `admissionPowerKw` — falling back to
- * `usefulPowerKw`, the right default for a resistive load, when no distinct
- * admission calibration exists.
+ * the step's nameplate when the calibration store has nothing usable.
+ *
+ * Today the two fields are always EQUAL: the store learns one number per rung
+ * and both resolvers read it. They stay separate because the difference is real
+ * for a device with conversion loss or gain, not because anything currently
+ * produces one.
  *
  * It was previously optional "for backward-compatible callers". There were none:
  * both producers always set it, so the fallback ran at all five consumer sites and

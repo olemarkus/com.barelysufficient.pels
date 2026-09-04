@@ -6,7 +6,7 @@ import {
 } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { getLogger } from '../../logging/logger';
 import { MIN_ACTIVE_MEASURED_POWER_KW } from '../../observer/observedPower';
-import { isSteppedLoadDevice, resolveStepAdmissionKw } from '../planSteppedLoad';
+import { isSteppedLoadDevice, resolveStepPowerKw } from '../planSteppedLoad';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../../utils/deviceControlProfiles';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
@@ -319,9 +319,9 @@ function resolveStartupPowerKw(device: DevicePlanDevice): number | null {
     const lowest = getSteppedLoadLowestActiveStep(device.steppedLoadProfile);
     if (!lowest) return null;
     // Reserve what the step will ACTUALLY draw, not its nameplate: the same calibrated figure the
-    // admission gate downstream will judge against (`resolveStepAdmissionKw`). Reserving nameplate
+    // admission gate downstream will judge against (`resolveStepPowerKw`). Reserving nameplate
     // for a charger whose lowest step really pulls more just lets the block get nibbled anyway.
-    const admissionKw = resolveStepAdmissionKw(device, lowest.id);
+    const admissionKw = resolveStepPowerKw(device, lowest.id);
     return isFiniteNumber(admissionKw) && admissionKw > 0 ? admissionKw : null;
   }
   return device.expectedPowerKw;

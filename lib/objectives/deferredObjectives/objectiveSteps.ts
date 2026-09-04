@@ -6,9 +6,15 @@ import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 import { drawWhenActivelyDrawingKw } from './planningSpeed';
 import type { DeferredObjectiveStep } from './types';
 
-// Grid draw for a step: the calibrated admission power when one exists, else the
+// Grid draw for a step: the step's calibrated power when one exists, else the
 // nameplate. `null` when neither yields a usable figure — the caller then DROPS the
 // rung rather than planning with a made-up one.
+//
+// This reads the SAME calibrated figure as `resolveStepDeliveryUsefulKw`, because
+// the store learns one number per rung. So `admissionPowerKw` and `usefulPowerKw`
+// are equal for every ladder PELS builds today; they stay separate fields because
+// they diverge for a device with conversion loss or gain, not because the
+// calibration view distinguishes them.
 //
 // `DeferredObjectiveStep.admissionPowerKw` promises finite and non-negative and
 // consumers now read it flat on that promise, so this is one of the two producers
@@ -26,7 +32,7 @@ const resolveAdmissionPowerKw = (
   stepId: string,
   fallbackKw: number,
 ): number | null => {
-  const calibrated = device.stepPowerCalibration?.[stepId]?.admissionPowerKw;
+  const calibrated = device.stepPowerCalibration?.[stepId];
   if (typeof calibrated === 'number' && Number.isFinite(calibrated) && calibrated > 0) return calibrated;
   return Number.isFinite(fallbackKw) && fallbackKw >= 0 ? fallbackKw : null;
 };

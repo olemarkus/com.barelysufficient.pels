@@ -5,7 +5,6 @@ import type { PlannedTemperatureState } from '../../packages/shared-domain/src/p
 import type {
   PlanInputDevice,
   PlanInputDeviceBase,
-  StepPowerCalibrationView,
 } from '../../packages/planner-types/src/planInputDevice';
 import type {
   DeviceControlAdapterSnapshot,
@@ -614,7 +613,7 @@ type DevicePlanDeviceBase = {
   available: boolean;
   lastLocalWriteMs?: number;
   pendingTargetCommand?: PendingTargetCommandSummary;
-  stepPowerCalibration?: Record<string, StepPowerCalibrationView>;
+  stepPowerCalibration?: Record<string, number>;
   // `confirmedNotDrawing` deliberately does NOT travel onto the plan output.
   // It is an input to the one boost decision (`resolveBoostActive`), and that
   // decision's result — `boostActive` — is what the plan carries. Propagating
@@ -793,11 +792,11 @@ export type PlanRebuildOutcome = {
   gated: boolean;
 };
 
-// `PlanInputDevice` (the planner's input contract) and its `StepPowerCalibrationView`
-// helper now live in the `@pels/planner-types` workspace, below the domain peer
-// layer alongside `@pels/contracts`. They are re-exported here so the existing
-// consumers that import them from `lib/plan/planTypes` keep working, while
-// producer modules outside `lib/plan` (the smart-task controller in
-// `lib/objectives`) can import them downward without inverting the peer DAG.
+// `PlanInputDevice` (the planner's input contract) now lives in the
+// `@pels/planner-types` workspace, below the domain peer layer alongside
+// `@pels/contracts`. It is re-exported here so the existing consumers that
+// import it from `lib/plan/planTypes` keep working, while producer modules
+// outside `lib/plan` (the smart-task controller in `lib/objectives`) can import
+// it downward without inverting the peer DAG.
 // See notes/state-management/deferred-objective-lifecycle-carveout.md.
-export type { PlanInputDevice, StepPowerCalibrationView };
+export type { PlanInputDevice };
