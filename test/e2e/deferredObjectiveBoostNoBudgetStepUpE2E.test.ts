@@ -93,9 +93,8 @@ const buildPowerTracker = (nowMs: number) => ({
   lastTimestamp: nowMs,
   objectiveProfiles: {
     [TANK]: {
-      kind: 'temperature' as const,
       updatedAtMs: DAY,
-      lastSample: { observedAtMs: DAY, value: CURRENT_C, unit: 'degree_c' as const },
+      lastSample: { observedAtMs: DAY, value: CURRENT_C },
       kwhPerUnit: {
         sampleCount: 50, mean: KWH_PER_DEGREE, m2: 0, min: KWH_PER_DEGREE, max: KWH_PER_DEGREE,
         confidence: 'high' as const, lastUpdatedMs: DAY,

@@ -13,7 +13,6 @@ const tempSample = (overrides: Partial<DeviceObjectiveProfileSample> & {
   observedAtMs: number;
   value: number;
 }): DeviceObjectiveProfileSample => ({
-  unit: 'degree_c',
   powerSource: 'measured',
   ...overrides,
 });

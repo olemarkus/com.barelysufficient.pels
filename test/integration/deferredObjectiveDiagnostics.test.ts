@@ -1,4 +1,3 @@
-import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
 import { resolveCurrentHourClaim } from '../../lib/objectives/deferredObjectives/currentHourClaim';
 import { resolveFloorShortfallCause } from '../../lib/objectives/deferredObjectives/floorShortfallCause';
 import {
@@ -89,15 +88,9 @@ const buildDevice = (
   available: overrides.available ?? true,
 })) as PlanInputDevice;
 
-// `lastFreshDataMs` is an OBJECTIVES-layer field, not a planner one: `lib/plan`
-// carries no observation freshness, while `ObjectiveDeviceInput` declares this
-// and reads it off the same object to tell "never reported" from "reported".
-// These fixtures feed the objectives layer, so they are typed for both.
-type ObjectiveFixtureDevice = PlanInputDevice & Pick<ObjectiveDeviceInput, 'lastFreshDataMs'>;
-
 const buildTemperatureDevice = (
-  overrides: Partial<ObjectiveFixtureDevice> & TemperatureDiscriminantProbe = {},
-): ObjectiveFixtureDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
+  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe = {},
+): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
   id: 'heater-1',
   expectedPowerKw: 1,
   name: 'Connected 300',
@@ -107,7 +100,6 @@ const buildTemperatureDevice = (
   controlModel: 'stepped_load' as const,
   controlCapabilityId: 'onoff' as const,
   currentTemperature: 55,
-  lastFreshDataMs: NOW_MS,
   steppedLoadProfile: {
     steps: [
       { id: 'off', planningPowerW: 0 },
@@ -117,7 +109,7 @@ const buildTemperatureDevice = (
   ...overrides,
   controllable: overrides.controllable ?? true,
   available: overrides.available ?? true,
-}))) as ObjectiveFixtureDevice;
+}))) as PlanInputDevice;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
   const resolution = resolveDeferredObjectiveDeadline({
@@ -168,9 +160,8 @@ const buildTemperatureSettings = (overrides: Record<string, unknown> = {}) => {
 const buildPowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTrackerState => ({
   objectiveProfiles: {
     'ev-1': {
-      kind: 'ev_soc',
       updatedAtMs: NOW_MS,
-      lastSample: { observedAtMs: NOW_MS, value: 40, unit: 'percent' },
+      lastSample: { observedAtMs: NOW_MS, value: 40 },
       kwhPerUnit: {
         sampleCount: 4,
         mean: 0.2,
@@ -204,9 +195,8 @@ const buildHistoryRecorder = (): {
 const buildTemperaturePowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTrackerState => ({
   objectiveProfiles: {
     'heater-1': {
-      kind: 'temperature',
       updatedAtMs: NOW_MS,
-      lastSample: { observedAtMs: NOW_MS, value: 55, unit: 'degree_c' },
+      lastSample: { observedAtMs: NOW_MS, value: 55 },
       kwhPerUnit: {
         sampleCount: 6,
         mean: 0.8,
@@ -2010,9 +2000,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       powerTracker: buildPowerTracker({
         objectiveProfiles: {
           'ev-1': {
-            kind: 'ev_soc',
             updatedAtMs: settleNowMs,
-            lastSample: { observedAtMs: settleNowMs, value: 43, unit: 'percent' },
+            lastSample: { observedAtMs: settleNowMs, value: 43 },
             kwhPerUnit: {
               sampleCount: 4,
               mean: 0.2,
@@ -2193,9 +2182,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const buildVarianceTracker = (m2: number): PowerTrackerState => buildTemperaturePowerTracker({
       objectiveProfiles: {
         'heater-1': {
-          kind: 'temperature',
           updatedAtMs: NOW_MS,
-          lastSample: { observedAtMs: NOW_MS, value: 55, unit: 'degree_c' },
+          lastSample: { observedAtMs: NOW_MS, value: 55 },
           kwhPerUnit: {
             sampleCount: 4, mean: 0.8, m2, min: 0.4, max: 1.2, confidence: 'low', lastUpdatedMs: NOW_MS,
           },
@@ -2231,9 +2219,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const tracker = buildPowerTracker({
       objectiveProfiles: {
         'ev-1': {
-          kind: 'ev_soc',
           updatedAtMs: NOW_MS,
-          lastSample: { observedAtMs: NOW_MS, value: 40, unit: 'percent' },
+          lastSample: { observedAtMs: NOW_MS, value: 40 },
           kwhPerUnit: {
             sampleCount: 4, mean: 0.2, m2: 0.03, min: 0.1, max: 0.3, confidence: 'low', lastUpdatedMs: NOW_MS,
           },
@@ -2277,9 +2264,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       powerTracker: buildTemperaturePowerTracker({
         objectiveProfiles: {
           'heater-1': {
-            kind: 'temperature',
             updatedAtMs: NOW_MS,
-            lastSample: { observedAtMs: NOW_MS, value: 20, unit: 'degree_c' },
+            lastSample: { observedAtMs: NOW_MS, value: 20 },
             kwhPerUnit: {
               sampleCount: 6,
               mean: 0.62,
@@ -2353,17 +2339,14 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('plans a temperature objective from a quiescent thermostat whose last observation has aged out', () => {
     // Many Homey thermostat drivers only push capability updates on value
     // change, so a perfectly working device steady at setpoint can sit
-    // aged-out for hours — the device snapshot carries an aged `lastFreshDataMs`.
-    // Smart-task planning must still credit the last-seen temperature in that
-    // case. See `lib/observer/AGENTS.md` for the doctrine and
-    // `lib/objectives/deferredObjectives/diagnosticProgress.ts` for why this gate
-    // deliberately does not gate on observation freshness.
+    // aged-out for hours. Smart-task planning must still credit the last-seen
+    // temperature, and there is no stamp on this input to gate it by: the
+    // resolver asks a value question only. See `lib/observer/AGENTS.md` for the
+    // doctrine and `diagnosticProgress.ts` for the gate.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
-      devices: [buildTemperatureDevice({
-        lastFreshDataMs: NOW_MS - 2 * 60 * 60 * 1000,
-      })],
+      devices: [buildTemperatureDevice()],
       settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
@@ -2380,10 +2363,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
-      devices: [buildTemperatureDevice({
-        currentTemperature: undefined,
-        lastFreshDataMs: undefined,
-      })],
+      devices: [buildTemperatureDevice({ currentTemperature: undefined })],
       settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
@@ -2399,40 +2379,16 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
   });
 
-  it('plans a temperature objective from the reading alone, whatever the observation stamp says', () => {
+  it('plans a temperature objective from the reading alone', () => {
     // The "ever observed" proof is the temperature itself: the producer emits
     // `currentTemperature` only for a device carrying the observed temperature
-    // facet. The resolver used to also demand a positive `lastFreshDataMs` — a
-    // consumer hedge against a shape the transport cannot produce, since
-    // `observationApply` stamps `lastFreshDataMs` on every observation that
-    // lands a facet.
+    // facet. The resolver used to also demand a positive `lastFreshDataMs`; that
+    // field is gone from `ObjectiveDeviceInput` entirely, so there is no stamp
+    // left here to refuse a reading over.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
-      devices: [buildTemperatureDevice({ currentTemperature: 55, lastFreshDataMs: 0 })],
-      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
-      powerTracker: buildTemperaturePowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot(),
-      priceOptimizationEnabled: true,
-    });
-
-    expect(diagnostic?.objectiveKind).toBe('temperature');
-    expect(diagnostic?.reasonCode).not.toBe('objective_progress_stale');
-    expect(diagnostic?.currentTemperatureC).toBe(55);
-  });
-
-  it('plans a temperature objective with no observation stamp at all', () => {
-    // Same rule from the other side: absence of the stamp is not a reason to
-    // refuse a reading. If a partial hydration could ever produce a temperature
-    // with no lineage, that is a producer defect to fix at the seam — not a
-    // freshness gate for this consumer to carry.
-    const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildTemperatureDevice({
-        currentTemperature: 55,
-        lastFreshDataMs: undefined,
-      })],
+      devices: [buildTemperatureDevice({ currentTemperature: 55 })],
       settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
@@ -2901,7 +2857,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       deviceClass: 'thermostat',
       deviceType: 'temperature' as const,
       currentTemperature: 19,
-      lastFreshDataMs: NOW_MS,
       currentDrawKw: 1.5,
       // No `steppedLoadProfile`, no `planningPowerKw` — this is what the bug
       // depends on.
@@ -2910,9 +2865,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
         'heater-1': {
-          kind: 'temperature',
           updatedAtMs: NOW_MS,
-          lastSample: { observedAtMs: NOW_MS, value: 19, unit: 'degree_c' },
+          lastSample: { observedAtMs: NOW_MS, value: 19 },
           // Mill v2 reproducer: 0.30040 kWh/°C, 4 accepted samples, medium
           // confidence; matches the SHS live-walk artifact captured against
           // PELS v2.9.0.
@@ -2994,7 +2948,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       deviceClass: 'thermostat',
       deviceType: 'temperature' as const,
       currentTemperature: 19,
-      lastFreshDataMs: NOW_MS,
       // Heater is currently idle — measured draw is zero.
       measuredPowerKw: 0,
       expectedPowerKw: 2.0, expectedPowerSource: 'default',
@@ -3003,9 +2956,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
         'heater-1': {
-          kind: 'temperature',
           updatedAtMs: NOW_MS,
-          lastSample: { observedAtMs: NOW_MS, value: 19, unit: 'degree_c' },
+          lastSample: { observedAtMs: NOW_MS, value: 19 },
           kwhPerUnit: {
             sampleCount: 4, mean: 0.3, m2: 0, min: 0.3, max: 0.3, confidence: 'medium', lastUpdatedMs: NOW_MS,
           },
@@ -3070,16 +3022,14 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       deviceClass: 'thermostat',
       deviceType: 'temperature' as const,
       currentTemperature: 19,
-      lastFreshDataMs: NOW_MS,
       // No power fields populated at all.
     }))) as PlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
         'heater-1': {
-          kind: 'temperature',
           updatedAtMs: NOW_MS,
-          lastSample: { observedAtMs: NOW_MS, value: 19, unit: 'degree_c' },
+          lastSample: { observedAtMs: NOW_MS, value: 19 },
           kwhPerUnit: {
             sampleCount: 4, mean: 0.3, m2: 0, min: 0.3, max: 0.3, confidence: 'medium', lastUpdatedMs: NOW_MS,
           },
@@ -3138,7 +3088,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       deviceType: 'temperature' as const,
       steppedLadderMissing: true as const,
       currentTemperature: 19,
-      lastFreshDataMs: NOW_MS,
       // No `steppedLoadProfile`: configured stepped, but the ladder is missing —
       // which is what the producer stamped `steppedLadderMissing` for.
     }))) as PlanInputDevice;
@@ -3162,9 +3111,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       powerTracker: {
         objectiveProfiles: {
           'heater-1': {
-            kind: 'temperature',
             updatedAtMs: NOW_MS,
-            lastSample: { observedAtMs: NOW_MS, value: 19, unit: 'degree_c' },
+            lastSample: { observedAtMs: NOW_MS, value: 19 },
             kwhPerUnit: {
               sampleCount: 4, mean: 0.3, m2: 0, min: 0.3, max: 0.3, confidence: 'medium', lastUpdatedMs: NOW_MS,
             },
@@ -3375,9 +3323,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     const buildPromotableTracker = (deviceIds: string[]): PowerTrackerState => ({
       objectiveProfiles: Object.fromEntries(deviceIds.map((id) => [id, {
-        kind: 'ev_soc',
         updatedAtMs: NOW_MS,
-        lastSample: { observedAtMs: NOW_MS, value: 40, unit: 'percent' },
+        lastSample: { observedAtMs: NOW_MS, value: 40 },
         kwhPerUnit: {
           sampleCount: 4,
           mean: 0.2,

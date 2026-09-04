@@ -36,9 +36,8 @@ const band = (
 });
 
 const buildProfile = (overrides: Partial<DeviceObjectiveProfile>): DeviceObjectiveProfile => ({
-  kind: 'temperature',
   updatedAtMs: 0,
-  lastSample: { observedAtMs: 0, value: 50, unit: 'degree_c' },
+  lastSample: { observedAtMs: 0, value: 50 },
   acceptedSamples: 20,
   rejectedSamples: 0,
   kwhPerUnit: stat(0.3),

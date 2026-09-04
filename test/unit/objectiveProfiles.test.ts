@@ -1,3 +1,4 @@
+import type { ObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 import { withResolvedCurrentDraw } from '../utils/objectiveSampleDevice';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
@@ -29,7 +30,7 @@ type TemperatureDeviceOverrides = Partial<TargetDeviceSnapshot & TemperatureObse
   & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe
   & ReportedStepObservedProbe> & { currentTemperature?: number };
 
-const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number } => {
+const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity | null } => {
   const { currentTemperature = 50, ...rest } = overrides;
   const target = { id: 'target_temperature' as const, value: 55, unit: '°C' };
   return withResolvedCurrentDraw({
@@ -47,7 +48,7 @@ const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDe
   });
 };
 
-const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number } => withResolvedCurrentDraw({
+const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity | null } => withResolvedCurrentDraw({
   available: true,
   id: 'ev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -79,7 +80,6 @@ describe('objective profiles', () => {
     });
 
     const profile = state.objectiveProfiles?.['heater-1'];
-    expect(profile?.kind).toBe('temperature');
     expect(profile?.acceptedSamples).toBe(1);
     expect(profile?.kwhPerUnit?.mean).toBeCloseTo(1, 3);
     expect(profile?.unitPerHour?.mean).toBeCloseTo(2, 3);
@@ -94,7 +94,6 @@ describe('objective profiles', () => {
         sample: {
           observedAtMs: startMs + index * hourMs,
           value: 50 + index,
-          unit: 'degree_c',
           crediblePowerW: 1000,
           powerSource: 'measured',
         },
@@ -124,7 +123,6 @@ describe('objective profiles', () => {
         sample: {
           observedAtMs: startMs + index * hourMs,
           value: 30 + index,
-          unit: 'degree_c',
           crediblePowerW: isCheap ? 1000 : 3000,
           powerSource: 'measured',
         },
@@ -157,7 +155,6 @@ describe('objective profiles', () => {
         sample: {
           observedAtMs: startMs + index * hourMs,
           value: 30 + index,
-          unit: 'degree_c',
           crediblePowerW: isCheap ? 1000 : 3000,
           powerSource: 'measured',
         },
@@ -262,7 +259,6 @@ describe('objective profiles', () => {
       sample: {
         observedAtMs: startMs + index * hourMs,
         value: 30 + index,
-        unit: 'degree_c',
       },
       debugStructured,
     });
@@ -285,7 +281,6 @@ describe('objective profiles', () => {
         event: 'objective_profile_no_power_source',
         deviceId: 'heater-1',
         deviceName: 'Termostat Synne',
-        profileKind: 'temperature',
         consecutiveSamplesWithoutPower: OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD,
         threshold: OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD,
       });
@@ -343,7 +338,6 @@ describe('objective profiles', () => {
         sample: {
           observedAtMs: startMs + (OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1) * hourMs,
           value: 30 + OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1,
-          unit: 'degree_c',
           crediblePowerW: 1000,
           powerSource: 'measured',
         },
@@ -369,7 +363,6 @@ describe('objective profiles', () => {
           sample: {
             observedAtMs: startMs + index * hourMs,
             value: 30 + index,
-            unit: 'degree_c',
             crediblePowerW: 1000,
             powerSource: 'measured',
           },
@@ -612,7 +605,6 @@ describe('objective profiles', () => {
     });
 
     const profile = state.objectiveProfiles?.['ev-1'];
-    expect(profile?.kind).toBe('ev_soc');
     expect(profile?.acceptedSamples).toBe(1);
     expect(profile?.kwhPerUnit?.mean).toBeCloseTo(0.7, 3);
     expect(profile?.unitPerHour?.mean).toBeCloseTo(10, 3);
@@ -646,7 +638,8 @@ describe('objective profiles', () => {
       nowMs: startMs,
     });
 
-    expect(state.objectiveProfiles?.['ev-1']?.kind).toBe('ev_soc');
+    expect(state.objectiveProfiles?.['ev-1']?.acceptedSamples).toBe(0);
+    expect(state.objectiveProfiles?.['ev-1']?.lastSample.value).toBe(40);
   });
 
   it('ignores an EV SoC sample the producer has no level for', () => {
@@ -680,7 +673,6 @@ describe('objective profiles', () => {
         sample: {
           observedAtMs: startMs + index,
           value: 50,
-          unit: 'degree_c',
         },
       });
     }
@@ -699,14 +691,12 @@ describe('objective profiles', () => {
       sample: {
         observedAtMs: startMs,
         value: 50,
-        unit: 'degree_c',
       },
     });
     const expired = updateDeviceObjectiveProfile({
       sample: {
         observedAtMs: startMs - OBJECTIVE_PROFILE_RETENTION_MS - 1,
         value: 50,
-        unit: 'degree_c',
       },
     });
 
@@ -736,7 +726,6 @@ describe('objective profiles', () => {
     const seedSample = {
       observedAtMs: startMs + hourMs,
       value: 55,
-      unit: 'degree_c',
       crediblePowerW: 2000,
       powerSource: 'measured',
     } as const;

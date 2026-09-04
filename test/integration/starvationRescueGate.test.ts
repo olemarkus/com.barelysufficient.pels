@@ -124,9 +124,8 @@ const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
   lastTimestamp: nowMs,
   objectiveProfiles: {
     [DEVICE_ID]: {
-      kind: 'temperature',
       updatedAtMs: nowMs,
-      lastSample: { observedAtMs: nowMs, value: 50, unit: 'degree_c' },
+      lastSample: { observedAtMs: nowMs, value: 50 },
       kwhPerUnit: {
         sampleCount: 50,
         mean: KWH_PER_DEGREE,

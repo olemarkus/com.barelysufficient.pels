@@ -101,6 +101,9 @@ export type ObjectiveDeviceInput = {
   currentDrawKw: number;
   currentTemperature?: number;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
-  lastFreshDataMs?: number;
+  // No observation-freshness field. The progress resolvers ask value questions
+  // only — a finite `currentTemperature` is itself the proof the device has
+  // reported. The sampler's time coordinate is `observedAtMs` on
+  // `ObjectiveSampleDevice`, a different input on a different path.
   stepPowerCalibration?: Record<string, { admissionPowerKw: number; deliveryPowerKw: number }>;
 };

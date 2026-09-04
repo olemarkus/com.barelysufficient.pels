@@ -92,9 +92,8 @@ const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinar
 const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
   objectiveProfiles: {
     [DEVICE_ID]: {
-      kind: 'temperature',
       updatedAtMs: nowMs,
-      lastSample: { observedAtMs: nowMs, value: START_C, unit: 'degree_c' },
+      lastSample: { observedAtMs: nowMs, value: START_C },
       kwhPerUnit: { sampleCount: 8, mean: RATE, m2: 0, min: RATE, max: RATE, confidence: 'high', lastUpdatedMs: nowMs },
       acceptedSamples: 8,
       rejectedSamples: 0,

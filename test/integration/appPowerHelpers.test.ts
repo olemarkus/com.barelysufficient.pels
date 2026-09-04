@@ -47,6 +47,7 @@ import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../../lib/objectives/profiles';
+import { resolveObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 import { buildNullCapacityStateSummary } from '../../lib/power/capacityStateSummary';
 
 // The guard no longer resolves the hard-cap budget itself; callers pass it in.
@@ -2664,11 +2665,18 @@ describe('recordPowerSampleForApp', () => {
 
     // Mirrors the production wiring (`setup/powerSamplePipeline.ts`): the raw
     // snapshots go through the producer boundary so the profile sees a resolved
-    // `currentDrawKw`, not a raw `measuredPowerKw`.
+    // `currentDrawKw`, not a raw `measuredPowerKw`, and the objectives seam's
+    // `observedAtMs` stamped from the transport's `lastFreshDataMs`.
     const updateProfiles: UpdateObjectiveProfiles = (params) => (
       updateObjectiveProfilesFromSnapshot({
         ...params,
-        devices: params.devices.map(withHeadroomCurrentOn),
+        devices: params.devices.map((device) => ({
+          ...withHeadroomCurrentOn(device),
+          observedQuantity: resolveObjectiveObservedQuantity({
+            device,
+            deviceObservedAtMs: device.lastFreshDataMs,
+          }),
+        })),
         debugStructured,
       })
     );

@@ -2,9 +2,6 @@ import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
-import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
-import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
-import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
 import {
   hasObservedReportedStep,
@@ -16,7 +13,6 @@ import type {
   ReportedStepObservedProbe,
   StateOfChargeObservedProbe,
   SteppedLoadDescriptorProbe,
-  TemperatureObservedFields,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
 
@@ -34,6 +30,7 @@ import type {
  */
 const MIN_CREDIBLE_DEVICE_POWER_KW = 0.005;
 import type { DeviceObjectiveProfileSample } from './types';
+import type { ObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 
 // Observed truth (temperature / SoC / reported step) plus the producer-resolved
 // draw and the few descriptor fields the kind predicates need — NOT the full
@@ -57,7 +54,20 @@ export type ObjectiveSampleDevice = ObservedDeviceState
   & SteppedLoadDescriptorProbe
   & ReportedStepObservedProbe
   & Pick<DeviceDescriptor, 'deviceClass' | 'deviceType'>
-  & { currentDrawKw: number };
+  & {
+    currentDrawKw: number;
+    /**
+     * The measured quantity this device's objective tracks, with the time it was
+     * measured — or `null` when it has no reading. Temperature and SoC resolve to
+     * the same shape here (`resolveObjectiveObservedQuantity`); the unit is the
+     * only surviving difference, and it is for display.
+     *
+     * REQUIRED, like `currentDrawKw` above and for the same reason: a caller that
+     * forgets it must be a compile error, not a fleet of devices that silently
+     * build no samples at all.
+     */
+    observedQuantity: ObjectiveObservedQuantity | null;
+  };
 
 export const OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS = 5 * 1000;
@@ -66,61 +76,19 @@ export function buildObjectiveProfileSample(
   device: ObjectiveSampleDevice,
   nowMs: number,
 ): DeviceObjectiveProfileSample | null {
-  if (isFreshTemperatureDevice(device, nowMs)) {
-    return {
-      observedAtMs: device.lastFreshDataMs,
-      value: Math.round(device.temperature.currentTemperature * 10) / 10,
-      unit: 'degree_c',
-      ...resolveCredibleDevicePower(device),
-    };
-  }
-
-  if (hasObservedStateOfCharge(device)) {
-    // `level` answers usability, and no `Number.isFinite` re-check follows it —
-    // the producer stands behind the level or reports none.
-    const { level } = device.stateOfCharge;
-    if (level.kind !== 'known') return null;
-    const observedAtMs = device.stateOfCharge.observedAtMs ?? device.lastFreshDataMs;
-    if (typeof observedAtMs !== 'number' || !Number.isFinite(observedAtMs)) return null;
-    // The age bound stays, and it is NOT a freshness gate on the level. A sample
-    // is a (level, time, power) triple, and the profile bills energy as
-    // `previousSample.crediblePowerW × (thisSample.observedAtMs − previous)`
-    // (`calculateWindowEnergyKwh`). `measure_battery` is change-only, so a
-    // charger PELS resumes reports its level hours before it draws anything:
-    // pairing that timestamp with the current charging power would bill the
-    // whole paused interval at full power and replace the bootstrap with a
-    // wildly inflated kWh/%. The level itself stays usable everywhere else —
-    // boost, progress, display — because that question is about the value, and
-    // this one is about whether the timestamp and the power describe the same
-    // interval. Decision-relative, so it belongs here and not in the producer.
-    if (!isUsableSampleObservationTime(observedAtMs, nowMs)) return null;
-    return {
-      observedAtMs,
-      value: level.percent,
-      unit: 'percent',
-      ...resolveCredibleDevicePower(device),
-    };
-  }
-
-  return null;
-}
-
-function isFreshTemperatureDevice(
-  device: ObjectiveSampleDevice,
-  nowMs: number,
-): device is ObjectiveSampleDevice & TemperatureObservedFields & { lastFreshDataMs: number } {
-  // `hasObservedTemperature` proves both exact temperature values are finite
-  // (producer invariant), so no `typeof`/`Number.isFinite` re-check here — the
-  // kind question is asked separately via `isTemperatureControlDevice`.
-  return isTemperatureControlDevice(device)
-    && hasObservedTemperature(device)
-    && typeof device.lastFreshDataMs === 'number'
-    && Number.isFinite(device.lastFreshDataMs)
-    && isFreshObservationTime(device.lastFreshDataMs, nowMs);
-}
-
-function isFreshObservationTime(observedAtMs: number, nowMs: number): boolean {
-  return isUsableSampleObservationTime(observedAtMs, nowMs);
+  const observed = device.observedQuantity;
+  if (!observed) return null;
+  // The one question left. NOT a freshness gate on the value — the reading stays
+  // usable everywhere else however old it is (a thermostat at setpoint is silent
+  // for hours, an idle charger reports its level long before it draws anything).
+  // This asks whether the stamp and a power reading taken NOW describe one
+  // interval, because the profile bills
+  // `previousSample.crediblePowerW × (thisSample.observedAtMs − previous)`
+  // (`calculateWindowEnergyKwh`). Pairing an old stamp with current power would
+  // bill the whole idle interval at full power. Decision-relative, so it belongs
+  // here and not in the producer.
+  if (!isUsableSampleObservationTime(observed.observedAtMs, nowMs)) return null;
+  return { ...observed, ...resolveCredibleDevicePower(device) };
 }
 
 /**
