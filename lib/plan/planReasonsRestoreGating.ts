@@ -1,6 +1,4 @@
 import type { DevicePlanDevice } from './planTypes';
-import type { PlanEngineState } from './planState';
-import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   PLAN_REASON_CODES,
   type DeviceReason,
@@ -11,7 +9,6 @@ import {
   getActivationRestoreBlockCountdownTiming,
   getActivationRestoreBlockRemainingMs,
   resolveReserveAdmission,
-  type HeadroomReserve,
 } from './admission';
 import { resolveRestorePowerSource } from './restore/accounting';
 import { getRestoreNeed } from './restore/support';
@@ -28,6 +25,7 @@ import { resolveCapacityRestoreBlockReason } from './restore/timing';
 import { emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './restore/headroomLedger';
 import type { RestoreCooldownPreview } from './restore/types';
+import type { HoldLoopState, HoldPass } from './planReasonsShared';
 
 export type RestoreCooldownPreviewState = {
   holdReason: DeviceReason;
@@ -57,12 +55,16 @@ export function resolveGlobalRestoreHold(
   return { type: 'hold', reason: { code: 'existing', reason: preview.holdReason } };
 }
 
-function resolveCooldownPreviewHold(params: {
-  dev: DevicePlanDevice;
-  restoreNeedKw: number;
-  preview: RestoreCooldownPreviewState;
-}): HoldDecision {
-  const { dev, restoreNeedKw, preview } = params;
+// Reads the preview off the pass rather than taking it as a parameter: the
+// claim below mutates it (debit the ledger, mark the single slot spent), and a
+// parameter's properties are not ours to assign to.
+function resolveCooldownPreviewHold(
+  pass: HoldPass,
+  dev: DevicePlanDevice,
+  restoreNeedKw: number,
+): HoldDecision | null {
+  const preview = pass.cooldownPreviewState;
+  if (!preview) return null;
   const selected = !preview.selectedOne;
   const reason = selected
     ? preview.holdReason
@@ -79,25 +81,23 @@ export type HoldDecision =
   | { type: 'restore'; availableHeadroom: number; restoredOneThisCycle: boolean }
   | { type: 'hold'; reason: PlanReasonDecision };
 
-function emitRestoreRejectedDebug(params: {
-  state: PlanEngineState;
-  restoreDebugKey: string;
-  dev: DevicePlanDevice;
-  phase: 'startup' | 'runtime';
+function emitRestoreRejectedDebug(
+  pass: HoldPass,
+  dev: DevicePlanDevice,
+  restoreDebugKey: string,
   /**
-   * Which gate rejected the restore, as a code. REQUIRED, and required here
+   * Which gate rejected the restore, as a code. Required, and required here
    * rather than left to each caller's payload: these branches differ only in
    * their numbers, and two of them (insufficient power, restore gate) carry the
-   * same numeric fields. The prose reason used to be the only thing telling them
-   * apart; with the payload now serving as its own dedupe signature, dropping it
-   * would also let a transition BETWEEN causes be suppressed whenever the
-   * numbers happened to match.
+   * same numeric fields. With the payload serving as its own dedupe signature,
+   * dropping it would let a transition BETWEEN causes be suppressed whenever
+   * the numbers happened to match.
    */
-  rejectionReason: string;
-  payload: Record<string, unknown>;
-  debugStructured?: StructuredDebugEmitter;
-}): void {
-  const { state, restoreDebugKey, dev, phase, rejectionReason, payload, debugStructured } = params;
+  rejectionReason: string,
+  payload: Record<string, unknown>,
+): void {
+  const { state, debugStructured } = pass;
+  const phase = resolveRestoreDecisionPhase(state.currentRebuildTrigger);
   emitRestoreDebugEventOnChange({
     state,
     key: restoreDebugKey,
@@ -114,15 +114,13 @@ function emitRestoreRejectedDebug(params: {
   });
 }
 
-export function resolveActivationBackoffHold(params: {
-  dev: DevicePlanDevice;
-  state: PlanEngineState;
-  availableHeadroom: number;
-  phase: 'startup' | 'runtime';
-  restoreDebugKey: string;
-  debugStructured?: StructuredDebugEmitter;
-}): HoldDecision | null {
-  const { dev, state, availableHeadroom, phase, restoreDebugKey, debugStructured } = params;
+export function resolveActivationBackoffHold(
+  pass: HoldPass,
+  dev: DevicePlanDevice,
+  availableHeadroom: number,
+): HoldDecision | null {
+  const { state } = pass;
+  const restoreDebugKey = `target:${dev.id}`;
   const setbackRemainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId: dev.id });
   if (setbackRemainingMs === null) return null;
 
@@ -131,33 +129,22 @@ export function resolveActivationBackoffHold(params: {
     remainingMs: setbackRemainingMs,
     countdownTiming: getActivationRestoreBlockCountdownTiming({ state, deviceId: dev.id }),
   };
-  emitRestoreRejectedDebug({
-    state,
-    restoreDebugKey,
-    dev,
-    phase,
-    rejectionReason: PLAN_REASON_CODES.activationBackoff,
-    payload: {
+  emitRestoreRejectedDebug(pass, dev, restoreDebugKey, PLAN_REASON_CODES.activationBackoff, {
       availableKw: availableHeadroom,
       decision: 'rejected',
       penaltyLevel: getActivationPenaltyLevel(state, dev.id),
-    },
-    debugStructured,
-  });
+    });
   return { type: 'hold', reason };
 }
 
-export function resolveInsufficientHeadroomHold(params: {
-  dev: DevicePlanDevice;
-  state: PlanEngineState;
-  availableHeadroom: number;
-  phase: 'startup' | 'runtime';
-  restoreDebugKey: string;
-  restoreNeed: ReturnType<typeof getRestoreNeed>;
-  admission: ReturnType<typeof buildRestoreAdmissionMetrics>;
-  debugStructured?: StructuredDebugEmitter;
-}): HoldDecision | null {
-  const { dev, state, availableHeadroom, phase, restoreDebugKey, restoreNeed, admission, debugStructured } = params;
+export function resolveInsufficientHeadroomHold(
+  pass: HoldPass,
+  dev: DevicePlanDevice,
+  availableHeadroom: number,
+  restoreNeed: ReturnType<typeof getRestoreNeed>,
+  admission: ReturnType<typeof buildRestoreAdmissionMetrics>,
+): HoldDecision | null {
+  const restoreDebugKey = `target:${dev.id}`;
   if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) return null;
 
   const reason: PlanReasonDecision = {
@@ -170,13 +157,7 @@ export function resolveInsufficientHeadroomHold(params: {
       penaltyExtraKw: restoreNeed.penaltyExtraKw,
     },
   };
-  emitRestoreRejectedDebug({
-    state,
-    restoreDebugKey,
-    dev,
-    phase,
-    rejectionReason: PLAN_REASON_CODES.insufficientHeadroom,
-    payload: {
+  emitRestoreRejectedDebug(pass, dev, restoreDebugKey, PLAN_REASON_CODES.insufficientHeadroom, {
       estimatedPowerKw: restoreNeed.devPower,
       powerSource: resolveRestorePowerSource(dev),
       neededKw: restoreNeed.needed,
@@ -186,37 +167,20 @@ export function resolveInsufficientHeadroomHold(params: {
       decision: 'rejected',
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
-    },
-    debugStructured,
-  });
+    });
   return { type: 'hold', reason };
 }
 
-export function resolveRestoreGateHold(params: {
-  dev: DevicePlanDevice;
-  state: PlanEngineState;
-  restoredOneThisCycle: boolean;
-  availableHeadroom: number;
-  restoreCooldownSeconds: number;
-  restoreCooldownRemainingSec: number | null;
-  phase: 'startup' | 'runtime';
-  restoreDebugKey: string;
-  restoreNeed: ReturnType<typeof getRestoreNeed>;
-  admission: ReturnType<typeof buildRestoreAdmissionMetrics>;
-  debugStructured?: StructuredDebugEmitter;
-}): HoldDecision | null {
-  const {
-    dev,
-    state,
-    restoredOneThisCycle,
-    availableHeadroom,
-    restoreCooldownSeconds, restoreCooldownRemainingSec,
-    phase,
-    restoreDebugKey,
-    restoreNeed,
-    admission,
-    debugStructured,
-  } = params;
+export function resolveRestoreGateHold(
+  pass: HoldPass,
+  dev: DevicePlanDevice,
+  loop: HoldLoopState,
+  restoreNeed: ReturnType<typeof getRestoreNeed>,
+  admission: ReturnType<typeof buildRestoreAdmissionMetrics>,
+): HoldDecision | null {
+  const { restoreCooldownSeconds, restoreCooldownRemainingSec } = pass;
+  const { availableHeadroom, restoredOneThisCycle } = loop;
+  const restoreDebugKey = `target:${dev.id}`;
 
   const gateReason = resolveCapacityRestoreBlockReason({
     timing: {
@@ -234,13 +198,7 @@ export function resolveRestoreGateHold(params: {
   if (!gateReason) return null;
 
   const reason: PlanReasonDecision = { code: 'existing', reason: gateReason };
-  emitRestoreRejectedDebug({
-    state,
-    restoreDebugKey,
-    dev,
-    phase,
-    rejectionReason: gateReason.code,
-    payload: {
+  emitRestoreRejectedDebug(pass, dev, restoreDebugKey, gateReason.code, {
       estimatedPowerKw: restoreNeed.devPower,
       powerSource: resolveRestorePowerSource(dev),
       neededKw: restoreNeed.needed,
@@ -249,49 +207,29 @@ export function resolveRestoreGateHold(params: {
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
       ...buildRestoreAdmissionLogFields(admission),
       decision: 'rejected',
-    },
-    debugStructured,
-  });
+    });
   return { type: 'hold', reason };
 }
 
-export function resolveRestoreDecision(params: {
-  dev: DevicePlanDevice;
-  state: PlanEngineState;
-  availableHeadroom: number;
-  restoredOneThisCycle: boolean;
-  restoredThisCycle: Set<string>;
-  restoreCooldownSeconds: number;
-  restoreCooldownRemainingSec: number | null;
-  headroomReserves?: readonly HeadroomReserve[];
-  // Whether the DEVICE currently reports the shed-floor target. A reserve
-  // block on a device that has not reached its floor must keep the actuating
-  // shed reason (below) so the pending floor command is retried; the
-  // no-actuation `reservedForStart` hold is honest only once the floor is
-  // observed.
-  observedAtShedFloor?: boolean;
-  baseShedReason?: PlanReasonDecision;
-  debugStructured?: StructuredDebugEmitter;
-  cooldownPreview?: RestoreCooldownPreviewState;
-}): HoldDecision {
-  const {
-    dev,
-    state,
-    availableHeadroom,
-    restoredOneThisCycle,
-    restoredThisCycle,
-    restoreCooldownSeconds,
-    restoreCooldownRemainingSec,
-    headroomReserves = [],
-    observedAtShedFloor, baseShedReason,
-    debugStructured, cooldownPreview,
-  } = params;
-
+export function resolveRestoreDecision(
+  pass: HoldPass,
+  dev: DevicePlanDevice,
+  loop: HoldLoopState,
+  /**
+   * Whether the DEVICE currently reports the shed-floor target. A reserve block
+   * on a device that has not reached its floor must keep the actuating shed
+   * reason, because `reservedForStart` builds no intent — swapping it in early
+   * would stop the pending floor command's retry while the device keeps drawing
+   * inside the reserved block.
+   */
+  observedAtShedFloor: boolean,
+  baseShedReason: PlanReasonDecision | undefined,
+): HoldDecision {
+  const { state, restoredThisCycle, headroomReserves, debugStructured } = pass;
+  const { availableHeadroom } = loop;
   const phase = resolveRestoreDecisionPhase(state.currentRebuildTrigger);
   const restoreDebugKey = `target:${dev.id}`;
-  const setbackHold = resolveActivationBackoffHold({
-    dev, state, availableHeadroom, phase, restoreDebugKey, debugStructured,
-  });
+  const setbackHold = resolveActivationBackoffHold(pass, dev, availableHeadroom);
   if (setbackHold) return setbackHold;
 
   const restoreNeed = getRestoreNeed(dev, state);
@@ -316,45 +254,24 @@ export function resolveRestoreDecision(params: {
       return { type: 'hold', reason: baseShedReason };
     }
     const reservedReason = buildReservedForStartReason(reserved.holderName);
-    emitRestoreRejectedDebug({
-      state,
-      restoreDebugKey,
-      dev,
-      phase,
-      rejectionReason: reservedReason.code,
-      payload: {
+    emitRestoreRejectedDebug(pass, dev, restoreDebugKey, reservedReason.code, {
         estimatedPowerKw: restoreNeed.devPower,
         powerSource: resolveRestorePowerSource(dev),
         neededKw: restoreNeed.needed,
         availableKw: availableHeadroom,
         reservedKw: reserved.reservedKw,
         decision: 'rejected',
-      },
-      debugStructured,
-    });
+      });
     return { type: 'hold', reason: { code: 'existing', reason: reservedReason } };
   }
   const { admission } = reserved;
-  const headroomHold = resolveInsufficientHeadroomHold({
-    dev, state, availableHeadroom, phase, restoreDebugKey, restoreNeed, admission, debugStructured,
-  });
+  const headroomHold = resolveInsufficientHeadroomHold(
+    pass, dev, availableHeadroom, restoreNeed, admission,
+  );
   if (headroomHold) return headroomHold;
-  if (cooldownPreview) return resolveCooldownPreviewHold({
-    dev, restoreNeedKw: restoreNeed.needed, preview: cooldownPreview,
-  });
-  const gateHold = resolveRestoreGateHold({
-    dev,
-    state,
-    restoredOneThisCycle,
-    availableHeadroom,
-    restoreCooldownSeconds,
-    restoreCooldownRemainingSec,
-    phase,
-    restoreDebugKey,
-    restoreNeed,
-    admission,
-    debugStructured,
-  });
+  const previewHold = resolveCooldownPreviewHold(pass, dev, restoreNeed.needed);
+  if (previewHold) return previewHold;
+  const gateHold = resolveRestoreGateHold(pass, dev, loop, restoreNeed, admission);
   if (gateHold) return gateHold;
   restoredThisCycle.add(dev.id);
   const powerSource = resolveRestorePowerSource(dev);

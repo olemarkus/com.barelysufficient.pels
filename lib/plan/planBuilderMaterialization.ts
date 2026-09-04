@@ -184,8 +184,7 @@ export class PlanMaterializationStages {
     const {
       planDevices, context, power, restoreResult, sheddingPlan, holds, holdResult, normalizedShedFloorCByDevice,
     } = params;
-    return trackPlanStage('plan_reasons_ms', () => normalizeShedReasons({
-      planDevices,
+    return trackPlanStage('plan_reasons_ms', () => normalizeShedReasons(planDevices, {
       shedReasons: sheddingPlan.shedReasons,
       guardInShortfall: sheddingPlan.guardInShortfall,
       headroomRaw: power.headroomKw,
@@ -233,7 +232,7 @@ export class PlanMaterializationStages {
           lastDeviceShedMsById: this.state.lastDeviceShedMs,
           nowMs: restoreResult.nowTs,
         })
-        : undefined,
+        : null,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
     }));
   }
