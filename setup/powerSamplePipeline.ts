@@ -228,10 +228,19 @@ export class PowerSamplePipeline {
   // sees a raw reading — and because `ObjectiveSampleDevice.currentDrawKw` is
   // required, dropping this map is a compile error rather than a fleet learning
   // at 0 W.
+  // Stamps the objectives seam's `observedAtMs` from the transport's
+  // `lastFreshDataMs` (Homey's highest per-capability `lastUpdated`). The rename
+  // is the point: inside `lib/objectives` it is a sample's time coordinate — the
+  // left edge of the interval `calculateWindowEnergyKwh` bills — not a freshness
+  // or trust signal, and nothing there should reach for a field named after
+  // freshness to get it.
   private readonly updateObjectiveProfiles: UpdateObjectiveProfiles = (params) => (
     updateObjectiveProfilesFromSnapshot({
       ...params,
-      devices: params.devices.map(withHeadroomCurrentOn),
+      devices: params.devices.map((device) => ({
+        ...withHeadroomCurrentOn(device),
+        observedAtMs: device.lastFreshDataMs,
+      })),
       debugStructured: this.deps.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
       outdoorTemperatureC: this.deps.getOutdoorTemperatureC?.(),
     })

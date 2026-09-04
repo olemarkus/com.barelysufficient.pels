@@ -12,10 +12,17 @@ import type { MeasuredPowerObservedProbe } from '../../packages/contracts/src/ty
  * absent / rejected reading to `0` — the behaviour
  * `resolveCredibleDevicePower`'s credibility threshold depends on.
  */
-export const withResolvedCurrentDraw = <T extends MeasuredPowerObservedProbe & { available?: boolean }>(
+export const withResolvedCurrentDraw = <
+  T extends MeasuredPowerObservedProbe & { available?: boolean; lastFreshDataMs?: number },
+>(
   device: T,
-): T & { available: boolean; currentDrawKw: number } => ({
+): T & { available: boolean; currentDrawKw: number; observedAtMs: number | undefined } => ({
   ...device,
   available: device.available ?? true,
   currentDrawKw: getCurrentDrawKw(device),
+  // Mirrors the production seam (`setup/powerSamplePipeline.ts`), which stamps
+  // the sample's time coordinate from the transport's `lastFreshDataMs`. Fixtures
+  // set `lastFreshDataMs` as the transport does and get `observedAtMs` from here,
+  // so they exercise the real mapping rather than hand-feeding the contract.
+  observedAtMs: device.lastFreshDataMs,
 });
