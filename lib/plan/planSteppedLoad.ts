@@ -513,76 +513,129 @@ export const resolveSteppedLoadPlanningKw = (
   return resolveSteppedLoadPlanningPowerKw(profile, stepId) ?? 0;
 };
 
-type ImmediateReliefDevice =
+type StepChangeDevice =
   & Pick<
     StepCapableDevice,
     'steppedLoadProfile' | 'currentDrawKw' | 'stepPowerCalibration'
   >
-  & StepIdentityFields;
+  & StepIdentityFields
+  & { currentOn?: boolean };
 
-export const resolveSteppedLoadImmediateReliefKw = (params: {
-  device: ImmediateReliefDevice;
-  fromStepId?: string;
-  toStepId?: string;
-}): number => {
-  const { device, fromStepId: rawFromStepId, toStepId } = params;
-  if (!isSteppedLoadDevice(device)) return 0;
+/**
+ * What a from -> to step change is expected to alter, in kW. Non-negative in
+ * both directions: `down` is relief the change releases, `up` is the draw it
+ * commits to. The sign lives in `direction` so no caller has to remember which
+ * way a bare number pointed.
+ */
+export type StepChange =
+  | { direction: 'none'; deltaKw: 0 }
+  | { direction: 'down' | 'up'; deltaKw: number };
 
-  const effectiveFromStepId = rawFromStepId ?? resolvePlannerEffectiveStepId(device);
-  const measured = Math.max(0, device.currentDrawKw);
-  const fromConservativeKw = resolveStepDeliveryKw(device, effectiveFromStepId);
-  const toConservativeKw = resolveStepAdmissionKw(device, toStepId);
-  // Cap by measured so the relief estimate cannot exceed what the meter is
-  // actually carrying right now; cap by calibrated delivery so transient
-  // spikes do not over-state the steady-state benefit of the step-down.
-  const fromContribution = Math.min(measured, fromConservativeKw);
-  const toContribution = Math.min(measured, toConservativeKw);
-  return Math.max(0, fromContribution - toContribution);
-};
+const NO_STEP_CHANGE: StepChange = { direction: 'none', deltaKw: 0 };
 
-type RestoreDeltaDevice =
-  & Pick<
-    StepCapableDevice,
-    'steppedLoadProfile' | 'currentDrawKw' | 'stepPowerCalibration'
-  >
-  & { currentState?: string; currentOn?: boolean };
+/**
+ * THE step-change price. Shedding asks it what a descent releases, restore asks
+ * it what a climb commits, and there is nothing else to ask: one delta, one set
+ * of rules, one place where the meter and the step model are reconciled.
+ *
+ * Two sources can answer "what is this device drawing now": the meter
+ * (`currentDrawKw`) and the model (this device's calibrated or nameplate power
+ * for the step it reports being on). Only the model can answer the after-side,
+ * since the meter has not seen that rung yet. The direction of the change
+ * decides which one owns the before-side, because the two directions have
+ * opposite pessimism:
+ *
+ * - Going DOWN we are counting on watts to go away, and **the meter is the
+ *   bound**: a device cannot release more than it is drawing. Clamping the
+ *   before-side to the model as well under-credits a descent whenever the step
+ *   report is the stale half — a 3.645 kW charger reporting `6a` (1.38 kW
+ *   nameplate) had a full turn-off priced at 1.38 kW, so the selection loop went
+ *   on shedding devices the owner ranked higher against 2.27 kW of deficit that
+ *   was already freed.
+ * - Going UP we are counting on room to add watts, so the before-side takes the
+ *   SMALLER of the two: over-stating what is already accounted for under-states
+ *   the commitment, and admits a device into a breach.
+ *
+ * Both ends are pessimistic about headroom. That is the whole rule.
+ *
+ * What this deliberately does NOT do is let the model out-price the meter on a
+ * descent. A reading below what the reported step should draw has two readings —
+ * a stale meter (2026-08-05, `inc_26449fb9`) or a device genuinely idle at its
+ * setpoint, which is ordinary behaviour for a thermostat or a tapering charger —
+ * and they are indistinguishable from one sample. Crediting the model would
+ * declare a breach closed on watts that were never flowing; crediting the meter
+ * under-credits a stale one, which the ladder already covers by walking to a
+ * deeper rung.
+ */
+export function resolveStepChangeKw(
+  device: StepChangeDevice,
+  fromStepId: string | undefined,
+  toStepId: string | undefined,
+): StepChange {
+  if (!isSteppedLoadDevice(device)) return NO_STEP_CHANGE;
+  const effectiveFromStepId = fromStepId ?? resolvePlannerEffectiveStepId(device);
+  // A device the producer resolved as off is AT zero, whatever step it still
+  // reports — both for where the change starts and for what is flowing. Reading
+  // the reported step as the from-position would make a restore look like a
+  // descent (`medium` -> `low` runs down the ladder, but from off it is a
+  // climb) and answer nothing for a device about to start drawing.
+  const observedOff = device.currentOn === false;
 
-export const resolveSteppedLoadRestoreDeltaKw = (params: {
-  device: RestoreDeltaDevice;
-  fromStepId?: string;
-  toStepId?: string;
-}): number => {
-  const { device, fromStepId, toStepId } = params;
-  if (!isSteppedLoadDevice(device)) return 0;
-  // From-side: observed-off ⇒ 0; otherwise use the conservative-low delivery
-  // estimate for the current step so the restore delta does not under-count
-  // the new commitment when the device is briefly drawing more than its
-  // calibrated baseline.
-  const measured = Math.max(0, device.currentDrawKw);
-  const deliveryFromKw = resolveStepDeliveryKw(device, fromStepId);
-  const currentDrawKw = resolveRestoreFromContribution({
-    device,
-    measured,
-    deliveryFromKw,
-  });
-  const nextKw = resolveStepAdmissionKw(device, toStepId);
-  return Math.max(0, nextKw - currentDrawKw);
-};
+  // Direction comes from the ladder's ORDER, never from the estimates: a step
+  // whose calibration has learned oddly must not be able to invert which way
+  // the ladder runs. Position, not watts — `normalizeSteppedLoadProfile`
+  // dedupes step IDs but not wattages, so a hand-configured profile can carry
+  // two distinct rungs at the same `planningPowerW`. Comparing watts calls that
+  // transition "no change", and the restore lane then never commands the tied
+  // rung and stalls before every rung above it. `sortSteppedLoadSteps` breaks
+  // the tie by id, so the order is total and both rungs are reachable.
+  const fromIndex = observedOff ? OFF_LADDER_INDEX : resolveStepIndex(device, effectiveFromStepId);
+  const toIndex = resolveStepIndex(device, toStepId);
+  if (toIndex === fromIndex) return NO_STEP_CHANGE;
+  const direction = toIndex < fromIndex ? 'down' : 'up';
 
-function resolveRestoreFromContribution(params: {
-  device: RestoreDeltaDevice;
-  measured: number;
-  deliveryFromKw: number;
-}): number {
-  // Only override with measured when it is *positive* — a zero reading is not
-  // evidence that the device is currently idle at this step (it may be
-  // mid-cycle, or throttled). In those cases the
-  // calibrated delivery / nameplate estimate is the safer proxy for "what this
-  // device contributes right now."
-  const { device, measured, deliveryFromKw } = params;
-  if (device.currentOn === false) return 0;
-  if (measured > 0) return Math.min(measured, deliveryFromKw);
-  return deliveryFromKw;
+  const beforeKw = observedOff
+    ? 0
+    : resolveStepChangeBeforeKw(device, effectiveFromStepId, direction);
+  const afterKw = resolveStepAdmissionKw(device, toStepId);
+  const deltaKw = direction === 'down'
+    ? Math.max(0, beforeKw - afterKw)
+    : Math.max(0, afterKw - beforeKw);
+  return { direction, deltaKw };
+}
+
+/**
+ * Below every rung: where a device the producer resolved as off sits, and where
+ * a step id the profile does not carry resolves to. Both mean "not on the
+ * ladder", and both make any real rung a climb.
+ */
+const OFF_LADDER_INDEX = -1;
+
+/** A step's position on the device's ladder, gentlest first. */
+function resolveStepIndex(
+  device: Pick<StepCapableDevice, 'steppedLoadProfile'>,
+  stepId: string | undefined,
+): number {
+  if (stepId === undefined) return OFF_LADDER_INDEX;
+  const profile = getSteppedLoadProfileForDevice(device);
+  if (!profile) return OFF_LADDER_INDEX;
+  return sortSteppedLoadSteps(profile.steps).findIndex((step) => step.id === stepId);
+}
+
+/** What the device is drawing now, as far as the evidence allows. */
+function resolveStepChangeBeforeKw(
+  device: StepChangeDevice,
+  fromStepId: string | undefined,
+  direction: 'down' | 'up',
+): number {
+  const modelKw = resolveStepDeliveryKw(device, fromStepId);
+  const measuredKw = Math.max(0, device.currentDrawKw);
+  // A zero reading at a running step is not evidence of idleness — an
+  // unreadable meter resolves to 0 as well, and a device mid-cycle or throttled
+  // reads zero while still committed to its rung. The model is the only usable
+  // estimate either way.
+  if (measuredKw <= 0) return modelKw;
+  return direction === 'down' ? measuredKw : Math.min(measuredKw, modelKw);
 }
 
 // Per the "resolution belongs in producer" rule, the producer
@@ -645,37 +698,6 @@ function clampSteppedShedTarget(
   if (!desiredStep) return targetStep;
   return desiredStep.planningPowerW <= targetStep.planningPowerW ? desiredStep : targetStep;
 }
-
-export function resolveSteppedCandidatePower(
-  device: StepCapableDevice,
-  selectedStep: { id: string; planningPowerW: number },
-  targetStep: { id: string; planningPowerW: number },
-): number {
-  const measured = resolveSteppedLoadImmediateReliefKw({
-    device,
-    fromStepId: selectedStep.id,
-    toStepId: targetStep.id,
-  });
-  if (measured > 0) return measured;
-  // Gate inverted from the pre-refactor `!hasMeasuredPower`: that took the
-  // calibrated/nameplate fallback when the reading was ABSENT, this takes it when
-  // the device is drawing nothing. Unreachable today — `buildSteppedCandidate`
-  // rejects a zero draw before this runs — but if that gate ever loosens, a device
-  // drawing nothing would be credited nameplate shed relief.
-  if (device.currentDrawKw <= 0) {
-    // Fall back to calibrated delta when available, else nameplate delta —
-    // both bound by zero so a calibrated "to" estimate that exceeds the
-    // calibrated "from" estimate yields zero relief rather than a negative
-    // contribution.
-    const fromKw = resolveStepDeliveryKw(device, selectedStep.id);
-    const toKw = resolveStepAdmissionKw(device, targetStep.id);
-    const fallbackDelta = Math.max(0, fromKw - toKw);
-    if (fallbackDelta > 0) return fallbackDelta;
-    return Math.max(0, (selectedStep.planningPowerW - targetStep.planningPowerW) / 1000);
-  }
-  return measured;
-}
-
 
 function normalizePlannerStepState(device: StepIdentityFields) {
   return normalizeSteppedLoadStepStateFromLegacyFields({

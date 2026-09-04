@@ -24,14 +24,27 @@ Shedding a device already drawing nothing frees nothing, but it still costs a wr
 
 The rule above is about the ANSWER, not about how hard you looked for it. For a stepped device the two got conflated: `getSteppedLoadShedTargetStep` returns one rung down, and pricing only that rung made "this rung frees nothing" read as "this device frees nothing".
 
-`resolveSteppedLoadImmediateReliefKw` caps *both* sides of the step delta by the current measurement, so the moment measured draw sits at or below the next rung's admission estimate the delta is exactly zero — for any from-step. A device pinned at `max` and one idling at `low` price identically. Prod 2026-08-05 (`inc_26449fb9`): a water heater's `measure_power` lagged its step-up by ~5 minutes, `max → medium` priced at 0, the heater was never a candidate, and the house sat 526 W over the hard cap for 4.5 minutes while the meter showed it drawing 2.9 kW.
+A rung whose admission estimate sits at or above the measured draw prices at exactly zero, for any from-step. A device pinned at `max` and one idling at `low` price identically. Prod 2026-08-05 (`inc_26449fb9`): a water heater's `measure_power` lagged its step-up by ~5 minutes, `max → medium` priced at 0, the heater was never a candidate, and the house sat 526 W over the hard cap for 4.5 minutes while the meter showed it drawing 2.9 kW.
 
-`resolveSteppedShedLadder` (`steppedCandidates.ts`) prices the WHOLE ladder — every reachable step down, gentlest first, each with the relief it releases — and drops the rungs that release nothing. It cannot invent relief: every rung goes through the same `resolveSteppedCandidatePower`, so the deepest rung buys the device's whole reported draw and no more. Both shed behaviours descend the whole ladder; they differ only in where the descent stops:
+`resolveSteppedShedLadder` (`steppedCandidates.ts`) prices the WHOLE ladder — every reachable step down, gentlest first, each with the relief it releases — and drops the rungs that release nothing. It cannot invent relief: every rung goes through the same `resolveStepChangeKw`, whose descent arm bounds the before-side at the MEASURED draw, so the deepest rung buys what the meter says the device is pulling and no more. Both shed behaviours descend the whole ladder; they differ only in where the descent stops:
 
 - **`set_step` descends to the deepest NOT-OFF-CLASSIFIED rung and never reaches the off step.** The owner's "lower it" means as far down as the deficit needs, never off. That floor is asked of `isSteppedLoadOffStep`, NOT read off the floor the walk used: `getSteppedLoadLowestActiveStep` tests `planningPowerW > 0` and ignores the step's name, while the off rule also counts a step named `off`, so a hand-configured `{ id: 'off', planningPowerW: 1200 }` is active to the first and off to the second. Keep the reconciliation at the call site in `buildSteppedShedDescentTargets` — the two helpers' meanings are load-bearing for their other callers.
 - **`turn_off` descends the same rungs and then gets the off step appended**, because the floor above keeps the off step off the walk.
 
 `set_step` used to be offered its adjacent rung alone. That was a pricing constraint, not a product one: materialization recomputed the step from the device, so a credited deeper rung would have decremented the deficit by relief the executor never commanded. It no longer recomputes (below), so credited relief equals delivered relief for both behaviours.
+
+## One function prices a step change, and the direction picks the before-side
+
+`resolveStepChangeKw(device, from, to)` (`lib/plan/planSteppedLoad.ts`) is the only place a step delta is computed. Shedding asks it what a descent releases, restore asks it what a climb commits; there is no second helper with its own rules, and there was: two functions and a wrapper, each reconciling the meter and the step model differently.
+
+Two sources can answer "what is this device drawing now" — the meter (`currentDrawKw`) and the model (calibrated, else nameplate, power for the step the device REPORTS). Only the model can answer the after-side. The direction owns the before-side, because the two directions have opposite pessimism:
+
+- **Down**, the meter is the BOUND. A device cannot release more than it is drawing. Clamping the before-side to the model as well under-credits every descent where the step report is the stale half — a 3.645 kW charger reporting a 1.38 kW rung had a full turn-off priced at 1.38 kW, and the selection loop went on shedding devices the owner ranked higher against 2.27 kW it had already freed.
+- **Up**, the before-side takes the SMALLER of the two. Over-stating what is already accounted for under-states the commitment and admits a device into a breach.
+
+Both ends are pessimistic about headroom. What the rule deliberately does not do is let the model out-price the meter on a descent: a reading below what the reported step should draw is either a stale meter (`inc_26449fb9`) or a device genuinely idle at its setpoint — ordinary for a thermostat or a tapering charger — and one sample cannot tell them apart. Crediting the model there would declare a breach closed on watts that never flowed. The stale-meter case is covered instead by the ladder walking to a deeper rung.
+
+Direction is read off the PROFILE's ordering, never off the estimates, so a step whose calibration learned oddly cannot invert which way the ladder runs. And a device the producer resolved as off is at position ZERO, whatever step id it still carries — not at its profile's off step, which a hand-configured ladder need not have. Otherwise a restore reads as a descent (`medium` → `low` runs down the ladder, but from off it is a climb) and answers nothing for a device about to start drawing.
 
 ## The rung is chosen when the candidate is SPENT, not when it is built
 

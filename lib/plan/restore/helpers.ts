@@ -13,7 +13,7 @@ import { resolveCapacityRestoreBlockReason } from './timing';
 import {
   getSteppedLoadNextRestoreStep,
   isSteppedLoadDevice,
-  resolveSteppedLoadRestoreDeltaKw,
+  resolveStepChangeKw,
 } from '../planSteppedLoad';
 import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../../utils/deviceControlProfiles';
 import {
@@ -183,6 +183,22 @@ function admitStepUnderSurplusCeiling<T extends { id: string; planningPowerW: nu
   return nextStep.planningPowerW <= ceilingStep.planningPowerW ? nextStep : null;
 }
 
+/**
+ * The draw a restore climb commits, in kW.
+ *
+ * The price itself comes from `resolveStepChangeKw`, which serves both lanes;
+ * this only says what a non-climb means HERE. A descent belongs to shedding,
+ * and a step that goes nowhere adds no draw — both are nothing for the restore
+ * lane to admit.
+ */
+function resolveSteppedRestoreCommitmentKw(
+  dev: SteppedPlanDevice,
+  toStepId: string,
+): number {
+  const change = resolveStepChangeKw(dev, dev.selectedStepId, toStepId);
+  return change.direction === 'up' ? change.deltaKw : 0;
+}
+
 export function planRestoreForSteppedDevice(params: {
   dev: SteppedPlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -253,9 +269,7 @@ export function planRestoreForSteppedDevice(params: {
   const lowestNonZeroStep = isSteppedLoadDevice(dev)
     ? getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)
     : null;
-  const deltaKw = resolveSteppedLoadRestoreDeltaKw({
-    device: dev, fromStepId: dev.selectedStepId, toStepId: nextStep.id,
-  });
+  const deltaKw = resolveSteppedRestoreCommitmentKw(dev, nextStep.id);
   if (deltaKw <= 0) {
     clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
