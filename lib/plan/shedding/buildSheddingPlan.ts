@@ -104,7 +104,7 @@ function planShedding(
   overshootActionable: boolean,
 ): PlanSheddingResult {
   const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
-  if (!shouldAttemptShedding({ hourlyBudgetExhausted, overshootActionable, headroom: power.headroomKw })) {
+  if (!shouldAttemptShedding(hourlyBudgetExhausted, overshootActionable, power.headroomKw)) {
     return emptySheddingResult();
   }
 
@@ -112,14 +112,9 @@ function planShedding(
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
   const measurementPowerW = resolveMeasurementPowerW(deps.powerTracker);
   const needed = Math.max(0, -power.headroomKw);
-  const measurementDecision = resolveSameMeasurementSheddingDecision({
-    state,
-    measurementTs,
-    measurementPowerW,
-    neededKw: needed,
-    nowTs,
-    allowEscalation: power.capacityBreached,
-  });
+  const measurementDecision = resolveSameMeasurementSheddingDecision(
+    state, measurementTs, measurementPowerW, needed, nowTs, power.capacityBreached,
+  );
 
   const candidateParams: ShedCandidateParams = {
     devices: context.devices,
@@ -133,16 +128,12 @@ function planShedding(
     state,
     deps,
   };
-  if (shouldSkipSameMeasurement({ hourlyBudgetExhausted, skip: measurementDecision.skip })) {
-    return resolveWithheldShedding({
+  if (shouldSkipSameMeasurement(hourlyBudgetExhausted, measurementDecision.skip)) {
+    return resolveWithheldShedding(
       candidateParams,
-      state,
-      deps,
-      needed,
-      limitSource: context.softLimitSource,
-      unchangedPowerW: measurementPowerW,
-      heldOnUnchangedReading: measurementDecision.heldOnUnchangedReading,
-    });
+      measurementPowerW,
+      measurementDecision.heldOnUnchangedReading,
+    );
   }
   if (measurementDecision.escalatedSameSample) {
     deps.debugStructured?.({ event: 'plan_shed_escalating_unchanged_measurement' });
@@ -158,20 +149,20 @@ function planShedding(
     skippedCandidateCount: candidateSummary.skippedCandidateCount,
     skippedCandidateReasons: candidateSummary.skippedCandidateReasons,
   });
-  const result = selectShedDevices({
+  const result = selectShedDevices(
     candidates,
     needed,
     // The flag short-circuits inside `resolveShedReason`, so the limit source
     // is passed plain — the old `exhausted ? 'daily' : …` alias only fed the
     // pre-2026-08 reason mapping.
-    reason: resolveShedReason(
+    resolveShedReason(
       context.softLimitSource,
       candidateSummary.capacityBreached,
       hourlyBudgetExhausted,
     ),
-    debugStructured: deps.debugStructured,
-    shedAllCandidates: hourlyBudgetExhausted,
-  });
+    hourlyBudgetExhausted,
+    deps.debugStructured,
+  );
 
   if (result.shedSet.size === 0) {
     if (measurementDecision.escalatedSameSample) {
@@ -179,14 +170,9 @@ function planShedding(
         .filter((device) => device.controllable)
         .length;
       if (controllableDeviceCount > 0) {
-        emitOvershootEscalationBlocked({
-          structuredLog: deps.structuredLog,
-          capacityGuard: deps.capacityGuard,
-          neededKw: needed,
-          remainingCandidates: candidates.length,
-          measurementTs,
-          nowTs,
-        });
+        emitOvershootEscalationBlocked(
+          deps.capacityGuard, needed, candidates.length, measurementTs, nowTs, deps.structuredLog,
+        );
       }
       return emptySheddingResult({
         lastOvershootEscalationMs: nowTs,
@@ -229,41 +215,31 @@ function resolveMeasurementPowerW(powerTracker: SheddingDeps['powerTracker']): n
 /**
  * Shedding is withheld this cycle: either the measurement is the very one the
  * last shed was planned from, or a later sample re-delivered its watts unchanged.
+ *
+ * `candidateParams` is the only input the helpers below need. It already carries
+ * `state` and `deps`, and — on every path that reaches here — the same `needed`
+ * and `limitSource` the caller used to pass beside it. `ShedCandidateParams`
+ * substitutes a severity sentinel for both (`Number.POSITIVE_INFINITY`, and
+ * `'daily'`) while the hour is exhausted, but `shouldSkipSameMeasurement` is
+ * `!hourlyBudgetExhausted && skip`, so this whole withheld path is unreachable
+ * in that state. `deficitKw` on the same object is the measured deficit
+ * regardless.
  */
-function resolveWithheldShedding(params: {
-  candidateParams: ShedCandidateParams;
-  state: PlanEngineState;
-  deps: SheddingDeps;
-  needed: number;
-  limitSource: PlanContext['softLimitSource'];
-  unchangedPowerW: number | null;
-  heldOnUnchangedReading: boolean;
-}): PlanSheddingResult {
-  const {
-    candidateParams, state, deps, needed, limitSource, unchangedPowerW, heldOnUnchangedReading,
-  } = params;
-  if (!heldOnUnchangedReading) {
-    return skipSheddingAwaitingMeasurement({ candidateParams, deps, needed });
-  }
-  // No `hourlyBudgetExhausted` threading here: `shouldSkipSameMeasurement`
-  // returns false while the hour is exhausted, so this held-unchanged-reading
-  // path is unreachable in that state and its `resolveShedReason` never needs
-  // the flag.
-  return holdSheddingAtLastDecision({
-    candidateParams, state, deps, needed, limitSource, unchangedPowerW,
-  });
+function resolveWithheldShedding(
+  candidateParams: ShedCandidateParams,
+  unchangedPowerW: number | null,
+  heldOnUnchangedReading: boolean,
+): PlanSheddingResult {
+  if (!heldOnUnchangedReading) return skipSheddingAwaitingMeasurement(candidateParams);
+  return holdSheddingAtLastDecision(candidateParams, unchangedPowerW);
 }
 
 /**
  * Same-sample skip: this exact measurement already produced a shed, so there is
  * nothing new to act on and no decision to re-derive.
  */
-function skipSheddingAwaitingMeasurement(params: {
-  candidateParams: ShedCandidateParams;
-  deps: SheddingDeps;
-  needed: number;
-}): PlanSheddingResult {
-  const { candidateParams, deps, needed } = params;
+function skipSheddingAwaitingMeasurement(candidateParams: ShedCandidateParams): PlanSheddingResult {
+  const { deps, deficitKw: needed } = candidateParams;
   const summary = summarizeSheddingCandidates(candidateParams);
   deps.debugStructured?.({ event: 'plan_shed_skipped_awaiting_measurement' });
   return emptySheddingResult({}, buildOvershootStats({ needed, ...summary }));
@@ -288,28 +264,25 @@ function skipSheddingAwaitingMeasurement(params: {
  * a device the last pass did NOT choose being added on a reading that carries no
  * new evidence.
  */
-function holdSheddingAtLastDecision(params: {
-  candidateParams: ShedCandidateParams;
-  state: PlanEngineState;
-  deps: SheddingDeps;
-  needed: number;
-  limitSource: PlanContext['softLimitSource'];
-  unchangedPowerW: number | null;
-}): PlanSheddingResult {
-  const {
-    candidateParams, state, deps, needed, limitSource, unchangedPowerW,
-  } = params;
+function holdSheddingAtLastDecision(
+  candidateParams: ShedCandidateParams,
+  unchangedPowerW: number | null,
+): PlanSheddingResult {
+  // `deficitKw` is the measured deficit on every path; `needed` on the same
+  // object is the severity sentinel in an exhausted hour, which cannot reach
+  // here (see `resolveWithheldShedding`).
+  const { state, deps, deficitKw: needed, limitSource } = candidateParams;
   const candidateSummary = buildSheddingCandidates(candidateParams);
   const alreadyDecided = candidateSummary.candidates
     .filter((candidate) => state.lastShedPlanShedIds.has(candidate.id));
-  const { shedSet, shedReasons, shedStepTargets } = selectShedDevices({
-    candidates: alreadyDecided,
+  const { shedSet, shedReasons, shedStepTargets } = selectShedDevices(
+    alreadyDecided,
     needed,
-    reason: resolveShedReason(limitSource, candidateSummary.capacityBreached),
+    resolveShedReason(limitSource, candidateSummary.capacityBreached),
     // Every candidate here is one the last plan already shed, so re-assert the
     // whole set instead of re-deriving it from the deficit.
-    shedAllCandidates: true,
-  });
+    true,
+  );
   // Its own event, not the awaiting-measurement one: a new measurement DID
   // arrive here and was refused, so log review can count this class directly.
   deps.debugStructured?.({
@@ -336,15 +309,14 @@ function holdSheddingAtLastDecision(params: {
   };
 }
 
-function shouldAttemptShedding(params: {
-  hourlyBudgetExhausted: boolean;
-  overshootActionable: boolean;
-  headroom: number;
-}): boolean {
-  return params.hourlyBudgetExhausted
-    || (params.overshootActionable && shouldPlanShedding(params.headroom));
+function shouldAttemptShedding(
+  hourlyBudgetExhausted: boolean,
+  overshootActionable: boolean,
+  headroom: number,
+): boolean {
+  return hourlyBudgetExhausted || (overshootActionable && shouldPlanShedding(headroom));
 }
 
-function shouldSkipSameMeasurement(params: { hourlyBudgetExhausted: boolean; skip: boolean }): boolean {
-  return !params.hourlyBudgetExhausted && params.skip;
+function shouldSkipSameMeasurement(hourlyBudgetExhausted: boolean, skip: boolean): boolean {
+  return !hourlyBudgetExhausted && skip;
 }

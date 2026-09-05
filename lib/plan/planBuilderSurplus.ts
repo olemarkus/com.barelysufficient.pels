@@ -89,7 +89,7 @@ export function runSurplusPass(params: {
     debugStructured: params.debugStructured,
     nowTs: params.nowTs,
   });
-  const surplusHold = resolveSurplusHold({ devices: admittedDevices, state, excludeIds });
+  const surplusHold = resolveSurplusHold(admittedDevices, state, excludeIds);
   applyPostSheddingHolds({
     shedSet: params.shedSet,
     shedStepTargets: params.shedStepTargets,
@@ -145,7 +145,7 @@ export function runSilentMeterSurplusHold(
     ...decoration.admittedDeviceIds,
   ]);
   withdrawSurplusEligibility(context.devices, state, cycle.getConfig, excludeIds, cycle.nowTs);
-  const surplusHold = resolveSurplusHold({ devices: admittedDevices, state, excludeIds });
+  const surplusHold = resolveSurplusHold(admittedDevices, state, excludeIds);
   applyPostSheddingHolds({
     shedSet,
     shedStepTargets,

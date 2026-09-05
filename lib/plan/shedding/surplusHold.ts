@@ -54,18 +54,19 @@ export type SurplusHoldResult = {
   reasonById: Map<string, DeviceReason>;
 };
 
-export function resolveSurplusHold(params: {
-  devices: readonly PlanInputDevice[];
-  // Read-only: consulted for `surplusEligibilityByDevice` only; this module
-  // never writes engine state (the allocator owns the eligibility lifecycle).
-  state: Pick<PlanEngineState, 'surplusEligibilityByDevice' | 'surplusTrackingByDevice'>;
-  excludeIds: ReadonlySet<string>;
-}): SurplusHoldResult {
+export function resolveSurplusHold(
+  devices: readonly PlanInputDevice[],
+  // Read-only on both halves: `surplusEligibilityByDevice` for the latched
+  // eligibility and `surplusTrackingByDevice` for a stopped tracker. This
+  // module never writes engine state (the allocator owns that lifecycle).
+  state: Pick<PlanEngineState, 'surplusEligibilityByDevice' | 'surplusTrackingByDevice'>,
+  excludeIds: ReadonlySet<string>,
+): SurplusHoldResult {
   const holdIds = new Set<string>();
   const reasonById = new Map<string, DeviceReason>();
-  for (const device of params.devices) {
-    if (params.excludeIds.has(device.id)) continue;
-    if (!isSurplusHeldDevice(device, params.state)) continue;
+  for (const device of devices) {
+    if (excludeIds.has(device.id)) continue;
+    if (!isSurplusHeldDevice(device, state)) continue;
     holdIds.add(device.id);
     reasonById.set(device.id, { code: PLAN_REASON_CODES.awaitingSolarSurplus });
   }

@@ -112,12 +112,11 @@ export function cleanupCompletedSwaps(
   clearDirectSwapsForTargets(swapState, completedTargetIds);
 }
 
-export function shouldKeepSwapTargetPending(params: {
-  swapState: SwapState;
-  deviceId: string;
-  measurementTs: number | null;
-}): boolean {
-  const { swapState, deviceId, measurementTs } = params;
+export function shouldKeepSwapTargetPending(
+  swapState: SwapState,
+  deviceId: string,
+  measurementTs: number | null,
+): boolean {
   if (!swapState.pendingSwapTargets.has(deviceId)) return false;
   const lastPlanMeasurementTs = swapState.lastSwapPlanMeasurementTs.get(deviceId);
   if (measurementTs === null) return true;
@@ -125,12 +124,11 @@ export function shouldKeepSwapTargetPending(params: {
   return measurementTs <= lastPlanMeasurementTs;
 }
 
-export function shouldDeferSwapAdmissionForMeasurement(params: {
-  swapState: SwapState;
-  deviceId: string;
-  measurementTs: number | null;
-}): boolean {
-  const { swapState, deviceId, measurementTs } = params;
+export function shouldDeferSwapAdmissionForMeasurement(
+  swapState: SwapState,
+  deviceId: string,
+  measurementTs: number | null,
+): boolean {
   if (swapState.pendingSwapTargets.has(deviceId)) return false;
   const lastPlanMeasurementTs = swapState.lastSwapPlanMeasurementTs.get(deviceId);
   if (lastPlanMeasurementTs === undefined) return false;

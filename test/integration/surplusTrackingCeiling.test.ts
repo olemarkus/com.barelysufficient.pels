@@ -77,7 +77,7 @@ describe('surplus tracking ceiling — the hold', () => {
   const hold = (device: PlanInputDevice, decision: SurplusTrackingDecision | undefined) => {
     const state = createPlanEngineState();
     if (decision !== undefined) state.surplusTrackingByDevice[device.id] = decision;
-    return resolveSurplusHold({ devices: [device], state, excludeIds: new Set() });
+    return resolveSurplusHold([device], state, new Set());
   };
 
   it('holds a device the allocator stopped, and says why', () => {
@@ -122,11 +122,7 @@ describe('surplus tracking ceiling — the hold', () => {
     const device = buildTracker();
     const state = createPlanEngineState();
     state.surplusTrackingByDevice[device.id] = { kind: 'stopped' };
-    const result = resolveSurplusHold({
-      devices: [device],
-      state,
-      excludeIds: new Set([CHARGER]),
-    });
+    const result = resolveSurplusHold([device], state, new Set([CHARGER]));
     expect(result.holdIds.has(CHARGER)).toBe(false);
   });
 });

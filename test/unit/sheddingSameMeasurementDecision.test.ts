@@ -41,13 +41,14 @@ const shedState = (overrides: {
 
 describe('resolveSameMeasurementSheddingDecision', () => {
   it('proceeds on a new sample carrying a new reading', () => {
-    const decision = resolveSameMeasurementSheddingDecision({
-      state: shedState(),
-      measurementTs: NOW,
-      neededKw: NEEDED_KW,
-      measurementPowerW: 3_270,
-      nowTs: NOW,
-    });
+    const decision = resolveSameMeasurementSheddingDecision(
+      shedState(),
+      NOW,
+      3_270,
+      NEEDED_KW,
+      NOW,
+      true,
+    );
 
     expect(decision).toEqual({
       skip: false,
@@ -57,13 +58,14 @@ describe('resolveSameMeasurementSheddingDecision', () => {
   });
 
   it('holds a new sample that repeats the reading the last shed was decided on', () => {
-    const decision = resolveSameMeasurementSheddingDecision({
-      state: shedState(),
-      measurementTs: NOW,
-      neededKw: NEEDED_KW,
-      measurementPowerW: READING_W,
-      nowTs: NOW,
-    });
+    const decision = resolveSameMeasurementSheddingDecision(
+      shedState(),
+      NOW,
+      READING_W,
+      NEEDED_KW,
+      NOW,
+      true,
+    );
 
     expect(decision).toEqual({
       skip: true,
@@ -73,13 +75,14 @@ describe('resolveSameMeasurementSheddingDecision', () => {
   });
 
   it('releases the unchanged-reading hold once the window elapses', () => {
-    const decision = resolveSameMeasurementSheddingDecision({
-      state: shedState({ lastShedPlanAtMs: NOW - 30_000 }),
-      measurementTs: NOW,
-      neededKw: NEEDED_KW,
-      measurementPowerW: READING_W,
-      nowTs: NOW,
-    });
+    const decision = resolveSameMeasurementSheddingDecision(
+      shedState({ lastShedPlanAtMs: NOW - 30_000 }),
+      NOW,
+      READING_W,
+      NEEDED_KW,
+      NOW,
+      true,
+    );
 
     expect(decision.skip).toBe(false);
     expect(decision.heldOnUnchangedReading).toBe(false);
@@ -88,76 +91,82 @@ describe('resolveSameMeasurementSheddingDecision', () => {
   it('releases when the same watts now sit under a tighter limit', () => {
     // Hour rollover recomputing the soft limit grows the deficit. The reading is
     // unchanged, but the question it has to answer is not.
-    const decision = resolveSameMeasurementSheddingDecision({
-      state: shedState(),
-      measurementTs: NOW,
-      measurementPowerW: READING_W,
-      neededKw: NEEDED_KW + 0.7,
-      nowTs: NOW,
-    });
+    const decision = resolveSameMeasurementSheddingDecision(
+      shedState(),
+      NOW,
+      READING_W,
+      NEEDED_KW + 0.7,
+      NOW,
+      true,
+    );
 
     expect(decision.skip).toBe(false);
     expect(decision.heldOnUnchangedReading).toBe(false);
   });
 
   it('still holds when the deficit shrinks or only drifts', () => {
-    const decision = resolveSameMeasurementSheddingDecision({
-      state: shedState(),
-      measurementTs: NOW,
-      measurementPowerW: READING_W,
-      neededKw: NEEDED_KW + 0.0005,
-      nowTs: NOW,
-    });
+    const decision = resolveSameMeasurementSheddingDecision(
+      shedState(),
+      NOW,
+      READING_W,
+      NEEDED_KW + 0.0005,
+      NOW,
+      true,
+    );
 
     expect(decision.skip).toBe(true);
     expect(decision.heldOnUnchangedReading).toBe(true);
   });
 
   it('treats a one-watt move as a real observation and does not hold', () => {
-    const decision = resolveSameMeasurementSheddingDecision({
-      state: shedState(),
-      measurementTs: NOW,
-      neededKw: NEEDED_KW,
-      measurementPowerW: READING_W - 1,
-      nowTs: NOW,
-    });
+    const decision = resolveSameMeasurementSheddingDecision(
+      shedState(),
+      NOW,
+      READING_W - 1,
+      NEEDED_KW,
+      NOW,
+      true,
+    );
 
     expect(decision.skip).toBe(false);
     expect(decision.heldOnUnchangedReading).toBe(false);
   });
 
   it('does not hold when the shed stamp is in the future after a clock correction', () => {
-    const decision = resolveSameMeasurementSheddingDecision({
-      state: shedState({ lastShedPlanAtMs: NOW + 60_000 }),
-      measurementTs: NOW,
-      neededKw: NEEDED_KW,
-      measurementPowerW: READING_W,
-      nowTs: NOW,
-    });
+    const decision = resolveSameMeasurementSheddingDecision(
+      shedState({ lastShedPlanAtMs: NOW + 60_000 }),
+      NOW,
+      READING_W,
+      NEEDED_KW,
+      NOW,
+      true,
+    );
 
     expect(decision.skip).toBe(false);
   });
 
   it('does not hold when the tracker carries no usable reading', () => {
-    const decision = resolveSameMeasurementSheddingDecision({
-      state: shedState(),
-      measurementTs: NOW,
-      neededKw: NEEDED_KW,
-      measurementPowerW: null,
-      nowTs: NOW,
-    });
+    const decision = resolveSameMeasurementSheddingDecision(
+      shedState(),
+      NOW,
+      null,
+      NEEDED_KW,
+      NOW,
+      true,
+    );
 
     expect(decision.skip).toBe(false);
   });
 
   it('does not hold before any shed has latched a reading', () => {
-    const decision = resolveSameMeasurementSheddingDecision({
-      state: shedState({ lastShedPlanPowerW: null }),
-      measurementTs: NOW,
-      neededKw: NEEDED_KW,
-      measurementPowerW: READING_W,
-      nowTs: NOW,
-    });
+    const decision = resolveSameMeasurementSheddingDecision(
+      shedState({ lastShedPlanPowerW: null }),
+      NOW,
+      READING_W,
+      NEEDED_KW,
+      NOW,
+      true,
+    );
 
     expect(decision.skip).toBe(false);
   });
@@ -166,26 +175,28 @@ describe('resolveSameMeasurementSheddingDecision', () => {
     // `planBuilderOvershoot` drops the whole latch when an overshoot ENDS
     // (`clearShedPlanLatch`), so a value latched in one incident cannot delay
     // the next incident's first pass.
-    const decision = resolveSameMeasurementSheddingDecision({
-      state: shedState({ lastShedPlanAtMs: null }),
-      measurementTs: NOW,
-      neededKw: NEEDED_KW,
-      measurementPowerW: READING_W,
-      nowTs: NOW,
-    });
+    const decision = resolveSameMeasurementSheddingDecision(
+      shedState({ lastShedPlanAtMs: null }),
+      NOW,
+      READING_W,
+      NEEDED_KW,
+      NOW,
+      true,
+    );
 
     expect(decision.skip).toBe(false);
   });
 
   describe('same-sample behaviour is unchanged', () => {
     it('skips a re-shed on the very sample the last shed was planned from', () => {
-      const decision = resolveSameMeasurementSheddingDecision({
-        state: shedState({ lastOvershootMitigationMs: NOW - 1_000 }),
-        measurementTs: SAMPLE_TS,
-        neededKw: NEEDED_KW,
-      measurementPowerW: READING_W,
-        nowTs: NOW,
-      });
+      const decision = resolveSameMeasurementSheddingDecision(
+      shedState({ lastOvershootMitigationMs: NOW - 1_000 }),
+      SAMPLE_TS,
+      READING_W,
+      NEEDED_KW,
+      NOW,
+      true,
+    );
 
       expect(decision).toEqual({
         skip: true,
@@ -195,13 +206,14 @@ describe('resolveSameMeasurementSheddingDecision', () => {
     });
 
     it('escalates on the same sample once the escalation interval has passed', () => {
-      const decision = resolveSameMeasurementSheddingDecision({
-        state: shedState({ lastOvershootMitigationMs: NOW - 30_000 }),
-        measurementTs: SAMPLE_TS,
-        neededKw: NEEDED_KW,
-      measurementPowerW: READING_W,
-        nowTs: NOW,
-      });
+      const decision = resolveSameMeasurementSheddingDecision(
+      shedState({ lastOvershootMitigationMs: NOW - 30_000 }),
+      SAMPLE_TS,
+      READING_W,
+      NEEDED_KW,
+      NOW,
+      true,
+    );
 
       expect(decision).toEqual({
         skip: false,
@@ -211,14 +223,14 @@ describe('resolveSameMeasurementSheddingDecision', () => {
     });
 
     it('never escalates the same sample when escalation is not allowed', () => {
-      const decision = resolveSameMeasurementSheddingDecision({
-        state: shedState({ lastOvershootMitigationMs: NOW - 30_000 }),
-        measurementTs: SAMPLE_TS,
-        neededKw: NEEDED_KW,
-      measurementPowerW: READING_W,
-        nowTs: NOW,
-        allowEscalation: false,
-      });
+      const decision = resolveSameMeasurementSheddingDecision(
+      shedState({ lastOvershootMitigationMs: NOW - 30_000 }),
+      SAMPLE_TS,
+      READING_W,
+      NEEDED_KW,
+      NOW,
+      false,
+    );
 
       expect(decision).toEqual({
         skip: true,

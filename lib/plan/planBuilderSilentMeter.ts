@@ -168,13 +168,13 @@ export class SilentMeterPlanBuilder {
       state: this.state,
       deps,
     });
-    const selection = selectShedDevices({
+    const selection = selectShedDevices(
       candidates,
-      needed: Number.POSITIVE_INFINITY,
-      reason: this.directiveReason(),
-      debugStructured: this.deps.debugStructured,
-      shedAllCandidates: true,
-    });
+      Number.POSITIVE_INFINITY,
+      this.directiveReason(),
+      true,
+      this.deps.debugStructured,
+    );
     // Every controllable device the candidate walk did not pick is shed too:
     // a device already off, a thermostat already at its shed setpoint, a
     // stepper at its floor — none of them is a candidate (there is nothing

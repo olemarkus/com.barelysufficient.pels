@@ -99,11 +99,7 @@ const dumpLoad = (id: string, overrides: Parameters<typeof buildPlanInputDevice>
 describe('resolveSurplusHold (standing dump-load hold)', () => {
   it('holds a designated device with no eligibility state (restart baseline: held => off)', () => {
     const state = createPlanEngineState(0);
-    const { holdIds, reasonById } = resolveSurplusHold({
-      devices: [dumpLoad('a')],
-      state,
-      excludeIds: new Set(),
-    });
+    const { holdIds, reasonById } = resolveSurplusHold([dumpLoad('a')], state, new Set());
     expect(holdIds.has('a')).toBe(true);
     expect(reasonById.get('a')).toEqual(AWAITING);
   });
@@ -111,18 +107,14 @@ describe('resolveSurplusHold (standing dump-load hold)', () => {
   it('holds a designated device whose eligibility is explicitly false', () => {
     const state = createPlanEngineState(0);
     state.surplusEligibilityByDevice.a = { eligible: false, sinceMs: 0 };
-    const { holdIds } = resolveSurplusHold({ devices: [dumpLoad('a')], state, excludeIds: new Set() });
+    const { holdIds } = resolveSurplusHold([dumpLoad('a')], state, new Set());
     expect(holdIds.has('a')).toBe(true);
   });
 
   it('does not hold an eligible device (the allocator lifted the hold)', () => {
     const state = createPlanEngineState(0);
     state.surplusEligibilityByDevice.a = { eligible: true, sinceMs: 0 };
-    const { holdIds, reasonById } = resolveSurplusHold({
-      devices: [dumpLoad('a')],
-      state,
-      excludeIds: new Set(),
-    });
+    const { holdIds, reasonById } = resolveSurplusHold([dumpLoad('a')], state, new Set());
     expect(holdIds.has('a')).toBe(false);
     expect(reasonById.has('a')).toBe(false);
   });
@@ -132,11 +124,7 @@ describe('resolveSurplusHold (standing dump-load hold)', () => {
     // is off only because its restore has not materialized yet — let it turn on FROM surplus.
     const state = createPlanEngineState(0);
     state.surplusEligibilityByDevice.a = { eligible: true, sinceMs: 0 };
-    const { holdIds } = resolveSurplusHold({
-      devices: [dumpLoad('a', { binaryControl: { on: false } })],
-      state,
-      excludeIds: new Set(),
-    });
+    const { holdIds } = resolveSurplusHold([dumpLoad('a', { binaryControl: { on: false } })], state, new Set());
     expect(holdIds.has('a')).toBe(false);
   });
 
@@ -147,11 +135,7 @@ describe('resolveSurplusHold (standing dump-load hold)', () => {
     // its ON has materialized on real export.
     const state = createPlanEngineState(0);
     state.surplusEligibilityByDevice.a = { eligible: true, sinceMs: 0, pendingSinceMs: 1000 };
-    const { holdIds, reasonById } = resolveSurplusHold({
-      devices: [dumpLoad('a', { binaryControl: { on: false } })],
-      state,
-      excludeIds: new Set(),
-    });
+    const { holdIds, reasonById } = resolveSurplusHold([dumpLoad('a', { binaryControl: { on: false } })], state, new Set());
     expect(holdIds.has('a')).toBe(true);
     expect(reasonById.get('a')).toEqual(AWAITING);
   });
@@ -161,18 +145,14 @@ describe('resolveSurplusHold (standing dump-load hold)', () => {
     // dip — it rides the settle/dwell until the allocator releases eligibility.
     const state = createPlanEngineState(0);
     state.surplusEligibilityByDevice.a = { eligible: true, sinceMs: 0, pendingSinceMs: 1000 };
-    const { holdIds } = resolveSurplusHold({
-      devices: [dumpLoad('a', { binaryControl: { on: true } })],
-      state,
-      excludeIds: new Set(),
-    });
+    const { holdIds } = resolveSurplusHold([dumpLoad('a', { binaryControl: { on: true } })], state, new Set());
     expect(holdIds.has('a')).toBe(false);
   });
 
   it('never holds a device without the surplusOnly posture', () => {
     const state = createPlanEngineState(0);
     const plain = buildPlanInputDevice({ id: 'b', deviceType: 'onoff', binaryControllable: true });
-    expect(resolveSurplusHold({ devices: [plain], state, excludeIds: new Set() }).holdIds.size).toBe(0);
+    expect(resolveSurplusHold([plain], state, new Set()).holdIds.size).toBe(0);
   });
 
   it('skips every excluded id (the smart-task precedence union)', () => {
@@ -181,19 +161,15 @@ describe('resolveSurplusHold (standing dump-load hold)', () => {
     // keys, and admittedDeviceIds into one exclude set; the hold must honour
     // membership regardless of which source contributed the id.
     for (const source of ['forceShed', 'deferredAvoid', 'releaseIntent', 'admitted']) {
-      const { holdIds } = resolveSurplusHold({
-        devices: [dumpLoad(source)],
-        state,
-        excludeIds: new Set([source]),
-      });
+      const { holdIds } = resolveSurplusHold([dumpLoad(source)], state, new Set([source]));
       expect(holdIds.size).toBe(0);
     }
   });
 
   it('produces a byte-stable reason across cycles (no numbers/timestamps)', () => {
     const state = createPlanEngineState(0);
-    const first = resolveSurplusHold({ devices: [dumpLoad('a')], state, excludeIds: new Set() });
-    const second = resolveSurplusHold({ devices: [dumpLoad('a')], state, excludeIds: new Set() });
+    const first = resolveSurplusHold([dumpLoad('a')], state, new Set());
+    const second = resolveSurplusHold([dumpLoad('a')], state, new Set());
     expect(JSON.stringify(first.reasonById.get('a'))).toBe(JSON.stringify(second.reasonById.get('a')));
     // Rebuild-storm guard (f1550cea class): the serialized reason may not embed
     // any digit that could tick between cycles.

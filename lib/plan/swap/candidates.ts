@@ -65,14 +65,14 @@ function isViableSwapCandidate(
   return true;
 }
 
-export function buildSwapCandidates(params: {
-  dev: DevicePlanDevice;
-  onDevices: DevicePlanDevice[];
-  swappedOutFor: ReadonlyMap<string, string>;
-  availableHeadroom: number;
-  needed: number;
-  restoredThisCycle: ReadonlySet<string>;
-}): {
+export function buildSwapCandidates(
+  dev: DevicePlanDevice,
+  onDevices: DevicePlanDevice[],
+  swappedOutFor: ReadonlyMap<string, string>,
+  availableHeadroom: number,
+  needed: number,
+  restoredThisCycle: ReadonlySet<string>,
+): {
   ready: boolean;
   toShed: DevicePlanDevice[];
   shedNames: string;
@@ -86,14 +86,6 @@ export function buildSwapCandidates(params: {
   admission: RestoreAdmissionMetrics;
   reserveKw: number;
 } {
-  const {
-    dev,
-    onDevices,
-    swappedOutFor,
-    availableHeadroom,
-    needed,
-    restoredThisCycle,
-  } = params;
   const toShed: DevicePlanDevice[] = [];
   let currentPotential = availableHeadroom;
   let effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);

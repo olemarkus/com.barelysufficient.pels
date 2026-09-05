@@ -171,14 +171,14 @@ export function resolveCeilingShortfall(params: {
   // not eat a promised block). `displayPostReserveMarginKw` is the unclamped
   // variant, so deep over-pace gaps stay honest instead of flattening to
   // `needed + reserves`.
-  const swap = buildSwapCandidates({
+  const swap = buildSwapCandidates(
     dev,
-    onDevices: [...inputs.onDevices],
-    swappedOutFor: inputs.swappedOutFor,
-    availableHeadroom: reserved.effectiveHeadroomKw,
-    needed: neededKw,
-    restoredThisCycle: inputs.restoredThisCycle,
-  });
+    [...inputs.onDevices],
+    inputs.swappedOutFor,
+    reserved.effectiveHeadroomKw,
+    neededKw,
+    inputs.restoredThisCycle,
+  );
   const gapKw = swap.toShed.length > 0
     ? Math.min(plainGapKw, RESTORE_ADMISSION_FLOOR_KW - swap.displayPostReserveMarginKw)
     : plainGapKw;

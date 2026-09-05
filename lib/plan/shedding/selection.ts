@@ -39,30 +39,23 @@ import type { ShedCandidate } from './types';
  * this map names, so the deficit selection just spent is the deficit the cycle
  * actually frees.
  */
-export function selectShedDevices(params: {
-  candidates: ShedCandidate[];
-  needed: number;
-  reason: DeviceReason;
-  debugStructured?: StructuredDebugEmitter;
-  shedAllCandidates?: boolean;
-}): {
+export function selectShedDevices(
+  candidates: ShedCandidate[],
+  needed: number,
+  reason: DeviceReason,
+  shedAllCandidates: boolean,
+  debugStructured?: StructuredDebugEmitter,
+): {
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
   shedStepTargets: Map<string, string>;
 } {
-  const {
-    candidates,
-    needed,
-    reason,
-    debugStructured,
-    shedAllCandidates = false,
-  } = params;
   const shedSet = new Set<string>();
   const shedReasons = new Map<string, DeviceReason>();
   const shedStepTargets = new Map<string, string>();
   let remaining = needed;
   for (const nextCandidate of candidates) {
-    if (shouldStopSelection({ shedAllCandidates, remaining })) break;
+    if (shouldStopSelection(shedAllCandidates, remaining)) break;
     if (nextCandidate.effectivePower <= 0) continue;
     const spend = resolveCandidateSpend(nextCandidate, remaining);
     shedSet.add(nextCandidate.id);
@@ -94,8 +87,8 @@ function resolveCandidateSpend(candidate: ShedCandidate, remainingKw: number): C
   return { reliefKw: rung.reliefKw, toStepId: rung.toStepId };
 }
 
-function shouldStopSelection(params: { shedAllCandidates: boolean; remaining: number }): boolean {
-  return !params.shedAllCandidates && params.remaining <= 0;
+function shouldStopSelection(shedAllCandidates: boolean, remaining: number): boolean {
+  return !shedAllCandidates && remaining <= 0;
 }
 
 function logSelectedCandidate(

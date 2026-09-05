@@ -229,16 +229,10 @@ lib/plan/restore/marking.ts 2
 lib/plan/restore/steppedRestoreAdmission.ts 5
 lib/plan/restore/steppedRestoreGates.ts 2
 lib/plan/restore/timing.ts 6
-lib/plan/shedding/buildSheddingPlan.ts 4
 lib/plan/shedding/candidateBuilders.ts 1
 lib/plan/shedding/candidateSkipLog.ts 1
 lib/plan/shedding/candidates.ts 1
-lib/plan/shedding/overshoot.ts 5
-lib/plan/shedding/selection.ts 1
 lib/plan/shedding/steppedCandidates.ts 6
-lib/plan/shedding/surplusHold.ts 1
-lib/plan/swap/candidates.ts 1
-lib/plan/swap/lifecycle.ts 2
 lib/ports/homeyRuntime.ts 1
 lib/power/capacityGuard.ts 1
 lib/power/persistedHomeTracker.ts 5

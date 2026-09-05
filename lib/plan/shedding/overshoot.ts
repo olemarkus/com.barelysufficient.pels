@@ -33,26 +33,18 @@ const UNCHANGED_READING_SHED_HOLD_MS = 30 * 1000;
 /** 1 W — below any real shed decision, above float drift in a derived deficit. */
 const DEFICIT_GROWTH_EPSILON_KW = 0.001;
 
-export function resolveSameMeasurementSheddingDecision(params: {
-  state: PlanEngineState;
-  measurementTs: number | null;
-  measurementPowerW: number | null;
-  neededKw: number;
-  nowTs: number;
-  allowEscalation?: boolean;
-}): { skip: boolean; escalatedSameSample: boolean; heldOnUnchangedReading: boolean } {
-  const {
-    state,
-    measurementTs,
-    measurementPowerW,
-    neededKw,
-    nowTs,
-    allowEscalation = true,
-  } = params;
+export function resolveSameMeasurementSheddingDecision(
+  state: PlanEngineState,
+  measurementTs: number | null,
+  measurementPowerW: number | null,
+  neededKw: number,
+  nowTs: number,
+  allowEscalation: boolean,
+): { skip: boolean; escalatedSameSample: boolean; heldOnUnchangedReading: boolean } {
   const alreadyShedThisSample = measurementTs !== null
     && measurementTs === state.lastShedPlanMeasurementTs;
   if (!alreadyShedThisSample) {
-    if (isUnchangedReadingHeld({ state, measurementPowerW, neededKw, nowTs })) {
+    if (isUnchangedReadingHeld(state, measurementPowerW, neededKw, nowTs)) {
       return { skip: true, escalatedSameSample: false, heldOnUnchangedReading: true };
     }
     return { skip: false, escalatedSameSample: false, heldOnUnchangedReading: false };
@@ -79,15 +71,12 @@ export function resolveSameMeasurementSheddingDecision(params: {
  * whose entry branch nulls the mitigation clock, which would strip the anchor
  * off the first shed of every incident — the exact cycle this hold exists for.
  */
-function isUnchangedReadingHeld(params: {
-  state: PlanEngineState;
-  measurementPowerW: number | null;
-  neededKw: number;
-  nowTs: number;
-}): boolean {
-  const {
-    state, measurementPowerW, neededKw, nowTs,
-  } = params;
+function isUnchangedReadingHeld(
+  state: PlanEngineState,
+  measurementPowerW: number | null,
+  neededKw: number,
+  nowTs: number,
+): boolean {
   if (measurementPowerW === null) return false;
   if (state.lastShedPlanPowerW === null) return false;
   if (measurementPowerW !== state.lastShedPlanPowerW) return false;
@@ -115,22 +104,14 @@ function hasDeficitGrown(latchedKw: number | null, neededKw: number): boolean {
   return neededKw > latchedKw + DEFICIT_GROWTH_EPSILON_KW;
 }
 
-export function emitOvershootEscalationBlocked(params: {
-  structuredLog?: PinoLogger;
-  capacityGuard: CapacityGuard;
-  neededKw: number;
-  remainingCandidates: number;
-  measurementTs: number | null;
-  nowTs: number;
-}): void {
-  const {
-    structuredLog,
-    capacityGuard,
-    neededKw,
-    remainingCandidates,
-    measurementTs,
-    nowTs,
-  } = params;
+export function emitOvershootEscalationBlocked(
+  capacityGuard: CapacityGuard,
+  neededKw: number,
+  remainingCandidates: number,
+  measurementTs: number | null,
+  nowTs: number,
+  structuredLog?: PinoLogger,
+): void {
   structuredLog?.info({
     event: 'capacity_overshoot_escalation_blocked',
     incidentId: capacityGuard.getCurrentIncidentId() ?? undefined,
@@ -141,20 +122,14 @@ export function emitOvershootEscalationBlocked(params: {
   });
 }
 
-export function resolveRecentRestoreState(params: {
-  device: Pick<PlanInputDevice, 'id' | 'name'>;
-  state: PlanEngineState;
-  nowTs: number;
-  needed: number;
-  debugStructured?: StructuredDebugEmitter;
-}): boolean {
-  const {
-    device,
-    state,
-    nowTs,
-    needed,
-    debugStructured,
-  } = params;
+export function resolveRecentRestoreState(
+  device: Pick<PlanInputDevice, 'id' | 'name'>,
+  state: PlanEngineState,
+  nowTs: number,
+  /** Severity, sentinel-carrying — this is the one reader that wants it. */
+  needed: number,
+  debugStructured?: StructuredDebugEmitter,
+): boolean {
   const lastRestore = state.lastDeviceRestoreMs[device.id];
   if (!lastRestore) return false;
   const sinceRestoreMs = nowTs - lastRestore;
@@ -173,7 +148,8 @@ export function resolveRecentRestoreState(params: {
   return false;
 }
 
-export function buildOvershootStats(params: {
+/** The candidate-walk summary a cycle's `OvershootStats` is built from. */
+export type OvershootStatsInputs = {
   needed: number;
   eligibleCandidateCount: number;
   blockedCandidateCount: number;
@@ -181,7 +157,9 @@ export function buildOvershootStats(params: {
   blockedReducibleControlledKw: number;
   skippedCandidateCount?: number;
   skippedCandidateReasons?: OvershootStats['skippedCandidateReasons'];
-}): OvershootStats {
+};
+
+export function buildOvershootStats(params: OvershootStatsInputs): OvershootStats {
   const {
     needed,
     eligibleCandidateCount,

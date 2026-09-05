@@ -167,13 +167,9 @@ function addCandidatePower(params: {
     recorder,
   } = params;
   const priority = device.priority;
-  const recentlyRestored = resolveRecentRestoreState({
-    device,
-    state,
-    nowTs,
-    needed,
-    debugStructured: deps.debugStructured,
-  });
+  const recentlyRestored = resolveRecentRestoreState(
+    device, state, nowTs, needed, deps.debugStructured,
+  );
   if (isSteppedLoadDevice(device)) {
     return buildSteppedCandidate({
       device,

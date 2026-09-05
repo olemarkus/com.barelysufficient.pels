@@ -75,7 +75,7 @@ export function attemptSwapRestore(
     setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
     return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
   }
-  if (shouldKeepSwapTargetPending({ swapState, deviceId: dev.id, measurementTs })) {
+  if (shouldKeepSwapTargetPending(swapState, dev.id, measurementTs)) {
     setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
     return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
   }
@@ -83,7 +83,7 @@ export function attemptSwapRestore(
   // at all and be covered by the caller's pre-announcement, which labelled them
   // `insufficient_headroom` — but the shortfall is not why the swap stood down,
   // and once the pre-announcement went they would have gone silent entirely.
-  if (shouldDeferSwapAdmissionForMeasurement({ swapState, deviceId: dev.id, measurementTs })) {
+  if (shouldDeferSwapAdmissionForMeasurement(swapState, dev.id, measurementTs)) {
     return rejectSwapRestoreForMeasurement(
       cycle, dev, availableHeadroom, restoreNeed, restoreDebugKey,
       rejectedDeviceUpdate, 'awaiting_fresh_measurement',
@@ -107,14 +107,9 @@ export function attemptSwapRestore(
     return { kind: 'no_source' };
   }
 
-  const swap = buildSwapCandidates({
-    dev,
-    onDevices,
-    swappedOutFor: swapState.swappedOutFor,
-    availableHeadroom,
-    needed: restoreNeed.needed,
-    restoredThisCycle,
-  });
+  const swap = buildSwapCandidates(
+    dev, onDevices, swapState.swappedOutFor, availableHeadroom, restoreNeed.needed, restoredThisCycle,
+  );
   if (!swap.ready) {
     return rejectSwapRestoreWithCandidates(
       cycle, dev, availableHeadroom, restoreNeed, swap, restoreDebugKey, rejectedDeviceUpdate,

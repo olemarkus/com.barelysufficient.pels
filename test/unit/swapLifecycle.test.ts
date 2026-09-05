@@ -211,16 +211,8 @@ describe('swap lifecycle blocking and cleanup', () => {
     expect(exportSwapState(swapState).swapByDevice).toEqual({
       target: { lastPlanMeasurementTs: 123 },
     });
-    expect(shouldDeferSwapAdmissionForMeasurement({
-      swapState,
-      deviceId: 'target',
-      measurementTs: 123,
-    })).toBe(true);
-    expect(shouldDeferSwapAdmissionForMeasurement({
-      swapState,
-      deviceId: 'target',
-      measurementTs: 124,
-    })).toBe(false);
+    expect(shouldDeferSwapAdmissionForMeasurement(swapState, 'target', 123)).toBe(true);
+    expect(shouldDeferSwapAdmissionForMeasurement(swapState, 'target', 124)).toBe(false);
     vi.useRealTimers();
   });
 
@@ -254,16 +246,8 @@ describe('swap lifecycle blocking and cleanup', () => {
     expect(exportSwapState(swapState).swapByDevice).toEqual({
       target: { lastPlanMeasurementTs: 123 },
     });
-    expect(shouldDeferSwapAdmissionForMeasurement({
-      swapState,
-      deviceId: 'target',
-      measurementTs: 123,
-    })).toBe(true);
-    expect(shouldDeferSwapAdmissionForMeasurement({
-      swapState,
-      deviceId: 'target',
-      measurementTs: 124,
-    })).toBe(false);
+    expect(shouldDeferSwapAdmissionForMeasurement(swapState, 'target', 123)).toBe(true);
+    expect(shouldDeferSwapAdmissionForMeasurement(swapState, 'target', 124)).toBe(false);
   });
 
   it('direct swapped-out cleanup preserves completed target measurement watermark', () => {
@@ -365,35 +349,23 @@ describe('swap measurement gating', () => {
     swapState.pendingSwapTargets.add('target');
     swapState.lastSwapPlanMeasurementTs.set('target', 100);
 
-    expect(shouldKeepSwapTargetPending({ swapState, deviceId: 'target', measurementTs: 100 })).toBe(true);
+    expect(shouldKeepSwapTargetPending(swapState, 'target', 100)).toBe(true);
   });
 
   it('orphan measurement metadata does not mark a target swap pending', () => {
     const swapState = emptySwapState();
     swapState.lastSwapPlanMeasurementTs.set('target', 100);
 
-    expect(shouldKeepSwapTargetPending({ swapState, deviceId: 'target', measurementTs: null })).toBe(false);
+    expect(shouldKeepSwapTargetPending(swapState, 'target', null)).toBe(false);
   });
 
   it('orphan measurement metadata still defers swap admission until a fresh measurement', () => {
     const swapState = emptySwapState();
     swapState.lastSwapPlanMeasurementTs.set('target', 100);
 
-    expect(shouldDeferSwapAdmissionForMeasurement({
-      swapState,
-      deviceId: 'target',
-      measurementTs: null,
-    })).toBe(true);
-    expect(shouldDeferSwapAdmissionForMeasurement({
-      swapState,
-      deviceId: 'target',
-      measurementTs: 100,
-    })).toBe(true);
-    expect(shouldDeferSwapAdmissionForMeasurement({
-      swapState,
-      deviceId: 'target',
-      measurementTs: 101,
-    })).toBe(false);
+    expect(shouldDeferSwapAdmissionForMeasurement(swapState, 'target', null)).toBe(true);
+    expect(shouldDeferSwapAdmissionForMeasurement(swapState, 'target', 100)).toBe(true);
+    expect(shouldDeferSwapAdmissionForMeasurement(swapState, 'target', 101)).toBe(false);
   });
 
   it('missing measurement keeps a pending swap target conservative', () => {
@@ -401,7 +373,7 @@ describe('swap measurement gating', () => {
     swapState.pendingSwapTargets.add('target');
     swapState.lastSwapPlanMeasurementTs.set('target', 100);
 
-    expect(shouldKeepSwapTargetPending({ swapState, deviceId: 'target', measurementTs: null })).toBe(true);
+    expect(shouldKeepSwapTargetPending(swapState, 'target', null)).toBe(true);
   });
 
   it('newer measurement allows admission re-evaluation', () => {
@@ -409,6 +381,6 @@ describe('swap measurement gating', () => {
     swapState.pendingSwapTargets.add('target');
     swapState.lastSwapPlanMeasurementTs.set('target', 100);
 
-    expect(shouldKeepSwapTargetPending({ swapState, deviceId: 'target', measurementTs: 101 })).toBe(false);
+    expect(shouldKeepSwapTargetPending(swapState, 'target', 101)).toBe(false);
   });
 });

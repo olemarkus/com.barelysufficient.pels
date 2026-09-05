@@ -427,14 +427,7 @@ describe('surplus-held devices are never swap candidates', () => {
       priority: 9,
     });
     const wantsRoom = buildPlanDevice({ id: 'heater', name: 'Heater', priority: 1, expectedPowerKw: 1 });
-    const { toShed, ready } = buildSwapCandidates({
-      dev: wantsRoom,
-      onDevices: [heldPump],
-      swappedOutFor: new Map(),
-      availableHeadroom: 0,
-      needed: 1,
-      restoredThisCycle: new Set(),
-    });
+    const { toShed, ready } = buildSwapCandidates(wantsRoom, [heldPump], new Map(), 0, 1, new Set());
     expect(toShed).toEqual([]);
     expect(ready).toBe(false);
   });
