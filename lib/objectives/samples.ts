@@ -16,6 +16,9 @@ import type {
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
 
+import type { DeviceObjectiveProfileSample } from './types';
+import type { ObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
+
 /**
  * Below this, a reading is standby noise rather than a device doing work.
  *
@@ -29,8 +32,6 @@ import type {
  * reading, which is the defect this whole change removes.
  */
 const MIN_CREDIBLE_DEVICE_POWER_KW = 0.005;
-import type { DeviceObjectiveProfileSample } from './types';
-import type { ObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 
 // Observed truth (temperature / SoC / reported step) plus the producer-resolved
 // draw and the few descriptor fields the kind predicates need — NOT the full

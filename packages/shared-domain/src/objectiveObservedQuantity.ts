@@ -42,8 +42,11 @@ export type ObjectiveQuantityDevice =
  * or defend against. A device with no reading at all resolves to `null` — that is
  * the one real absence, and it is the whole absence.
  *
- * Temperature takes precedence over SoC for a device reporting both, matching the
- * order the sampler used when this was two branches.
+ * SoC takes precedence over temperature for a device reporting both, matching
+ * `resolveSmartTaskDeviceKind` ("EV chargers win over the temperature branch").
+ * The two classifiers must not disagree: with the profile's kind guard gone there
+ * is nothing downstream to catch it, and a kWh/°C rate consumed as kWh/% would
+ * mis-size the whole deadline plan.
  *
  * `deviceObservedAtMs` is the device-level stamp (Homey's highest per-capability
  * `lastUpdated`), needed only for temperature: `TemperatureObservation` carries no
@@ -54,6 +57,14 @@ export function resolveObjectiveObservedQuantity(params: {
   deviceObservedAtMs: number | undefined;
 }): ObjectiveObservedQuantity | null {
   const { device, deviceObservedAtMs } = params;
+
+  if (hasObservedStateOfCharge(device)) {
+    // `level` answers usability, and no `Number.isFinite` re-check follows it —
+    // the producer stands behind the level or reports none.
+    const { level, observedAtMs } = device.stateOfCharge;
+    if (level.kind !== 'known' || observedAtMs === undefined) return null;
+    return { observedAtMs, value: level.percent };
+  }
 
   if (
     isTemperatureControlDevice(device)
@@ -66,14 +77,6 @@ export function resolveObjectiveObservedQuantity(params: {
       // un-rounded sensor value would make two identical readings compare unequal.
       value: Math.round(device.temperature.currentTemperature * 10) / 10,
     };
-  }
-
-  if (hasObservedStateOfCharge(device)) {
-    // `level` answers usability, and no `Number.isFinite` re-check follows it —
-    // the producer stands behind the level or reports none.
-    const { level, observedAtMs } = device.stateOfCharge;
-    if (level.kind !== 'known' || observedAtMs === undefined) return null;
-    return { observedAtMs, value: level.percent };
   }
 
   return null;
