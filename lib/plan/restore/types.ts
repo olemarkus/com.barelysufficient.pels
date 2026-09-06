@@ -4,7 +4,6 @@ import type { DevicePlanDevice, ShedBehavior } from '../planTypes';
 import type { SwapState, SwapStateSnapshot } from '../swap';
 import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
 import type { PowerTrackerState } from '../../power/tracker';
-import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { RestoreTiming } from './timing';
 import type { PlanEngineState } from '../planState';
 import type { SteppedSwapExecutor } from './helpers';
@@ -70,13 +69,6 @@ export type RestoreCycle = {
    * from the same `state.currentRebuildTrigger`.
    */
   readonly phase: ReturnType<typeof resolveRestoreDecisionPhase>;
-  /**
-   * Whether this pass may actually admit, or is costing a hypothetical for the
-   * cooldown preview. Always present: `{ kind: 'apply' }` is a decision, not an
-   * absence, and it used to be spelled as an optional that eleven call sites
-   * forwarded and one defaulted.
-   */
-  readonly admissionMode: RestoreAdmissionMode;
 };
 
 /**
@@ -87,10 +79,6 @@ export type RestoreLane = {
   readonly onDevices: DevicePlanDevice[];
   readonly steppedSwapExecutor: SteppedSwapExecutor;
 };
-
-export type RestoreAdmissionMode =
-  | { kind: 'apply' }
-  | { kind: 'cooldown_preview'; holdReason: DeviceReason };
 
 export type RestoreDeviceTiming = Pick<RestoreTiming,
 | 'activeOvershoot'
@@ -105,14 +93,6 @@ export type RestoreDeviceTiming = Pick<RestoreTiming,
 | 'restoreCooldownRemainingSec'
 | 'startupStabilizationRemainingSec'>;
 
-export type RestoreCooldownPreview = {
-  holdReason: DeviceReason;
-  selectedOne: boolean;
-  appliesToAllCandidates: boolean;
-  capacityAvailableKw: number;
-  budgetAvailableKw: number | null;
-};
-
 /**
  * Result contract of the restore pass (`applyRestorePlan`), owned by
  * `lib/plan/restore`. Callers can rely on: `planDevices` carries every input
@@ -120,8 +100,8 @@ export type RestoreCooldownPreview = {
  * figures and `headroomReserves` are resolved exactly once per cycle by this
  * pass, and the downstream hold stage consumes them rather than re-resolving
  * (the reserve resolver advances arming state, so a second resolution is a
- * correctness bug, not just waste); the timing fields mirror this cycle's
- * `RestoreTiming`. Governing docs:
+ * correctness bug, not just waste); `timing` is this cycle's effective
+ * `RestoreTiming`, whole. Governing docs:
  * `notes/deferred-load-objectives/preemptive-power-reservation.md` (startup
  * reservations) and `notes/safe-pace-two-constraints.md` (the two admission
  * axes).
@@ -144,30 +124,12 @@ export type RestorePlanResult = {
   // binary/stepped lanes honour — without this, the hold lane gave the promised
   // block away to any set_temperature restore.
   headroomReserves: readonly HeadroomReserve[];
-  // Hypothetical direct-admission state used only by the later set-temperature
-  // lane while a global restore cooldown is active. Its ledger is separate
-  // from the real cycle ledger, so selecting the next card never spends power
-  // or creates executable intent.
-  restoreCooldownPreview: RestoreCooldownPreview | null;
   restoredOneThisCycle: boolean;
-  inCooldown: boolean;
-  inRestoreCooldown: boolean;
-  activeOvershoot: boolean;
-  restoreCooldownSeconds: number;
-  shedCooldownRemainingSec: number | null;
-  shedCooldownStartedAtMs: number | null;
-  shedCooldownTotalSec: number | null;
-  restoreCooldownRemainingSec: number | null;
-  restoreCooldownStartedAtMs: number | null;
-  restoreCooldownTotalSec: number | null;
-  inShedWindow: boolean;
-  // `inShedWindow` is the OR of four causes and the downstream hold lane needs
-  // them apart; `nowTs` is this pass's single clock read, which the ceiling
-  // shortfall dates its recent-shed window against. Both already flow at runtime
-  // through the `...effectiveTiming` spread in `applyRestorePlan` — declaring
-  // them adds no computation and no second clock read.
-  inStartupStabilization: boolean;
-  nowTs: number;
-  restoreCooldownMs: number;
-  lastRestoreCooldownBumpMs: number | null;
+  /**
+   * This cycle's EFFECTIVE timing — the one the pass decided from, with the
+   * startup fields zeroed unless capacity is the binding source — carried whole
+   * so the hold lane and diagnostics read the same object. It used to be
+   * spread flat into the result beside the pass's outputs.
+   */
+  timing: RestoreTiming;
 };

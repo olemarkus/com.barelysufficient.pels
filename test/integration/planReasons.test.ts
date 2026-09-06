@@ -12,7 +12,8 @@ import { createPlanEngineState } from '../../lib/plan/planState';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
-import { buildPlanDevice } from '../utils/planTestUtils';
+import type { RestoreTiming } from '../../lib/plan/restore/timing';
+import { buildPlanDevice, restoreTimingFixture } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { reasonContext } from '../helpers/reasonContext';
 
@@ -936,20 +937,12 @@ describe('applyShedTemperatureHold', () => {
         }), true)],
         state,
         shedReasons: new Map(),
-        inShedWindow: false,
-        inCooldown: false,
-        activeOvershoot: false,
+        timing: restoreTimingFixture(),
+        sheddingActive: false,
         availableHeadroom: 0.3,
         ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 8, budgetAvailableKw: 0.3 }),
         restoredOneThisCycle: false,
         restoredThisCycle: new Set(),
-        shedCooldownRemainingSec: null,
-        holdDuringRestoreCooldown: false,
-        restoreCooldownSeconds: 60,
-        restoreCooldownRemainingSec: null,
-        inStartupStabilization: false,
-        restoreCooldownStartedAtMs: null,
-        restoreCooldownTotalSec: null,
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       });
     };
@@ -984,19 +977,11 @@ describe('applyShedTemperatureHold', () => {
       }), true)],
       state,
       shedReasons: new Map(),
-      inShedWindow: true,
-      inCooldown: false,
-      activeOvershoot: false,
+      timing: restoreTimingFixture({ inShedWindow: true }),
+      sheddingActive: false,
       availableHeadroom: 1,
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
-      shedCooldownRemainingSec: null,
-      holdDuringRestoreCooldown: false,
-      restoreCooldownSeconds: 60,
-      restoreCooldownRemainingSec: null,
-      inStartupStabilization: false,
-      restoreCooldownStartedAtMs: null,
-      restoreCooldownTotalSec: null,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     });
 
@@ -1025,19 +1010,11 @@ describe('applyShedTemperatureHold', () => {
       }), false)],
       state,
       shedReasons: new Map(),
-      inShedWindow: true,
-      inCooldown: false,
-      activeOvershoot: false,
+      timing: restoreTimingFixture({ inShedWindow: true }),
+      sheddingActive: false,
       availableHeadroom: 1,
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
-      shedCooldownRemainingSec: null,
-      holdDuringRestoreCooldown: false,
-      restoreCooldownSeconds: 60,
-      restoreCooldownRemainingSec: null,
-      inStartupStabilization: false,
-      restoreCooldownStartedAtMs: null,
-      restoreCooldownTotalSec: null,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     });
 
@@ -1073,19 +1050,11 @@ describe('applyShedTemperatureHold', () => {
       }), true)],
       state,
       shedReasons: new Map(),
-      inShedWindow: false,
-      inCooldown: false,
-      activeOvershoot: false,
+      timing: restoreTimingFixture(),
+      sheddingActive: false,
       availableHeadroom: 3,
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
-      shedCooldownRemainingSec: null,
-      holdDuringRestoreCooldown: false,
-      restoreCooldownSeconds: 60,
-      restoreCooldownRemainingSec: null,
-      inStartupStabilization: false,
-      restoreCooldownStartedAtMs: null,
-      restoreCooldownTotalSec: null,
       guardInShortfall: true,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     });
@@ -1115,9 +1084,9 @@ describe('applyShedTemperatureHold', () => {
     const COOLDOWN_STARTED_AT_MS = Date.UTC(2026, 0, 1, 11, 59, 15);
 
     type HoldTimingOverride = Partial<Pick<
-      Parameters<typeof applyShedTemperatureHold>[0],
+      RestoreTiming,
       'inShedWindow' | 'inCooldown' | 'activeOvershoot' | 'inStartupStabilization'
-      | 'holdDuringRestoreCooldown' | 'shedCooldownRemainingSec'
+      | 'inRestoreCooldown' | 'shedCooldownRemainingSec'
     >>;
 
     const runHold = (params: {
@@ -1151,26 +1120,24 @@ describe('applyShedTemperatureHold', () => {
         }), true)],
         state,
         shedReasons: params.shedReasons ?? new Map(),
-        inShedWindow: true,
-        inCooldown: false,
-        activeOvershoot: false,
-        inStartupStabilization: false,
+        timing: restoreTimingFixture({
+          inShedWindow: true,
+          restoreCooldownSeconds: 45,
+          restoreCooldownRemainingSec: 45,
+          restoreCooldownStartedAtMs: COOLDOWN_STARTED_AT_MS,
+          restoreCooldownTotalSec: 60,
+          ...params.timing,
+        }),
+        sheddingActive: false,
         availableHeadroom: 0,
         restoredOneThisCycle: false,
         restoredThisCycle: new Set(),
-        shedCooldownRemainingSec: null,
-        holdDuringRestoreCooldown: false,
-        restoreCooldownSeconds: 45,
-        restoreCooldownRemainingSec: 45,
-        restoreCooldownStartedAtMs: COOLDOWN_STARTED_AT_MS,
-        restoreCooldownTotalSec: 60,
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
-        ...params.timing,
       });
     };
 
     it('reads the restore cooldown countdown, not the hard cap', () => {
-      const result = runHold({ timing: { holdDuringRestoreCooldown: true } });
+      const result = runHold({ timing: { inRestoreCooldown: true } });
 
       expect(result.planDevices[0]?.reason).toEqual({
         code: PLAN_REASON_CODES.cooldownRestore,
@@ -1188,7 +1155,7 @@ describe('applyShedTemperatureHold', () => {
     // draw unchecked for the whole 60–300 s cooldown. Asserting `plannedTarget`
     // alone does not catch that; it is the plan's intent, not the executor's.
     it('keeps building the floor write while the shed has not materialized', () => {
-      const inFlight = runHold({ timing: { holdDuringRestoreCooldown: true }, currentTarget: 22 });
+      const inFlight = runHold({ timing: { inRestoreCooldown: true }, currentTarget: 22 });
       const [device] = inFlight.planDevices;
 
       expect(device?.reason.code).toBe(PLAN_REASON_CODES.capacity);
@@ -1199,7 +1166,7 @@ describe('applyShedTemperatureHold', () => {
 
       // …and once the floor IS observed, suppressing the write costs nothing,
       // so the honest countdown wins.
-      const settled = runHold({ timing: { holdDuringRestoreCooldown: true } });
+      const settled = runHold({ timing: { inRestoreCooldown: true } });
       expect(settled.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.cooldownRestore);
     });
 
@@ -1227,7 +1194,7 @@ describe('applyShedTemperatureHold', () => {
 
     it('leaves a fresh shed decision alone', () => {
       const result = runHold({
-        timing: { holdDuringRestoreCooldown: true },
+        timing: { inRestoreCooldown: true },
         shedReasons: new Map([['dev-temp', { code: PLAN_REASON_CODES.hourlyBudget, detail: null }]]),
       });
 

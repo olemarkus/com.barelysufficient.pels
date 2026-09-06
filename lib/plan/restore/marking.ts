@@ -1,4 +1,6 @@
 import type { DevicePlanDevice } from '../planTypes';
+import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
+import type { SwapState } from '../swap';
 import { computeBaseRestoreNeed } from './accounting';
 import {
   getInactiveReason,
@@ -8,14 +10,10 @@ import {
   markOffDevicesStayOff,
 } from './devices';
 import { buildOffSteppedRestoreShedUpdate, setRestorePlanDevice as setDevice } from './helpers';
+import { buildOffSteppedRestoreHoldUpdate } from './planDeviceUpdates';
 import { materializeShedSnapshotFields } from '../planActionMaterialization';
-import { isSteppedLoadDevice } from '../planSteppedLoad';
-import {
-  resolveMeterSettlingCountdownTiming,
-  resolveMeterSettlingRemainingSec,
-  type RestoreTiming,
-} from './timing';
-import { buildMeterSettlingReason, buildShortfallReason } from '../planReasonStrings';
+import { holdPendingSwapTargetUntilSourcesAreOff } from './swap';
+import { buildShortfallReason } from '../planReasonStrings';
 
 function buildRestoreShortfallReason(dev: DevicePlanDevice, headroomKw: number): DevicePlanDevice['reason'] {
   const { needed } = computeBaseRestoreNeed(dev);
@@ -78,43 +76,41 @@ export function markRestoreCandidatesStayShedForShortfall(params: {
   }
 }
 
-export function markOffDevicesMeterSettling(params: {
-  deviceMap: Map<string, DevicePlanDevice>;
-  timing: Pick<
-    RestoreTiming,
-    'activeOvershoot' | 'measurementTs' | 'nowTs'
-  >;
-  lastRestoreTs?: number | null;
-}): void {
-  const { deviceMap, timing, lastRestoreTs = null } = params;
-  const remainingSec = resolveMeterSettlingRemainingSec({ timing, lastRestoreTs });
-  if (remainingSec === null) return;
-  const reason = buildMeterSettlingReason(
-    remainingSec,
-    resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs }),
-  );
-  const snapshot: DevicePlanDevice[] = [];
-  for (const dev of deviceMap.values()) snapshot.push(dev);
-
-  const meterSettlingDevices = [
-    ...getOffDevices(snapshot),
-    ...getSteppedRestoreCandidates(snapshot).filter((dev) => isOffSteppedRestoreCandidate(dev)),
-  ];
-
-  for (const dev of meterSettlingDevices) {
+/**
+ * Hold every restore candidate this cycle with ONE reason — the cooldown lane's
+ * timer (`applyRestorePlanInCooldown`). Off binary candidates stay off, off
+ * stepped candidates keep their off-step shed update, and active stepped
+ * candidates (on, below target) keep their level. A swap target whose
+ * swapped-out sources are still on keeps its swap hold instead: the swap in
+ * flight is the more specific fact, and the reason the executor acts on.
+ *
+ * Like the stay-off marking beside it (`markOffDevicesStayOff`), this does not
+ * walk the admission ladder, so a device inside an activation setback reads the
+ * timer rather than the setback for the length of the cooldown; the setback
+ * reason returns on the first pass that actually decides.
+ */
+export function markRestoreCandidatesHeld(
+  deviceMap: Map<string, DevicePlanDevice>,
+  swapState: SwapState,
+  reason: DeviceReason,
+): void {
+  const snapshot = [...deviceMap.values()];
+  for (const dev of getOffDevices(snapshot)) {
+    if (holdPendingSwapTargetUntilSourcesAreOff(swapState, dev, deviceMap)) continue;
+    const inactiveReason = getInactiveReason(dev);
+    setDevice(deviceMap, dev.id, inactiveReason
+      ? { plannedState: 'inactive', reason: inactiveReason }
+      : { plannedState: 'shed', reason });
+  }
+  for (const dev of getSteppedRestoreCandidates(snapshot)) {
+    if (holdPendingSwapTargetUntilSourcesAreOff(swapState, dev, deviceMap)) continue;
     const inactiveReason = getInactiveReason(dev);
     if (inactiveReason) {
-      setDevice(deviceMap, dev.id, {
-        plannedState: 'inactive',
-        reason: inactiveReason,
-      });
+      setDevice(deviceMap, dev.id, { plannedState: 'inactive', reason: inactiveReason });
       continue;
     }
-
-    const updates: Partial<DevicePlanDevice> = { plannedState: 'shed', reason };
-    if (isSteppedLoadDevice(dev)) {
-      Object.assign(updates, buildOffSteppedRestoreShedUpdate(dev));
-    }
-    setDevice(deviceMap, dev.id, updates);
+    setDevice(deviceMap, dev.id, isOffSteppedRestoreCandidate(dev)
+      ? buildOffSteppedRestoreHoldUpdate(dev, reason)
+      : { reason });
   }
 }

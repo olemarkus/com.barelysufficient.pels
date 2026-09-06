@@ -472,7 +472,7 @@ const resolveDiagnosticsBlockCause = (params: {
   if (device.plannedState === 'inactive' || device.plannedState === 'keep') {
     return 'not_blocked';
   }
-  if (restoreResult.activeOvershoot) {
+  if (restoreResult.timing.activeOvershoot) {
     return 'headroom';
   }
   if (isBinaryDeviceBlockedByCooldown(device, restoreResult)) {
@@ -492,10 +492,10 @@ const resolveTemperatureBlockCause = (
     && plannedTarget !== null
     && plannedTarget >= desiredTarget - TARGET_DEFICIT_EPSILON_C;
   if (plannedToRecover) return 'not_blocked';
-  if (restoreResult.activeOvershoot) {
+  if (restoreResult.timing.activeOvershoot) {
     return 'headroom';
   }
-  if (restoreResult.inCooldown || restoreResult.inRestoreCooldown) {
+  if (restoreResult.timing.inCooldown || restoreResult.timing.inRestoreCooldown) {
     return 'cooldown_backoff';
   }
   return 'headroom';
@@ -505,7 +505,7 @@ const isBinaryDeviceBlockedByCooldown = (
   device: DevicePlanDevice,
   restoreResult: RestorePlanResult,
 ): boolean => (
-  restoreResult.inCooldown
-  || restoreResult.inRestoreCooldown
+  restoreResult.timing.inCooldown
+  || restoreResult.timing.inRestoreCooldown
   || (restoreResult.restoredOneThisCycle && !restoreResult.restoredThisCycle.has(device.id))
 );

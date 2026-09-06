@@ -21,6 +21,7 @@ import { getRestoreNeed } from './support';
 import { buildMeterSettlingReason } from '../planReasonStrings';
 import { attemptSwapRestore } from './swap';
 import {
+  canAdmitWithinBatch,
   canAttemptBatchContinuation,
   recordBatchAdmission,
 } from './batch';
@@ -29,11 +30,6 @@ import type {
   RestoreLane,
   RestoreLoopState,
 } from './types';
-import {
-  applyBinaryCooldownPreviewAdmission,
-  shouldApplyInCycleRestoreGate,
-  shouldRejectBatchContinuation,
-} from './cooldownPreview';
 
 /* eslint-disable-next-line max-statements --
 restore gating stays together to keep direct-vs-swap flow readable */
@@ -45,7 +41,7 @@ export function planRestoreForDevice(
 ): RestoreLoopState {
   const {
     state, deviceMap, swapState, timing, restoredThisCycle,
-    batchState, deps, headroomReserves, admissionMode, phase,
+    batchState, deps, headroomReserves, phase,
   } = cycle;
   const { availableHeadroom, restoredOneThisCycle } = loop;
 
@@ -61,9 +57,8 @@ export function planRestoreForDevice(
   }
 
   const batchContinuation = restoredOneThisCycle && canAttemptBatchContinuation(batchState);
-  const shouldBlockForInCycleRestore = shouldApplyInCycleRestoreGate(
-    admissionMode, restoredOneThisCycle, batchContinuation,
-  );
+  // One restore per cycle, unless the batch is still open for this one to join.
+  const shouldBlockForInCycleRestore = restoredOneThisCycle && !batchContinuation;
   const gateReason = resolveCapacityRestoreBlockReason({
     timing,
     restoredOneThisCycle: shouldBlockForInCycleRestore,
@@ -105,9 +100,7 @@ export function planRestoreForDevice(
   }
 
   const restoreNeed = getRestoreNeed(dev, state, deps.deviceDiagnostics);
-  if (shouldRejectBatchContinuation(
-    admissionMode, batchContinuation, batchState, restoreNeed.needed,
-  )) {
+  if (batchContinuation && !canAdmitWithinBatch(batchState, restoreNeed.needed)) {
     return rejectBinaryRestoreForMeterSettling(cycle, dev, loop, true);
   }
   // Admit against the power this device may actually claim: raw available power minus any startup
@@ -120,11 +113,6 @@ export function planRestoreForDevice(
   const { admission, effectiveHeadroomKw } = reserved;
   const powerSource = resolveRestorePowerSource(dev);
   if (reserved.kind === 'admitted') {
-    const previewResult = applyBinaryCooldownPreviewAdmission({
-      admissionMode, dev, deviceMap, availableHeadroom, neededKw: restoreNeed.needed,
-      restoredOneThisCycle, batchContinuation, batchState,
-    });
-    if (previewResult) return previewResult;
     const penaltyFields = restoreNeed.penaltyLevel > 0
       ? { penaltyLevel: restoreNeed.penaltyLevel, penaltyExtraKw: restoreNeed.penaltyExtraKw }
       : {};
@@ -299,17 +287,16 @@ function handleInsufficientBinaryRestoreHeadroom(
   restoreNeed: ReturnType<typeof getRestoreNeed>,
   reserved: ReturnType<typeof resolveReserveAdmission>,
 ): RestoreLoopState {
-  const { batchState, admissionMode } = cycle;
+  const { batchState } = cycle;
   const { onDevices } = lane;
   const { availableHeadroom, restoredOneThisCycle } = loop;
   const { admission, reservedKw: reservedHeadroomKw } = reserved;
   const restoreDebugKey = `binary:${dev.id}`;
-  const allowSwap = admissionMode.kind === 'apply';
   const batchContinuation = restoredOneThisCycle && canAttemptBatchContinuation(batchState);
   const rejectDirectly = (): RestoreLoopState => (
     rejectBinaryRestoreForInsufficientHeadroom(cycle, dev, loop, restoreNeed, admission)
   );
-  if (batchContinuation || !allowSwap) return rejectDirectly();
+  if (batchContinuation) return rejectDirectly();
 
   // No rejection is announced before the swap runs. It used to be: this branch
   // emitted `restore_rejected` and then attempted the swap, so a device that the

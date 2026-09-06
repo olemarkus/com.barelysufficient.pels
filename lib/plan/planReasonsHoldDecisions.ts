@@ -19,18 +19,13 @@ import {
 import { isBudgetReason, isShortfallReason, isSwapReason } from './planReasonsShared';
 import type { HoldLoopState, HoldPass, PendingRestoreDelay } from './planReasonsShared';
 import { RESTORE_CONFIRM_RETRY_MS } from './planConstants';
+import { NEUTRAL_STARTUP_HOLD_REASON, resolveOffDeviceReason } from './restore/devices';
+import type { RestoreTiming } from './restore/timing';
 import {
-  NEUTRAL_STARTUP_HOLD_REASON,
-  resolveOffDeviceReason,
-  type OffDeviceReasonTiming,
-} from './restore/devices';
-import {
-  buildRestoreCooldownPreviewState,
-  resolveGlobalRestoreHold,
+  resolveMeterSettlingHold,
   resolveRestoreDecision,
   type HoldDecision,
 } from './planReasonsRestoreGating';
-import type { RestoreCooldownPreview } from './restore/types';
 
 
 // The terminal fallback of `getProducerShedReason`. It asserts a POWER-ceiling
@@ -105,7 +100,7 @@ function resolveHoldReason(
   floorC: number,
   shouldHold: boolean,
 ): PlanReasonDecision {
-  const { state, shedReasons, offDeviceTiming: timing } = pass;
+  const { state, shedReasons, timing } = pass;
   const producerReason = getProducerShedReason({ dev, shedReasons });
   if (producerReason) return producerReason;
   // `shouldHold` false means the shortfall guard aborted the restore with no
@@ -126,26 +121,19 @@ export type ShedHoldParams = {
   planDevices: DevicePlanDevice[];
   state: PlanEngineState;
   shedReasons: Map<string, DeviceReason>;
-  inShedWindow: boolean;
-  inCooldown: boolean;
-  activeOvershoot: boolean;
+  /**
+   * This cycle's restore timing, whole — the same object the restore pass
+   * decided from (`RestorePlanResult` carries it). The lane names WHICH of the
+   * four `inShedWindow` causes is holding a device instead of defaulting to
+   * the power ceiling, reads the restore gate off it, and decides the
+   * meter-settling hold from `measurementTs`/`nowTs`. It used to arrive as
+   * twelve loose scalars under renamed keys — the inverse failure the
+   * param-bundle guard's header cites by this type's name.
+   */
+  timing: RestoreTiming;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
-  shedCooldownRemainingSec: number | null;
-  shedCooldownStartedAtMs?: number | null;
-  shedCooldownTotalSec?: number | null;
-  holdDuringRestoreCooldown: boolean;
-  restoreCooldownSeconds: number;
-  restoreCooldownRemainingSec: number | null;
-  // The rest of this cycle's `RestoreTiming`, so the hold lane can name WHICH of
-  // the four `inShedWindow` causes is holding a device instead of defaulting to
-  // the power ceiling. Required, like every other timing field here: optional
-  // would let a caller mint a countdown reason with no countdown attached — a
-  // shape production never produces.
-  inStartupStabilization: boolean;
-  restoreCooldownStartedAtMs: number | null;
-  restoreCooldownTotalSec: number | null;
   // Per-axis ledger carried over from the restore pass: a budget-exempt
   // setpoint-shed device admits its raise against the CAPACITY axis, exactly
   // like the binary/stepped lanes. Optional so scalar-only callers/tests keep
@@ -157,8 +145,13 @@ export type ShedHoldParams = {
   // the promised power away. Optional so scalar-only callers/tests opt out.
   headroomReserves?: readonly HeadroomReserve[];
   guardInShortfall?: boolean;
+  /**
+   * The capacity guard's shedding latch this cycle (`SheddingPlan.sheddingActive`).
+   * Required: the restore pass forks on it ahead of its cooldown lane, and the
+   * setpoint lane must fork the same way to name the same cause.
+   */
+  sheddingActive: boolean;
   debugStructured?: StructuredDebugEmitter;
-  restoreCooldownPreview?: RestoreCooldownPreview | null;
   getShedBehavior: (deviceId: string) => ShedBehavior;
   /**
    * The capability-normalized shed floor per temperature device, resolved once
@@ -189,35 +182,18 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     planDevices,
     state,
     shedReasons,
-    inShedWindow,
+    timing,
     availableHeadroom,
     restoredOneThisCycle,
     restoredThisCycle,
-    holdDuringRestoreCooldown,
-    restoreCooldownSeconds,
-    restoreCooldownRemainingSec,
     ledger,
     headroomReserves,
     guardInShortfall = false,
+    sheddingActive,
     debugStructured,
     getShedBehavior,
-    restoreCooldownPreview,
     normalizedShedFloorCByDevice,
   } = params;
-
-  // The shed-window facts, assembled once per cycle in the shape the shared
-  // reason ladder reads (`resolveOffDeviceReason`).
-  const offDeviceTiming: OffDeviceReasonTiming = {
-    activeOvershoot: params.activeOvershoot,
-    inCooldown: params.inCooldown,
-    inStartupStabilization: params.inStartupStabilization,
-    restoreCooldownSeconds,
-    shedCooldownRemainingSec: params.shedCooldownRemainingSec,
-    shedCooldownStartedAtMs: params.shedCooldownStartedAtMs,
-    shedCooldownTotalSec: params.shedCooldownTotalSec,
-    restoreCooldownStartedAtMs: params.restoreCooldownStartedAtMs,
-    restoreCooldownTotalSec: params.restoreCooldownTotalSec,
-  };
 
   let headroom = availableHeadroom;
   let restoredOne = restoredOneThisCycle;
@@ -225,31 +201,22 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
   const pendingRestoreDelay = getPendingRestoreDelay(
     planDevices, state, getShedBehavior, normalizedShedFloorCByDevice,
   );
-  const cooldownPreviewState = restoreCooldownPreview
-    ? buildRestoreCooldownPreviewState(restoreCooldownPreview)
-    : undefined;
   const pass: HoldPass = {
     state,
     shedReasons,
-    inShedWindow,
-    offDeviceTiming,
-    holdDuringRestoreCooldown,
-    restoreCooldownSeconds,
-    restoreCooldownRemainingSec,
+    timing,
     pendingRestoreDelay,
     headroomReserves: headroomReserves ?? [],
     guardInShortfall,
+    sheddingActive,
     normalizedShedFloorCByDevice,
     restoredThisCycle,
     debugStructured,
-    cooldownPreviewState,
   };
 
   for (const dev of planDevices) {
     const behavior = getShedBehavior(dev.id);
-    let availableForDevice = headroom;
-    if (cooldownPreviewState) availableForDevice = cooldownPreviewState.ledger.availableFor(dev);
-    else if (ledger) availableForDevice = ledger.availableFor(dev);
+    const availableForDevice = ledger ? ledger.availableFor(dev) : headroom;
     const result = applyHoldToDevice(pass, dev, behavior, {
       availableHeadroom: availableForDevice,
       restoredOneThisCycle: restoredOne,
@@ -257,7 +224,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     if (ledger) {
       ledger.commit(dev, availableForDevice - result.availableHeadroom);
       headroom = ledger.summaryAvailableKw();
-    } else if (!cooldownPreviewState) {
+    } else {
       headroom = result.availableHeadroom;
     }
     restoredOne = result.restoredOneThisCycle;
@@ -277,7 +244,7 @@ function resolveHoldGating(
   dev: DevicePlanDevice,
   floorC: number,
 ): { shouldAbortRestoreForShortfall: boolean; shouldHold: boolean; wasShedLastPlan: boolean } {
-  const { state, inShedWindow, holdDuringRestoreCooldown, guardInShortfall } = pass;
+  const { state, timing, guardInShortfall } = pass;
   const isTemperature = isTemperaturePlanDevice(dev);
   // All three floor facts read the NORMALIZED floor — the observation and the
   // hold stamps both carry normalized values, so a raw comparison would make
@@ -289,7 +256,7 @@ function resolveHoldGating(
   const wasShedLastPlan = state.lastPlannedShedIds.has(dev.id);
   const eligible = dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan;
   const shouldAbortRestoreForShortfall = guardInShortfall && eligible;
-  const shouldHold = (inShedWindow || holdDuringRestoreCooldown) && eligible;
+  const shouldHold = timing.inShedWindow && eligible;
   return { shouldAbortRestoreForShortfall, shouldHold, wasShedLastPlan };
 }
 
@@ -299,10 +266,7 @@ function resolveHoldDecision(
   behavior: TemperatureShedBehavior,
   loop: HoldLoopState,
 ): HoldDecision {
-  const {
-    shedReasons, holdDuringRestoreCooldown,
-    normalizedShedFloorCByDevice, cooldownPreviewState,
-  } = pass;
+  const { shedReasons, normalizedShedFloorCByDevice } = pass;
 
   if (dev.controllable === false) {
     return { type: 'skip' };
@@ -314,12 +278,13 @@ function resolveHoldDecision(
   const { shouldAbortRestoreForShortfall, shouldHold, wasShedLastPlan } = resolveHoldGating(pass, dev, floorC);
 
   const observedAtShedFloor = isObservedAtShedFloor(dev, floorC);
-  const globalRestoreHold = resolveGlobalRestoreHold(cooldownPreviewState, wasShedLastPlan, observedAtShedFloor);
-  if (globalRestoreHold) return globalRestoreHold;
-  const shouldResolveRestore = wasShedLastPlan && (
-    (!shouldAbortRestoreForShortfall && !shouldHold)
-    || (holdDuringRestoreCooldown && cooldownPreviewState !== undefined && observedAtShedFloor)
-  );
+  const meterSettlingHold = resolveMeterSettlingHold(pass, wasShedLastPlan, observedAtShedFloor);
+  if (meterSettlingHold) return meterSettlingHold;
+  // A device held by a global restore cooldown is not re-decided here: the
+  // ladder below names the cooldown on its card, and the finished plan ranks
+  // the held cohort once (`planRestoreCooldownCohort.ts`). The lane used to run the admission path anyway,
+  // against a hypothetical ledger, to pick which card got the countdown.
+  const shouldResolveRestore = wasShedLastPlan && !shouldAbortRestoreForShortfall && !shouldHold;
   if (shouldResolveRestore) {
     // "Observed at the shed floor" means the DEVICE reports the floor target —
     // not the plan's own `plannedTarget`, which the hold writes back each

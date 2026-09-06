@@ -2,13 +2,14 @@ import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerF
 import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnostics';
 import type { PlanContext } from '../../lib/plan/planContext';
 import type { RestorePlanResult } from '../../lib/plan/restore';
+import type { RestoreTiming } from '../../lib/plan/restore/timing';
 import type {
   DevicePlanDevice,
   PlanInputDevice,
   BinaryControlDiscriminantProbe,
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
-import { buildPlanInputDevice, buildPlanDevice } from '../utils/planTestUtils';
+import { buildPlanInputDevice, buildPlanDevice, restoreTimingFixture } from '../utils/planTestUtils';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -57,7 +58,9 @@ const buildContext = (
 // ceiling shortfall's recent-shed window.
 const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 
-const buildRestoreResult = (overrides: Partial<RestorePlanResult> = {}): RestorePlanResult => ({
+type RestoreResultOverrides = Partial<Omit<RestorePlanResult, 'timing'>> & { timing?: Partial<RestoreTiming> };
+
+const buildRestoreResult = ({ timing, ...overrides }: RestoreResultOverrides = {}): RestorePlanResult => ({
   planDevices: [],
   stateUpdates: {
     swapByDevice: {},
@@ -68,23 +71,8 @@ const buildRestoreResult = (overrides: Partial<RestorePlanResult> = {}): Restore
   capacityAvailableKw: 1,
   budgetAvailableKw: null,
   restoredOneThisCycle: false,
-  inCooldown: false,
-  inRestoreCooldown: false,
-  activeOvershoot: false,
-  restoreCooldownSeconds: 0,
-  shedCooldownRemainingSec: null,
-  shedCooldownStartedAtMs: null,
-  shedCooldownTotalSec: null,
-  restoreCooldownRemainingSec: null,
-  restoreCooldownStartedAtMs: null,
-  restoreCooldownTotalSec: null,
-  inShedWindow: false,
-  inStartupStabilization: false,
-  nowTs: FIXTURE_NOW_MS,
-  restoreCooldownMs: 60 * 1000,
-  lastRestoreCooldownBumpMs: null,
+  timing: restoreTimingFixture({ nowTs: FIXTURE_NOW_MS, ...timing }),
   ...overrides,
-  restoreCooldownPreview: overrides.restoreCooldownPreview ?? null,
 });
 
 type InputDeviceFixture = Partial<PlanInputDevice>
@@ -103,7 +91,7 @@ type PlanDeviceFixture = Partial<DevicePlanDevice>
 const buildObservation = (params: {
   inputDevice: InputDeviceFixture;
   planDevice: PlanDeviceFixture;
-  restoreResult?: Partial<RestorePlanResult>;
+  restoreResult?: RestoreResultOverrides;
   modeTargets?: Record<string, number>;
   softLimitSource?: PlanContext['softLimitSource'];
   fixtureTotalKw?: number;
@@ -158,9 +146,11 @@ describe('plan diagnostics observations', () => {
         available: true,
       },
       restoreResult: {
-        activeOvershoot: true,
-        inCooldown: true,
-        inShedWindow: true,
+        timing: {
+          activeOvershoot: true,
+          inCooldown: true,
+          inShedWindow: true,
+        },
       },
       modeTargets: { 'heater-1': 22 },
     });
@@ -194,9 +184,11 @@ describe('plan diagnostics observations', () => {
         available: true,
       },
       restoreResult: {
-        activeOvershoot: true,
-        inCooldown: true,
-        inShedWindow: true,
+        timing: {
+          activeOvershoot: true,
+          inCooldown: true,
+          inShedWindow: true,
+        },
       },
     });
 
@@ -261,8 +253,10 @@ describe('plan diagnostics observations', () => {
         available: true,
       },
       restoreResult: {
-        inCooldown: true,
-        inShedWindow: true,
+        timing: {
+          inCooldown: true,
+          inShedWindow: true,
+        },
       },
       modeTargets: { 'heater-1': 22 },
     });
@@ -302,7 +296,9 @@ describe('plan diagnostics observations', () => {
         available: true,
       },
       restoreResult: {
-        activeOvershoot: true,
+        timing: {
+          activeOvershoot: true,
+        },
       },
     });
 

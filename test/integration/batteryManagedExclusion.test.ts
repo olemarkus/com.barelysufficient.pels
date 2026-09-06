@@ -29,7 +29,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import type { RestorePlanResult } from '../../lib/plan/restore';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
-import { buildPlanInputDevice } from '../utils/planTestUtils';
+import { buildPlanInputDevice, restoreTimingFixture } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
@@ -116,22 +116,7 @@ const emptyRestoreResult: RestorePlanResult = {
   capacityAvailableKw: 1,
   budgetAvailableKw: null,
   restoredOneThisCycle: false,
-  inCooldown: false,
-  inRestoreCooldown: false,
-  activeOvershoot: false,
-  restoreCooldownSeconds: 0,
-  shedCooldownRemainingSec: null,
-  shedCooldownStartedAtMs: null,
-  shedCooldownTotalSec: null,
-  restoreCooldownRemainingSec: null,
-  restoreCooldownStartedAtMs: null,
-  restoreCooldownTotalSec: null,
-  inShedWindow: false,
-  inStartupStabilization: false,
-  nowTs: FIXTURE_NOW_MS,
-  restoreCooldownMs: 60 * 1000,
-  lastRestoreCooldownBumpMs: null,
-  restoreCooldownPreview: null,
+  timing: restoreTimingFixture({ nowTs: FIXTURE_NOW_MS, restoreCooldownMs: 60 * 1000 }),
 };
 
 const defaultDeps: PlanDevicesDeps = {

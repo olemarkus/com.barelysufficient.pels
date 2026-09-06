@@ -15,6 +15,7 @@ import {
   withTemperatureDiscriminant,
 } from '../../lib/plan/planTypes';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
+import type { RestoreTiming } from '../../lib/plan/restore/timing';
 import type {
   DecoratedDeviceSnapshot,
   DeviceStateOfChargeSnapshot,
@@ -1103,3 +1104,43 @@ const buildSettingsUiPlanMetaBase = (
  * the unmeasured case — the one the gate exists to stop — the silent default.
  */
 export const openPlanBuildGate = (): { isOpen: () => boolean } => ({ isOpen: () => true });
+
+/**
+ * A complete `RestoreTiming` for hold-lane and restore-result fixtures: no
+ * window open, a 60 s restore cooldown at rest, no sample seen. Specs override
+ * only the cause under test — the lane takes the timing whole, so a fixture
+ * that listed twelve scalars by hand was twelve chances to omit one. Like
+ * `buildRestoreTiming`, `inShedWindow` is the OR of the four causes unless a
+ * spec overrides it outright, so a fixture cannot name a cause the window
+ * does not contain — a shape production never produces. The clock is a fixed
+ * instant, not `Date.now()`, so a countdown derived from it never depends on
+ * when the spec ran.
+ */
+export const RESTORE_TIMING_FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
+
+export const restoreTimingFixture = (overrides: Partial<RestoreTiming> = {}): RestoreTiming => {
+  const causes = {
+    inCooldown: false,
+    inRestoreCooldown: false,
+    inStartupStabilization: false,
+    activeOvershoot: false,
+    ...overrides,
+  };
+  return {
+    restoreCooldownSeconds: 60,
+    shedCooldownRemainingSec: null,
+    shedCooldownStartedAtMs: null,
+    shedCooldownTotalSec: null,
+    restoreCooldownRemainingSec: null,
+    restoreCooldownStartedAtMs: null,
+    restoreCooldownTotalSec: null,
+    startupStabilizationRemainingSec: null,
+    measurementTs: null,
+    nowTs: RESTORE_TIMING_FIXTURE_NOW_MS,
+    restoreCooldownMs: 60_000,
+    lastRestoreCooldownBumpMs: null,
+    inShedWindow: causes.inCooldown || causes.inRestoreCooldown
+      || causes.inStartupStabilization || causes.activeOvershoot,
+    ...causes,
+  };
+};

@@ -34,6 +34,7 @@ import {
   normalizeShedReasons,
   type ShedReasonHoldInputs,
 } from './planReasons';
+import { rankRestoreCooldownCohort } from './planRestoreCooldownCohort';
 import { syncHeadroomCardState } from './planHeadroomDevice';
 import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
 import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
@@ -143,29 +144,18 @@ export class PlanMaterializationStages {
         budgetAvailableKw: restoreResult.budgetAvailableKw,
       }),
       headroomReserves: restoreResult.headroomReserves,
-      restoreCooldownPreview: restoreResult.restoreCooldownPreview,
       planDevices,
       state: this.state,
       shedReasons: sheddingPlan.shedReasons,
-      inShedWindow: restoreResult.inShedWindow,
-      inCooldown: restoreResult.inCooldown,
-      activeOvershoot: restoreResult.activeOvershoot,
+      // This cycle's effective timing — the same object the binary stay-off lane
+      // was fed (startup fields zeroed unless capacity is the binding source) —
+      // so both lanes name the same cause for the same cycle.
+      timing: restoreResult.timing,
       availableHeadroom: restoreResult.availableHeadroom,
       restoredOneThisCycle: restoreResult.restoredOneThisCycle,
       restoredThisCycle: restoreResult.restoredThisCycle,
-      shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
-      shedCooldownStartedAtMs: restoreResult.shedCooldownStartedAtMs,
-      shedCooldownTotalSec: restoreResult.shedCooldownTotalSec,
-      holdDuringRestoreCooldown: restoreResult.inRestoreCooldown,
-      restoreCooldownSeconds: restoreResult.restoreCooldownSeconds,
-      restoreCooldownRemainingSec: restoreResult.restoreCooldownRemainingSec,
-      // From `effectiveTiming`, the same object the binary stay-off lane is fed
-      // (`restore/index.ts` zeroes the startup fields unless capacity is the
-      // binding source) — so both lanes name the same cause for the same cycle.
-      inStartupStabilization: restoreResult.inStartupStabilization,
-      restoreCooldownStartedAtMs: restoreResult.restoreCooldownStartedAtMs,
-      restoreCooldownTotalSec: restoreResult.restoreCooldownTotalSec,
       guardInShortfall: sheddingPlan.guardInShortfall,
+      sheddingActive: sheddingPlan.sheddingActive,
       debugStructured: this.deps.debugStructured,
       getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
     }));
@@ -184,15 +174,23 @@ export class PlanMaterializationStages {
     const {
       planDevices, context, power, restoreResult, sheddingPlan, holds, holdResult, normalizedShedFloorCByDevice,
     } = params;
-    return trackPlanStage('plan_reasons_ms', () => normalizeShedReasons(planDevices, {
+    // The cohort rank runs on the FULL list — every lane has written its
+    // countdown by now — and before any carrier reads the plan. Only while a
+    // restore cooldown is actually running: the countdown code has other
+    // producers (the one-restore-per-cycle gate, the shedding latch's stay-off
+    // ladder) whose cohort is not queued behind a timer.
+    const rank = restoreResult.timing.inRestoreCooldown
+      ? rankRestoreCooldownCohort
+      : (devices: DevicePlanDevice[]): DevicePlanDevice[] => devices;
+    return trackPlanStage('plan_reasons_ms', () => rank(normalizeShedReasons(planDevices, {
       shedReasons: sheddingPlan.shedReasons,
       guardInShortfall: sheddingPlan.guardInShortfall,
       headroomRaw: power.headroomKw,
-      inCooldown: restoreResult.inCooldown,
-      activeOvershoot: restoreResult.activeOvershoot,
-      shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
-      shedCooldownStartedAtMs: restoreResult.shedCooldownStartedAtMs,
-      shedCooldownTotalSec: restoreResult.shedCooldownTotalSec,
+      inCooldown: restoreResult.timing.inCooldown,
+      activeOvershoot: restoreResult.timing.activeOvershoot,
+      shedCooldownRemainingSec: restoreResult.timing.shedCooldownRemainingSec,
+      shedCooldownStartedAtMs: restoreResult.timing.shedCooldownStartedAtMs,
+      shedCooldownTotalSec: restoreResult.timing.shedCooldownTotalSec,
       ...holds,
       softLimitSource: context.softLimitSource,
       // The one resolved breach answer: this used to read the RAW total, which
@@ -230,11 +228,11 @@ export class PlanMaterializationStages {
           // the two dates differ by the width of one plan cycle against a
           // five-minute window — same answer, no shared clock needed.
           lastDeviceShedMsById: this.state.lastDeviceShedMs,
-          nowMs: restoreResult.nowTs,
+          nowMs: restoreResult.timing.nowTs,
         })
         : null,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
-    }));
+    })));
   }
 
   finalizePlan(
@@ -330,8 +328,8 @@ export class PlanMaterializationStages {
       },
     });
     this.state.swapByDevice = restoreResult.stateUpdates.swapByDevice;
-    this.state.restoreCooldownMs = restoreResult.restoreCooldownMs;
-    this.state.lastRestoreCooldownBumpMs = restoreResult.lastRestoreCooldownBumpMs;
+    this.state.restoreCooldownMs = restoreResult.timing.restoreCooldownMs;
+    this.state.lastRestoreCooldownBumpMs = restoreResult.timing.lastRestoreCooldownBumpMs;
     return restoreResult;
   }
 }

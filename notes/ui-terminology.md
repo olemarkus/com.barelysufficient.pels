@@ -297,18 +297,20 @@ shared by all three card variants):
 | …and held long enough to count as held back | `Held 2 h — 0.8 kW more needed` |
 | Held because this hour's energy budget is spent | `Waiting to resume — this hour's budget is spent` (held back: `Held 2 h — this hour's budget is spent`) |
 | Held because power is reserved for a named device about to start | `Waiting so Water heater can start` (no elapsed-hold stem — it is a cause, not a need) |
-| Next direct resume held by the global resume cooldown | `Waiting to resume — 55s` (active stepped step-up: `Waiting to increase — 55s`) |
-| Directly eligible but behind the selected resume cohort | `Waiting to resume — other devices are ahead` (active stepped step-up: `Waiting to increase — other devices are ahead`) |
+| First to resume once the global resume cooldown ends | `Waiting to resume — 55s` (active stepped step-up: `Waiting to increase — 55s`) |
+| Held by the same cooldown, behind that device | `Waiting to resume — other devices are ahead` (active stepped step-up: `Waiting to increase — other devices are ahead`) |
 | Held on power, no shortfall resolved (rare) | `Waiting to resume` |
 | Long held back, no shortfall | `Waiting for available power` |
 | Hold that is NOT about power | its own cause (below) |
 
-The global resume cooldown appears only on the direct candidate or binary batch
-that would be admitted if the timer expired now. Other directly eligible
-candidates use the queue line. A device that still needs more power, is blocked
-by stepped fairness, or would require a priority swap keeps that more specific
-cause; when there is no directly eligible next candidate, no card shows the
-global countdown.
+While the global resume cooldown runs, every device it holds carries it — the
+timer is what holds them now, and no amount of freed power lifts it. The
+countdown shows on the device PELS resumes first when the timer ends — the
+admission order: turned-off devices, then stepped increases, then thermostat
+raises, by priority within each — and every other held device shows the queue
+line (`lib/plan/planRestoreCooldownCohort.ts`). Whether a device then needs more
+power, is blocked by stepped fairness, or would require a priority swap is
+decided — and said — on the first pass after the timer, not predicted during it.
 
 **Held-back cards state the elapsed hold, and still name no ceiling** (2026-08-04).
 Once a hold has run long enough to register as held back, the stem becomes

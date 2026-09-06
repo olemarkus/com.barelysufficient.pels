@@ -115,7 +115,7 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 - After resuming a device, wait at least 60 seconds for power measurements to stabilize
 - If a resume is followed by overshoot or new limiting, this cooldown delays the next restart by increasing amounts up to 5 minutes
 - Binary devices may resume in a bounded batch (up to three) when fresh measurements show ample available power; stepped increases remain one at a time
-- The next directly admissible device or binary batch waits out the cooldown; devices behind it remain queued
+- Every held device waits out the cooldown; the one that resumes first (turned-off devices before stepped increases before thermostat raises, by priority within each) shows the countdown and the rest show that other devices are ahead
 - Prevents an unbounded set of devices turning on simultaneously before measurements settle
 
 ### Available-Power Flow Card Step-Down Cooldown (60 seconds)

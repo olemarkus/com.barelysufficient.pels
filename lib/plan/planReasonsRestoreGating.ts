@@ -20,56 +20,54 @@ import {
   resolveRestoreDecisionPhase,
 } from './admission';
 import { RESTORE_ADMISSION_FLOOR_KW } from './planConstants';
-import { resolveCapacityRestoreBlockReason } from './restore/timing';
+import {
+  resolveCapacityRestoreBlockReason,
+  resolveMeterSettlingCountdownTiming,
+  resolveMeterSettlingRemainingSec,
+} from './restore/timing';
 import { emitRestoreDebugEventOnChange } from './planDebugDedupe';
-import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
-import type { RestoreCooldownPreview } from './restore/types';
-import type {
-  HoldLoopState,
-  HoldPass,
-  RestoreCooldownPreviewState,
-} from './planReasonsShared';
+import { buildMeterSettlingReason } from './planReasonStrings';
+import type { HoldLoopState, HoldPass } from './planReasonsShared';
 
-export const buildRestoreCooldownPreviewState = (
-  preview: RestoreCooldownPreview,
-): RestoreCooldownPreviewState => {
-  const ledger = buildRestoreHeadroomLedger({
-    capacityAvailableKw: preview.capacityAvailableKw,
-    budgetAvailableKw: preview.budgetAvailableKw,
-  });
-  let slotSpent = preview.selectedOne;
-  return {
-    holdReason: preview.holdReason,
-    appliesToAllCandidates: preview.appliesToAllCandidates,
-    ledger,
-    claim(dev, neededKw) {
-      if (slotSpent) return false;
-      ledger.commit(dev, neededKw);
-      slotSpent = true;
-      return true;
-    },
-  };
-};
+/**
+ * Whether this cycle's restore pass took its cooldown lane
+ * (`applyRestorePlanInCooldown` in `restore/index.ts`): the shortfall guard,
+ * latched shedding, the shed cooldown and startup stabilization all win over
+ * the restore cooldown in that lane's `if` chain, and each marks the binary and
+ * stepped candidates with its own cause. The setpoint lane names the
+ * meter-settling window only when that lane ran, so both lanes name the same
+ * cause for the same cycle.
+ */
+function restorePassTookCooldownLane(pass: HoldPass): boolean {
+  const { timing, sheddingActive, guardInShortfall } = pass;
+  return timing.inRestoreCooldown
+    && !guardInShortfall
+    && !sheddingActive
+    && !timing.inCooldown
+    && !timing.inStartupStabilization;
+}
 
-export function resolveGlobalRestoreHold(
-  preview: RestoreCooldownPreviewState | undefined,
+/**
+ * The meter-settling hold, for a setpoint device sitting at its shed floor
+ * while a global restore cooldown runs: the last restore's draw has not yet
+ * shown up on the whole-home meter, so nothing resumes until it does — the same
+ * window the binary and stepped lanes name (`restore/marking.ts`). Resolved
+ * here from the pass's own timing, not handed in as a pre-decided reason; the
+ * hold lane owns the setpoint decision and decides it from its inputs.
+ */
+export function resolveMeterSettlingHold(
+  pass: HoldPass,
   wasShedLastPlan: boolean,
   observedAtShedFloor: boolean,
 ): HoldDecision | null {
-  if (!preview?.appliesToAllCandidates || !wasShedLastPlan || !observedAtShedFloor) return null;
-  return { type: 'hold', reason: { code: 'existing', reason: preview.holdReason } };
-}
-
-function resolveCooldownPreviewHold(
-  pass: HoldPass,
-  dev: DevicePlanDevice,
-  restoreNeedKw: number,
-): HoldDecision | null {
-  const preview = pass.cooldownPreviewState;
-  if (!preview) return null;
-  const reason = preview.claim(dev, restoreNeedKw)
-    ? preview.holdReason
-    : { code: PLAN_REASON_CODES.waitingForOtherDevices } as const;
+  const { timing, state } = pass;
+  if (!restorePassTookCooldownLane(pass) || !wasShedLastPlan || !observedAtShedFloor) return null;
+  const remainingSec = resolveMeterSettlingRemainingSec({ timing, lastRestoreTs: state.lastRestoreMs });
+  if (remainingSec === null) return null;
+  const reason = buildMeterSettlingReason(
+    remainingSec,
+    resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs: state.lastRestoreMs }),
+  );
   return { type: 'hold', reason: { code: 'existing', reason } };
 }
 
@@ -175,7 +173,7 @@ export function resolveRestoreGateHold(
   restoreNeed: ReturnType<typeof getRestoreNeed>,
   admission: ReturnType<typeof buildRestoreAdmissionMetrics>,
 ): HoldDecision | null {
-  const { restoreCooldownSeconds, restoreCooldownRemainingSec } = pass;
+  const { restoreCooldownSeconds, restoreCooldownRemainingSec } = pass.timing;
   const { availableHeadroom, restoredOneThisCycle } = loop;
   const restoreDebugKey = `target:${dev.id}`;
 
@@ -266,8 +264,6 @@ export function resolveRestoreDecision(
     pass, dev, availableHeadroom, restoreNeed, admission,
   );
   if (headroomHold) return headroomHold;
-  const previewHold = resolveCooldownPreviewHold(pass, dev, restoreNeed.needed);
-  if (previewHold) return previewHold;
   const gateHold = resolveRestoreGateHold(pass, dev, loop, restoreNeed, admission);
   if (gateHold) return gateHold;
   restoredThisCycle.add(dev.id);

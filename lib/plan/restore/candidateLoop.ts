@@ -61,7 +61,6 @@ export function planSteppedRestoreThroughSourceHold(
     debugStructured: cycle.deps.debugStructured,
     swapExecutor: lane.steppedSwapExecutor,
     headroomReserves: cycle.headroomReserves,
-    admissionMode: cycle.admissionMode,
   });
 }
 

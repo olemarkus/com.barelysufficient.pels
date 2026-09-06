@@ -218,11 +218,10 @@ lib/plan/planSteppedShedResolution.ts 3
 lib/plan/planSurplusAbsorb.ts 8
 lib/plan/planTargetControl.ts 7
 lib/plan/restore/accounting.ts 2
-lib/plan/restore/cooldownPreview.ts 2
 lib/plan/restore/devices.ts 1
 lib/plan/restore/helpers.ts 4
 lib/plan/restore/index.ts 1
-lib/plan/restore/marking.ts 2
+lib/plan/restore/marking.ts 1
 lib/plan/restore/steppedRestoreAdmission.ts 5
 lib/plan/restore/steppedRestoreGates.ts 2
 lib/plan/restore/timing.ts 6

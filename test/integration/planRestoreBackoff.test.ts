@@ -24,7 +24,7 @@ import { buildSwapState, exportSwapState } from '../../lib/plan/swap';
 import { resolveMeterSettlingRemainingSec } from '../../lib/plan/restore/timing';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
-import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, restoreTimingFixture, steppedPlanDevice } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import type { DevicePlanDevice , SteppedPlanDevice } from '../../lib/plan/planTypes';
@@ -108,9 +108,9 @@ describe('restore cooldown backoff', () => {
         deps,
       });
 
-      state.restoreCooldownMs = result.restoreCooldownMs;
-      state.lastRestoreCooldownBumpMs = result.lastRestoreCooldownBumpMs;
-      return result.restoreCooldownMs;
+      state.restoreCooldownMs = result.timing.restoreCooldownMs;
+      state.lastRestoreCooldownBumpMs = result.timing.lastRestoreCooldownBumpMs;
+      return result.timing.restoreCooldownMs;
     };
 
     expect(step(0)).toBe(120000);
@@ -146,9 +146,9 @@ describe('restore cooldown backoff', () => {
       deps,
     });
 
-    state.restoreCooldownMs = result.restoreCooldownMs;
-    state.lastRestoreCooldownBumpMs = result.lastRestoreCooldownBumpMs;
-    expect(result.restoreCooldownMs).toBe(120000);
+    state.restoreCooldownMs = result.timing.restoreCooldownMs;
+    state.lastRestoreCooldownBumpMs = result.timing.lastRestoreCooldownBumpMs;
+    expect(result.timing.restoreCooldownMs).toBe(120000);
 
     now += 6 * 60 * 1000;
     state.lastInstabilityMs = now - 6 * 60 * 1000;
@@ -161,7 +161,7 @@ describe('restore cooldown backoff', () => {
       deps,
     });
 
-    expect(result.restoreCooldownMs).toBe(60000);
+    expect(result.timing.restoreCooldownMs).toBe(60000);
   });
 
   it('uses in-cycle cleaned swap state when selecting swap candidates', () => {
@@ -1171,7 +1171,12 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
   });
 
-  it('shows restore cooldown only on the next binary batch and queues eligible followers', () => {
+  it('holds every off candidate on the restore cooldown; who is next is ranked on the finished plan', () => {
+    // The restore pass decides nothing while the global restore cooldown runs, so
+    // every candidate carries the same countdown. Ranking the cohort into one
+    // `Waiting to resume — 55s` card and the rest `other devices are ahead` is a
+    // plan-wide pass (`planRestoreCooldownCohort.ts`) — the restore pass used to
+    // run a second, hypothetical admission pass to pick the card.
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -1198,14 +1203,15 @@ describe('restore cooldown backoff', () => {
       },
     });
 
-    expect(result.planDevices.slice(0, 3).map((device) => device.reason.code))
-      .toEqual(Array.from({ length: 3 }, () => PLAN_REASON_CODES.cooldownRestore));
-    expect(result.planDevices[3]?.reason.code).toBe(PLAN_REASON_CODES.waitingForOtherDevices);
+    expect(result.planDevices.map((device) => device.reason.code))
+      .toEqual(Array.from({ length: 4 }, () => PLAN_REASON_CODES.cooldownRestore));
     expect(result.restoredThisCycle).toEqual(new Set());
     expect(result.restoredOneThisCycle).toBe(false);
   });
 
-  it('shows no restore cooldown when no direct candidate has enough available power', () => {
+  it('names the restore cooldown on a candidate that could not be admitted yet', () => {
+    // The timer is what holds the device NOW; whether the power would suffice is
+    // the next pass's question, and one no amount of freed power answers early.
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -1230,7 +1236,7 @@ describe('restore cooldown backoff', () => {
       },
     });
 
-    expect(result.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.insufficientHeadroom);
+    expect(result.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.cooldownRestore);
   });
 
   it('shows the cooldown on the next directly eligible active stepped increase', () => {
@@ -1264,7 +1270,7 @@ describe('restore cooldown backoff', () => {
     expect(result.planDevices[0]?.desiredStepId).toBe('low');
   });
 
-  it('active stepped device hits shed invariant when binary peers are held off in restore cooldown', () => {
+  it('holds an active stepped device on the restore cooldown beside its off binary peer', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -1308,10 +1314,11 @@ describe('restore cooldown backoff', () => {
     // Binary off device is held by global restore cooldown.
     expect(binaryDevice?.plannedState).toBe('shed');
     expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
-    // Active stepped device bypasses the global cooldown gate but is then blocked by the shed
-    // invariant because dev-off is still shed — the more accurate blocking reason.
+    // The active stepped device keeps its level and carries the same timer: the
+    // cooldown lane admits nothing, so it does not walk the admission ladder to
+    // find the shed-invariant block that would apply once the timer lifts.
     expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(reasonText(steppedDevice?.reason)).toBe('shed invariant: low -> medium blocked (1 device(s) shed, max step: low)');
+    expect(reasonText(steppedDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
   });
 
   it('holds an active stepped-swap target during restore cooldown while a swapped-out source is still on', () => {
@@ -1424,10 +1431,9 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(steppedDevice?.reason)).toBe('swap pending');
   });
 
-  it('lets an active stepped-swap target escalate during restore cooldown once its source is off', () => {
+  it('releases an active stepped-swap target from the swap hold during restore cooldown once its source is off', () => {
     // Contrast to the hold cases: with the swapped-out source confirmed off, the source-off hold
-    // releases and the active stepped device escalates as before (cooldown gate bypassed for
-    // active devices). Proves the hold is the only added gate, not a blanket cooldown block.
+    // releases and the device carries the cooldown lane's timer like every other candidate.
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -1473,10 +1479,10 @@ describe('restore cooldown backoff', () => {
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
-    // No longer held by the source-off hold: the device is not parked on the swap-pending reason
-    // and is free to progress through the normal stepped-restore gates (shed invariant / admit).
+    // No longer held by the source-off hold: the device is not parked on the swap-pending reason.
     expect(reasonText(steppedDevice?.reason)).not.toBe('swap pending');
-    expect(steppedDevice?.reason).toMatchObject({ code: PLAN_REASON_CODES.shedInvariant });
+    expect(steppedDevice?.reason).toMatchObject({ code: PLAN_REASON_CODES.cooldownRestore });
+    expect(steppedDevice?.desiredStepId).toBe('low');
   });
 
   it('does not present or initiate a swap-dependent stepped increase as next during restore cooldown', () => {
@@ -1513,8 +1519,8 @@ describe('restore cooldown backoff', () => {
         }),
       ],
       // Headroom is too small to escalate low -> medium outright (needs ~0.95kW). The cooldown
-      // preview considers direct admissions only: it must retain the power blocker and must not
-      // manufacture a swap merely to decide which card receives the timer.
+      // lane admits nothing and swaps nothing: the timer is the reason, and no swap is
+      // manufactured to decide which card receives it.
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
@@ -1529,7 +1535,8 @@ describe('restore cooldown backoff', () => {
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
     const sourceDevice = result.planDevices.find((device) => device.id === 'lower-priority');
 
-    expect(steppedDevice?.reason).toMatchObject({ code: PLAN_REASON_CODES.insufficientHeadroom });
+    expect(steppedDevice?.reason).toMatchObject({ code: PLAN_REASON_CODES.cooldownRestore });
+    expect(steppedDevice?.desiredStepId).toBe('low');
     expect(sourceDevice?.plannedState).toBe('keep');
     expect(result.stateUpdates.swapByDevice).toEqual({});
     expect(result.restoredOneThisCycle).toBe(false);
@@ -1592,7 +1599,7 @@ describe('restore cooldown backoff', () => {
     expect(result.restoredOneThisCycle).toBe(false);
   });
 
-  it('continues cooldown cohort selection into set-temperature devices', () => {
+  it('holds every set-temperature candidate on the restore cooldown; the finished plan ranks who is next', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -1635,9 +1642,8 @@ describe('restore cooldown backoff', () => {
       planDevices: restore.planDevices,
       state,
       shedReasons: new Map(),
-      inShedWindow: restore.inShedWindow,
-      inCooldown: restore.inCooldown,
-      activeOvershoot: restore.activeOvershoot,
+      timing: restore.timing,
+      sheddingActive: false,
       availableHeadroom: restore.availableHeadroom,
       ledger: buildRestoreHeadroomLedger({
         capacityAvailableKw: restore.capacityAvailableKw,
@@ -1646,19 +1652,11 @@ describe('restore cooldown backoff', () => {
       headroomReserves: restore.headroomReserves,
       restoredOneThisCycle: restore.restoredOneThisCycle,
       restoredThisCycle: restore.restoredThisCycle,
-      shedCooldownRemainingSec: restore.shedCooldownRemainingSec,
-      holdDuringRestoreCooldown: restore.inRestoreCooldown,
-      restoreCooldownSeconds: restore.restoreCooldownSeconds,
-      restoreCooldownRemainingSec: restore.restoreCooldownRemainingSec,
-      inStartupStabilization: restore.inStartupStabilization,
-      restoreCooldownStartedAtMs: restore.restoreCooldownStartedAtMs,
-      restoreCooldownTotalSec: restore.restoreCooldownTotalSec,
-      restoreCooldownPreview: restore.restoreCooldownPreview,
       getShedBehavior: deps.getShedBehavior,
     });
 
-    expect(held.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.cooldownRestore);
-    expect(held.planDevices[1]?.reason.code).toBe(PLAN_REASON_CODES.waitingForOtherDevices);
+    expect(held.planDevices.map((device) => device.reason.code))
+      .toEqual([PLAN_REASON_CODES.cooldownRestore, PLAN_REASON_CODES.cooldownRestore]);
     expect(held.restoredOneThisCycle).toBe(false);
     expect(held.availableHeadroom).toBe(restore.availableHeadroom);
   });
@@ -1702,20 +1700,11 @@ describe('restore cooldown backoff', () => {
       planDevices: restore.planDevices,
       state,
       shedReasons: new Map(),
-      inShedWindow: restore.inShedWindow,
-      inCooldown: restore.inCooldown,
-      activeOvershoot: restore.activeOvershoot,
+      timing: restore.timing,
+      sheddingActive: false,
       availableHeadroom: restore.availableHeadroom,
       restoredOneThisCycle: restore.restoredOneThisCycle,
       restoredThisCycle: restore.restoredThisCycle,
-      shedCooldownRemainingSec: restore.shedCooldownRemainingSec,
-      holdDuringRestoreCooldown: restore.inRestoreCooldown,
-      restoreCooldownSeconds: restore.restoreCooldownSeconds,
-      restoreCooldownRemainingSec: restore.restoreCooldownRemainingSec,
-      inStartupStabilization: restore.inStartupStabilization,
-      restoreCooldownStartedAtMs: restore.restoreCooldownStartedAtMs,
-      restoreCooldownTotalSec: restore.restoreCooldownTotalSec,
-      restoreCooldownPreview: restore.restoreCooldownPreview,
       getShedBehavior,
     });
 
@@ -1724,7 +1713,7 @@ describe('restore cooldown backoff', () => {
     expect(held.restoredOneThisCycle).toBe(false);
   });
 
-  it('shows no cooldown on a set-temperature device that cannot be admitted directly', () => {
+  it('names the restore cooldown on a set-temperature device that could not be admitted yet', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -1763,24 +1752,15 @@ describe('restore cooldown backoff', () => {
       planDevices: restore.planDevices,
       state,
       shedReasons: new Map(),
-      inShedWindow: restore.inShedWindow,
-      inCooldown: restore.inCooldown,
-      activeOvershoot: restore.activeOvershoot,
+      timing: restore.timing,
+      sheddingActive: false,
       availableHeadroom: restore.availableHeadroom,
       restoredOneThisCycle: restore.restoredOneThisCycle,
       restoredThisCycle: restore.restoredThisCycle,
-      shedCooldownRemainingSec: restore.shedCooldownRemainingSec,
-      holdDuringRestoreCooldown: restore.inRestoreCooldown,
-      restoreCooldownSeconds: restore.restoreCooldownSeconds,
-      restoreCooldownRemainingSec: restore.restoreCooldownRemainingSec,
-      inStartupStabilization: restore.inStartupStabilization,
-      restoreCooldownStartedAtMs: restore.restoreCooldownStartedAtMs,
-      restoreCooldownTotalSec: restore.restoreCooldownTotalSec,
-      restoreCooldownPreview: restore.restoreCooldownPreview,
       getShedBehavior: deps.getShedBehavior,
     });
 
-    expect(held.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.insufficientHeadroom);
+    expect(held.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.cooldownRestore);
   });
 
   it('keeps meter settling bounded to 60 seconds even when restore cooldown backs off longer', () => {
@@ -2323,8 +2303,8 @@ describe('restore cooldown backoff', () => {
       },
     });
 
-    expect(result.inStartupStabilization).toBe(false);
-    expect(result.inShedWindow).toBe(false);
+    expect(result.timing.inStartupStabilization).toBe(false);
+    expect(result.timing.inShedWindow).toBe(false);
   });
 });
 
@@ -2987,19 +2967,11 @@ describe('restore admission — headroom and penalty gates', () => {
       ],
       state,
       shedReasons: new Map(),
-      inShedWindow: false,
-      inCooldown: false,
-      activeOvershoot: false,
+      timing: restoreTimingFixture(),
+      sheddingActive: false,
       availableHeadroom: 0.25,
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
-      shedCooldownRemainingSec: null,
-      holdDuringRestoreCooldown: false,
-      restoreCooldownSeconds: 60,
-      restoreCooldownRemainingSec: null,
-      inStartupStabilization: false,
-      restoreCooldownStartedAtMs: null,
-      restoreCooldownTotalSec: null,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18 }),
     });
 
@@ -3041,19 +3013,11 @@ describe('restore admission — headroom and penalty gates', () => {
       ],
       state,
       shedReasons: new Map(),
-      inShedWindow: false,
-      inCooldown: false,
-      activeOvershoot: false,
+      timing: restoreTimingFixture(),
+      sheddingActive: false,
       availableHeadroom: 3,
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
-      shedCooldownRemainingSec: null,
-      holdDuringRestoreCooldown: false,
-      restoreCooldownSeconds: 60,
-      restoreCooldownRemainingSec: null,
-      inStartupStabilization: false,
-      restoreCooldownStartedAtMs: null,
-      restoreCooldownTotalSec: null,
       debugStructured,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18 }),
     });
@@ -3255,19 +3219,11 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
       })],
       state,
       shedReasons: new Map(),
-      inShedWindow: false,
-      inCooldown: false,
-      activeOvershoot: false,
+      timing: restoreTimingFixture(),
+      sheddingActive: false,
       availableHeadroom: 1.699,
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
-      shedCooldownRemainingSec: null,
-      holdDuringRestoreCooldown: false,
-      restoreCooldownSeconds: 60,
-      restoreCooldownRemainingSec: null,
-      inStartupStabilization: false,
-      restoreCooldownStartedAtMs: null,
-      restoreCooldownTotalSec: null,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     });
     const device = result.planDevices.find((d) => d.id === 'dev-temp');
