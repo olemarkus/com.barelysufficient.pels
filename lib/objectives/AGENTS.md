@@ -39,6 +39,17 @@ injected seam — never by importing this module (whole-module ban enforced by `
   window forever. Do not reintroduce a suppression WINDOW (a fall arming a period in which nothing
   is learned): that punished every ordinary window behind one bad one, and needed a no-progress
   counter and a 24 h timeout to let go of a device that never climbed back.
+- **The sample buffer is the one record of the learned rate, and it is bounded by age as well as
+  size** (`OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS`, `bands.ts`). `bands` and the global `kwhPerUnit`
+  stat are both DERIVED from it on every accepted observation. Do not go back to accumulating the
+  stat with Welford beside the buffer: a running pair cannot have an aged-out window removed, so
+  the two records drift and the estimator keeps planning from history the buffer has already let
+  go of — which is the whole lockout the horizon exists to end.
+- **A refusal that is about the WINDOW must void the window.** The energy and value sums are
+  cumulative from the baseline, so declining to learn while keeping the baseline does not discard a
+  bad window, it defers it into the next one, where the two add up and can land inside the band.
+  The disposition rides on the rejection (`ProfileSampleRejection.openWindow`); decide it where the
+  reason is decided, never as a list of reason strings matched at the far end.
 - **Read producer-resolved bits off `ObjectiveDeviceInput`, never raw observed state.** The input is
   satisfied by `PlanInputDevice` through width-subtyping with no adapter, so when the producer stops
   emitting a field this type declares as optional, the assignment still compiles and the field reads

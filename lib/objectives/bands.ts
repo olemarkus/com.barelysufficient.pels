@@ -2,9 +2,36 @@ import { resolveProfileConfidence } from './stats';
 import type {
   ObjectiveProfileBand,
   ObjectiveProfileSampleObservation,
+  ObjectiveProfileStat,
 } from './types';
 
 export const OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE = 64;
+
+/**
+ * How far back the buffer keeps an observation. The buffer is bounded by BOTH
+ * this and the size cap above, and everything the profile knows about its
+ * kWh/unit rate — the bands, the global stat, and the admission band in
+ * `energyBand.ts` — is derived from it, so this one horizon governs all three.
+ *
+ * The size cap alone is not enough, and the gap it leaves is not cosmetic. A
+ * refused window never enters the buffer, so a device whose true rate moves
+ * further than the admission band allows stops appending entirely — and a
+ * count-bounded buffer then freezes with the old regime in it, for good. The
+ * profile is keyed by the CHARGER, so a 24 kWh car swapped for a 100 kWh one on
+ * the same charger is exactly that: the honest rate moves by more than four
+ * times and the history that locks it out can no longer be updated by the
+ * evidence that would correct it. Ageing observations out is the only exit that
+ * needs no new state — the buffer empties on its own, the band falls back to its
+ * coarse bootstrap bound, and the next window is admitted and relearned from.
+ *
+ * The cost of that exit is bounded by this constant: worst case, a device whose
+ * world changed plans from the old rate for two weeks before the last stale
+ * observation ages out. Two weeks is also long enough that an ordinarily-active
+ * device (a tank reheats daily) never runs short of in-horizon observations. A
+ * device too idle to keep eight inside it simply reads as bootstrap, which is
+ * the bound it had before any of this existed.
+ */
+export const OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS = 14 * 24 * 60 * 60 * 1000;
 // Floor for any produced band — also gates `fitBandsFromSamples` on the whole
 // buffer (must hold ≥2× this to even attempt a split). Prevents a freshly-split
 // low-data band from dominating the estimate before it has enough evidence.
@@ -49,10 +76,50 @@ export function appendSampleToBuffer(
   previous: ObjectiveProfileSampleObservation[] | undefined,
   next: ObjectiveProfileSampleObservation,
 ): ObjectiveProfileSampleObservation[] {
-  const base = previous ?? [];
+  // Anchored on the arriving observation, not on a wall clock: the buffer is a
+  // record of windows, and "recent" for it means recent relative to the window
+  // being recorded.
+  const horizonStartMs = next.observedAtMs - OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS;
+  const base = (previous ?? []).filter((sample) => sample.observedAtMs >= horizonStartMs);
   const overflow = base.length + 1 - OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE;
   if (overflow <= 0) return [...base, next];
   return [...base.slice(overflow), next];
+}
+
+/**
+ * The device's global kWh/unit statistic, derived from the buffer rather than
+ * accumulated alongside it.
+ *
+ * It used to be a running Welford pair updated once per accepted window, which
+ * made it a SECOND record of the same history — and the one that could not be
+ * corrected. Welford cannot have a contribution removed, so an observation that
+ * aged out of the buffer stayed in the mean for the life of the profile, and
+ * `resolveProfileEnergy` sizes every smart task from exactly that mean. A device
+ * whose rate genuinely moved would have been let back into the buffer and STILL
+ * planned at the old figure. Deriving the stat here means the buffer is the only
+ * record, and the horizon reaches everything read off it.
+ *
+ * A profile written before the buffer existed carries a lifetime stat and no
+ * observations; its first accepted window rebuilds the stat from that window
+ * alone. That is the honest consequence of one truth rather than two, and it
+ * self-heals within a handful of windows.
+ */
+export function resolveKwhPerUnitStat(
+  samples: readonly ObjectiveProfileSampleObservation[],
+  lastUpdatedMs: number,
+): ObjectiveProfileStat | undefined {
+  if (samples.length === 0) return undefined;
+  const { sampleCount, mean, m2 } = welfordKwhPerUnit(samples, 0, samples.length);
+  const rates = samples.map((sample) => sample.kwhPerUnit);
+  return {
+    sampleCount,
+    mean,
+    m2,
+    min: Math.min(...rates),
+    max: Math.max(...rates),
+    confidence: resolveProfileConfidence({ sampleCount, mean, m2 }),
+    lastUpdatedMs,
+  };
 }
 
 export function fitBandsFromSamples(params: {

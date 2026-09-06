@@ -11,7 +11,7 @@ import {
   type EnergyPerUnitBand,
 } from './energyBand';
 import { applyBandedConfidence, resolveProfileConfidence, updateProfileStat } from './stats';
-import { appendSampleToBuffer, fitBandsFromSamples } from './bands';
+import { appendSampleToBuffer, fitBandsFromSamples, resolveKwhPerUnitStat } from './bands';
 import { buildObjectiveProfileSample } from './samples';
 import { emitObjectiveProfileNoPowerSourceIfNeeded } from './noPowerSourceDiagnostic';
 import {
@@ -41,12 +41,40 @@ const MAX_UNIT_PER_HOUR = 100;
 export type ObjectiveProfileDebugEmitter = (payload: Record<string, unknown>) => void;
 
 /**
- * A refused candidate window: the reason code, plus — for the energy verdict —
- * the figure and the band it missed, so the structured log says *what* was out
- * of range and against *which* bound rather than only that something was.
+ * What a refusal does to the open baseline→sample window.
+ *
+ * `void` — the window itself is unusable, so the baseline moves to this sample
+ *   and the partial energy sum is dropped. Anything less carries the refused
+ *   energy forward: the sums are cumulative from `lastSample`, so keeping the
+ *   baseline does not discard a bad window, it *defers* it into the next one. A
+ *   refill of 2 kWh across 0.8 units, refused, followed by an ordinary 2 kWh
+ *   across 4 units, arrives as 4 kWh across 4.8 units — 0.83 for a device whose
+ *   rate is 0.5, comfortably inside its band and accepted. The contamination
+ *   the band had just refused gets in through the following window.
+ * `keep` — the refusal is about this SAMPLE, not the window: the window is still
+ *   open and honest, and the next sample continues it across a longer interval.
+ *   An interval too short to bill is the case that needs this — voiding there
+ *   would restart the window on every 10 s poll and no window would ever reach
+ *   the minimum interval. A non-monotonic sample needs it too, for a different
+ *   reason: moving the baseline onto an out-of-order sample walks it backwards
+ *   in time.
+ */
+type RejectedWindowDisposition = 'void' | 'keep';
+
+/**
+ * A refused candidate window: the reason code, what becomes of the open window,
+ * and — for the energy verdict — the figure and the band it missed, so the
+ * structured log says *what* was out of range and against *which* bound rather
+ * than only that something was.
+ *
+ * The disposition travels with the reason because it is decided by the same
+ * judgement. It used to be a list of reason strings read back at the far end,
+ * which is a second place to remember a thing, and the energy verdict was
+ * missing from that list.
  */
 type ProfileSampleRejection = {
   reason: string;
+  openWindow: RejectedWindowDisposition;
   energy?: { kwhPerUnit: number; band: EnergyPerUnitBand };
 };
 
@@ -129,7 +157,7 @@ export function updateDeviceObjectiveProfile(params: {
   // Timing checks (non-monotonic time, too-short/too-long intervals) run first:
   // a stale or out-of-order sample has no window to bill energy across, so it
   // must never reach the value or energy verdicts, let alone reset the baseline.
-  const intervalRejection = resolveProfileIntervalRejectionReason({
+  const intervalRejection = resolveProfileIntervalRejection({
     previousSample,
     sample,
     intervalMs,
@@ -146,7 +174,7 @@ export function updateDeviceObjectiveProfile(params: {
     // `rejectedSamples` increment. Other intervalRejection reasons (and any
     // non-monotonic sample whose value *did* change) still flow through the
     // normal rejection path.
-    if (intervalRejection === 'objective_profile_non_monotonic_time'
+    if (intervalRejection.reason === 'objective_profile_non_monotonic_time'
       && sample.value === previousSample.value) return previous;
     emitRejectedProfileSample({
       deviceId,
@@ -154,12 +182,12 @@ export function updateDeviceObjectiveProfile(params: {
       debugStructured,
       intervalMs,
       valueDelta,
-      rejection: { reason: intervalRejection },
+      rejection: intervalRejection,
     });
     return buildRejectedProfileSample({
       previous,
       sample,
-      rejectionReason: intervalRejection,
+      rejection: intervalRejection,
     });
   }
 
@@ -199,7 +227,7 @@ export function updateDeviceObjectiveProfile(params: {
     return buildRejectedProfileSample({
       previous,
       sample,
-      rejectionReason: rejection.reason,
+      rejection,
     });
   }
 
@@ -268,7 +296,7 @@ function buildAcceptedProfileSample(params: {
   const unitPerHour = calculateUnitPerHour({ intervalMs, valueDelta });
   const energyKwh = windowEnergyKwh;
   const kwhPerUnit = energyKwh !== undefined ? calculateKwhPerUnit({ energyKwh, valueDelta }) : undefined;
-  const bandedUpdate = resolveBandedUpdate({
+  const learnedRateUpdate = resolveLearnedRateUpdate({
     previous, previousSample, sample, kwhPerUnit, outdoorTemperatureC,
   });
   const nextProfile = {
@@ -277,10 +305,9 @@ function buildAcceptedProfileSample(params: {
     lastSample: sample,
     acceptedSamples: previous.acceptedSamples + 1,
     unitPerHour: updateProfileStat(previous.unitPerHour, unitPerHour, sample.observedAtMs),
-    ...(kwhPerUnit !== undefined
-      ? { kwhPerUnit: updateProfileStat(previous.kwhPerUnit, kwhPerUnit, sample.observedAtMs) }
-      : {}),
-    ...bandedUpdate,
+    // `kwhPerUnit` arrives inside the update, derived from the same buffer the
+    // bands are fitted from, rather than accumulated separately here.
+    ...learnedRateUpdate,
     // The accepted rise closes the window; the next sample starts a fresh one
     // measured from this baseline.
     ...CLEARED_ENERGY_ACCUMULATOR,
@@ -315,6 +342,8 @@ function buildAcceptedProfileSample(params: {
     energyConfidence: nextProfile.kwhPerUnit?.confidence ?? null,
     globalEnergyConfidence,
     powerSource: previousSample.powerSource ?? null,
+    // Also `kwhPerUnit.sampleCount` now, since the stat is derived from this
+    // same buffer — one number, logged once.
     bufferedSamples: nextProfile.samples?.length ?? 0,
     bandsCount: nextProfile.bands?.length ?? 0,
   });
@@ -328,22 +357,18 @@ function buildAcceptedProfileSample(params: {
 function buildRejectedProfileSample(params: {
   previous: DeviceObjectiveProfile;
   sample: DeviceObjectiveProfileSample;
-  rejectionReason: string;
+  rejection: ProfileSampleRejection;
 }): DeviceObjectiveProfile {
-  const { previous, sample, rejectionReason } = params;
-  if (
-    rejectionReason === 'objective_profile_interval_too_long'
-    // Small falls below the sharp-fall threshold still need a fresh baseline so
-    // the next accepted rise is measured against the new low — otherwise the
-    // delta is computed against a stale pre-drop value and inflates kWh/unit.
-    || rejectionReason === 'objective_profile_value_fell'
-  ) {
+  const { previous, sample, rejection } = params;
+  if (rejection.openWindow === 'void') {
     return {
       ...previous,
       updatedAtMs: sample.observedAtMs,
       lastSample: sample,
       rejectedSamples: previous.rejectedSamples + 1,
       // Baseline reset → the open energy window is void; drop the partial sum.
+      // Both halves are required: keeping either the baseline or the partial sum
+      // carries the refused window into the next one.
       ...CLEARED_ENERGY_ACCUMULATOR,
     };
   }
@@ -399,34 +424,50 @@ function resolveProfileValueOrEnergyRejection(
   valueDelta: number,
   windowEnergyKwh: number | undefined,
 ): ProfileSampleRejection | null {
-  const valueReason = resolveProfileValueRejectionReason(intervalMs, valueDelta);
-  if (valueReason) return { reason: valueReason };
-  return resolveProfileEnergyRejection(previous, observedAtMs, valueDelta, windowEnergyKwh);
+  return resolveProfileValueRejection(intervalMs, valueDelta)
+    ?? resolveProfileEnergyRejection(previous, observedAtMs, valueDelta, windowEnergyKwh);
 }
 
-function resolveProfileIntervalRejectionReason(params: {
+function resolveProfileIntervalRejection(params: {
   previousSample: DeviceObjectiveProfileSample;
   sample: DeviceObjectiveProfileSample;
   intervalMs: number;
-}): string | null {
+}): ProfileSampleRejection | null {
   const { previousSample, sample, intervalMs } = params;
-  if (sample.observedAtMs <= previousSample.observedAtMs) return 'objective_profile_non_monotonic_time';
-  if (intervalMs < OBJECTIVE_PROFILE_MIN_INTERVAL_MS) return 'objective_profile_interval_too_short';
-  if (intervalMs > OBJECTIVE_PROFILE_MAX_INTERVAL_MS) return 'objective_profile_interval_too_long';
+  // Out of order: the baseline must not follow this sample backwards in time.
+  if (sample.observedAtMs <= previousSample.observedAtMs) {
+    return { reason: 'objective_profile_non_monotonic_time', openWindow: 'keep' };
+  }
+  // Too soon to bill, but the window is honest and still open — it just needs
+  // longer. Voiding here would restart it on every poll.
+  if (intervalMs < OBJECTIVE_PROFILE_MIN_INTERVAL_MS) {
+    return { reason: 'objective_profile_interval_too_short', openWindow: 'keep' };
+  }
+  if (intervalMs > OBJECTIVE_PROFILE_MAX_INTERVAL_MS) {
+    return { reason: 'objective_profile_interval_too_long', openWindow: 'void' };
+  }
   return null;
 }
 
-function resolveProfileValueRejectionReason(
+function resolveProfileValueRejection(
   intervalMs: number,
   valueDelta: number,
-): string | null {
-  const minRise = MIN_VALUE_RISE;
-  if (valueDelta < minRise) return valueDelta >= 0
-    ? 'objective_profile_rise_too_small'
-    : 'objective_profile_value_fell';
+): ProfileSampleRejection | null {
+  if (valueDelta < MIN_VALUE_RISE) {
+    // A rise too small to bill keeps the window: the caller banks its
+    // sub-interval into the accumulator instead (`accrueSubIntervalSkip`), which
+    // is the whole point of that path. A fall voids it — the next accepted rise
+    // must be measured against the new low, not a stale pre-drop value.
+    return valueDelta >= 0
+      ? { reason: 'objective_profile_rise_too_small', openWindow: 'keep' }
+      : { reason: 'objective_profile_value_fell', openWindow: 'void' };
+  }
   const unitPerHour = calculateUnitPerHour({ intervalMs, valueDelta });
   if (!Number.isFinite(unitPerHour) || unitPerHour <= 0 || unitPerHour > MAX_UNIT_PER_HOUR) {
-    return 'objective_profile_rate_out_of_range';
+    // A value that moved faster than anything physical is junk, and carrying the
+    // window forward keeps that jump in every later delta until the interval cap
+    // finally resets it.
+    return { reason: 'objective_profile_rate_out_of_range', openWindow: 'void' };
   }
   return null;
 }
@@ -458,6 +499,10 @@ function resolveProfileEnergyRejection(
   ) {
     return {
       reason: 'objective_profile_energy_per_unit_out_of_range',
+      // Void, and this is load-bearing: the energy and the value delta are both
+      // cumulative from the baseline, so a refusal that keeps the window hands
+      // the refused energy to the next sample rather than discarding it.
+      openWindow: 'void',
       energy: { kwhPerUnit, band },
     };
   }
@@ -480,16 +525,21 @@ function calculateKwhPerUnit(params: { energyKwh: number; valueDelta: number }):
   return params.energyKwh / params.valueDelta;
 }
 
-// Records the (input, kWh/unit) sample in the per-device ring buffer and
-// re-fits the band layout. Returning a partial Pick lets the caller spread
-// the update inline without branching twice on whether kWh/unit is known.
-function resolveBandedUpdate(params: {
+// Everything the profile knows about its kWh/unit rate, rebuilt from one
+// buffer: the observation goes into the per-device ring buffer, and the band
+// layout and the global statistic are both derived from what that buffer then
+// holds. Deriving rather than accumulating is what lets the buffer's horizon
+// reach the statistic — a running Welford pair cannot have an aged-out window
+// taken back out of it, and `resolveProfileEnergy` sizes every smart task from
+// that statistic. Returning a partial Pick lets the caller spread the update
+// inline without branching twice on whether kWh/unit is known.
+function resolveLearnedRateUpdate(params: {
   previous: DeviceObjectiveProfile;
   previousSample: DeviceObjectiveProfileSample;
   sample: DeviceObjectiveProfileSample;
   kwhPerUnit: number | undefined;
   outdoorTemperatureC?: number;
-}): Partial<Pick<DeviceObjectiveProfile, 'samples' | 'bands'>> {
+}): Partial<Pick<DeviceObjectiveProfile, 'samples' | 'bands' | 'kwhPerUnit'>> {
   const { previous, previousSample, sample, kwhPerUnit, outdoorTemperatureC } = params;
   if (kwhPerUnit === undefined) return {};
   // Tag the sample by the midpoint of the rise so the band layout reflects
@@ -505,7 +555,7 @@ function resolveBandedUpdate(params: {
   // Explicit `bands: undefined` clears any prior layout if the fitter declines
   // to publish one (e.g., the buffer dipped under the split threshold). The
   // undefined key is dropped on JSON serialization for `power_tracker_state`.
-  return { samples, bands };
+  return { samples, bands, kwhPerUnit: resolveKwhPerUnitStat(samples, sample.observedAtMs) };
 }
 
 function buildInitialProfile(sample: DeviceObjectiveProfileSample): DeviceObjectiveProfile {

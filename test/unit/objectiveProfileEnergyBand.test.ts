@@ -6,11 +6,11 @@ import {
   updateObjectiveProfilesFromSnapshot,
 } from '../../lib/objectives/profiles';
 import {
-  OBJECTIVE_PROFILE_BAND_HISTORY_HORIZON_MS,
   OBJECTIVE_PROFILE_BOOTSTRAP_MAX_KWH_PER_UNIT,
   OBJECTIVE_PROFILE_MIN_BAND_HISTORY,
   resolveEnergyPerUnitBand,
 } from '../../lib/objectives/energyBand';
+import { OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS } from '../../lib/objectives/bands';
 import type {
   DeviceObjectiveProfile,
   DeviceObjectiveProfileSample,
@@ -201,6 +201,49 @@ describe('objective profile energy band', () => {
     expect(afterRise.lastSample.value).toBe(46);
   });
 
+  it('voids the window it refused, so the refused energy is not billed to the next one', () => {
+    // The sums are cumulative from the baseline. A refusal that merely declined
+    // to learn would leave the refill's 2 kWh and 0.8 units in the open window,
+    // and the next ordinary rise would arrive as 4 kWh across 4.8 units — 0.83
+    // for a device whose rate is 0.5, inside the band and accepted. The
+    // contamination the band just refused would get in behind it.
+    const previous = profileWithHistory(ORDINARY_HISTORY);
+    const afterRefill = applyWindow(previous, 0.8);
+
+    expect(afterRefill.rejectedSamples).toBe(1);
+    // The baseline moved onto the refused sample and the partial sum is gone.
+    expect(afterRefill.lastSample.observedAtMs).toBe(startMs + hourMs);
+    expect(afterRefill.lastSample.value).toBeCloseTo(50.8, 6);
+    expect(afterRefill.pendingEnergyKWh).toBeUndefined();
+    expect(afterRefill.subIntervalStartMs).toBeUndefined();
+
+    // So the next window is priced on its own: 2 kWh over 4 °C, not 4 over 4.8.
+    const debugStructured = vi.fn();
+    const afterOrdinary = applyWindow(afterRefill, 4, debugStructured);
+    expect(afterOrdinary.acceptedSamples).toBe(11);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'objective_profile_sample_recorded',
+      kwhPerUnit: expect.closeTo(0.5, 6),
+    }));
+  });
+
+  it('keeps the window open when the refusal is about the sample, not the window', () => {
+    // A sample too soon to bill leaves the window open on purpose: voiding there
+    // would restart it on every poll and no window would ever reach the minimum
+    // interval.
+    const previous = profileWithHistory(ORDINARY_HISTORY);
+    const next = updateDeviceObjectiveProfile({
+      previous,
+      sample: sampleAt(startMs + 60 * 1000, previous.lastSample.value + 4),
+      // Its own id: the rejection log throttles per (device, reason), and the
+      // spec below asserts that same reason is emitted for `heater-1`.
+      deviceId: 'heater-2',
+    });
+
+    expect(next.rejectedSamples).toBe(1);
+    expect(next.lastSample).toEqual(previous.lastSample);
+  });
+
   it('applies the coarse bootstrap bound while the device has no history of its own', () => {
     const young = profileWithHistory(Array.from(
       { length: OBJECTIVE_PROFILE_MIN_BAND_HISTORY - 1 },
@@ -277,7 +320,7 @@ describe('resolveEnergyPerUnitBand', () => {
     // escape: once the old observations fall outside it the profile drops back to
     // the bootstrap bound and relearns.
     const profile = profileWithHistory(ORDINARY_HISTORY);
-    const muchLater = startMs + OBJECTIVE_PROFILE_BAND_HISTORY_HORIZON_MS + hourMs;
+    const muchLater = startMs + OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS + hourMs;
 
     expect(resolveEnergyPerUnitBand(profile, startMs).basis).toBe('learned');
     expect(resolveEnergyPerUnitBand(profile, muchLater)).toEqual({
@@ -297,6 +340,47 @@ describe('resolveEnergyPerUnitBand', () => {
     const contaminated = bandAt(startMs, profileWithHistory([...ORDINARY_HISTORY, 1.9]));
 
     expect(contaminated.upperKwhPerUnit).toBeCloseTo(clean.upperKwhPerUnit, 6);
+  });
+});
+
+describe('the learned rate follows the same horizon as admission', () => {
+  it('rebuilds the global stat from the buffer, so an aged-out window leaves the mean', () => {
+    // The escape from a lockout is only half done if admission reopens and the
+    // rate the planner sizes from stays old. `resolveProfileEnergy` reads
+    // `kwhPerUnit.mean`, so that stat has to follow the buffer, which means it
+    // has to be derived from it rather than accumulated beside it — a running
+    // Welford pair cannot have an aged-out window taken back out.
+    const previous = profileWithHistory(ORDINARY_HISTORY);
+    expect(previous.kwhPerUnit?.mean).toBeCloseTo(0.5, 6);
+
+    // Two weeks and change later the tank is on a different rate entirely. Its
+    // history has aged out, so the window is admitted...
+    const lateMs = startMs + OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS + hourMs;
+    const next = updateDeviceObjectiveProfile({
+      previous: { ...previous, lastSample: sampleAt(lateMs, 50) },
+      // 2 kWh over 1.25 °C = 1.6 kWh/°C, more than three times the old rate.
+      sample: sampleAt(lateMs + hourMs, 51.25),
+      deviceId: 'heater-3',
+    });
+
+    expect(next.acceptedSamples).toBe(11);
+    // ...and the stat the planner reads is the new rate alone, not an average
+    // dragged down by ten expired observations.
+    expect(next.samples).toHaveLength(1);
+    expect(next.kwhPerUnit?.sampleCount).toBe(1);
+    expect(next.kwhPerUnit?.mean).toBeCloseTo(1.6, 6);
+  });
+
+  it('keeps in-horizon observations, so an ordinary device is not relearning constantly', () => {
+    const previous = profileWithHistory(ORDINARY_HISTORY);
+    const next = applyWindow(previous, 4);
+
+    expect(next.samples).toHaveLength(11);
+    expect(next.kwhPerUnit?.sampleCount).toBe(11);
+    expect(next.kwhPerUnit?.mean).toBeCloseTo(0.5, 6);
+    // The lifetime counter is untouched by the horizon — provenance still
+    // reports how much this device has ever taught the profile.
+    expect(next.acceptedSamples).toBe(11);
   });
 });
 

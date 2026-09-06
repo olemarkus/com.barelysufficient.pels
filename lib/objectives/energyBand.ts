@@ -1,3 +1,4 @@
+import { OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS } from './bands';
 import type { DeviceObjectiveProfile } from './types';
 
 /**
@@ -50,28 +51,6 @@ import type { DeviceObjectiveProfile } from './types';
  * verdict, so contamination degrades it — gating on it would arm this test last
  * on exactly the devices whose history is dirtiest, which is backwards.
  */
-
-/**
- * How far back the band looks. Observations older than this do not describe the
- * device any more, and — more importantly — this is the escape from a permanent
- * lockout.
- *
- * A refusal does not enter the buffer, so a device whose true rate moves further
- * than the band admits would refuse every window from then on and never learn
- * the new rate: the history that locks it out can no longer be updated by the
- * evidence that would correct it. That is not hypothetical — the profile is keyed
- * by the CHARGER, and a 24 kWh car replaced by a 100 kWh one on the same charger
- * moves the honest rate by more than four times. Ageing the history out means a
- * device stuck refusing everything falls back below the history floor within this
- * window, returns to the coarse bootstrap bound, and relearns from scratch.
- *
- * Two weeks is long enough that an ordinarily-active device never runs short of
- * in-horizon observations (a tank reheats daily), and short enough that a device
- * whose world genuinely changed is not mis-sizing tasks for a season. A device
- * too idle to keep eight observations inside it simply reads as bootstrap, which
- * is the bound it had before this test existed.
- */
-export const OBJECTIVE_PROFILE_BAND_HISTORY_HORIZON_MS = 14 * 24 * 60 * 60 * 1000;
 
 // Below this many buffered observations the device has no distribution of its
 // own worth being judged against: a median over three points is a point, and
@@ -142,12 +121,18 @@ export type EnergyPerUnitBand = {
  * and `m2` are a running Welford pair with no raw samples behind them, so
  * nothing robust can be recovered from them, and reaching for them would put a
  * mean-and-sigma band — the one this module exists to avoid — back in the path.
+ *
+ * The horizon is applied HERE as well as when the buffer is written
+ * (`appendSampleToBuffer`), and the two are not redundant. The write-side prune
+ * is what keeps the estimator's own history recent; this read-side filter is the
+ * one that runs when there are no writes left — a device refusing every window
+ * appends nothing, so nothing would ever prune it out of its own lockout.
  */
 export function resolveEnergyPerUnitBand(
   profile: DeviceObjectiveProfile,
   nowMs: number,
 ): EnergyPerUnitBand {
-  const horizonStartMs = nowMs - OBJECTIVE_PROFILE_BAND_HISTORY_HORIZON_MS;
+  const horizonStartMs = nowMs - OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS;
   const logRates = (profile.samples ?? [])
     .filter((sample) => (
       sample.observedAtMs >= horizonStartMs

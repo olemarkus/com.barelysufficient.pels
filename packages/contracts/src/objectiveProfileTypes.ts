@@ -15,7 +15,23 @@ export type ObjectiveProfileStat = {
 export type DeviceObjectiveProfile = {
   updatedAtMs: number;
   lastSample: DeviceObjectiveProfileSample;
+  /**
+   * The device's learned energy cost per unit, DERIVED from `samples` each time
+   * an observation is recorded — not accumulated independently of it. So its
+   * `sampleCount` is the number of observations the buffer currently holds
+   * (bounded by size and by age), never a lifetime total; `acceptedSamples`
+   * below remains the lifetime counter, and that is the one provenance reports.
+   *
+   * Derived rather than accumulated because a running Welford pair cannot have
+   * a contribution removed: an observation that aged out of the buffer would
+   * otherwise stay in this mean for the life of the profile, and
+   * `resolveProfileEnergy` sizes every smart task from exactly this mean. A
+   * device whose real rate moved would be relearning in the buffer and still
+   * planning at the old figure.
+   */
   kwhPerUnit?: ObjectiveProfileStat;
+  // Still a lifetime running pair — nothing buffers the per-hour rate, and no
+  // estimator reads it, so there is no stale-history problem to solve here.
   unitPerHour?: ObjectiveProfileStat;
   acceptedSamples: number;
   rejectedSamples: number;
@@ -33,7 +49,10 @@ export type DeviceObjectiveProfile = {
   //
   // Recent (input, kWh/unit) samples kept verbatim so the band fitter can
   // re-bucket data when the value distribution shifts. Bounded ring buffer
-  // (newest at the end). Absent until the first accepted observation.
+  // (newest at the end), bounded by AGE as well as size — see
+  // `OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS`. Absent until the first accepted
+  // observation. This is the single record of what the device costs per unit:
+  // `bands` and `kwhPerUnit` are both derived from it.
   samples?: ObjectiveProfileSampleObservation[];
   // Contiguous, sorted bands of kWh/unit covering the observed input range.
   // Absent when the buffer holds too few samples to split usefully; the
