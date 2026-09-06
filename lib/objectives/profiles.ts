@@ -5,7 +5,11 @@ import type {
 } from './types';
 import type { PowerTrackerState } from '../power/trackerTypes';
 import { shouldEmitRejectedProfileSample } from './rejectionLogging';
-import { resolveRecoveryState, type RecoveryAction, type RecoveryDisarmReason } from './recovery';
+import {
+  isWithinEnergyPerUnitBand,
+  resolveEnergyPerUnitBand,
+  type EnergyPerUnitBand,
+} from './energyBand';
 import { applyBandedConfidence, resolveProfileConfidence, updateProfileStat } from './stats';
 import { appendSampleToBuffer, fitBandsFromSamples } from './bands';
 import { buildObjectiveProfileSample } from './samples';
@@ -26,17 +30,25 @@ export const OBJECTIVE_PROFILE_MAX_DEVICES = 64;
 export const OBJECTIVE_PROFILE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MIN_INTERVAL_MS = 5 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MAX_INTERVAL_MS = 6 * 60 * 60 * 1000;
-// One floor and one ceiling, on the value's own scale — this layer has no unit to
-// pick between. The rise floor was already the same number for both (0.2). The
-// energy ceiling is an outlier filter on the learned rate: a window yielding more
-// than this per unit was contaminated (mis-paired power, bogus delta), not
-// informative. It takes the tighter of the two previous values, which still sits
-// far above anything physical — a 200 L tank is ~0.23 kWh/°C, an EV ~0.5 kWh/%.
+// One rise floor and one rate ceiling, on the value's own scale — this layer has
+// no unit to pick between. The energy side has no constant here at all: what a
+// window may cost per unit is the device's own learned band (`energyBand.ts`),
+// because one fleet-wide number cannot tell a tank's ordinary heating from its
+// refill and calls both plausible.
 const MIN_VALUE_RISE = 0.2;
-const MAX_KWH_PER_UNIT = 5;
 const MAX_UNIT_PER_HOUR = 100;
 
 export type ObjectiveProfileDebugEmitter = (payload: Record<string, unknown>) => void;
+
+/**
+ * A refused candidate window: the reason code, plus — for the energy verdict —
+ * the figure and the band it missed, so the structured log says *what* was out
+ * of range and against *which* bound rather than only that something was.
+ */
+type ProfileSampleRejection = {
+  reason: string;
+  energy?: { kwhPerUnit: number; band: EnergyPerUnitBand };
+};
 
 export function updateObjectiveProfilesFromSnapshot(params: {
   state: PowerTrackerState;
@@ -114,9 +126,9 @@ export function updateDeviceObjectiveProfile(params: {
   const intervalMs = getProfileIntervalMs(previousSample, sample);
   const valueDelta = getProfileValueDelta(previousSample, sample);
 
-  // Timing checks (non-monotonic time, too-short/too-long intervals, unit
-  // changes) must run before recovery so a stale or out-of-order sample
-  // cannot arm a 24h recovery window or reset the EV baseline.
+  // Timing checks (non-monotonic time, too-short/too-long intervals) run first:
+  // a stale or out-of-order sample has no window to bill energy across, so it
+  // must never reach the value or energy verdicts, let alone reset the baseline.
   const intervalRejection = resolveProfileIntervalRejectionReason({
     previousSample,
     sample,
@@ -137,36 +149,18 @@ export function updateDeviceObjectiveProfile(params: {
     if (intervalRejection === 'objective_profile_non_monotonic_time'
       && sample.value === previousSample.value) return previous;
     emitRejectedProfileSample({
-      previous,
       deviceId,
       deviceName,
       debugStructured,
       intervalMs,
       valueDelta,
-      rejectionReason: intervalRejection,
+      rejection: { reason: intervalRejection },
     });
     return buildRejectedProfileSample({
       previous,
       sample,
       rejectionReason: intervalRejection,
     });
-  }
-
-  const recovery = resolveRecoveryState({ previous, sample });
-  if (recovery.action !== 'noop' && recovery.nextProfile) {
-    emitRecoveryStateEvent({
-      action: recovery.action,
-      disarmReason: recovery.disarmReason,
-      previous,
-      nextProfile: recovery.nextProfile,
-      sample,
-      deviceId,
-      deviceName,
-      debugStructured,
-    });
-    // A recovery transition (refill drop / rebuild) invalidates the open energy
-    // window, so drop any partial accumulator the recovery result carried over.
-    return { ...recovery.nextProfile, ...CLEARED_ENERGY_ACCUMULATOR };
   }
 
   // Energy across the open baseline→sample window, accumulated per sub-interval
@@ -175,37 +169,37 @@ export function updateDeviceObjectiveProfile(params: {
   // and the recorded value rest on the same figure.
   const windowEnergyKwh = calculateWindowEnergyKwh(previous, sample);
 
-  const rejectionReason = resolveProfileValueOrEnergyRejectionReason({
-    sample,
+  const rejection = resolveProfileValueOrEnergyRejection(
+    previous,
+    sample.observedAtMs,
     intervalMs,
     valueDelta,
     windowEnergyKwh,
-  });
+  );
   // `rise_too_small` is the documented poisoning vector: a still-powered sample
   // whose value barely moved. Instead of discarding it (which billed the eventual
   // accepted rise at a single baseline power), close its sub-interval into the
   // accumulator and keep the baseline so the next real rise integrates the true
   // per-step power profile.
-  if (rejectionReason === 'objective_profile_rise_too_small') {
+  if (rejection?.reason === 'objective_profile_rise_too_small') {
     emitRejectedProfileSample({
-      previous, deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejectionReason,
+      deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejection,
     });
     return accrueSubIntervalSkip({ previous, sample });
   }
-  if (rejectionReason) {
+  if (rejection) {
     emitRejectedProfileSample({
-      previous,
       deviceId,
       deviceName,
       debugStructured,
       intervalMs,
       valueDelta,
-      rejectionReason,
+      rejection,
     });
     return buildRejectedProfileSample({
       previous,
       sample,
-      rejectionReason,
+      rejectionReason: rejection.reason,
     });
   }
 
@@ -359,52 +353,13 @@ function buildRejectedProfileSample(params: {
   };
 }
 
-function emitRecoveryStateEvent(params: {
-  action: RecoveryAction;
-  disarmReason?: RecoveryDisarmReason;
-  previous: DeviceObjectiveProfile;
-  nextProfile: DeviceObjectiveProfile;
-  sample: DeviceObjectiveProfileSample;
-  deviceId?: string;
-  deviceName?: string;
-  debugStructured?: ObjectiveProfileDebugEmitter;
-}): void {
-  const {
-    action,
-    disarmReason,
-    previous,
-    nextProfile,
-    sample,
-    deviceId,
-    deviceName,
-    debugStructured,
-  } = params;
-  if (!debugStructured) return;
-  // Prefer the post-state for the recovery target so `arm_recovery` reports
-  // the value being protected, not the (undefined) prior value.
-  const recoveryTargetValue = nextProfile.recoveryTargetValue
-    ?? previous.recoveryTargetValue
-    ?? null;
-  debugStructured({
-    event: 'objective_profile_recovery_state',
-    action,
-    ...(disarmReason ? { disarmReason } : {}),
-    deviceId,
-    ...(deviceName ? { deviceName } : {}),
-    sampleValue: sample.value,
-    previousValue: previous.lastSample.value,
-    recoveryTargetValue,
-  });
-}
-
 function emitRejectedProfileSample(params: {
-  previous: DeviceObjectiveProfile;
   deviceId?: string;
   deviceName?: string;
   debugStructured?: ObjectiveProfileDebugEmitter;
   intervalMs: number;
   valueDelta: number;
-  rejectionReason: string;
+  rejection: ProfileSampleRejection;
 }): void {
   const {
     deviceId,
@@ -412,8 +367,9 @@ function emitRejectedProfileSample(params: {
     debugStructured,
     intervalMs,
     valueDelta,
-    rejectionReason,
+    rejection,
   } = params;
+  const rejectionReason = rejection.reason;
   if (!shouldEmitRejectedProfileSample({ deviceId, rejectionReason })) return;
   debugStructured?.({
     event: 'objective_profile_sample_rejected',
@@ -422,19 +378,30 @@ function emitRejectedProfileSample(params: {
     ...(deviceName ? { deviceName } : {}),
     intervalMs,
     valueDelta,
+    // An energy verdict is uninterpretable without the band it missed: the same
+    // reason code means "above a fleet-wide bootstrap bound" on a young profile
+    // and "outside what this device has ever needed" on a grown one.
+    ...(rejection.energy
+      ? {
+        kwhPerUnit: rejection.energy.kwhPerUnit,
+        bandBasis: rejection.energy.band.basis,
+        bandLowerKwhPerUnit: rejection.energy.band.lowerKwhPerUnit,
+        bandUpperKwhPerUnit: rejection.energy.band.upperKwhPerUnit,
+      }
+      : {}),
   });
 }
 
-function resolveProfileValueOrEnergyRejectionReason(params: {
-  sample: DeviceObjectiveProfileSample;
-  intervalMs: number;
-  valueDelta: number;
-  windowEnergyKwh: number | undefined;
-}): string | null {
-  const { sample, intervalMs, valueDelta, windowEnergyKwh } = params;
-  const valueReason = resolveProfileValueRejectionReason({ sample, intervalMs, valueDelta });
-  if (valueReason) return valueReason;
-  return resolveProfileEnergyRejectionReason({ sample, valueDelta, windowEnergyKwh });
+function resolveProfileValueOrEnergyRejection(
+  previous: DeviceObjectiveProfile,
+  observedAtMs: number,
+  intervalMs: number,
+  valueDelta: number,
+  windowEnergyKwh: number | undefined,
+): ProfileSampleRejection | null {
+  const valueReason = resolveProfileValueRejectionReason(intervalMs, valueDelta);
+  if (valueReason) return { reason: valueReason };
+  return resolveProfileEnergyRejection(previous, observedAtMs, valueDelta, windowEnergyKwh);
 }
 
 function resolveProfileIntervalRejectionReason(params: {
@@ -449,12 +416,10 @@ function resolveProfileIntervalRejectionReason(params: {
   return null;
 }
 
-function resolveProfileValueRejectionReason(params: {
-  sample: DeviceObjectiveProfileSample;
-  intervalMs: number;
-  valueDelta: number;
-}): string | null {
-  const { intervalMs, valueDelta } = params;
+function resolveProfileValueRejectionReason(
+  intervalMs: number,
+  valueDelta: number,
+): string | null {
   const minRise = MIN_VALUE_RISE;
   if (valueDelta < minRise) return valueDelta >= 0
     ? 'objective_profile_rise_too_small'
@@ -466,20 +431,35 @@ function resolveProfileValueRejectionReason(params: {
   return null;
 }
 
-function resolveProfileEnergyRejectionReason(params: {
-  sample: DeviceObjectiveProfileSample;
-  valueDelta: number;
-  windowEnergyKwh: number | undefined;
-}): string | null {
-  const { valueDelta, windowEnergyKwh } = params;
+/**
+ * The one contamination test. A window that cost far more or far less energy per
+ * unit than this device has ever needed did not measure ordinary operation — a
+ * tank refilling with cold water, a charge report that stepped, a room bleeding
+ * heat out of an open door — and folding it in poisons every smart task sized
+ * from the rate afterwards. The verdict is the device's own band; no cause is
+ * diagnosed and none needs to be. `energyBand.ts` carries the reasoning.
+ */
+function resolveProfileEnergyRejection(
+  previous: DeviceObjectiveProfile,
+  observedAtMs: number,
+  valueDelta: number,
+  windowEnergyKwh: number | undefined,
+): ProfileSampleRejection | null {
   // No credible power across the window (device idle / coasting) → no energy
   // estimate to range-check; the sample can still be accepted on its value rise
   // and simply contributes no `kwhPerUnit`.
   if (windowEnergyKwh === undefined) return null;
   const kwhPerUnit = calculateKwhPerUnit({ energyKwh: windowEnergyKwh, valueDelta });
-  const maxKwhPerUnit = MAX_KWH_PER_UNIT;
-  if (!Number.isFinite(kwhPerUnit) || kwhPerUnit <= 0 || kwhPerUnit > maxKwhPerUnit) {
-    return 'objective_profile_energy_per_unit_out_of_range';
+  const band = resolveEnergyPerUnitBand(previous, observedAtMs);
+  if (
+    !Number.isFinite(kwhPerUnit)
+    || kwhPerUnit <= 0
+    || !isWithinEnergyPerUnitBand(band, kwhPerUnit)
+  ) {
+    return {
+      reason: 'objective_profile_energy_per_unit_out_of_range',
+      energy: { kwhPerUnit, band },
+    };
   }
   return null;
 }

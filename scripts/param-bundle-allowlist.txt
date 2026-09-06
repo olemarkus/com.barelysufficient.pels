@@ -167,7 +167,7 @@ lib/objectives/deferredObjectives/statusTransitions.ts 4
 lib/objectives/deferredObjectives/stepSelection.ts 1
 lib/objectives/deferredObjectives/trajectoryMilestone.ts 3
 lib/objectives/noPowerSourceDiagnostic.ts 1
-lib/objectives/profiles.ts 12
+lib/objectives/profiles.ts 8
 lib/objectives/stats.ts 2
 lib/observer/generationFreshness.ts 1
 lib/observer/idleClassifier.ts 2

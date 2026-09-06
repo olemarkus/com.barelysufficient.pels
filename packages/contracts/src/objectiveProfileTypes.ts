@@ -19,24 +19,18 @@ export type DeviceObjectiveProfile = {
   unitPerHour?: ObjectiveProfileStat;
   acceptedSamples: number;
   rejectedSamples: number;
-  // Refill-cycle exclusion: when a temperature sensor records a sharp drop
-  // (e.g., hot-water draw introducing cold water at the bottom of the tank),
-  // the subsequent rebuild from that displaced thermal state is not
-  // representative of normal heating. While `recoveryTargetValue` is set,
-  // accepted-sample updates are suspended; it clears once the value climbs
-  // back to that pre-drop level or the 24h safety timeout elapses.
-  recoveryTargetValue?: number;
-  recoveryArmedAtMs?: number;
-  // Count of consecutive armed-window samples that showed no positive movement
-  // toward `recoveryTargetValue`. Disarms the window once this hits
-  // `RECOVERY_NO_PROGRESS_SAMPLE_LIMIT` so a capacity-shed thermostat cooling
-  // *away* from the pre-drop value doesn't sit rejected for the full 24h
-  // safety timeout. Resets to 0 whenever a sample shows forward progress.
-  // Optional because it belongs to the ARMED recovery cluster: disarming
-  // destructures it off the profile along with `recoveryTargetValue` and
-  // `recoveryArmedAtMs` (`lib/objectives/recovery.ts`), so absence means "not
-  // in recovery", not "written by an older build". Readers treat it as 0.
-  recoveryNoProgressSamples?: number;
+  // No refill-recovery cluster. There used to be one — a sharp fall armed a
+  // window (`recoveryTargetValue` / `recoveryArmedAtMs` /
+  // `recoveryNoProgressSamples`) that suspended ALL learning until the value
+  // climbed back, 24h elapsed, or four samples showed no progress. It was an
+  // indirect proxy: detect the fall, then blanket-suppress whatever followed,
+  // including the windows that were perfectly ordinary. Each contaminated
+  // window is now refused on its own merit against the device's learned
+  // kWh/unit band (`lib/objectives/energyBand.ts`), so a multi-window refill is
+  // simply several refusals and nothing legitimate is caught in the blast
+  // radius. A blob written by the older build still validates — the three keys
+  // are ignored, not rejected (`isPlausiblePowerTrackerState`).
+  //
   // Recent (input, kWh/unit) samples kept verbatim so the band fitter can
   // re-bucket data when the value distribution shifts. Bounded ring buffer
   // (newest at the end). Absent until the first accepted observation.

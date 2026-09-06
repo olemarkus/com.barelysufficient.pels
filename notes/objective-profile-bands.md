@@ -17,7 +17,7 @@ Each `DeviceObjectiveProfile` keeps up to `OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE 
 
 `inputValue` is tagged with the **midpoint** of the rise (`(previousSample.value + sample.value) / 2`) rather than the start or end. This reflects where the energy was actually deposited along the input axis.
 
-The buffer is updated only when `kWhPerUnit` is known (`crediblePowerW` was present on the previous sample). Recovery-window samples are not added — the recovery path returns its `nextProfile` before `buildAcceptedProfileSample` runs.
+The buffer is updated only when `kWhPerUnit` is known (`crediblePowerW` was present on the previous sample) and the window passed the learned energy band. Refused windows are not added — every rejection path returns before `buildAcceptedProfileSample` runs.
 
 #### Requirement: a credible power source must be available per accepted sample
 
@@ -68,24 +68,16 @@ The global `kwhPerUnit.mean` is the fallback for:
 
 The effective `kWhPerUnit` reported back to the planner is `energy / remainingUnits` so the planner's existing kWh-per-unit reasoning collapses to the global mean cleanly when bands aren't usable.
 
-## Interaction with #775 recovery window
+## Interaction with the learned energy band
 
-The recovery window suspends all stat updates while armed. The new buffer/band logic is reached only via `buildAcceptedProfileSample`, which runs only on the non-recovery path. Recovery's `disarm_recovery` path destructures `recoveryTargetValue`/`recoveryArmedAtMs` (and `recoveryNoProgressSamples`) via `...rest` but preserves `samples` and `bands`. So:
+Whether a window teaches the profile at all is decided before this file's machinery runs, by the per-device kWh/unit band in `lib/objectives/energyBand.ts`. A window whose cost per unit sits outside what the device has historically needed is refused as contaminated — a tank refilling with cold water after a draw, a charge report that steps without the matching energy, a heater bleeding heat out of an open door — and only accepted windows reach `buildAcceptedProfileSample`, so only they enter the sample buffer and the band fit. Consequences for the layout here:
 
-- A refill cycle does not push samples into the buffer.
-- Bands learned before a drop survive the drop unchanged and resume estimating after recovery.
+- A refill cycle does not push samples into the buffer, and its several windows are simply several refusals.
+- Bands learned before a drop survive it unchanged: a refusal returns `{...previous, rejectedSamples + 1}` and touches neither `samples` nor `bands`.
+- The gate has its own two guards against eating its own inputs: the band is robust (median and median absolute deviation, so an admitted outlier moves the centre by one rank rather than dragging a mean and squaring into sigma), and its history is aged out after two weeks, so a device whose honest rate genuinely moved — a different car on the same charger — drops back to the coarse bootstrap bound and relearns instead of refusing every window forever.
+- The two are not the same "band". The layout in this file partitions the device's **input range** (SoC, °C) so the estimator can integrate a taper; `energyBand.ts` bounds the **kWh/unit figure itself** and answers only "is this window credible". They are computed from the same buffer and never consult each other.
 
-### Forward-progress disarm
-
-`resolveArmedRecovery` disarms on three conditions, in order:
-
-1. **Recovered** — `sample.value >= recoveryTargetValue` (pre-drop value reached).
-2. **Safety timeout** — armed age ≥ `RECOVERY_SAFETY_TIMEOUT_MS` (24h hard cap).
-3. **No progress** — `RECOVERY_NO_PROGRESS_SAMPLE_LIMIT` consecutive samples with non-positive delta vs the previous sample. A delta above `RECOVERY_PROGRESS_EPSILON` resets the counter.
-
-The third condition exists for cap-shed thermostats: when a smart task is itself shedding the heater, the device cools *away* from the pre-drop value and would otherwise sit in `reject_recovering` for the full 24h timeout, blocking all stat and band updates. The no-progress disarm treats this as "we lost the refill assumption; resume baseline learning" — recovery fields clear, the disarming sample becomes the new baseline, `samples` / `bands` survive.
-
-The disarm event carries `disarmReason: 'recovered' | 'safety_timeout' | 'no_progress'` for telemetry; the action itself remains `disarm_recovery` for all three paths.
+The band replaced a recovery window (#775): a sharp fall used to arm a period in which *nothing* was learned until the value climbed back, 24 h elapsed, or four samples showed no forward progress. It was an indirect proxy — detect the fall, then blanket-suppress whatever followed — and its cost was everything ordinary caught in the blast radius, plus a no-progress counter and a safety timeout whose only job was to release a capacity-shed thermostat that had cooled away and would never climb back. Judging each window on its own merit needs none of that: the shed thermostat's next honest rise is learned at once.
 
 ## Why not …
 

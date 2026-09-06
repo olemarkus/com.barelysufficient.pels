@@ -225,9 +225,6 @@ const OBJECTIVE_PROFILE_REQUIRED_FINITE_FIELDS = [
 ] as const;
 
 const OBJECTIVE_PROFILE_OPTIONAL_FINITE_FIELDS = [
-  'recoveryTargetValue',
-  'recoveryArmedAtMs',
-  'recoveryNoProgressSamples',
   'pendingEnergyKWh',
   'subIntervalStartMs',
   'subIntervalPowerW',
@@ -236,8 +233,13 @@ const OBJECTIVE_PROFILE_OPTIONAL_FINITE_FIELDS = [
 const isDeviceObjectiveProfile = (value: unknown): boolean => {
   if (!isPlainObjectRecord(value)) return false;
   // No `kind` or sample `unit`: a profile records a value and a time, and this
-  // layer has no notion of what the value measures. A blob persisted before they
-  // were removed still validates — the extra keys are ignored, not rejected.
+  // layer has no notion of what the value measures. Nor the recovery-window
+  // cluster (`recoveryTargetValue` / `recoveryArmedAtMs` /
+  // `recoveryNoProgressSamples`), retired with the window itself. A blob
+  // persisted before any of them were removed still validates — the extra keys
+  // are ignored, not rejected — and the retired keys are then inert: nothing
+  // reads them, so a profile that was mid-recovery at upgrade resumes learning
+  // at once, guarded by the kWh/unit band instead.
   return OBJECTIVE_PROFILE_REQUIRED_FINITE_FIELDS.every(
       (field) => isFiniteNumber(value[field]),
     )
