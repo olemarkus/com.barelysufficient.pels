@@ -32,6 +32,7 @@ import {
 import api from '../../api';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import { drainUntil } from '../utils/asyncDrain';
+import type { DeviceStateOfChargeSnapshot } from '../../packages/contracts/src/types';
 
 const CAR_ID = 'polestar';
 const CHARGER_ID = 'elbillader';
@@ -123,7 +124,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
   /** The charger's state-of-charge as transport currently holds it. */
   const socOf = (snapshot: ReturnType<typeof getLatestTargetSnapshotForTests>) => (
     (snapshot.find((device) => device.id === CHARGER_ID) as {
-      stateOfCharge?: { percent: number; source?: string; sourceDeviceId?: string; status: string };
+      stateOfCharge?: DeviceStateOfChargeSnapshot;
     } | undefined)?.stateOfCharge
   );
 
@@ -293,12 +294,11 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     // the tick — which is why the poll cadence is the EV car-link probe's
     // tightest constraint.
     await pumpMinutes(6);
-    await drainUntil(() => socOf(getLatestTargetSnapshotForTests())?.percent === 63);
+    await drainUntil(() => socOf(getLatestTargetSnapshotForTests())?.report.percent === 63);
 
     expect(socOf(getLatestTargetSnapshotForTests())).toMatchObject({
-      percent: 63,
-      source: 'car',
-      sourceDeviceId: CAR_ID,
+      report: { percent: 63 },
+      source: { kind: 'car', carId: CAR_ID },
       level: { kind: 'known', percent: 63 },
     });
 
@@ -380,9 +380,8 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
       socPct: 41,
     });
     expect(socOf(getLatestTargetSnapshotForTests())).toMatchObject({
-      percent: 41,
-      source: 'car',
-      sourceDeviceId: CAR_ID,
+      report: { percent: 41 },
+      source: { kind: 'car', carId: CAR_ID },
     });
 
     await car.setCapabilityValue('ev_charging_state', 'plugged_out');

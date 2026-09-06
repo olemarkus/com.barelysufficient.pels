@@ -22,7 +22,8 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
   // The `/ui_devices` snapshot physically carries the observed SoC bag and the
   // measured-power reading the base type omits (SoC- and measured-power-observed
   // slices); the detail SoC/boost panes and `supportsPowerDevice` read them.
-  // Consumers keep their `status`/`typeof` checks (the guard proves presence).
+  // The guard proves PRESENCE only; whether the charger has a level is
+  // `stateOfCharge.level.kind`, which consumers still read for themselves.
   & StateOfChargeObservedProbe
   & MeasuredPowerObservedProbe
   & Pick<DeviceDescriptor,

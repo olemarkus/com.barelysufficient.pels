@@ -65,7 +65,11 @@ const resolveCurrentValue = (
   if (kind === 'temperature') {
     return hasObservedTemperature(device) ? device.temperature.currentTemperature : null;
   }
-  return hasObservedStateOfCharge(device) ? device.stateOfCharge.percent : null;
+  // `level`, never the raw report: a bag with no level means PELS has no reading
+  // for this charger, and the percentage it last saw belongs to a car that has gone.
+  if (!hasObservedStateOfCharge(device)) return null;
+  const { level } = device.stateOfCharge;
+  return level.kind === 'known' ? level.percent : null;
 };
 
 const buildCard = (params: {

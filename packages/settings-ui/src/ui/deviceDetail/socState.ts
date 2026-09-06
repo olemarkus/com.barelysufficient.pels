@@ -35,17 +35,25 @@ export function setDeviceDetailSocState(device: SettingsUiDeviceDetailItem | nul
       : 'Not reported';
   }
 
-  // The value line above already states the consequence in plain words ("N % - stale",
-  // "Invalid report", "Not reported"), so the subline only carries the freshness time —
-  // it must NOT leak the raw status enum ("Status: stale") to the user.
-  if (typeof soc.observedAtMs === 'number' && Number.isFinite(soc.observedAtMs)) {
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    deviceDetailSocUpdated.textContent = `Updated ${getTimeAgo(
-      new Date(soc.observedAtMs),
-      new Date(),
-      timeZone,
-    )}`;
-  } else {
+  // The value line above already states the consequence in plain words ("N %",
+  // "No car connected", "Not reported"), so the subline only carries the time the
+  // reading arrived — it must NOT leak a raw status enum ("Status: stale").
+  //
+  // Read off the RAW report, not the level: the subline says when the charger
+  // last told PELS anything, which stays true — and stays worth showing — for the
+  // "No car connected" case, where there is no level to carry a stamp.
+  // Finiteness-gated, not merely presence-gated: this is the WebView side of the
+  // Homey API bridge, an untrusted transport with no validating adapter in front
+  // of it, and a junk stamp would render "Updated Invalid Date".
+  const reportedAtMs = soc.report.observedAtMs;
+  if (reportedAtMs === undefined || !Number.isFinite(reportedAtMs)) {
     deviceDetailSocUpdated.textContent = '';
+    return;
   }
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  deviceDetailSocUpdated.textContent = `Updated ${getTimeAgo(
+    new Date(reportedAtMs),
+    new Date(),
+    timeZone,
+  )}`;
 }

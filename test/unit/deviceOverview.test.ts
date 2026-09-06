@@ -155,7 +155,7 @@ describe('device overview formatter', () => {
       plannedState: 'keep',
       deviceRole: 'ev_charger',
       evChargingState: 'plugged_in_charging',
-      stateOfCharge: { level: { kind: 'known', percent: 42 } },
+      stateOfCharge: { level: { kind: 'known', percent: 42, observedAtMs: 1_000 } },
       currentDrawKw: 0,
       reason: r('keep'),
     })).statusMsg).toBe('EV battery: 42 %');

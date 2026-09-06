@@ -1,4 +1,5 @@
 import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings.js';
+import type { DeviceStateOfChargeSnapshot } from '../../contracts/src/types.js';
 import { deadlineLabels } from './deadlineLabels.js';
 
 // Browser-safe resolution of "which kind of smart task can this device carry,
@@ -21,7 +22,12 @@ export type SmartTaskDeviceLike = {
     currentTemperature: number;
     target: { value: number; min?: number; max?: number; step?: number };
   };
-  stateOfCharge?: { percent?: number };
+  // Derived from the contract rather than hand-mirrored. As `{ percent?: number }`
+  // this slice accepted any object at all, so a shape change compiled fine and
+  // every EV charger silently seeded its goal stepper from `null`. `Pick` makes the
+  // next such change a build error here, matching `deviceOverview.ts` and
+  // `planSteppedCardText.ts`, which already slice `level` the same way.
+  stateOfCharge?: Pick<DeviceStateOfChargeSnapshot, 'level'>;
 };
 
 const isEvCharger = (device: SmartTaskDeviceLike): boolean => device.deviceClass === 'evcharger';
@@ -86,8 +92,12 @@ export const resolveSmartTaskCurrentValue = (
   if (kind === 'temperature') {
     return device.temperature?.currentTemperature ?? null;
   }
-  const percent = device.stateOfCharge?.percent;
-  return isFiniteNumber(percent) ? percent : null;
+  // `level`, never the raw report: a charger whose car has gone reports no level,
+  // and seeding the stepper from the percentage that car left behind would show a
+  // departed car's charge as this one's. Same answer `resolveObjectiveObservedQuantity`
+  // gives for the same state.
+  const level = device.stateOfCharge?.level;
+  return level?.kind === 'known' ? level.percent : null;
 };
 
 // Sensible "common case" goals to seed the stepper with — an EV charges to 80%

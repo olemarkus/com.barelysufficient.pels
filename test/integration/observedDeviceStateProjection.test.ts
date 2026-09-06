@@ -3,6 +3,8 @@ import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
 import { projectObservedState } from '../../lib/device/observedStateProjection';
+import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import type { Logger } from '../../lib/utils/types';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type {
@@ -17,7 +19,11 @@ import { mockHomeyInstance } from '../mocks/homey';
 import Homey from 'homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
-import type { ObservedDeviceState, ReportedStepObservedProbe } from '../../packages/contracts/src/types';
+import type {
+    ObservedDeviceState,
+    ReportedStepObservedProbe,
+    StateOfChargeObservedProbe,
+} from '../../packages/contracts/src/types';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 
 // Stub the live feed so the transport never opens a real socket.io connection.
@@ -426,6 +432,36 @@ describe('ObservedDeviceStateProjection apply guard', () => {
         // object by reference, so a shallow freeze would leave this mutable.
         expect(() => { stored.binaryControl!.on = false; }).toThrow();
         expect(p.getObservedState('dev1')?.binaryControl?.on).toBe(true);
+    });
+
+    // `stateOfCharge` holds three nested objects of its own, so the freeze has to
+    // name them: `report.percent` and `source.carId` were flat scalars covered by
+    // the outer freeze until the raw report and the provenance grew their own
+    // objects, and a shallow freeze silently left both assignable through a getter.
+    it('freezes the nested state-of-charge objects, not just the bag', () => {
+        const p = new ObservedDeviceStateProjection();
+        // Widened via a typed local rather than inline: `observed` is declared as
+        // `ObservedDeviceState`, which omits `stateOfCharge`, so a fresh literal
+        // trips the excess-property check the producers dodge with the probe.
+        const observed: ObservedDeviceState & StateOfChargeObservedProbe = {
+            ...baseObserved('dev1', true),
+            stateOfCharge: stateOfChargeFixture({
+                percent: 63, observedAtMs: 1_500, carId: 'car-1',
+            }),
+        };
+        p.applyDelta({
+            source: 'realtime_capability', deviceId: 'dev1', observationSeq: 1, observed,
+        });
+        const stored = p.getObservedState('dev1');
+        if (!stored || !hasObservedStateOfCharge(stored)) throw new Error('expected a state-of-charge bag');
+        const soc = stored.stateOfCharge;
+        expect(Object.isFrozen(soc)).toBe(true);
+        expect(Object.isFrozen(soc.level)).toBe(true);
+        expect(Object.isFrozen(soc.report)).toBe(true);
+        expect(Object.isFrozen(soc.source)).toBe(true);
+        expect(() => { soc.report.percent = 1; }).toThrow();
+        expect(() => { (soc.source as { kind: string }).kind = 'charger'; }).toThrow();
+        expect(soc.report.percent).toBe(63);
     });
 
     it('replay-out-of-order: 1,3,2 settles on seq 3 and a later seq-2 replay is dropped', () => {

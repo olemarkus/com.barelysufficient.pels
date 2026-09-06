@@ -25,6 +25,7 @@ import {
   ENDED_WINDOW_MS,
   ROW_CAP,
 } from '../../widgets/smart_tasks/src/smartTasksWidgetPayload';
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 
 const NOW = new Date('2026-05-26T10:00:00.000Z').getTime();
 const HOUR = 60 * 60 * 1000;
@@ -190,7 +191,13 @@ describe('buildSmartTasksWidgetPayload', () => {
   test('renders EV plans with % unit', () => {
     const payload = buildSmartTasksWidgetPayload(buildInput(
       { ev: buildPlan({ deviceId: 'ev', objectiveKind: 'ev_soc', targetTemperatureC: null, targetPercent: 80 }) },
-      [buildDevice({ id: 'ev', stateOfCharge: { percent: 60 } } as Partial<TargetDeviceSnapshot>)],
+      [buildDevice({
+        id: 'ev',
+        // Built through the producer's fixture: the `as Partial<…>` cast silences
+        // the compiler (the base type omits `stateOfCharge`), so a hand-written
+        // literal here rots silently when the snapshot shape moves.
+        stateOfCharge: stateOfChargeFixture({ percent: 60 }),
+      } as Partial<TargetDeviceSnapshot>)],
     ));
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;

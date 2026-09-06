@@ -114,7 +114,7 @@ export function recordSnapshotCapabilityObservations(params: {
     recordSnapshotScalarObservation(state, snapshot, {
         deviceId,
         capabilityId: observedStateOfChargeCapabilityId,
-        value: snapshot.stateOfCharge?.percent,
+        value: snapshot.stateOfCharge?.report.percent,
         source,
         observedAt,
         capabilityIdSet,

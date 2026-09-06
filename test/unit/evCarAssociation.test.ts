@@ -100,14 +100,17 @@ describe('applyAssociatedCarStateOfCharge', () => {
   it('writes the level while the car reports a connected state', () => {
     const snapshot = charger();
     expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading, 1_600)).toBe(true);
-    expect(snapshot.stateOfCharge).toMatchObject({ percent: 63, source: 'car' });
+    expect(snapshot.stateOfCharge).toMatchObject({
+      report: { percent: 63 },
+      source: { kind: 'car', carId: 'car-1' },
+    });
   });
 
   it('keeps writing while the car is discharging — it is still attached', () => {
     matched = { ...ASSOCIATED, chargingState: 'plugged_in_discharging' };
     const snapshot = charger();
     expect(applyAssociatedCarStateOfCharge(writeCtx(snapshot), reading, 1_600)).toBe(true);
-    expect(snapshot.stateOfCharge).toMatchObject({ percent: 63 });
+    expect(snapshot.stateOfCharge).toMatchObject({ report: { percent: 63 } });
   });
 
   it('writes nothing when the probe reports no association', () => {

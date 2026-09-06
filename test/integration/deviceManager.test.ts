@@ -5472,8 +5472,8 @@ describe('DeviceTransport', () => {
                 // No disconnect was observed, so it is the same session and the
                 // reading stands — there is no session anchor to move.
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
-                    percent: 51,
-                    level: { kind: 'known', percent: 51 },
+                    report: { percent: 51, observedAtMs: expect.any(Number) },
+                    level: { kind: 'known', percent: 51, observedAtMs: expect.any(Number) },
                 }));
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge?.sessionStartedAtMs).toBeUndefined();
 
@@ -5509,8 +5509,8 @@ describe('DeviceTransport', () => {
                 evDeviceManager.injectCapabilityUpdateForTest('ev1', 'measure_battery', 52);
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
-                    percent: 52,
-                    level: { kind: 'known', percent: 52 },
+                    report: { percent: 52, observedAtMs: expect.any(Number) },
+                    level: { kind: 'known', percent: 52, observedAtMs: expect.any(Number) },
                 }));
 
                 evDeviceManager.destroy();
@@ -5587,8 +5587,8 @@ describe('DeviceTransport', () => {
                 });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
-                    percent: 52,
-                    level: { kind: 'known', percent: 52 },
+                    report: { percent: 52, observedAtMs: expect.any(Number) },
+                    level: { kind: 'known', percent: 52, observedAtMs: expect.any(Number) },
                     capabilityId: 'measure_battery',
                 }));
                 expect(liveStateListener).toHaveBeenCalledOnce();
@@ -5817,9 +5817,9 @@ describe('DeviceTransport', () => {
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
-                    percent: 61,
+                    report: { percent: 61, observedAtMs: expect.any(Number) },
                     capabilityId: 'measure_battery',
-                    level: { kind: 'known', percent: 61 },
+                    level: { kind: 'known', percent: 61, observedAtMs: expect.any(Number) },
                 }));
 
                 evDeviceManager.destroy();
@@ -5923,9 +5923,9 @@ describe('DeviceTransport', () => {
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
-                    percent: 61,
+                    report: { percent: 61, observedAtMs: expect.any(Number) },
                     capabilityId: 'measure_battery',
-                    level: { kind: 'known', percent: 61 },
+                    level: { kind: 'known', percent: 61, observedAtMs: expect.any(Number) },
                 }));
 
                 evDeviceManager.destroy();
@@ -6029,9 +6029,9 @@ describe('DeviceTransport', () => {
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
-                    percent: 61,
+                    report: { percent: 61, observedAtMs: expect.any(Number) },
                     capabilityId: 'measure_soc_level',
-                    level: { kind: 'known', percent: 61 },
+                    level: { kind: 'known', percent: 61, observedAtMs: expect.any(Number) },
                 }));
 
                 evDeviceManager.destroy();
@@ -6079,9 +6079,8 @@ describe('DeviceTransport', () => {
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
-                    percent: 50,
-                    observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
-                    level: { kind: 'known', percent: 50 },
+                    report: { percent: 50, observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime() },
+                    level: { kind: 'known', percent: 50, observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime() },
                 }));
 
                 // The level goes because the SESSION ended, not because time
@@ -6113,16 +6112,14 @@ describe('DeviceTransport', () => {
                     },
                 });
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
-                    percent: 50,
-                    observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
+                    report: { percent: 50, observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime() },
                     level: { kind: 'unavailable', reasonCode: 'not_connected' },
                 }));
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
-                    percent: 50,
-                    observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
+                    report: { percent: 50, observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime() },
                     level: { kind: 'unavailable', reasonCode: 'not_connected' },
                 }));
 
@@ -6216,7 +6213,7 @@ describe('DeviceTransport', () => {
                 });
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
-                    percent: 70,
+                    report: expect.objectContaining({ percent: 70 }),
                     capabilityId: 'measure_battery',
                 }));
 
@@ -6255,7 +6252,7 @@ describe('DeviceTransport', () => {
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
-                    percent: 70,
+                    report: expect.objectContaining({ percent: 70 }),
                     capabilityId: 'measure_battery',
                 }));
 
@@ -6365,7 +6362,7 @@ describe('DeviceTransport', () => {
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
-                    percent: 50,
+                    report: expect.objectContaining({ percent: 50 }),
                     capabilityId: 'measure_battery',
                 }));
 

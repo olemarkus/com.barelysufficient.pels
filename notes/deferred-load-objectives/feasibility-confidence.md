@@ -23,7 +23,8 @@ Per device, per planning cycle, `buildObjectiveProfileSample`
 
 - `value` — the objective quantity (°C for thermostats, % SoC for EVs).
 - `observedAtMs` — the **sensor's own freshness timestamp** (`lastFreshDataMs`
-  / `stateOfCharge.observedAtMs`), not PELS wall-clock.
+  for temperature, `stateOfCharge.level.observedAtMs` for SoC — a known level
+  carries the stamp it was read at), not PELS wall-clock.
 - `crediblePowerW` — measured power if present, else the reported step's
   planning power; **absent when the device isn't drawing**.
 

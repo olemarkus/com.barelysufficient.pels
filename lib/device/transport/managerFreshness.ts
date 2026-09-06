@@ -74,7 +74,7 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     });
     return {
       changed,
-      normalizedValue: snapshot.stateOfCharge?.percent,
+      normalizedValue: snapshot.stateOfCharge?.report.percent,
     };
   }
   if (capabilityId === 'evcharger_charging_state' && typeof value === 'string') {

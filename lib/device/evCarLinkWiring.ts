@@ -76,7 +76,7 @@ export const buildEvCarLinkChargerViews = (
         // test.
         ...(hasObservedStateOfCharge(snapshot)
             && snapshot.stateOfCharge.level.kind === 'known'
-            && snapshot.stateOfCharge.source !== 'car'
+            && snapshot.stateOfCharge.source.kind !== 'car'
             ? { reportedSocPct: snapshot.stateOfCharge.level.percent }
             : {}),
     }];

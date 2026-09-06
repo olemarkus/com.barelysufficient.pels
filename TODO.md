@@ -990,6 +990,23 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Device observation and transport
 
+- [ ] **`TemperatureObservation` carries no timestamp, so the objectives seam reaches for the
+      device-level one.** `TemperatureObservation` (`packages/contracts/src/types.ts`) is
+      `{ currentTemperature, target }` — a measurement with no record of when it was measured —
+      while a known state-of-charge level carries its own stamp inside the `known` arm. The
+      asymmetry surfaces in `resolveObjectiveObservedQuantity`
+      (`packages/shared-domain/src/objectiveObservedQuantity.ts`), which takes a
+      `deviceObservedAtMs: number | undefined` parameter that exists solely to feed the temperature
+      branch, and whose `undefined` arm is the last nullable on that seam: a device with a
+      temperature but no device-level stamp yields no sample and learns nothing. Change: give
+      `TemperatureObservation` an `observedAtMs`, set at the two producer seams that admit and
+      update the facet (`resolveTemperatureObservation` and `updateTemperatureMeasurement`,
+      `lib/device/transport/temperatureObservation.ts`) plus the partial-refresh preservation path
+      beside them (`preserveTemperatureAcrossPartialDeviceUpdate`), then drop the
+      `deviceObservedAtMs` parameter. Done when `resolveObjectiveObservedQuantity` takes the device
+      and nothing else, and both branches read a stamp that belongs to the reading rather than to
+      the device.
+
 - [ ] **A timestamp-less reconnect anchors nothing, so a replugged charger keeps a retired level.**
       `resolveReconnectAtMs` (`lib/device/transport/stateOfCharge.ts`) deliberately requires REAL
       evidence: a connected observation carrying no `lastUpdated` cannot anchor the new session, so

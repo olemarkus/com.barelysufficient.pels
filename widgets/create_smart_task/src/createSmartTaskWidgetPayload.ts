@@ -1,6 +1,7 @@
 import type {
   SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
+  StateOfChargeObservedProbe,
   TemperatureObservedProbe,
 } from '../../../packages/contracts/src/types';
 import { isSteppedLoadSnapshot } from '../../../packages/shared-domain/src/steppedLoadObservedState';
@@ -29,7 +30,13 @@ export const EMPTY_NO_DEVICES_SUBTITLE = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDe
 export const EMPTY_NO_DEVICES_HINT = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevicesHint;
 
 const buildDevice = (
-  device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe & TemperatureObservedProbe,
+  // Probe-widened for `stateOfCharge` as well: the snapshot physically carries the
+  // observed SoC bag the base type omits, and `resolveSmartTaskCurrentValue` reads
+  // it. Without the probe this parameter has no such property at all, so it stays
+  // assignable to the helper's optional slice and a shape change there compiles
+  // silently — which is how the goal stepper came to seed EV chargers from `null`.
+  device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe & TemperatureObservedProbe
+  & StateOfChargeObservedProbe,
 ): CreateSmartTaskDevice | null => {
   const kind = resolveSmartTaskDeviceKind(device);
   if (kind === null) return null;
@@ -61,7 +68,10 @@ const buildDevice = (
 };
 
 export type CreateSmartTaskWidgetInput = {
-  devices: ReadonlyArray<TargetDeviceSnapshot & SteppedLoadDescriptorProbe & TemperatureObservedProbe>;
+  devices: ReadonlyArray<
+    TargetDeviceSnapshot & SteppedLoadDescriptorProbe & TemperatureObservedProbe
+    & StateOfChargeObservedProbe
+  >;
 };
 
 export const buildCreateSmartTaskDevicesPayload = (

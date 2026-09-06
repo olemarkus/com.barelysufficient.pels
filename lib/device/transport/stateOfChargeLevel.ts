@@ -18,6 +18,10 @@ export const stateOfChargeLevelsDiffer = (
   next: StateOfChargeLevel,
 ): boolean => {
   if (previous === undefined || previous.kind !== next.kind) return true;
+  // Percent only, deliberately, even though the known arm also carries
+  // `observedAtMs`: this asks whether the ANSWER moved, and a level re-stamped at
+  // the same percentage says the same thing. Callers that care about the stamp
+  // compare `report.observedAtMs` themselves, and both of them do.
   if (previous.kind === 'known' && next.kind === 'known') return previous.percent !== next.percent;
   if (previous.kind === 'unavailable' && next.kind === 'unavailable') {
     return previous.reasonCode !== next.reasonCode;

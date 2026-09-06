@@ -221,34 +221,70 @@ export type DeviceStateOfChargeSnapshot = {
      * this and nothing else to decide usability; there is no freshness, age, or
      * currency signal to combine it with, and inventing one is the defect this
      * union exists to prevent.
+     *
+     * `observedAtMs` rides INSIDE the known arm because a level without a
+     * timestamp is not a level: `resolveStateOfChargeLevel` returns
+     * `not_reported` for an un-timed reading before it looks at anything else.
+     * Held alongside the union it was an optional no consumer could discharge,
+     * and the one that needed it reached past `level` to the device-level stamp
+     * to fill the gap.
      */
     level:
-        | { kind: 'known'; percent: number }
+        | { kind: 'known'; percent: number; observedAtMs: number }
         | { kind: 'unavailable'; reasonCode: EvSocUnavailableReason };
     /**
-     * The raw last-reported percentage, kept for the observation layer's own
-     * bookkeeping (carry-forward across a refresh, change detection). It is NOT
-     * the device's level and must not be read as one — `level` is the answer to
-     * that, and it is the only one a consumer may act on.
+     * The raw last report, kept for the observation layer's own bookkeeping
+     * (carry-forward across a refresh, change detection).
+     *
+     * `report.percent` is NOT the device's level and must not be read as one: it
+     * outlives the level it was resolved into, so a charger whose car has gone
+     * still carries the percentage that car left behind. `level` is the answer to
+     * "what is this device's charge", and the only one a consumer may act on.
+     * `report.observedAtMs` is fair game as what it says — when the charger last
+     * reported anything — which is why the device-detail "Updated …" subline reads
+     * it and survives a level going away.
+     *
+     * Nested rather than sitting flat beside `level` so the distinction is visible
+     * at every call site: `report.percent` cannot be mistaken for the resolved
+     * figure the way a sibling `percent` was, and it was — by four consumers.
+     *
+     * `observedAtMs` is the one honest absence here — a capability can carry a
+     * value with no parseable `lastUpdated`, which is precisely the reading that
+     * resolves to `not_reported` and that a later timestamped report promotes.
+     * When `level.kind === 'known'` the two stamps are equal by construction:
+     * every mutator derives both from one variable, and the level's copy is a
+     * projection of this one, never a second source of truth.
      */
-    percent: number;
-    observedAtMs?: number;
-    capabilityId?: string;
+    report: {
+        percent: number;
+        observedAtMs?: number;
+    };
+    capabilityId: string;
     sessionStartedAtMs?: number;
     invalidatedAtMs?: number;
     /**
-     * Where the level came from. ABSENT means the charger reported it itself —
-     * a native capability or the `report_evcharger_battery_level` flow card —
-     * which is every reading PELS has ever produced, so existing readers stay
-     * correct without narrowing.
+     * Where the level came from, always stated.
      *
-     * `'car'` means it was read off the associated car instead, because the user
-     * ticked that car for this charger. The charger still owns the session: a
-     * plug-out invalidates a car-sourced reading exactly as it does its own.
+     * `charger` means the charger reported it itself — a native capability or the
+     * `report_evcharger_battery_level` flow card — which is every reading PELS
+     * produced before the car link existed.
+     *
+     * `car` means it was read off the associated car instead, because the user
+     * ticked that car for this charger; the charger still owns the session, so a
+     * plug-out invalidates a car-sourced reading exactly as it does its own. The
+     * car's id travels in the same arm as its provenance: split across two
+     * optionals, a car-sourced reading with no id was representable, and the two
+     * readers of it disagreed — one treated it as belonging to every car, the
+     * other to none.
+     *
+     * Producer-internal, like `report`. Every branch on `source.kind` lives inside
+     * `lib/device`, which owns adoption; a consumer asking "whose reading is this"
+     * is branching on provenance, which the layering rule forbids. Consumers read
+     * `level`.
      */
-    source?: 'car';
-    /** The car's Homey device id, when `source` is `'car'`. */
-    sourceDeviceId?: string;
+    source:
+        | { kind: 'charger' }
+        | { kind: 'car'; carId: string };
 };
 
 /**
@@ -591,13 +627,12 @@ export type TemperatureObservedProbe = {
  * consumers must pass through `hasObservedStateOfCharge` (or hold an
  * already-narrowed value) first.
  *
- * IMPORTANT — `stateOfCharge` is a nested bag with its own `status` field. The
- * guard proves the snapshot object is present, NOT
- * that `status === 'fresh'` and NOT that `percent` is usable: consumers keep
- * their `status`/freshness gates after narrowing — the guard only removes the
- * outer `?.`/`if (!stateOfCharge)`. (The `percent` finiteness IS guaranteed by
- * the producer's `normalizeStateOfChargePercent`, so this is a pure
- * type-tightening slice with no boundary bug.)
+ * IMPORTANT — the guard proves the snapshot object is PRESENT, and nothing
+ * more. It does not say the charger has a level: that is `level.kind`, which a
+ * narrowed consumer still has to read. The guard only removes the outer
+ * `?.`/`if (!stateOfCharge)`. (`report.percent` finiteness IS guaranteed by the
+ * producer's `normalizeStateOfChargePercent`, so this is a pure type-tightening
+ * slice with no boundary bug — but a finite raw report is not a usable level.)
  */
 export type StateOfChargeObservedFields = {
     stateOfCharge: DeviceStateOfChargeSnapshot;

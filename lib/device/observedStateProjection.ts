@@ -24,7 +24,10 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
  * after the push — defeating the whole point of recording the decided value.
  * `stateOfCharge` / `binaryControlObservation` are replaced (not mutated) by
  * the producer today, but we spread-copy them defensively so a future in-place
- * tweak can't leak across the seam either.
+ * tweak can't leak across the seam either. `stateOfCharge` needs the copy to go
+ * one level deeper than a spread: `report` and `source` are nested objects, so a
+ * shallow copy would hand the observer a live alias of exactly the fields the
+ * transport's mutators rewrite.
  */
 export function projectObservedState(snapshot: TransportDeviceSnapshot): ProjectedObservedDeviceState {
     // Probe-widened locally so the projection can copy the observed cluster
@@ -46,7 +49,14 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
         projected.evChargingObservedAtMs = snapshot.evChargingObservedAtMs;
     }
     if (snapshot.evChargingState !== undefined) projected.evChargingState = snapshot.evChargingState;
-    if (snapshot.stateOfCharge !== undefined) projected.stateOfCharge = { ...snapshot.stateOfCharge };
+    if (snapshot.stateOfCharge !== undefined) {
+        projected.stateOfCharge = {
+            ...snapshot.stateOfCharge,
+            level: { ...snapshot.stateOfCharge.level },
+            report: { ...snapshot.stateOfCharge.report },
+            source: { ...snapshot.stateOfCharge.source },
+        };
+    }
     if (snapshot.temperature !== undefined) {
         projected.temperature = {
             currentTemperature: snapshot.temperature.currentTemperature,

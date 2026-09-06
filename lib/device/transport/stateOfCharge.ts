@@ -12,6 +12,13 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { hasCarStateOfChargeChanged } from './carStateOfChargeWrite';
 import { stateOfChargeLevelsDiffer } from './stateOfChargeLevel';
 
+/**
+ * The charger reported its own level. One constant rather than a literal per
+ * site, so the build and the level re-resolution beside it cannot drift apart —
+ * the car path hoists its `source` for the same reason.
+ */
+const CHARGER_SOURCE = { kind: 'charger' } as const;
+
 export const EV_SOC_CAPABILITY_ID = 'measure_battery' as const;
 export const EV_SOC_NATIVE_CAPABILITY_IDS = [
   EV_SOC_CAPABILITY_ID,
@@ -23,9 +30,7 @@ type StateOfChargeCandidate = {
   percent: number;
   observedAtMs?: number;
   capabilityId: string;
-  /** Absent = the charger reported it; `'car'` = read off the associated car. */
-  source?: 'car';
-  sourceDeviceId?: string;
+  source: DeviceStateOfChargeSnapshot['source'];
 };
 
 // The session anchoring / invalidation pair the caller already knows about.
@@ -71,7 +76,10 @@ export function resolveStateOfChargeSnapshot(params: {
     : resolveStateOfChargeCandidate({ capabilityObj });
   if (!candidate) return undefined;
 
-  const resolved = buildStateOfChargeSnapshot({
+  // The candidate's provenance travels with it into the build; there is no
+  // second pass re-stamping `source` onto the result, which is what made a
+  // car-sourced reading with no car id representable in the first place.
+  return buildStateOfChargeSnapshot({
     percent: candidate.percent,
     observedAtMs: candidate.observedAtMs,
     capabilityId: candidate.capabilityId,
@@ -81,9 +89,6 @@ export function resolveStateOfChargeSnapshot(params: {
     retainedSession,
     source: candidate.source,
   });
-  return candidate.source === 'car'
-    ? { ...resolved, source: 'car', ...(candidate.sourceDeviceId ? { sourceDeviceId: candidate.sourceDeviceId } : {}) }
-    : resolved;
 }
 
 /**
@@ -99,20 +104,19 @@ function retainedCarCandidate(
   retained: DeviceStateOfChargeSnapshot | undefined,
   eligibleCarIds: readonly string[],
 ): StateOfChargeCandidate | null {
-  if (retained?.source !== 'car') return null;
+  if (retained === undefined) return null;
+  const { source } = retained;
+  if (source.kind !== 'car') return null;
   // Re-checked against the CURRENT eligibility set, not just "some car supplied
   // it". Switching a charger from car A to car B otherwise leaves A's percentage
   // in place for the rest of the session, because the flag stays true and the
   // retained value still looks car-sourced.
-  if (retained.sourceDeviceId !== undefined && !eligibleCarIds.includes(retained.sourceDeviceId)) {
-    return null;
-  }
+  if (!eligibleCarIds.includes(source.carId)) return null;
   return {
-    percent: retained.percent,
-    observedAtMs: retained.observedAtMs,
-    capabilityId: retained.capabilityId ?? EV_SOC_CAPABILITY_ID,
-    source: 'car',
-    sourceDeviceId: retained.sourceDeviceId,
+    percent: retained.report.percent,
+    observedAtMs: retained.report.observedAtMs,
+    capabilityId: retained.capabilityId,
+    source,
   };
 }
 
@@ -137,6 +141,7 @@ export function updateStateOfChargeFromCarObservation(params: {
   if (normalized === undefined) return false;
 
   const previous = snapshot.stateOfCharge;
+  const source = { kind: 'car', carId } as const;
   const next = buildStateOfChargeSnapshot({
     percent: normalized,
     observedAtMs,
@@ -150,7 +155,7 @@ export function updateStateOfChargeFromCarObservation(params: {
     reportedCapabilities: {},
     nowMs,
     retainedSession: previous,
-    source: 'car',
+    source,
   });
   const invalidatedAtMs = maxPositive([
     previous?.invalidatedAtMs,
@@ -159,8 +164,6 @@ export function updateStateOfChargeFromCarObservation(params: {
   const sessionStartedAtMs = resolveRealtimeSessionStartedAtMs(previous, next);
   snapshot.stateOfCharge = {
     ...next,
-    source: 'car',
-    sourceDeviceId: carId,
     ...(sessionStartedAtMs ? { sessionStartedAtMs } : {}),
     ...(invalidatedAtMs ? { invalidatedAtMs } : {}),
     ...resolveLevelFields({
@@ -168,7 +171,7 @@ export function updateStateOfChargeFromCarObservation(params: {
       observedAtMs,
       sessionStartedAtMs,
       invalidatedAtMs,
-      source: 'car',
+      source,
     }),
   };
   return hasCarStateOfChargeChanged(previous, snapshot.stateOfCharge, carId);
@@ -188,10 +191,11 @@ export function wouldReportRestoreStateOfChargeLevel(
 ): boolean {
   if (!stateOfCharge || stateOfCharge.level.kind === 'known') return false;
   return resolveStateOfChargeLevel({
-    percent: stateOfCharge.percent,
-    observedAtMs: Math.max(stateOfCharge.observedAtMs ?? 0, reportedAt),
+    percent: stateOfCharge.report.percent,
+    observedAtMs: Math.max(stateOfCharge.report.observedAtMs ?? 0, reportedAt),
     sessionStartedAtMs: stateOfCharge.sessionStartedAtMs,
     invalidatedAtMs: stateOfCharge.invalidatedAtMs,
+    source: stateOfCharge.source,
   }).kind === 'known';
 }
 
@@ -201,13 +205,13 @@ export function updateStateOfChargeObservationFreshness(params: {
 }): boolean {
   const { snapshot, reportedAt } = params;
   if (!snapshot.stateOfCharge) return false;
-  const observedAtMs = Math.max(snapshot.stateOfCharge.observedAtMs ?? 0, reportedAt);
   const previous = snapshot.stateOfCharge;
+  const observedAtMs = Math.max(previous.report.observedAtMs ?? 0, reportedAt);
   snapshot.stateOfCharge = {
     ...previous,
-    observedAtMs,
+    report: { ...previous.report, observedAtMs },
     ...resolveLevelFields({
-      percent: previous.percent,
+      percent: previous.report.percent,
       observedAtMs,
       sessionStartedAtMs: previous.sessionStartedAtMs,
       invalidatedAtMs: previous.invalidatedAtMs,
@@ -234,11 +238,14 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
   // A charger-sourced realtime reading never displaces an adopted car value.
   // Parse suppresses the charger's own sources for an opted-in charger, but this
   // seam and the retained-observation replay run between refreshes — without
-  // this the charger's value would win for a while, strip `source: 'car'`, and
-  // then be dropped entirely by the next parse for not being a car reading.
-  if (snapshot.stateOfCharge?.source === 'car') return false;
+  // this the charger's value would win for a while, relabel the reading as the
+  // charger's own, and then be dropped entirely by the next parse for not being
+  // a car reading.
+  if (snapshot.stateOfCharge?.source.kind === 'car') return false;
   const percent = normalizeStateOfChargePercent(value);
   if (percent === undefined) return false;
+  // Reached only past the car guard above, so this reading is the charger's own.
+  const source = CHARGER_SOURCE;
 
   const next = buildStateOfChargeSnapshot({
     percent,
@@ -253,6 +260,7 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
     reportedCapabilities: {},
     nowMs: observedAtMs,
     retainedSession: snapshot.stateOfCharge,
+    source,
   });
   const previous = snapshot.stateOfCharge;
   const invalidatedAtMs = maxPositive([
@@ -269,11 +277,12 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
       observedAtMs,
       sessionStartedAtMs,
       invalidatedAtMs,
+      source,
     }),
   };
   return !previous
-    || previous.percent !== next.percent
-    || previous.observedAtMs !== next.observedAtMs
+    || previous.report.percent !== next.report.percent
+    || previous.report.observedAtMs !== next.report.observedAtMs
     || stateOfChargeLevelsDiffer(previous.level, next.level);
 }
 
@@ -296,8 +305,8 @@ export function updateStateOfChargeSessionBoundary(params: {
     ? Math.max(previous.invalidatedAtMs ?? 0, observedAtMs)
     : previous.invalidatedAtMs;
   const levelFields = resolveLevelFields({
-    percent: previous.percent,
-    observedAtMs: previous.observedAtMs,
+    percent: previous.report.percent,
+    observedAtMs: previous.report.observedAtMs,
     sessionStartedAtMs: sessionStartedAtMs || undefined,
     invalidatedAtMs: invalidatedAtMs || undefined,
     source: previous.source,
@@ -375,6 +384,7 @@ function resolveStateOfChargeCandidate(params: {
       percent,
       observedAtMs: getCapabilityLastUpdatedMs(capabilityObj, capabilityId),
       capabilityId,
+      source: CHARGER_SOURCE,
     };
   }
   return null;
@@ -388,7 +398,7 @@ function buildStateOfChargeSnapshot(params: {
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
   nowMs: number;
   retainedSession?: RetainedStateOfChargeSession;
-  source?: 'car';
+  source: DeviceStateOfChargeSnapshot['source'];
 }): DeviceStateOfChargeSnapshot {
   const {
     percent,
@@ -414,10 +424,13 @@ function buildStateOfChargeSnapshot(params: {
     source,
   });
   return {
-    percent,
-    ...(observedAtMs ? { observedAtMs } : {}),
+    report: {
+      percent,
+      ...(observedAtMs ? { observedAtMs } : {}),
+    },
     ...levelFields,
     capabilityId,
+    source,
     ...(session.sessionStartedAtMs ? { sessionStartedAtMs: session.sessionStartedAtMs } : {}),
     ...(session.invalidatedAtMs ? { invalidatedAtMs: session.invalidatedAtMs } : {}),
   };
@@ -445,12 +458,14 @@ function resolveStateOfChargeLevel(params: {
   observedAtMs?: number;
   invalidatedAtMs?: number;
   sessionStartedAtMs?: number;
-  source?: 'car';
+  source: DeviceStateOfChargeSnapshot['source'];
 }): DeviceStateOfChargeSnapshot['level'] {
   const {
     percent, observedAtMs, invalidatedAtMs, sessionStartedAtMs, source,
   } = params;
-  // Nothing has been reported at all.
+  // Nothing has been reported at all. This gate is why `observedAtMs` lives
+  // inside the known arm below and nowhere else: past it, a level always has a
+  // timestamp, so there is no such thing as a known level without one.
   if (!observedAtMs) return { kind: 'unavailable', reasonCode: 'not_reported' };
   // A disconnect is recorded and no reconnect has been observed since, so there
   // is no session for a level to belong to.
@@ -470,7 +485,7 @@ function resolveStateOfChargeLevel(params: {
   // what `resolveAssociatedCarSnapshot` already says about serving a pre-plug
   // reading. Retiring it here would blank the level of a car that just plugged
   // back in at the level it left at, for as long as that level stayed put.
-  if (source === 'car') return { kind: 'known', percent };
+  if (source.kind === 'car') return { kind: 'known', percent, observedAtMs };
   // A car IS attached, but the reading predates it: it was taken before the
   // unplug, or before this session was anchored. Possibly a different car.
   if (
@@ -479,7 +494,7 @@ function resolveStateOfChargeLevel(params: {
   ) {
     return { kind: 'unavailable', reasonCode: 'not_reported' };
   }
-  return { kind: 'known', percent };
+  return { kind: 'known', percent, observedAtMs };
 }
 
 function resolveLevelFields(params: {
@@ -487,7 +502,7 @@ function resolveLevelFields(params: {
   observedAtMs?: number;
   invalidatedAtMs?: number;
   sessionStartedAtMs?: number;
-  source?: 'car';
+  source: DeviceStateOfChargeSnapshot['source'];
 }): Pick<DeviceStateOfChargeSnapshot, 'level'> {
   return { level: resolveStateOfChargeLevel(params) };
 }

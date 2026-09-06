@@ -277,7 +277,7 @@ describe('settingsOverviewReadModel', () => {
       getObservedStateOfCharge: () => stateOfChargeFixture({
         percent: 64, observedAtMs: 1_000, sessionStartedAtMs: 500,
       }),
-    }).stateOfCharge).toEqual({ level: { kind: 'known', percent: 64 } });
+    }).stateOfCharge).toEqual({ level: { kind: 'known', percent: 64, observedAtMs: 1_000 } });
 
     // With no observer dep wired there is no reading to show.
     expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).stateOfCharge).toBeUndefined();

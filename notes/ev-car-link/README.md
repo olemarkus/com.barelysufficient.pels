@@ -96,7 +96,7 @@ confidently wrong charge limit.
 ### Adoption
 
 For a charger with a non-empty eligibility set, the associated car's battery level **is** the
-charger's `stateOfCharge`, carrying `source: 'car'` and the car's device id. Three rules follow:
+charger's `stateOfCharge`, carrying `source: { kind: 'car', carId }`. Three rules follow:
 
 - **The charger's own sources are ignored, not ranked below.** Neither a native `measure_battery`
   nor the `report_evcharger_battery_level` flow card contributes. Ranking them as a fallback

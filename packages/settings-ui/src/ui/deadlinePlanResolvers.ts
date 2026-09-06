@@ -6,6 +6,7 @@ import type {
 } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import type {
+  DeviceStateOfChargeSnapshot,
   ObservedDeviceState,
   StateOfChargeObservedProbe,
   SteppedLoadProfile,
@@ -68,6 +69,17 @@ export type DeadlineProgress = {
   unit: '°C' | '%';
 };
 
+/**
+ * The percentage a present SoC bag stands behind, or `null` when it stands behind
+ * none. Never the raw `report.percent`, which is the observation layer's own
+ * carry-forward bookkeeping and outlives the level it was resolved into.
+ */
+const observedStateOfChargePercent = (
+  stateOfCharge: DeviceStateOfChargeSnapshot,
+): number | null => (
+  stateOfCharge.level.kind === 'known' ? stateOfCharge.level.percent : null
+);
+
 export const resolveProgress = (params: {
   // Probe-widened: the live reading (temperature or SoC) rides on the
   // `/ui_devices` snapshot the base type omits; `hasObservedTemperature` /
@@ -91,13 +103,16 @@ export const resolveProgress = (params: {
     return buildTemperatureProgress(currentTemperature, objective.targetTemperatureC);
   }
 
-  // A present SoC bag carries a producer-guaranteed finite, in-range `percent`
-  // (`normalizeStateOfChargePercent`), mirroring the temperature branch above —
-  // so we narrow on presence, not finiteness. The trailing `isFiniteNumber` still
-  // guards the profile-sample fallback (which can be `null`) and drops any junk
-  // `percent` should that invariant ever regress, rather than rendering it.
+  // `level`, never the raw report. `hasObservedStateOfCharge` proves only that the
+  // bag exists, so reading the raw percentage rendered a departed car's charge as
+  // "now" for a charger whose level had gone to `not_connected`. A present bag with
+  // no level yields `null` here and does NOT fall through to the profile sample —
+  // that sample is an older reading of the same absent thing.
+  //
+  // The trailing `isFiniteNumber` guards the profile-sample fallback (which is
+  // genuinely nullable) and covers the `null` this branch now returns.
   const percent = hasObservedStateOfCharge(device)
-    ? device.stateOfCharge.percent
+    ? observedStateOfChargePercent(device.stateOfCharge)
     : resolveProfileSampleValue(profile);
   if (!isFiniteNumber(percent)) return null;
   return {

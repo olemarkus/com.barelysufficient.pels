@@ -2,6 +2,8 @@ import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   resolveStateOfChargeSnapshot,
   updateStateOfChargeFromCarObservation,
+  updateStateOfChargeObservationFreshness,
+  wouldReportRestoreStateOfChargeLevel,
 } from '../../lib/device/transport/stateOfCharge';
 import { clearCarStateOfCharge } from '../../lib/device/transport/carStateOfChargeWrite';
 
@@ -29,10 +31,11 @@ describe('resolveStateOfChargeSnapshot', () => {
       },
     });
 
+    const socAt = Date.parse('2026-03-20T06:00:01.000Z');
     expect(snapshot).toEqual(expect.objectContaining({
-      percent: 55,
+      report: { percent: 55, observedAtMs: socAt },
       capabilityId: 'measure_soc_level',
-      level: { kind: 'known', percent: 55 },
+      level: { kind: 'known', percent: 55, observedAtMs: socAt },
     }));
   });
 
@@ -70,7 +73,10 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingState: 'plugged_in',
       chargingStateAt: SOC_AT + 2 * 60_000,
       nowMs: SOC_AT + 3 * 60_000,
-    })).toEqual(expect.objectContaining({ percent: 34, level: { kind: 'known', percent: 34 } }));
+    })).toEqual(expect.objectContaining({
+      report: { percent: 34, observedAtMs: SOC_AT },
+      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
+    }));
   });
 
   // The charger republishes only on a level change, which cannot happen while
@@ -81,7 +87,10 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingStateAt: SOC_AT,
       charging: false,
       nowMs: SOC_AT + 6 * 60 * 60_000,
-    })).toEqual(expect.objectContaining({ percent: 34, level: { kind: 'known', percent: 34 } }));
+    })).toEqual(expect.objectContaining({
+      report: { percent: 34, observedAtMs: SOC_AT },
+      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
+    }));
   });
 
   // An Easee can leave `evcharger_charging` lingering `true` across a pause, and
@@ -92,7 +101,10 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingStateAt: SOC_AT,
       charging: true,
       nowMs: SOC_AT + 41 * 60_000,
-    })).toEqual(expect.objectContaining({ percent: 34, level: { kind: 'known', percent: 34 } }));
+    })).toEqual(expect.objectContaining({
+      report: { percent: 34, observedAtMs: SOC_AT },
+      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
+    }));
   });
 
   // The gate this replaced measured age in TOTAL wall-clock, so the moment PELS
@@ -114,7 +126,10 @@ describe('resolveStateOfChargeSnapshot', () => {
       charging: true,
       nowMs: SOC_AT + 3 * 60 * 60_000 + 1_000,
       retainedSession: paused,
-    })).toEqual(expect.objectContaining({ percent: 34, level: { kind: 'known', percent: 34 } }));
+    })).toEqual(expect.objectContaining({
+      report: { percent: 34, observedAtMs: SOC_AT },
+      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
+    }));
   });
 
   // The deliberate behaviour change: a level belongs to its session, not to a
@@ -128,7 +143,10 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingStateAt: SOC_AT,
       charging: true,
       nowMs: SOC_AT + 6 * 60 * 60_000,
-    })).toEqual(expect.objectContaining({ percent: 34, level: { kind: 'known', percent: 34 } }));
+    })).toEqual(expect.objectContaining({
+      report: { percent: 34, observedAtMs: SOC_AT },
+      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
+    }));
   });
 
   // The mirror of the case above, and the second direction the old gate got
@@ -149,7 +167,10 @@ describe('resolveStateOfChargeSnapshot', () => {
       charging: false,
       nowMs: SOC_AT + 6 * 60 * 60_000 + 1_000,
       retainedSession: charging,
-    })).toEqual(expect.objectContaining({ percent: 34, level: { kind: 'known', percent: 34 } }));
+    })).toEqual(expect.objectContaining({
+      report: { percent: 34, observedAtMs: SOC_AT },
+      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
+    }));
   });
 
   // V2G: a discharging car is attached, so a reconnect observed in that state
@@ -253,7 +274,7 @@ describe('car-sourced state of charge', () => {
       nowMs: 2_000,
       capabilityObj: chargerCaps,
       reportedCapabilities: {},
-    })).toMatchObject({ percent: 55 });
+    })).toMatchObject({ report: { percent: 55 } });
   });
 
   it('carries a car-sourced level across a refresh, with its provenance', () => {
@@ -263,9 +284,12 @@ describe('car-sourced state of charge', () => {
       capabilityObj: chargerCaps,
       reportedCapabilities: {},
       eligibleCarIds: ['car-1'],
-      retainedStateOfCharge: stateOfChargeFixture({ percent: 63, observedAtMs: 1_500, source: 'car', sourceDeviceId: 'car-1' }),
+      retainedStateOfCharge: stateOfChargeFixture({ percent: 63, observedAtMs: 1_500, carId: 'car-1' }),
     });
-    expect(resolved).toMatchObject({ percent: 63, source: 'car', sourceDeviceId: 'car-1' });
+    expect(resolved).toMatchObject({
+      report: { percent: 63, observedAtMs: 1_500 },
+      source: { kind: 'car', carId: 'car-1' },
+    });
   });
 
   // The car is the identity, not the charger. A car that unplugs and plugs back
@@ -294,7 +318,7 @@ describe('car-sourced state of charge', () => {
       snapshot, percent: 63, observedAtMs: 1_000, carId: 'car-1', nowMs: 5_000,
     });
 
-    expect(snapshot.stateOfCharge?.level).toEqual({ kind: 'known', percent: 63 });
+    expect(snapshot.stateOfCharge?.level).toEqual({ kind: 'known', percent: 63, observedAtMs: 1_000 });
   });
 
   it('never carries a charger-owned level forward as if a car had reported it', () => {
@@ -324,11 +348,15 @@ describe('car-sourced state of charge', () => {
       snapshot, percent: 63, observedAtMs: 1_500, carId: 'car-1', nowMs: 1_600,
     })).toBe(true);
     expect(snapshot.stateOfCharge).toMatchObject({
-      percent: 63, source: 'car', sourceDeviceId: 'car-1', capabilityId: 'measure_battery',
+      report: { percent: 63 },
+      source: { kind: 'car', carId: 'car-1' },
+      capabilityId: 'measure_battery',
     });
     // The car's own observation time, never `now` — stamping `now` would make a
-    // two-day-old reading read fresh.
-    expect(snapshot.stateOfCharge?.observedAtMs).toBe(1_500);
+    // two-day-old reading read fresh. Asserted on the level, which is where a
+    // consumer reads it, as well as on the raw report the observer keeps.
+    expect(snapshot.stateOfCharge?.report.observedAtMs).toBe(1_500);
+    expect(snapshot.stateOfCharge?.level).toEqual({ kind: 'known', percent: 63, observedAtMs: 1_500 });
 
     expect(clearCarStateOfCharge({ snapshot })).toBe(true);
     expect(snapshot.stateOfCharge).toBeUndefined();
@@ -340,6 +368,60 @@ describe('car-sourced state of charge', () => {
       stateOfCharge: stateOfChargeFixture({ percent: 71, observedAtMs: 1_000 }),
     } as unknown as Parameters<typeof clearCarStateOfCharge>[0]['snapshot'];
     expect(clearCarStateOfCharge({ snapshot })).toBe(false);
-    expect(snapshot.stateOfCharge).toMatchObject({ percent: 71 });
+    expect(snapshot.stateOfCharge).toMatchObject({ report: { percent: 71 } });
+  });
+});
+
+describe('wouldReportRestoreStateOfChargeLevel', () => {
+  // The predictor must answer with the SAME rules the mutator it predicts uses.
+  // `updateStateOfChargeObservationFreshness` has always re-resolved the level
+  // with `previous.source`, so a predictor that assumed charger semantics
+  // disagreed with it for a car-sourced reading. Production never noticed because
+  // `shouldRebuildPlanForFlowEvSocReport` filters car-sourced chargers out before
+  // asking (`lib/device/flowBackedDeviceState.ts`) — an unstated guard in another
+  // file, which is exactly why this is pinned here.
+  // `reportedAt` deliberately lands BEFORE `sessionStartedAtMs`: that is the only
+  // window where the two rule sets disagree. A later report pushes the stamp past
+  // the anchor and both answer "restored", which is why an earlier version of this
+  // test proved nothing.
+  it('predicts a car-sourced level by the car rules, not the charger rules', () => {
+    const session = { percent: 63, observedAtMs: 1_000, sessionStartedAtMs: 4_000 } as const;
+    const carReading = stateOfChargeFixture({
+      ...session, carId: 'car-1', unavailable: 'not_reported',
+    });
+    const chargerReading = stateOfChargeFixture({ ...session, unavailable: 'not_reported' });
+
+    // A car's reading survives the replug, so a report inside the window restores
+    // it; the charger's own pre-session reading identifies no particular car and
+    // stays retired until a report post-dates the anchor.
+    expect(wouldReportRestoreStateOfChargeLevel(carReading, 3_000)).toBe(true);
+    expect(wouldReportRestoreStateOfChargeLevel(chargerReading, 3_000)).toBe(false);
+    expect(wouldReportRestoreStateOfChargeLevel(chargerReading, 5_000)).toBe(true);
+  });
+
+  // The predictor is only worth anything if it agrees with the mutator. Asserted
+  // rather than reasoned about, because the two live in different functions and
+  // only one of them used to be told the provenance.
+  it('agrees with the mutator it predicts', () => {
+    for (const carId of [undefined, 'car-1']) {
+      for (const reportedAt of [3_000, 5_000]) {
+        const stateOfCharge = stateOfChargeFixture({
+          percent: 63, observedAtMs: 1_000, sessionStartedAtMs: 4_000, carId, unavailable: 'not_reported',
+        });
+        const predicted = wouldReportRestoreStateOfChargeLevel(stateOfCharge, reportedAt);
+        const snapshot = { stateOfCharge } as unknown as
+          Parameters<typeof updateStateOfChargeObservationFreshness>[0]['snapshot'];
+        updateStateOfChargeObservationFreshness({ snapshot, reportedAt });
+        expect(snapshot.stateOfCharge?.level.kind === 'known').toBe(predicted);
+      }
+    }
+  });
+
+  it('answers no when the charger already has a level', () => {
+    expect(wouldReportRestoreStateOfChargeLevel(
+      stateOfChargeFixture({ percent: 63, observedAtMs: 1_000 }),
+      5_000,
+    )).toBe(false);
+    expect(wouldReportRestoreStateOfChargeLevel(undefined, 5_000)).toBe(false);
   });
 });

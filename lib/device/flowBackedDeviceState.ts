@@ -381,7 +381,7 @@ export class FlowBackedDeviceState {
     // A charger reading its level off an associated car ignores this flow card
     // entirely, so letting the report wake the planner would replan for a value
     // nothing reads.
-    if (device && hasObservedStateOfCharge(device) && device.stateOfCharge.source === 'car') return false;
+    if (device && hasObservedStateOfCharge(device) && device.stateOfCharge.source.kind === 'car') return false;
     if (!this.deps.hasEnabledEvBoostForSnapshot(device)) return false;
     if (this.deps.getDeviceManager()?.isFlowBackedCapability?.(deviceId, EV_SOC_CAPABILITY_ID) !== true) return false;
     if (update.valueChanged) return true;
@@ -421,7 +421,7 @@ export class FlowBackedDeviceState {
       // that keeps firing would re-stamp the CAR's percentage as this charger's
       // own observation — laundering one device's reading into another's, and
       // outliving the association that justified adopting it.
-      if (hasObservedStateOfCharge(device) && device.stateOfCharge.source === 'car') return;
+      if (hasObservedStateOfCharge(device) && device.stateOfCharge.source.kind === 'car') return;
       updateStateOfChargeObservationFreshness({
         snapshot: device,
         reportedAt: params.reportedAt,

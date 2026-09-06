@@ -50,7 +50,7 @@ export type ObjectiveQuantityDevice =
  *
  * `deviceObservedAtMs` is the device-level stamp (Homey's highest per-capability
  * `lastUpdated`), needed only for temperature: `TemperatureObservation` carries no
- * stamp of its own, while a SoC snapshot does.
+ * stamp of its own, while a known SoC level carries its own by construction.
  */
 export function resolveObjectiveObservedQuantity(params: {
   device: ObjectiveQuantityDevice;
@@ -61,9 +61,9 @@ export function resolveObjectiveObservedQuantity(params: {
   if (hasObservedStateOfCharge(device)) {
     // `level` answers usability, and no `Number.isFinite` re-check follows it —
     // the producer stands behind the level or reports none.
-    const { level, observedAtMs } = device.stateOfCharge;
-    if (level.kind !== 'known' || observedAtMs === undefined) return null;
-    return { observedAtMs, value: level.percent };
+    const { level } = device.stateOfCharge;
+    if (level.kind !== 'known') return null;
+    return { observedAtMs: level.observedAtMs, value: level.percent };
   }
 
   if (

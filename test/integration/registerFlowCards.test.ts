@@ -14,6 +14,7 @@ import type {
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { FlowCard } from '../../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../../setup/appDeviceControlHelpers';
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 
 const steppedProfile: SteppedLoadProfile = {
   steps: [
@@ -576,11 +577,7 @@ describe('registerFlowCards', () => {
             deviceClass: 'evcharger',
             binaryControl: { on: false },
             targets: [],
-            stateOfCharge: {
-              percent: 42,
-              observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
-              level: { kind: 'known', percent: 42 },
-            },
+            stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.parse('2026-03-11T10:00:00Z') }),
           },
         ]),
     });
@@ -603,7 +600,7 @@ describe('registerFlowCards', () => {
       chargerDeviceId: 'ev-1',
       chargerName: 'Zaptec Go',
       percent: 42,
-      level: { kind: 'known', percent: 42 },
+      level: { kind: 'known', percent: 42, observedAtMs: Date.parse('2026-03-11T10:00:00Z') },
     }));
   });
 
@@ -622,11 +619,7 @@ describe('registerFlowCards', () => {
             deviceClass: 'evcharger',
             binaryControl: { on: false },
             targets: [],
-            stateOfCharge: {
-              percent: 42,
-              observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
-              level: { kind: 'known', percent: 42 },
-            },
+            stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.parse('2026-03-11T10:00:00Z') }),
           },
         ]),
     });
@@ -660,11 +653,7 @@ describe('registerFlowCards', () => {
             deviceClass: 'evcharger',
             binaryControl: { on: false },
             targets: [],
-            stateOfCharge: {
-              percent: 39,
-              observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
-              level: { kind: 'known', percent: 39 },
-            },
+            stateOfCharge: stateOfChargeFixture({ percent: 39, observedAtMs: Date.parse('2026-03-11T10:00:00Z') }),
           },
         ]),
     });

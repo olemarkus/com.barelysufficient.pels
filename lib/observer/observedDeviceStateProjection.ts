@@ -103,8 +103,12 @@ type ProjectionEntry = {
  * projection's truth by reference. Getters hand back the stored object directly,
  * so the freeze must reach every reachable sub-object a consumer could mutate:
  * the record, its `targets` array + each target entry, and the nested observation
- * bags (`binaryControl`, `stateOfCharge`, `binaryControlObservation` and its
- * `observedCapabilityIds` array). `projectObservedState` already builds the value
+ * bags (`binaryControl`, `stateOfCharge` — including its own nested `level`,
+ * `report` and `source` — `binaryControlObservation` and its
+ * `observedCapabilityIds` array). The state-of-charge bag needs the inner three
+ * named explicitly: they are objects, so the outer freeze leaves them writable,
+ * and `report.percent` / `source.carId` would still be assignable through a
+ * getter's return value. `projectObservedState` already builds the value
  * fresh per event with spread-copied bags, so freezing them here is safe (it
  * aliases no producer state) and closes the last by-reference mutation vector —
  * e.g. `getObservedState(id).binaryControl.on = false`. Idempotent and cheap.
@@ -117,7 +121,12 @@ function freezeObserved(value: ProjectedObservedDeviceState): ProjectedObservedD
         Object.freeze(value.temperature.target);
         Object.freeze(value.temperature);
     }
-    if (value.stateOfCharge) Object.freeze(value.stateOfCharge);
+    if (value.stateOfCharge) {
+        Object.freeze(value.stateOfCharge.level);
+        Object.freeze(value.stateOfCharge.report);
+        Object.freeze(value.stateOfCharge.source);
+        Object.freeze(value.stateOfCharge);
+    }
     if (value.binaryControlObservation) {
         Object.freeze(value.binaryControlObservation.observedCapabilityIds);
         Object.freeze(value.binaryControlObservation);

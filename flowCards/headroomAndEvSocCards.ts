@@ -192,7 +192,7 @@ function buildEvSocLogPayload(params: {
     chargerDeviceId,
     chargerName: updatedCharger?.name ?? charger.name,
     percent,
-    observedAtMs: updatedCharger?.stateOfCharge?.observedAtMs ?? observedAtMs,
+    observedAtMs: updatedCharger?.stateOfCharge?.report.observedAtMs ?? observedAtMs,
     // `null`, not a fabricated `unavailable`: when the post-report snapshot read
     // failed there is no charger to resolve a level from, and the flow report
     // itself may well have succeeded. Asserting `not_reported` here would put a

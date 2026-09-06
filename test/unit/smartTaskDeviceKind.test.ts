@@ -6,6 +6,7 @@ import {
   resolveSmartTaskGoalBounds,
 } from '../../packages/shared-domain/src/smartTaskDeviceKind';
 import { formatSmartTaskDeadlineLong } from '../../packages/shared-domain/src/smartTaskDeadlineFormat';
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 
 describe('resolveSmartTaskDeviceKind', () => {
   it('classifies an EV charger as ev_soc even when it also has a target', () => {
@@ -95,8 +96,15 @@ describe('resolveSmartTaskCurrentValue', () => {
     }, 'temperature')).toBe(48);
   });
 
-  it('reads stateOfCharge.percent for ev_soc', () => {
-    expect(resolveSmartTaskCurrentValue({ stateOfCharge: { percent: 42 } }, 'ev_soc')).toBe(42);
+  // Built through the producer's own fixture rather than a hand-written literal:
+  // the structural slice this helper takes used to accept any object, so a
+  // literal kept compiling after the raw reading moved under `report` and every
+  // EV charger silently seeded from `null`.
+  it('reads the raw reported percentage for ev_soc', () => {
+    expect(resolveSmartTaskCurrentValue(
+      { stateOfCharge: stateOfChargeFixture({ percent: 42 }) },
+      'ev_soc',
+    )).toBe(42);
   });
 
   it('returns null when no reading is present', () => {

@@ -59,11 +59,19 @@ need forces a split. Reasons:
 - The `source: 'capability' | 'flow'` field on the public contract added no
   consumer-visible behavior and has been removed.
 
-## Amendment (2026-08-03): `source: 'car'` is a different question
+## Amendment (2026-08-03): a `car` source is a different question
 
-`DeviceStateOfChargeSnapshot` now carries `source?: 'car'` and `sourceDeviceId?`
-(PR #1975). That is not a reversal of the decision above, and the distinction is
-worth stating so neither rule gets applied to the other case.
+`DeviceStateOfChargeSnapshot` now carries `source: { kind: 'charger' } | { kind:
+'car'; carId }` (PR #1975; shape corrected 2026-09-06). That is not a reversal of
+the decision above, and the distinction is worth stating so neither rule gets
+applied to the other case.
+
+The provenance and the car's id live in the SAME arm, and the field is required
+rather than optional-meaning-charger. Split across two optionals a car-sourced
+reading with no car id was representable, and its two readers disagreed about
+what it meant: `retainedCarCandidate` treated an id-less car reading as eligible
+for every car in the set, while `hasCarStateOfChargeChanged` treated it as
+belonging to none.
 
 The removed field asked *which charger-side input produced this* — native
 capability or flow-reported synthetic. Both describe the same device, and no

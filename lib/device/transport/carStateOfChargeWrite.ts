@@ -24,9 +24,9 @@ export function hasCarStateOfChargeChanged(
   carId: string,
 ): boolean {
   if (!previous) return true;
-  if (previous.source !== 'car' || previous.sourceDeviceId !== carId) return true;
-  return previous.percent !== next.percent
-    || previous.observedAtMs !== next.observedAtMs
+  if (previous.source.kind !== 'car' || previous.source.carId !== carId) return true;
+  return previous.report.percent !== next.report.percent
+    || previous.report.observedAtMs !== next.report.observedAtMs
     || stateOfChargeLevelsDiffer(previous.level, next.level);
 }
 
@@ -40,7 +40,7 @@ export function hasCarStateOfChargeChanged(
  */
 export function clearCarStateOfCharge(params: { snapshot: TransportDeviceSnapshot }): boolean {
   const { snapshot } = params;
-  if (snapshot.stateOfCharge?.source !== 'car') return false;
+  if (snapshot.stateOfCharge?.source.kind !== 'car') return false;
   snapshot.stateOfCharge = undefined;
   return true;
 }

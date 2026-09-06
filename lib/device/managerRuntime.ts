@@ -8,7 +8,6 @@ import {
   getRecentLocalCapabilityWrite,
   type RecentLocalCapabilityWrites,
 } from './transport/managerRealtimeSupport';
-import { EV_SOC_CAPABILITY_ID } from './transport/stateOfCharge';
 import { getLogger } from '../logging/logger';
 import {
   applyExplicitBinaryObservation,
@@ -492,7 +491,7 @@ function getObservedCapabilityIds(
     capabilityIds.add('measure_temperature');
   }
   if (hasStateOfChargeObservationChanged(previous, next)) {
-    capabilityIds.add(next.stateOfCharge.capabilityId ?? EV_SOC_CAPABILITY_ID);
+    capabilityIds.add(next.stateOfCharge.capabilityId);
   }
 
   const previousTargetsById = new Map(previous.targets.map((target) => [target.id, target]));
@@ -521,8 +520,8 @@ function hasStateOfChargeObservationChanged(
   const nextSoc = next.stateOfCharge;
   if (!nextSoc) return false;
   return previousSoc?.capabilityId !== nextSoc.capabilityId
-    || previousSoc?.percent !== nextSoc.percent
-    || previousSoc?.observedAtMs !== nextSoc.observedAtMs;
+    || previousSoc?.report.percent !== nextSoc.report.percent
+    || previousSoc?.report.observedAtMs !== nextSoc.report.observedAtMs;
 }
 
 export function isRealtimeControlCapability(
