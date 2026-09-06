@@ -2670,13 +2670,15 @@ describe('recordPowerSampleForApp', () => {
     const updateProfiles: UpdateObjectiveProfiles = (params) => (
       updateObjectiveProfilesFromSnapshot({
         ...params,
-        devices: params.devices.map((device) => ({
-          ...withHeadroomCurrentOn(device),
-          observedQuantity: resolveObjectiveObservedQuantity({
+        devices: params.devices.flatMap((device) => {
+          const observedQuantity = resolveObjectiveObservedQuantity({
             device,
             deviceObservedAtMs: device.lastFreshDataMs,
-          }),
-        })),
+          });
+          return observedQuantity === null
+            ? []
+            : [{ ...withHeadroomCurrentOn(device), observedQuantity }];
+        }),
         debugStructured,
       })
     );

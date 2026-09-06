@@ -63,11 +63,11 @@ export type ObjectiveSampleDevice = ObservedDeviceState
      * the same shape here (`resolveObjectiveObservedQuantity`); the unit is the
      * only surviving difference, and it is for display.
      *
-     * REQUIRED, like `currentDrawKw` above and for the same reason: a caller that
-     * forgets it must be a compile error, not a fleet of devices that silently
-     * build no samples at all.
+     * REQUIRED and non-null, like `currentDrawKw` above: a device with nothing to
+     * sample is not passed at all, so this contract means "a device with a
+     * reading" and no consumer models an absence that the seam already resolved.
      */
-    observedQuantity: ObjectiveObservedQuantity | null;
+    observedQuantity: ObjectiveObservedQuantity;
   };
 
 export const OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1000;
@@ -78,7 +78,6 @@ export function buildObjectiveProfileSample(
   nowMs: number,
 ): DeviceObjectiveProfileSample | null {
   const observed = device.observedQuantity;
-  if (!observed) return null;
   // The one question left. NOT a freshness gate on the value — the reading stays
   // usable everywhere else however old it is (a thermostat at setpoint is silent
   // for hours, an idle charger reports its level long before it draws anything).

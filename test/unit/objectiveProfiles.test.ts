@@ -1,5 +1,6 @@
 import type { ObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 import { withResolvedCurrentDraw } from '../utils/objectiveSampleDevice';
+import { resolveObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   OBJECTIVE_PROFILE_MAX_DEVICES,
@@ -30,7 +31,7 @@ type TemperatureDeviceOverrides = Partial<TargetDeviceSnapshot & TemperatureObse
   & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe
   & ReportedStepObservedProbe> & { currentTemperature?: number };
 
-const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity | null } => {
+const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity } => {
   const { currentTemperature = 50, ...rest } = overrides;
   const target = { id: 'target_temperature' as const, value: 55, unit: '°C' };
   return withResolvedCurrentDraw({
@@ -48,7 +49,7 @@ const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDe
   });
 };
 
-const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity | null } => withResolvedCurrentDraw({
+const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & { currentDrawKw: number; observedQuantity: ObjectiveObservedQuantity } => withResolvedCurrentDraw({
   available: true,
   id: 'ev-1',
   expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -642,16 +643,19 @@ describe('objective profiles', () => {
     expect(state.objectiveProfiles?.['ev-1']?.lastSample.value).toBe(40);
   });
 
-  it('ignores an EV SoC sample the producer has no level for', () => {
-    const state = updateObjectiveProfilesFromSnapshot({
-      state: {},
-      devices: [evDevice({
+  it('never reaches this layer for an EV SoC the producer has no level for', () => {
+    // Moved outward: a device with nothing to sample is dropped at the objectives
+    // seam, so `lib/objectives` no longer models the absence. The assertion is
+    // that the resolver refuses it, which is what makes the drop happen.
+    const quantity = resolveObjectiveObservedQuantity({
+      device: {
+        deviceClass: 'evcharger',
         stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: startMs, unavailable: 'not_reported' }),
-      })],
-      nowMs: startMs,
+      },
+      deviceObservedAtMs: startMs,
     });
 
-    expect(state.objectiveProfiles).toBeUndefined();
+    expect(quantity).toBeNull();
   });
 
   it('ignores future-dated EV SoC samples', () => {

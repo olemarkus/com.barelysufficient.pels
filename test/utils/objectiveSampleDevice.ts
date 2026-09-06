@@ -26,7 +26,7 @@ export const withResolvedCurrentDraw = <
 ): T & {
   available: boolean;
   currentDrawKw: number;
-  observedQuantity: ObjectiveObservedQuantity | null;
+  observedQuantity: ObjectiveObservedQuantity;
 } => ({
   ...device,
   available: device.available ?? true,
@@ -34,8 +34,26 @@ export const withResolvedCurrentDraw = <
   // Mirrors the production seam (`setup/powerSamplePipeline.ts`) by calling the
   // same resolver, so fixtures exercise the real mapping rather than hand-feeding
   // the contract.
-  observedQuantity: resolveObjectiveObservedQuantity({
+  observedQuantity: resolveFixtureQuantity(device),
+});
+
+// The production seam drops a device with nothing to sample before the
+// objectives layer sees it, so a fixture that reaches this helper is asserting it
+// HAS a reading. Failing loudly beats handing the contract an absence it no
+// longer models — a fixture without temperature or state of charge is a mistake
+// in the test, not a case the layer has to carry.
+const resolveFixtureQuantity = (
+  device: ObjectiveQuantityDevice & { lastFreshDataMs?: number },
+): ObjectiveObservedQuantity => {
+  const quantity = resolveObjectiveObservedQuantity({
     device,
     deviceObservedAtMs: device.lastFreshDataMs,
-  }),
-});
+  });
+  if (!quantity) {
+    throw new Error(
+      'objective fixture has neither an observed temperature nor a state of charge: '
+      + 'the production seam would not pass it to lib/objectives at all',
+    );
+  }
+  return quantity;
+};

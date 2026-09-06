@@ -240,13 +240,20 @@ export class PowerSamplePipeline {
   private readonly updateObjectiveProfiles: UpdateObjectiveProfiles = (params) => (
     updateObjectiveProfilesFromSnapshot({
       ...params,
-      devices: params.devices.map((device) => ({
-        ...withHeadroomCurrentOn(device),
-        observedQuantity: resolveObjectiveObservedQuantity({
+      // Devices with nothing to sample are dropped here rather than passed with an
+      // empty quantity: `ObjectiveSampleDevice` then means "a device with a reading"
+      // and nothing downstream carries an absence. Profile retention is unaffected —
+      // `pruneObjectiveProfiles` keeps anything touched inside its retention window,
+      // so a device that simply goes quiet for a cycle does not lose what it learned.
+      devices: params.devices.flatMap((device) => {
+        const observedQuantity = resolveObjectiveObservedQuantity({
           device,
           deviceObservedAtMs: device.lastFreshDataMs,
-        }),
-      })),
+        });
+        return observedQuantity === null
+          ? []
+          : [{ ...withHeadroomCurrentOn(device), observedQuantity }];
+      }),
       debugStructured: this.deps.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
       outdoorTemperatureC: this.deps.getOutdoorTemperatureC?.(),
     })
