@@ -97,12 +97,15 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   rechecks authority before reconciliation. An unavailable live Main-meter
   selection or a failed rebuild schedules bounded exponential retry, so
   recovery does not depend on a later meter sample (including in Flow mode).
-- A suspect live reload of a suffixed power tracker closes every persistence
-  path for that tracker (debounce, prune, rollover, and teardown flush).
-  Absence is not positive repair evidence; persistence reopens only after a
-  valid present tracker with the runtime's exact meter identity is adopted.
-  This prevents an SDK omission from replacing recoverable accounting with
-  defaults.
+- An area's tracker lives in the userdata store (`lib/power/trackerStore.ts`),
+  which either answers or throws on I/O. A store that cannot be read fences
+  the area's CONSTRUCTION (`prepareTrackerForMeter`, retried by the
+  registry), never a running tracker's persistence; rows that fail the shape
+  guard are quarantined by the store at the narrowest grain that leaves a
+  plausible state, and the area starts from what remains — regenerable by
+  ruling (`notes/settings-key-ownership.md` § "Which store"). A stored tracker
+  bound to another meter keeps its accounting and loses only its freshness
+  latch when the area is (re)bound.
 
 ## Settings key suffixing
 

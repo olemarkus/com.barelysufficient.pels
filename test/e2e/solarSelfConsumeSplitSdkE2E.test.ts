@@ -20,7 +20,7 @@
 // HOW PV IS SIMULATED: through its real signals in the Homey Energy report — a
 // reduced `cumulative.W` (net) plus a `totalGenerated.W` (production). No internal
 // mock. Observation is the SDK seam (driven report, driven device meters) and the
-// state PELS writes back through settings (`power_tracker_state`).
+// state PELS writes back to the tracker store.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';

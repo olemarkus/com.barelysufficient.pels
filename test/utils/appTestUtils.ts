@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { openUserdataDatabase } from '../../lib/store/userdataDatabase';
-import { AppPowerTracker } from '../../setup/appPowerTracker';
+import { openUserdataStores } from '../../setup/userdataStores';
 
 let appInstances: MyApp[] = [];
 
@@ -63,9 +63,10 @@ export function createApp(options: CreateAppOptions = {}): MyApp {
   // wrap suppresses the startup restore-stabilization window, which the
   // public API does not expose.
   const app = new MyApp();
-  // The database is opened on first use, after construction, so this override
-  // lands before anything reaches the file the production path would open.
-  app['openUserdataStores'] = () => AppPowerTracker.openUserdataStores(
+  // The database is opened at the first boot step, after construction, so
+  // this override lands before anything reaches the file the production path
+  // would open.
+  app['openUserdataStores'] = () => openUserdataStores(
     openUserdataDatabase(options.userdataDatabase ?? testUserdataDatabase()),
   );
   if (!options.preserveStartupRestoreStabilization) {
@@ -97,6 +98,19 @@ export function createApp(options: CreateAppOptions = {}): MyApp {
   }
   appInstances.push(app);
   return app;
+}
+
+/**
+ * Seed the tracker the app under test will hydrate at boot: the store's rows
+ * in the database `createApp` opens, written before `onInit` reads them.
+ */
+export function seedStoredPowerTrackerForTests(state: PowerTrackerState, homeId: string = 'main'): void {
+  const database = openUserdataDatabase(testUserdataDatabase());
+  try {
+    createTrackerStore(database).replace(homeId, state);
+  } finally {
+    database.close();
+  }
 }
 
 /**

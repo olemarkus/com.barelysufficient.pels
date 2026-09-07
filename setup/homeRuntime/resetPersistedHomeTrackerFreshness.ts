@@ -1,16 +1,14 @@
 import type { AppContext } from '../../lib/app/appContext';
 import type { PowerTrackerMeterIdentity } from '../../lib/power/trackerTypes';
-import {
-  resetPersistedHomeTrackerFreshness as resetDurableHomeTrackerFreshness,
-} from '../../lib/power/persistedHomeTracker';
+import { beginTrackerFreshnessReset } from '../../lib/power/trackerMeterIdentity';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 
 /**
  * Clear a dormant sub-home meter's freshness identity before its runtime is
  * activated. Accounting buckets remain intact; only the last meter sample
- * latch is removed. Both boundary reads and writes are contained so the
- * registry can retain the pending activation and retry it.
+ * latch is removed. A store failure is contained so the registry can retain
+ * the pending activation and retry it.
  */
 export function resetPersistedHomeTrackerFreshness(params: {
   ctx: AppContext;
@@ -18,17 +16,12 @@ export function resetPersistedHomeTrackerFreshness(params: {
   meterIdentity?: PowerTrackerMeterIdentity;
 }): boolean {
   const { ctx, homeId, meterIdentity } = params;
-  return resetDurableHomeTrackerFreshness({
-    store: ctx.getTrackerStore(),
-    settings: ctx.homey.settings,
-    homeId,
-    meterIdentity,
-    onFailure: (error) => {
-      ctx.getStructuredLogger('homes')?.error({
-        event: 'home_dormant_tracker_freshness_reset_failed',
-        homeId,
-        err: normalizeError(error),
-      });
-    },
-  });
+  return beginTrackerFreshnessReset(ctx.getTrackerStore(), homeId, meterIdentity, (failure) => {
+    ctx.getStructuredLogger('homes')?.error({
+      event: 'home_dormant_tracker_freshness_reset_failed',
+      homeId,
+      phase: failure.phase,
+      err: normalizeError(failure.error),
+    });
+  }).state === 'prepared';
 }

@@ -4,7 +4,7 @@ import { SoleMeterAdoption, type SoleMeterAdoptionWriteOutcome } from '../lib/po
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import { savePowerSourceSelection } from './homeMeterOwnership';
 import { classifySoleMeterAdoptionEligibility } from './soleMeterAdoptionEligibility';
-import { readingsAdmittedSince } from './soleMeterReadingsHistory';
+import { readingsAdmittedSince } from '../lib/power/trackerReadingsHistory';
 import type { TrackerStore } from '../lib/power/trackerStore';
 
 const adoptThroughSaveSeam = (homey: Homey.App['homey'], meterDeviceId: string): SoleMeterAdoptionWriteOutcome => {
@@ -46,9 +46,7 @@ export const startSoleMeterAdoption = (
     classifyEligibility: () => classifySoleMeterAdoptionEligibility(homey.settings),
     census: censusSoleMeterAdoptionCandidate,
     adopt: (meterDeviceId) => adoptThroughSaveSeam(homey, meterDeviceId),
-    readingsAdmittedSince: (sinceMs) => readingsAdmittedSince(
-      trackerStore, homey.settings, getInMemoryLastSampleMs(), sinceMs,
-    ),
+    readingsAdmittedSince: (sinceMs) => readingsAdmittedSince(trackerStore, getInMemoryLastSampleMs(), sinceMs),
     timers,
     now: () => Date.now(),
   }).start();

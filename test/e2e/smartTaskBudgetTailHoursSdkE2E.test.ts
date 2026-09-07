@@ -25,7 +25,7 @@
 // logging seam.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
-import { cleanupApps, createApp } from '../utils/appTestUtils';
+import { cleanupApps, createApp, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN,
@@ -105,7 +105,7 @@ const seedPowerTracker = (): void => {
     buckets[new Date(DAY_START_UTC_MS + hourIndex * HOUR_MS).toISOString()] = 2.95;
   }
   buckets[new Date(DAY_START_UTC_MS + 21 * HOUR_MS).toISOString()] = 0.5;
-  mockHomeyInstance.settings.set('power_tracker_state', {
+  seedStoredPowerTrackerForTests({
     lastTimestamp: BOOT_MS - 30_000,
     buckets,
     objectiveProfiles: {

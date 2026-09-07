@@ -15,16 +15,15 @@ import {
   DEVICE_HOME_ASSIGNMENTS,
   HOMES_CONFIG,
   PELS_STATUS,
-  POWER_TRACKER_STATE,
 } from '../../contracts/src/settingsKeys.ts';
 
 /* -------------------------------------------------------------------------- *
  * The settings-change router's per-home cache routes (multi-home R5b).
  *
- * A sub-home's ONLY freshness signal is its suffixed `settings.set` stream
- * (`pels_status:<id>` / `power_tracker_state:<id>`) — the realtime
- * `plan_updated` / `power_updated` pushes are the main home's and are never
- * widened. And the roster/pin blobs (`homes_config` /
+ * A sub-home's ONLY freshness signals are its suffixed `pels_status:<id>`
+ * `settings.set` and the `power_tracker_persisted` push carrying its id — the
+ * realtime `plan_updated` / `power_updated` pushes are the main home's and are
+ * never widened. And the roster/pin blobs (`homes_config` /
  * `device_home_assignments`) decide which homes resolve and which devices a
  * scoped read serves. If either route silently stopped sweeping the scoped
  * entries, a selected sub-home would render pre-change payloads for the rest
@@ -63,11 +62,8 @@ describe('settings-change router sweeps home-scoped read models', () => {
     setHomeyClient(null);
   });
 
-  it.each([
-    [`${PELS_STATUS}:${AREA}`],
-    [`${POWER_TRACKER_STATE}:${AREA}`],
-  ])('a suffixed %s write drops scoped plan+power and keeps the bare entries', async (key) => {
-    createSettingsSetHandler()(key);
+  it('a suffixed pels_status write drops scoped plan+power and keeps the bare entries', async () => {
+    createSettingsSetHandler()(`${PELS_STATUS}:${AREA}`);
 
     expect(await isCached(scoped(SETTINGS_UI_PLAN_PATH), 'area-plan')).toBe(false);
     expect(await isCached(scoped(SETTINGS_UI_POWER_PATH), 'area-power')).toBe(false);
@@ -78,18 +74,12 @@ describe('settings-change router sweeps home-scoped read models', () => {
     expect(await isCached(SETTINGS_UI_POWER_PATH, 'bare-power')).toBe(true);
   });
 
-  it('a suffixed tracker write also drops scoped devices (export history feeds hasExhibitedExport)', async () => {
-    // A scoped `ui_devices` payload derives `hasExhibitedExport` from that
-    // home's tracker; a devices payload cached before the area's first export
-    // would otherwise keep the solar-surplus controls hidden all session.
-    createSettingsSetHandler()(`${POWER_TRACKER_STATE}:${AREA}`);
-    expect(await isCached(scoped(SETTINGS_UI_DEVICES_PATH), 'area-devices')).toBe(false);
-    expect(await isCached(SETTINGS_UI_DEVICES_PATH, 'bare-devices')).toBe(true);
-  });
-
-  // The tracker persists to the userdata store now, which produces no
-  // `settings.set` echo; the runtime's `power_tracker_persisted` push carries
-  // the home id instead and must sweep exactly what the suffixed key write did.
+  // The tracker lives in the userdata store under no settings key; the
+  // runtime's `power_tracker_persisted` push carries the home id and must
+  // sweep the area's scoped entries — devices included, because a scoped
+  // `ui_devices` payload derives `hasExhibitedExport` from that home's
+  // tracker, and one cached before the area's first export would otherwise
+  // keep the solar-surplus controls hidden all session.
   it('a power_tracker_persisted push for an area sweeps scoped plan, power and devices, never the bare entries', async () => {
     handlePowerTrackerPersisted({ homeId: AREA });
     expect(await isCached(scoped(SETTINGS_UI_PLAN_PATH), 'area-plan')).toBe(false);
@@ -140,13 +130,12 @@ describe('settings-change router sweeps home-scoped read models', () => {
   });
 
   // The UNSET mirror: Homey delivers deletes as `settings.unset`, and an unset
-  // suffixed status/tracker (area retirement) or roster/pins blob de-resolves
-  // the same scoped read models a set rewrites — none of these keys is
-  // set-only. Without this route a deleted area's cached payloads would keep
-  // serving `homeScope: resolved` for the rest of the WebView session.
+  // suffixed status (area retirement) or roster/pins blob de-resolves the
+  // same scoped read models a set rewrites — none of these keys is set-only.
+  // Without this route a deleted area's cached payloads would keep serving
+  // `homeScope: resolved` for the rest of the WebView session.
   it.each([
     [`${PELS_STATUS}:${AREA}`],
-    [`${POWER_TRACKER_STATE}:${AREA}`],
     [HOMES_CONFIG],
     [DEVICE_HOME_ASSIGNMENTS],
   ])('a %s UNSET drops the scoped plan+power entries and keeps the bare ones', async (key) => {

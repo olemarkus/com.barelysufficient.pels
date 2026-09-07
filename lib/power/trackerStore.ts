@@ -2,26 +2,38 @@
  * The power tracker's rows in the userdata database.
  *
  * Ownership: the only module that knows how a `PowerTrackerState` is laid out
- * on disk. The in-memory model is unchanged — `tracker.ts`, ingest and every
- * consumer still hold one state object per home — and this store is the seam
- * `homeTrackerPersistence.ts` writes through instead of `homey.settings`.
+ * on disk, and the only writer of its tables. The in-memory model is unchanged
+ * — `tracker.ts`, ingest and every consumer still hold one state object per
+ * home — and this store is the seam `homeTrackerPersistence.ts` writes
+ * through instead of `homey.settings`.
  *
  * The layout is one row per (series, key) rather than one JSON blob, because
  * the blob is what made persistence expensive: 663 kB re-serialised on every
  * write for a change of a few hundred bytes. `save` diffs the new state
- * against the last one it wrote and touches only the rows that changed; a
- * family whose object reference is unchanged (the tracker builds states by
- * spreading, so an untouched family keeps its identity) costs one comparison.
+ * against what the store holds for the home — what it last wrote or loaded,
+ * read from disk first when it has done neither — and touches only the rows
+ * that changed, in one transaction. Callers hand over the whole state and
+ * never learn an ordering.
  *
- * A family that has no rows comes back ABSENT from `load`, never as `{}`. The
- * solar families are sparse by contract — a non-solar home's state stays
- * deep-equal with the pre-solar shape — and the same rule kept for every
- * family means a round trip through the store is the identity.
+ * `load` is total. Rows that do not reconstruct a plausible state are the
+ * store's own failure to answer for: everything here is regenerable by ruling,
+ * so the offending rows are quarantined (deleted, logged once) at the finest
+ * grain that restores a plausible state — one scalar row, the home's scalar
+ * rows, or, last, every row the home has. A throw out of this module means
+ * SQLite I/O failed, nothing else.
+ *
+ * A family that has no rows comes back ABSENT, never as `{}`. The solar
+ * families are sparse by contract — a non-solar home's state stays deep-equal
+ * with the pre-solar shape — and the same rule kept for every family means a
+ * round trip through the store is the identity.
  */
 import type { PreparedStatement, UserdataDatabase } from '../store/userdataDatabase';
+import { getLogger } from '../logging/logger';
 import type { HomeId } from '../utils/settingsKeys';
 import type { PowerTrackerState } from './trackerTypes';
 import { isPlausiblePowerTrackerState, sanitizePowerTrackerSolarFields } from '../utils/appTypeGuards';
+
+const storeLogger = getLogger('power/tracker-store');
 
 type NumberSeries = Record<string, number>;
 type AverageSeries = Record<string, { sum: number; count: number }>;
@@ -37,7 +49,7 @@ const HOURLY_FAMILIES = [
   'exemptBuckets',
   'generationBuckets',
   'exportBuckets',
-] as const;
+] as const satisfies readonly (keyof PowerTrackerState)[];
 
 /** Families keyed by local calendar date: `Record<dateKey, number>`. */
 const DAILY_FAMILIES = [
@@ -47,7 +59,7 @@ const DAILY_FAMILIES = [
   'exemptDailyTotals',
   'generationDailyTotals',
   'exportDailyTotals',
-] as const;
+] as const satisfies readonly (keyof PowerTrackerState)[];
 
 /** Families of running averages: `Record<slotKey, { sum, count }>`. */
 const AVERAGE_FAMILIES = [
@@ -55,7 +67,7 @@ const AVERAGE_FAMILIES = [
   'controlledHourlyAverages',
   'uncontrolledHourlyAverages',
   'exemptHourlyAverages',
-] as const;
+] as const satisfies readonly (keyof PowerTrackerState)[];
 
 /** Everything else is small and stored as one JSON value per key. */
 const SCALAR_KEYS = [
@@ -69,29 +81,48 @@ const SCALAR_KEYS = [
   'lastDevicePowerWById',
   'unreliablePeriods',
   'objectiveProfiles',
-] as const;
+] as const satisfies readonly (keyof PowerTrackerState)[];
+
+/** The one family with its own table: `Record<deviceId, Record<hourKey, number>>`. */
+const DEVICE_FAMILY = 'deviceBuckets' satisfies keyof PowerTrackerState;
 
 type HourlyFamily = (typeof HOURLY_FAMILIES)[number];
 type DailyFamily = (typeof DAILY_FAMILIES)[number];
 type AverageFamily = (typeof AVERAGE_FAMILIES)[number];
+type CoveredKey =
+  | HourlyFamily | DailyFamily | AverageFamily | (typeof SCALAR_KEYS)[number] | typeof DEVICE_FAMILY;
+
+/**
+ * Every key of the tracker type has a home in one of the lists above. A new
+ * field on `PowerTrackerState` fails to compile here until it is placed, so it
+ * can never be silently dropped on the way to disk.
+ */
+type UncoveredKey = Exclude<keyof PowerTrackerState, CoveredKey>;
+const EVERY_KEY_IS_COVERED: UncoveredKey extends never ? true : never = true;
+void EVERY_KEY_IS_COVERED;
+
+const HOURLY_FAMILY_SET: ReadonlySet<string> = new Set(HOURLY_FAMILIES);
+const DAILY_FAMILY_SET: ReadonlySet<string> = new Set(DAILY_FAMILIES);
+const AVERAGE_FAMILY_SET: ReadonlySet<string> = new Set(AVERAGE_FAMILIES);
+const SCALAR_KEY_SET: ReadonlySet<string> = new Set(SCALAR_KEYS);
 
 export type TrackerStore = {
   /**
-   * The home's state as stored; `null` when the store holds no rows for it.
-   * Throws when the rows do not reconstruct a plausible state, so a damaged
-   * home is fenced by the caller rather than adopted.
+   * The home's state as stored; `null` when the store holds no rows for it —
+   * including after its rows were quarantined for not reconstructing a
+   * plausible state. Throws only when SQLite I/O fails.
    */
   load(homeId: HomeId): PowerTrackerState | null;
   /**
-   * Write `next`, touching only rows that differ from `previous` — the state
-   * this store last wrote or loaded for the home. Pass `null` to write every
-   * row (a first write, or an owner reset that must not trust the diff).
+   * Write `next`, touching only the rows that differ from what the store
+   * holds for the home. `next` is kept by reference as the base of the next
+   * diff, which holds because every writer replaces a family rather than
+   * mutating it in place (`diffRecord`); a state handed here is not edited
+   * afterwards.
    */
-  save(homeId: HomeId, next: PowerTrackerState, previous: PowerTrackerState | null): void;
+  save(homeId: HomeId, next: PowerTrackerState): void;
   /** Drop every row the home has and write `next` whole, in one transaction. */
   replace(homeId: HomeId, next: PowerTrackerState): void;
-  /** Drop every row the home has. */
-  clear(homeId: HomeId): void;
 };
 
 const SCHEMA = `
@@ -188,6 +219,9 @@ const diffRecord = <V>(
 };
 
 const sameNumber = (a: number, b: number): boolean => a === b;
+const sameAverage = (a: { sum: number; count: number }, b: { sum: number; count: number }): boolean => (
+  a.sum === b.sum && a.count === b.count
+);
 
 /**
  * A REAL column stores a bound NaN as NULL, which the NOT NULL constraint then
@@ -195,19 +229,26 @@ const sameNumber = (a: number, b: number): boolean => a === b;
  * the bucket aged out. Ingest gates finiteness upstream; this is the store's
  * own guarantee that one bad number costs one row, never a month of history.
  */
-const writeFinite = (upsert: (value: number) => void, remove: () => void) => (value: number): void => {
-  if (Number.isFinite(value)) upsert(value);
-  else remove();
+const numberRowWriter = (
+  upsert: (key: string, value: number) => void,
+  remove: (key: string) => void,
+) => (key: string, value: number): void => {
+  if (Number.isFinite(value)) upsert(key, value);
+  else remove(key);
 };
-const sameAverage = (a: { sum: number; count: number }, b: { sum: number; count: number }): boolean => (
-  a.sum === b.sum && a.count === b.count
-);
 
-const readNumber = (value: unknown): number | null => (
-  typeof value === 'number' && Number.isFinite(value) ? value : null
-);
+/** The home's rows, and the scalar keys whose row could not even be parsed. */
+type LoadedRows = { state: Record<string, unknown>; rows: number; unparseable: string[] };
 
-const loadState = (s: Statements, homeId: HomeId): PowerTrackerState | null => {
+const parseScalar = (json: string): { ok: true; value: unknown } | { ok: false } => {
+  try {
+    return { ok: true, value: JSON.parse(json) as unknown };
+  } catch {
+    return { ok: false };
+  }
+};
+
+const loadRows = (s: Statements, homeId: HomeId): LoadedRows => {
   const state: Record<string, unknown> = {};
   let rows = 0;
   const family = <V>(name: string): Record<string, V> => {
@@ -217,77 +258,137 @@ const loadState = (s: Statements, homeId: HomeId): PowerTrackerState | null => {
     state[name] = created;
     return created;
   };
-  for (const row of s.loadHourly.all(homeId) as Array<{ series: string; key: string; value: number }>) {
-    family<number>(row.series)[row.key] = row.value;
-    rows += 1;
-  }
-  for (const row of s.loadDaily.all(homeId) as Array<{ series: string; key: string; value: number }>) {
-    family<number>(row.series)[row.key] = row.value;
-    rows += 1;
+  // Only series this store writes are read back: an unknown series name is a
+  // row nothing here can answer for and is left where it is.
+  type NumberRow = { series: string; key: string; value: number };
+  const numberRows: Array<[PreparedStatement, ReadonlySet<string>]> = [
+    [s.loadHourly, HOURLY_FAMILY_SET], [s.loadDaily, DAILY_FAMILY_SET],
+  ];
+  for (const [statement, families] of numberRows) {
+    for (const row of statement.all(homeId) as NumberRow[]) {
+      if (!families.has(row.series)) continue;
+      family<number>(row.series)[row.key] = row.value;
+      rows += 1;
+    }
   }
   type AverageRow = { series: string; key: string; sum: number; count: number };
   for (const row of s.loadAverages.all(homeId) as AverageRow[]) {
+    if (!AVERAGE_FAMILY_SET.has(row.series)) continue;
     family<{ sum: number; count: number }>(row.series)[row.key] = { sum: row.sum, count: row.count };
     rows += 1;
   }
-  for (const row of s.loadDevices.all(homeId) as Array<{ device_id: string; hour_key: string; value: number }>) {
-    const devices = family<NumberSeries>('deviceBuckets');
+  type DeviceRow = { device_id: string; hour_key: string; value: number };
+  for (const row of s.loadDevices.all(homeId) as DeviceRow[]) {
+    const devices = family<NumberSeries>(DEVICE_FAMILY);
     (devices[row.device_id] ??= {})[row.hour_key] = row.value;
     rows += 1;
   }
-  for (const row of s.loadScalars.all(homeId) as Array<{ key: string; value_json: string }>) {
-    state[row.key] = JSON.parse(row.value_json) as unknown;
+  const scalars = loadScalarRows(s, homeId);
+  return { state: { ...state, ...scalars.values }, rows: rows + scalars.rows, unparseable: scalars.unparseable };
+};
+
+/** The home's scalar rows: the parsed values, and the keys whose row did not parse. */
+const loadScalarRows = (s: Statements, homeId: HomeId) => {
+  const values: Record<string, unknown> = {};
+  const unparseable: string[] = [];
+  let rows = 0;
+  type ScalarRow = { key: string; value_json: string };
+  for (const row of s.loadScalars.all(homeId) as ScalarRow[]) {
+    if (!SCALAR_KEY_SET.has(row.key)) continue;
     rows += 1;
+    const parsed = parseScalar(row.value_json);
+    if (parsed.ok) values[row.key] = parsed.value;
+    else unparseable.push(row.key);
   }
-  if (rows === 0) return null;
-  // Numbers come back as REAL; anything that is not a finite number in a
-  // numeric family was never written by this store and is dropped on read.
-  const dropNonNumbers = (name: string): void => {
-    const series = state[name] as NumberSeries | undefined;
-    if (series === undefined) return;
-    for (const [key, value] of Object.entries(series)) {
-      if (readNumber(value) === null) delete series[key];
-    }
+  return { values, rows, unparseable };
+};
+
+const without = (state: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> => (
+  Object.fromEntries(Object.entries(state).filter(([key]) => !keys.includes(key)))
+);
+
+type Quarantine =
+  | { scope: 'scalar_rows'; keys: string[]; state: PowerTrackerState }
+  | { scope: 'home' };
+
+/**
+ * The narrowest cut that leaves a plausible state. The number families
+ * cannot hold a non-finite value (REAL NOT NULL), so an implausible state is
+ * a scalar's doing: a row that did not parse, one whose value the guard
+ * refuses, or, failing both, the home's scalar rows together. Only a state
+ * that is implausible even without any scalar loses its families.
+ */
+const planQuarantine = (loaded: LoadedRows): Quarantine | null => {
+  const plausible = (candidate: Record<string, unknown>): PowerTrackerState | null => {
+    const sanitized = sanitizePowerTrackerSolarFields(candidate);
+    return isPlausiblePowerTrackerState(sanitized) ? sanitized : null;
   };
-  for (const name of HOURLY_FAMILIES) dropNonNumbers(name);
-  for (const name of DAILY_FAMILIES) dropNonNumbers(name);
-  // Rows re-entering from disk are a persisted blob like any other: the same
-  // shape guard the legacy settings read applies decides here, once, and a
-  // state that fails it is a read failure — the caller fences rather than
-  // adopting a malformed scalar or profile as truth.
-  const sanitized = sanitizePowerTrackerSolarFields(state);
-  if (!isPlausiblePowerTrackerState(sanitized)) {
-    throw new Error(`tracker rows for ${homeId} do not reconstruct a plausible tracker state`);
+  const dropped = [...loaded.unparseable];
+  const base = without(loaded.state, dropped);
+  const asIs = plausible(base);
+  if (asIs !== null) return dropped.length === 0 ? null : { scope: 'scalar_rows', keys: dropped, state: asIs };
+  for (const key of SCALAR_KEYS) {
+    if (!(key in base)) continue;
+    const state = plausible(without(base, [key]));
+    if (state !== null) return { scope: 'scalar_rows', keys: dropped.concat(key), state };
   }
-  return sanitized;
+  const familiesOnly = plausible(without(base, SCALAR_KEYS));
+  if (familiesOnly !== null) {
+    const keys = SCALAR_KEYS.filter((key) => key in base || dropped.includes(key));
+    return { scope: 'scalar_rows', keys, state: familiesOnly };
+  }
+  return { scope: 'home' };
+};
+
+/**
+ * Read one home's rows into a state, quarantining what fails the shape guard
+ * (deleted, said once at error); runs inside a transaction.
+ */
+const readHome = (s: Statements, clearRows: (homeId: HomeId) => void, homeId: HomeId): PowerTrackerState | null => {
+  const loaded = loadRows(s, homeId);
+  if (loaded.rows === 0) return null;
+  // Rows re-entering from disk are a persisted blob like any other and get
+  // the one shape guard at this boundary. Rows that fail it are the store's
+  // own damage to absorb: regenerable by ruling, so they are set aside at
+  // the narrowest grain that leaves a plausible state.
+  const quarantine = planQuarantine(loaded);
+  if (quarantine === null) return sanitizePowerTrackerSolarFields(loaded.state) as PowerTrackerState;
+  if (quarantine.scope === 'home') {
+    storeLogger.error({ event: 'power_tracker_rows_quarantined', homeId, scope: 'home', rows: loaded.rows });
+    clearRows(homeId);
+    return null;
+  }
+  storeLogger.error({
+    event: 'power_tracker_rows_quarantined', homeId, scope: 'scalar_rows', keys: quarantine.keys,
+  });
+  for (const key of quarantine.keys) s.deleteScalar.run(homeId, key);
+  return quarantine.state;
 };
 
 export const createTrackerStore = (db: UserdataDatabase): TrackerStore => {
   db.exec(SCHEMA);
   const s = prepareStatements(db);
+  /** What the store holds per home — the diff base of the next save. */
+  const lastKnown = new Map<HomeId, PowerTrackerState>();
 
-  const saveHourly = (
-    homeId: HomeId, family: HourlyFamily, next: NumberSeries | undefined, previous: NumberSeries | undefined,
-  ): void => {
+  const saveHourly = (homeId: HomeId, family: HourlyFamily, next?: NumberSeries, previous?: NumberSeries): void => {
     diffRecord(next, previous, sameNumber,
-      (key, value) => writeFinite(
-        (finite) => s.upsertHourly.run(homeId, family, key, finite),
-        () => s.deleteHourly.run(homeId, family, key),
-      )(value),
+      numberRowWriter(
+        (key, value) => s.upsertHourly.run(homeId, family, key, value),
+        (key) => s.deleteHourly.run(homeId, family, key),
+      ),
       (key) => s.deleteHourly.run(homeId, family, key));
   };
-  const saveDaily = (
-    homeId: HomeId, family: DailyFamily, next: NumberSeries | undefined, previous: NumberSeries | undefined,
-  ): void => {
+  const saveDaily = (homeId: HomeId, family: DailyFamily, next?: NumberSeries, previous?: NumberSeries): void => {
     diffRecord(next, previous, sameNumber,
-      (key, value) => writeFinite(
-        (finite) => s.upsertDaily.run(homeId, family, key, finite),
-        () => s.deleteDaily.run(homeId, family, key),
-      )(value),
+      numberRowWriter(
+        (key, value) => s.upsertDaily.run(homeId, family, key, value),
+        (key) => s.deleteDaily.run(homeId, family, key),
+      ),
       (key) => s.deleteDaily.run(homeId, family, key));
   };
   const saveAverages = (
-    homeId: HomeId, family: AverageFamily, next: AverageSeries | undefined, previous: AverageSeries | undefined,
+    homeId: HomeId, family: AverageFamily, next?: AverageSeries, previous?: AverageSeries,
   ): void => {
     diffRecord(next, previous, sameAverage,
       (key, value) => s.upsertAverage.run(homeId, family, key, value.sum, value.count),
@@ -303,10 +404,10 @@ export const createTrackerStore = (db: UserdataDatabase): TrackerStore => {
     const previousRecord = previous ?? EMPTY;
     for (const [deviceId, hours] of Object.entries(nextRecord)) {
       diffRecord(hours, previousRecord[deviceId], sameNumber,
-        (key, value) => writeFinite(
-          (finite) => s.upsertDevice.run(homeId, deviceId, key, finite),
-          () => s.deleteDevice.run(homeId, deviceId, key),
-        )(value),
+        numberRowWriter(
+          (key, value) => s.upsertDevice.run(homeId, deviceId, key, value),
+          (key) => s.deleteDevice.run(homeId, deviceId, key),
+        ),
         (key) => s.deleteDevice.run(homeId, deviceId, key));
     }
     for (const [deviceId, hours] of Object.entries(previousRecord)) {
@@ -318,8 +419,10 @@ export const createTrackerStore = (db: UserdataDatabase): TrackerStore => {
     for (const key of SCALAR_KEYS) {
       const value = next[key];
       const before = previous?.[key];
+      // Same reference, same bytes: the identity shortcut the families get.
+      if (value === before) continue;
       if (value === undefined) {
-        if (before !== undefined) s.deleteScalar.run(homeId, key);
+        s.deleteScalar.run(homeId, key);
         continue;
       }
       const json = JSON.stringify(value);
@@ -327,25 +430,42 @@ export const createTrackerStore = (db: UserdataDatabase): TrackerStore => {
       s.upsertScalar.run(homeId, key, json);
     }
   };
-
   const writeDiff = (homeId: HomeId, next: PowerTrackerState, previous: PowerTrackerState | null): void => {
     for (const name of HOURLY_FAMILIES) saveHourly(homeId, name, next[name], previous?.[name]);
     for (const name of DAILY_FAMILIES) saveDaily(homeId, name, next[name], previous?.[name]);
     for (const name of AVERAGE_FAMILIES) saveAverages(homeId, name, next[name], previous?.[name]);
-    saveDevices(homeId, next.deviceBuckets, previous?.deviceBuckets);
+    saveDevices(homeId, next[DEVICE_FAMILY], previous?.[DEVICE_FAMILY]);
     saveScalars(homeId, next, previous);
   };
   const clearRows = (homeId: HomeId): void => {
     for (const statement of s.clearAll) statement.run(homeId);
   };
 
+  /** Read the home's rows and make them the diff base; runs inside a transaction. */
+  const read = (homeId: HomeId): PowerTrackerState | null => {
+    const state = readHome(s, clearRows, homeId);
+    if (state === null) lastKnown.delete(homeId);
+    else lastKnown.set(homeId, state);
+    return state;
+  };
+
   return {
-    load: (homeId) => loadState(s, homeId),
-    save: (homeId, next, previous) => db.transaction(() => writeDiff(homeId, next, previous)),
-    replace: (homeId, next) => db.transaction(() => {
-      clearRows(homeId);
-      writeDiff(homeId, next, null);
-    }),
-    clear: (homeId) => db.transaction(() => clearRows(homeId)),
+    load: (homeId) => db.transaction(() => read(homeId)),
+    save: (homeId, next) => {
+      db.transaction(() => {
+        // A home this store has neither loaded nor written is diffed against
+        // its rows on disk, so a save can always delete what `next` dropped.
+        const previous = lastKnown.has(homeId) ? lastKnown.get(homeId) ?? null : read(homeId);
+        writeDiff(homeId, next, previous);
+      });
+      lastKnown.set(homeId, next);
+    },
+    replace: (homeId, next) => {
+      db.transaction(() => {
+        clearRows(homeId);
+        writeDiff(homeId, next, null);
+      });
+      lastKnown.set(homeId, next);
+    },
   };
 };

@@ -13,7 +13,6 @@ import type { DeviceControlProfiles } from './packages/contracts/src/types';
 import type { DeviceTargetPowerConfigsWithReachability } from './lib/device/targetPowerReachability';
 import type { PriceCoordinator } from './lib/price/priceCoordinator';
 import type { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
-import type { PowerTrackerState } from './lib/power/tracker';
 import type { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type {
   DeferredObjectiveActivePlanRecorder,
@@ -72,8 +71,9 @@ import {
 } from './setup/appServiceWiring';
 import type { HomeMembershipService } from './setup/homeMembership';
 import type { HomeRuntimeRegistry } from './setup/homeRuntime/homeRuntimeRegistry';
-import { AppPowerTracker, type AppUserdataStores } from './setup/appPowerTracker';
-import type { TrackerStore } from './lib/power/trackerStore';
+import type { PowerTrackerState } from './lib/power/trackerTypes';
+import { AppPowerTracker } from './setup/appPowerTracker';
+import type { AppUserdataStores } from './setup/userdataStores';
 import { TimerRegistry } from './lib/utils/timerRegistry';
 import type { FlowReportedCapabilitiesByDevice } from './lib/device/transport/flowReportedCapabilities';
 import { withAppApi } from './setup/appRuntimeApi';
@@ -297,21 +297,20 @@ class PelsApp extends PelsAppBase implements AppContext {
 
   protected structuredLogger?: PinoLogger;
   public readonly timers = new TimerRegistry();
+  /**
+   * The userdata database and its repositories: opened at the first boot
+   * step, closed last at teardown, and absent outside that window — a caller
+   * outside it gets an error, never a lazily opened file nothing would close.
+   */
   private userdataStores?: AppUserdataStores;
-  private userdataClosed = false;
-  /** Opened on first use, after construction; the test harness overrides this to open a test database. */
-  protected openUserdataStores(): AppUserdataStores {
-    return AppPowerTracker.openUserdataStores();
+  private openUserdata(): void {
+    this.userdataStores = this.openUserdataStores();
   }
-  public getTrackerStore(): TrackerStore {
-    // Closed is a latch: a late caller after teardown gets an error, never a
-    // silently reopened file whose handle nothing would close again.
-    if (this.userdataClosed) throw new Error('the userdata database is closed');
-    this.userdataStores ??= this.openUserdataStores();
+  public getTrackerStore(): AppUserdataStores['trackerStore'] {
+    if (this.userdataStores === undefined) throw new Error('the userdata database is not open');
     return this.userdataStores.trackerStore;
   }
   private closeUserdataDatabase(): void {
-    this.userdataClosed = true;
     this.userdataStores?.database.close();
     this.userdataStores = undefined;
   }
@@ -323,15 +322,14 @@ class PelsApp extends PelsAppBase implements AppContext {
    */
   public readonly mainTracker = AppPowerTracker.createMainTracker({
     getStore: () => this.getTrackerStore(),
-    legacySettings: this.homey.settings,
     timers: this.timers,
     getLogger: () => this.getStructuredLogger('power'),
     getPruneDebugEmitter: () => this.getStructuredDebugEmitter('perf', 'perf'),
     reportError: (message, error) => this.error(message, error),
     getTimeZone: () => this.getTimeZone(),
     isTornDown: () => this.mainActuationStopped,
-    onRecovered: () => this.powerTrackerHelpers.onPowerTrackerRecovered(),
-  }, this.homey);
+    onPersisted: () => this.emitPowerTrackerPersisted(MAIN_HOME_ID),
+  });
 
   private readonly targetPowerReachabilityWiring = createTargetPowerReachabilityAppWiring(this);
   public readonly snapshotHelpers: AppSnapshotHelpers = new AppSnapshotHelpers({
@@ -425,7 +423,6 @@ class PelsApp extends PelsAppBase implements AppContext {
     getPowerCalibrationStore: () => this.powerCalibrationStore,
     setPowerCalibrationStore: (store) => { this.powerCalibrationStore = store; },
     getDailyBudgetService: () => this.dailyBudgetService,
-    getPlanService: () => this.planService,
     error: (...args) => this.error(...args),
     updateDailyBudgetAndRecordCap: (options) => this.updateDailyBudgetAndRecordCap(options),
     persistPowerCalibrationIfDue: (nowMs) => this.persistPowerCalibrationIfDue(nowMs),
@@ -504,6 +501,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     retryDeferredOvershootSeed: (membership, allowPending) => this.snapshotHelpers.retryDeferredOvershootSeed(
       (deviceId) => homeMode.resolveOperatingModeForDevice(this.ctx, deviceId, membership, allowPending),
     ),
+    openUserdataStores: () => this.openUserdata(),
     loadPersistedState: () => this.flowBacked.loadPersistedState(),
     persistLearnedPowerPeaks: () => this.flowBacked.persistLearnedPeaks(),
     flushLearnedPowerPeaks: () => this.flowBacked.flushLearnedPeaks(),

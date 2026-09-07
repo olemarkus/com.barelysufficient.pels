@@ -57,6 +57,8 @@ describe('settings UI app runtime helpers', () => {
 
   it('resets power tracker history without keeping stale breakdown buckets', async () => {
     const app = createApp();
+    // The reset persists to the userdata store, which the boot step opens.
+    app['openUserdata']();
     (app.homey as typeof app.homey & { app?: unknown }).app = app;
     const nowMs = new Date('2026-03-03T10:20:00.000Z').getTime();
     const currentHourKey = getHourBucketKey(nowMs);

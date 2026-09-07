@@ -101,7 +101,7 @@ export type AppContext = {
   getTimeZone: () => string;
   notifyOperatingModeChanged: (mode: string) => void;
   hydratePowerTracker: () => void;
-  /** The power tracker's rows in the userdata database, opened on first use. */
+  /** The power tracker's rows in the userdata database; throws before the boot step that opens it. */
   getTrackerStore: () => TrackerStore;
   /** Tell the settings UI a home's tracker persisted (the store produces no settings echo). */
   emitPowerTrackerPersisted: (homeId: string) => void;

@@ -52,7 +52,7 @@ export function calculateWindowEnergyKwh(
 // Clears the in-progress accumulator. Spread onto a profile whenever the baseline
 // resets (accept, value-fell, interval-too-long) so a partial window is never
 // carried into the next, unrelated one. The `undefined`
-// keys drop on JSON serialization for `power_tracker_state`.
+// keys drop when the tracker store serialises the profiles.
 export const CLEARED_ENERGY_ACCUMULATOR = {
   pendingEnergyKWh: undefined,
   subIntervalStartMs: undefined,

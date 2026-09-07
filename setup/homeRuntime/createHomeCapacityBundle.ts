@@ -29,12 +29,12 @@
  * before any tree) could otherwise be double-controlled while main still plans
  * it through the fail-safe complement.
  *
- * Persistence: the home's tracker rows in the userdata store (a legacy
- * `power_tracker_state:<homeId>` blob is imported once) and
+ * Persistence: the home's tracker rows in the userdata store and
  * `device_last_controlled_ms:<homeId>` are rehydrated on (re)creation. Tracker
- * hydration is classified and identity-bound before this factory runs: suspect
- * reads fence construction, while an identity mismatch clears freshness but
- * keeps accounting. Last-controlled state uses its typed map guard. Persistence
+ * hydration is identity-bound before this factory runs: a store that cannot
+ * be read fences construction until the owned retry, while an identity
+ * mismatch clears freshness but keeps accounting. Last-controlled state uses
+ * its typed map guard. Persistence
  * follows main's debounce/hour-rollover policy, minus main-only daily-budget,
  * UI, and calibration piggybacks. Teardown stops timers; persisted state stays.
  */
@@ -113,8 +113,6 @@ export type HomeCapacityBundleDeps = {
   home: SubHomeConfig;
   /** Already safety-resolved against persisted state by the owning registry. */
   initialPowerTrackerState: PowerTrackerState;
-  /** The rows the store held when the area was prepared — the first save's diff base. */
-  persistedPowerTrackerState: PowerTrackerState | null;
   /** Identity every tracker persist from this runtime must carry. */
   powerTrackerMeterIdentity: PowerTrackerMeterIdentity;
   /** Membership-readiness signal (a committed zone tree has been joined). */
@@ -576,22 +574,16 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   const tracker = createHomeTrackerPersistence({
     deps: {
       getStore: () => ctx.getTrackerStore(),
-      legacySettings: ctx.homey.settings,
       timers: ctx.timers,
       getLogger: () => ctx.getStructuredLogger('homes'),
       getPruneDebugEmitter: () => ctx.getStructuredDebugEmitter('perf', 'perf'),
       reportError: (message, error) => ctx.error(message, error),
       getTimeZone: () => ctx.getTimeZone(),
       isTornDown,
-      // An area is hydrated before construction and refuses to build on a
-      // suspect read, so a runtime recovery only reopens persistence; its
-      // planning cadence is the Homey Energy poll, which never stopped.
-      onRecovered: () => undefined,
       onPersisted: () => ctx.emitPowerTrackerPersisted(homeId),
     },
     homeId,
     initialState: deps.initialPowerTrackerState,
-    persistedState: deps.persistedPowerTrackerState,
     meterBinding: { kind: 'bound', identity: deps.powerTrackerMeterIdentity },
     timerKey,
   });

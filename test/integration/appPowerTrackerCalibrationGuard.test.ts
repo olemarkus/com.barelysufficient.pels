@@ -47,19 +47,16 @@ describe('AppPowerTracker calibration persist guard', () => {
     const tracker = createHomeTrackerPersistence({
       deps: {
         getStore: () => trackerStore,
-        legacySettings: homey.settings,
         timers,
         getLogger: () => undefined,
         getPruneDebugEmitter: () => () => {},
         reportError: vi.fn(),
         getTimeZone: () => 'Europe/Oslo',
         isTornDown: () => false,
-        onRecovered: () => {},
         onPersisted: () => {},
       },
       homeId: 'main',
       initialState: {},
-      persistedState: null,
       meterBinding: { kind: 'unbound' },
       timerKey: (suffix) => suffix,
     });
@@ -74,7 +71,6 @@ describe('AppPowerTracker calibration persist guard', () => {
       getPowerCalibrationStore: () => active.store,
       setPowerCalibrationStore: vi.fn(),
       getDailyBudgetService: () => { throw new Error('not exercised'); },
-      getPlanService: () => undefined,
       error: vi.fn(),
       updateDailyBudgetAndRecordCap: vi.fn(),
       // Routed the way app.ts routes it: back into the real persist function,

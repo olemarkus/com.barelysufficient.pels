@@ -61,7 +61,7 @@ import {
   type HomeCapacityBundleDiagnostics,
   type OwningHomeHooks,
 } from './createHomeCapacityBundle';
-import { preparePersistedHomeTrackerForMeter } from '../../lib/power/persistedHomeTracker';
+import { prepareTrackerForMeter } from '../../lib/power/trackerMeterIdentity';
 import { resetPersistedHomeTrackerFreshness } from './resetPersistedHomeTrackerFreshness';
 import type { ModeOwnershipTransfer } from '../../lib/home/modeOwnershipTransfer';
 
@@ -531,28 +531,24 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
       powerSource,
       meterDeviceId: home.meterDeviceId,
     };
-    {
-      const prepared = preparePersistedHomeTrackerForMeter({
-        store: this.deps.ctx.getTrackerStore(),
-        settings: this.deps.ctx.homey.settings,
-        homeId: home.homeId,
-        meterIdentity,
-        onFailure: (error) => {
-          throw error;
-        },
-      });
-      if (!prepared.ok) throw new Error(`tracker preparation failed for ${home.homeId}`);
-      return createHomeCapacityBundle({
-        ctx: this.deps.ctx,
-        home,
-        initialPowerTrackerState: prepared.state,
-        persistedPowerTrackerState: prepared.persisted,
-        powerTrackerMeterIdentity: meterIdentity,
-        isMembershipReady: this.deps.isMembershipReady,
-        isMeterSourceAuthorized: () => this.isMeterSourceAuthorized(),
-        isMeterSourceEpochDiscarded: () => this.isMeterSourceEpochDiscarded(),
-      });
-    }
+    const prepared = prepareTrackerForMeter(
+      this.deps.ctx.getTrackerStore(),
+      home.homeId,
+      meterIdentity,
+      (error) => {
+        throw error;
+      },
+    );
+    if (!prepared.ok) throw new Error(`tracker preparation failed for ${home.homeId}`);
+    return createHomeCapacityBundle({
+      ctx: this.deps.ctx,
+      home,
+      initialPowerTrackerState: prepared.state,
+      powerTrackerMeterIdentity: meterIdentity,
+      isMembershipReady: this.deps.isMembershipReady,
+      isMeterSourceAuthorized: () => this.isMeterSourceAuthorized(),
+      isMeterSourceEpochDiscarded: () => this.isMeterSourceEpochDiscarded(),
+    });
   }
 
   private resetDormantTrackerFreshness(homes: readonly SubHomeConfig[]): boolean {

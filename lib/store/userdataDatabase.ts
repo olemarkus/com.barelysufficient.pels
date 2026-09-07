@@ -36,8 +36,9 @@ const storeLogger = getLogger('store');
 export type PreparedStatement = StatementSync;
 
 /** Where the Homey app-runner mounts the app's persistent directory. */
-export const USERDATA_DIR = '/userdata';
-export const USERDATA_DATABASE_FILE = 'pels.sqlite';
+/** Where Homey bind-mounts the per-app userdata directory, for store installs and `homey app run --remote` alike. */
+const USERDATA_DIR = '/userdata';
+const USERDATA_DATABASE_FILE = 'pels.sqlite';
 /** SQLite's in-memory database, for tests and for the harnesses. */
 export const IN_MEMORY_DATABASE = ':memory:';
 
@@ -147,3 +148,8 @@ export const openUserdataDatabase = (location: string): UserdataDatabase => {
     },
   };
 };
+
+/** The app's one database file, at the production path. */
+export const openAppUserdataDatabase = (): UserdataDatabase => (
+  openUserdataDatabase(`${USERDATA_DIR}/${USERDATA_DATABASE_FILE}`)
+);

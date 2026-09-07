@@ -88,19 +88,13 @@ export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
 // for a meter area). Mirror of PELS_STATUS in lib/utils/settingsKeys.ts — keep
 // both in sync (the settings UI can't import lib).
 export const PELS_STATUS = 'pels_status';
-// The LEGACY per-home recorded power history key (`power_tracker_state` for
-// the main home, `power_tracker_state:<id>` for a meter area). Mirror of
-// POWER_TRACKER_STATE in lib/utils/settingsKeys.ts — keep both in sync (the
-// settings UI can't import lib). The tracker persists to the userdata store
-// now; the key is imported once and unset, and nothing writes it again. The
-// change router still names it because the `power_tracker_persisted` push
-// below is routed as if the home's key had been written.
-export const POWER_TRACKER_STATE = 'power_tracker_state';
 // Realtime push the runtime emits after every tracker persist, for every home
-// (`{ homeId }`; `MAIN_HOME_ID` for the whole home). It replaced the
-// `settings.set` echo of the key above as the freshness signal: paired with
-// the suffixed `pels_status:<id>` write it is what carries a sub-home's
-// freshness, since `plan_updated` / `power_updated` are the main home's alone.
+// (`{ homeId }`; `MAIN_HOME_ID` for the whole home). The tracker lives in the
+// userdata store, under no settings key, so this push is the UI's freshness
+// signal for it: paired with the suffixed `pels_status:<id>` write it is what
+// carries a sub-home's freshness, since `plan_updated` / `power_updated` are
+// the main home's alone. Mirror of POWER_TRACKER_PERSISTED_EVENT in
+// lib/utils/settingsKeys.ts — keep both in sync (the settings UI can't import lib).
 export const POWER_TRACKER_PERSISTED_EVENT = 'power_tracker_persisted';
 export type PowerTrackerPersistedPayload = { homeId: string };
 

@@ -33,7 +33,6 @@ import {
   MODE_DEVICE_TARGETS,
   NORWAY_PRICE_MODEL,
   PELS_STATUS,
-  POWER_TRACKER_STATE,
   homeScopedSettingsKey,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
@@ -199,39 +198,40 @@ const refreshPriceSettings = (key: string) => {
 };
 
 const refreshPowerSettings = (key: string) => {
-  if (key === POWER_TRACKER_STATE) {
-    invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
-    // The whole-home `ui_devices` payload derives `hasExhibitedExport` from this
-    // same tracker, so a bare tracker write must sweep the devices entries too —
-    // Main's mirror of the suffixed rule below. Without it a single-home install
-    // that cached `ui_devices` before its first material export keeps the
-    // solar-surplus and export-price affordances hidden until the WebView
-    // reloads, even though the export is recorded.
-    invalidateApiCacheForAllHomes(SETTINGS_UI_DEVICES_PATH);
-    runLoggedTask(refreshPowerData(), 'Failed to refresh power data', 'settings.set');
-    refreshStaleDataStatus('settings.set');
-    refreshDailyBudgetIfVisible('settings.set');
-    return;
-  }
   if (key !== PELS_STATUS) return;
   invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
   refreshStaleDataStatus('settings.set');
 };
 
+/** The Main home's tracker persisted: the whole-home power read models are stale. */
+const refreshMainPowerTracker = (context: string) => {
+  invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
+  // The whole-home `ui_devices` payload derives `hasExhibitedExport` from this
+  // same tracker, so a tracker persist must sweep the devices entries too —
+  // Main's mirror of the scoped rule below. Without it a single-home install
+  // that cached `ui_devices` before its first material export keeps the
+  // solar-surplus and export-price affordances hidden until the WebView
+  // reloads, even though the export is recorded.
+  invalidateApiCacheForAllHomes(SETTINGS_UI_DEVICES_PATH);
+  runLoggedTask(refreshPowerData(), 'Failed to refresh power data', context);
+  refreshStaleDataStatus(context);
+  refreshDailyBudgetIfVisible(context);
+};
+
 // A sub-home commits a plan by persisting its own suffixed `pels_status:<id>`,
 // and its tracker persists announce themselves through the
-// `power_tracker_persisted` push (routed below as if `power_tracker_state:<id>`
-// had been written) — the ONLY freshness signals a sub-home gets, because the
-// realtime `plan_updated` / `power_updated` streams are the main home's and are
-// deliberately never widened (widening them would repaint Main's Overview from
-// a sub-home's device set in a Homey-cached stale WebView).
+// `power_tracker_persisted` push (`handlePowerTrackerPersisted` below) — the
+// ONLY freshness signals a sub-home gets, because the realtime `plan_updated`
+// / `power_updated` streams are the main home's and are deliberately never
+// widened (widening them would repaint Main's Overview from a sub-home's
+// device set in a Homey-cached stale WebView).
 //
 // Drop every home-scoped plan/power entry on any such write rather than parsing
 // the id out of the key: resolving suffixed keys client-side is the precedent
 // this train is correcting, and the over-broad sweep costs at most one refetch
 // per area while being impossible to get wrong. The BARE entries are untouched —
 // a sub-home write says nothing about the whole home.
-const SUFFIXED_HOME_PLAN_KEY_PREFIXES = [`${PELS_STATUS}:`, `${POWER_TRACKER_STATE}:`];
+const SUFFIXED_HOME_PLAN_KEY_PREFIXES = [`${PELS_STATUS}:`];
 
 const refreshHomeScopedReadModels = (key: string, context: string) => {
   // The roster (`homes_config`) and the device→home pins
@@ -260,38 +260,38 @@ const refreshHomeScopedReadModels = (key: string, context: string) => {
   }
   invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH);
   invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
-  // A scoped `ui_devices` payload derives `hasExhibitedExport` from that home's
-  // power tracker, so a suffixed tracker write must sweep the scoped devices
-  // entries too — otherwise a meter-only PV area cached before its first
-  // export keeps the solar-surplus controls hidden until the WebView reloads.
-  // The status blob feeds no devices field, so its writes leave devices alone.
-  if (key.startsWith(`${POWER_TRACKER_STATE}:`)) {
-    invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
-  }
   if (selectedHomeId === MAIN_HOME_ID) return;
-  // The SELECTED area's own tracker persist repaints a visible Usage panel AND
-  // a visible Overview — this signal is that home's only power freshness
-  // signal (the realtime `power_updated` push is Main's and is never widened),
-  // and BOTH surfaces consume the scoped power payload just invalidated above:
-  // the Overview hero's power, solar and freshness state come from it. Routing
-  // only Usage left an open Overview cached until some later status write, and
-  // the tracker key writes on its own — scheduled persistence, the hourly
-  // prune, a meter-swap freshness reset — with no status write beside it. The
-  // key is REBUILT from the selected scope and compared whole, never parsed
-  // (the `notifyHomeLimitsSettingChanged` precedent); Main's mirror of this
-  // lives in `refreshPowerSettings` on the bare key.
-  if (key === homeScopedSettingsKey(POWER_TRACKER_STATE, selectedHomeId)) {
-    refreshPowerDataIfVisible(context, { force: true });
-    refreshOverviewPlanIfVisible(context);
-    return;
-  }
-  // …and the SELECTED area's committed plan (`pels_status:<id>` — its plan
+  // The SELECTED area's committed plan (`pels_status:<id>` — its plan
   // service persists this on every commit, the area's only plan-freshness
   // signal) repaints a visible Overview from the scoped reads just
-  // invalidated above. Main's Overview mirror is the `plan_updated` push.
+  // invalidated above. Main's Overview mirror is the `plan_updated` push. The
+  // key is REBUILT from the selected scope and compared whole, never parsed
+  // (the `notifyHomeLimitsSettingChanged` precedent).
   if (key === homeScopedSettingsKey(PELS_STATUS, selectedHomeId)) {
     refreshOverviewPlanIfVisible(context);
   }
+};
+
+/** An area's tracker persisted: its scoped read models are stale, and a visible surface showing it repaints. */
+const refreshAreaPowerTracker = (homeId: string, context: string) => {
+  invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH);
+  invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
+  // A scoped `ui_devices` payload derives `hasExhibitedExport` from that home's
+  // power tracker, so a tracker persist must sweep the scoped devices entries
+  // too — otherwise a meter-only PV area cached before its first export keeps
+  // the solar-surplus controls hidden until the WebView reloads.
+  invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
+  // The SELECTED area's own tracker persist repaints a visible Usage panel AND
+  // a visible Overview — this push is that home's only power freshness signal
+  // (the realtime `power_updated` push is Main's and is never widened), and
+  // BOTH surfaces consume the scoped power payload just invalidated above: the
+  // Overview hero's power, solar and freshness state come from it. Routing
+  // only Usage left an open Overview cached until some later status write,
+  // and the tracker persists on its own — scheduled persistence, the hourly
+  // prune, a meter-swap freshness reset — with no status write beside it.
+  if (getHomeScope().selectedHomeId !== homeId) return;
+  refreshPowerDataIfVisible(context, { force: true });
+  refreshOverviewPlanIfVisible(context);
 };
 
 // A per-device objective change (`deferred_objective.<id>`) — or a legacy-alias
@@ -367,29 +367,26 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // the set path, because NONE of the keys that route reads is set-only: an
   // unset `capacity_dry_run:<selectedId>` returns the runtime posture to its
   // simulating boot default (an open area Overview must repaint, not keep the
-  // live-control voice); an unset `pels_status:<id>` / `power_tracker_state:
-  // <id>` retires an area's committed payloads (the cached scoped entries must
-  // drop with them); and an unset roster/pins blob de-resolves the scoped
-  // homes just like a rewrite does.
+  // live-control voice); an unset `pels_status:<id>` retires an area's
+  // committed payloads (the cached scoped entries must drop with them); and an
+  // unset roster/pins blob de-resolves the scoped homes just like a rewrite
+  // does.
   refreshHomeScopedReadModels(key, 'settings.unset');
 };
 
 /**
  * The runtime persisted a home's tracker (`power_tracker_persisted`). The
- * tracker lives in the userdata store, which produces no `settings.set` echo,
- * so this push is routed exactly as the echo of the home's tracker key used to
- * be: Main's bare-key power refresh, or the scoped read-model sweep.
+ * tracker lives in the userdata store — no settings key, no `settings.set`
+ * echo — so the push carries the home id and is routed by it: Main's
+ * whole-home power refresh, or the area's scoped read-model sweep.
  */
 export const handlePowerTrackerPersisted = (payload: unknown) => {
   const homeId = payload !== null && typeof payload === 'object'
     ? (payload as { homeId?: unknown }).homeId
     : undefined;
   if (typeof homeId !== 'string' || homeId.length === 0) return;
-  if (homeId === MAIN_HOME_ID) {
-    refreshPowerSettings(POWER_TRACKER_STATE);
-    return;
-  }
-  refreshHomeScopedReadModels(homeScopedSettingsKey(POWER_TRACKER_STATE, homeId), POWER_TRACKER_PERSISTED_EVENT);
+  if (homeId === MAIN_HOME_ID) refreshMainPowerTracker(POWER_TRACKER_PERSISTED_EVENT);
+  else refreshAreaPowerTracker(homeId, POWER_TRACKER_PERSISTED_EVENT);
 };
 
 export const createSettingsSetHandler = () => (key: string) => {

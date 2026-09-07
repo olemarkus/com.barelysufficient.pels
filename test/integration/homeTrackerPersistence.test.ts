@@ -3,9 +3,8 @@ import { createHomeTrackerPersistence, type TrackerMeterBinding } from '../../li
 import { createTrackerStore, type TrackerStore } from '../../lib/power/trackerStore';
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
-import { POWER_TRACKER_STATE } from '../../lib/utils/settingsKeys';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
-import { MockSettings } from '../mocks/homey';
+import { partialDouble } from '../helpers/partialDouble';
 
 const UNBOUND: TrackerMeterBinding = { kind: 'unbound' };
 const BOUND: TrackerMeterBinding = { kind: 'bound', identity: { powerSource: 'homey_energy', meterDeviceId: 'meter-a' } };
@@ -14,41 +13,38 @@ const build = (
   meterBinding: TrackerMeterBinding,
   initialState: PowerTrackerState = {},
   store?: TrackerStore,
-  persisted: PowerTrackerState | null = null,
 ) => {
-  const settings = new MockSettings();
   const timers = new TimerRegistry();
   const events: Array<Record<string, unknown>> = [];
-  const onRecovered = vi.fn();
-  const logger = {
-    error: (fields: Record<string, unknown>) => { events.push(fields); },
-    info: (fields: Record<string, unknown>) => { events.push(fields); },
+  const logger = partialDouble<PinoLogger>({
+    error: (fields: unknown) => { events.push(fields as Record<string, unknown>); },
+    info: (fields: unknown) => { events.push(fields as Record<string, unknown>); },
     warn: () => {},
     debug: () => {},
-  } as unknown as PinoLogger;
+  });
+  const onPersisted = vi.fn();
   const trackerStore = store ?? createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
   const tracker = createHomeTrackerPersistence({
     deps: {
       getStore: () => trackerStore,
-      legacySettings: settings,
       timers,
       getLogger: () => logger,
       getPruneDebugEmitter: () => () => {},
       reportError: () => {},
       getTimeZone: () => 'Europe/Oslo',
       isTornDown: () => false,
-      onRecovered,
-      onPersisted: () => {},
+      onPersisted,
     },
     homeId: 'main',
     initialState,
-    persistedState: persisted,
     meterBinding,
     timerKey: (suffix) => suffix,
   });
   const has = (event: string): boolean => events.some((e) => e.event === event);
   const stored = (): PowerTrackerState | null => trackerStore.load('main');
-  return { settings, timers, tracker, store: trackerStore, stored, has, onRecovered };
+  return {
+    timers, tracker, store: trackerStore, stored, has, onPersisted,
+  };
 };
 
 afterEach(() => {
@@ -58,24 +54,12 @@ afterEach(() => {
 describe('HomeTrackerPersistence boot hydration', () => {
   it('adopts the stored tracker and, unbound, stamps no meter identity on what it persists', () => {
     const { store } = build(UNBOUND);
-    store.save('main', { lastPowerW: 900, lastTimestamp: 1_000 }, null);
+    store.save('main', { lastPowerW: 900, lastTimestamp: 1_000 });
     const { tracker, stored } = build(UNBOUND, {}, store);
     tracker.hydrate();
     expect(tracker.getState()).toEqual({ lastPowerW: 900, lastTimestamp: 1_000 });
     tracker.replace({ lastPowerW: 1_200, lastTimestamp: 2_000 });
     expect(stored()).toEqual({ lastPowerW: 1_200, lastTimestamp: 2_000 });
-  });
-
-  // The blob every install wrote before the store existed: imported on the
-  // first boot that finds no rows, then unset so nothing pays for it again.
-  it('imports a legacy settings blob once, then unsets the key', () => {
-    const { settings, tracker, stored, has } = build(UNBOUND);
-    settings.set(POWER_TRACKER_STATE, { lastPowerW: 900, lastTimestamp: 1_000, buckets: { '2026-03-03T10:00:00.000Z': 1.5 } });
-    tracker.hydrate();
-    expect(tracker.getState()).toEqual({ lastPowerW: 900, lastTimestamp: 1_000, buckets: { '2026-03-03T10:00:00.000Z': 1.5 } });
-    expect(stored()).toEqual({ lastPowerW: 900, lastTimestamp: 1_000, buckets: { '2026-03-03T10:00:00.000Z': 1.5 } });
-    expect(settings.get(POWER_TRACKER_STATE)).toBeNull();
-    expect(has('home_power_tracker_migrated_to_store')).toBe(true);
   });
 
   it('keeps the in-memory state when nothing is persisted', () => {
@@ -84,82 +68,72 @@ describe('HomeTrackerPersistence boot hydration', () => {
     expect(tracker.getState()).toEqual({ lastPowerW: 500, lastTimestamp: 1_000 });
   });
 
-  it('starts fenced on a suspect legacy read: the first prune does not write, and a repair reopens persistence', async () => {
+  // One transient read at boot must not wipe persisted history: a blank
+  // tracker diffed against the rows on disk would delete everything the
+  // failed read never adopted. So the read is owed again before the first
+  // persist, nothing is written until it succeeds, and when it does the
+  // stored history is adopted under what the run accrued meanwhile.
+  it('keeps persistence closed after a failed boot read until the read succeeds, then persists both', async () => {
     vi.useFakeTimers();
-    const { settings, timers, tracker, stored, has, onRecovered } = build(UNBOUND);
-    settings.set('other', true);
-    settings.set(POWER_TRACKER_STATE, 'garbage');
-    tracker.hydrate();
-    expect(has('home_power_tracker_reload_suspect')).toBe(true);
-    tracker.startPruning();
-    tracker.save({ lastPowerW: 700, lastTimestamp: Date.now() });
-    await vi.advanceTimersByTimeAsync(15_000);
-    expect(stored()).toBeNull();
-    expect(settings.get(POWER_TRACKER_STATE)).toBe('garbage');
-    expect(timers.has('powerTrackerSave')).toBe(false);
-    // A valid repair reopens persistence on the next reprobe: it is imported,
-    // the accrued in-memory state is persisted from then on, and the key goes.
-    settings.set(POWER_TRACKER_STATE, { lastPowerW: 650, lastTimestamp: Date.now() - 60_000 });
-    await vi.advanceTimersByTimeAsync(70_000);
-    expect(has('home_power_tracker_reload_recovered')).toBe(true);
-    expect(onRecovered).toHaveBeenCalledTimes(1);
-    expect(settings.get(POWER_TRACKER_STATE)).toBeNull();
-    tracker.replace({ lastPowerW: 800, lastTimestamp: Date.now() });
-    expect(stored()).toEqual({ lastPowerW: 800, lastTimestamp: expect.any(Number) });
-  });
-
-  it('a boot fence that recovers to an older blob keeps the samples admitted since boot, and persists them', async () => {
-    vi.useFakeTimers();
-    const { settings, tracker, stored, has } = build(UNBOUND);
-    settings.set('other', true);
-    settings.set(POWER_TRACKER_STATE, 'garbage');
-    tracker.hydrate();
-    const admittedAt = Date.now() + 5_000;
-    await vi.advanceTimersByTimeAsync(5_000);
-    tracker.save({ lastPowerW: 900, lastTimestamp: admittedAt });
-    // The repair is the pre-boot blob: older than what this run has seen.
-    settings.set(POWER_TRACKER_STATE, { lastPowerW: 400, lastTimestamp: admittedAt - 3_600_000 });
-    await vi.advanceTimersByTimeAsync(70_000);
-    expect(has('home_power_tracker_reload_recovered')).toBe(true);
-    expect(tracker.getState().lastTimestamp).toBe(admittedAt);
-    expect(stored()?.lastTimestamp).toBe(admittedAt);
-  });
-
-  it('refuses a stored tracker that belongs to another meter when bound', () => {
-    const { store } = build(BOUND);
+    const {
+      tracker, store, stored, has, timers,
+    } = build(UNBOUND);
     store.save('main', {
-      lastPowerW: 900,
-      meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'meter-b' },
-    }, null);
-    const { tracker, has } = build(BOUND, {}, store);
+      lastPowerW: 400, lastTimestamp: 1_000, buckets: { old: 2 }, dailyTotals: { yesterday: 9 },
+    });
+    let reads = 0;
+    const originalLoad = store.load.bind(store);
+    vi.spyOn(store, 'load').mockImplementation((homeId) => {
+      reads += 1;
+      if (reads <= 2) throw new Error('disk busy');
+      return originalLoad(homeId);
+    });
+    const saves = vi.spyOn(store, 'save');
     tracker.hydrate();
-    expect(has('home_power_tracker_reload_suspect')).toBe(true);
-    expect(tracker.getState()).toEqual({ meterIdentity: BOUND.kind === 'bound' ? BOUND.identity : undefined });
+    expect(has('home_power_tracker_hydrate_failed')).toBe(true);
+    expect(tracker.getState()).toEqual({});
+    // The first persist finds the store still unreadable: no write, retried later.
+    tracker.save({ lastPowerW: 700, lastTimestamp: 5_000, buckets: { now: 1 } });
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(saves).not.toHaveBeenCalled();
+    expect(has('home_power_tracker_persist_failed')).toBe(true);
+    expect(stored()).toEqual({
+      lastPowerW: 400, lastTimestamp: 1_000, buckets: { old: 2 }, dailyTotals: { yesterday: 9 },
+    });
+    expect(timers.has('powerTrackerSave')).toBe(false);
+    // The store answers again: the stored history goes under the run's state
+    // and the persist carries both.
+    tracker.save({ lastPowerW: 800, lastTimestamp: 6_000, buckets: { now: 1.5 } });
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(has('home_power_tracker_hydrated_late')).toBe(true);
+    expect(saves).toHaveBeenCalledTimes(1);
+    expect(stored()).toEqual({
+      lastPowerW: 800, lastTimestamp: 6_000, buckets: { old: 2, now: 1.5 }, dailyTotals: { yesterday: 9 },
+    });
+    expect(tracker.getState()).toEqual(stored());
+  });
+
+  it('the owner\'s reset after a failed boot read discards the stored history by intent', () => {
+    const { tracker, store, stored } = build(UNBOUND);
+    store.save('main', { lastPowerW: 400, lastTimestamp: 1_000, buckets: { old: 2 } });
+    vi.spyOn(store, 'load').mockImplementationOnce(() => { throw new Error('disk busy'); });
+    tracker.hydrate();
+    expect(tracker.replace({ lastPowerW: 0, lastTimestamp: 2_000 })).toBe(true);
+    expect(stored()).toEqual({ lastPowerW: 0, lastTimestamp: 2_000 });
+    // Nothing is owed after the reset: a later save writes without a read.
+    const load = vi.spyOn(store, 'load');
+    load.mockClear();
+    tracker.resetFreshness();
+    expect(load).not.toHaveBeenCalled();
   });
 });
 
 describe('HomeTrackerPersistence writes', () => {
-  it('the owner\'s reset lifts a fence: an unreadable blob is what they are discarding', () => {
-    const { settings, timers, tracker, stored, has, onRecovered } = build(UNBOUND);
-    settings.set('other', true);
-    settings.set(POWER_TRACKER_STATE, 'garbage');
-    tracker.hydrate();
-    expect(timers.has('trackerPersistenceReprobe')).toBe(true);
-    expect(tracker.replace({ lastPowerW: 0, lastTimestamp: 1_000 })).toBe(true);
-    expect(stored()).toEqual({ lastPowerW: 0, lastTimestamp: 1_000 });
-    expect(settings.get(POWER_TRACKER_STATE)).toBeNull();
-    expect(timers.has('trackerPersistenceReprobe')).toBe(false);
-    expect(has('home_power_tracker_reload_recovered')).toBe(true);
-    // The owner's reset is its own reaction; no recovery hook fires for it.
-    expect(onRecovered).not.toHaveBeenCalled();
-    // Persistence is open again: a later save schedules and lands.
-    tracker.save({ lastPowerW: 50, lastTimestamp: 2_000 });
-    expect(timers.has('powerTrackerSave')).toBe(true);
-  });
-
   it('replace persists at once and supersedes a pending debounced save', async () => {
     vi.useFakeTimers();
-    const { timers, tracker, store, stored } = build(UNBOUND);
+    const {
+      timers, tracker, store, stored, onPersisted,
+    } = build(UNBOUND);
     const saves = vi.spyOn(store, 'save');
     const replaces = vi.spyOn(store, 'replace');
     tracker.save({ lastPowerW: 100, lastTimestamp: Date.now() });
@@ -171,6 +145,7 @@ describe('HomeTrackerPersistence writes', () => {
     expect(replaces).toHaveBeenCalledTimes(1);
     expect(saves).not.toHaveBeenCalled();
     expect(stored()?.lastPowerW).toBe(200);
+    expect(onPersisted).toHaveBeenCalledTimes(1);
   });
 
   it('commit after adopt persists the whole transition: a rollover write carries state adopted after the sample', () => {
@@ -192,7 +167,7 @@ describe('HomeTrackerPersistence writes', () => {
 
   // The whole point of the store: a persist touches the rows that changed,
   // not the 663 kB the settings blob re-serialised for a two-number change.
-  it('a debounced save writes only the changed rows', async () => {
+  it('a debounced save hands the store the whole state once, and the store writes only the changed rows', async () => {
     vi.useFakeTimers();
     const base: PowerTrackerState = {
       lastPowerW: 100,
@@ -206,15 +181,15 @@ describe('HomeTrackerPersistence writes', () => {
     tracker.save({ ...base, lastPowerW: 150, lastTimestamp: base.lastTimestamp! + 10_000, buckets: { ...base.buckets, h719: 999 } });
     await vi.advanceTimersByTimeAsync(61_000);
     expect(save).toHaveBeenCalledTimes(1);
-    // Diffed against the state the store already holds, never a full rewrite.
-    expect(save.mock.calls[0]?.[2]).toBe(base);
     expect(stored()?.buckets?.h719).toBe(999);
     expect(stored()?.dailyTotals).toEqual(base.dailyTotals);
   });
 
-  // A meter area is hydrated before construction: its first save must diff
-  // against the rows it was built from, or a bucket the startup prune drops
-  // stays on disk and is folded into the daily totals again after every boot.
+  // A meter area is hydrated before construction and its first save must
+  // delete what it dropped, or a bucket the startup prune drops stays on
+  // disk and is folded into the daily totals again after every boot. The
+  // store holds the diff base — it loaded the rows — so the controller
+  // carries none.
   it('a controller built from stored rows deletes on its first save what that save dropped', async () => {
     vi.useFakeTimers();
     const seeded: PowerTrackerState = {
@@ -222,18 +197,30 @@ describe('HomeTrackerPersistence writes', () => {
       buckets: { stale: 1, fresh: 2 },
     };
     const { store } = build(BOUND);
-    store.save('main', seeded, null);
-    const { tracker, stored } = build(BOUND, seeded, store, seeded);
+    store.save('main', seeded);
+    const { tracker, stored } = build(BOUND, store.load('main') ?? {}, store);
     tracker.save({ ...seeded, lastTimestamp: 2_000, buckets: { fresh: 2 } });
     await vi.advanceTimersByTimeAsync(61_000);
     expect(stored()?.buckets).toEqual({ fresh: 2 });
   });
 
-  it('a reload that finds nothing persisted keeps the in-memory state', () => {
-    const { settings, tracker } = build(UNBOUND, { lastPowerW: 300, lastTimestamp: 1_000 });
-    settings.set('other', true);
-    tracker.hydrate();
-    expect(tracker.getState()).toEqual({ lastPowerW: 300, lastTimestamp: 1_000 });
+  it('a failed persist is logged, leaves the rows as they were, and the next persist is tried', async () => {
+    vi.useFakeTimers();
+    const {
+      tracker, store, stored, has, onPersisted,
+    } = build(UNBOUND);
+    tracker.replace({ lastPowerW: 1, lastTimestamp: 1_000 });
+    const save = vi.spyOn(store, 'save').mockImplementationOnce(() => { throw new Error('disk full'); });
+    tracker.save({ lastPowerW: 2, lastTimestamp: 2_000 });
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(has('home_power_tracker_persist_failed')).toBe(true);
+    expect(stored()).toEqual({ lastPowerW: 1, lastTimestamp: 1_000 });
+    expect(onPersisted).toHaveBeenCalledTimes(1);
+    tracker.save({ lastPowerW: 3, lastTimestamp: 3_000 });
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(stored()).toEqual({ lastPowerW: 3, lastTimestamp: 3_000 });
+    expect(onPersisted).toHaveBeenCalledTimes(2);
   });
 
   it('bound trackers stamp their meter identity on every persisted state', () => {
@@ -244,5 +231,15 @@ describe('HomeTrackerPersistence writes', () => {
       lastTimestamp: 1_000,
       meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'meter-a' },
     });
+  });
+
+  it('resetFreshness drops the latch, keeps the accounting, and persists at once', () => {
+    const { tracker, stored, timers } = build(UNBOUND, {
+      lastPowerW: 100, lastTimestamp: 1_000, dailyTotals: { d: 1 },
+    });
+    tracker.save({ lastPowerW: 120, lastTimestamp: 1_500, dailyTotals: { d: 1 } });
+    expect(tracker.resetFreshness()).toBe(true);
+    expect(timers.has('powerTrackerSave')).toBe(false);
+    expect(stored()).toEqual({ dailyTotals: { d: 1 } });
   });
 });

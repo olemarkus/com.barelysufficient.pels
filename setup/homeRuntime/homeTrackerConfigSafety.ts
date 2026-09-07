@@ -1,4 +1,3 @@
-import type Homey from 'homey';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import {
   HOMES_CONFIG,
@@ -12,9 +11,7 @@ import {
 } from '../../lib/home/homeConfig';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { SettingsUiHomesSaveRequest } from '../../packages/contracts/src/settingsUiHomes';
-import {
-  beginPersistedHomeTrackerFreshnessReset,
-} from '../../lib/power/persistedHomeTracker';
+import { beginTrackerFreshnessReset, type TrackerFreshnessFailure } from '../../lib/power/trackerMeterIdentity';
 import type { TrackerStore } from '../../lib/power/trackerStore';
 
 type AreaMutationRequest = Exclude<
@@ -23,12 +20,7 @@ SettingsUiHomesSaveRequest,
 >;
 
 type HomeTrackerConfigSafetyFailure =
-  | {
-    phase: 'tracker_read' | 'tracker_reset' | 'tracker_restore';
-    homeId: string;
-    settingKey: string;
-    error: Error;
-  }
+  | TrackerFreshnessFailure
   | {
     phase: 'config_write' | 'config_compensation';
     settingKey: typeof HOMES_CONFIG;
@@ -60,6 +52,17 @@ const reportToConsole = (...args: unknown[]): void => {
   }
 };
 
+/** What a failure names: the config key for a config phase, the home for a tracker phase. */
+const failureScope = (failure: HomeTrackerConfigSafetyFailure): { settingKey: string } | { homeId: string } => {
+  switch (failure.phase) {
+    case 'config_write':
+    case 'config_compensation':
+      return { settingKey: failure.settingKey };
+    default:
+      return { homeId: failure.homeId };
+  }
+};
+
 const reportHomeTrackerConfigSafetyFailure = (params: {
   apiApp: unknown;
   requestOp: AreaMutationRequest['op'];
@@ -70,8 +73,7 @@ const reportHomeTrackerConfigSafetyFailure = (params: {
     event: 'home_tracker_config_commit_failed',
     requestOp,
     phase: failure.phase,
-    settingKey: failure.settingKey,
-    ...('homeId' in failure ? { homeId: failure.homeId } : {}),
+    ...failureScope(failure),
     err: failure.error,
   };
   try {
@@ -201,24 +203,18 @@ const runTrackerRollbacks = (
 
 const beginHomeTrackerFreshnessResetBeforeConfigWrite = (params: {
   trackerStore: TrackerStore;
-  settings: Homey.App['homey']['settings'];
   request: AreaMutationRequest;
   currentConfig: HomeConfig;
   next: readonly SubHomeConfig[];
   onFailure: ReportHomeTrackerConfigSafetyFailure;
 }): HomeTrackerFreshnessResetTransaction => {
   const {
-    trackerStore, settings, request, currentConfig, next, onFailure,
+    trackerStore, request, currentConfig, next, onFailure,
   } = params;
   const homeIds = resolveFreshnessResetHomeIds(request, currentConfig, next);
   let rollbacks: ReadonlyArray<() => boolean> = [];
   for (const homeId of homeIds) {
-    const reset = beginPersistedHomeTrackerFreshnessReset({
-      store: trackerStore,
-      settings,
-      homeId,
-      onFailure: (failure) => onFailure({ ...failure, homeId }),
-    });
+    const reset = beginTrackerFreshnessReset(trackerStore, homeId, undefined, onFailure);
     if (reset.state === 'unavailable') {
       runTrackerRollbacks(rollbacks);
       return { state: 'unavailable' };
@@ -239,7 +235,6 @@ const beginHomeTrackerFreshnessResetBeforeConfigWrite = (params: {
 export const commitHomesConfigWriteWithTrackerFreshnessReset = (params: {
   apiApp: unknown;
   trackerStore: TrackerStore;
-  settings: Homey.App['homey']['settings'];
   store: HomesStore;
   request: AreaMutationRequest;
   currentConfig: HomeConfig;

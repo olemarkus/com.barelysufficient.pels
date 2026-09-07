@@ -14,13 +14,12 @@
 // integration suite that drives PlanBuilder directly).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   OPERATING_MODE_SETTING,
-  POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 import { drainPending, drainUntilCalledWith } from '../utils/asyncDrain';
 
@@ -70,7 +69,7 @@ const seedSettings = (surplusWilling: boolean) => {
   // stamped at all (`resolveSurplusPoolReachable`). It is also the only state in
   // which the settings UI offers the opt-in this test seeds, so a run without it
   // would be testing a home that could not have reached this configuration.
-  mockHomeyInstance.settings.set(POWER_TRACKER_STATE, {
+  seedStoredPowerTrackerForTests({
     exportBuckets: { '2026-01-14T11:00:00.000Z': 2 },
   });
 };

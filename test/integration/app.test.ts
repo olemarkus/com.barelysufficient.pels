@@ -122,6 +122,7 @@ const getPlanDeviceState = (plan: { devices?: unknown } | null | undefined, devi
 
 const initApp = async (app: MyApp) => {
   app['updateDebugLoggingEnabled']();
+  app['openUserdata']();
   app['initPriceCoordinator']();
   app['runStartupSettingsMigrations']();
   app['loadCapacitySettings']();

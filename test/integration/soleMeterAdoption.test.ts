@@ -59,18 +59,30 @@ const stubCensus = (report: unknown, registry: unknown = registryOf(METER_ID)) =
   return { report: control('report'), devices: control('devices') };
 };
 
+const freshStore = () => createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
+
 const run = (
   homey: Homey.App['homey'],
   timers = new TimerRegistry(),
   inMemoryLastSampleMs?: number,
+  store = freshStore(),
 ): TimerRegistry => {
-  startSoleMeterAdoption(homey, timers, createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE)), () => inMemoryLastSampleMs);
+  startSoleMeterAdoption(homey, timers, store, () => inMemoryLastSampleMs);
   return timers;
+};
+
+/** A store whose read throws until `recover`: the persisted history cannot be read. */
+const unreadableStore = () => {
+  const store = freshStore();
+  const spy = vi.spyOn(store, 'load').mockImplementation(() => { throw new Error('store unavailable'); });
+  return { store, recover: () => spy.mockRestore() };
 };
 
 // A plausible blank tracker: what the tracker's first prune persists 10 s
 // after boot on an install that has never received a reading.
 const BLANK_TRACKER = {};
+// The history an old Flow feed left behind: a reading hours ago, nothing since.
+const OLD_FLOW_HISTORY = () => ({ lastTimestamp: Date.now() - 3 * 3_600_000, lastPowerW: 800 });
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -143,11 +155,12 @@ describe('runSoleMeterAdoption', () => {
     vi.useFakeTimers();
     stubCensus(soleMeterReport);
     const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const store = freshStore();
     // The power tracker's first prune persists its state 10 s after boot.
     // This is the write that made the previous design flip a fresh install to
     // Flow; the adoption must not look at it.
-    setTimeout(() => homey.settings.set('power_tracker_state', BLANK_TRACKER), 10_000);
-    run(homey);
+    setTimeout(() => store.save('main', BLANK_TRACKER), 10_000);
+    run(homey, new TimerRegistry(), undefined, store);
     await vi.advanceTimersByTimeAsync(30_000);
     // One read only proposes.
     expect(homey.settings.get('homey_energy_meter_device_id')).toBeNull();
@@ -313,11 +326,10 @@ describe('runSoleMeterAdoption', () => {
     // The unset-source arm asks for the tracker's whole history: Flows fire on
     // their own cadence, so a quiet first minute proves nothing. The last
     // persisted reading here is hours old.
-    const homey = makeHomey({
-      ...FRESH_INSTALL_BASE,
-      power_tracker_state: { lastTimestamp: Date.now() - 3 * 3_600_000, lastPowerW: 800 },
-    });
-    const timers = run(homey);
+    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const store = freshStore();
+    store.save('main', OLD_FLOW_HISTORY());
+    const timers = run(homey, new TimerRegistry(), undefined, store);
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(homey.settings.get('power_source')).toBeNull();
     expect(homey.settings.get('homey_energy_meter_device_id')).toBeNull();
@@ -338,12 +350,10 @@ describe('runSoleMeterAdoption', () => {
   it('adopts for a legacy Automatic install despite old samples: only readings since this run count there', async () => {
     vi.useFakeTimers();
     stubCensus(soleMeterReport);
-    const homey = makeHomey({
-      power_source: 'homey_energy',
-      homey_energy_meter_device_id: null,
-      power_tracker_state: { lastTimestamp: Date.now() - 3 * 3_600_000, lastPowerW: 800 },
-    });
-    run(homey, new TimerRegistry(), Date.now() - 3 * 3_600_000);
+    const homey = makeHomey({ power_source: 'homey_energy', homey_energy_meter_device_id: null });
+    const store = freshStore();
+    store.save('main', OLD_FLOW_HISTORY());
+    run(homey, new TimerRegistry(), Date.now() - 3 * 3_600_000, store);
     await vi.advanceTimersByTimeAsync(90_000);
     expect(homey.settings.get('homey_energy_meter_device_id')).toBe(METER_ID);
   });
@@ -351,8 +361,8 @@ describe('runSoleMeterAdoption', () => {
   it('decides nothing this boot when the persisted tracker cannot be read (a transient, not "never")', async () => {
     vi.useFakeTimers();
     const { report } = stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE, power_tracker_state: 'garbage' });
-    const timers = run(homey);
+    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const timers = run(homey, new TimerRegistry(), undefined, unreadableStore().store);
     await vi.advanceTimersByTimeAsync(15 * 60_000);
     expect(homey.settings.get('power_source')).toBeNull();
     expect(homey.settings.get('homey_energy_meter_device_id')).toBeNull();
@@ -360,13 +370,15 @@ describe('runSoleMeterAdoption', () => {
     expect(timers.has('soleMeterAdoption')).toBe(false);
   });
 
-  it('keeps a suspect history read for the whole run: a blank tracker persisted later is no evidence', async () => {
+  it('keeps an unreadable history for the whole run: a blank tracker persisted later is no evidence', async () => {
     vi.useFakeTimers();
     const { report } = stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE, power_tracker_state: 'garbage' });
-    const timers = run(homey);
-    // The prune persists the blank in-memory tracker 10 s after boot.
-    setTimeout(() => homey.settings.set('power_tracker_state', BLANK_TRACKER), 10_000);
+    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const { store, recover } = unreadableStore();
+    const timers = run(homey, new TimerRegistry(), undefined, store);
+    // The store answers again and the prune persists the blank in-memory
+    // tracker 10 s after boot.
+    setTimeout(() => { recover(); store.save('main', BLANK_TRACKER); }, 10_000);
     await vi.advanceTimersByTimeAsync(15 * 60_000);
     expect(homey.settings.get('homey_energy_meter_device_id')).toBeNull();
     expect(report.calls()).toBe(10);
@@ -376,12 +388,11 @@ describe('runSoleMeterAdoption', () => {
   it('reads Flow history before the prune can overwrite it', async () => {
     vi.useFakeTimers();
     stubCensus(soleMeterReport);
-    const homey = makeHomey({
-      ...FRESH_INSTALL_BASE,
-      power_tracker_state: { lastTimestamp: Date.now() - 3 * 3_600_000, lastPowerW: 800 },
-    });
-    const timers = run(homey);
-    setTimeout(() => homey.settings.set('power_tracker_state', BLANK_TRACKER), 10_000);
+    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const store = freshStore();
+    store.save('main', OLD_FLOW_HISTORY());
+    const timers = run(homey, new TimerRegistry(), undefined, store);
+    setTimeout(() => store.save('main', BLANK_TRACKER), 10_000);
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(homey.settings.get('power_source')).toBeNull();
     expect(timers.has('soleMeterAdoption')).toBe(false);
@@ -529,18 +540,6 @@ describe('runSoleMeterAdoption', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(originalGet('homey_energy_meter_device_id')).toBe(METER_ID);
     expect(originalGet('power_source')).toBe('homey_energy');
-  });
-
-  it('holds the whole boot when the tracker history cannot be read at start (an empty key list)', async () => {
-    vi.useFakeTimers();
-    const { report } = stubCensus(soleMeterReport);
-    const homey = makeHomey({});
-    setTimeout(() => homey.settings.set('boot_migrations_v1_ev_setting_cleanup_done', true), 5_000);
-    const timers = run(homey);
-    await vi.advanceTimersByTimeAsync(15 * 60_000);
-    expect(homey.settings.get('homey_energy_meter_device_id')).toBeNull();
-    expect(report.calls()).toBe(10);
-    expect(timers.has('soleMeterAdoption')).toBe(false);
   });
 
   it('writes nothing when the app tears down while the CONFIRMING read is in flight', async () => {

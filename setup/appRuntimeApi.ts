@@ -1,4 +1,6 @@
 import { emitPowerTrackerPersistedForApp } from './settingsUiAppRuntime';
+import { unsetLegacyPowerTrackerKeys } from '../lib/power/trackerLegacySettings';
+import { openUserdataStores, type AppUserdataStores } from './userdataStores';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
@@ -237,6 +239,13 @@ abstract class AppRuntimeApi extends Base {
   public hydratePowerTracker(): void {
     this.powerTrackerHelpers.hydratePowerTracker();
   }
+  /**
+   * The app's userdata stores, opened at its first boot step. The test
+   * harness overrides this to open one database per spec file.
+   */
+  protected openUserdataStores(): AppUserdataStores {
+    return openUserdataStores();
+  }
   public emitPowerTrackerPersisted(homeId: string): void {
     emitPowerTrackerPersistedForApp(this.homey, homeId, (message, error) => this.error(message, error));
   }
@@ -250,6 +259,7 @@ abstract class AppRuntimeApi extends Base {
   protected runStartupSettingsMigrations(): void {
     migrateManagedDevices({ homey: this.homey });
     runBootMigrations({ homey: this.homey });
+    unsetLegacyPowerTrackerKeys(this.homey.settings);
   }
   public areFlowBackedCardsAvailable(): boolean { return this.flowBacked.areFlowBackedCardsAvailable(); }
   public loadCapacitySettings = (): void => {

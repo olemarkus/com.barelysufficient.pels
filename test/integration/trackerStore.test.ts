@@ -7,6 +7,23 @@ const open = () => {
   return { db, store: createTrackerStore(db) };
 };
 
+const TABLES = [
+  'power_tracker_hourly', 'power_tracker_daily', 'power_tracker_averages',
+  'power_tracker_device_hourly', 'power_tracker_scalars',
+] as const;
+
+/** Row counts per table for one home — what a write actually touched on disk. */
+const rowsFor = (db: ReturnType<typeof open>['db'], homeId: string): Record<(typeof TABLES)[number], number> => (
+  Object.fromEntries(TABLES.map((table) => [
+    table,
+    (db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE home_id = ?`).get(homeId) as { n: number }).n,
+  ])) as Record<(typeof TABLES)[number], number>
+);
+
+const totalChanges = (db: ReturnType<typeof open>['db']): number => (
+  (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n
+);
+
 // A state of the shape production persists: every family populated.
 const fullState = (): PowerTrackerState => ({
   meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'meter-a' },
@@ -46,7 +63,7 @@ describe('trackerStore', () => {
     const { store } = open();
     expect(store.load('main')).toBeNull();
     const state = fullState();
-    store.save('main', state, null);
+    store.save('main', state);
     expect(store.load('main')).toEqual(state);
     expect(store.load('cabin')).toBeNull();
   });
@@ -55,14 +72,17 @@ describe('trackerStore', () => {
   // with no rows is absent, never `{}`.
   it('keeps absent families absent', () => {
     const { store } = open();
-    store.save('main', { lastPowerW: 900, lastTimestamp: 1_000 }, null);
+    store.save('main', { lastPowerW: 900, lastTimestamp: 1_000 });
     expect(store.load('main')).toEqual({ lastPowerW: 900, lastTimestamp: 1_000 });
   });
 
-  it('writes only the rows that changed since the previous state, and deletes the ones that went', () => {
+  // The store holds what it last wrote or loaded per home and diffs the next
+  // save against that: the caller hands over the whole state and pays for
+  // the rows that changed.
+  it('writes only the rows that changed since what it holds, and deletes the ones that went', () => {
     const { db, store } = open();
     const before = fullState();
-    store.save('main', before, null);
+    store.save('main', before);
     const after: PowerTrackerState = {
       ...before,
       lastPowerW: 6000,
@@ -70,12 +90,19 @@ describe('trackerStore', () => {
       deviceBuckets: { 'dev-1': { '2026-09-06T10:00:00.000Z': 0.3, '2026-09-06T11:00:00.000Z': 0.05 } },
       generationBuckets: undefined,
     };
-    const changes = db.prepare('SELECT total_changes() AS n').get() as { n: number };
-    store.save('main', after, before);
-    const written = (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n - changes.n;
+    const rowsBefore = rowsFor(db, 'main');
+    const changes = totalChanges(db);
+    store.save('main', after);
     // One scalar, two hourly upserts + one delete, one device upsert + one
     // device family removed (one row), one generation row deleted.
-    expect(written).toBe(7);
+    expect(totalChanges(db) - changes).toBe(7);
+    expect(rowsFor(db, 'main')).toEqual({
+      ...rowsBefore,
+      // buckets: 2 → 2; generationBuckets: 1 → 0.
+      power_tracker_hourly: rowsBefore.power_tracker_hourly - 1,
+      // dev-1 gains one hour, dev-2 goes.
+      power_tracker_device_hourly: rowsBefore.power_tracker_device_hourly,
+    });
     expect(store.load('main')).toEqual({ ...after, generationBuckets: undefined });
     expect(store.load('main')).not.toHaveProperty('generationBuckets');
   });
@@ -83,24 +110,40 @@ describe('trackerStore', () => {
   it('an unchanged family by reference costs no rows', () => {
     const { db, store } = open();
     const before = fullState();
-    store.save('main', before, null);
-    const changes = (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n;
-    store.save('main', { ...before }, before);
-    expect((db.prepare('SELECT total_changes() AS n').get() as { n: number }).n - changes).toBe(0);
+    store.save('main', before);
+    const changes = totalChanges(db);
+    store.save('main', { ...before });
+    expect(totalChanges(db) - changes).toBe(0);
   });
 
-  it('keeps homes apart and clears one without touching the other', () => {
+  // A fresh store (a boot) learns its diff base from the rows it loads — or,
+  // for a home it has never read, from the rows on disk at the first save —
+  // so a save always deletes what the caller dropped and no caller has to
+  // load before it saves.
+  it('diffs the first save against the rows on disk, loaded or not', () => {
+    const { db, store } = open();
+    store.save('main', { lastPowerW: 1, buckets: { stale: 1, fresh: 2 } });
+    const reopened = createTrackerStore(db);
+    const loaded = reopened.load('main');
+    reopened.save('main', { ...loaded, buckets: { fresh: 2 } });
+    expect(reopened.load('main')).toEqual({ lastPowerW: 1, buckets: { fresh: 2 } });
+    const blind = createTrackerStore(db);
+    blind.save('main', { lastPowerW: 2 });
+    expect(blind.load('main')).toEqual({ lastPowerW: 2 });
+  });
+
+  it('keeps homes apart', () => {
     const { store } = open();
-    store.save('main', { lastPowerW: 1 }, null);
-    store.save('cabin', { lastPowerW: 2, meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'm' } }, null);
-    store.clear('main');
+    store.save('main', { lastPowerW: 1 });
+    store.save('cabin', { lastPowerW: 2, meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'm' } });
+    store.replace('main', {});
     expect(store.load('main')).toBeNull();
     expect(store.load('cabin')?.lastPowerW).toBe(2);
   });
 
   it('replace drops the old rows and writes the new state in one transaction', () => {
     const { store } = open();
-    store.save('main', fullState(), null);
+    store.save('main', fullState());
     store.replace('main', { lastPowerW: 1, buckets: { only: 2 } });
     expect(store.load('main')).toEqual({ lastPowerW: 1, buckets: { only: 2 } });
     // A replacement that fails mid-way leaves the previous rows untouched.
@@ -112,28 +155,75 @@ describe('trackerStore', () => {
   // home; the transaction still refuses a NaN it cannot express as absence.
   it('skips a non-finite bucket value on write instead of failing the persist', () => {
     const { store } = open();
-    store.save('main', { lastPowerW: 1, buckets: { good: 1, bad: Number.NaN } }, null);
+    store.save('main', { lastPowerW: 1, buckets: { good: 1, bad: Number.NaN } });
     expect(store.load('main')).toEqual({ lastPowerW: 1, buckets: { good: 1 } });
   });
 
-  // A row that came from disk is a persisted blob like any other and gets the
-  // legacy read's shape guard: a malformed scalar makes the load a failure the
-  // controller fences on, never a state the planner trusts.
-  it('refuses to reconstruct a state whose rows fail the tracker shape guard', () => {
+  // Rows re-entering from disk are a persisted blob like any other and get
+  // the shape guard. Everything here is regenerable by ruling, so rows that
+  // fail it are the store's own damage: set aside at the narrowest grain that
+  // leaves a plausible state, so one bad scalar never costs a month of
+  // buckets, and the store answers rather than throwing on every boot.
+  it('quarantines the one scalar row that fails the shape guard and keeps the families', () => {
     const { db, store } = open();
-    store.save('main', { lastPowerW: 1, lastTimestamp: 2 }, null);
+    store.save('main', { lastPowerW: 1, lastTimestamp: 2, buckets: { h: 1 }, dailyTotals: { d: 3 } });
+    store.save('cabin', { lastPowerW: 3 });
     db.prepare('UPDATE power_tracker_scalars SET value_json = ? WHERE home_id = ? AND key = ?').run('"not a number"', 'main', 'lastPowerW');
-    expect(() => store.load('main')).toThrow(/plausible/);
+    expect(store.load('main')).toEqual({ lastTimestamp: 2, buckets: { h: 1 }, dailyTotals: { d: 3 } });
+    expect(rowsFor(db, 'main').power_tracker_scalars).toBe(1);
+    expect(store.load('cabin')).toEqual({ lastPowerW: 3 });
+  });
+
+  it('quarantines a scalar row that does not even parse', () => {
+    const { db, store } = open();
+    store.save('main', { lastPowerW: 1, lastTimestamp: 2, buckets: { h: 1 } });
+    db.prepare('UPDATE power_tracker_scalars SET value_json = ? WHERE home_id = ? AND key = ?').run('{not json', 'main', 'lastTimestamp');
+    expect(store.load('main')).toEqual({ lastPowerW: 1, buckets: { h: 1 } });
+    expect(store.load('main')).toEqual({ lastPowerW: 1, buckets: { h: 1 } });
+  });
+
+  it('quarantines the whole home only when no scalar cut leaves a plausible state', () => {
+    const { db, store } = open();
+    store.save('main', { lastPowerW: 1, buckets: { h: 1 } });
+    // A family row this store could never have written: a non-numeric hourly
+    // value is refused by the schema, so the closest thing is a foreign
+    // scalar shape on a key the guard checks alongside an unrelated one.
+    db.prepare('UPDATE power_tracker_scalars SET value_json = ? WHERE home_id = ? AND key = ?').run('"x"', 'main', 'lastPowerW');
+    db.prepare('INSERT INTO power_tracker_scalars (home_id, key, value_json) VALUES (?, ?, ?)').run('main', 'lastTimestamp', '"y"');
+    // Two bad scalars: dropping one is not enough, dropping all scalars is.
+    expect(store.load('main')).toEqual({ buckets: { h: 1 } });
+    expect(rowsFor(db, 'main')).toEqual({
+      power_tracker_hourly: 1, power_tracker_daily: 0, power_tracker_averages: 0,
+      power_tracker_device_hourly: 0, power_tracker_scalars: 0,
+    });
+    // What survived is the diff base: a save that carries no buckets drops
+    // the kept row, as it would any bucket the caller no longer has.
+    store.save('main', { lastPowerW: 5 });
+    expect(store.load('main')).toEqual({ lastPowerW: 5 });
+  });
+
+  // A series or scalar this store never writes — a row from a build that
+  // knew a family this one does not — is left where it is and not read.
+  it('reads back only the series it writes', () => {
+    const { db, store } = open();
+    store.save('main', { lastPowerW: 1 });
+    db.prepare('INSERT INTO power_tracker_hourly (home_id, series, hour_key, value) VALUES (?, ?, ?, ?)').run('main', 'futureBuckets', 'h', 1);
+    db.prepare('INSERT INTO power_tracker_scalars (home_id, key, value_json) VALUES (?, ?, ?)').run('main', 'futureScalar', '1');
+    expect(store.load('main')).toEqual({ lastPowerW: 1 });
   });
 
   it('a save that throws inside the transaction leaves the previous rows intact', () => {
     const { store } = open();
     const before = fullState();
-    store.save('main', before, null);
+    store.save('main', before);
     // An average's NaN sum has no absence to map to, so it is the NOT NULL
     // constraint that refuses it — and the whole transaction with it.
     const poison: PowerTrackerState = { ...before, lastPowerW: 7, hourlyAverages: { bad: { sum: Number.NaN, count: 1 } } };
-    expect(() => store.save('main', poison, before)).toThrow();
+    expect(() => store.save('main', poison)).toThrow();
     expect(store.load('main')).toEqual(before);
+    // The failed save did not become the diff base: the retry writes the
+    // change the poisoned save carried.
+    store.save('main', { ...before, lastPowerW: 7 });
+    expect(store.load('main')?.lastPowerW).toBe(7);
   });
 });

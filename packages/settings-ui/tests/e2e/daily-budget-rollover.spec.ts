@@ -176,7 +176,7 @@ type StubbedHomeyWindow = Window & {
     __stub?: {
       getApiCallCount: (key: string) => number;
       setDailyBudgetPayload: (nextPayload: DailyBudgetUiPayload) => void;
-      emitSettingsSet: (key: string) => void;
+      emitHomeyEvent: (event: string, payload: unknown) => void;
     };
   };
 };
@@ -256,7 +256,7 @@ const refreshDailyBudget = async (page: Page, payload: DailyBudgetUiPayload) => 
   await page.evaluate((nextPayload) => {
     const homey = (window as StubbedHomeyWindow).Homey;
     homey?.__stub?.setDailyBudgetPayload(nextPayload);
-    homey?.__stub?.emitSettingsSet('power_tracker_state');
+    homey?.__stub?.emitHomeyEvent('power_tracker_persisted', { homeId: 'main' });
   }, payload);
   await page.waitForFunction((expectedPreviousCallCount) => {
     const homey = (window as StubbedHomeyWindow).Homey;

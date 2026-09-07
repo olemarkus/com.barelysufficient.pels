@@ -1,29 +1,22 @@
 /**
  * One home's power-tracker state and its persistence — the Main home and every
  * meter area alike. The durable copy lives in the userdata store
- * (`trackerStore.ts`), one row per bucket, and a persist writes only the rows
- * that changed since the last one.
+ * (`trackerStore.ts`), one row per bucket; a persist hands the store the
+ * whole state and the store writes the rows that changed since what it holds.
  *
- * `homey.settings` is read exactly once, at boot, and only when the store
- * holds nothing for the home: that is the legacy blob installs wrote before
- * the store existed, and it is imported and then unset. The classification
- * that read used to need — a suspect SDK read latches persistence closed
- * until a valid tracker is adopted, so one transient miss can never let the
- * next persist overwrite the history it failed to read — is kept for that
- * one migrating boot, because it is the last moment the blob can be lost.
- * A store read does not have that failure mode: it either answers or throws.
+ * The store either answers or throws. A failed persist is logged and the
+ * next one is tried. The one read that must not be lost to a transient is
+ * the boot hydration: a store that could not be read then is read again
+ * before the first persist, and until that read succeeds nothing is written
+ * — a blank tracker diffed against the rows on disk would delete the history
+ * the failed read never adopted. What the process holds always stands — an
+ * empty store at boot is never a reset, and the next persist writes it.
  *
  * Boot hydration has two shapes. A meter area is hydrated by the runtime
- * registry before construction (`preparePersistedHomeTrackerForMeter`, which
- * refuses to build the bundle on a suspect legacy read). The Main home cannot
- * refuse to boot, so it hydrates itself through `hydrate` at its boot step:
- * a stored tracker is adopted, an unwritten one leaves the in-memory state
- * standing, and a suspect legacy one starts the run fenced with the reprobe
- * ladder armed.
- *
- * An unwritten read is never a reset: whatever the process holds stands and
- * the next persist writes it. Nothing in the runtime clears a home's rows;
- * only the owner's reset does.
+ * registry before construction (`trackerMeterIdentity.ts`, which prepares the
+ * stored tracker for the area's meter). The Main home hydrates itself through
+ * `hydrate` at its boot step: a stored tracker is adopted, an unwritten one
+ * leaves the in-memory state standing.
  */
 import type { StructuredDebugEmitter, Logger as PinoLogger } from '../logging/logger';
 import type { TimerRegistry } from '../utils/timerRegistry';
@@ -38,32 +31,42 @@ import {
 import { getHourBucketKey } from '../utils/dateUtils';
 import { normalizeError } from '../utils/errorUtils';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
-import {
-  POWER_TRACKER_STATE,
-  homeScopedSettingsKey,
-  type HomeId,
-} from '../utils/settingsKeys';
+import type { HomeId } from '../utils/settingsKeys';
 import { VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';
-import {
-  powerTrackerMeterIdentityMatches,
-  readPersistedHomeTracker,
-  unsetLegacyHomeTracker,
-  type TrackerSettingsPort,
-} from './persistedHomeTracker';
 import type { TrackerStore } from './trackerStore';
 
 const TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
-const TRACKER_REPROBE_INITIAL_DELAY_MS = 1_000;
-const TRACKER_REPROBE_MAX_DELAY_MS = 60_000;
-const TRACKER_REPROBE_MAX_EXPONENT = 6;
 
-/** Whether `candidate` carries a whole-home sample stamped later than `baseline`'s. */
-const isNewerSample = (candidate: PowerTrackerState, baseline: PowerTrackerState): boolean => {
-  const candidateTs = candidate.lastTimestamp;
-  if (typeof candidateTs !== 'number' || !Number.isFinite(candidateTs)) return false;
-  const baselineTs = baseline.lastTimestamp;
-  return typeof baselineTs !== 'number' || !Number.isFinite(baselineTs) || candidateTs > baselineTs;
+/**
+ * `current` with `stored`'s history under it: the run's scalars and entries
+ * win, and every keyed family keeps the stored entries the run has not
+ * touched.
+ */
+const withHistoryUnder = (current: PowerTrackerState, stored: PowerTrackerState): PowerTrackerState => {
+  const merged: PowerTrackerState & Record<string, unknown> = { ...stored, ...current };
+  for (const [key, storedValue] of Object.entries(stored)) {
+    const currentValue: unknown = current[key as keyof PowerTrackerState];
+    if (!isKeyedFamily(storedValue) || !isKeyedFamily(currentValue)) continue;
+    merged[key] = key === 'deviceBuckets'
+      ? mergeDeviceBuckets(storedValue as DeviceBuckets, currentValue as DeviceBuckets)
+      : Object.assign({}, storedValue, currentValue);
+  }
+  return merged;
+};
+
+type DeviceBuckets = Record<string, Record<string, number>>;
+
+const isKeyedFamily = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const mergeDeviceBuckets = (stored: DeviceBuckets, current: DeviceBuckets): DeviceBuckets => {
+  const merged: DeviceBuckets = { ...stored };
+  for (const [deviceId, hours] of Object.entries(current)) {
+    merged[deviceId] = Object.assign({}, stored[deviceId], hours);
+  }
+  return merged;
 };
 
 const crossesHourBoundary = (
@@ -82,11 +85,10 @@ const crossesHourBoundary = (
 /**
  * Which meter a tracker's samples belong to. A meter area's tracker is BOUND
  * to its configured meter: the identity is stamped on every persisted state,
- * and a persisted tracker carrying another identity is refused (the registry
- * rebuilds the bundle on a meter change). The Main home's tracker is UNBOUND:
- * its meter is governed at runtime by the Main-meter authority and the
- * sampled-meter identity, its persisted state carries no identity, and a
- * source or meter switch never fences its persistence.
+ * and the registry prepares a stored tracker for the area's meter before the
+ * bundle is built. The Main home's tracker is UNBOUND: its meter is governed
+ * at runtime by the Main-meter authority and the sampled-meter identity, and
+ * its persisted state carries no identity.
  */
 export type TrackerMeterBinding =
   | { kind: 'bound'; identity: PowerTrackerMeterIdentity }
@@ -111,19 +113,12 @@ export type HomeTrackerPersistence = {
    */
   commit: (previous: PowerTrackerState) => void;
   /**
-   * Owner-driven replacement (the settings UI's reset): adopt + persist now.
-   * An explicit discard is the one owner action that outranks the fence — a
-   * blob this run could not read is exactly what the owner is throwing away
-   * — so it lifts the fence, drops the home's rows and writes `next` whole.
-   * `false` only when the write itself fails, which the caller must surface,
-   * never swallow.
+   * Owner-driven replacement (the settings UI's reset): adopt + persist now,
+   * dropping the home's rows and writing `next` whole. `false` only when the
+   * write itself fails, which the caller must surface, never swallow.
    */
   replace: (next: PowerTrackerState) => boolean;
-  /**
-   * Boot hydration of a home that cannot refuse to boot: adopt the stored
-   * tracker, or import the legacy settings blob once, or start fenced on a
-   * suspect legacy read.
-   */
+  /** Boot hydration of the Main home: adopt the stored tracker, if any. */
   hydrate: () => void;
   /** Meter swap: drop freshness so the next new-meter sample re-primes it. */
   resetFreshness: () => boolean;
@@ -140,13 +135,11 @@ export type HomeTrackerPersistence = {
  * It used to take the whole `AppContext`, which is why it could only live in
  * the wiring layer: `no-domain-to-app-layer` forbids a domain module from
  * naming that type. The bag was never the concept — each field below is a
- * separate seam, and the controller reaches for seven of them.
+ * separate seam.
  */
 export type HomeTrackerPersistenceDeps = {
-  /** Opened on first use, so a controller built at construction does not open the file. */
+  /** The tracker store, opened at the app's first boot step; a controller is built before that. */
   getStore: () => TrackerStore;
-  /** Read once at boot for the legacy blob, then unset. Never written. */
-  legacySettings: TrackerSettingsPort;
   timers: TimerRegistry;
   /** Structured logger; absent before structured logging is wired. */
   getLogger: () => PinoLogger | undefined;
@@ -155,13 +148,6 @@ export type HomeTrackerPersistenceDeps = {
   getTimeZone: () => string;
   /** Teardown fence: a late pipeline continuation must not re-arm persistence. */
   isTornDown: () => boolean;
-  /**
-   * Persistence reopened on a reprobe after a fenced read, with a valid
-   * tracker now in hand. Whatever bootstrapped off the fenced (blank or
-   * stale) state — the daily budget's snapshot, a Flow feed's planning
-   * cadence — is told to refresh from the recovered one.
-   */
-  onRecovered: () => void;
   /**
    * A persist landed in the store. The settings UI used to learn this from
    * the `settings.set` echo of the tracker key; the store is silent, so the
@@ -174,29 +160,17 @@ type HomeTrackerPersistenceParams = {
   deps: HomeTrackerPersistenceDeps;
   homeId: HomeId;
   initialState: PowerTrackerState;
-  /**
-   * What the store already holds for the home when the controller is built —
-   * the diff base of its first save. A meter area is hydrated before
-   * construction and passes the state it loaded; the Main home passes `null`
-   * and learns the base in `hydrate`.
-   */
-  persistedState: PowerTrackerState | null;
   meterBinding: TrackerMeterBinding;
   timerKey: (suffix: string) => string;
 };
 
 class HomeTrackerPersistenceController implements HomeTrackerPersistence {
   private state: PowerTrackerState;
-  /** What the store holds for this home — the diff base of the next save. */
-  private lastPersisted: PowerTrackerState | null;
-  private persistenceFenced = false;
-  private persistenceReprobeAttempt = 0;
-  private readonly legacyKey: string;
+  /** A boot read the store failed to answer; persistence stays closed until it does. */
+  private hydrationOwed = false;
 
   constructor(private readonly params: HomeTrackerPersistenceParams) {
     this.state = this.stamp(params.initialState);
-    this.lastPersisted = params.persistedState;
-    this.legacyKey = homeScopedSettingsKey(POWER_TRACKER_STATE, params.homeId);
   }
 
   getState = (): PowerTrackerState => this.state;
@@ -214,7 +188,6 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
 
   commit = (previous: PowerTrackerState): void => {
     if (this.params.deps.isTornDown()) return;
-    if (this.persistenceFenced) return;
     if (crossesHourBoundary(previous, this.state)) {
       incPerfCounter('power_tracker_store.forced_hour_rollover_total');
       this.persist('hour_rollover');
@@ -233,32 +206,34 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
 
   replace = (next: PowerTrackerState): boolean => {
     if (this.params.deps.isTornDown()) return false;
-    const wasFenced = this.persistenceFenced;
-    this.persistenceFenced = false;
-    this.clearPersistenceReprobe();
     this.params.deps.timers.clear(this.params.timerKey('powerTrackerSave'));
     this.state = this.stamp(next);
-    // The owner is discarding whatever was there, on disk and in the legacy
-    // key alike: the rows are cleared and the replacement written whole, in
-    // one transaction, so a failure leaves the old rows and the old diff base.
-    const persisted = this.writeStore('ui_replace', true);
-    if (persisted) unsetLegacyHomeTracker(this.params.deps.legacySettings, this.legacyKey);
-    if (persisted && wasFenced) {
-      this.params.deps.getLogger()?.info({
-        event: 'home_power_tracker_reload_recovered',
-        homeId: this.params.homeId,
-        detail: 'tracker persistence reopened by the owner\'s reset',
-      });
-    }
-    return persisted;
+    // The owner is discarding whatever was there: the rows are cleared and
+    // the replacement written whole, in one transaction, so a failure leaves
+    // the old rows in place.
+    return this.writeStore('ui_replace', true);
   };
 
   hydrate = (): void => {
-    this.reload();
+    const { deps, homeId } = this.params;
+    let stored: PowerTrackerState | null;
+    try {
+      stored = deps.getStore().load(homeId);
+    } catch (error) {
+      // The in-memory state stands; the read is owed again before the first
+      // persist, and nothing is written until it succeeds.
+      this.hydrationOwed = true;
+      deps.getLogger()?.error({
+        event: 'home_power_tracker_hydrate_failed',
+        homeId,
+        err: normalizeError(error),
+      });
+      return;
+    }
+    if (stored !== null) this.state = this.stamp(stored);
   };
 
   resetFreshness = (): boolean => {
-    if (this.persistenceFenced && !this.reload()) return false;
     this.state = { ...this.state, lastTimestamp: undefined, lastPowerW: undefined };
     return this.persist('write');
   };
@@ -289,12 +264,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
   stopAndFlush = (): void => {
     const { deps, timerKey } = this.params;
     if (deps.timers.has(timerKey('powerTrackerSave'))) this.persist('uninit');
-    for (const suffix of [
-      'powerTrackerSave',
-      'trackerPersistenceReprobe',
-      'trackerPruneInitial',
-      'trackerPruneInterval',
-    ]) {
+    for (const suffix of ['powerTrackerSave', 'trackerPruneInitial', 'trackerPruneInterval']) {
       deps.timers.clear(timerKey(suffix));
     }
   };
@@ -305,31 +275,41 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
     return meterBinding.kind === 'bound' ? { ...state, meterIdentity: meterBinding.identity } : state;
   }
 
-  private matchesBinding(value: PowerTrackerState): boolean {
-    const { meterBinding } = this.params;
-    return meterBinding.kind === 'unbound'
-      || powerTrackerMeterIdentityMatches(value.meterIdentity, meterBinding.identity);
-  }
-
   private persist(reason: PowerTrackerPersistReason): boolean {
     this.params.deps.timers.clear(this.params.timerKey('powerTrackerSave'));
-    if (this.persistenceFenced) return false;
     return this.writeStore(reason, false);
   }
 
   /**
-   * Write the current state to the store: the changed rows against
-   * `lastPersisted`, or — `whole` — every row after clearing the home's.
+   * The boot read, owed again: adopt the stored history under what this run
+   * has accrued since, so the persist that follows carries both. A throw
+   * keeps the read owed and the write unmade.
    */
-  private writeStore(reason: PowerTrackerPersistReason | 'migration', whole: boolean): boolean {
+  private settleOwedHydration(): boolean {
+    const { deps, homeId } = this.params;
+    if (!this.hydrationOwed) return true;
+    const stored = deps.getStore().load(homeId);
+    this.hydrationOwed = false;
+    if (stored !== null) this.state = this.stamp(withHistoryUnder(this.state, stored));
+    deps.getLogger()?.info({ event: 'home_power_tracker_hydrated_late', homeId, stored: stored !== null });
+    return true;
+  }
+
+  /**
+   * Write the current state to the store: the rows that changed since what
+   * the store holds, or — `whole` — every row after clearing the home's. The
+   * owner's `replace` discards the stored history by intent and owes no read.
+   */
+  private writeStore(reason: PowerTrackerPersistReason, whole: boolean): boolean {
     const { deps, homeId } = this.params;
     try {
       const writeStart = Date.now();
       const store = deps.getStore();
+      if (whole) this.hydrationOwed = false;
+      else this.settleOwedHydration();
       if (whole) store.replace(homeId, this.state);
-      else store.save(homeId, this.state, this.lastPersisted);
+      else store.save(homeId, this.state);
       addPerfDuration('power_tracker_store_write_ms', Date.now() - writeStart);
-      this.lastPersisted = this.state;
       incPerfCounter('power_tracker_store.save_total');
       incPerfCounter(`power_tracker_store.save_reason.${reason}_total`);
       deps.onPersisted();
@@ -343,151 +323,6 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
       });
       return false;
     }
-  }
-
-  private fencePersistence(error?: Error): void {
-    const { deps, homeId, timerKey } = this.params;
-    deps.timers.clear(timerKey('powerTrackerSave'));
-    if (!this.persistenceFenced) {
-      deps.getLogger()?.error({
-        event: 'home_power_tracker_reload_suspect',
-        homeId,
-        ...(error === undefined ? {} : { err: normalizeError(error) }),
-        detail: 'fencing tracker persistence until a valid legacy tracker is reloaded',
-      });
-    }
-    this.persistenceFenced = true;
-    this.schedulePersistenceReprobe();
-  }
-
-  private schedulePersistenceReprobe(): void {
-    const { deps, timerKey } = this.params;
-    if (
-      this.params.deps.isTornDown()
-      || deps.timers.has(timerKey('trackerPersistenceReprobe'))
-    ) return;
-    const delayMs = Math.min(
-      TRACKER_REPROBE_INITIAL_DELAY_MS * (2 ** this.persistenceReprobeAttempt),
-      TRACKER_REPROBE_MAX_DELAY_MS,
-    );
-    if (this.persistenceReprobeAttempt === TRACKER_REPROBE_MAX_EXPONENT - 1) {
-      // The ladder is at its cap: the same bytes are being refused on every
-      // read. A transient miss has long passed; this is a blob the guard
-      // rejects, and the fence will hold until a valid write or the owner's
-      // reset. Say so once, at warn, so it is triagable in the logs.
-      deps.getLogger()?.warn({
-        event: 'home_power_tracker_persistence_fenced_persistently',
-        homeId: this.params.homeId,
-        detail: 'persistence stays fenced; history accrues in memory only until a valid tracker is read '
-          + 'or the owner resets it',
-      });
-    }
-    this.persistenceReprobeAttempt = Math.min(
-      this.persistenceReprobeAttempt + 1,
-      TRACKER_REPROBE_MAX_EXPONENT,
-    );
-    deps.timers.registerTimeout(
-      timerKey('trackerPersistenceReprobe'),
-      setTimeout(() => {
-        deps.timers.clear(timerKey('trackerPersistenceReprobe'));
-        if (this.params.deps.isTornDown()) return;
-        this.reload();
-      }, delayMs),
-    );
-  }
-
-  private clearPersistenceReprobe(): void {
-    this.params.deps.timers.clear(this.params.timerKey('trackerPersistenceReprobe'));
-    this.persistenceReprobeAttempt = 0;
-  }
-
-  /**
-   * Adopt what is durable. The store answers first; the legacy settings blob
-   * is consulted only while the store holds nothing, and is imported the
-   * moment it reads valid.
-   */
-  private reload(): boolean {
-    const { deps, homeId } = this.params;
-    let stored: PowerTrackerState | null;
-    try {
-      stored = deps.getStore().load(homeId);
-    } catch (error) {
-      this.fencePersistence(new Error(`failed to read the tracker store for ${homeId}`, { cause: error }));
-      return false;
-    }
-    if (stored !== null) {
-      if (!this.matchesBinding(stored)) {
-        this.fencePersistence();
-        return false;
-      }
-      // A legacy blob still present beside stored rows is one an earlier
-      // import could not unset; it holds nothing the store does not.
-      unsetLegacyHomeTracker(deps.legacySettings, this.legacyKey);
-      return this.adoptDurable(stored, stored);
-    }
-    const read = readPersistedHomeTracker(deps.legacySettings, this.legacyKey);
-    if (read.state === 'suspect') {
-      this.fencePersistence();
-      return false;
-    }
-    if (read.state === 'unwritten') {
-      // Once fenced, absence may itself be an SDK omission; it is not repair.
-      if (this.persistenceFenced) {
-        this.schedulePersistenceReprobe();
-        return false;
-      }
-      // Nothing durable to adopt: the in-memory state stands (a transient
-      // absence is a no-op, never a reset), and the next persist writes it.
-      this.lastPersisted = null;
-      return true;
-    }
-    if (!this.matchesBinding(read.value)) {
-      this.fencePersistence();
-      return false;
-    }
-    const adopted = this.adoptDurable(read.value, null);
-    if (adopted) this.migrateLegacy();
-    return adopted;
-  }
-
-  /**
-   * `value` is durable and valid; `persisted` is what the store already holds
-   * (`null` for a legacy blob). A boot fence that recovers to a blob OLDER than
-   * what this run has already admitted must not rewind it: the newest sample
-   * wins, and it is persisted over the stale one. Restoring a stale stamp over
-   * a live reading would, on a Flow feed with no further sample, look like a
-   * silent meter to the escalation clock.
-   */
-  private adoptDurable(value: PowerTrackerState, persisted: PowerTrackerState | null): boolean {
-    const recovered = this.persistenceFenced;
-    this.persistenceFenced = false;
-    this.clearPersistenceReprobe();
-    this.lastPersisted = persisted;
-    if (recovered && isNewerSample(this.state, value)) {
-      this.save(this.state);
-    } else {
-      this.state = this.stamp(value);
-    }
-    if (recovered) {
-      this.params.deps.getLogger()?.info({
-        event: 'home_power_tracker_reload_recovered',
-        homeId: this.params.homeId,
-        detail: 'tracker persistence reopened after a valid legacy tracker read',
-      });
-      this.params.deps.onRecovered();
-    }
-    return true;
-  }
-
-  /** Write the just-adopted legacy blob to the store, then retire the key. */
-  private migrateLegacy(): void {
-    if (!this.writeStore('migration', false)) return;
-    unsetLegacyHomeTracker(this.params.deps.legacySettings, this.legacyKey);
-    this.params.deps.getLogger()?.info({
-      event: 'home_power_tracker_migrated_to_store',
-      homeId: this.params.homeId,
-      legacyKey: this.legacyKey,
-    });
   }
 }
 

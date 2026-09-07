@@ -13,7 +13,7 @@ A single global `kWhPerUnit` mean per device is wrong for two known device shape
 
 ### Per-device ring buffer
 
-Each `DeviceObjectiveProfile` keeps up to `OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE = 64` recent `{observedAtMs, inputValue, kwhPerUnit}` tuples. New samples push to the end; older ones are dropped past the cap **and past `OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS = 14 days`**. The buffer is persisted as part of `power_tracker_state`.
+Each `DeviceObjectiveProfile` keeps up to `OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE = 64` recent `{observedAtMs, inputValue, kwhPerUnit}` tuples. New samples push to the end; older ones are dropped past the cap **and past `OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS = 14 days`**. The buffer is persisted as the tracker's `objectiveProfiles` scalar in the userdata store (`lib/power/trackerStore.ts`).
 
 **The buffer is the single record of what the device costs per unit.** Both derived views are rebuilt from it whenever an observation is recorded: `bands` by the fitter below, and the global `kwhPerUnit` stat by `resolveKwhPerUnitStat`. That is why the global stat is *derived* rather than accumulated with Welford as it once was — a running pair cannot have an aged-out window removed from it, so an expired observation would have stayed in the mean for the life of the profile while the buffer had moved on. `resolveProfileEnergy` sizes every smart task from that mean, so the horizon has to reach it.
 

@@ -39,7 +39,6 @@ import {
   HOMES_CONFIG,
   HOMES_CONFIG_INITIALIZED,
   POWER_SOURCE,
-  POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 import {
   createDeviceHomeAssignmentsStore,
@@ -80,8 +79,9 @@ const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 // A homey with the real (mock) settings store but NO wired homeMembership
 // service: exercises the save endpoint's classified store path without the
 // forest-root diagnostics (`getApp(...)?.homeMembership` is undefined).
-// One store for the file: the save endpoint resets tracker freshness through it.
-const trackerStore = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
+// One store per test (reopened in `beforeEach`): the save endpoint resets
+// tracker freshness through it, and the doubles below reach it by closure.
+let trackerStore: TrackerStore = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
 /** The state a freshness reset leaves behind: accounting kept, the latch cleared. */
 const withoutFreshness = (state: PowerTrackerState): PowerTrackerState => ({
   ...state, lastTimestamp: undefined, lastPowerW: undefined,
@@ -227,9 +227,8 @@ const settleDetachedZoneFetch = async (): Promise<void> => (
 
 beforeEach(() => {
   mockHomeyInstance.settings.clear();
-  // One store for the file: the homes the tracker specs seed start empty.
-  trackerStore.clear(SUB_HOME_A.homeId);
-  trackerStore.clear(SUB_HOME_B.homeId);
+  // A fresh store: the homes the tracker specs seed start empty.
+  trackerStore = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
   // A non-empty live key snapshot proves the two home-store keys are absent.
   // The empty snapshot has its own degraded-path coverage below.
   mockHomeyInstance.settings.set('test_fixture_initialized', true);
@@ -1510,16 +1509,13 @@ describe('ui_homes payload', () => {
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
-    const trackerKey = `${POWER_TRACKER_STATE}:${SUB_HOME_A.homeId}`;
     const tracker: PowerTrackerState = {
       lastTimestamp: 1_700_000_000_000,
       lastPowerW: 2_400,
       buckets: { '2026-01-15T12': 2.5 },
       dailyTotals: { '2026-01-14': 7.25 },
     };
-    // Seeded as the legacy settings blob: the commit imports it into the
-    // store, resets it there and retires the key. Nothing writes the key.
-    mockHomeyInstance.settings.set(trackerKey, tracker);
+    trackerStore.save(SUB_HOME_A.homeId, tracker);
     const homeyWired = makeWiredHealthyHomey();
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const saveSpy = vi.spyOn(trackerStore, 'save');
@@ -1535,17 +1531,14 @@ describe('ui_homes payload', () => {
       },
     })).toEqual({ ok: true });
 
-    // The import (previous `null`), then the reset, then the config write.
+    // The reset, then the config write.
     expect(saveSpy.mock.calls).toEqual([
-      [SUB_HOME_A.homeId, tracker, null],
-      [SUB_HOME_A.homeId, withoutFreshness(tracker), tracker],
+      [SUB_HOME_A.homeId, withoutFreshness(tracker)],
     ]);
     const configWriteIndex = setSpy.mock.calls.findIndex(([key]) => key === HOMES_CONFIG);
     expect(configWriteIndex).toBeGreaterThanOrEqual(0);
     expect(setSpy.mock.invocationCallOrder[configWriteIndex])
-      .toBeGreaterThan(saveSpy.mock.invocationCallOrder[1] ?? Number.POSITIVE_INFINITY);
-    expect(setSpy.mock.calls.filter(([key]) => key === trackerKey)).toHaveLength(0);
-    expect(mockHomeyInstance.settings.get(trackerKey)).toBeNull();
+      .toBeGreaterThan(saveSpy.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY);
     expect(trackerStore.load(SUB_HOME_A.homeId)).toEqual(withoutFreshness(tracker));
   });
 
@@ -1554,14 +1547,13 @@ describe('ui_homes payload', () => {
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
-    const trackerKey = `${POWER_TRACKER_STATE}:${SUB_HOME_A.homeId}`;
     const tracker: PowerTrackerState = {
       lastTimestamp: 1_700_000_000_000,
       lastPowerW: 2_400,
       buckets: { '2026-01-15T12': 2.5 },
       dailyTotals: { '2026-01-14': 7.25 },
     };
-    trackerStore.save(SUB_HOME_A.homeId, tracker, null);
+    trackerStore.save(SUB_HOME_A.homeId, tracker);
     const homeyWired = makeWiredHealthyHomey();
     const apiLogger = makeLoggerSpy();
     homeyWired.app.getApiStructuredLogger = () => apiLogger.logger;
@@ -1591,12 +1583,11 @@ describe('ui_homes payload', () => {
     })).toEqual({ ok: false, reason: 'degraded' });
 
     expect(setSpy.mock.calls.filter(([key]) => key === HOMES_CONFIG)).toHaveLength(2);
-    expect(setSpy.mock.calls.filter(([key]) => key === trackerKey)).toHaveLength(0);
     // The reset, then its rollback once the compensation write proved the
     // old config durable: the store holds the pre-reset state again.
     expect(saveSpy.mock.calls).toEqual([
-      [SUB_HOME_A.homeId, withoutFreshness(tracker), tracker],
-      [SUB_HOME_A.homeId, tracker, withoutFreshness(tracker)],
+      [SUB_HOME_A.homeId, withoutFreshness(tracker)],
+      [SUB_HOME_A.homeId, tracker],
     ]);
     expect(trackerStore.load(SUB_HOME_A.homeId)).toEqual(tracker);
     const config = createHomesStore(homeyLike).read();
@@ -1616,7 +1607,7 @@ describe('ui_homes payload', () => {
       lastPowerW: 2_400,
       dailyTotals: { '2026-01-14': 7.25 },
     };
-    trackerStore.save(SUB_HOME_A.homeId, tracker, null);
+    trackerStore.save(SUB_HOME_A.homeId, tracker);
     const homeyWired = makeWiredHealthyHomey(false);
     const originalSet = mockHomeyInstance.settings.set.bind(mockHomeyInstance.settings);
     let configWriteAttempts = 0;
@@ -1667,7 +1658,7 @@ describe('ui_homes payload', () => {
       lastPowerW: 2_400,
       buckets: { '2026-01-15T12': 2.5 },
     };
-    trackerStore.save(SUB_HOME_A.homeId, tracker, null);
+    trackerStore.save(SUB_HOME_A.homeId, tracker);
     const homeyWired = makeWiredHealthyHomey();
     const apiLogger = makeLoggerSpy();
     apiLogger.error.mockImplementation(() => { throw new Error('logger unavailable'); });
@@ -1724,7 +1715,7 @@ describe('ui_homes payload', () => {
       lastPowerW: 2_400,
       dailyTotals: { '2026-01-14': 7.25 },
     };
-    trackerStore.save(SUB_HOME_A.homeId, tracker, null);
+    trackerStore.save(SUB_HOME_A.homeId, tracker);
     const homeyWired = makeWiredHealthyHomey();
     const apiLogger = makeLoggerSpy();
     homeyWired.app.getApiStructuredLogger = () => apiLogger.logger;
@@ -1733,12 +1724,12 @@ describe('ui_homes payload', () => {
     // Widen the reset so its transaction writes a bucket row before reaching
     // an average whose NaN sum the schema refuses: the store HAS mutated by
     // the time it throws, and only its rollback can put the row back.
-    const saveSpy = vi.spyOn(trackerStore, 'save').mockImplementation((homeId, next, previous) => {
+    const saveSpy = vi.spyOn(trackerStore, 'save').mockImplementation((homeId, next) => {
       originalSave(homeId, {
         ...next,
         buckets: { '2026-01-15T12': 2.5 },
         hourlyAverages: { '2026-01-15T12': { sum: Number.NaN, count: 1 } },
-      }, previous);
+      });
     });
 
     expect(saveSettingsUiHomesConfig({
@@ -1776,8 +1767,8 @@ describe('ui_homes payload', () => {
       { lastTimestamp: 1_700_000_000_000, lastPowerW: 2_400 },
       { lastTimestamp: 1_700_000_100_000, lastPowerW: 1_200, dailyTotals: { '2026-01-14': 3.5 } },
     ];
-    trackerStore.save(SUB_HOME_A.homeId, trackers[0], null);
-    trackerStore.save(SUB_HOME_B.homeId, trackers[1], null);
+    trackerStore.save(SUB_HOME_A.homeId, trackers[0]);
+    trackerStore.save(SUB_HOME_B.homeId, trackers[1]);
     const homeyWired = makeWiredHealthyHomey(false);
     const apiLogger = makeLoggerSpy();
     homeyWired.app.getApiStructuredLogger = () => apiLogger.logger;
@@ -1790,12 +1781,12 @@ describe('ui_homes payload', () => {
       originalSet(key, value);
     });
     const originalSave = trackerStore.save.bind(trackerStore);
-    const saveSpy = vi.spyOn(trackerStore, 'save').mockImplementation((homeId, next, previous) => {
+    const saveSpy = vi.spyOn(trackerStore, 'save').mockImplementation((homeId, next) => {
       // The restore is the write that puts freshness back; B's fails.
       if (homeId === SUB_HOME_B.homeId && next.lastTimestamp !== undefined) {
         throw new Error('tracker restore unavailable');
       }
-      originalSave(homeId, next, previous);
+      originalSave(homeId, next);
     });
 
     expect(saveSettingsUiHomesConfig({
@@ -1832,17 +1823,17 @@ describe('ui_homes payload', () => {
       { lastTimestamp: 1_700_000_000_000, lastPowerW: 2_400 },
       { lastTimestamp: 1_700_000_100_000, lastPowerW: 1_200 },
     ];
-    trackerStore.save(SUB_HOME_A.homeId, trackers[0], null);
-    trackerStore.save(SUB_HOME_B.homeId, trackers[1], null);
+    trackerStore.save(SUB_HOME_A.homeId, trackers[0]);
+    trackerStore.save(SUB_HOME_B.homeId, trackers[1]);
     const homeyWired = makeWiredHealthyHomey(false);
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const originalSave = trackerStore.save.bind(trackerStore);
-    const saveSpy = vi.spyOn(trackerStore, 'save').mockImplementation((homeId, next, previous) => {
+    const saveSpy = vi.spyOn(trackerStore, 'save').mockImplementation((homeId, next) => {
       // The reset is the write that clears freshness; B's fails.
       if (homeId === SUB_HOME_B.homeId && next.lastTimestamp === undefined) {
         throw new Error('second tracker reset unavailable');
       }
-      originalSave(homeId, next, previous);
+      originalSave(homeId, next);
     });
 
     expect(saveSettingsUiHomesConfig({
@@ -1866,25 +1857,20 @@ describe('ui_homes payload', () => {
     });
   });
 
-  it('refuses a delete when an existing tracker key transiently reads undefined', () => {
+  it('refuses a delete while the tracker store cannot be read, and writes nothing', () => {
     createHomesStore(homeyLike).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_A],
     });
-    const trackerKey = `${POWER_TRACKER_STATE}:${SUB_HOME_A.homeId}`;
     const tracker: PowerTrackerState = {
       lastTimestamp: 1_700_000_000_000,
       lastPowerW: 2_400,
       dailyTotals: { '2026-01-14': 7.25 },
     };
-    // The legacy blob is consulted only while the store holds no rows for
-    // the home (none seeded here), and a suspect read imports nothing.
-    mockHomeyInstance.settings.set(trackerKey, tracker);
+    trackerStore.save(SUB_HOME_A.homeId, tracker);
     const homeyWired = makeWiredHealthyHomey();
-    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
-    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => (
-      key === trackerKey ? undefined : originalGet(key)
-    ));
+    const loadSpy = vi.spyOn(trackerStore, 'load').mockImplementation(() => { throw new Error('store unavailable'); });
+    const saveSpy = vi.spyOn(trackerStore, 'save');
 
     expect(saveSettingsUiHomesConfig({
       homey: homeyWired,
@@ -1893,8 +1879,9 @@ describe('ui_homes payload', () => {
 
     const config = createHomesStore(homeyLike).read();
     expect(config.state === 'present' && config.value.subHomes).toEqual([SUB_HOME_A]);
-    expect(originalGet(trackerKey)).toEqual(tracker);
-    expect(trackerStore.load(SUB_HOME_A.homeId)).toBeNull();
+    expect(saveSpy).not.toHaveBeenCalled();
+    loadSpy.mockRestore();
+    expect(trackerStore.load(SUB_HOME_A.homeId)).toEqual(tracker);
   });
 
   it('clears a deleted homeId tracker before an explicit re-add can commit', () => {
@@ -1902,13 +1889,12 @@ describe('ui_homes payload', () => {
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [SUB_HOME_B],
     });
-    const trackerKey = `${POWER_TRACKER_STATE}:${SUB_HOME_A.homeId}`;
     const deletedTracker: PowerTrackerState = {
       lastTimestamp: 1_700_000_000_000,
       lastPowerW: 5_200,
       hourlySampleCounts: { '2026-01-15T12': 6 },
     };
-    mockHomeyInstance.settings.set(trackerKey, deletedTracker);
+    trackerStore.save(SUB_HOME_A.homeId, deletedTracker);
     const homeyWired = makeWiredHealthyHomey();
 
     expect(saveSettingsUiHomesConfig({
@@ -1919,8 +1905,7 @@ describe('ui_homes payload', () => {
       },
     })).toEqual({ ok: true });
 
-    // Imported from the legacy blob, reset in the store, key retired.
-    expect(mockHomeyInstance.settings.get(trackerKey)).toBeNull();
+    // Reset in the store: accounting kept, the latch cleared.
     expect(trackerStore.load(SUB_HOME_A.homeId)).toEqual(withoutFreshness(deletedTracker));
     const config = createHomesStore(homeyLike).read();
     expect(config.state === 'present' && config.value.subHomes).toEqual([
@@ -2115,7 +2100,7 @@ describe('legacy multi-home activation compatibility', () => {
       lastPowerW: 3_100,
       buckets: { '2026-01-15T12': 1.5 },
     };
-    trackerStore.save(SUB_HOME_A.homeId, dormantTracker, null);
+    trackerStore.save(SUB_HOME_A.homeId, dormantTracker);
     const homey = makeWiredHealthyHomey(false);
 
     expect(saveSettingsUiHomesConfig({

@@ -159,6 +159,8 @@ export type AppServiceWiringDeps = {
     membership: HomeMembershipService,
     allowPendingOwnershipGeneration: boolean,
   ) => void;
+  /** First: every repository is open before any step can reach for one. */
+  openUserdataStores: () => void;
   loadPersistedState: () => void;
   persistLearnedPowerPeaks: () => void;
   flushLearnedPowerPeaks: () => void;
@@ -221,6 +223,10 @@ export class AppServiceWiring {
     this.deps.backgroundTasks.installHeapSnapshotHandler(structuredLogger);
     await runStartupStep('updateDebugLoggingEnabled', () => ctx.updateDebugLoggingEnabled(), logStartupStepFailure);
     this.deps.backgroundTasks.startPerfLogging();
+    // The store opens here, named and first, so a database that cannot be
+    // opened is attributed to the store rather than to whichever step first
+    // reached for it — and no step runs without it.
+    await runStartupStep('openUserdataStores', () => this.deps.openUserdataStores(), logStartupStepFailure);
     await runStartupStep('initPriceCoordinator', () => this.deps.initPriceCoordinator(), logStartupStepFailure);
     await runStartupStep(
       'runStartupSettingsMigrations',

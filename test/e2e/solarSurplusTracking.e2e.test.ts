@@ -27,7 +27,7 @@
 // and neither tier covers the other's.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -37,7 +37,6 @@ import {
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
   OPERATING_MODE_SETTING,
-  POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 import { drainPending } from '../utils/asyncDrain';
 
@@ -102,7 +101,7 @@ const seedSettings = (params: { surplusWilling: boolean }) => {
   // surplus pool reachable, and so the precondition for the posture being
   // stamped at all. It is also the only state in which the settings UI offers
   // the opt-in this test seeds.
-  mockHomeyInstance.settings.set(POWER_TRACKER_STATE, {
+  seedStoredPowerTrackerForTests({
     exportBuckets: { '2026-01-14T11:00:00.000Z': 4 },
   });
 };

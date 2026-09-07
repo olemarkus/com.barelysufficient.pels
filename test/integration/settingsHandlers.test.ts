@@ -5,6 +5,7 @@ import {
   BUDGET_EXEMPT_DEVICES,
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
+  CAPACITY_MARGIN_KW,
   COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
@@ -18,7 +19,6 @@ import {
   HOMES_CONFIG,
   MANAGED_DEVICES,
   OVERSHOOT_BEHAVIORS,
-  POWER_TRACKER_STATE,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   WEATHER_ADVISOR_SETTINGS,
 } from '../../lib/utils/settingsKeys';
@@ -778,21 +778,21 @@ describe('createSettingsHandler', () => {
     expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
   });
 
-  it('routes a home-suffixed tracker write to the hook and never reloads the main tracker', async () => {
+  it('routes a home-suffixed capacity write to the hook and never reloads the main settings', async () => {
     const onHomeScopedSettingChanged = vi.fn();
     const deps = buildDeps({ onHomeScopedSettingChanged });
     const handler = createSettingsHandler(deps);
 
-    await handler(`${POWER_TRACKER_STATE}:cabin`);
+    await handler(`${CAPACITY_MARGIN_KW}:cabin`);
 
-    expect(onHomeScopedSettingChanged).toHaveBeenCalledWith(POWER_TRACKER_STATE, 'cabin');
+    expect(onHomeScopedSettingChanged).toHaveBeenCalledWith(CAPACITY_MARGIN_KW, 'cabin');
   });
 
   it('ignores home-suffixed writes when no hook is wired', async () => {
     const deps = buildDeps();
     const handler = createSettingsHandler(deps);
 
-    await handler(`${POWER_TRACKER_STATE}:cabin`);
+    await handler(`${CAPACITY_MARGIN_KW}:cabin`);
 
     expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
     expect(settingsLoggerError).not.toHaveBeenCalled();
@@ -852,12 +852,12 @@ describe('createSettingsHandler', () => {
 
     // Mirrors the settings `set` listener seam: the awaited handle must
     // resolve (not reject) even though the hook's promise rejects.
-    await expect(handler(`${POWER_TRACKER_STATE}:cabin`)).resolves.toBeUndefined();
+    await expect(handler(`${CAPACITY_MARGIN_KW}:cabin`)).resolves.toBeUndefined();
     await handler(MANAGED_DEVICES);
 
     expect(settingsLoggerError).toHaveBeenCalledWith(expect.objectContaining({
       event: 'home_scoped_settings_hook_failed',
-      settingKey: `${POWER_TRACKER_STATE}:cabin`,
+      settingKey: `${CAPACITY_MARGIN_KW}:cabin`,
     }));
     expect(deps.loadCapacitySettings).toHaveBeenCalledTimes(1);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);

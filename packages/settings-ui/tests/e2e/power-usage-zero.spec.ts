@@ -103,11 +103,11 @@ const buildScopedTracker = (kWh: number) => {
   };
 };
 
-const emitStubSettingSet = (page: Page, key: string) => page.evaluate((settingKey) => {
+const emitStubPowerTrackerPersisted = (page: Page, homeId: string) => page.evaluate((id) => {
   (window as unknown as {
-    Homey: { __stub: { emitSettingsSet: (k: string) => void } };
-  }).Homey.__stub.emitSettingsSet(settingKey);
-}, key);
+    Homey: { __stub: { emitHomeyEvent: (event: string, payload: unknown) => void } };
+  }).Homey.__stub.emitHomeyEvent('power_tracker_persisted', { homeId: id });
+}, homeId);
 
 test.describe('Usage follows the shown home', () => {
   test('a meter area shows its own history, live on its suffixed stream', async ({ page }) => {
@@ -127,10 +127,10 @@ test.describe('Usage follows the shown home', () => {
     await pickHomeScope(page, AREA_ID);
     await expect(page.locator('#usage-hero-headline')).toHaveText('0.7 kWh today');
 
-    // The area's suffixed tracker write is its only realtime freshness
+    // The area's tracker-persisted push is its only realtime freshness
     // signal (`power_updated` stays Main's); it must repaint the open panel.
     await seedStubSetting(page, `power_tracker_state:${AREA_ID}`, buildScopedTracker(1.4));
-    await emitStubSettingSet(page, `power_tracker_state:${AREA_ID}`);
+    await emitStubPowerTrackerPersisted(page, AREA_ID);
     await expect(page.locator('#usage-hero-headline')).toHaveText('1.4 kWh today');
 
     // Back to Main: the whole-home history returns.

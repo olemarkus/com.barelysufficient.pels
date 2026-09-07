@@ -1,12 +1,4 @@
 import type Homey from 'homey';
-import path from 'node:path';
-import { createTrackerStore, type TrackerStore } from '../lib/power/trackerStore';
-import {
-  USERDATA_DATABASE_FILE,
-  USERDATA_DIR,
-  openUserdataDatabase,
-  type UserdataDatabase,
-} from '../lib/store/userdataDatabase';
 import { PowerTrackerState } from '../lib/power/tracker';
 import {
   createHomeTrackerPersistence,
@@ -19,14 +11,12 @@ import {
   persistPowerCalibrationFlush,
   persistPowerCalibrationIfDue,
 } from '../lib/device/devicePowerCalibrationStore';
-import { emitPowerTrackerPersistedForApp, emitSettingsUiPowerUpdatedForApp } from './settingsUiAppRuntime';
+import { emitSettingsUiPowerUpdatedForApp } from './settingsUiAppRuntime';
 import { addPerfDuration } from '../lib/utils/perfCounters';
 import type { DailyBudgetService } from '../lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetUpdateStateOptions } from '../lib/dailyBudget/dailyBudgetTypes';
 import type { SettingsRepository } from './settingsRepository';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
-import type { PlanService } from '../lib/plan/planService';
-import { syncFlowPowerSampleFreshnessClock } from '../lib/power/flowPowerSampleFreshnessClock';
 
 const POWER_CALIBRATION_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const POWER_CALIBRATION_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
@@ -52,46 +42,23 @@ export type AppPowerTrackerDeps = {
   getPowerCalibrationStore: () => PowerCalibrationStore;
   setPowerCalibrationStore: (store: PowerCalibrationStore) => void;
   getDailyBudgetService: () => DailyBudgetService;
-  /** Absent until the plan stack is wired: a recovery before that has nothing to rebuild. */
-  getPlanService: () => PlanService | undefined;
   error: (...args: unknown[]) => void;
   updateDailyBudgetAndRecordCap: (options?: DailyBudgetUpdateStateOptions) => void;
   persistPowerCalibrationIfDue: (nowMs?: number) => void;
   flushPowerCalibration: (nowMs?: number) => void;
 }
 
-/** The userdata database and the tracker's repository on it, opened together and closed together. */
-export type AppUserdataStores = { database: UserdataDatabase; trackerStore: TrackerStore };
-
 export class AppPowerTracker {
   /**
-   * Open the app's userdata database — the production file unless a caller
-   * hands in another (the test harness opens SQLite's `:memory:`) — and the
-   * tracker repository on it.
-   */
-  static openUserdataStores(
-    database: UserdataDatabase = openUserdataDatabase(path.join(USERDATA_DIR, USERDATA_DATABASE_FILE)),
-  ): AppUserdataStores {
-    return { database, trackerStore: createTrackerStore(database) };
-  }
-  /**
-   * The Main home's tracker: the same classified persistence component every
-   * meter area runs, on the unsuffixed key (`homeScopedSettingsKey` is the
-   * identity for `'main'`) and unbound from any one meter — the Main-meter
+   * The Main home's tracker: the same persistence component every meter area
+   * runs, on the main home id and unbound from any one meter — the Main-meter
    * authority governs which meter its samples come from.
    */
-  static createMainTracker(
-    deps: Omit<HomeTrackerPersistenceDeps, 'onPersisted'>,
-    homey: Homey.App['homey'],
-  ): HomeTrackerPersistence {
+  static createMainTracker(deps: HomeTrackerPersistenceDeps): HomeTrackerPersistence {
     return createHomeTrackerPersistence({
-      deps: {
-        ...deps,
-        onPersisted: () => emitPowerTrackerPersistedForApp(homey, MAIN_HOME_ID, deps.reportError),
-      },
+      deps,
       homeId: MAIN_HOME_ID,
       initialState: {},
-      persistedState: null,
       meterBinding: { kind: 'unbound' },
       timerKey: (suffix) => suffix,
     });
@@ -99,25 +66,9 @@ export class AppPowerTracker {
 
   constructor(private readonly deps: AppPowerTrackerDeps) {}
 
-  /** Boot: adopt the stored tracker, import a legacy blob, or start fenced on a suspect read. */
+  /** Boot: adopt the stored tracker, if the store holds one. */
   hydratePowerTracker(): void {
     this.deps.getTracker().hydrate();
-  }
-
-
-  /**
-   * The tracker's persistence reopened on a reprobe with a valid tracker in
-   * hand, after the bootstrap ran off the fenced state: refresh the daily
-   * budget's snapshot, re-sync the Flow feed's planning cadence to the
-   * recovered stamp, and re-decide the plan from the recovered reading.
-   */
-  onPowerTrackerRecovered(): void {
-    this.deps.getDailyBudgetService().updateState({ refreshObservedStats: false });
-    syncFlowPowerSampleFreshnessClock(this.deps.timers, this.deps.getTracker().getState().lastTimestamp);
-    this.deps.getPlanService()?.rebuildPlanFromCache('settings', { detail: 'power_tracker_recovered' })
-      .catch((error: unknown) => {
-        this.deps.error('plan rebuild after power tracker recovery failed', error);
-      });
   }
 
   loadPowerCalibrationStore(): void {

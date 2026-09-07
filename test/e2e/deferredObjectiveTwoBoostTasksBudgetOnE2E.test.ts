@@ -15,7 +15,7 @@
 // this deliberately tight deadline.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
-import { cleanupApps, createApp } from '../utils/appTestUtils';
+import { cleanupApps, createApp, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
@@ -153,7 +153,7 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
       [TANK_B]: { enabled: true, min: 0, max: 3000, step: 500 },
     });
     mockHomeyInstance.settings.set(COMBINED_PRICES, buildCombinedPrices());
-    mockHomeyInstance.settings.set('power_tracker_state', {
+    seedStoredPowerTrackerForTests({
       lastTimestamp: DAY,
       objectiveProfiles: { [TANK_A]: trackerProfile(DAY), [TANK_B]: trackerProfile(DAY) },
     });

@@ -9,7 +9,7 @@
 // learned-rate datum. The real planner, the real deferred bridge + recorder +
 // admission, and the real executor all run. The smart task is OBSERVED only through
 // the `deferred_objective_horizon_planned` structured log; the managed/unmanaged
-// split and the cap view are observed through `power_tracker_state` + the
+// split and the cap view are observed through the stored tracker + the
 // `plan_rebuild_completed` log. No internal reads.
 //
 // WHAT IT DEMONSTRATES (two things at once):
@@ -22,7 +22,7 @@
 //     path: a stale clamp would have mis-attributed the heater to ~0.5 kW.)
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
-import { cleanupApps, createApp, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
+import { cleanupApps, createApp, getStoredPowerTrackerForTests, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
@@ -161,7 +161,7 @@ describe('smart task running during a sunny hour (SDK-boundary e2e via createApp
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { [TANK]: 1 } });
     mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [TANK]: { enabled: true, min: 0, max: 3000, step: 500 } });
     mockHomeyInstance.settings.set(COMBINED_PRICES, buildCombinedPrices(NOON_HOUR)); // now is cheapest
-    mockHomeyInstance.settings.set('power_tracker_state', buildPowerTracker(hourStartMs));
+    seedStoredPowerTrackerForTests(buildPowerTracker(hourStartMs));
     // A plain "heat to 53 degC by 18:00" task — no rescue permissions.
     mockHomeyInstance.settings.set(`deferred_objective.${TANK}`, {
       enabled: true,

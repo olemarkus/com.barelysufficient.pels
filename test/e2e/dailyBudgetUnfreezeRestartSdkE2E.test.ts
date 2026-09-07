@@ -12,7 +12,7 @@
 // PELS persists back through the settings seam (`daily_budget_state`).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -56,7 +56,7 @@ const seedPowerTracker = (): void => {
     buckets[new Date(DAY_START_UTC_MS + hourIndex * HOUR_MS).toISOString()] = 2.0;
   }
   buckets[new Date(CURRENT_BUCKET_START_MS).toISOString()] = 0.4;
-  mockHomeyInstance.settings.set('power_tracker_state', {
+  seedStoredPowerTrackerForTests({
     lastTimestamp: BOOT_MS - 30_000,
     buckets,
   });

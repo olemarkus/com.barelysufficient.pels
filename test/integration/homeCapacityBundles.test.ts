@@ -6,9 +6,8 @@
 // - suffix-hook dispatch (capacity scalars reload into the guard, main's
 //   in-memory capacity snapshot untouched; unknown homeId is transient);
 // - per-home tracker persistence in the userdata store (`ctx.getTrackerStore()`):
-//   a legacy `power_tracker_state:<homeId>` blob is imported once and its key
-//   retired, a suspect legacy read fences creation, and freshness resets and
-//   meter-identity repairs write the store, never the settings key;
+//   an unreadable store fences creation until the owned retry, and freshness
+//   resets and meter-identity repairs write the store, never a settings key;
 // - suffixed persistence round-trip: tracker + `device_last_controlled_ms`
 //   hydration on (re)creation;
 // - the boot-window execution gate (forced dry-run until membership has
@@ -57,7 +56,6 @@ import {
   MODE_TARGET_OWNERSHIP_STATE,
   MODE_TARGET_OWNERSHIP_STATE_INITIALIZED,
   POWER_SOURCE,
-  POWER_TRACKER_STATE,
   type HomeId,
 } from '../../lib/utils/settingsKeys';
 import { VOLATILE_WRITE_THROTTLE_MS } from '../../lib/utils/timingConstants';
@@ -153,9 +151,9 @@ const failTrackerStoreWrites = (
   const store = ctx.getTrackerStore();
   const originalSave = store.save.bind(store);
   let failing = true;
-  vi.spyOn(store, 'save').mockImplementation((homeId, next, previous) => {
+  vi.spyOn(store, 'save').mockImplementation((homeId, next) => {
     if (failing && affects(next)) throw new Error('tracker store unavailable');
-    originalSave(homeId, next, previous);
+    originalSave(homeId, next);
   });
   return { recover: () => { failing = false; } };
 };
@@ -444,16 +442,15 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(diagnosticsFor(rig.registry, 'h_b').capacityScalars.limitKw).toBe(4);
   });
 
-  it('rehydrates suffixed tracker + last-controlled state on (re)creation; junk resolves empty', async () => {
-    // Pre-seed both suffixed keys, then create the bundle — simulated restart
-    // on the first boot after the upgrade, when the tracker still lives in the
-    // legacy settings blob and the store holds nothing for the home.
+  it('rehydrates the stored tracker + last-controlled state on (re)creation; junk last-controlled resolves empty', async () => {
+    // Pre-seed the store and the suffixed key, then create the bundle — a
+    // simulated restart.
     const seededTracker: PowerTrackerState = {
       meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'm-a' },
       lastTimestamp: Date.now() - 60_000,
       dailyTotals: { '2026-01-14': 7.5 },
     };
-    mockHomeyInstance.settings.set(`${POWER_TRACKER_STATE}:h_a`, seededTracker);
+    rig.ctx.getTrackerStore().save('h_a', seededTracker);
     mockHomeyInstance.settings.set(`${DEVICE_LAST_CONTROLLED_MS}:h_a`, { 'dev-1': 123_456 });
     writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
@@ -465,69 +462,29 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await drainPending();
     await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1000);
     await drainPending();
-    // The legacy blob was imported into the store at creation and its key retired.
-    expect(mockHomeyInstance.settings.get(`${POWER_TRACKER_STATE}:h_a`)).toBeNull();
     expect(storedTrackerFor(rig.ctx, 'h_a').dailyTotals?.['2026-01-14']).toBe(7.5);
 
-    // A junk tracker is suspect: creation stays fenced rather than replacing
-    // possibly recoverable accounting with an empty state. Once the boundary
-    // recovers, the owned retry constructs the bundle. The non-safety
-    // last-controlled blob remains junk-tolerant and resolves empty.
-    mockHomeyInstance.settings.set(`${POWER_TRACKER_STATE}:h_b`, 'junk');
+    // An area the store holds nothing for starts empty and carries its meter
+    // identity in memory until its first persist establishes it. The
+    // non-safety last-controlled blob is junk-tolerant and resolves empty.
     mockHomeyInstance.settings.set(`${DEVICE_LAST_CONTROLLED_MS}:h_b`, ['not', 'a', 'map']);
     writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
-    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
-
-    mockHomeyInstance.settings.set(`${POWER_TRACKER_STATE}:h_b`, {
-      meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'm-b' },
-    });
-    await vi.advanceTimersByTimeAsync(1_000);
-    await drainPending();
+    expect(rig.registry.getBundleHomeIds().sort()).toEqual(['h_a', 'h_b']);
     expect(diagnosticsFor(rig.registry, 'h_b').lastDeviceControlledMs).toEqual({});
-    expect(mockHomeyInstance.settings.get(`${POWER_TRACKER_STATE}:h_b`)).toBeNull();
+    expect(rig.ctx.getTrackerStore().load('h_b')).toBeNull();
+    rig.registry.routeMeterReadings({ 'm-b': 300 }, Date.now());
+    await drainPending();
+    await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1000);
+    await drainPending();
     expect(storedTrackerFor(rig.ctx, 'h_b').meterIdentity).toEqual({
       powerSource: 'homey_energy',
       meterDeviceId: 'm-b',
     });
   });
 
-  it('fences malformed nested tracker accounting without rewriting the persisted blob', async () => {
-    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
-    const malformed = {
-      meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'old-meter' },
-      lastTimestamp: Date.now() - 15_000,
-      lastPowerW: 1_700,
-      buckets: { '2026-01-15T12': 'junk' },
-    };
-    mockHomeyInstance.settings.set(trackerKey, malformed);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
-    const saveSpy = vi.spyOn(rig.ctx.getTrackerStore(), 'save');
-
-    rig.registry.reconcile();
-
-    // The suspect blob stays where it is: not imported, not replaced.
-    expect(rig.registry.getBundleHomeIds()).toEqual([]);
-    expect(mockHomeyInstance.settings.get(trackerKey)).toEqual(malformed);
-    expect(saveSpy).not.toHaveBeenCalled();
-    expect(rig.ctx.getTrackerStore().load('h_a')).toBeNull();
-
-    mockHomeyInstance.settings.set(trackerKey, {
-      meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'm-a' },
-      buckets: { '2026-01-15T12': 2.75 },
-    });
-    await vi.advanceTimersByTimeAsync(1_000);
-    await drainPending();
-
-    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
-  });
-
-  it.each([
-    ['a transient undefined value for an existing key', false],
-    ['a transient store-wide empty key list', true],
-  ])('fences bundle creation on %s without erasing tracker accounting', async (_label, emptyKeys) => {
-    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
+  it('fences bundle creation while the tracker store cannot be read, and the owned retry builds it', async () => {
     const trackerState: PowerTrackerState = {
       meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'm-a' },
       lastTimestamp: Date.now() - 15_000,
@@ -535,37 +492,29 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       buckets: { '2026-01-15T12': 2.75 },
       dailyTotals: { '2026-01-14': 8.5 },
     };
-    mockHomeyInstance.settings.set(trackerKey, trackerState);
+    const store = rig.ctx.getTrackerStore();
+    store.save('h_a', trackerState);
     writeActiveHomesConfig({ subHomes: [HOME_A] });
 
-    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
-    const originalGetKeys = mockHomeyInstance.settings.getKeys.bind(mockHomeyInstance.settings);
+    const originalLoad = store.load.bind(store);
     let readsFail = true;
-    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => (
-      readsFail && key === trackerKey ? undefined : originalGet(key)
-    ));
-    if (emptyKeys) {
-      vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockImplementation(() => (
-        readsFail ? [] : originalGetKeys()
-      ));
-    }
-    const saveSpy = vi.spyOn(rig.ctx.getTrackerStore(), 'save');
+    vi.spyOn(store, 'load').mockImplementation((homeId) => {
+      if (readsFail) throw new Error('tracker store unavailable');
+      return originalLoad(homeId);
+    });
+    const saveSpy = vi.spyOn(store, 'save');
 
     rig.registry.reconcile();
 
-    // Nothing reached the store: the legacy blob is the only copy of the
-    // accounting, and a suspect read of it must not become an empty import.
+    // Nothing was written over accounting the process could not read.
     expect(rig.registry.getBundleHomeIds()).toEqual([]);
     expect(saveSpy).not.toHaveBeenCalled();
-    expect(rig.ctx.getTrackerStore().load('h_a')).toBeNull();
 
     readsFail = false;
     await vi.advanceTimersByTimeAsync(1_000);
     await drainPending();
 
-    // The owned retry imports the blob into the store and retires the key.
     expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
-    expect(originalGet(trackerKey)).toBeNull();
     const recovered = storedTrackerFor(rig.ctx, 'h_a');
     expect(recovered.lastTimestamp).toBe(trackerState.lastTimestamp);
     expect(recovered.lastPowerW).toBe(trackerState.lastPowerW);
@@ -573,8 +522,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(recovered.dailyTotals).toEqual(trackerState.dailyTotals);
   });
 
-  it('repairs a persisted meter-identity mismatch before a rebooted bundle can hydrate freshness', async () => {
-    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
+  it('repairs a stored meter-identity mismatch before a rebooted bundle can hydrate freshness', async () => {
     const oldState: PowerTrackerState = {
       meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'old-meter' },
       lastTimestamp: Date.now() - 5_000,
@@ -584,7 +532,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     };
     // Simulates a process death after homes_config committed the new meter but
     // before the previous process ran its in-memory reset.
-    mockHomeyInstance.settings.set(trackerKey, oldState);
+    rig.ctx.getTrackerStore().save('h_a', oldState);
     writeActiveHomesConfig({ subHomes: [HOME_A] });
 
     rig.registry.reconcile();
@@ -592,8 +540,6 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
     expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
-    // Imported from the legacy blob, repaired in the store, key retired.
-    expect(mockHomeyInstance.settings.get(trackerKey)).toBeNull();
     const repaired = storedTrackerFor(rig.ctx, 'h_a');
     expect(repaired.meterIdentity).toEqual({
       powerSource: 'homey_energy',
@@ -606,18 +552,16 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('retries bundle creation when the atomic meter-identity write fails', async () => {
-    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
     const oldState: PowerTrackerState = {
       meterIdentity: { powerSource: 'flow', meterDeviceId: 'm-a' },
       lastTimestamp: Date.now() - 5_000,
       lastPowerW: 4_000,
       dailyTotals: { '2026-01-14': 6.5 },
     };
-    mockHomeyInstance.settings.set(trackerKey, oldState);
+    rig.ctx.getTrackerStore().save('h_a', oldState);
     writeActiveHomesConfig({ subHomes: [HOME_A] });
 
-    // The legacy import lands; the identity repair that follows it is the
-    // write that fails.
+    // The identity repair is the write that fails.
     const storeWrites = failTrackerStoreWrites(
       rig.ctx,
       (next) => next.meterIdentity?.powerSource === 'homey_energy',
@@ -625,10 +569,8 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     rig.registry.reconcile();
 
-    // Imported but not repaired: the store holds the old meter's blob
-    // verbatim and the key is retired, so the retry recovers from the store.
+    // Not repaired: the store holds the old meter's tracker verbatim.
     expect(rig.registry.getBundleHomeIds()).toEqual([]);
-    expect(mockHomeyInstance.settings.get(trackerKey)).toBeNull();
     expect(rig.ctx.getTrackerStore().load('h_a')).toEqual(oldState);
 
     storeWrites.recover();
@@ -1923,29 +1865,26 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('clears dormant freshness before held configuration activates and retries the safety write', async () => {
-    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
     const accountingState: PowerTrackerState = {
       lastTimestamp: Date.now() - 30_000,
       lastPowerW: 4_200,
       buckets: { '2026-01-15T12': 1.25 },
       hourlySampleCounts: { '2026-01-15T12': 4 },
     };
-    mockHomeyInstance.settings.set(trackerKey, accountingState);
+    rig.ctx.getTrackerStore().save('h_a', accountingState);
     rig.setRuntimeActive(false);
     writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     expect(rig.registry.getBundleHomeIds()).toEqual([]);
 
-    // The legacy import lands; the freshness reset that follows it (the
-    // safety write) is what fails.
+    // The freshness reset (the safety write) is what fails.
     const storeWrites = failTrackerStoreWrites(rig.ctx, (next) => next.lastTimestamp === undefined);
 
     rig.setRuntimeActive(true);
     rig.registry.reconcile();
     expect(rig.registry.getBundleHomeIds()).toEqual([]);
-    // Imported verbatim and the key retired; the accounting is intact, its
-    // freshness still to be cleared by the owned retry.
-    expect(mockHomeyInstance.settings.get(trackerKey)).toBeNull();
+    // The accounting is intact, its freshness still to be cleared by the
+    // owned retry.
     expect(rig.ctx.getTrackerStore().load('h_a')).toEqual(accountingState);
 
     storeWrites.recover();

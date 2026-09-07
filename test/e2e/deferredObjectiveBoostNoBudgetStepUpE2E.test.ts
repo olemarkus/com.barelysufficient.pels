@@ -9,7 +9,7 @@
 // `createApp().onInit()`; power, prices, the device's observed temperature/step,
 // the clock, and the persisted learned-rate datum are simulated at the SDK seam
 // (the energy poll, the `combined_prices` setting, the mock device's capabilities,
-// `vi.setSystemTime`, the `power_tracker_state` setting); the plan cycle is driven
+// `vi.setSystemTime`, the stored tracker); the plan cycle is driven
 // by advancing the timers (the real 10 s energy poll + the periodic rebuild), NOT
 // by reaching into `planService`. The real snapshot parser (`parseDevice`), the
 // real planner, the real deferred bridge + admission, and the real executor all
@@ -31,7 +31,7 @@
 // price curve (which hour the planner books).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
-import { cleanupApps, createApp } from '../utils/appTestUtils';
+import { cleanupApps, createApp, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
@@ -179,7 +179,7 @@ const runCycleAtHour = async (params: {
   // Defined stepped load via the target-power config: off/500…3000 W in 500 W steps.
   mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [TANK]: { enabled: true, min: 0, max: 3000, step: 500 } });
   mockHomeyInstance.settings.set(COMBINED_PRICES, buildCombinedPrices(cheapHour));
-  mockHomeyInstance.settings.set('power_tracker_state', buildPowerTracker(DAY + currentHour * HOUR_MS));
+  seedStoredPowerTrackerForTests(buildPowerTracker(DAY + currentHour * HOUR_MS));
   if (withSmartTask === 'boost') {
     mockHomeyInstance.settings.set(`deferred_objective.${TANK}`, BOOST_TASK);
   } else if (withSmartTask === 'plain') {

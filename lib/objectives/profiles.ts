@@ -554,7 +554,7 @@ function resolveLearnedRateUpdate(params: {
   const bands = fitBandsFromSamples({ samples });
   // Explicit `bands: undefined` clears any prior layout if the fitter declines
   // to publish one (e.g., the buffer dipped under the split threshold). The
-  // undefined key is dropped on JSON serialization for `power_tracker_state`.
+  // undefined key is dropped when the tracker store serialises the profiles.
   return { samples, bands, kwhPerUnit: resolveKwhPerUnitStat(samples, sample.observedAtMs) };
 }
 

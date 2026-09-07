@@ -113,9 +113,6 @@ export async function startAppServices(ctx: InitializedAppContext): Promise<void
       : undefined,
     ...appContext.startupBootstrap,
   };
-  // The store opens here, named, so a database that cannot be opened is
-  // attributed to the store rather than to whichever step first reached for it.
-  await runStep('openUserdataStore', async () => { appContext.getTrackerStore(); });
   await runStep('hydratePowerTracker', async () => appContext.hydratePowerTracker());
   await runStep('loadPriceOptimizationSettings', async () => appContext.loadPriceOptimizationSettings());
   await runStep('initOptimizer', async () => priceCoordinator.initOptimizer());

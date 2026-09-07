@@ -43,8 +43,8 @@
   the one runtime writer of that key, and it is bounded on purpose: it writes only when Homey
   lists exactly one id-bearing whole-home meter — in the live report and the device registry —
   on two reads 30 s apart, only through the save seam, never Flow, with no marker (the condition
-  clears itself once a meter is stored), never over readings the tracker has ever admitted (the
-  tracker's own classified read; a suspect read decides nothing), and it parses no persisted key
+  clears itself once a meter is stored), never over readings the tracker has ever admitted (read from the
+  tracker store; a store that cannot be read decides nothing), and it parses no persisted key
   beyond the two the seam writes. Its predecessor keyed "fresh install" on the mere PRESENCE of
   `power_tracker_state` and lost to the tracker's first prune on every boot.
   Everything else is the owner's pick in Limits & safety.)

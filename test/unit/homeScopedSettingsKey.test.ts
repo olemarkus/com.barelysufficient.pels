@@ -17,7 +17,6 @@ import {
   MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
   parseHomeScopedSettingsKey,
-  POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 
 describe('homeScopedSettingsKey', () => {
@@ -40,7 +39,6 @@ describe('parseHomeScopedSettingsKey', () => {
     CAPACITY_LIMIT_KW,
     CAPACITY_MARGIN_KW,
     CAPACITY_DRY_RUN,
-    POWER_TRACKER_STATE,
     OPERATING_MODE_SETTING,
     MODE_ALIASES,
     CAPACITY_PRIORITIES,
@@ -63,9 +61,9 @@ describe('parseHomeScopedSettingsKey', () => {
   });
 
   it('round-trips a home id that itself contains a colon', () => {
-    const key = homeScopedSettingsKey(POWER_TRACKER_STATE, 'cabin:west');
+    const key = homeScopedSettingsKey(CAPACITY_MARGIN_KW, 'cabin:west');
     expect(parseHomeScopedSettingsKey(key)).toEqual({
-      baseKey: POWER_TRACKER_STATE,
+      baseKey: CAPACITY_MARGIN_KW,
       homeId: 'cabin:west',
     });
   });
@@ -107,8 +105,7 @@ describe('isHomeScopableBaseKey', () => {
       CAPACITY_LIMIT_KW,
       CAPACITY_MARGIN_KW,
       CAPACITY_DRY_RUN,
-      POWER_TRACKER_STATE,
-      OPERATING_MODE_SETTING,
+        OPERATING_MODE_SETTING,
       MODE_ALIASES,
       CAPACITY_PRIORITIES,
       MODE_DEVICE_TARGETS,

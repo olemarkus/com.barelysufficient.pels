@@ -23,13 +23,12 @@
 // Energy poll).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   OPERATING_MODE_SETTING,
-  POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 import { drainPending, drainUntilCalledWith } from '../utils/asyncDrain';
 
@@ -66,7 +65,7 @@ const seedSettings = (surplusWilling: boolean) => {
   // stamped at all (`resolveSurplusPoolReachable`). It is also the only state in
   // which the settings UI offers the opt-in this test seeds, so a run without it
   // would be testing a home that could not have reached this configuration.
-  mockHomeyInstance.settings.set(POWER_TRACKER_STATE, {
+  seedStoredPowerTrackerForTests({
     exportBuckets: { '2026-01-14T11:00:00.000Z': 2 },
   });
 };
@@ -177,7 +176,7 @@ describe('Solar dump-load posture on the flow power source (SDK-boundary e2e)', 
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     seedSettings(true);
     // The distinguishing fact: no export has ever been recorded.
-    mockHomeyInstance.settings.set(POWER_TRACKER_STATE, {});
+    seedStoredPowerTrackerForTests({});
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const app = createApp({ preserveStartupRestoreStabilization: true });
@@ -195,7 +194,7 @@ describe('Solar dump-load posture on the flow power source (SDK-boundary e2e)', 
     const device = await buildPump(true);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     seedSettings(true);
-    mockHomeyInstance.settings.set(POWER_TRACKER_STATE, {});
+    seedStoredPowerTrackerForTests({});
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const app = createApp({ preserveStartupRestoreStabilization: true });

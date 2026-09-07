@@ -23,7 +23,6 @@ import {
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_TARGET_POWER_REACHABILITY,
   POWER_SOURCE,
-  POWER_TRACKER_STATE,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
 } from '../../lib/utils/settingsKeys';
 import { PriceLevel } from '../../lib/price/priceLevels';
@@ -227,11 +226,11 @@ describe('initSettingsHandlerForApp', () => {
     const onHomeScopedSettingChanged = vi.fn();
 
     const { handle } = initSettingsHandlerForApp(ctx, { ...HOOKS, onHomeScopedSettingChanged });
-    await handle(`${POWER_TRACKER_STATE}:cabin`);
+    await handle(`${CAPACITY_MARGIN_KW}:cabin`);
     await handle(`${CAPACITY_LIMIT_KW}:cabin`);
 
     expect(onHomeScopedSettingChanged).toHaveBeenCalledTimes(2);
-    expect(onHomeScopedSettingChanged).toHaveBeenNthCalledWith(1, POWER_TRACKER_STATE, 'cabin');
+    expect(onHomeScopedSettingChanged).toHaveBeenNthCalledWith(1, CAPACITY_MARGIN_KW, 'cabin');
     expect(onHomeScopedSettingChanged).toHaveBeenNthCalledWith(2, CAPACITY_LIMIT_KW, 'cabin');
     // The critical invariant: a suffixed write must not run the main home's
     // handler for the base key (reload main's capacity settings).

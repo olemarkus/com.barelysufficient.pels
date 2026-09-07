@@ -514,6 +514,9 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       tracker.stopAndFlush();
       // Flush the final accepted old-identity sample first, then overwrite only
       // its freshness latch. A late old pipeline save is fenced by `markTornDown`.
+      // The order is load-bearing: the store diffs against what it holds, and
+      // the homes-config commit may already have reset the latch there, so the
+      // flush re-upserts the in-memory latch and this reset is what clears it.
       const resetSucceeded = options?.resetMeterFreshness !== true || tracker.resetFreshness();
       logger()?.info({ event: 'home_capacity_bundle_torn_down', homeId });
       return resetSucceeded;

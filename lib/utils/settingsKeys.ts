@@ -1,12 +1,16 @@
 export const CAPACITY_LIMIT_KW = 'capacity_limit_kw';
 export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
 export const CAPACITY_DRY_RUN = 'capacity_dry_run';
+/**
+ * The LEGACY tracker key: the settings blob the tracker persisted as before it
+ * moved to the userdata store. Nothing reads or writes it; the boot step
+ * unsets what an upgraded install still carries (`lib/power/trackerLegacySettings.ts`).
+ */
 export const POWER_TRACKER_STATE = 'power_tracker_state';
 /**
  * Realtime push emitted after every tracker persist, for every home
- * (`{ homeId }`). It replaced the `settings.set` echo of `POWER_TRACKER_STATE`
- * as the settings UI's freshness signal once the tracker moved to the userdata
- * store. Mirrored in `packages/contracts/src/settingsKeys.ts`.
+ * (`{ homeId }`): the settings UI's freshness signal for a tracker that lives
+ * under no settings key. Mirrored in `packages/contracts/src/settingsKeys.ts`.
  */
 export const POWER_TRACKER_PERSISTED_EVENT = 'power_tracker_persisted';
 // Canonical id of the primary home. The main home keeps the historical
@@ -43,7 +47,6 @@ const HOME_SCOPABLE_BASE_KEYS: ReadonlySet<string> = new Set([
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
-  POWER_TRACKER_STATE,
   // Main keeps the historical unsuffixed mode catalog. Meter areas use these
   // suffixed keys and commit MODE_CATALOG_INITIALIZED last.
   OPERATING_MODE_SETTING,

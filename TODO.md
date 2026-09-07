@@ -1455,7 +1455,8 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `target_devices_snapshot` / `device_plan_snapshot`, `power_calibration`, `device_power_peaks`
       and `learned_thermostat_deadband_c`. Change: one repository per family beside its domain,
       taking the open database (the tracker store is the pattern: rows or one JSON row per event,
-      diffed writes, legacy key imported once and unset, settings UI served through `api.js`).
+      diffed writes, the legacy key unset at boot and never imported — its contents are
+      regenerable by the same ruling — and the settings UI served through `api.js`).
       Then `pels_status` (0.6 kB, ~50 writes/h, `lib/plan/planStatusWriter.ts`) stops being a
       settings write: an `api.js` read plus the realtime push the UI already gets. Done when
       `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production Homey is
@@ -1463,6 +1464,20 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       milliseconds. Also retire the two dev harnesses that still read the retired tracker key —
       `scripts/measure-settings-ui-homey.mjs` (`buildPowerPayload`) and the fixture in
       `scripts/benchmark-settings-ui-boot.mjs` — by pointing them at the `ui_power` API payload.
+
+- [ ] **The tracker store has no schema version, and the objective profiles ride it as one JSON
+      scalar.** `lib/power/trackerStore.ts` writes `objectiveProfiles` — every device's learned
+      energy-rate profile, sample buffer included — as a single `value_json` row, rewritten whole
+      whenever any profile changes (the row-per-bucket layout the other families get is what makes
+      their persists cheap). And the five tables carry no version: a future layout change has no
+      way to tell an older file from a newer one, and would have to guess from the rows. Change:
+      a `power_tracker_device_profiles (home_id, device_id, profile_json)` table so a learned
+      profile costs one row per device on write, and a `schema_version` row in the database's
+      `meta` table (`lib/store/userdataDatabase.ts` creates it, nothing reads it yet) checked at
+      open — with a mismatch quarantining the file the way a damaged one is, since everything in it
+      is regenerable by ruling. No migration code: the store shipped unreleased, so the only rows
+      the change would re-learn are the owner's. Done when a profile persist touches one row and
+      `meta` names the layout. Found in the store design audit, 2026-09-07. [P2]
 
 - [ ] **`stateOfCharge` rides the plan device undeclared, and the objectives layer depends on it.**
       `PlanInputDeviceBase` states "No `evBoost` / `stateOfCharge` / `temperatureBoost`"
@@ -1581,21 +1596,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       the meter-collision rule to wherever the authority lands. Done when the file has no line in
       `scripts/setup-stateless-allowlist.txt` and `arch:check` passes without a type-only edge
       standing in for a real one. Found 2026-09-01. [P2]
-
-- [ ] **`lib/power/persistedHomeTracker.ts` passes five parameter bags.**
-      Its five functions (`writeFreshnessReset`, `restoreTrackerState`,
-      `preparePersistedHomeTrackerForMeter`, `resetPersistedHomeTrackerFreshnessInSettings`,
-      `beginPersistedHomeTrackerFreshnessResetInSettings`) each take an inline object of
-      `{ settings, homeId | trackerKey, state?, meterIdentity?, onFailure }` and destructure it back
-      into loose values on the first line — the signature the param-bundle rule names (root
-      `AGENTS.md`). They predate the rule and travelled unchanged when the module moved out of
-      `setup/homeRuntime/`, so the ratchet's total is unmoved at 1096 bundles across 408 files; what changed is that
-      they now sit in a domain module, where the concept they are circling is visible. There IS a
-      domain object here — one home's persisted tracker: its settings port and its key — and every
-      one of the five is about exactly that. Introduce it, pass it, and the remaining arguments are
-      honest scalars. Done when `lib/power/persistedHomeTracker.ts` has no line in
-      `scripts/param-bundle-allowlist.txt` and the three `setup/homeRuntime` callers pass the named
-      object. Source: Codex review of PR #2263, 2026-09-01. [P2]
 
 - [ ] **`restorePreparedStepId` is declared and never assigned.** The field is on
       `setup/appDeviceControlSteppedState.ts` and on the legacy field shapes in

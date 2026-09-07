@@ -309,10 +309,12 @@ module.exports = {
       name: 'no-store-to-peer',
       comment: 'lib/store owns the userdata SQLite file and nothing else: a repository for a data '
         + 'family lives beside its domain (lib/power/trackerStore.ts) and takes the open database. '
-        + 'The store must not import any domain peer, or every peer would be coupled through it.',
+        + 'The store must not import any domain peer, or every peer would be coupled through it. '
+        + 'Value imports only (`import type` edges are INVISIBLE without tsPreCompilationDeps); a '
+        + 'type-only edge is the same coupling and is caught in review.',
       severity: 'error',
       from: { path: '^lib/store/' },
-      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor|actuator|weather|solar|home|app)/' },
+      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor|actuator|weather|solar|home|app|diagnostics|flowApi)/' },
     },
     {
       name: 'no-sqlite-outside-store',

@@ -775,13 +775,14 @@ describe('Overview activation after a scope change while it was hidden', () => {
   });
 });
 
-describe('the selected area\'s tracker write repaints a visible Overview', () => {
-  it('repaints on a tracker write with NO status write beside it', async () => {
-    // `power_tracker_state:<id>` writes on its own — scheduled persistence,
-    // the hourly prune, a meter-swap freshness reset — and the Overview hero
-    // reads that home's scoped power/plan payloads. Without an Overview route
-    // on this key the hero sits on the cached payload until some later
-    // `pels_status:<id>` write or a tab activation.
+describe('the selected area\'s tracker persist repaints a visible Overview', () => {
+  it('repaints on a tracker persist with NO status write beside it', async () => {
+    // An area's tracker persists on its own — scheduled persistence, the
+    // hourly prune, a meter-swap freshness reset — announced by the
+    // `power_tracker_persisted` push, and the Overview hero reads that home's
+    // scoped power/plan payloads. Without an Overview route on this push the
+    // hero sits on the cached payload until some later `pels_status:<id>`
+    // write or a tab activation.
     const api: Record<string, unknown> = {
       '/ui_homes': ROSTER_PAYLOAD,
       '/ui_prices': null,
@@ -796,13 +797,13 @@ describe('the selected area\'s tracker write repaints a visible Overview', () =>
     await flushAsync();
     expect(heroPowerValue()).toBe('0.7');
 
-    // The area moved on; only its tracker key is written.
+    // The area moved on; only its tracker persisted.
     api[SCOPED_PLAN_URI] = {
       plan: buildPlan({ totalKw: 0.9, deviceId: 'dev_rental_heater', deviceName: 'Rental Heater' }),
       homeScope: { state: 'resolved', homeId: AREA },
     };
-    const { createSettingsSetHandler } = await import('../src/ui/settingsChangeRouter.ts');
-    createSettingsSetHandler()(`power_tracker_state:${AREA}`);
+    const { handlePowerTrackerPersisted } = await import('../src/ui/settingsChangeRouter.ts');
+    handlePowerTrackerPersisted({ homeId: AREA });
     await flushAsync();
 
     expect(heroPowerValue()).toBe('0.9');

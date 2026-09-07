@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import type { AppContext } from '../lib/app/appContext';
+import type { TrackerStore } from '../lib/power/trackerStore';
 import type {
   SettingsUiHomesPayload,
   SettingsUiHomesSaveRequest,
@@ -41,11 +41,25 @@ type HomesApiContext = {
 // `initHomeMembership` runs.
 type HomesApiApp = Homey.App & {
   homeMembership?: HomeMembershipService;
+  /** `AppContext`'s member: the app's tracker store, throwing before the boot step that opens it. */
+  getTrackerStore: () => TrackerStore;
 };
 
 const getHomeMembership = (homey: Homey.App['homey']): HomeMembershipService | undefined => {
   if (!homey || typeof homey !== 'object') return undefined;
   return (homey.app as HomesApiApp | undefined)?.homeMembership;
+};
+
+// The tracker store is opened at the app's first boot step; a save that
+// reaches here before it cannot reset the areas' freshness, so the pre-boot
+// throw is classified here as `undefined` and the commit is refused on the
+// same footing as one over an unreadable config.
+const getTrackerStore = (homey: Homey.App['homey']): TrackerStore | undefined => {
+  try {
+    return (homey.app as HomesApiApp).getTrackerStore();
+  } catch {
+    return undefined;
+  }
 };
 
 // The full "config degraded" condition, as ONE predicate shared by the
@@ -298,12 +312,13 @@ const saveAreaMutation = (
     });
     if (refusal !== null) return refusal;
   }
+  const trackerStore = getTrackerStore(homey);
+  if (trackerStore === undefined) return { ok: false, reason: 'degraded' };
   // Reset before config commit, but restore the old tracker if the boundary
   // proves the old config survived a refused/thrown write.
   const commit = commitHomesConfigWriteWithTrackerFreshnessReset({
     apiApp: homey.app,
-    trackerStore: (homey.app as unknown as AppContext).getTrackerStore(),
-    settings: homey.settings,
+    trackerStore,
     store,
     request,
     currentConfig,
