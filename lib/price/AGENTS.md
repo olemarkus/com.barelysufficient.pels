@@ -20,7 +20,8 @@ hourly totals, and classifies hours into price levels. A pure input producer —
 - All cached price-data persistence goes through the typed stores (`priceDataStore.ts`, the
   combined-prices store) — no ad-hoc `settings.set` of price payloads. The
   `combinedPricesReader.ts` docblock is the house-style reference for these store boundaries:
-  domain declares the typed interface, the `setup/` adapter owns the SDK read and migrations.
+  the module declares the typed interface AND owns the SDK read and migrations, reading through a
+  `SettingsPort` that `setup/` hands it.
 - Consumers receive resolved flat values (prices, levels); they never branch on which source
   (spot/flow/Homey Energy) produced them.
 

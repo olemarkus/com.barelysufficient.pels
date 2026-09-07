@@ -1,7 +1,12 @@
 # One settings key, one reader/writer
 
 **Every persisted settings key has exactly one module that knows what its bytes
-mean.** That module owns the read policy (how a malformed or partial value is
+mean.**
+
+This note governs keys **both sides read**. A key only the runtime reads belongs
+wholly to its `lib/` module, which reads it through a `SettingsPort` handed over
+by `setup/` — see `setup/AGENTS.md` § "No domain logic". Either way the wiring
+layer never reads a key itself. That module owns the read policy (how a malformed or partial value is
 interpreted) and the write policy (what may be persisted at all). Callers own
 their transport and nothing else.
 

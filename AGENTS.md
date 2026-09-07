@@ -68,6 +68,7 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
   `api.ts`, `lib/**`, `setup/**`, `flowCards/**`, `drivers/**`); the shrinking allowlist of files
   predating the rule is `scripts/logging-legacy-allowlist.txt`, and its per-file counts may only go
   down. Full rule: `notes/logging/README.md` § "Legacy logging is banned".
+- **The wiring layer holds no domain logic.** `setup/**` constructs components, hands them their collaborators and connects callbacks — it declares no data structures and does no parsing, normalizing, validating, classifying, projecting or arithmetic over domain values. **It does not touch the SDK either; it wires the SDK into modules**, passing a narrow structural port (`lib/ports/homeyRuntime.ts`) to the module that owns the concept, which does the read and the classification — the owning `lib/` module for a runtime-only key, `packages/shared-domain/src/settings/` for one the settings UI reads too (`notes/settings-key-ownership.md`). Same reason as the state rule: logic here couples modules the nine `no-<domain>-to-peer` rules forbid to talk, above the boundary, with no import edge for `arch:check` to see. A file needing two domains at once is a concept nobody has named, not cross-cutting code needing a home. **Not guarded by a script yet** — two metrics, measured against `4d5a6488f` and allowed only to shrink: `setup/` files importing two or more peer domains (55 of 138, 58% of the layer's lines), and `setup/` files importing from `'homey'` (40 of 138, against 2 naming a `lib/ports/homeyRuntime.ts` type). Full rule, with destinations and worked examples: `setup/AGENTS.md` § "No domain logic".
 - `flowCards/**` must not import `packages/settings-ui/**` or `drivers/**`.
 - Accept code duplication if consolidation would violate an architectural boundary. Add a comment explaining the constraint.
 - **A parameter object must be a domain object.** If a function takes an object, that object
@@ -128,7 +129,7 @@ Runtime code conventions (TypeScript, structured logging, Homey SDK mocking) liv
 
 ### App wiring (`setup/`)
 
-`setup/` at the repo root is the honest home for app-wiring classes — factories, observers, registrars that construct and connect services, and then hold nothing. Conventions and the boot-path map live in `setup/AGENTS.md`. The migration out of `lib/app/` is complete: that directory is down to `appContext.ts` (the shared `AppContext` type).
+`setup/` at the repo root is the honest home for app-wiring classes — factories, observers, registrars that construct and connect services, and then hold nothing and decide nothing. Conventions and the boot-path map live in `setup/AGENTS.md`. The migration out of `lib/app/` is complete: that directory is down to `appContext.ts` (the shared `AppContext` type).
 
 ### Packages (shared)
 
