@@ -3,8 +3,9 @@ export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
 export const CAPACITY_DRY_RUN = 'capacity_dry_run';
 /**
  * The LEGACY tracker key: the settings blob the tracker persisted as before it
- * moved to the userdata store. Nothing reads or writes it; the boot step
- * unsets what an upgraded install still carries (`lib/power/trackerLegacySettings.ts`).
+ * moved to the userdata store. Read once, at boot, by the import that carries
+ * an upgraded install's history into the store and then unsets the key
+ * (`lib/power/trackerLegacySettings.ts`); nothing writes it.
  */
 export const POWER_TRACKER_STATE = 'power_tracker_state';
 /**

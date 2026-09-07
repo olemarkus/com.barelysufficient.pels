@@ -52,6 +52,7 @@ describe('createPersistedEvCarLinkAccess persist guard', () => {
             values.set(key, value);
           },
           unset: (key: string): void => { values.delete(key); },
+          getKeys: () => [...values.keys()],
         },
       },
     };

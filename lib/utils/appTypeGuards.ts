@@ -318,3 +318,102 @@ export function isPlausiblePowerTrackerState(value: unknown): value is PowerTrac
     );
 }
 
+export type SalvagedPowerTrackerState = {
+  state: PowerTrackerState;
+  /** What was dropped to get there: a field, or `field[n]` for n entries of a family. */
+  dropped: readonly string[];
+};
+
+type Salvage = { blob: Record<string, unknown>; dropped: readonly string[] };
+type SalvageStep = (salvage: Salvage) => Salvage;
+
+const withoutField = (record: Record<string, unknown>, field: string): Record<string, unknown> => (
+  Object.fromEntries(Object.entries(record).filter(([key]) => key !== field))
+);
+
+/** Keep the entries of a keyed family that pass `keep`; a family that is not a record goes whole. */
+const salvageFamily = (field: string, keep: UnknownPredicate): SalvageStep => (salvage) => {
+  const current = salvage.blob[field];
+  if (current === undefined) return salvage;
+  if (!isPlainObjectRecord(current)) {
+    return { blob: withoutField(salvage.blob, field), dropped: [...salvage.dropped, field] };
+  }
+  const entries = Object.entries(current);
+  const kept = entries.filter(([, entry]) => keep(entry));
+  if (kept.length === entries.length) return salvage;
+  return {
+    blob: { ...salvage.blob, [field]: Object.fromEntries(kept) },
+    dropped: [...salvage.dropped, `${field}[${entries.length - kept.length}]`],
+  };
+};
+
+/** Drop a scalar field that fails `keep`. */
+const salvageScalar = (field: string, keep: UnknownPredicate): SalvageStep => (salvage) => (
+  salvage.blob[field] === undefined || keep(salvage.blob[field])
+    ? salvage
+    : { blob: withoutField(salvage.blob, field), dropped: [...salvage.dropped, field] }
+);
+
+/** Per device, the finite hours; a device with none, or that is not a record, goes. */
+const salvageDeviceBuckets: SalvageStep = (salvage) => {
+  const current = salvage.blob.deviceBuckets;
+  if (current === undefined) return salvage;
+  if (!isPlainObjectRecord(current)) {
+    return { blob: withoutField(salvage.blob, 'deviceBuckets'), dropped: [...salvage.dropped, 'deviceBuckets'] };
+  }
+  const devices = Object.entries(current).map(([deviceId, hours]) => {
+    const entries = isPlainObjectRecord(hours) ? Object.entries(hours) : [];
+    const finite = entries.filter((entry): entry is [string, number] => isFiniteNumber(entry[1]));
+    return { deviceId, finite, dropped: isPlainObjectRecord(hours) ? entries.length - finite.length : 1 };
+  });
+  const dropped = devices.reduce((sum, device) => sum + device.dropped, 0);
+  if (dropped === 0) return salvage;
+  const kept = devices.filter((device) => device.finite.length > 0)
+    .map(({ deviceId, finite }) => [deviceId, Object.fromEntries(finite)] as const);
+  return {
+    blob: { ...salvage.blob, deviceBuckets: Object.fromEntries(kept) },
+    dropped: [...salvage.dropped, `deviceBuckets[${dropped}]`],
+  };
+};
+
+const isUnreliablePeriodList = (value: unknown): boolean => (
+  Array.isArray(value) && value.every(isUnreliablePeriod)
+);
+
+/** The solar families and latch are held to the solar check (finite, ≥ 0); the rest to finiteness. */
+const numberMapEntryCheck = (field: string): UnknownPredicate => (
+  (SOLAR_RECORD_FIELDS as readonly string[]).includes(field) ? isValidSolarKWh : isFiniteNumber
+);
+
+// Every structured field is judged on its own check, never by whether the
+// whole blob turns plausible without it: two bad ones would otherwise cover
+// for each other and cost the families around them.
+const SALVAGE_STEPS: readonly SalvageStep[] = [
+  ...NUMBER_MAP_FIELDS.map((field) => salvageFamily(field, numberMapEntryCheck(field))),
+  ...HOURLY_AVERAGE_MAP_FIELDS.map((field) => salvageFamily(field, isHourlyAverage)),
+  ...FINITE_NUMBER_FIELDS.map((field) => (
+    salvageScalar(field, field === 'lastGenerationW' ? isValidSolarKWh : isFiniteNumber)
+  )),
+  salvageDeviceBuckets,
+  salvageScalar('meterIdentity', isPowerTrackerMeterIdentity),
+  salvageScalar('unreliablePeriods', isUnreliablePeriodList),
+  salvageScalar('objectiveProfiles', isObjectiveProfileMap),
+];
+
+/**
+ * The most of a persisted tracker blob that `isPlausiblePowerTrackerState`
+ * accepts: entries that fail a family's check are dropped one at a time
+ * (a `null` an older release stringified from a NaN, a junk hour), a scalar
+ * the guard refuses is dropped whole, and only a blob with nothing plausible
+ * left answers `null`. This is the one-shot import's reading of a blob the
+ * previous release wrote under a looser guard: a single bad entry must never
+ * cost the history around it. Clean blobs come back unchanged, `dropped` empty;
+ * every removal — the solar families' included — is named there, so the
+ * import's log says what an upgrade discarded.
+ */
+export function salvagePowerTrackerState(value: unknown): SalvagedPowerTrackerState | null {
+  if (!isPlainObjectRecord(value)) return null;
+  const start: Salvage = { blob: value, dropped: [] };
+  const { blob, dropped } = SALVAGE_STEPS.reduce<Salvage>((salvage, step) => step(salvage), start);
+  return isPlausiblePowerTrackerState(blob) ? { state: blob, dropped } : null;
+}

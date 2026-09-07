@@ -1,5 +1,5 @@
 import { emitPowerTrackerPersistedForApp } from './settingsUiAppRuntime';
-import { unsetLegacyPowerTrackerKeys } from '../lib/power/trackerLegacySettings';
+import { importLegacyPowerTrackers } from '../lib/power/trackerLegacySettings';
 import { openUserdataStores, type AppUserdataStores } from './userdataStores';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import type Homey from 'homey';
@@ -259,7 +259,8 @@ abstract class AppRuntimeApi extends Base {
   protected runStartupSettingsMigrations(): void {
     migrateManagedDevices({ homey: this.homey });
     runBootMigrations({ homey: this.homey });
-    unsetLegacyPowerTrackerKeys(this.homey.settings);
+    // The store opened at the first boot step; the trackers hydrate from it later.
+    importLegacyPowerTrackers(this.homey.settings, this.context.getTrackerStore());
   }
   public areFlowBackedCardsAvailable(): boolean { return this.flowBacked.areFlowBackedCardsAvailable(); }
   public loadCapacitySettings = (): void => {

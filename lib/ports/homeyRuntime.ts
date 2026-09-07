@@ -18,16 +18,19 @@
  * `homey.settings.get(KEY) as unknown`, and those casts are gone because the
  * port already hands them `unknown`.
  *
- * `unset` is a standard `ManagerSettings` method and is already consumed in the
- * domain by `lib/objectives/deferredObjectives/objectiveStore.ts` (which hand-
- * rolls a structurally-identical `ObjectiveSettingsStore`); that store is a
- * future consolidation target for this canonical port, at which point `getKeys`
- * joins the surface. Kept here so that migration needs no re-widening.
+ * `unset` and `getKeys` are standard `ManagerSettings` methods. `getKeys` is
+ * what lets a reader tell an unwritten key from a listed key the SDK failed to
+ * answer (`notes/persisted-settings-state.md`); the legacy tracker import
+ * (`lib/power/trackerLegacySettings.ts`) is its first domain consumer through
+ * this port, and `lib/objectives/deferredObjectives/objectiveStore.ts` (which
+ * hand-rolls a structurally-identical `ObjectiveSettingsStore`) is the
+ * consolidation target still owed.
  */
 export type SettingsPort = {
   get(key: string): unknown;
   set(key: string, value: unknown): void;
   unset(key: string): void;
+  getKeys(): string[];
 };
 
 export type HomeyRuntime = {

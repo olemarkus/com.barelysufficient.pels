@@ -46,6 +46,7 @@ const buildSettings = (initial: unknown): SettingsPortStub => {
     get: vi.fn((_key: string) => value),
     set: vi.fn((_key: string, next: unknown) => { value = next; }),
     unset: vi.fn((_key: string) => { value = undefined; }),
+    getKeys: vi.fn(() => []),
   };
 };
 
@@ -168,6 +169,7 @@ describe('readStore', () => {
       get: vi.fn((_key: string) => ({ unrelated: 'shape' })),
       set: vi.fn(),
       unset: vi.fn(),
+      getKeys: vi.fn(() => []),
     };
     // Re-entrancy must go through the SAME reader instance for the guard to
     // engage (it is instance-scoped); production shares one reader on AppContext.

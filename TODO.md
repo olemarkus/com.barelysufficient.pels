@@ -1455,8 +1455,8 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `target_devices_snapshot` / `device_plan_snapshot`, `power_calibration`, `device_power_peaks`
       and `learned_thermostat_deadband_c`. Change: one repository per family beside its domain,
       taking the open database (the tracker store is the pattern: rows or one JSON row per event,
-      diffed writes, the legacy key unset at boot and never imported — its contents are
-      regenerable by the same ruling — and the settings UI served through `api.js`).
+      diffed writes, the legacy key imported once at boot and unset, a suspect read deferring to
+      the next boot, and the settings UI served through `api.js`).
       Then `pels_status` (0.6 kB, ~50 writes/h, `lib/plan/planStatusWriter.ts`) stops being a
       settings write: an `api.js` read plus the realtime push the UI already gets. Done when
       `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production Homey is

@@ -6,6 +6,7 @@ import {
   isPrioritySettings,
   isStringMap,
   sanitizePowerTrackerSolarFields,
+  salvagePowerTrackerState,
 } from '../../lib/utils/appTypeGuards';
 
 describe('appTypeGuards plain-object handling', () => {
@@ -256,5 +257,45 @@ describe('appTypeGuards plain-object handling', () => {
       const clean = { buckets: {}, lastGenerationW: 0 };
       expect(sanitizePowerTrackerSolarFields(clean)).toBe(clean);
     });
+  });
+});
+
+describe('salvagePowerTrackerState', () => {
+  it('passes a clean tracker through unchanged with nothing dropped', () => {
+    const state = { lastPowerW: 1, buckets: { h: 1 }, hourlyAverages: { s: { sum: 1, count: 1 } }, deviceBuckets: { d: { h: 1 } } };
+    expect(salvagePowerTrackerState(state)).toEqual({ state, dropped: [] });
+  });
+
+  it('drops only the entries and scalars the strict guard refuses, and names them', () => {
+    const salvaged = salvagePowerTrackerState({
+      lastPowerW: 'x',
+      buckets: { good: 1, bad: null },
+      hourlyAverages: { good: { sum: 1, count: 1 }, bad: null },
+      deviceBuckets: { d1: { h: 1, bad: 'x' }, d2: 'junk', d3: { bad: null } },
+      dailyTotals: 'not a record',
+      generationBuckets: { good: 1, negative: -1 },
+      lastGenerationW: -5,
+      meterIdentity: { powerSource: 'nope' },
+      unreliablePeriods: [{ start: 1, end: 2 }],
+      objectiveProfiles: { d1: 'not a profile' },
+    });
+    expect(salvaged?.state).toEqual({
+      buckets: { good: 1 },
+      hourlyAverages: { good: { sum: 1, count: 1 } },
+      deviceBuckets: { d1: { h: 1 } },
+      generationBuckets: { good: 1 },
+      unreliablePeriods: [{ start: 1, end: 2 }],
+    });
+    // Two bad structured fields go independently; neither covers for the other.
+    expect(salvaged?.dropped).toEqual([
+      'buckets[1]', 'dailyTotals', 'generationBuckets[1]', 'hourlyAverages[1]', 'lastGenerationW', 'lastPowerW',
+      'deviceBuckets[3]', 'meterIdentity', 'objectiveProfiles',
+    ]);
+  });
+
+  it('answers null when nothing plausible is left', () => {
+    expect(salvagePowerTrackerState('garbage')).toBeNull();
+    expect(salvagePowerTrackerState(null)).toBeNull();
+    expect(salvagePowerTrackerState([1])).toBeNull();
   });
 });

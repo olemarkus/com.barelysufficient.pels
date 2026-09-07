@@ -10,6 +10,7 @@ const settingsWith = (get: (key: string) => unknown): SettingsPort => ({
   get,
   set: () => {},
   unset: () => {},
+  getKeys: () => [],
 });
 
 describe('buildDebugLoggingTopics', () => {

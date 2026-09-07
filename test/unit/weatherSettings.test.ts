@@ -6,6 +6,7 @@ const settingsWith = (value: unknown): SettingsPort => ({
   get: (key: string) => (key === WEATHER_ADVISOR_SETTINGS ? value : undefined),
   set: () => {},
   unset: () => {},
+  getKeys: () => [],
 });
 
 describe('buildWeatherAdvisorSettings', () => {

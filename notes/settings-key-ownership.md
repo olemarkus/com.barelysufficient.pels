@@ -104,9 +104,10 @@ with opposite cost profiles:
   history, diagnostics, weather history, calibration and the price/tariff
   caches follow.
 
-Owner ruling 2026-09-07. A key that moves is NOT imported: what it held is
-regenerable by the same ruling, the legacy key is unset at boot
-(`lib/power/trackerStore.ts`'s sibling `trackerLegacySettings.ts` is the
-pattern), and nothing reads it again. The settings UI reaches history through
-`api.js` endpoints and the store's own realtime push, never through a settings
-key.
+Owner ruling 2026-09-07. A key that moves is imported ONCE, at boot, on the
+first boot that finds the store empty for the home and the legacy value
+plausible; the key is then unset and nothing reads it again. A suspect read
+leaves the key for the next boot — one transient must never cost a user's
+history (`lib/power/trackerLegacySettings.ts` is the pattern). The settings UI
+reaches history through `api.js` endpoints and the store's own realtime push,
+never through a settings key.

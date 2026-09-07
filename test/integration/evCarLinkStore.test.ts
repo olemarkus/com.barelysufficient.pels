@@ -18,6 +18,7 @@ const runtime = (initial: Record<string, unknown>): HomeyRuntime => {
       get: (key: string) => values.get(key),
       set: (key: string, value: unknown) => { values.set(key, value); },
       unset: (key: string) => { values.delete(key); },
+      getKeys: () => [...values.keys()],
     },
   };
 };
@@ -119,6 +120,7 @@ describe('loadEvCarLinkStore', () => {
         get: vi.fn(() => { throw new Error('sdk unavailable'); }),
         set: vi.fn(),
         unset: vi.fn(),
+        getKeys: vi.fn(() => []),
       },
     };
     const store = loadEvCarLinkStore({ homey: throwing, options: { nowMs: NOW } });
@@ -182,6 +184,7 @@ describe('first-write recovery re-read', () => {
         },
         set: (key: string, value: unknown) => { values.set(key, value); },
         unset: (key: string) => { values.delete(key); },
+        getKeys: () => [...values.keys()],
       },
     };
     const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
@@ -208,6 +211,7 @@ describe('first-write recovery re-read', () => {
         },
         set: (key: string, value: unknown) => { values.set(key, value); },
         unset: (key: string) => { values.delete(key); },
+        getKeys: () => [...values.keys()],
       },
     };
     const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
@@ -249,6 +253,7 @@ describe('first-write recovery re-read', () => {
         },
         set: (key: string, value: unknown) => { values.set(key, value); },
         unset: (key: string) => { values.delete(key); },
+        getKeys: () => [...values.keys()],
       },
     };
     const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
@@ -276,6 +281,7 @@ describe('first-write recovery re-read', () => {
         },
         set: (key: string, value: unknown) => { values.set(key, value); },
         unset: (key: string) => { values.delete(key); },
+        getKeys: () => [...values.keys()],
       },
     };
     const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
