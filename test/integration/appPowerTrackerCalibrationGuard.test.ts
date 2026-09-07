@@ -1,3 +1,5 @@
+import { createTrackerStore } from '../../lib/power/trackerStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import { AppPowerTracker, type AppPowerTrackerDeps } from '../../setup/appPowerTracker';
@@ -41,9 +43,11 @@ describe('AppPowerTracker calibration persist guard', () => {
       },
     } as never as Homey.App['homey'];
     const active = { store: new PowerCalibrationStore({ persistDebounceMs: 0 }) };
+    const trackerStore = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
     const tracker = createHomeTrackerPersistence({
       deps: {
-        settings: homey.settings,
+        getStore: () => trackerStore,
+        legacySettings: homey.settings,
         timers,
         getLogger: () => undefined,
         getPruneDebugEmitter: () => () => {},
@@ -51,9 +55,11 @@ describe('AppPowerTracker calibration persist guard', () => {
         getTimeZone: () => 'Europe/Oslo',
         isTornDown: () => false,
         onRecovered: () => {},
+        onPersisted: () => {},
       },
       homeId: 'main',
       initialState: {},
+      persistedState: null,
       meterBinding: { kind: 'unbound' },
       timerKey: (suffix) => suffix,
     });

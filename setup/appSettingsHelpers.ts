@@ -480,7 +480,6 @@ export function initSettingsHandlerForApp(
       await planService.rebuildPlanFromCache('settings', { detail: settingsSource });
     },
     refreshTargetDevicesSnapshot: () => ctx.refreshTargetDevicesSnapshot(),
-    loadPowerTracker: () => ctx.loadPowerTracker(),
     getCapacitySettings: () => ctx.capacitySettings,
     getCapacityDryRun: () => ctx.capacityDryRun,
     loadPriceOptimizationSettings: ctx.loadPriceOptimizationSettings,

@@ -47,6 +47,7 @@ import {
 import {
   getCurrentMonthUsageKwh,
   getHourlyUsageEstimateKwh,
+  type PowerTrackerReadout,
 } from './priceServiceNorgespris';
 import {
   buildCombinedHourlyPricesNorway,
@@ -80,6 +81,8 @@ export default class PriceService {
     private getTimeZone: () => string,
     private getHomeyEnergyApi: (() => HomeyEnergyApi | null) | undefined,
     private readonly priceDataStore: PriceDataStore,
+    /** The Main home's live power tracker, for the Norgespris usage estimates. */
+    private readonly getPowerTracker: () => PowerTrackerReadout,
   ) { }
 
   private onCombinedPricesUpdated?: (reason: string) => void;
@@ -368,8 +371,10 @@ export default class PriceService {
       countyCode: settings.countyCode,
       tariffGroup: settings.tariffGroup,
       norwayPriceModel,
-      monthUsageKwh: norwayPriceModel === 'norgespris' ? getCurrentMonthUsageKwh(this.homey, this.getTimeZone()) : 0,
-      hourlyUsageEstimateKwh: norwayPriceModel === 'norgespris' ? getHourlyUsageEstimateKwh(this.homey) : 0,
+      monthUsageKwh: norwayPriceModel === 'norgespris'
+        ? getCurrentMonthUsageKwh(this.getPowerTracker(), this.getTimeZone())
+        : 0,
+      hourlyUsageEstimateKwh: norwayPriceModel === 'norgespris' ? getHourlyUsageEstimateKwh(this.getPowerTracker()) : 0,
       now: new Date(),
       currentMonthKey,
       timeZone,

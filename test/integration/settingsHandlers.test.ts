@@ -71,7 +71,6 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     reloadExpectedPowerOverrides: vi.fn(),
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
     refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
-    loadPowerTracker: vi.fn(),
     getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 10, marginKw: 1 }),
     getCapacityDryRun: vi.fn().mockReturnValue(false),
     loadPriceOptimizationSettings: vi.fn(),
@@ -787,7 +786,6 @@ describe('createSettingsHandler', () => {
     await handler(`${POWER_TRACKER_STATE}:cabin`);
 
     expect(onHomeScopedSettingChanged).toHaveBeenCalledWith(POWER_TRACKER_STATE, 'cabin');
-    expect(deps.loadPowerTracker).not.toHaveBeenCalled();
   });
 
   it('ignores home-suffixed writes when no hook is wired', async () => {
@@ -796,7 +794,6 @@ describe('createSettingsHandler', () => {
 
     await handler(`${POWER_TRACKER_STATE}:cabin`);
 
-    expect(deps.loadPowerTracker).not.toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
     expect(settingsLoggerError).not.toHaveBeenCalled();
   });
@@ -862,7 +859,6 @@ describe('createSettingsHandler', () => {
       event: 'home_scoped_settings_hook_failed',
       settingKey: `${POWER_TRACKER_STATE}:cabin`,
     }));
-    expect(deps.loadPowerTracker).not.toHaveBeenCalled();
     expect(deps.loadCapacitySettings).toHaveBeenCalledTimes(1);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });

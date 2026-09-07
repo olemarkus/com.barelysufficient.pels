@@ -1343,6 +1343,7 @@ describe('Price optimization', () => {
     priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance as never),
     priceDataStore: createPriceDataStore(mockHomeyInstance as never),
     getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
+    getPowerTracker: () => ({}),
     getCurrentPriceLevel: () => PriceLevel.NORMAL,
     rebuildPlanFromCache: async () => undefined,
     log: () => undefined,

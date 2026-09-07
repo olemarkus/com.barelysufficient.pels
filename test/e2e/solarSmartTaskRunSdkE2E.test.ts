@@ -22,14 +22,13 @@
 //     path: a stale clamp would have mis-attributed the heater to ~0.5 kW.)
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
-import { cleanupApps, createApp } from '../utils/appTestUtils';
+import { cleanupApps, createApp, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
   COMBINED_PRICES, CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED,
   DEBUG_LOGGING_TOPICS, DEVICE_TARGET_POWER_CONFIGS, MANAGED_DEVICES,
 } from '../../lib/utils/settingsKeys';
-import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY = Date.UTC(2026, 4, 10, 0, 0, 0); // midnight UTC: price day-key == clock day
@@ -116,7 +115,7 @@ const driveHomeEnergy = (netW: number, generationW: number): void => {
 };
 
 const readSplit = () => {
-  const tracker = mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState | null;
+  const tracker = getStoredPowerTrackerForTests();
   return {
     controlledW: tracker?.lastControlledPowerW ?? Number.NaN,
     uncontrolledW: tracker?.lastUncontrolledPowerW ?? Number.NaN,

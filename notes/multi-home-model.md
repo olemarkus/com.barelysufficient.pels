@@ -113,7 +113,9 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   `'main'`**. Settings dispatch is exact-key, so a parse step ahead of the
   handler table routes a suffixed write to `onHomeScopedSettingChanged(base,
   homeId)` rather than silently no-opping — and, critically, a suffixed
-  `power_tracker_state:<id>` write must **not** reload main's tracker.
+  write must **not** run main's handler for the base key. (The tracker itself
+  no longer rides a settings key: it persists to the userdata store,
+  `notes/settings-key-ownership.md` § "Which store".)
 
 ## Per-home runtime bundles (R7b)
 
@@ -182,9 +184,9 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   - **The realtime `plan_updated` / `power_updated` streams stay the main
     home's.** Widening them would repaint Main's Overview from a sub-home's
     device set in a Homey-cached stale WebView. A sub-home's freshness rides
-    the suffixed `settings.set` stream (`pels_status:<id>`,
-    `power_tracker_state:<id>`) instead, which the change router turns into a
-    scoped-only cache sweep. Correspondingly, a main-home push re-seeds the bare
+    the suffixed `settings.set` stream (`pels_status:<id>`) and the
+    `power_tracker_persisted` realtime push (carrying the home id) instead,
+    which the change router turns into a scoped-only cache sweep. Correspondingly, a main-home push re-seeds the bare
     cache entry and drops the scoped entries it cannot speak for
     (`invalidateApiCacheForScopedHomes`), while every other invalidation of a
     home-scopable read model sweeps bare + scoped together

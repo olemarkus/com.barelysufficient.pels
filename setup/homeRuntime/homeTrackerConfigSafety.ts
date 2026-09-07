@@ -13,8 +13,9 @@ import {
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { SettingsUiHomesSaveRequest } from '../../packages/contracts/src/settingsUiHomes';
 import {
-  beginPersistedHomeTrackerFreshnessResetInSettings,
+  beginPersistedHomeTrackerFreshnessReset,
 } from '../../lib/power/persistedHomeTracker';
+import type { TrackerStore } from '../../lib/power/trackerStore';
 
 type AreaMutationRequest = Exclude<
 SettingsUiHomesSaveRequest,
@@ -199,6 +200,7 @@ const runTrackerRollbacks = (
 };
 
 const beginHomeTrackerFreshnessResetBeforeConfigWrite = (params: {
+  trackerStore: TrackerStore;
   settings: Homey.App['homey']['settings'];
   request: AreaMutationRequest;
   currentConfig: HomeConfig;
@@ -206,12 +208,13 @@ const beginHomeTrackerFreshnessResetBeforeConfigWrite = (params: {
   onFailure: ReportHomeTrackerConfigSafetyFailure;
 }): HomeTrackerFreshnessResetTransaction => {
   const {
-    settings, request, currentConfig, next, onFailure,
+    trackerStore, settings, request, currentConfig, next, onFailure,
   } = params;
   const homeIds = resolveFreshnessResetHomeIds(request, currentConfig, next);
   let rollbacks: ReadonlyArray<() => boolean> = [];
   for (const homeId of homeIds) {
-    const reset = beginPersistedHomeTrackerFreshnessResetInSettings({
+    const reset = beginPersistedHomeTrackerFreshnessReset({
+      store: trackerStore,
       settings,
       homeId,
       onFailure: (failure) => onFailure({ ...failure, homeId }),
@@ -235,6 +238,7 @@ const beginHomeTrackerFreshnessResetBeforeConfigWrite = (params: {
  */
 export const commitHomesConfigWriteWithTrackerFreshnessReset = (params: {
   apiApp: unknown;
+  trackerStore: TrackerStore;
   settings: Homey.App['homey']['settings'];
   store: HomesStore;
   request: AreaMutationRequest;

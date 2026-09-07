@@ -1,19 +1,18 @@
+import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import {
   getMonthStartInTimeZone,
   getZonedParts,
 } from '../utils/dateUtils';
 import { DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH } from './norwayPriceDefaults';
-import { POWER_TRACKER_STATE } from '../utils/settingsKeys';
 
-type SettingsReader = { settings: { get: (key: string) => unknown } };
-type HomeyApi = SettingsReader;
+/**
+ * The live power tracker these estimates read: the Main home's in-memory
+ * state, handed in by the wiring layer as the typed value it already holds.
+ * The price layer never reads it from persistence, and never re-validates it.
+ */
+export type PowerTrackerReadout = PowerTrackerState;
 
-const getSettingValue = (homey: HomeyApi, key: string): unknown => homey.settings.get(key);
-
-export const getCurrentMonthUsageKwh = (homey: HomeyApi, timeZone: string): number => {
-  const raw = getSettingValue(homey, POWER_TRACKER_STATE);
-  if (!raw || typeof raw !== 'object') return 0;
-  const tracker = raw as { dailyTotals?: unknown; buckets?: unknown };
+export const getCurrentMonthUsageKwh = (tracker: PowerTrackerReadout, timeZone: string): number => {
   const now = new Date();
   const monthStartMs = getMonthStartInTimeZone(now, timeZone);
   const { year, month } = getZonedParts(now, timeZone);
@@ -57,10 +56,7 @@ export const getCurrentMonthUsageKwh = (homey: HomeyApi, timeZone: string): numb
   return usageKwh;
 };
 
-export const getHourlyUsageEstimateKwh = (homey: HomeyApi): number => {
-  const raw = getSettingValue(homey, POWER_TRACKER_STATE);
-  if (!raw || typeof raw !== 'object') return DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH;
-  const tracker = raw as { lastPowerW?: unknown };
+export const getHourlyUsageEstimateKwh = (tracker: PowerTrackerReadout): number => {
   const lastPowerW = tracker.lastPowerW;
   if (typeof lastPowerW === 'number' && Number.isFinite(lastPowerW) && lastPowerW > 0) {
     return lastPowerW / 1000;

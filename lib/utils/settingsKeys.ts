@@ -2,6 +2,13 @@ export const CAPACITY_LIMIT_KW = 'capacity_limit_kw';
 export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
 export const CAPACITY_DRY_RUN = 'capacity_dry_run';
 export const POWER_TRACKER_STATE = 'power_tracker_state';
+/**
+ * Realtime push emitted after every tracker persist, for every home
+ * (`{ homeId }`). It replaced the `settings.set` echo of `POWER_TRACKER_STATE`
+ * as the settings UI's freshness signal once the tracker moved to the userdata
+ * store. Mirrored in `packages/contracts/src/settingsKeys.ts`.
+ */
+export const POWER_TRACKER_PERSISTED_EVENT = 'power_tracker_persisted';
 // Canonical id of the primary home. The main home keeps the historical
 // unsuffixed settings keys; additional homes (multi-home train) scope their
 // keys via `homeScopedSettingsKey`. The home domain proper lands in a sibling

@@ -1,4 +1,12 @@
 import type Homey from 'homey';
+import path from 'node:path';
+import { createTrackerStore, type TrackerStore } from '../lib/power/trackerStore';
+import {
+  USERDATA_DATABASE_FILE,
+  USERDATA_DIR,
+  openUserdataDatabase,
+  type UserdataDatabase,
+} from '../lib/store/userdataDatabase';
 import { PowerTrackerState } from '../lib/power/tracker';
 import {
   createHomeTrackerPersistence,
@@ -11,7 +19,7 @@ import {
   persistPowerCalibrationFlush,
   persistPowerCalibrationIfDue,
 } from '../lib/device/devicePowerCalibrationStore';
-import { emitSettingsUiPowerUpdatedForApp } from './settingsUiAppRuntime';
+import { emitPowerTrackerPersistedForApp, emitSettingsUiPowerUpdatedForApp } from './settingsUiAppRuntime';
 import { addPerfDuration } from '../lib/utils/perfCounters';
 import type { DailyBudgetService } from '../lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetUpdateStateOptions } from '../lib/dailyBudget/dailyBudgetTypes';
@@ -52,18 +60,38 @@ export type AppPowerTrackerDeps = {
   flushPowerCalibration: (nowMs?: number) => void;
 }
 
+/** The userdata database and the tracker's repository on it, opened together and closed together. */
+export type AppUserdataStores = { database: UserdataDatabase; trackerStore: TrackerStore };
+
 export class AppPowerTracker {
+  /**
+   * Open the app's userdata database — the production file unless a caller
+   * hands in another (the test harness opens SQLite's `:memory:`) — and the
+   * tracker repository on it.
+   */
+  static openUserdataStores(
+    database: UserdataDatabase = openUserdataDatabase(path.join(USERDATA_DIR, USERDATA_DATABASE_FILE)),
+  ): AppUserdataStores {
+    return { database, trackerStore: createTrackerStore(database) };
+  }
   /**
    * The Main home's tracker: the same classified persistence component every
    * meter area runs, on the unsuffixed key (`homeScopedSettingsKey` is the
    * identity for `'main'`) and unbound from any one meter — the Main-meter
    * authority governs which meter its samples come from.
    */
-  static createMainTracker(deps: HomeTrackerPersistenceDeps): HomeTrackerPersistence {
+  static createMainTracker(
+    deps: Omit<HomeTrackerPersistenceDeps, 'onPersisted'>,
+    homey: Homey.App['homey'],
+  ): HomeTrackerPersistence {
     return createHomeTrackerPersistence({
-      deps,
+      deps: {
+        ...deps,
+        onPersisted: () => emitPowerTrackerPersistedForApp(homey, MAIN_HOME_ID, deps.reportError),
+      },
       homeId: MAIN_HOME_ID,
       initialState: {},
+      persistedState: null,
       meterBinding: { kind: 'unbound' },
       timerKey: (suffix) => suffix,
     });
@@ -71,23 +99,11 @@ export class AppPowerTracker {
 
   constructor(private readonly deps: AppPowerTrackerDeps) {}
 
-  /** Boot: adopt the persisted tracker, or start fenced on a suspect read. */
+  /** Boot: adopt the stored tracker, import a legacy blob, or start fenced on a suspect read. */
   hydratePowerTracker(): void {
-    this.deps.getTracker().reloadFromSettings();
+    this.deps.getTracker().hydrate();
   }
 
-  /**
-   * Runtime reload on a `power_tracker_state` write. The key is rewritten on
-   * every persist tick, so this runs continuously; the component suppresses
-   * its own-write echoes. The calibration store is NOT reloaded here — doing
-   * so would discard the in-memory dirty samples that haven't crossed the
-   * persist debounce window yet, stalling calibration convergence. The
-   * startup load happens exactly once in `onInit` via `loadPowerCalibrationStore`.
-   */
-  loadPowerTracker(): void {
-    this.deps.getTracker().reloadFromSettings();
-    this.deps.getDailyBudgetService().updateState({ refreshObservedStats: false });
-  }
 
   /**
    * The tracker's persistence reopened on a reprobe with a valid tracker in

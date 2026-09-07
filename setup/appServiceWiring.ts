@@ -165,6 +165,8 @@ export type AppServiceWiringDeps = {
   loadPowerCalibrationStore: () => void;
   startPowerTrackerPruning: () => void;
   stopPowerTracker: () => void;
+  /** Last: every tracker has flushed by now, and nothing reads the file after this. */
+  closeUserdataDatabase: () => void;
   flushPowerCalibration: () => void;
   runStartupSettingsMigrations: () => void;
   // Routed through the app so test seams that reassign the instance method are
@@ -650,6 +652,7 @@ export class AppServiceWiring {
     persistDeferredObjectiveObservationWatermark(ctx, ctx.deferredObjectivePlanHistoryRecorder);
     ctx.priceCoordinator?.stop();
     ctx.deviceManager?.destroy();
+    this.deps.closeUserdataDatabase();
   }
 
   private clearUninitTimers(): void {

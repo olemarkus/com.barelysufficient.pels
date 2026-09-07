@@ -29,7 +29,8 @@
  * before any tree) could otherwise be double-controlled while main still plans
  * it through the fail-safe complement.
  *
- * Persistence: `power_tracker_state:<homeId>` and
+ * Persistence: the home's tracker rows in the userdata store (a legacy
+ * `power_tracker_state:<homeId>` blob is imported once) and
  * `device_last_controlled_ms:<homeId>` are rehydrated on (re)creation. Tracker
  * hydration is classified and identity-bound before this factory runs: suspect
  * reads fence construction, while an identity mismatch clears freshness but
@@ -112,6 +113,8 @@ export type HomeCapacityBundleDeps = {
   home: SubHomeConfig;
   /** Already safety-resolved against persisted state by the owning registry. */
   initialPowerTrackerState: PowerTrackerState;
+  /** The rows the store held when the area was prepared — the first save's diff base. */
+  persistedPowerTrackerState: PowerTrackerState | null;
   /** Identity every tracker persist from this runtime must carry. */
   powerTrackerMeterIdentity: PowerTrackerMeterIdentity;
   /** Membership-readiness signal (a committed zone tree has been joined). */
@@ -222,8 +225,6 @@ export type HomeCapacityBundle = {
   recordMeterSample: (powerW: number, nowMs: number) => void;
   /** Suffix-hook: reload the capacity scalars into the guard + request a rebuild. */
   reloadCapacityScalars: () => void;
-  /** Suffix-hook: adopt an externally written tracker state (own-write echoes suppressed). */
-  reloadPowerTracker: () => void;
   /**
    * Stop timers/scheduler. Identity changes additionally clear and durably
    * persist meter freshness after the final pending-state flush.
@@ -574,7 +575,8 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
 
   const tracker = createHomeTrackerPersistence({
     deps: {
-      settings: ctx.homey.settings,
+      getStore: () => ctx.getTrackerStore(),
+      legacySettings: ctx.homey.settings,
       timers: ctx.timers,
       getLogger: () => ctx.getStructuredLogger('homes'),
       getPruneDebugEmitter: () => ctx.getStructuredDebugEmitter('perf', 'perf'),
@@ -585,9 +587,11 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
       // suspect read, so a runtime recovery only reopens persistence; its
       // planning cadence is the Homey Energy poll, which never stopped.
       onRecovered: () => undefined,
+      onPersisted: () => ctx.emitPowerTrackerPersisted(homeId),
     },
     homeId,
     initialState: deps.initialPowerTrackerState,
+    persistedState: deps.persistedPowerTrackerState,
     meterBinding: { kind: 'bound', identity: deps.powerTrackerMeterIdentity },
     timerKey,
   });

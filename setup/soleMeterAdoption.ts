@@ -5,6 +5,7 @@ import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import { savePowerSourceSelection } from './homeMeterOwnership';
 import { classifySoleMeterAdoptionEligibility } from './soleMeterAdoptionEligibility';
 import { readingsAdmittedSince } from './soleMeterReadingsHistory';
+import type { TrackerStore } from '../lib/power/trackerStore';
 
 const adoptThroughSaveSeam = (homey: Homey.App['homey'], meterDeviceId: string): SoleMeterAdoptionWriteOutcome => {
   // The Power meter arm of the seam never consults activation (only a switch
@@ -38,13 +39,16 @@ const adoptThroughSaveSeam = (homey: Homey.App['homey'], meterDeviceId: string):
 export const startSoleMeterAdoption = (
   homey: Homey.App['homey'],
   timers: TimerRegistry,
+  trackerStore: TrackerStore,
   getInMemoryLastSampleMs: () => number | undefined,
 ): void => {
   new SoleMeterAdoption({
     classifyEligibility: () => classifySoleMeterAdoptionEligibility(homey.settings),
     census: censusSoleMeterAdoptionCandidate,
     adopt: (meterDeviceId) => adoptThroughSaveSeam(homey, meterDeviceId),
-    readingsAdmittedSince: (sinceMs) => readingsAdmittedSince(homey.settings, getInMemoryLastSampleMs(), sinceMs),
+    readingsAdmittedSince: (sinceMs) => readingsAdmittedSince(
+      trackerStore, homey.settings, getInMemoryLastSampleMs(), sinceMs,
+    ),
     timers,
     now: () => Date.now(),
   }).start();

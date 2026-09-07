@@ -1,5 +1,5 @@
 import { mockHomeyInstance } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   getLatestDevicesForUiFromApp,
   refreshSettingsUiDevicesForApp,
@@ -135,7 +135,8 @@ describe('settings UI app runtime helpers', () => {
       forcePlanRebuild: true,
       persistReason: 'manual',
     });
-    // The owner's reset is persisted at once, exactly one write of the tracker key.
-    expect(settingsSet.mock.calls.filter(([key]) => key === 'power_tracker_state')).toHaveLength(1);
+    // The owner's reset is persisted at once, and never through the settings key.
+    expect(getStoredPowerTrackerForTests()?.lastPowerW).toBe(4300);
+    expect(settingsSet.mock.calls.filter(([key]) => key === 'power_tracker_state')).toHaveLength(0);
   });
 });

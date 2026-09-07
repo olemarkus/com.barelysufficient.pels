@@ -42,6 +42,7 @@ import {
   PRICE_SCHEME,
   WEATHER_ADVISOR_SETTINGS,
   PV_FORECAST_SOURCE,
+  POWER_TRACKER_PERSISTED_EVENT,
 } from '../../../contracts/src/settingsKeys.ts';
 import { refreshCurrentModes } from './currentModes.ts';
 import { loadAdvancedSettings, loadCapacitySettings, notifyAreaSimulationSettingChanged } from './capacity.ts';
@@ -217,11 +218,13 @@ const refreshPowerSettings = (key: string) => {
   refreshStaleDataStatus('settings.set');
 };
 
-// A sub-home commits a plan by persisting its own suffixed `pels_status:<id>`
-// and `power_tracker_state:<id>` — the ONLY freshness signal a sub-home gets,
-// because the realtime `plan_updated` / `power_updated` streams are the main
-// home's and are deliberately never widened (widening them would repaint Main's
-// Overview from a sub-home's device set in a Homey-cached stale WebView).
+// A sub-home commits a plan by persisting its own suffixed `pels_status:<id>`,
+// and its tracker persists announce themselves through the
+// `power_tracker_persisted` push (routed below as if `power_tracker_state:<id>`
+// had been written) — the ONLY freshness signals a sub-home gets, because the
+// realtime `plan_updated` / `power_updated` streams are the main home's and are
+// deliberately never widened (widening them would repaint Main's Overview from
+// a sub-home's device set in a Homey-cached stale WebView).
 //
 // Drop every home-scoped plan/power entry on any such write rather than parsing
 // the id out of the key: resolving suffixed keys client-side is the precedent
@@ -266,8 +269,8 @@ const refreshHomeScopedReadModels = (key: string, context: string) => {
     invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
   }
   if (selectedHomeId === MAIN_HOME_ID) return;
-  // The SELECTED area's own tracker write repaints a visible Usage panel AND a
-  // visible Overview — this suffixed stream is that home's only freshness
+  // The SELECTED area's own tracker persist repaints a visible Usage panel AND
+  // a visible Overview — this signal is that home's only power freshness
   // signal (the realtime `power_updated` push is Main's and is never widened),
   // and BOTH surfaces consume the scoped power payload just invalidated above:
   // the Overview hero's power, solar and freshness state come from it. Routing
@@ -369,6 +372,24 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // drop with them); and an unset roster/pins blob de-resolves the scoped
   // homes just like a rewrite does.
   refreshHomeScopedReadModels(key, 'settings.unset');
+};
+
+/**
+ * The runtime persisted a home's tracker (`power_tracker_persisted`). The
+ * tracker lives in the userdata store, which produces no `settings.set` echo,
+ * so this push is routed exactly as the echo of the home's tracker key used to
+ * be: Main's bare-key power refresh, or the scoped read-model sweep.
+ */
+export const handlePowerTrackerPersisted = (payload: unknown) => {
+  const homeId = payload !== null && typeof payload === 'object'
+    ? (payload as { homeId?: unknown }).homeId
+    : undefined;
+  if (typeof homeId !== 'string' || homeId.length === 0) return;
+  if (homeId === MAIN_HOME_ID) {
+    refreshPowerSettings(POWER_TRACKER_STATE);
+    return;
+  }
+  refreshHomeScopedReadModels(homeScopedSettingsKey(POWER_TRACKER_STATE, homeId), POWER_TRACKER_PERSISTED_EVENT);
 };
 
 export const createSettingsSetHandler = () => (key: string) => {

@@ -97,7 +97,7 @@ Before this change, `kwhPerUnitProvenance.kWhPerUnit` on an active plan recorded
 
 Consequence: **two plans for the same device starting from different SoCs or temperatures can record different `kWhPerUnit` even when nothing in the model has changed.** This is intentional — the recorded value reflects what was actually used to size this plan. Operators reading provenance should treat it as "rate used for this plan," not "the device's learned rate."
 
-If a UI surface needs the stable learned mean separately, it can read `objectiveProfiles[deviceId].kwhPerUnit.mean` directly from `power_tracker_state`.
+If a UI surface needs the stable learned mean separately, it can read `objectiveProfiles[deviceId].kwhPerUnit.mean` from the live tracker through `api.js` (the tracker persists to the userdata store, not a settings key).
 
 ## `displayConfidence` for the smart-task chip
 

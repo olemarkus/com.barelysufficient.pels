@@ -5,7 +5,7 @@ import {
   primeApiCache,
   setHomeyClient,
 } from '../src/ui/homey.ts';
-import { createSettingsSetHandler, createSettingsUnsetHandler } from '../src/ui/settingsChangeRouter.ts';
+import { createSettingsSetHandler, createSettingsUnsetHandler, handlePowerTrackerPersisted } from '../src/ui/settingsChangeRouter.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PLAN_PATH,
@@ -85,6 +85,35 @@ describe('settings-change router sweeps home-scoped read models', () => {
     createSettingsSetHandler()(`${POWER_TRACKER_STATE}:${AREA}`);
     expect(await isCached(scoped(SETTINGS_UI_DEVICES_PATH), 'area-devices')).toBe(false);
     expect(await isCached(SETTINGS_UI_DEVICES_PATH, 'bare-devices')).toBe(true);
+  });
+
+  // The tracker persists to the userdata store now, which produces no
+  // `settings.set` echo; the runtime's `power_tracker_persisted` push carries
+  // the home id instead and must sweep exactly what the suffixed key write did.
+  it('a power_tracker_persisted push for an area sweeps scoped plan, power and devices, never the bare entries', async () => {
+    handlePowerTrackerPersisted({ homeId: AREA });
+    expect(await isCached(scoped(SETTINGS_UI_PLAN_PATH), 'area-plan')).toBe(false);
+    expect(await isCached(scoped(SETTINGS_UI_POWER_PATH), 'area-power')).toBe(false);
+    expect(await isCached(scoped(SETTINGS_UI_DEVICES_PATH), 'area-devices')).toBe(false);
+    expect(await isCached(SETTINGS_UI_PLAN_PATH, 'bare-plan')).toBe(true);
+    expect(await isCached(SETTINGS_UI_POWER_PATH, 'bare-power')).toBe(true);
+    expect(await isCached(SETTINGS_UI_DEVICES_PATH, 'bare-devices')).toBe(true);
+  });
+
+  it('a power_tracker_persisted push for the main home sweeps the power and devices entries of every home', async () => {
+    handlePowerTrackerPersisted({ homeId: 'main' });
+    expect(await isCached(SETTINGS_UI_POWER_PATH, 'bare-power')).toBe(false);
+    expect(await isCached(SETTINGS_UI_DEVICES_PATH, 'bare-devices')).toBe(false);
+    expect(await isCached(scoped(SETTINGS_UI_POWER_PATH), 'area-power')).toBe(false);
+    // Plan entries are not the tracker's to sweep.
+    expect(await isCached(SETTINGS_UI_PLAN_PATH, 'bare-plan')).toBe(true);
+  });
+
+  it('a malformed power_tracker_persisted push sweeps nothing', async () => {
+    handlePowerTrackerPersisted({ homeId: 42 });
+    handlePowerTrackerPersisted(null);
+    expect(await isCached(scoped(SETTINGS_UI_POWER_PATH), 'area-power')).toBe(true);
+    expect(await isCached(SETTINGS_UI_POWER_PATH, 'bare-power')).toBe(true);
   });
 
   it('a suffixed status write leaves scoped devices cached (no devices field reads it)', async () => {

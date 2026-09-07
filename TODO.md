@@ -1442,6 +1442,28 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Architecture and tooling debt
 
+- [ ] **P1 — the remaining history keys still ride `homey.settings`, and every write of any key
+      pays for all of them.** The SDK's `ManagerSettings.set` ships the ENTIRE settings object to
+      core on every write of any key (`notes/settings-key-ownership.md` § "Which store"). The power
+      tracker moved to the userdata store (`lib/store/userdataDatabase.ts`,
+      `lib/power/trackerStore.ts`); these have not, and together they are still ~700 kB of the
+      blob: `weather_history_state` (190 kB, `lib/weather/`), `deferred_objective_plan_history` +
+      `_v5` (280 kB) and `deferred_objective_active_plans` (28 kB, `setup/appInit/deferredRecorders.ts`),
+      `device_diagnostics_v1` (82 kB, `setup/deviceDiagnosticsStateAdapter.ts`), the tariff/price
+      caches `nettleie_data`, `combined_prices`, `electricity_prices` (`setup/priceDataAdapter.ts`,
+      `setup/priceCombinedPricesAdapter.ts`), `device_action_log_by_device`,
+      `target_devices_snapshot` / `device_plan_snapshot`, `power_calibration`, `device_power_peaks`
+      and `learned_thermostat_deadband_c`. Change: one repository per family beside its domain,
+      taking the open database (the tracker store is the pattern: rows or one JSON row per event,
+      diffed writes, legacy key imported once and unset, settings UI served through `api.js`).
+      Then `pels_status` (0.6 kB, ~50 writes/h, `lib/plan/planStatusWriter.ts`) stops being a
+      settings write: an `api.js` read plus the realtime push the UI already gets. Done when
+      `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production Homey is
+      under ~100 kB and the perf counter `settings_write_ms` no longer records a write above a few
+      milliseconds. Also retire the two dev harnesses that still read the retired tracker key —
+      `scripts/measure-settings-ui-homey.mjs` (`buildPowerPayload`) and the fixture in
+      `scripts/benchmark-settings-ui-boot.mjs` — by pointing them at the `ui_power` API payload.
+
 - [ ] **`stateOfCharge` rides the plan device undeclared, and the objectives layer depends on it.**
       `PlanInputDeviceBase` states "No `evBoost` / `stateOfCharge` / `temperatureBoost`"
       (`packages/planner-types/src/planInputDevice.ts`), and `toPlanDevice` does not declare the

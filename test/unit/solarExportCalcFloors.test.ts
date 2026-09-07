@@ -37,14 +37,8 @@ describe('solar-export calculation floors', () => {
   it('getCurrentMonthUsageKwh floors negative export hours out of month usage', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
-    const homey = {
-      settings: {
-        get: (key: string) => (key === 'power_tracker_state'
-          ? { buckets: { '2026-01-10T12:00:00.000Z': -0.5, '2026-01-11T12:00:00.000Z': 2.0 } }
-          : undefined),
-      },
-    };
-    expect(getCurrentMonthUsageKwh(homey, 'UTC')).toBe(2.0); // RED: 1.5
+    const tracker = { buckets: { '2026-01-10T12:00:00.000Z': -0.5, '2026-01-11T12:00:00.000Z': 2.0 } };
+    expect(getCurrentMonthUsageKwh(tracker, 'UTC')).toBe(2.0); // RED: 1.5
   });
 
   it('buildBucketUsage floors a negative export hour out of the metered reporting figures', () => {

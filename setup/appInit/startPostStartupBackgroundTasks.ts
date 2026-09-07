@@ -34,7 +34,7 @@ export const startPostStartupBackgroundTasks = (
   // Name the whole-home meter for an install that has none chosen, when Homey
   // Energy lists exactly one. Self-delaying, so it runs after the settings
   // handlers are wired and reacts like an owner's pick would.
-  startSoleMeterAdoption(ctx.homey, deps.timers, () => ctx.powerTracker.lastTimestamp);
+  startSoleMeterAdoption(ctx.homey, deps.timers, ctx.getTrackerStore(), () => ctx.powerTracker.lastTimestamp);
   const collectors = startBackgroundCollectors(
     ctx,
     (collectorCtx) => deps.backgroundTasks.startWeatherCollector(collectorCtx),

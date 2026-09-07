@@ -1,3 +1,8 @@
+import { createTrackerStore } from '../../lib/power/trackerStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
+
+// One store for the file: no spec here persists a tracker, the context only needs the seam.
+const trackerStore = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
 import {
   buildCapacitySettingsSnapshot,
   initSettingsHandlerForApp,
@@ -78,7 +83,9 @@ const buildContext = (): AppContext => {
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     getTimeZone: () => 'Europe/Oslo',
     notifyOperatingModeChanged: vi.fn(),
-    loadPowerTracker: vi.fn(),
+    hydratePowerTracker: vi.fn(),
+    getTrackerStore: () => trackerStore,
+    emitPowerTrackerPersisted: vi.fn(),
     loadCapacitySettings: vi.fn(),
     loadTemperatureControlPolicySettings: vi.fn(),
     loadPriceOptimizationSettings: vi.fn(),
@@ -227,8 +234,7 @@ describe('initSettingsHandlerForApp', () => {
     expect(onHomeScopedSettingChanged).toHaveBeenNthCalledWith(1, POWER_TRACKER_STATE, 'cabin');
     expect(onHomeScopedSettingChanged).toHaveBeenNthCalledWith(2, CAPACITY_LIMIT_KW, 'cabin');
     // The critical invariant: a suffixed write must not run the main home's
-    // handler for the base key (reload main's tracker / capacity settings).
-    expect(ctx.loadPowerTracker).not.toHaveBeenCalled();
+    // handler for the base key (reload main's capacity settings).
     expect(ctx.loadCapacitySettings).not.toHaveBeenCalled();
     expect(ctx.updateDailyBudgetState).not.toHaveBeenCalled();
   });

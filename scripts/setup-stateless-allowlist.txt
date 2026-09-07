@@ -28,7 +28,6 @@ setup/appDeviceSupport.ts 1
 # --- Home lane (→ lib/home; the meter-provenance pair may need lib/power) ---
 setup/homeMembership.ts 15
 setup/homeMainMeterAuthority.ts 7
-setup/homeRuntime/homeRuntimeRegistry.ts 8
-
+setup/homeRuntime/homeRuntimeRegistry.ts 7
 # --- Composition root and leftovers ----------------------------------------
 # Service handles belong to app.ts/AppContext; the rest to their domain module.

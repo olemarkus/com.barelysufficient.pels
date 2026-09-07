@@ -45,7 +45,6 @@ import {
   HOMEY_ENERGY_METER_DEVICE_ID,
   parseHomeScopedSettingsKey,
   POWER_SOURCE,
-  POWER_TRACKER_STATE,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
   PRICE_SCHEME,
@@ -79,7 +78,6 @@ export type SettingsHandlerDeps = {
    */
   rebuildPlanFromCache: (settingsSource: string) => Promise<void>;
   refreshTargetDevicesSnapshot: () => Promise<void>;
-  loadPowerTracker: () => void;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityDryRun: () => boolean;
   loadPriceOptimizationSettings: () => void;
@@ -139,8 +137,8 @@ export type SettingsHandlerDeps = {
   /**
    * Writes to home-suffixed keys (`<base>:<homeId>`, non-main home, see
    * `parseHomeScopedSettingsKey`) route here instead of the exact-key
-   * handlers — a `power_tracker_state:<homeId>` write must never reload the
-   * main home's power tracker. The multi-home runtime registry provides the
+   * handlers — a `capacity_limit_kw:<homeId>` write must never reload the
+   * main home's capacity scalars. The multi-home runtime registry provides the
    * consumer; the optional seam remains absent in single-home/test contexts,
    * where the write is ignored.
    * Rejections and throws are contained and logged; they never propagate to
@@ -148,8 +146,8 @@ export type SettingsHandlerDeps = {
    *
    * Consumer contract: invocations are NOT serialized against the settings
    * handler queue or against homes-config processing, and are NOT deduped —
-   * expect high-frequency echoes such as `power_tracker_state:<homeId>`
-   * self-persist writes at sample cadence. Treat every call as an idempotent
+   * expect echoes of the app's own suffixed writes (`pels_status:<homeId>` on
+   * every plan commit). Treat every call as an idempotent
    * dirty-mark to reconcile against the homes registry, never as an ordered,
    * deduplicated command. An unknown homeId is transient: dirty-mark and
    * reconcile — never a destructive reset, never a dropped write.
@@ -284,8 +282,8 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
     const scoped = parseHomeScopedSettingsKey(key);
     if (scoped.homeId !== MAIN_HOME_ID) {
       // Non-main-home write: route to the hook only. Falling through would run
-      // the main home's handler for the base key (e.g. reload main's power
-      // tracker for `power_tracker_state:<homeId>`), which must never happen.
+      // the main home's handler for the base key (e.g. reload main's capacity
+      // scalars for `capacity_limit_kw:<homeId>`), which must never happen.
       // Awaiting inside the try contains async-hook rejections too — the
       // settings `set` listener at the SDK seam must never see one.
       try {
@@ -439,7 +437,6 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, EV_BOOST_SETTINGS);
     },
-    [POWER_TRACKER_STATE]: async () => deps.loadPowerTracker(),
     [CAPACITY_LIMIT_KW]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_MARGIN_KW]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_DRY_RUN]: async () => {

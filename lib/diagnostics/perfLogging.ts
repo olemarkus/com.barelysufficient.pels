@@ -93,6 +93,7 @@ const VALUE_DURATION_KEYS = new Set([
   'daily_budget_compute_ms',
   'daily_budget_persist_ms',
   'settings_write_ms',
+  'power_tracker_store_write_ms',
   'device_fetch_ms',
   'device_fetch_full_ms',
   'device_fetch_targeted_ms',

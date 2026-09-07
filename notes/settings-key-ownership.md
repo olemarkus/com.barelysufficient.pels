@@ -76,3 +76,30 @@ runtime reader and the settings UI's select), so a second local parser would
 have been one drift away from planning and the UI naming different sources for
 the same bytes. Its policy is recognise-or-default rather than sanitize-and-keep
 — see the module for why defaulting is safe at this particular key.
+
+## Which store a key lives in
+
+Part of an owner's contract is *where* the bytes live, and there are two stores
+with opposite cost profiles:
+
+- **`homey.settings`** — configuration and mission-critical state: managed and
+  controllable devices, priorities, mode targets and the mode-target ownership
+  state (a restore target the app cannot recover is not regenerable), device
+  control profiles, smart-task definitions, price/budget/EV/weather settings,
+  meter and source choice, small live latches. The SDK's `ManagerSettings.set`
+  stringifies the value, stringifies the stored value to compare, parses a copy,
+  and then ships the **entire settings object** to Homey core over the runner's
+  websocket — on every write of any key. Every byte in any key is paid on every
+  write of every other key, so this store must stay small and rarely written.
+- **`/userdata/pels.sqlite`** (`lib/store/userdataDatabase.ts`) — history,
+  learned data and caches: sad if lost, never mission-critical, always
+  regenerable. A write costs the bytes written and core never sees it. The
+  power tracker's hourly/daily series were the first to move
+  (`lib/power/trackerStore.ts`, one row per bucket, diffed writes); the plan
+  history, diagnostics, weather history, calibration and the price/tariff
+  caches follow.
+
+Owner ruling 2026-09-07. A key that moves is imported from its legacy settings
+value once, on the first boot that finds no rows, and the legacy key is then
+unset; nothing reads it again. The settings UI reaches history through
+`api.js` endpoints, never through a settings key.

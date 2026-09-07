@@ -75,6 +75,7 @@ describe('Homey price service', () => {
       () => timeZone,
       () => energyApi,
       createPriceDataStore(mockHomeyInstance as never),
+      () => ({}),
     );
 
     await service.refreshSpotPrices(true);
@@ -110,6 +111,7 @@ describe('Homey price service', () => {
       () => timeZone,
       () => energyApi,
       createPriceDataStore(mockHomeyInstance as never),
+      () => ({}),
     );
 
     await service.refreshSpotPrices(false);
@@ -129,6 +131,7 @@ describe('Homey price service', () => {
       () => timeZone,
       () => null,
       createPriceDataStore(mockHomeyInstance as never),
+      () => ({}),
     );
 
     await service.refreshSpotPrices(true);
@@ -152,6 +155,7 @@ describe('Homey price service', () => {
       () => timeZone,
       () => energyApi,
       createPriceDataStore(mockHomeyInstance as never),
+      () => ({}),
     );
 
     await service.refreshSpotPrices(true);
@@ -186,6 +190,7 @@ describe('Homey price service', () => {
       () => timeZone,
       () => energyApi,
       createPriceDataStore(mockHomeyInstance as never),
+      () => ({}),
     );
 
     await service.refreshSpotPrices(true);
@@ -219,6 +224,7 @@ describe('Homey price service', () => {
       () => timeZone,
       () => energyApi,
       createPriceDataStore(mockHomeyInstance as never),
+      () => ({}),
     );
 
     await service.refreshSpotPrices(true);
@@ -247,6 +253,7 @@ describe('Homey price service', () => {
       () => timeZone,
       undefined,
       createPriceDataStore(mockHomeyInstance as never),
+      () => ({}),
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -282,6 +289,7 @@ describe('Homey price service', () => {
       () => timeZone,
       undefined,
       createPriceDataStore(mockHomeyInstance as never),
+      () => ({}),
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -328,6 +336,7 @@ describe('Homey price service', () => {
       () => timeZone,
       undefined,
       createPriceDataStore(mockHomeyInstance as never),
+      () => ({}),
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -359,6 +368,7 @@ describe('Homey price service', () => {
       () => timeZone,
       undefined,
       createPriceDataStore(mockHomeyInstance as never),
+      () => ({}),
     );
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
@@ -391,6 +401,7 @@ describe('Homey price service', () => {
       () => timeZone,
       undefined,
       createPriceDataStore(mockHomeyInstance as never),
+      () => ({}),
     );
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 

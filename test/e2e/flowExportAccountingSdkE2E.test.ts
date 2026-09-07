@@ -23,7 +23,7 @@
 //      demonstrably drawing.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, OPERATING_MODE_SETTING, OVERSHOOT_BEHAVIORS,
 } from '../../lib/utils/settingsKeys';
@@ -114,7 +114,7 @@ describe('export accounting on the flow power source (SDK-boundary e2e)', () => 
     };
 
     const readTracker = (): PowerTrackerState | null => (
-      mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState | null
+      getStoredPowerTrackerForTests()
     );
 
     // Import first, so the export interval below integrates between two samples.
@@ -179,11 +179,11 @@ describe('export accounting on the flow power source (SDK-boundary e2e)', () => 
     await flushDetached(20);
 
     await drainUntil(() => {
-      const t = mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState | null;
+      const t = getStoredPowerTrackerForTests();
       return typeof t?.lastControlledPowerW === 'number';
     });
 
-    const tracker = mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState | null;
+    const tracker = getStoredPowerTrackerForTests();
     // The heater's own measured 2 kW survives the export sample. Flooring gross
     // at 0 would report 0 W of managed load here while it is plainly running.
     expect(tracker?.lastControlledPowerW).toBe(HEATER_DRAW_W);

@@ -1,3 +1,4 @@
+import { emitPowerTrackerPersistedForApp } from './settingsUiAppRuntime';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
@@ -233,11 +234,11 @@ abstract class AppRuntimeApi extends Base {
     }
     this.context.lastNotifiedOperatingMode = trimmed;
   }
-  public loadPowerTracker(): void {
-    this.powerTrackerHelpers.loadPowerTracker();
-  }
   public hydratePowerTracker(): void {
     this.powerTrackerHelpers.hydratePowerTracker();
+  }
+  public emitPowerTrackerPersisted(homeId: string): void {
+    emitPowerTrackerPersistedForApp(this.homey, homeId, (message, error) => this.error(message, error));
   }
   protected loadPowerCalibrationStore(): void { this.powerTrackerHelpers.loadPowerCalibrationStore(); }
   protected persistPowerCalibrationIfDue(nowMs: number = Date.now()): void {

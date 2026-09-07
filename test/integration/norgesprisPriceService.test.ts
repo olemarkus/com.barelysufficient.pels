@@ -1,3 +1,4 @@
+import type { PowerTrackerReadout } from '../../lib/price/priceServiceNorgespris';
 import type Homey from 'homey';
 import PriceService from '../../lib/price/priceService';
 import { createPriceDataStore } from '../../setup/priceDataAdapter';
@@ -34,6 +35,8 @@ const createService = (): PriceService => new PriceService(
   () => mockHomeyInstance.clock.getTimezone(),
   undefined,
   createPriceDataStore(mockHomeyInstance as never),
+  // The live tracker, as these specs seed it: through the mock settings key.
+  () => (mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerReadout | null) ?? {},
 );
 
 const setNorwayNorgesprisSettings = (params: {

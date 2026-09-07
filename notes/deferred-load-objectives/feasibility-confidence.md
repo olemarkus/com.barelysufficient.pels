@@ -50,8 +50,8 @@ Sampled the `objective_profile_*` structured events:
   for power *variation* (see the poisoning vector below).
 - **Samples converge and bands engage.** Mature devices reach
   `acceptedSamples:500+`, `bufferedSamples:64` (ring-buffer cap), `bandsCount:2`.
-- **The buffer is persisted.** It rides in `power_tracker_state`
-  (`PowerTrackerState.objectiveProfiles`), saved every persist tick and
+- **The buffer is persisted.** It rides in the tracker's rows in the userdata
+  store (`PowerTrackerState.objectiveProfiles`), saved every persist tick and
   reloaded at startup; retention is 30 days (`OBJECTIVE_PROFILE_RETENTION_MS`).
   A suspect SDK read fences persistence and leaves the in-memory state
   untouched (`lib/power/homeTrackerPersistence.ts`, the same component every

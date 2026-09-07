@@ -1,5 +1,5 @@
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 
 // An install with no whole-home meter chosen: a legacy Automatic install
 // (Homey Energy source, meter stored as null) or a fresh install with no
@@ -100,7 +100,7 @@ describe('Whole-home meter not chosen at boot (SDK-boundary e2e)', () => {
     // The adoption is an ordinary settings change to the rest of the app: the
     // meter handler restarts the poll, and the tracker persists the reading.
     expect(hasEvent(events, 'homey_energy_meter_changed')).toBe(true);
-    const tracker = mockHomeyInstance.settings.get('power_tracker_state') as { lastPowerW?: number } | null;
+    const tracker = getStoredPowerTrackerForTests();
     expect(tracker?.lastPowerW).toBe(3_200);
 
     await app.onUninit?.();
@@ -189,7 +189,7 @@ describe('Readings already arriving through a Flow (SDK-boundary e2e)', () => {
     expect(mockHomeyInstance.settings.get('homey_energy_meter_device_id')).toBeNull();
     expect(hasEvent(events, 'sole_meter_adopted')).toBe(false);
     expect(hasEvent(events, 'sole_meter_adoption_not_applicable')).toBe(true);
-    const tracker = mockHomeyInstance.settings.get('power_tracker_state') as { lastPowerW?: number } | null;
+    const tracker = getStoredPowerTrackerForTests();
     expect(tracker?.lastPowerW).toBe(2_500);
 
     await app.onUninit?.();

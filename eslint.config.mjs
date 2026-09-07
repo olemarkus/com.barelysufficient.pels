@@ -717,4 +717,19 @@ export default tseslint.config(
       'import-x/max-dependencies': ['error', { max: 31, ignoreTypeImports: true }],
     },
   },
+  // lib/store is the one place `node:sqlite` is named (dependency-cruiser's
+  // `no-sqlite-outside-store` keeps it that way). The builtin is still marked
+  // experimental in Node 22 but ships unflagged in the app runner's 22.23, and
+  // the app pins Node ^22.17; the shared rule's >=18 floor exists for code the
+  // WebView and widget toolchains may also load, which this module never is.
+  {
+    files: ['lib/store/**/*.ts'],
+    rules: {
+      'n/no-unsupported-features/node-builtins': ['error', {
+        version: '>=22.17.0',
+        allowExperimental: true,
+        ignores: ['fetch'],
+      }],
+    },
+  },
 );

@@ -1,3 +1,5 @@
+import { createTrackerStore } from '../../lib/power/trackerStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import { steppedStoresForTest } from './steppedStores';
 import { vi } from 'vitest';
@@ -180,6 +182,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     debugStructured: vi.fn(),
   });
 
+  const trackerStore = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
   const context: AppContext = {
     startupBootstrap: undefined,
     getPvForecastSourceUiStatus: () => ({ kind: 'unknown' }),
@@ -193,8 +196,9 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     getTimeZone: () => 'Europe/Oslo',
     notifyOperatingModeChanged: vi.fn(),
-    loadPowerTracker: vi.fn(),
     hydratePowerTracker: vi.fn(),
+    getTrackerStore: () => trackerStore,
+    emitPowerTrackerPersisted: vi.fn(),
     loadCapacitySettings: vi.fn(),
     loadTemperatureControlPolicySettings: vi.fn(),
     loadPriceOptimizationSettings: vi.fn(),

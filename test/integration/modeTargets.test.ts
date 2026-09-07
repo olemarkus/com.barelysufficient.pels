@@ -14,7 +14,7 @@ vi.mock('../../setup/appLifecycleHelpers', () => ({
   // Typed loosely, the optional chaining below would let a future reorder skip
   // the startup rebuild silently and leave this spec green on a shorter start.
   startAppServices: async (ctx: InitializedAppContext) => {
-    ctx.loadPowerTracker();
+    ctx.hydratePowerTracker();
     ctx.loadPriceOptimizationSettings();
     ctx.priceCoordinator.initOptimizer();
     await ctx.updateOverheadToken();

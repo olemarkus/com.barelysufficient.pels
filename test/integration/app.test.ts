@@ -126,7 +126,10 @@ const initApp = async (app: MyApp) => {
   app['runStartupSettingsMigrations']();
   app['loadCapacitySettings']();
   app['initDailyBudgetService']();
-  app['loadPowerTracker']();
+  app['hydratePowerTracker']();
+  // The removed settings-reload hook used to refresh the daily budget's
+  // snapshot here; keep that side effect for the specs that read it.
+  app.dailyBudgetService.updateState({ refreshObservedStats: false });
   app['loadPriceOptimizationSettings']();
   await app['initDeviceManager']();
   app['initCapacityGuard']();
@@ -1710,7 +1713,7 @@ describe('MyApp initialization', () => {
       }),
     });
     expect(powerEvents[0].data).not.toHaveProperty('tracker');
-    expect(mockHomeyInstance.settings.get('power_tracker_state')).toMatchObject(nextState);
+    expect(app.getTrackerStore().load('main')).toMatchObject(nextState);
   });
 
   it('classifies a power_updated push from a latch-less tracker as not measured, never last run\'s blob', async () => {
@@ -1758,30 +1761,33 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const storeSaveSpy = vi.spyOn(app.getTrackerStore(), 'save');
     const beforeCounts = getPerfSnapshot().counts;
     const start = new Date('2026-03-03T10:05:00.000Z').getTime();
     app.powerTracker = { lastPowerW: 1000, lastTimestamp: start };
     settingsSetSpy.mockClear();
+    storeSaveSpy.mockClear();
 
     app['savePowerTracker']({ lastPowerW: 1100, lastTimestamp: start + 1000 });
     app['savePowerTracker']({ lastPowerW: 1200, lastTimestamp: start + 2000 });
     app['savePowerTracker']({ lastPowerW: 1300, lastTimestamp: start + 3000 });
 
-    expect(settingsSetSpy.mock.calls.filter(([key]) => key === 'power_tracker_state')).toHaveLength(0);
+    expect(storeSaveSpy).not.toHaveBeenCalled();
     expect(app.timers.has('powerTrackerSave')).toBe(true);
 
     await vi.advanceTimersByTimeAsync(60 * 1000);
 
-    const powerTrackerWrites = settingsSetSpy.mock.calls.filter(([key]) => key === 'power_tracker_state');
-    expect(powerTrackerWrites).toHaveLength(1);
-    expect(powerTrackerWrites[0][1]).toMatchObject({ lastPowerW: 1300, lastTimestamp: start + 3000 });
+    // One store write for three samples, and never a settings write.
+    expect(storeSaveSpy).toHaveBeenCalledTimes(1);
+    expect(storeSaveSpy.mock.calls[0]?.[1]).toMatchObject({ lastPowerW: 1300, lastTimestamp: start + 3000 });
+    expect(settingsSetSpy.mock.calls.filter(([key]) => key === 'power_tracker_state')).toHaveLength(0);
     const afterCounts = getPerfSnapshot().counts;
-    expect((afterCounts['settings_set.power_tracker_state_scheduled_total'] || 0)
-      - (beforeCounts['settings_set.power_tracker_state_scheduled_total'] || 0)).toBe(1);
-    expect((afterCounts['settings_set.power_tracker_state_skipped_pending_total'] || 0)
-      - (beforeCounts['settings_set.power_tracker_state_skipped_pending_total'] || 0)).toBe(2);
-    expect((afterCounts['settings_set.power_tracker_state_reason.scheduled_total'] || 0)
-      - (beforeCounts['settings_set.power_tracker_state_reason.scheduled_total'] || 0)).toBe(1);
+    expect((afterCounts['power_tracker_store.scheduled_total'] || 0)
+      - (beforeCounts['power_tracker_store.scheduled_total'] || 0)).toBe(1);
+    expect((afterCounts['power_tracker_store.skipped_pending_total'] || 0)
+      - (beforeCounts['power_tracker_store.skipped_pending_total'] || 0)).toBe(2);
+    expect((afterCounts['power_tracker_store.save_reason.scheduled_total'] || 0)
+      - (beforeCounts['power_tracker_store.save_reason.scheduled_total'] || 0)).toBe(1);
   });
 
   it('flushes pending power tracker persistence when samples cross a UTC hour boundary', async () => {
@@ -1794,26 +1800,25 @@ describe('MyApp initialization', () => {
 
     const app = createApp();
     await initApp(app);
-    const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const storeSaveSpy = vi.spyOn(app.getTrackerStore(), 'save');
     const beforeCounts = getPerfSnapshot().counts;
     const start = new Date('2026-03-03T10:59:58.000Z').getTime();
     app.powerTracker = { lastPowerW: 1000, lastTimestamp: start };
-    settingsSetSpy.mockClear();
+    storeSaveSpy.mockClear();
 
     app['savePowerTracker']({ lastPowerW: 1100, lastTimestamp: start + 1000 });
     expect(app.timers.has('powerTrackerSave')).toBe(true);
 
     app['savePowerTracker']({ lastPowerW: 1200, lastTimestamp: start + 3000 });
 
-    const powerTrackerWrites = settingsSetSpy.mock.calls.filter(([key]) => key === 'power_tracker_state');
-    expect(powerTrackerWrites).toHaveLength(1);
-    expect(powerTrackerWrites[0][1]).toMatchObject({ lastPowerW: 1200, lastTimestamp: start + 3000 });
+    expect(storeSaveSpy).toHaveBeenCalledTimes(1);
+    expect(storeSaveSpy.mock.calls[0]?.[1]).toMatchObject({ lastPowerW: 1200, lastTimestamp: start + 3000 });
     expect(app.timers.has('powerTrackerSave')).toBe(false);
     const afterCounts = getPerfSnapshot().counts;
-    expect((afterCounts['settings_set.power_tracker_state_forced_hour_rollover_total'] || 0)
-      - (beforeCounts['settings_set.power_tracker_state_forced_hour_rollover_total'] || 0)).toBe(1);
-    expect((afterCounts['settings_set.power_tracker_state_reason.hour_rollover_total'] || 0)
-      - (beforeCounts['settings_set.power_tracker_state_reason.hour_rollover_total'] || 0)).toBe(1);
+    expect((afterCounts['power_tracker_store.forced_hour_rollover_total'] || 0)
+      - (beforeCounts['power_tracker_store.forced_hour_rollover_total'] || 0)).toBe(1);
+    expect((afterCounts['power_tracker_store.save_reason.hour_rollover_total'] || 0)
+      - (beforeCounts['power_tracker_store.save_reason.hour_rollover_total'] || 0)).toBe(1);
   });
 
   it('set_capacity_mode flow card handles autocomplete object format', async () => {
@@ -4006,14 +4011,16 @@ describe('periodic snapshot refresh scheduling', () => {
     app.snapshotHelpers.startPeriodicSnapshotRefresh();
     app.snapshotHelpers.schedulePostActuationRefresh();
     app.homeyEnergyHelpers.start();
+    const storeSaveSpy = vi.spyOn(app.getTrackerStore(), 'save');
     app['savePowerTracker']({ lastTimestamp: Date.now() });
 
     expect(vi.getTimerCount()).toBeGreaterThan(0);
 
     await app.onUninit?.();
 
-    // The pending debounced tracker persist is flushed at the settings seam.
-    expect(settingsSet.mock.calls.some(([key]) => key === 'power_tracker_state')).toBe(true);
+    // The pending debounced tracker persist is flushed into the store, never settings.
+    expect(storeSaveSpy).toHaveBeenCalled();
+    expect(settingsSet.mock.calls.some(([key]) => key === 'power_tracker_state')).toBe(false);
     expect(disposeReachabilitySpy).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });

@@ -16,8 +16,9 @@
  * Suffix-hook consumer (`onHomeScopedSettingChanged` contract in
  * `lib/utils/settingsHandlers.ts`): calls are idempotent dirty-marks — an
  * unknown homeId triggers ONE reconcile against the registry and is otherwise
- * ignored as transient (never a teardown, never an error); own-write
- * `power_tracker_state:<homeId>` echoes are suppressed inside the bundle.
+ * ignored as transient (never a teardown, never an error). The tracker no
+ * longer rides a settings key at all (it persists to the userdata store), so
+ * no tracker echo reaches this hook.
  *
  * Sample routing: `routeMeterReadings` receives the per-meter map one
  * `manager/energy/live` poll resolved (transport seam
@@ -41,7 +42,6 @@ import {
   MODE_CATALOG_INITIALIZED,
   MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
-  POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 import type { PowerSource } from '../../lib/power/powerSource';
 import { createHomesStore } from '../homeRegistryAdapter';
@@ -111,7 +111,6 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
   private stopped = false;
   private handledRuntimeActive: boolean;
   private readonly activationResetHomeIds = new Set<HomeId>();
-  private readonly trackerSafetyWrites = new Set<HomeId>();
   private readonly preparedOwnershipSamples = new Map<HomeId, {
     bundle: HomeCapacityBundle;
     sampleRevision: number;
@@ -491,7 +490,6 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
 
   /** Suffix-hook entry point (`SettingsHandlerDeps.onHomeScopedSettingChanged`). */
   onHomeScopedSettingChanged(baseKey: string, homeId: string): void {
-    if (baseKey === POWER_TRACKER_STATE && this.trackerSafetyWrites.has(homeId)) return;
     let bundle = this.bundles.get(homeId);
     if (!bundle) {
       // Unknown homeId = transient (the write may precede the homes_config
@@ -505,10 +503,6 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     if (bundle?.isTornDown()) return;
     if (!bundle) {
       logHomeScopedSettingForUnknownHome(this.deps.ctx, homeId, baseKey);
-      return;
-    }
-    if (baseKey === POWER_TRACKER_STATE) {
-      bundle.reloadPowerTracker();
       return;
     }
     // Reload the owning area's coherent catalog before its plan rebuild.
@@ -537,9 +531,9 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
       powerSource,
       meterDeviceId: home.meterDeviceId,
     };
-    this.trackerSafetyWrites.add(home.homeId);
-    try {
+    {
       const prepared = preparePersistedHomeTrackerForMeter({
+        store: this.deps.ctx.getTrackerStore(),
         settings: this.deps.ctx.homey.settings,
         homeId: home.homeId,
         meterIdentity,
@@ -552,13 +546,12 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
         ctx: this.deps.ctx,
         home,
         initialPowerTrackerState: prepared.state,
+        persistedPowerTrackerState: prepared.persisted,
         powerTrackerMeterIdentity: meterIdentity,
         isMembershipReady: this.deps.isMembershipReady,
         isMeterSourceAuthorized: () => this.isMeterSourceAuthorized(),
         isMeterSourceEpochDiscarded: () => this.isMeterSourceEpochDiscarded(),
       });
-    } finally {
-      this.trackerSafetyWrites.delete(home.homeId);
     }
   }
 
@@ -572,12 +565,7 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
   }
 
   private resetDormantTrackerFreshnessForHome(homeId: HomeId): boolean {
-    this.trackerSafetyWrites.add(homeId);
-    try {
-      return resetPersistedHomeTrackerFreshness({ ctx: this.deps.ctx, homeId });
-    } finally {
-      this.trackerSafetyWrites.delete(homeId);
-    }
+    return resetPersistedHomeTrackerFreshness({ ctx: this.deps.ctx, homeId });
   }
 
   private tryReadConfiguredPowerSource(): PowerSource | null {

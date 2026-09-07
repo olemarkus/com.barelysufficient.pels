@@ -12,12 +12,11 @@
 // headroom). Non-solar / flow homes are unaffected (flow rejects power < 0).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, OPERATING_MODE_SETTING, OVERSHOOT_BEHAVIORS,
 } from '../../lib/utils/settingsKeys';
 import { drainUntil } from '../utils/asyncDrain';
-import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 
 const POLL_MS = 10_000;
 const EV_DRAW_W = 2000;
@@ -116,11 +115,11 @@ describe('energy-bucket correctness under solar export (SDK-boundary e2e)', () =
       await flushDetached();
     }
     await drainUntil(() => {
-      const t = mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState | null;
+      const t = getStoredPowerTrackerForTests();
       return typeof t?.lastPowerW === 'number';
     });
 
-    const tracker = mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState | null;
+    const tracker = getStoredPowerTrackerForTests();
     const totalBucket = tracker?.buckets?.[bucketKey] ?? 0;
     const capView = [...planEvents].reverse().find((e) => typeof e.totalKw === 'number');
 

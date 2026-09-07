@@ -24,7 +24,7 @@ This page is the public contributor reference. Use it when you are deciding wher
 │   lib/price/** · lib/dailyBudget/** · lib/observer/**                       │
 ├─────────────────────────────────────────────────────────────┤
 │ Shared utilities                                            │
-│   lib/utils/** · packages/contracts/src/** · packages/shared-domain/src/**
+│   lib/utils/** · lib/store/** · packages/contracts/src/** · packages/shared-domain/src/**
 ├─────────────────────────────────────────────────────────────┤
 │ Test code (not imported by anything runtime)                │
 │   test/** · packages/settings-ui/test/** · tests/**         │
@@ -38,7 +38,7 @@ This page is the public contributor reference. Use it when you are deciding wher
 | **Entry points** | Boot the runtime or render the settings UI. Wire dependencies but contain no domain logic. | `app.ts` (Homey app entry), `drivers/pels_insights/` (virtual device), `script.ts` (settings UI bootstrap) |
 | **App wiring** | Adapt the Homey SDK and Flow cards onto the domain modules, and hold nothing afterwards. This is where dependency injection happens. Wiring lives in `setup/` and `flowCards/`; none is left in `lib/app/`. | `setup/settingsRepository.ts`, `setup/backgroundTasksController.ts`, `flowCards/registerFlowCards.ts` |
 | **Domain** | Pure planning, capacity, price, budget, and observation logic. No Homey SDK calls; no UI imports. | `lib/plan/planEngine.ts`, `lib/device/deviceTransport.ts`, `lib/power/tracker.ts`, `lib/objectives/profiles.ts`, `lib/observer/idleClassifier.ts` |
-| **Shared utilities** | Pure helpers usable from anywhere — including the browser-side settings UI. Must remain Homey-SDK-free. | `lib/utils/*`, `packages/shared-domain/src/deadlineLabels.ts` |
+| **Shared utilities** | Pure helpers usable from anywhere — including the browser-side settings UI. Must remain Homey-SDK-free. `lib/store/**` is the one Node-only member: the app's SQLite file under `/userdata`, importable by any runtime module and by nothing browser-side. | `lib/utils/*`, `packages/shared-domain/src/deadlineLabels.ts` |
 | **Test code** | Specs and mocks. Runtime cannot import it. | `test/`, `packages/settings-ui/test/` |
 
 ## Hard rules (CI-enforced)

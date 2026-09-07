@@ -21,6 +21,7 @@ const createService = (): PriceService => new PriceService(
   () => TZ,
   undefined,
   createPriceDataStore(mockHomeyInstance as never),
+  () => ({}),
 );
 
 describe('budgetPrice layered onto the producer from injected forecast surplus', () => {

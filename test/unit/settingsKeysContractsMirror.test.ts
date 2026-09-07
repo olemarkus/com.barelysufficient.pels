@@ -18,6 +18,7 @@ describe('contracts settings-key mirrors match lib/utils/settingsKeys', () => {
     expect(contractKeys.MAIN_HOME_ID).toBe(libKeys.MAIN_HOME_ID);
     expect(contractKeys.PELS_STATUS).toBe(libKeys.PELS_STATUS);
     expect(contractKeys.POWER_TRACKER_STATE).toBe(libKeys.POWER_TRACKER_STATE);
+    expect(contractKeys.POWER_TRACKER_PERSISTED_EVENT).toBe(libKeys.POWER_TRACKER_PERSISTED_EVENT);
     expect(contractKeys.HOMES_CONFIG).toBe(libKeys.HOMES_CONFIG);
   });
 

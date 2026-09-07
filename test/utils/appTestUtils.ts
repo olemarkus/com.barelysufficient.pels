@@ -4,6 +4,13 @@
 import MyApp from '../../app.ts';
 import { mockHomeyInstance } from '../mocks/homey';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { PowerTrackerState } from '../../lib/power/trackerTypes';
+import { createTrackerStore, type TrackerStore } from '../../lib/power/trackerStore';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { openUserdataDatabase } from '../../lib/store/userdataDatabase';
+import { AppPowerTracker } from '../../setup/appPowerTracker';
 
 let appInstances: MyApp[] = [];
 
@@ -19,6 +26,26 @@ type CreateAppOptions = {
    * it that way is asserting against a home PELS does not claim to serve.
    */
   withoutPowerMeasurement?: boolean;
+  /**
+   * Where the userdata database lives for this app instance. Defaults to one
+   * file per spec FILE, deleted by `cleanupApps` after every test — the
+   * `mockHomeyInstance.settings` analogue: two apps booted inside one test
+   * (a restart) share it, and the next test starts empty.
+   */
+  userdataDatabase?: string;
+};
+
+let testUserdataDir: string | undefined;
+const testUserdataDatabase = (): string => {
+  testUserdataDir ??= fs.mkdtempSync(path.join(os.tmpdir(), 'pels-userdata-'));
+  return path.join(testUserdataDir, 'pels.sqlite');
+};
+/** Drop the spec file's database so the next test boots on an empty store. */
+const removeTestUserdataDatabase = (): void => {
+  if (testUserdataDir === undefined) return;
+  for (const sidecar of ['', '-wal', '-shm']) {
+    fs.rmSync(path.join(testUserdataDir, `pels.sqlite${sidecar}`), { force: true });
+  }
 };
 
 // A real, unremarkable reading: the house drawing nothing leaves full headroom,
@@ -36,6 +63,11 @@ export function createApp(options: CreateAppOptions = {}): MyApp {
   // wrap suppresses the startup restore-stabilization window, which the
   // public API does not expose.
   const app = new MyApp();
+  // The database is opened on first use, after construction, so this override
+  // lands before anything reaches the file the production path would open.
+  app['openUserdataStores'] = () => AppPowerTracker.openUserdataStores(
+    openUserdataDatabase(options.userdataDatabase ?? testUserdataDatabase()),
+  );
   if (!options.preserveStartupRestoreStabilization) {
     const originalInitPlanEngine = app['initPlanEngine'].bind(app);
     app['initPlanEngine'] = () => {
@@ -67,6 +99,27 @@ export function createApp(options: CreateAppOptions = {}): MyApp {
   return app;
 }
 
+/**
+ * The tracker as the app under test has persisted it — the store's rows, not
+ * a settings key. `null` while nothing has been persisted for the home.
+ */
+export function getStoredPowerTrackerForTests(homeId: string = 'main'): PowerTrackerState | null {
+  const app = mockHomeyInstance.app as { getTrackerStore?: () => TrackerStore } | null;
+  try {
+    const store = app?.getTrackerStore?.();
+    if (store !== undefined) return store.load(homeId);
+  } catch {
+    // The app has torn down (its database is closed): read the file it wrote.
+  }
+  if (testUserdataDir === undefined) return null;
+  const database = openUserdataDatabase(testUserdataDatabase());
+  try {
+    return createTrackerStore(database).load(homeId);
+  } finally {
+    database.close();
+  }
+}
+
 export function getLatestTargetSnapshotForTests(): TargetDeviceSnapshot[] {
   const app = mockHomeyInstance.app as { latestTargetSnapshot?: unknown } | null;
   return Array.isArray(app?.latestTargetSnapshot) ? app.latestTargetSnapshot as TargetDeviceSnapshot[] : [];
@@ -88,4 +141,5 @@ export async function cleanupApps(): Promise<void> {
   }
   appInstances = [];
   mockHomeyInstance.app = null;
+  removeTestUserdataDatabase();
 }

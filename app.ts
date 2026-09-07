@@ -72,7 +72,8 @@ import {
 } from './setup/appServiceWiring';
 import type { HomeMembershipService } from './setup/homeMembership';
 import type { HomeRuntimeRegistry } from './setup/homeRuntime/homeRuntimeRegistry';
-import { AppPowerTracker } from './setup/appPowerTracker';
+import { AppPowerTracker, type AppUserdataStores } from './setup/appPowerTracker';
+import type { TrackerStore } from './lib/power/trackerStore';
 import { TimerRegistry } from './lib/utils/timerRegistry';
 import type { FlowReportedCapabilitiesByDevice } from './lib/device/transport/flowReportedCapabilities';
 import { withAppApi } from './setup/appRuntimeApi';
@@ -284,6 +285,24 @@ class PelsApp extends PelsAppBase implements AppContext {
 
   protected structuredLogger?: PinoLogger;
   public readonly timers = new TimerRegistry();
+  private userdataStores?: AppUserdataStores;
+  private userdataClosed = false;
+  /** Opened on first use, after construction; the test harness overrides this to open a test database. */
+  protected openUserdataStores(): AppUserdataStores {
+    return AppPowerTracker.openUserdataStores();
+  }
+  public getTrackerStore(): TrackerStore {
+    // Closed is a latch: a late caller after teardown gets an error, never a
+    // silently reopened file whose handle nothing would close again.
+    if (this.userdataClosed) throw new Error('the userdata database is closed');
+    this.userdataStores ??= this.openUserdataStores();
+    return this.userdataStores.trackerStore;
+  }
+  private closeUserdataDatabase(): void {
+    this.userdataClosed = true;
+    this.userdataStores?.database.close();
+    this.userdataStores = undefined;
+  }
   /**
    * The Main home's power tracker: the same classified persistence component
    * every meter area runs, on the unsuffixed key (`homeScopedSettingsKey` is
@@ -291,7 +310,8 @@ class PelsApp extends PelsAppBase implements AppContext {
    * authority governs which meter its samples come from.
    */
   public readonly mainTracker = AppPowerTracker.createMainTracker({
-    settings: this.homey.settings,
+    getStore: () => this.getTrackerStore(),
+    legacySettings: this.homey.settings,
     timers: this.timers,
     getLogger: () => this.getStructuredLogger('power'),
     getPruneDebugEmitter: () => this.getStructuredDebugEmitter('perf', 'perf'),
@@ -299,7 +319,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     getTimeZone: () => this.getTimeZone(),
     isTornDown: () => this.mainActuationStopped,
     onRecovered: () => this.powerTrackerHelpers.onPowerTrackerRecovered(),
-  });
+  }, this.homey);
 
   private readonly targetPowerReachabilityWiring = createTargetPowerReachabilityAppWiring(this);
   public readonly snapshotHelpers: AppSnapshotHelpers = new AppSnapshotHelpers({
@@ -478,6 +498,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     loadPowerCalibrationStore: () => this.loadPowerCalibrationStore(),
     startPowerTrackerPruning: () => this.startPowerTrackerPruning(),
     stopPowerTracker: () => this.stopPowerTracker(),
+    closeUserdataDatabase: () => this.closeUserdataDatabase(),
     flushPowerCalibration: () => this.flushPowerCalibration(),
     runStartupSettingsMigrations: () => this.runStartupSettingsMigrations(),
     initPlanEngine: () => this.initPlanEngine(),

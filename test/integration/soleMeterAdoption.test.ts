@@ -1,3 +1,5 @@
+import { createTrackerStore } from '../../lib/power/trackerStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type Homey from 'homey';
 import { MockSettings, mockHomeyInstance } from '../mocks/homey';
 import { startSoleMeterAdoption } from '../../setup/soleMeterAdoption';
@@ -62,7 +64,7 @@ const run = (
   timers = new TimerRegistry(),
   inMemoryLastSampleMs?: number,
 ): TimerRegistry => {
-  startSoleMeterAdoption(homey, timers, () => inMemoryLastSampleMs);
+  startSoleMeterAdoption(homey, timers, createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE)), () => inMemoryLastSampleMs);
   return timers;
 };
 

@@ -1,4 +1,5 @@
 import type Homey from 'homey';
+import type { AppContext } from '../lib/app/appContext';
 import type {
   SettingsUiHomesPayload,
   SettingsUiHomesSaveRequest,
@@ -301,6 +302,7 @@ const saveAreaMutation = (
   // proves the old config survived a refused/thrown write.
   const commit = commitHomesConfigWriteWithTrackerFreshnessReset({
     apiApp: homey.app,
+    trackerStore: (homey.app as unknown as AppContext).getTrackerStore(),
     settings: homey.settings,
     store,
     request,

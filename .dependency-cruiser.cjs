@@ -305,6 +305,23 @@ module.exports = {
       from: { path: '^lib/home/' },
       to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor|actuator|weather|solar)/' },
     },
+    {
+      name: 'no-store-to-peer',
+      comment: 'lib/store owns the userdata SQLite file and nothing else: a repository for a data '
+        + 'family lives beside its domain (lib/power/trackerStore.ts) and takes the open database. '
+        + 'The store must not import any domain peer, or every peer would be coupled through it.',
+      severity: 'error',
+      from: { path: '^lib/store/' },
+      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor|actuator|weather|solar|home|app)/' },
+    },
+    {
+      name: 'no-sqlite-outside-store',
+      comment: 'node:sqlite is opened in exactly one place. A repository takes the UserdataDatabase '
+        + '(and its PreparedStatement type) from lib/store; nothing else names the builtin.',
+      severity: 'error',
+      from: { pathNot: '^lib/store/' },
+      to: { path: '^(node:)?sqlite$', dependencyTypes: ['core'] },
+    },
     // Existing inversions to track but not yet break — clean-up targets.
     {
       name: 'no-plan-to-smarttasks',

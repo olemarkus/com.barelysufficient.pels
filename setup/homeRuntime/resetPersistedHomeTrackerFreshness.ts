@@ -1,6 +1,8 @@
 import type { AppContext } from '../../lib/app/appContext';
 import type { PowerTrackerMeterIdentity } from '../../lib/power/trackerTypes';
-import { resetPersistedHomeTrackerFreshnessInSettings } from '../../lib/power/persistedHomeTracker';
+import {
+  resetPersistedHomeTrackerFreshness as resetDurableHomeTrackerFreshness,
+} from '../../lib/power/persistedHomeTracker';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 
@@ -16,7 +18,8 @@ export function resetPersistedHomeTrackerFreshness(params: {
   meterIdentity?: PowerTrackerMeterIdentity;
 }): boolean {
   const { ctx, homeId, meterIdentity } = params;
-  return resetPersistedHomeTrackerFreshnessInSettings({
+  return resetDurableHomeTrackerFreshness({
+    store: ctx.getTrackerStore(),
     settings: ctx.homey.settings,
     homeId,
     meterIdentity,

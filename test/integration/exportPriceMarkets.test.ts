@@ -39,6 +39,7 @@ const createService = (energyApi?: HomeyEnergyApi): PriceService => new PriceSer
   () => TZ,
   energyApi ? () => energyApi : undefined,
   createPriceDataStore(mockHomeyInstance as never),
+  () => ({}),
 );
 
 // Export config is separate from import config: its own keys, read at price-build

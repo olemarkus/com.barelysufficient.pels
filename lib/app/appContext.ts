@@ -1,3 +1,4 @@
+import type { TrackerStore } from '../power/trackerStore';
 import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from '../device/devicePowerPeak';
 import type Homey from 'homey';
 import type CapacityGuard from '../power/capacityGuard';
@@ -99,8 +100,11 @@ export type AppContext = {
   getNow: () => Date;
   getTimeZone: () => string;
   notifyOperatingModeChanged: (mode: string) => void;
-  loadPowerTracker: () => void;
   hydratePowerTracker: () => void;
+  /** The power tracker's rows in the userdata database, opened on first use. */
+  getTrackerStore: () => TrackerStore;
+  /** Tell the settings UI a home's tracker persisted (the store produces no settings echo). */
+  emitPowerTrackerPersisted: (homeId: string) => void;
   loadCapacitySettings: () => void;
   /** Re-read only the validated live temperature-command authorization map. */
   loadTemperatureControlPolicySettings: () => void;

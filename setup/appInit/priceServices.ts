@@ -13,6 +13,7 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
     priceDataStore: createPriceDataStore(ctx.homey),
     getTimeZone: () => ctx.getTimeZone(),
     getHomeyEnergyApi: () => resolveHomeyEnergyApiFromSdk(ctx.homey),
+    getPowerTracker: () => ctx.powerTracker,
     getCurrentPriceLevel: () => ctx.getCurrentPriceLevel(),
     rebuildPlanFromCache: (priceMode) => requirePlanService(ctx)
       .rebuildPlanFromCache('price', { detail: priceMode })

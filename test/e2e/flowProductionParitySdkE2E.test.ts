@@ -22,7 +22,7 @@
 // re-asserting it here would only add clock-jumping flakiness.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
@@ -84,7 +84,7 @@ const seedFlowHome = async (params: { withSolarDevice: boolean }) => {
 };
 
 const readTracker = (): PowerTrackerState | null => (
-  mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState | null
+  getStoredPowerTrackerForTests()
 );
 
 describe('production parity on the flow power source (SDK-boundary e2e)', () => {

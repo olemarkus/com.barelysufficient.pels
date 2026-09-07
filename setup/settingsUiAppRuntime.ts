@@ -1,3 +1,5 @@
+import type { PowerTrackerPersistedPayload } from '../packages/contracts/src/settingsKeys';
+import { POWER_TRACKER_PERSISTED_EVENT } from '../lib/utils/settingsKeys';
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../lib/power/tracker';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
@@ -282,6 +284,25 @@ export const emitSettingsUiPowerUpdatedForApp = (
       : {}),
   })
     .catch((error: unknown) => onError('Failed to emit power_updated event', error as Error));
+};
+
+/**
+ * The tracker persisted for `homeId`. The WebView's change router treats it
+ * exactly as it treated the `settings.set` echo of the home's tracker key —
+ * a cache sweep of the home's power and devices read models and a refresh of
+ * the visible surfaces — which the userdata store no longer produces.
+ */
+export const emitPowerTrackerPersistedForApp = (
+  homey: Homey.App['homey'],
+  homeId: string,
+  onError: (message: string, error: Error) => void,
+): void => {
+  const api = homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
+  const realtime = api?.realtime;
+  if (typeof realtime !== 'function') return;
+  const payload: PowerTrackerPersistedPayload = { homeId };
+  realtime.call(api, POWER_TRACKER_PERSISTED_EVENT, payload)
+    .catch((error: unknown) => onError('Failed to emit power_tracker_persisted event', error as Error));
 };
 
 export const refreshSettingsUiDevicesForApp = async (homey: Homey.App['homey']): Promise<TargetDeviceSnapshot[]> => {

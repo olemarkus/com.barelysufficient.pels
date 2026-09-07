@@ -488,10 +488,6 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
           logger()?.error({ event: 'home_capacity_reload_rebuild_failed', homeId, err: normalizeError(error) });
         });
     },
-    reloadPowerTracker: () => {
-      if (isTornDown()) return;
-      tracker.reloadFromSettings();
-    },
     teardown: (options) => {
       // A failed durable reset leaves this runtime fenced but retained by the
       // registry as a tombstone. Repeated teardown(reset) calls are therefore

@@ -33,7 +33,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import { mockHomeyInstance, setMockDrivers, setMockZones, MockDevice, MockDriver } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   createHomesStore as createRawHomesStore,
   createDeviceHomeAssignmentsStore,
@@ -568,7 +568,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     // (hydration of the engine's lastDeviceControlledMs from this key is
     // asserted in test/integration/homeCapacityBundles.test.ts).
     expect(mockHomeyInstance.settings.get('device_last_controlled_ms:h_sub')).toEqual(lastControlled);
-    expect(mockHomeyInstance.settings.get('power_tracker_state:h_sub')).toBeTruthy();
+    expect(getStoredPowerTrackerForTests('h_sub')).toBeTruthy();
     // Ample headroom for the resume after reboot (persisted BEFORE boot so
     // the recreated bundle reads it at construction).
     mockHomeyInstance.settings.set(`${CAPACITY_LIMIT_KW}:h_sub`, 6);
@@ -604,7 +604,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     meterState.subOffline = true;
     await vi.advanceTimersByTimeAsync(61_000);
     await drainPending();
-    expect((mockHomeyInstance.settings.get('power_tracker_state:h_sub') as
+    expect((getStoredPowerTrackerForTests('h_sub') as
       | { lastTimestamp?: unknown }
       | undefined)?.lastTimestamp).toEqual(expect.any(Number));
 

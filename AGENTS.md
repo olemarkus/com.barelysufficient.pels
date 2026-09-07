@@ -46,7 +46,7 @@ Domain Modules        lib/plan/**, lib/device/**, lib/observer/**, lib/executor/
                       lib/power/**, lib/price/**, lib/dailyBudget/**, lib/actuator/**,
                       lib/home/**, lib/solar/**, lib/weather/**, lib/flowApi/**
       ↓
-Shared Utilities      lib/utils/**, lib/planContract/**, lib/ports/**, packages/contracts/src/**, packages/shared-domain/src/**
+Shared Utilities      lib/utils/**, lib/planContract/**, lib/ports/**, lib/store/**, packages/contracts/src/**, packages/shared-domain/src/**
       ↓
 Test Code             test/**, packages/settings-ui/test/**, packages/settings-ui/tests/**
 ```
@@ -118,6 +118,7 @@ One rule, two faces (`docs/architecture.md` § "Clean and trusted interfaces bet
 | `lib/flowApi/` | Reads the owner's Homey Flows and classifies conflicts between what a Flow writes and what PELS would write natively |
 | `lib/planContract/` | Neutral boundary contract shared by planner and executor; imports nothing from `lib/**` but itself, `logging`, and `utils`. See `lib/planContract/AGENTS.md` |
 | `lib/ports/` | SDK-free structural ports for the Homey runtime object, so a consumer can declare the narrow slice it needs instead of type-importing the SDK. `lib/device`'s transport remains the deliberate SDK leaf (`deviceTransport.ts`, `liveFeed.ts` type-import `Homey.App` on purpose) |
+| `lib/store/` | The app's SQLite file under Homey's per-app `/userdata` directory, opened once at boot (`node:sqlite`, no native addon). The only module that names `node:sqlite` (`no-sqlite-outside-store`); a data family's repository lives beside its domain and takes the open database — `lib/power/trackerStore.ts` is the first. **Settings hold configuration and mission-critical state; history, learned data and caches live here** (owner ruling 2026-09-07, `notes/settings-key-ownership.md` § "Which store"). Why: the SDK's `settings.set` re-serialises and ships the *entire* settings object to core on every write of any key, so a 2 MB blob written every minute was the allocation churn behind the memory-watchdog kills. There is no "if `/userdata` exists" fallback — it exists for store installs, `homey app run --remote` and local docker runs alike, and opening it fails loudly |
 | `lib/app/` | Dissolved. Holds only `appContext.ts` (the shared `AppContext` type). Wiring lives in `setup/` (and Flow-card registration in `flowCards/`); nothing new belongs here. |
 | `lib/utils/` | Pure helpers, type guards, math utilities, debug logging, settings keys |
 | `lib/diagnostics/` | Per-device diagnostics recording |

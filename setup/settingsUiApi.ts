@@ -11,7 +11,7 @@ import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTy
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
 import { resolveSurplusPoolReachable } from '../packages/shared-domain/src/solar/surplusPoolReachable';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
-import { DEFERRED_OBJECTIVES_SETTINGS, POWER_TRACKER_STATE } from '../lib/utils/settingsKeys';
+import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
 import {
   SettingsUiHomeScopeAdapter,
   type ResolvedSubHomeScope,
@@ -370,9 +370,9 @@ const latchEvidence = (measured: boolean): PowerMeasurementEvidence => (
 
 /**
  * The whole-home classification asks the LIVE tracker, never the persisted
- * `POWER_TRACKER_STATE` fallback. The live latch is itself restored across an
- * ordinary restart (`hydratePowerTracker`) — that is the planner's own
- * restored-sample policy, and the open gate then rewrites the blob promptly.
+ * rows. The live latch is itself restored across an ordinary restart
+ * (`hydratePowerTracker`) — that is the planner's own restored-sample policy,
+ * and the open gate then rewrites the rows promptly.
  * What this classification closes is the truly gated home: first-ever boot,
  * post-meter-swap, or a corrupt tracker restore, where nothing this run will
  * vouch for the stored blob.
@@ -408,8 +408,7 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
   // (buckets, daily totals, solar families) whose consumers age it themselves
   // (stale-data banner, solar-now staleness gate). Liveness claims ride the
   // classified `status` read only.
-  const rawTracker = getPowerTrackerForUiFromApp(homey)
-    ?? (homey.settings.get(POWER_TRACKER_STATE) as PowerTrackerState | null);
+  const rawTracker = getPowerTrackerForUiFromApp(homey);
   const tracker: PowerTrackerState = rawTracker && typeof rawTracker === 'object' && !Array.isArray(rawTracker)
     ? rawTracker
     : {};
@@ -613,8 +612,7 @@ export const getSettingsUiDevicesPayload = (
 
 const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPayload => {
   const candidates = getRawSettingsUiDeviceCandidates({ homey });
-  const tracker = getPowerTrackerForUiFromApp(homey)
-    ?? (homey.settings.get(POWER_TRACKER_STATE) as PowerTrackerState | null);
+  const tracker = getPowerTrackerForUiFromApp(homey);
   return {
     // Auto-tracked observe-only role devices are force-managed in the backend snapshot for
     // telemetry, but the user never opted into managing them and cannot control them — they

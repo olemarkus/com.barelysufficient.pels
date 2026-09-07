@@ -23,7 +23,7 @@
 // state PELS writes back through settings (`power_tracker_state`).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -32,7 +32,6 @@ import {
   OVERSHOOT_BEHAVIORS,
 } from '../../lib/utils/settingsKeys';
 import { drainUntil } from '../utils/asyncDrain';
-import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 
 const POLL_MS = 10_000;
 
@@ -106,7 +105,7 @@ const seedSettings = (): void => {
 type Split = { controlledW: number; uncontrolledW: number; netW: number; controlledKWh: number; uncontrolledKWh: number };
 
 const readSplit = (bucketKey: string): Split => {
-  const tracker = mockHomeyInstance.settings.get('power_tracker_state') as PowerTrackerState | null;
+  const tracker = getStoredPowerTrackerForTests();
   return {
     controlledW: tracker?.lastControlledPowerW ?? Number.NaN,
     uncontrolledW: tracker?.lastUncontrolledPowerW ?? Number.NaN,
