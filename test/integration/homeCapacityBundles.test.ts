@@ -1436,6 +1436,9 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     rig.ctx.resolveManagedState = vi.fn(() => true);
     rig.ctx.isCapacityControlEnabled = vi.fn(() => true);
     rig.ctx.getObservedState = vi.fn(() => load);
+    // The executor's drift check holds the observed RECORD, which is a separate
+    // accessor from the base read — stubbing only the latter used to serve both.
+    rig.ctx.getObservedRecord = vi.fn(() => load);
     rig.ctx.homeMembership = {
       hasSubHomes: () => true,
       getHomeIdForDevice: () => 'h_a',

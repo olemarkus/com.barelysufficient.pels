@@ -88,7 +88,12 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     setCapacityInShortfall: deps.setCapacityInShortfall,
     persistLastControlledMs: deps.persistLastControlledMs,
     deviceManager: deps.deviceManager,
-    getObservedState: deps.getObservedState,
+    // The RECORD, not the base read: the executor's drift check reads the
+    // reported step, measured power and EV state off it. Supplying
+    // `getObservedState` here compiles — narrow is assignable to wide, since
+    // every cluster field is optional — and would work only for as long as the
+    // object stayed physically wider than its type.
+    getObservedState: deps.getObservedRecord,
     getObservationRevision: deps.getObservationRevision,
     actuator: deps.actuator,
     capacityGuard: deps.capacityGuard,
@@ -164,7 +169,8 @@ export function createPlanEngineComposition(
     steppedReportedStore: ctx.steppedReportedStore,
     persistLastControlledMs: scope.persistLastControlledMs,
     deviceManager,
-    getObservedState: (deviceId) => ctx.getObservedState(deviceId),
+    // See the sibling wiring above: the drift check holds the record.
+    getObservedRecord: (deviceId: string) => ctx.getObservedRecord(deviceId),
     getObservationRevision: () => ctx.getObservationRevision(),
     // "Leave off until turned on again": resolved HERE rather than per caller so
     // no home can be wired without it — a missing one would silently make the

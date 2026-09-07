@@ -216,6 +216,10 @@ describe('settingsUiApi', () => {
       },
       getUiPickerDevices: () => options.uiPickerDevices ?? [],
       getObservedState: (deviceId: string) => options.observedStateById?.[deviceId],
+      // The payload refresh reads the whole observed record through its own
+      // accessor, separate from the general `getObservedState` the control paths
+      // use — same backing store, different question.
+      getObservedRecord: (deviceId: string) => options.observedStateById?.[deviceId],
       get powerTracker() {
         return powerTracker;
       },

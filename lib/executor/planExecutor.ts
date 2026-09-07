@@ -1,7 +1,6 @@
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { DevicePlan, PlanInputDevice, ShedBehavior } from '../plan/planTypes';
 import type { PendingTargetObservationSource } from '../plan/planTypes';
-import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 
 /**
  * The executor's **read-only** view of the device transport: snapshot reads
@@ -55,7 +54,7 @@ import { createTargetCommandClaim } from './targetCommandClaim';
 import { createSteppedCommandClaim } from './steppedCommandClaim';
 import { createBinaryCommandClaim } from './binaryCommandClaim';
 import { buildExecutableObservedDeviceStateFromSnapshot } from './executablePlanProjection';
-import type { DriftObservationDeps } from './driftObservedDevice';
+import type { ObserverDeviceRead, DriftObservationDeps } from './driftObservedDevice';
 
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 
@@ -67,7 +66,13 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & {
    * observed capability values from this projection accessor instead of the
    * transport snapshot; `undefined` until the first observation for a device.
    */
-  getObservedState: (deviceId: string) => ObservedDeviceState | undefined;
+  /**
+   * The observed RECORD, not the base state: the drift check reads the reported
+   * step, measured power and EV state off it (`ObserverDeviceRead`). Declared as
+   * what it needs rather than widened structurally further down, where it
+   * compiled only because the object happened to be wider than its type.
+   */
+  getObservedState: (deviceId: string) => ObserverDeviceRead | undefined;
   /**
    * Observer-owned accepted-write counter, used to tell whether the observed
    * world moved while a plan build yielded. Not a clock and not a freshness

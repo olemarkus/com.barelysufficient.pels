@@ -228,6 +228,13 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getAllModes: vi.fn(() => new Set<string>()),
     resolveManagedState: vi.fn(() => false),
     getObservedState: vi.fn(() => undefined),
+    getObservedRecord: vi.fn(() => undefined),
+    // One stub per named cluster read. Each states ABSENCE explicitly rather than
+    // leaning on `getObservedState` returning nothing — which is the point of the
+    // split: the record no longer answers these questions.
+    getObservedStateOfCharge: vi.fn(() => ({ kind: 'absent' } as const)),
+    getObservedTemperature: vi.fn(() => ({ kind: 'absent' } as const)),
+    getObservedEvChargingState: vi.fn(() => undefined),
     getObservationRevision: vi.fn(() => 0),
     seedObservedStateFromSnapshot: vi.fn(),
     isCapacityControlEnabled: vi.fn(() => false),

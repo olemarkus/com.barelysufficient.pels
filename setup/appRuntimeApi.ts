@@ -4,7 +4,21 @@ import { openUserdataStores, type AppUserdataStores } from './userdataStores';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
-import type { ProjectedObservedDeviceState, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type {
+  EvChargingState,
+  ObservedDeviceState,
+  ProjectedObservedDeviceState,
+  TargetDeviceSnapshot,
+} from '../packages/contracts/src/types';
+import {
+  readObservedEvChargingState,
+  readObservedStateOfCharge,
+  readObservedTemperatureState,
+} from '../lib/observer/observedDeviceStateProjection';
+import type {
+  ObservedStateOfChargeRead,
+  ObservedTemperatureRead,
+} from '../lib/observer/observedDeviceStateProjection';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
 import { getDebugEmitter, getDebugTopics, setDebugTopics } from '../lib/logging/logger';
@@ -107,8 +121,77 @@ abstract class AppRuntimeApi extends Base {
     return this.observedDeviceStateProjection.getRevision();
   }
 
-  public getObservedState(deviceId: string): ProjectedObservedDeviceState | undefined {
+  /**
+   * The general observed read: the base state, and no observed cluster.
+   *
+   * Declared narrow on purpose. The projection physically stores every cluster
+   * — state of charge, temperature, EV plug-state, measured power, reported step
+   * — and while this handed out `ProjectedObservedDeviceState`, every consumer
+   * wired to it could read any of them raw, bypassing the named reads that
+   * RESOLVE them. `observed.stateOfCharge.report.percent` is now a compile error
+   * here; a caller that wants a cluster asks for it by name and gets a semantic
+   * result (`readObservedStateOfCharge`, `readObservedTemperatureState`).
+   *
+   * Because every cluster field is optional, the narrow type is still
+   * structurally assignable to the wide one — so this does not break the one
+   * consumer that legitimately needs the whole record, which asks for it below.
+   */
+  public getObservedState(deviceId: string): ObservedDeviceState | undefined {
     return this.observedDeviceStateProjection.getObservedState(deviceId);
+  }
+
+  /**
+   * The whole observed record, for the consumers that HOLD it rather than ask a
+   * question of it. There are exactly two, and they are worth naming:
+   *
+   * - the settings-UI payload refresh, which overlays a fixed list of
+   *   raw-observed fields onto the served device (`LIVE_OBSERVED_FIELDS`);
+   * - the executor's drift check, which reads the reported step, measured power
+   *   and EV state together to decide whether the device has moved off plan
+   *   (`ObserverDeviceRead`, `lib/executor/driftObservedDevice.ts`).
+   *
+   * Separate from `getObservedState` and named for what it is, so holding the
+   * record stays a deliberate choice. Before this split the drift path took the
+   * base-typed read and structurally widened it, which compiled and worked only
+   * because the object underneath was physically wider than its type — so a
+   * `getObservedState` that ever returned a genuinely narrowed copy would have
+   * changed drift decisions with no type error anywhere.
+   *
+   * A third caller is the general exit re-opening. Anything wanting one cluster
+   * wants a named read.
+   */
+  public getObservedRecord(deviceId: string): ProjectedObservedDeviceState | undefined {
+    return this.observedDeviceStateProjection.getObservedState(deviceId);
+  }
+
+  /**
+   * The named cluster reads. One accessor per observed fact, each returning what
+   * the observer RESOLVED rather than the record it resolved from — so the
+   * question "what is this device's charge" has exactly one answer and exactly
+   * one way to ask it.
+   *
+   * They read the projection directly rather than being handed a value from
+   * `getObservedState`, which no longer declares the clusters. Passing one across
+   * would compile (every cluster field is optional, so the narrow type is
+   * assignable to the wide one) and would work only because the object underneath
+   * is physically wider than its type — which is the kind of accident that
+   * survives until someone returns a genuinely narrowed copy.
+   */
+  public getObservedStateOfCharge(deviceId: string): ObservedStateOfChargeRead {
+    return readObservedStateOfCharge(this.observedDeviceStateProjection.getObservedState(deviceId));
+  }
+
+  public getObservedTemperature(deviceId: string): ObservedTemperatureRead {
+    return readObservedTemperatureState(this.observedDeviceStateProjection.getObservedState(deviceId));
+  }
+
+  /**
+   * Still `| undefined` rather than a semantic result: unlike its two siblings,
+   * the EV plug-state read has not been converted yet. Same defect, separate
+   * fact — it is the next one.
+   */
+  public getObservedEvChargingState(deviceId: string): EvChargingState | undefined {
+    return readObservedEvChargingState(this.observedDeviceStateProjection.getObservedState(deviceId));
   }
   public seedObservedStateFromSnapshot(): void {
     this.observedDeviceStateProjection.seedMissing(toObservedStateSeed(this.context.deviceManager?.getSnapshot()));

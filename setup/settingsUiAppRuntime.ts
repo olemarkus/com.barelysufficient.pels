@@ -11,6 +11,7 @@ import type {
 } from '../packages/contracts/src/settingsUiApi';
 import type {
   AssociatedCarSnapshot,
+  ObservedDeviceState,
   ProjectedObservedDeviceState,
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
@@ -35,7 +36,8 @@ type SettingsUiRuntimeApp = Homey.App & {
   latestTargetSnapshot?: TargetDeviceSnapshot[];
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
   deviceManager?: { getAssociatedCar?: (chargerId: string) => AssociatedCarSnapshot | undefined };
-  getObservedState?: (deviceId: string) => ProjectedObservedDeviceState | undefined;
+  getObservedState?: (deviceId: string) => ObservedDeviceState | undefined;
+  getObservedRecord?: (deviceId: string) => ProjectedObservedDeviceState | undefined;
   powerTracker?: PowerTrackerState;
   canContributeCurtailmentSurplus?: () => boolean;
   getLatestPlanSnapshotForUi?: () => SettingsUiPlanSnapshot | null;
@@ -188,7 +190,7 @@ export const getObservedStateForUiFromApp = (
   homey: Homey.App['homey'],
   deviceId: string,
 ): ProjectedObservedDeviceState | undefined => (
-  getRuntimeApp(homey)?.getObservedState?.(deviceId)
+  getRuntimeApp(homey)?.getObservedRecord?.(deviceId)
 );
 
 export const getUiPickerDevicesFromApp = (homey: Homey.App['homey']): TargetDeviceSnapshot[] => {

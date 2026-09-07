@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPlanService } from '../../setup/appInit/createPlanService';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
+import { readObservedEvChargingState } from '../../lib/observer/observedDeviceStateProjection';
 import { projectObservedState } from '../../lib/device/observedStateProjection';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
@@ -65,9 +66,17 @@ function ctxWithRealSeed(snapshot: SnapshotEntry[]): {
   // Real projection wiring (identical to app.ts).
   const mutableCtx = ctx as {
     getObservedState: AppContext['getObservedState'];
+    getObservedEvChargingState: AppContext['getObservedEvChargingState'];
     seedObservedStateFromSnapshot: AppContext['seedObservedStateFromSnapshot'];
   };
   mutableCtx.getObservedState = (deviceId) => projection.getObservedState(deviceId);
+  // Wired separately from `getObservedState`, as the app wires it: the general
+  // read carries no observed cluster, so the plug-state has its own named read.
+  // Pointing only the former at the projection used to be enough — which is
+  // exactly the coupling this split removes.
+  mutableCtx.getObservedEvChargingState = (
+    deviceId,
+  ) => readObservedEvChargingState(projection.getObservedState(deviceId));
   mutableCtx.seedObservedStateFromSnapshot = () => {
     const raw = ctx.deviceManager?.getSnapshot();
     if (!raw || raw.length === 0) return;

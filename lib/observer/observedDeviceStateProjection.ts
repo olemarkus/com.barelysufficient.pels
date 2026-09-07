@@ -226,15 +226,33 @@ export class ObservedDeviceStateProjection {
     }
 
     /**
-     * Returns the maintained observed truth for a device, or `undefined` when
-     * none has been recorded. The value is frozen (see {@link apply}) so a
-     * consumer cannot mutate the projection's stored state by reference.
+     * The maintained observed truth for a device, or `undefined` when none has
+     * been recorded. The value is frozen (see {@link apply}) so a consumer cannot
+     * mutate the projection's stored state by reference.
+     *
+     * Wide, and deliberately so: this is the OWNER's read, and the record is what
+     * the owner holds. It has exactly one caller — `setup/appRuntimeApi.ts` — and
+     * that is where the narrowing happens: the app hands consumers
+     * `ObservedDeviceState` from `getObservedState`, resolves each cluster through
+     * its own named read, and passes the whole record only to the settings-UI
+     * payload refresh, which overlays raw fields and so genuinely holds it.
+     *
+     * Keep that one caller. A second one is the general exit re-opening: while the
+     * app's own getter handed this out, every consumer wired to it could read any
+     * cluster raw, and the raw way won by being shorter than the resolved one.
      */
     getObservedState(deviceId: string): ProjectedObservedDeviceState | undefined {
         return this.byId.get(deviceId)?.value;
     }
 
-    getAllObservedStates(): ProjectedObservedDeviceState[] {
+    /**
+     * Narrow, unlike its single-device sibling above: that one has an owner-side
+     * caller that needs the record, this one has no production caller at all —
+     * only the projection's own specs. Closing it before it acquires one costs
+     * nothing, and a caller enumerating devices has no more business reading a raw
+     * cluster than one asking about a single device.
+     */
+    getAllObservedStates(): ObservedDeviceState[] {
         return Array.from(this.byId.values(), (entry) => entry.value);
     }
 

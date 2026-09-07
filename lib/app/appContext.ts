@@ -1,4 +1,8 @@
 import type { TrackerStore } from '../power/trackerStore';
+import type {
+  ObservedStateOfChargeRead,
+  ObservedTemperatureRead,
+} from '../observer/observedDeviceStateProjection';
 import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from '../device/devicePowerPeak';
 import type Homey from 'homey';
 import type CapacityGuard from '../power/capacityGuard';
@@ -39,6 +43,8 @@ import type {
   EvBoostConfig,
   EvBoostSettings,
   EvCarAssociations,
+  EvChargingState,
+  ObservedDeviceState,
   ProjectedObservedDeviceState,
   TargetDeviceSnapshot,
   TemperatureBoostConfig,
@@ -168,7 +174,19 @@ export type AppContext = {
   // push (`lib/observer/observedDeviceStateProjection.ts`). `undefined` until the
   // first observation lands OR the boot/hot-plug seed fills it (see
   // `seedObservedStateFromSnapshot`).
-  getObservedState: (deviceId: string) => ProjectedObservedDeviceState | undefined;
+  getObservedState: (deviceId: string) => ObservedDeviceState | undefined;
+  // One named read per observed cluster, each returning what the observer
+  // RESOLVED. `getObservedState` above deliberately carries none of them: while
+  // it handed out the whole record, the same fact was reachable two ways — raw
+  // off the record, or resolved through a read — and the raw way won by being
+  // shorter.
+  // The whole record, for the two consumers that HOLD it: the settings-UI payload
+  // refresh and the executor's drift check. Everything else asks a question, and
+  // gets `getObservedState` or a named read above.
+  getObservedRecord: (deviceId: string) => ProjectedObservedDeviceState | undefined;
+  getObservedStateOfCharge: (deviceId: string) => ObservedStateOfChargeRead;
+  getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
+  getObservedEvChargingState: (deviceId: string) => EvChargingState | undefined;
   /** Observer-owned accepted-write counter; see `ObservedDeviceStateProjection.getRevision`. */
   getObservationRevision: () => number;
   // Boot/hot-plug seed: fill the observed-state projection's EMPTY slots from the

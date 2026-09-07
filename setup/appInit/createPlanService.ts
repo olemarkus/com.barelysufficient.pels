@@ -9,11 +9,6 @@ import type {
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type { HomeScope } from '../homeRuntime/homeScope';
-import {
-  readObservedEvChargingState,
-  readObservedStateOfCharge,
-  readObservedTemperatureState,
-} from '../../lib/observer/observedDeviceStateProjection';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { PowerMeasurementGate } from '../../lib/power/powerMeasurementGate';
@@ -56,15 +51,15 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // `getPlanDevices` above: every plan build seed-fills the projection from the
     // raw snapshot before the read model serializes, so a boot-present EV's real
     // plug-state is materialized for cycle 1.
-    getObservedEvChargingState: (deviceId) => readObservedEvChargingState(ctx.getObservedState(deviceId)),
+    getObservedEvChargingState: (deviceId) => ctx.getObservedEvChargingState(deviceId),
     // Read live from the transport, not off a snapshot: the association is
     // resolved per read and moves within seconds of a plug edge.
     getAssociatedCarChargingState: (deviceId) => deviceManager.getAssociatedCar(deviceId)?.chargingState,
     // The card's battery level. Same seam and same reason as the plug-state
     // above: the plan device carries the boost DECISION, not the reading it was
     // made from.
-    getObservedStateOfCharge: (deviceId) => readObservedStateOfCharge(ctx.getObservedState(deviceId)),
-    getObservedTemperature: (deviceId) => readObservedTemperatureState(ctx.getObservedState(deviceId)),
+    getObservedStateOfCharge: (deviceId) => ctx.getObservedStateOfCharge(deviceId),
+    getObservedTemperature: (deviceId) => ctx.getObservedTemperature(deviceId),
     getSteppedLoadProfileById: () => {
       const map = new Map<string, SteppedLoadProfile>();
       for (const device of deviceManager.getSnapshot()) {
