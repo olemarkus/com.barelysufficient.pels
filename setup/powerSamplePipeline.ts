@@ -2,7 +2,6 @@ import type CapacityGuard from '../lib/power/capacityGuard';
 import type { DeviceTransport } from '../lib/device/deviceTransport';
 import type { PlanEngine } from '../lib/plan/planEngine';
 import type { PlanService } from '../lib/plan/planService';
-import { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import {
   recordPowerSampleForApp,
   type SplitControlledUsage,
@@ -10,17 +9,15 @@ import {
   type SumControlledUsage,
   type UpdateObjectiveProfiles,
 } from '../lib/power/sampleIngest';
-import { PowerSampleRebuildState } from '../lib/plan/rebuildScheduler/powerDriven';
-import { schedulePlanRebuildFromSignal } from '../lib/plan/rebuildScheduler/signalDriven';
+import type { PlanRebuildThrottle } from '../lib/plan/rebuildScheduler/throttle';
 import { requireLastTotalPowerKw } from '../lib/power/lastTotalPower';
 import { computeShortfallThreshold } from '../lib/plan/planBudget';
 import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { resolveObjectiveObservedQuantity } from '../packages/shared-domain/src/objectiveObservedQuantity';
-import { isPlanActivelyConverging } from '../lib/plan/planStateHelpers';
-import { buildPlanCapacityStateSummary, isPlanUnactionable } from '../lib/plan/planLogging';
-import { shouldSkipShortfallRebuildFromPlanSummary } from '../lib/plan/rebuildScheduler/shortfallSuppression';
+import { buildPlanCapacityStateSummary } from '../lib/plan/planLogging';
+import { resolvePlanRebuildPosture } from '../lib/plan/planRebuildPosture';
 import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
 import type {
   SampleIngestQueue,
@@ -36,9 +33,6 @@ import type { PowerSampleAdmission } from '../lib/app/appContext';
 // the throttle while a test is awaiting the resulting plan revision; prod
 // values preserve the 2s/15s/30s envelope that gates `signal` intent
 // scheduling. Mirrors the constants previously inlined on `PelsApp`.
-const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
-const POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 15000;
-const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
 
 export type PowerSamplePipelineDeps = {
   /**
@@ -60,11 +54,9 @@ export type PowerSamplePipelineDeps = {
   getPlanEngine: () => PlanEngine;
   getPlanService: () => PlanService;
   getDeviceManager: () => DeviceTransport | undefined;
-  planRebuildScheduler: PlanRebuildScheduler;
-  getPowerSampleRebuildState: () => PowerSampleRebuildState;
-  setPowerSampleRebuildState: (state: PowerSampleRebuildState) => void;
+  /** This home's rebuild throttle — the admitted sample's one exit into the planner. */
+  planRebuildThrottle: PlanRebuildThrottle;
   getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
-  getPlanRebuildNowMs: () => number;
   savePowerTracker: (state: PowerTrackerState) => void;
   getStructuredDebugEmitter: (component: string, debugTopic: 'objective_profiles') => StructuredDebugEmitter;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
@@ -331,21 +323,12 @@ export class PowerSamplePipeline {
           summarySourceAtMs: planService.getLatestPlanSnapshotUpdatedAtMs(),
         },
       );
-      const skipWhileShortfallUnrecoverable = shouldSkipShortfallRebuildFromPlanSummary(
-        latestPlanSummary,
-        this.deps.getPowerSampleRebuildState(),
-      );
-      // Unwinnable state: a full rebuild cannot change any action, so the
-      // scheduler throttles it to the max-interval cadence rather than burning
-      // ~1.4s of CPU on every power sample (which trips Homey's cpuwarn watchdog).
-      const planUnactionable = isPlanUnactionable(latestPlanSummary);
-      // An unwinnable overshoot must not count as "converging": convergence bypasses
-      // the scheduler's anti-storm guards, and that bypass is what let a persistent
-      // 0-allowance shortfall rebuild ~1.6s of plan on every power sample until the
-      // cpuwarn watchdog killed the app. In-flight commands still win inside the helper.
-      const planConvergenceActive = isPlanActivelyConverging(planState, { unactionable: planUnactionable });
+      // What the last plan says about whether rebuilding can change anything,
+      // resolved by the planner (`resolvePlanRebuildPosture`); the throttle gates
+      // on it so an unwinnable state rides the max-interval cadence instead of
+      // burning ~1.4 s of CPU on every power sample (Homey's cpuwarn watchdog).
+      const posture = resolvePlanRebuildPosture(latestPlanSummary, planState);
       const capacitySettings = this.deps.getCapacitySettings();
-      const capacityGuard = this.deps.getCapacityGuard();
       await recordPowerSampleForApp({
         currentPowerW,
         generationW,
@@ -372,18 +355,7 @@ export class PowerSamplePipeline {
           // finiteness-gated by `lib/power`, and no nullable crosses the seam.
           // This runs inside the tracker's post-`saveState` callback, so the
           // latch is this sample by construction.
-          await schedulePlanRebuildFromSignal(
-            {
-              scheduler: this.deps.planRebuildScheduler,
-              getState: () => this.deps.getPowerSampleRebuildState(),
-              setState: (state) => this.deps.setPowerSampleRebuildState(state),
-              getNowMs: () => this.deps.getPlanRebuildNowMs(),
-            },
-            {
-              minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
-              stableMinIntervalMs: POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS,
-              maxIntervalMs: POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS,
-            },
+          await this.deps.planRebuildThrottle.onSample(
             {
               currentPowerW,
               totalKw: requireLastTotalPowerKw(this.deps.getPowerTracker()),
@@ -394,9 +366,7 @@ export class PowerSamplePipeline {
                 powerTracker: this.deps.getPowerTracker(),
               }),
             },
-            { planConvergenceActive, unactionable: planUnactionable },
-            skipWhileShortfallUnrecoverable,
-            capacityGuard,
+            posture,
           );
         },
         saveState: (state) => this.deps.savePowerTracker(state),

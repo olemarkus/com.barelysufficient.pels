@@ -14,7 +14,7 @@ import {
   MockDevice,
   MockDriver,
 } from '../mocks/homey';
-import { schedulePowerSampleForTest } from '../helpers/powerRebuildScheduler';
+import { rememberLastRebuild, schedulePowerSampleForTest } from '../helpers/powerRebuildScheduler';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type { StateOfChargeObservedProbe } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
@@ -903,24 +903,17 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
 
-    app.powerSampleRebuildState = {
-      ...app.powerSampleRebuildState,
-      lastMs: app['getPlanRebuildNowMs'](),
-    };
-    let powerSampleRebuildState = app.powerSampleRebuildState;
+    // Under the test cadence nothing waits on the min interval, so the queued
+    // rebuild this case cancels is held by the tight-unactionable execution
+    // floor instead: an unactionable sample past the max interval is admitted,
+    // then floored 15 s after the last rebuild.
+    rememberLastRebuild(app.planRebuildThrottle, app['getPlanRebuildNowMs']() - 200);
     const pending = schedulePowerSampleForTest({
+      throttle: app.planRebuildThrottle,
       limitKw: 10,
-      scheduler: app['planRebuildScheduler'],
-      getState: () => powerSampleRebuildState,
-      setState: (next) => {
-        powerSampleRebuildState = next;
-        app.powerSampleRebuildState = next;
-      },
-      getNowMs: () => app['getPlanRebuildNowMs'](),
-      minIntervalMs: 1000,
-      maxIntervalMs: 10_000,
       currentPowerW: 9500,
       capacityPaceKw: 9,
+      unactionable: true,
     });
 
     expect(app['planRebuildScheduler'].now().hasTimer).toBe(true);
@@ -929,7 +922,7 @@ describe('MyApp initialization', () => {
 
     await expect(pending).resolves.toBe('app_uninit');
     expect(app['planRebuildScheduler'].now().hasTimer).toBe(false);
-    expect(app.powerSampleRebuildState.pending).toBeUndefined();
+    expect(app.planRebuildThrottle.snapshot().queued).toBeNull();
   });
 
   it('enable_device_capacity_control flow card enables capacity control', async () => {
@@ -1109,12 +1102,7 @@ describe('MyApp initialization', () => {
     rebuildSpy.mockClear();
 
     const nowMs = app['getPlanRebuildNowMs']();
-    app.powerSampleRebuildState = {
-      ...app.powerSampleRebuildState,
-      lastMs: nowMs,
-      lastRebuildPowerW: 5000,
-      lastCapacityPaceKw: 9.5,
-    };
+    rememberLastRebuild(app.planRebuildThrottle, nowMs, 5000);
     app.planEngine.state.lastRestoreMs = nowMs - 1_000;
     app.planEngine.state.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
 
@@ -1161,12 +1149,7 @@ describe('MyApp initialization', () => {
     rebuildSpy.mockClear();
 
     const nowMs = app['getPlanRebuildNowMs']();
-    app.powerSampleRebuildState = {
-      ...app.powerSampleRebuildState,
-      lastMs: nowMs,
-      lastRebuildPowerW: 5000,
-      lastCapacityPaceKw: 9.5,
-    };
+    rememberLastRebuild(app.planRebuildThrottle, nowMs, 5000);
     app.planEngine.state.wasOvershoot = true;
 
     await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
@@ -1195,12 +1178,7 @@ describe('MyApp initialization', () => {
     rebuildSpy.mockClear();
 
     const nowMs = app['getPlanRebuildNowMs']();
-    app.powerSampleRebuildState = {
-      ...app.powerSampleRebuildState,
-      lastMs: nowMs,
-      lastRebuildPowerW: 5000,
-      lastCapacityPaceKw: 9.5,
-    };
+    rememberLastRebuild(app.planRebuildThrottle, nowMs, 5000);
     app.planEngine.state.wasOvershoot = true;
 
     // ≥100 W jitter per sample — meaningful deltas that used to force a rebuild each time.
@@ -1644,9 +1622,9 @@ describe('MyApp initialization', () => {
 
     const app = createApp();
     await initApp(app);
-    app.powerSampleRebuildState = {
-      ...app.powerSampleRebuildState, tightNoopStreak: 3, backoffUntilMs: 120_000,
-    };
+    app.planRebuildThrottle['restore']({
+      ...app.planRebuildThrottle.snapshot(), noopStreak: 3, holdoff: { untilMs: 120_000, cause: 'noop' },
+    });
 
     app.deviceManager.injectDeviceUpdateForTest({
       id: 'dev-1',
@@ -1668,9 +1646,9 @@ describe('MyApp initialization', () => {
     // external-off hold nor the suppression latches — the tight-noop backoff
     // stands. That filter is the producer's job, and it is what keeps a chatty
     // sensor from un-suppressing a rebuild every few seconds.
-    expect(app.powerSampleRebuildState).toMatchObject({
-      tightNoopStreak: 3,
-      backoffUntilMs: 120_000,
+    expect(app.planRebuildThrottle.snapshot()).toMatchObject({
+      noopStreak: 3,
+      holdoff: { untilMs: 120_000, cause: 'noop' },
     });
     expect(app.latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
       temperature: {

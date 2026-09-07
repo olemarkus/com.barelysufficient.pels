@@ -13,7 +13,8 @@ Execution — converging observed state onto that plan — is `lib/executor`.
 - `shedding/` — the only place that *selects* devices to shed. **Has its own AGENTS.md — read it first.**
 - `restore/` — restore selection, timing, and accounting (exponential back-off).
 - `swap/` — priority-based device swapping lifecycle.
-- `rebuildScheduler/` — when to rebuild (power-driven, signal-driven, shortfall suppression).
+- `rebuildScheduler/` — when to rebuild: `PlanRebuildThrottle` (`throttle.ts`) owns the power-sample
+  throttle and its memory between readings; `policy.ts` is its pure decision; `scheduler.ts` the intent queue.
 
 ## Invariants (enforced — see `.dependency-cruiser.cjs` and `docs/technical.md`)
 

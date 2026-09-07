@@ -29,8 +29,9 @@ Remaining work:
 
 ### Rebuild scheduler
 
-The scheduler family now lives under `lib/plan/rebuildScheduler/` (`scheduler.ts`, `signalDriven.ts`,
-`powerDriven.ts`, `policy.ts`, `stateHelpers.ts`, `shortfallSuppression.ts`) after the move out of
+The scheduler family now lives under `lib/plan/rebuildScheduler/` (`scheduler.ts`, `throttle.ts` —
+the `PlanRebuildThrottle` that owns the power-sample throttle's memory — `policy.ts`,
+`rebuildSignal.ts`, `telemetryObserver.ts`) after the move out of
 `lib/app/` in `dac04420`. Power-sample ingestion was extracted into the `PowerSamplePipeline` class
 at `setup/powerSamplePipeline.ts` (`941c29ef`), so the old `appPowerRebuildScheduler.ts` compatibility
 wrapper is gone — `hardCap`, `signal`, `flow`, and power-sample intents all flow through the unified

@@ -1,12 +1,12 @@
 /**
  * What one admitted whole-home reading says about whether to rebuild.
  *
- * Resolved ONCE, at the signal seam (`signalDriven.ts`), and passed down the
- * decision chain as a unit. Every stage below reads a subset and forwards the
+ * Resolved ONCE, at the signal seam (`PlanRebuildThrottle.onSample`), and
+ * passed down the decision chain as a unit. Every stage below reads a subset and forwards the
  * rest — which is precisely why it is one value and not a per-stage argument
  * list. Before this type, each stage redeclared the union of everything the
- * stages beneath it needed: `schedulePlanRebuildFromPowerSample` declared 16
- * properties and read none of them itself.
+ * stages beneath it needed: the old power-sample entry declared 16 properties
+ * and read none of them itself.
  *
  * Every field is present and finite. The scheduler is reached from inside the
  * tracker's `schedulePlanRebuild` callback, which the tracker core invokes only
@@ -43,7 +43,7 @@ export type HardCapBreach = {
 
 /**
  * How often the scheduler may rebuild. `stableMinIntervalMs` is the relaxed
- * floor used while no capacity boundary is active; `signalDriven` collapses the
+ * floor used while no capacity boundary is active; the throttle collapses the
  * two into the effective minimum before the decision chain sees it.
  */
 export type RebuildCadence = {
@@ -54,7 +54,7 @@ export type RebuildCadence = {
 
 /**
  * The whole-home reading and the thresholds it is judged against, as the caller
- * holds them. `signalDriven` turns this plus the guard into a
+ * holds them. The throttle turns this plus the guard into a
  * `PowerRebuildSignal`; the derivation stays in the planner because deciding
  * what a breach or a tight headroom IS, is policy.
  */
@@ -67,16 +67,16 @@ export type AdmittedPowerReading = {
 };
 
 /**
- * What the last plan says about whether rebuilding can change anything. Both
- * come from the planner and both answer that one question, and both are folded
- * into the signal together. `skipWhileShortfallUnrecoverable` deliberately is
- * NOT here: half of it is the scheduler's own `shortfallSuppressionInvalidated`
- * round-tripped out and back, and the seam peels it off separately rather than
- * putting it on the signal.
+ * What the last plan says about whether rebuilding can change anything. All
+ * three come from the planner's own summary of its last plan and answer that
+ * one question. `shortfallUnrecoverable` is the plan's half of the shortfall
+ * throttle — "no controlled load left to act on"; the throttle ANDs it with its
+ * own invalidation latch, which no longer round-trips out through the wiring.
  */
 export type PlanRebuildPosture = {
   planConvergenceActive: boolean;
   unactionable: boolean;
+  shortfallUnrecoverable: boolean;
 };
 
 export const resolveHeadroomTight = (headroomKw: number): boolean => headroomKw <= 0;

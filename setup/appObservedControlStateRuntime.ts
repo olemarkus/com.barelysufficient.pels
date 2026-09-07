@@ -8,7 +8,6 @@ import type { ObservedControlStateChangedEvent } from '../lib/observer/observedS
 import type { HomeId } from '../lib/utils/settingsKeys';
 import type { OwningHomeHooks } from './homeRuntime/createHomeCapacityBundle';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
-import { invalidateRebuildSuppressionForObservation } from '../lib/plan/rebuildScheduler/observationSuppression';
 
 /**
  * Structural slice of the home-runtime registry this consumes (multi-home R7b
@@ -93,15 +92,14 @@ function buildExternalOffHoldHooks(
  * Clear the rebuild suppressions of the home that OWNS this device.
  *
  * Routed for the same reason the hold above is, and with a sharper failure mode:
- * main and each sub-home hold SEPARATE `PowerSampleRebuildState`s, so an
+ * main and each sub-home hold SEPARATE rebuild throttles, so an
  * unrouted write is silent in both directions — main's suppressions are cleared
  * on a house that saw nothing, and the owning home keeps the
  * "nothing is actionable" verdict the moved device just falsified, worth up to
  * the 120 s tight-noop backoff.
  *
  * The invalidation itself is not a rebuild request: see
- * `lib/plan/rebuildScheduler/observationSuppression.ts` for what it may and may
- * not change.
+ * `PlanRebuildThrottle.onObservation` for what it may and may not change.
  */
 export function invalidateOwningHomeRebuildSuppression(params: {
   ctx: AppContext;
@@ -115,8 +113,5 @@ export function invalidateOwningHomeRebuildSuppression(params: {
     subHomeHooks.invalidateRebuildSuppression();
     return;
   }
-  // eslint-disable-next-line functional/immutable-data -- shared AppContext write
-  ctx.powerSampleRebuildState = invalidateRebuildSuppressionForObservation(
-    ctx.powerSampleRebuildState,
-  );
+  ctx.planRebuildThrottle.onObservation();
 }

@@ -59,7 +59,7 @@ import type { HomeMembershipPort } from '../home/membership';
 import type { HomeRuntimeReadPort } from '../home/homeRuntimeRead';
 import type { GenerationPollSource } from '../power/sources/generationPoll';
 import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
-import type { PowerSampleRebuildState } from '../plan/rebuildScheduler/powerDriven';
+import type { PlanRebuildThrottle } from '../plan/rebuildScheduler/throttle';
 import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import type {
@@ -270,8 +270,8 @@ export type AppContext = {
   get lastPositiveMeasuredPowerKw(): Record<string, { kw: number; ts: number }>;
   get lastNotifiedOperatingMode(): string;
   set lastNotifiedOperatingMode(value: string);
-  get powerSampleRebuildState(): PowerSampleRebuildState;
-  set powerSampleRebuildState(value: PowerSampleRebuildState);
+  /** The main home's rebuild throttle (`lib/plan/rebuildScheduler/throttle.ts`); sub-homes own their own. */
+  get planRebuildThrottle(): PlanRebuildThrottle;
   get latestTargetSnapshot(): DecoratedDeviceSnapshot[];
   getUiPickerDevices(): DecoratedDeviceSnapshot[];
   getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead;

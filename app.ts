@@ -33,7 +33,7 @@ import {
 import { AppDeviceControlHelpers } from './setup/appDeviceControlHelpers';
 import { createSteppedStores, type SteppedStores } from './setup/appInit/createSteppedStores';
 import { DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, MAIN_HOME_ID } from './lib/utils/settingsKeys';
-import type { PowerSampleRebuildState } from './lib/plan/rebuildScheduler/powerDriven';
+import type { PlanRebuildThrottle } from './lib/plan/rebuildScheduler/throttle';
 import { createBackgroundTasks, type BackgroundTasks } from './setup/appInit/createBackgroundTasks';
 import { createHomePowerPipeline, createMeterSilenceMonitor } from './setup/homeRuntime/createHomePowerPipeline';
 import type { PvForecastController } from './setup/appInit/createPvForecastService';
@@ -61,7 +61,11 @@ import { AppSnapshotHelpers, createTargetPowerReachabilityAppWiring } from './se
 import { createFlowBackedDeviceState } from './setup/flowBackedCardAccess';
 import { AppSmartTaskApi } from './setup/appSmartTaskApi';
 import { AppSmartTaskPayloads } from './setup/appSmartTaskPayloads';
-import { getAppPlanRebuildNowMs, PlanRebuildIntentPolicy } from './setup/planRebuildIntentPolicy';
+import {
+  createHomePlanRebuildThrottle,
+  getAppPlanRebuildNowMs,
+  PlanRebuildIntentPolicy,
+} from './setup/planRebuildIntentPolicy';
 import { AppNativeWiring } from './setup/appNativeWiring';
 import {
   AppServiceWiring,
@@ -215,22 +219,18 @@ class PelsApp extends PelsAppBase implements AppContext {
   protected overheadToken?: Homey.FlowToken;
   public lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   public lastNotifiedOperatingMode = 'Home';
-  public powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
   private readonly settingsRepository = new SettingsRepository(this.homey);
   private readonly schedulerTelemetry = new SchedulerTelemetryObserver({
     getStructuredLogger: () => this.structuredLogger,
     isDebugTopicEnabled: (topic) => this.debugLoggingTopics.has(topic),
     getNowMs: () => this.getPlanRebuildNowMs(),
-    getPowerSampleRebuildState: () => this.powerSampleRebuildState,
-    setPowerSampleRebuildState: (state) => { this.powerSampleRebuildState = state; },
+    cancelQueuedPowerRebuild: (reason) => this.planRebuildThrottle.cancel(reason),
   });
-  private readonly planRebuildIntentPolicy = new PlanRebuildIntentPolicy({
-    getPowerSampleRebuildState: () => this.powerSampleRebuildState,
-    setPowerSampleRebuildState: (state) => { this.powerSampleRebuildState = state; },
-    getPlanRebuildNowMs: () => this.getPlanRebuildNowMs(),
+  private readonly planRebuildIntentPolicy: PlanRebuildIntentPolicy = new PlanRebuildIntentPolicy({
+    getPlanRebuildThrottle: () => this.planRebuildThrottle,
     getPlanService: () => this.planService,
   });
-  protected readonly planRebuildScheduler = new PlanRebuildScheduler({
+  protected readonly planRebuildScheduler: PlanRebuildScheduler = new PlanRebuildScheduler({
     getNowMs: getAppPlanRebuildNowMs,
     resolveDueAtMs: (intent, state) => this.planRebuildIntentPolicy.resolveDueAtMs(intent, state),
     executeIntent: (intent) => this.planRebuildIntentPolicy.executeIntent(intent),
@@ -239,6 +239,14 @@ class PelsApp extends PelsAppBase implements AppContext {
     onPendingIntentReplaced: this.schedulerTelemetry.onPendingIntentReplaced,
     onIntentCancelled: this.schedulerTelemetry.onIntentCancelled,
     onIntentError: this.schedulerTelemetry.onIntentError,
+  });
+  // The main home's rebuild throttle: it owns what the scheduler used to read
+  // off a state record held here (`lib/plan/rebuildScheduler/throttle.ts`).
+  public readonly planRebuildThrottle: PlanRebuildThrottle = createHomePlanRebuildThrottle({
+    getScheduler: () => this.planRebuildScheduler,
+    getCapacityGuard: () => this.capacityGuard,
+    getNowMs: () => this.getPlanRebuildNowMs(),
+    rebuildPlanFromCache: (trigger) => this.planService.rebuildPlanFromCache(trigger),
   });
   public readonly meterSilenceMonitor = createMeterSilenceMonitor({
     getLastSampleAtMs: () => this.powerTracker.lastTimestamp,
@@ -249,13 +257,11 @@ class PelsApp extends PelsAppBase implements AppContext {
   protected readonly powerSamplePipeline = createHomePowerPipeline({
     ctx: this,
     homeId: MAIN_HOME_ID,
-    planRebuildScheduler: this.planRebuildScheduler,
+    planRebuildThrottle: this.planRebuildThrottle,
     getPlanEngine: () => this.planEngine,
     getPlanService: () => this.planService,
     getCapacityGuard: () => this.capacityGuard,
-    getPlanRebuildNowMs: () => this.getPlanRebuildNowMs(),
     savePowerTracker: (state) => this.savePowerTracker(state),
-    setPowerSampleRebuildState: (state) => { this.powerSampleRebuildState = state; },
     getOutdoorTemperatureC: () => this.weatherCollector?.getCurrentOutdoorTemperatureC(),
     recordPvGenerationSample: (genW, nowMs, netW) => this.pvForecast?.recordSample(genW, nowMs, netW),
     // Optional AppContext member assigned by wireCurtailmentSurplus post-startup;

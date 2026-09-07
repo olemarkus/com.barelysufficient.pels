@@ -62,7 +62,7 @@ followable is keyed to something `grep` can still find after the next refactor.
 `capacityPaceKw` wherever a consumer logged it as `softLimitKw`, and `bindingPaceKw` on
 `PlanContext` and `plan.meta`. The first set is renamed — `periodicStatus` now logs
 `capacityPaceKw`/`capacityHeadroomKw`, the rebuild scheduler threads `capacityPaceKw`
-(with `pendingCapacityPaceKw` / `lastCapacityPaceKw` in its state), and
+(the throttle's queued signal carries `capacityPaceKw`), and
 `headroom_for_device_checked` names the field it always carried. What is left of
 `softLimit` — `PlanContext.softLimit` and `plan.meta.softLimitKw` — means
 `bindingPaceKw` and nothing else, so the name is now merely *unconverged*, not
@@ -219,7 +219,7 @@ non-optional, and each site below is handed a producer-resolved `capacityPaceKw`
 |---|---|
 | `lib/executor/shortfallExecutor.ts` | `capacityPaceKw` (`getCapacityPaceKw`) |
 | `lib/diagnostics/periodicStatus.ts` | `capacityPaceKw` (`capacityPaceKw` param) |
-| `lib/plan/rebuildScheduler/signalDriven.ts` | `capacityPaceKw` (`capacityPaceKw` param) |
+| `lib/plan/rebuildScheduler/throttle.ts` | `capacityPaceKw` (`AdmittedPowerReading.capacityPaceKw`) |
 | `flowCards/headroomAndEvSocCards.ts` | `capacityPaceKw` (`deps.getCapacityPaceKw`) |
 
 This satisfies the root `AGENTS.md` rule — unavailability must surface as an explicit
@@ -319,7 +319,7 @@ obvious:
   `lib/plan/restore/index.ts:55`), and unlike the open hysteresis item it is a real
   transition rather than epsilon jitter.
 - **The drain is why the fallbacks had to go rather than be tidied.** `capacityGuard.ts`,
-  `signalDriven.ts` and `periodicStatus.ts` used to fall back to `sustainableRateKw` and
+  the power-sample rebuild seam (now `throttle.ts`) and `periodicStatus.ts` used to fall back to `sustainableRateKw` and
   `shortfallExecutor.ts` to `hardCapKw`; neither decays, so an unwired provider did not
   merely substitute a different quantity, it substituted one that could never wind down
   at the boundary — defeating exactly what the drain is for. All four sites now receive a

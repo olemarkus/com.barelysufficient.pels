@@ -1,3 +1,4 @@
+import { initialPlanRebuildThrottleMemory } from '../../lib/plan/rebuildScheduler/throttle';
 import {
   getLatestPlanSnapshotForTests,
   mockHomeyInstance,
@@ -198,7 +199,7 @@ describe('Airtreatment device integration', () => {
     setCapSpy.mockClear();
     app.planEngine.state.lastInstabilityMs = Date.now() - 180000;
     app.planEngine.state.lastRecoveryMs = Date.now() - 180000;
-    app.powerSampleRebuildState = { lastMs: 0 };
+    app.planRebuildThrottle['restore'](initialPlanRebuildThrottleMemory());
     app.computeDynamicSoftLimit = () => 10;
     app.computeDynamicSoftLimit = () => 10;
     app.capacityGuard.isInShortfall = () => false;

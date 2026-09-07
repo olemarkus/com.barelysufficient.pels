@@ -18,7 +18,8 @@ import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
-import { executePendingPowerRebuild } from '../../lib/plan/rebuildScheduler/powerDriven';
+import { initialPlanRebuildThrottleMemory, PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
+import { powerSampleRebuildCadence } from '../../setup/planRebuildIntentPolicy';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { buildHomePlanDevices } from '../../setup/homeRuntime/planDevicePrePass';
@@ -343,31 +344,36 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
       computeDynamicSoftLimit: () => 9.5,
     } as unknown as PlanService;
     const nowMs = Date.UTC(2026, 0, 15, 12, 0, 0);
-    // Mirrors `PlanRebuildIntentPolicy.executeIntent`: the sample promise is a
-    // deferred on `powerSampleRebuildState` that ONLY this executor resolves —
-    // an inert executeIntent stub would hang the recordPowerSample await.
-    const executeIntent = () => executePendingPowerRebuild(
-      { getState: () => ctx.powerSampleRebuildState, setState: (state) => { ctx.powerSampleRebuildState = state; } },
-      () => nowMs,
-      async () => undefined,
+    const guard = createTestCapacityGuard({ homeId: 'main' });
+    // Wired as production wires them: the scheduler executes by calling back
+    // into the throttle, which resolves the sample's promise — an inert
+    // executeIntent stub would hang the recordPowerSample await.
+    const throttle: PlanRebuildThrottle = new PlanRebuildThrottle(
+      {
+        getScheduler: () => scheduler,
+        getCapacityGuard: () => guard,
+        getNowMs: () => nowMs,
+        rebuildPlanFromCache: async () => undefined,
+      },
+      powerSampleRebuildCadence(),
+      initialPlanRebuildThrottleMemory(),
     );
+    const scheduler: PlanRebuildScheduler = new PlanRebuildScheduler({
+      getNowMs: () => nowMs,
+      resolveDueAtMs: () => nowMs,
+      executeIntent: () => throttle.execute(),
+      shouldExecuteImmediately: () => true,
+    });
     const pipeline = createHomePowerPipeline({
       ctx,
       homeId: MAIN_HOME_ID,
-      planRebuildScheduler: new PlanRebuildScheduler({
-        getNowMs: () => nowMs,
-        resolveDueAtMs: () => nowMs,
-        executeIntent,
-        shouldExecuteImmediately: () => true,
-      }),
+      planRebuildThrottle: throttle,
       getPlanEngine: () => planEngine,
       getPlanService: () => planService,
-      getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
-      getPlanRebuildNowMs: () => nowMs,
+      getCapacityGuard: () => guard,
       // Write back as production does (`savePowerTracker` -> `setPowerTracker`),
       // so the latch the scheduler reads is the sample just admitted.
       savePowerTracker: (state) => { saved = state; ctx.powerTracker = state; },
-      setPowerSampleRebuildState: (state) => { ctx.powerSampleRebuildState = state; },
     });
     await pipeline.recordPowerSample(5000, nowMs);
     return saved;

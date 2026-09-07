@@ -1,8 +1,4 @@
 import type { Logger as PinoLogger } from 'pino';
-import {
-  cancelPendingPowerRebuild,
-  type PowerSampleRebuildState,
-} from './powerDriven';
 import type { RebuildIntent } from './scheduler';
 import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
@@ -14,8 +10,8 @@ export type SchedulerTelemetryObserverDeps = {
   getStructuredLogger: () => PinoLogger | undefined;
   isDebugTopicEnabled: (topic: DebugLoggingTopic) => boolean;
   getNowMs: () => number;
-  getPowerSampleRebuildState: () => PowerSampleRebuildState;
-  setPowerSampleRebuildState: (state: PowerSampleRebuildState) => void;
+  /** The throttle's `cancel`: a cancelled power intent releases the rebuild queued for it. */
+  cancelQueuedPowerRebuild: (reason: string) => void;
 };
 
 /**
@@ -24,9 +20,9 @@ export type SchedulerTelemetryObserverDeps = {
  *
  * Lives with the scheduler it observes. It used to sit in `setup/`, which made
  * its rate-limiter state ownerless — and put a component that names
- * `RebuildIntent` and `PowerSampleRebuildState` a layer above the module that
- * defines them. `lib/logging` would be the wrong home for the same reason in
- * reverse: logging is a foundation, and this would have it depend on `lib/plan`.
+ * `RebuildIntent` a layer above the module that defines it. `lib/logging` would
+ * be the wrong home for the same reason in reverse: logging is a foundation, and
+ * this would have it depend on `lib/plan`.
  *
  * Implements all four `onIntent*` / `onPendingIntentReplaced` callbacks the
  * scheduler emits as arrow-function fields, so they can be passed to the
@@ -71,13 +67,7 @@ export class SchedulerTelemetryObserver {
 
   readonly onIntentCancelled = (intent: RebuildIntent, reason: string): void => {
     if (intent.kind === 'signal' || intent.kind === 'hardCap') {
-      cancelPendingPowerRebuild(
-        {
-          getState: () => this.deps.getPowerSampleRebuildState(),
-          setState: (state) => this.deps.setPowerSampleRebuildState(state),
-        },
-        reason,
-      );
+      this.deps.cancelQueuedPowerRebuild(reason);
     }
   };
 

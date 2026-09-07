@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PlanService } from '../../lib/plan/planService';
-import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';
 import { TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS } from '../../lib/plan/rebuildScheduler/policy';
-import type { RebuildIntent, SchedulerState } from '../../lib/plan/rebuildScheduler/scheduler';
+import type { PlanRebuildScheduler, RebuildIntent, SchedulerState } from '../../lib/plan/rebuildScheduler/scheduler';
+import { PlanRebuildThrottle, type PlanRebuildThrottleMemory } from '../../lib/plan/rebuildScheduler/throttle';
 import { PlanRebuildIntentPolicy } from '../../setup/planRebuildIntentPolicy';
+import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
+import { schedulePowerSampleForTest, throttleMemoryFixture } from '../helpers/powerRebuildScheduler';
 
 // `FLOW_REBUILD_COALESCE_MS` is 0 under NODE_ENV=test (the suite must not be
 // delayed); the trailing cooldown is 1 s in every environment.
@@ -25,19 +27,35 @@ const buildSchedulerState = (overrides: Partial<SchedulerState> = {}): Scheduler
   ...overrides,
 });
 
+const rebuiltAt = (atMs: number, powerW = 0): PlanRebuildThrottleMemory['lastRebuild'] => ({
+  atMs, powerW, hardCapBreach: { breached: false, deficitKw: 0 },
+});
+
+// The throttle behind the policy, over a scheduler stub that only accepts:
+// these cases are about the policy's delegation, not about executing.
 const buildPolicy = (options: {
-  rebuildState?: PowerSampleRebuildState;
+  memory?: Partial<PlanRebuildThrottleMemory>;
   planRebuildNowMs?: number;
 } = {}) => {
-  let rebuildState: PowerSampleRebuildState = options.rebuildState ?? { lastMs: 0 };
   const rebuildPlanFromCache = vi.fn(async () => undefined);
+  const scheduler = {
+    request: () => ({ status: 'accepted' as const, keptIntent: signal }),
+  } as unknown as PlanRebuildScheduler;
+  const throttle = new PlanRebuildThrottle(
+    {
+      getScheduler: () => scheduler,
+      getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
+      getNowMs: () => options.planRebuildNowMs ?? NOW_MS,
+      rebuildPlanFromCache,
+    },
+    { minIntervalMs: 2000, stableMinIntervalMs: 2000, maxIntervalMs: 30_000 },
+    throttleMemoryFixture(options.memory),
+  );
   const policy = new PlanRebuildIntentPolicy({
-    getPowerSampleRebuildState: () => rebuildState,
-    setPowerSampleRebuildState: (state) => { rebuildState = state; },
-    getPlanRebuildNowMs: () => options.planRebuildNowMs ?? NOW_MS,
+    getPlanRebuildThrottle: () => throttle,
     getPlanService: () => ({ rebuildPlanFromCache } as unknown as PlanService),
   });
-  return { policy, rebuildPlanFromCache, getRebuildState: () => rebuildState };
+  return { policy, throttle, rebuildPlanFromCache };
 };
 
 describe('PlanRebuildIntentPolicy.resolveDueAtMs', () => {
@@ -46,23 +64,25 @@ describe('PlanRebuildIntentPolicy.resolveDueAtMs', () => {
     expect(policy.resolveDueAtMs(hardCap, buildSchedulerState())).toBe(NOW_MS);
   });
 
-  it('holds a signal intent until its own pending due time', () => {
-    const { policy } = buildPolicy({ rebuildState: { lastMs: 0, pendingDueMs: 12_500 } });
-    expect(policy.resolveDueAtMs(signal, buildSchedulerState())).toBe(12_500);
+  it('holds a signal intent until the throttle\'s own queued due time', async () => {
+    // Last rebuilt 500 ms ago at a 2 s minimum: the request queues for 1.5 s from now.
+    const { policy, throttle } = buildPolicy({ memory: { lastRebuild: rebuiltAt(NOW_MS - 500) } });
+    void schedulePowerSampleForTest({ throttle, limitKw: 10, currentPowerW: 9500, capacityPaceKw: 9 });
+    expect(throttle.snapshot().queued?.dueMs).toBe(11_500);
+    expect(policy.resolveDueAtMs(signal, buildSchedulerState())).toBe(11_500);
   });
 
   it('applies the tight-unactionable execution floor to both power-driven kinds', () => {
-    const lastMs = 9_000;
-    const { policy } = buildPolicy({ rebuildState: { lastMs, tightUnactionable: true } });
-    const expected = lastMs + TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS;
+    const atMs = 9_000;
+    const { policy } = buildPolicy({ memory: { lastRebuild: rebuiltAt(atMs), lastDecisionUnactionable: true } });
+    const expected = atMs + TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS;
     expect(policy.resolveDueAtMs(hardCap, buildSchedulerState())).toBe(expected);
     expect(policy.resolveDueAtMs(signal, buildSchedulerState())).toBe(expected);
   });
 
-  it('does not apply the floor to a scheduler that has never run (lastMs === 0)', () => {
-    // With a monotonic clock `lastMs === 0` is process start, so `0 + interval`
-    // is a real future time that would wrongly defer the very first rebuild.
-    const { policy } = buildPolicy({ rebuildState: { lastMs: 0, tightUnactionable: true } });
+  it('does not apply the floor to a throttle that has never rebuilt', () => {
+    // Nothing to anchor the floor to: a first rebuild is never deferred.
+    const { policy } = buildPolicy({ memory: { lastRebuild: null, lastDecisionUnactionable: true } });
     expect(policy.resolveDueAtMs(hardCap, buildSchedulerState())).toBe(NOW_MS);
   });
 
@@ -92,14 +112,17 @@ describe('PlanRebuildIntentPolicy.executeIntent', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledWith('flow_card', { detail: 'set_deadline' });
   });
 
-  it('routes power-driven intents through the pending-rebuild state machine', async () => {
-    const { policy, rebuildPlanFromCache, getRebuildState } = buildPolicy({
-      rebuildState: { lastMs: 0, pendingReason: 'power_delta' },
+  it('routes power-driven intents to the throttle, which runs what it queued', async () => {
+    const { policy, throttle, rebuildPlanFromCache } = buildPolicy({
+      memory: { lastRebuild: rebuiltAt(NOW_MS - 20_000, 4000) },
       planRebuildNowMs: 42_000,
     });
+    // A meaningful delta on a calm home: queued as a `power_delta` rebuild.
+    void schedulePowerSampleForTest({ throttle, limitKw: 10, currentPowerW: 5000, capacityPaceKw: 9 });
+    expect(throttle.snapshot().queued?.trigger).toBe('power_delta');
     await policy.executeIntent(signal);
     expect(rebuildPlanFromCache).toHaveBeenCalledWith('power_delta');
-    // The state machine stamped the execution time through the injected setter.
-    expect(getRebuildState().lastMs).toBe(42_000);
+    // The throttle stamped the execution time from its own clock.
+    expect(throttle.snapshot().lastRebuild?.atMs).toBe(42_000);
   });
 });

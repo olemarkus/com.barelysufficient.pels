@@ -1,6 +1,6 @@
 import type { PlanEngineState } from './planState';
 
-type PlanConvergenceState = Pick<
+export type PlanConvergenceState = Pick<
   PlanEngineState,
   | 'wasOvershoot'
   | 'pendingSheds'

@@ -4,17 +4,7 @@ import {
   type HardCapBreach,
   type PowerRebuildSignal,
 } from './rebuildSignal';
-
-
-export type RebuildDecisionState = {
-  lastMs: number;
-  lastRebuildPowerW?: number;
-  lastHardCapBreached?: boolean;
-  lastHardCapDeficitKw?: number;
-  backoffUntilMs?: number;
-  mitigationHoldoffUntilMs?: number;
-  shortfallSuppressionInvalidated?: boolean;
-};
+import type { LastRebuild, PlanRebuildThrottleMemory, RebuildHoldoff } from './throttleMemory';
 
 export type RebuildDecision = {
   shouldRebuild: boolean;
@@ -52,16 +42,14 @@ export const TIGHT_MITIGATION_HOLDOFF_MS = 15_000;
 // bites if the decision throttle is bypassed (e.g. the one-shot invalidation latch).
 export const TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS = 15_000;
 
-// `lastRebuildPowerW` is absent only until the first rebuild has run, which is
-// a genuine "no previous sample to compare against" — not a missing input.
+// `lastRebuild` is null only until the first rebuild has run, which is a genuine
+// "no previous sample to compare against" — not a missing input.
 export const resolvePowerDelta = (
   signal: PowerRebuildSignal,
-  lastRebuildPowerW: number | undefined,
+  lastRebuild: LastRebuild | null,
 ): { deltaW: number; deltaMeaningful: boolean } => {
   const deltaThresholdW = Math.max(MIN_REBUILD_DELTA_W, signal.limitKw * 1000 * MIN_REBUILD_DELTA_RATIO);
-  const deltaW = typeof lastRebuildPowerW === 'number'
-    ? Math.abs(signal.currentPowerW - lastRebuildPowerW)
-    : 0;
+  const deltaW = lastRebuild === null ? 0 : Math.abs(signal.currentPowerW - lastRebuild.powerW);
   return { deltaW, deltaMeaningful: deltaW >= deltaThresholdW };
 };
 
@@ -95,23 +83,23 @@ const resolveTightUnactionable = (
   return signal.unactionable && !signal.planConvergenceActive && boundaryActive;
 };
 
-// `state` supplies the two gates that are pure functions of it — the initial
+// `memory` supplies the two gates that are pure functions of it — the initial
 // sample and the invalidation latch — rather than being re-derived by the
 // caller and handed back. The rest are this stage's own derivations.
 export const shouldRebuildFromDecision = (
   signal: PowerRebuildSignal,
-  state: RebuildDecisionState,
+  memory: PlanRebuildThrottleMemory,
   controlBoundaryActive: boolean,
   hardCapBreachActive: boolean,
   backoffActive: boolean,
   deltaMeaningful: boolean,
   maxIntervalExceeded: boolean,
 ): boolean => {
-  if (state.lastMs === 0) return true;
+  if (memory.lastRebuild === null) return true;
   // Sits above the hard-cap and backoff gates: when nothing is actionable, a
   // hard-cap breach or meaningful delta cannot change the outcome, so refresh
   // only on the max-interval cadence instead of every power sample.
-  if (isUnactionableThrottleActive(signal, state.shortfallSuppressionInvalidated === true)) {
+  if (isUnactionableThrottleActive(signal, memory.suppressionInvalidated)) {
     return maxIntervalExceeded;
   }
   if (hardCapBreachActive) return true;
@@ -121,23 +109,27 @@ export const shouldRebuildFromDecision = (
     || maxIntervalExceeded;
 };
 
-// `elapsedMs` is not a parameter: it is `nowMs - state.lastMs`, and both are
+// `elapsedMs` is not a parameter: it is `nowMs - lastRebuild.atMs`, and both are
 // already here. Passing it alongside let a caller hand in a third opinion.
 export const resolveRebuildDecision = (
   signal: PowerRebuildSignal,
-  state: RebuildDecisionState,
+  memory: PlanRebuildThrottleMemory,
   nowMs: number,
   maxIntervalMs: number,
 ): RebuildDecision => {
+  const { lastRebuild } = memory;
   const headroomTight = resolveHeadroomTight(signal.headroomKw);
   const controlBoundaryActive = headroomTight || signal.isInShortfall;
   const hardCapBreachActive = signal.hardCapBreach.breached;
-  const { deltaW, deltaMeaningful } = resolvePowerDelta(signal, state.lastRebuildPowerW);
-  const maxIntervalExceeded = maxIntervalMs > 0 && (nowMs - state.lastMs) >= maxIntervalMs;
-  const repeatedHardCapBreach = hardCapBreachActive && state.lastHardCapBreached === true;
+  const { deltaW, deltaMeaningful } = resolvePowerDelta(signal, lastRebuild);
+  const maxIntervalExceeded = maxIntervalMs > 0
+    && (lastRebuild === null || nowMs - lastRebuild.atMs >= maxIntervalMs);
+  const lastBreach = lastRebuild !== null && lastRebuild.hardCapBreach.breached;
+  const repeatedHardCapBreach = hardCapBreachActive && lastBreach;
   const hardCapDeficitIncreased = hardCapBreachActive
-    && typeof state.lastHardCapDeficitKw === 'number'
-    && signal.hardCapBreach.deficitKw > state.lastHardCapDeficitKw + MIN_HARD_CAP_DEFICIT_DELTA_KW;
+    && lastRebuild !== null
+    && lastBreach
+    && signal.hardCapBreach.deficitKw > lastRebuild.hardCapBreach.deficitKw + MIN_HARD_CAP_DEFICIT_DELTA_KW;
   const hardCapBreachShouldRebuild = hardCapBreachActive && (
     !repeatedHardCapBreach
     || deltaMeaningful
@@ -146,14 +138,14 @@ export const resolveRebuildDecision = (
   );
   const backoffActive = isTightNoopBackoffActive(
     signal,
-    state,
+    memory.holdoff,
     nowMs,
     headroomTight,
     deltaMeaningful,
   );
   const shouldRebuild = shouldRebuildFromDecision(
     signal,
-    state,
+    memory,
     controlBoundaryActive,
     hardCapBreachShouldRebuild,
     backoffActive,
@@ -175,10 +167,10 @@ export const resolveRebuildDecision = (
 
 export const resolveRebuildReason = (
   signal: PowerRebuildSignal,
-  state: RebuildDecisionState,
+  memory: PlanRebuildThrottleMemory,
   decision: RebuildDecision,
 ): PowerSampleRebuildTrigger => {
-  if (state.lastMs === 0) return 'initial';
+  if (memory.lastRebuild === null) return 'initial';
   if (signal.isInShortfall) return 'shortfall';
   if (signal.hardCapBreach.breached) return 'hard_cap_breach';
   if (decision.headroomTight) return 'headroom_tight';
@@ -198,20 +190,15 @@ export const isTightReason = (reason: PlanRebuildTrigger): boolean => (
 
 export function isTightNoopBackoffActive(
   signal: PowerRebuildSignal,
-  state: RebuildDecisionState,
+  holdoff: RebuildHoldoff | null,
   nowMs: number,
   headroomTight: boolean,
   deltaMeaningful: boolean,
 ): boolean {
   if (!headroomTight && !signal.isInShortfall) return false;
   if (deltaMeaningful) return false;
-  return isFutureMs(state.backoffUntilMs, nowMs)
-    || isFutureMs(state.mitigationHoldoffUntilMs, nowMs);
+  return holdoff !== null && nowMs < holdoff.untilMs;
 }
-
-export const isFutureMs = (value: number | undefined, nowMs: number): boolean => (
-  typeof value === 'number' && nowMs < value
-);
 
 export const resolveTightNoopBackoffMs = (streak: number): number => {
   const index = Math.max(0, streak - 1);

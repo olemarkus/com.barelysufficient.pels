@@ -25,7 +25,7 @@ export type PlanObservedStateSubscriptionDeps = {
   /**
    * Clear the rebuild suppressions of the home that OWNS this device. Routed for
    * the same reason the hold above it is: each bundle keeps a separate
-   * `PowerSampleRebuildState`, so clearing main's for a sub-home device clears
+   * rebuild throttle, so clearing main's for a sub-home device clears
    * the wrong house and leaves the right one throttled.
    */
   invalidateRebuildSuppression: (deviceId: string) => void;
@@ -49,7 +49,7 @@ export type PlanObservedStateSubscriptionDeps = {
  * reading taken before the change (root `AGENTS.md` § Control Flow). What an
  * observation may do is refresh the UI's read model, drive the executor's
  * settlement of a pending command, and stop the reading already on its way from
- * being throttled away (`invalidateRebuildSuppressionForObservation`).
+ * being throttled away (`PlanRebuildThrottle.onObservation`).
  *
  * "Immediate" is the load-bearing word, and it was once false.
  * `syncLivePlanState` below runs the pending-command reconcile sweep, whose

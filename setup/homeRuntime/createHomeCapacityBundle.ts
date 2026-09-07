@@ -49,12 +49,10 @@ import type {
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
 import type { PlanService } from '../../lib/plan/planService';
 import { createBinaryCommandReachability } from '../../lib/plan/admission/binaryCommandReachability';
-import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';
-import type { RebuildIntent, SchedulerState } from '../../lib/plan/rebuildScheduler/scheduler';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
-import { executePendingPowerRebuild } from '../../lib/plan/rebuildScheduler/powerDriven';
-import { TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS } from '../../lib/plan/rebuildScheduler/policy';
+import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
+import { createHomePlanRebuildThrottle } from '../planRebuildIntentPolicy';
 import {
   isNumberMap,
 } from '../../lib/utils/appTypeGuards';
@@ -163,7 +161,7 @@ export type OwningHomeHooks = {
   rebuildPlan: (trigger: PlanRebuildTrigger) => Promise<unknown>;
   /**
    * Clear THIS home's rebuild suppressions after one of its devices moved.
-   * Each bundle owns a separate `PowerSampleRebuildState`, so clearing main's
+   * Each bundle owns a separate rebuild throttle, so clearing main's
    * would leave the owning home holding a "nothing is actionable" verdict about
    * a house that has since changed — for up to the 120 s tight-noop backoff.
    */
@@ -234,52 +232,47 @@ export type HomeCapacityBundle = {
   teardown: (options?: { resetMeterFreshness?: boolean }) => boolean;
 };
 
-// Per-bundle rebuild scheduler over the bundle's own rebuild state; every
-// timer rides the shared TimerRegistry under this home's key. Bundle clock:
-// `Date.now()` unconditionally — self-consistent within the bundle (state,
-// due times and the pipeline's `getPlanRebuildNowMs` all read the same
-// clock); the main home keeps its monotonic-clock variant.
-function createBundleRebuildScheduler(params: {
+// Per-bundle rebuild throttle and the scheduler it queues into; every timer
+// rides the shared TimerRegistry under this home's key. Bundle clock:
+// `Date.now()` unconditionally — self-consistent within the bundle (the
+// throttle's memory and the scheduler's due times read the same clock); the
+// main home keeps its monotonic-clock variant. `flow` intents do not exist for
+// sub-homes, so every intent here is the throttle's.
+function createBundleRebuildRuntime(params: {
   ctx: AppContext;
   timerKey: (suffix: string) => string;
-  getRebuildState: () => PowerSampleRebuildState;
-  setRebuildState: (state: PowerSampleRebuildState) => void;
   getPlanService: () => PlanService;
-}): PlanRebuildScheduler {
-  const { ctx, timerKey, getRebuildState, setRebuildState, getPlanService } = params;
+  getCapacityGuard: () => CapacityGuard;
+}): { scheduler: PlanRebuildScheduler; throttle: PlanRebuildThrottle } {
+  const { ctx, timerKey, getPlanService, getCapacityGuard } = params;
   const nowMs = () => Date.now();
-  // Mirrors `PlanRebuildIntentPolicy.resolveDueAtMs` for the two intent kinds a
-  // bundle emits; `flow` intents do not exist for sub-homes.
-  const resolveDueAtMs = (intent: RebuildIntent, state: SchedulerState): number => {
-    const rebuildState = getRebuildState();
-    const floorMs = rebuildState.tightUnactionable === true && rebuildState.lastMs > 0
-      ? rebuildState.lastMs + TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS
-      : Number.NEGATIVE_INFINITY;
-    if (intent.kind === 'hardCap') return Math.max(state.nowMs, floorMs);
-    if (intent.kind === 'signal') return Math.max(rebuildState.pendingDueMs ?? state.nowMs, floorMs);
-    return Number.POSITIVE_INFINITY;
-  };
-  return new PlanRebuildScheduler({
+  const throttle: PlanRebuildThrottle = createHomePlanRebuildThrottle({
+    getScheduler: () => scheduler,
+    getCapacityGuard,
     getNowMs: nowMs,
-    resolveDueAtMs,
+    rebuildPlanFromCache: (trigger) => getPlanService().rebuildPlanFromCache(trigger),
+  });
+  const scheduler: PlanRebuildScheduler = new PlanRebuildScheduler({
+    getNowMs: nowMs,
+    resolveDueAtMs: (intent, state) => throttle.dueAtMs(intent, state.nowMs),
     executeIntent: (intent) => {
-      if (intent.kind === 'signal' || intent.kind === 'hardCap') {
-        return executePendingPowerRebuild(
-          { getState: getRebuildState, setState: setRebuildState },
-          nowMs,
-          (trigger) => getPlanService().rebuildPlanFromCache(trigger),
-        );
-      }
+      if (intent.kind === 'signal' || intent.kind === 'hardCap') return throttle.execute();
       return getPlanService()
         .rebuildPlanFromCache(intent.reason, { detail: intent.detail })
         .then(() => undefined);
     },
     shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
+    // A cancelled intent releases the rebuild queued for it, so a sample
+    // awaiting one learns the reason instead of hanging past teardown.
+    onIntentCancelled: (intent, reason) => {
+      if (intent.kind === 'signal' || intent.kind === 'hardCap') throttle.cancel(reason);
+    },
     setTimeoutFn: (callback, delayMs) => (
       ctx.timers.registerTimeout(timerKey('planRebuild'), setTimeout(callback, delayMs))
     ),
     clearTimeoutFn: () => { ctx.timers.clear(timerKey('planRebuild')); },
   });
+  return { scheduler, throttle };
 }
 
 // The sub-home `HomeScope`: capacity-only policy block, suffixed persisted-
@@ -416,39 +409,37 @@ function createBundleSamplePipeline(params: {
   ctx: AppContext;
   homeId: HomeId;
   timerKey: (suffix: string) => string;
-  getRebuildState: () => PowerSampleRebuildState;
-  setRebuildState: (state: PowerSampleRebuildState) => void;
   getPlanEngine: () => ReturnType<typeof createPlanEngine>;
   getPlanService: () => PlanService;
   getCapacityGuard: () => CapacityGuard;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   savePowerTracker: (state: PowerTrackerState) => void;
   getPowerTracker: () => PowerTrackerState;
-}): { pipeline: ReturnType<typeof createHomePowerPipeline>; scheduler: PlanRebuildScheduler } {
-  const scheduler = createBundleRebuildScheduler({
+}): {
+  pipeline: ReturnType<typeof createHomePowerPipeline>;
+  scheduler: PlanRebuildScheduler;
+  throttle: PlanRebuildThrottle;
+} {
+  const { scheduler, throttle } = createBundleRebuildRuntime({
     ctx: params.ctx,
     timerKey: params.timerKey,
-    getRebuildState: params.getRebuildState,
-    setRebuildState: params.setRebuildState,
     getPlanService: params.getPlanService,
+    getCapacityGuard: params.getCapacityGuard,
   });
   const pipeline = createHomePowerPipeline({
     ctx: params.ctx,
     homeId: params.homeId,
-    planRebuildScheduler: scheduler,
+    planRebuildThrottle: throttle,
     getPlanEngine: params.getPlanEngine,
     getPlanService: params.getPlanService,
-    getPlanRebuildNowMs: () => Date.now(),
     savePowerTracker: params.savePowerTracker,
-    setPowerSampleRebuildState: params.setRebuildState,
     getPowerTracker: params.getPowerTracker,
     getCapacitySettings: params.getCapacitySettings,
     getCapacityGuard: params.getCapacityGuard,
-    getPowerSampleRebuildState: params.getRebuildState,
     // No weather/PV/curtailment taps for sub-homes: a sub-home meter's net W is
     // not the home's grid power — feeding it to those estimators would corrupt them.
   });
-  return { pipeline, scheduler };
+  return { pipeline, scheduler, throttle };
 }
 
 function createBundlePlanningRuntime(params: {
@@ -464,8 +455,6 @@ function createBundlePlanningRuntime(params: {
   tracker: ReturnType<typeof createHomeTrackerPersistence>;
   getHome: () => SubHomeConfig;
   getCapacityScalars: () => CapacityScalarSettings;
-  getRebuildState: () => PowerSampleRebuildState;
-  setRebuildState: (state: PowerSampleRebuildState) => void;
   modeCatalog: HomeModeCatalog;
 }) {
   // This home's meter-silence policy: shared by the composed plan-build gate
@@ -526,12 +515,10 @@ function createBundlePlanningRuntime(params: {
   planEngine.state.lastDeviceControlledMs = isNumberMap(storedLastControlled) ? { ...storedLastControlled } : {};
   planEngine.beginStartupRestoreStabilization(BUNDLE_RESTORE_STABILIZATION_MS);
   const planService = createPlanService(params.ctx, scope, planEngine);
-  const { pipeline, scheduler: planRebuildScheduler } = createBundleSamplePipeline({
+  const { pipeline, scheduler: planRebuildScheduler, throttle: planRebuildThrottle } = createBundleSamplePipeline({
     ctx: params.ctx,
     homeId: params.homeId,
     timerKey: params.timerKey,
-    getRebuildState: params.getRebuildState,
-    setRebuildState: params.setRebuildState,
     getPlanEngine: () => planEngine,
     getPlanService: () => planService,
     getCapacityGuard: () => guard,
@@ -549,6 +536,7 @@ function createBundlePlanningRuntime(params: {
     holdDeferredShortfallSideEffect,
     pipeline,
     planRebuildScheduler,
+    planRebuildThrottle,
     isActuationFenced,
   };
 }
@@ -569,7 +557,6 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   let capacityScalars: CapacityScalarSettings = SUB_HOME_CAPACITY_DEFAULTS;
   const capacityStore = createCapacitySettingsStore(ctx.homey.settings, homeId, () => capacityScalars);
   capacityScalars = capacityStore.read();
-  let rebuildState: PowerSampleRebuildState = { lastMs: 0 };
 
   const tracker = createHomeTrackerPersistence({
     deps: {
@@ -604,6 +591,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     holdDeferredShortfallSideEffect,
     pipeline,
     planRebuildScheduler,
+    planRebuildThrottle,
     meterSilenceMonitor,
   } = createBundlePlanningRuntime({
     ctx, homeId,
@@ -615,8 +603,6 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     timerKey, preparedSampleFence, tracker,
     getHome: () => home,
     getCapacityScalars: () => capacityScalars,
-    getRebuildState: () => rebuildState,
-    setRebuildState: (state) => { rebuildState = state; },
     modeCatalog,
   });
   preparedSampleFence.bindReader(() => pipeline.getStableSampleRevision());
@@ -670,7 +656,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
       isMembershipReady: deps.isMembershipReady,
       isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
     },
-    tracker, pipeline, planRebuildScheduler, capacityStore,
+    tracker, pipeline, planRebuildScheduler, planRebuildThrottle, capacityStore,
     applyMembershipReadyEdge, markPreparedOwnershipGenerationReconciled,
     getHome: () => home,
     setHome: (next) => { home = next; },
@@ -681,7 +667,5 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     markTornDown: () => { tornDown = true; },
     reloadModeCatalog: modeCatalog.reload,
     isModeCatalogInitialized: modeCatalog.isInitialized,
-    getRebuildState: () => rebuildState,
-    setRebuildState: (state) => { rebuildState = state; },
   });
 }

@@ -8,10 +8,10 @@
  * closures.
  *
  * R7b: sub-home capacity bundles construct additional pipelines through the
- * same factory. The capacity closures (`getPowerTracker`/`getCapacitySettings`
- * /`getCapacityGuard`/`getPowerSampleRebuildState`) default to the ctx (main
- * home) reads when omitted and are overridden with per-bundle state for
- * sub-homes. The weather/PV/curtailment taps are caller-supplied and simply
+ * same factory. The capacity closures (`getPowerTracker`/`getCapacitySettings`)
+ * default to the ctx (main home) reads when omitted and are overridden with
+ * per-bundle state for sub-homes; `getCapacityGuard` and the rebuild throttle
+ * are always the caller's. The weather/PV/curtailment taps are caller-supplied and simply
  * NOT passed for sub-home pipelines: a sub-home meter's net W is not the
  * home's grid power, so feeding it to the PV forecast or the
  * curtailment-surplus estimator would corrupt them.
@@ -21,8 +21,7 @@ import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { AppContext } from '../../lib/app/appContext';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
-import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
-import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';
+import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
 import { filterDevicesForHome } from '../homeMembership';
@@ -35,25 +34,20 @@ export type HomePowerPipelineDeps = {
   ctx: AppContext;
   /** The home this pipeline samples for; scopes the snapshot view below. */
   homeId: HomeId;
-  planRebuildScheduler: PlanRebuildScheduler;
   // `AppContext` types `planEngine`/`planService` as optional (they are wired
   // during startup); the pipeline contract requires the definite getters the
   // app's own fields carry, so the caller supplies them.
   getPlanEngine: () => PlanEngine;
   getPlanService: () => PlanService;
-  getPlanRebuildNowMs: () => number;
   savePowerTracker: (state: PowerTrackerState) => void;
-  // Caller-supplied so the ctx mutation stays at the class site (the
-  // `functional/immutable-data` rule exempts class contexts).
-  setPowerSampleRebuildState: (state: PowerSampleRebuildState) => void;
+  /** This home's rebuild throttle — the sample's one exit into the planner. */
+  planRebuildThrottle: PlanRebuildThrottle;
   // Per-home capacity closures (R7b). Omitted = the ctx (main home) reads,
   // preserving the pre-R7b wiring byte-for-byte; sub-home bundles supply their
-  // own tracker/settings/guard/rebuild-state so two homes never share
-  // capacity state.
+  // own tracker/settings/guard so two homes never share capacity state.
   getPowerTracker?: () => PowerTrackerState;
   getCapacitySettings?: () => { limitKw: number; marginKw: number };
   getCapacityGuard: () => CapacityGuard;
-  getPowerSampleRebuildState?: () => PowerSampleRebuildState;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
   getOutdoorTemperatureC?: () => number | undefined;
   /** Feed the per-sample gross generation (W) plus the co-sampled SIGNED net home
@@ -82,9 +76,7 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     getPlanEngine: deps.getPlanEngine,
     getPlanService: deps.getPlanService,
     getDeviceManager: () => ctx.deviceManager,
-    planRebuildScheduler: deps.planRebuildScheduler,
-    getPowerSampleRebuildState: deps.getPowerSampleRebuildState ?? (() => ctx.powerSampleRebuildState),
-    setPowerSampleRebuildState: deps.setPowerSampleRebuildState,
+    planRebuildThrottle: deps.planRebuildThrottle,
     // Membership complement (same single seam as the plan input in
     // `homeScope.ts`): with sub-homes configured, this home's controlled/
     // background usage split and per-device sample accounting stop counting
@@ -96,7 +88,6 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     getLatestTargetSnapshot: () => (
       filterDevicesForHome(ctx.homeMembership, ctx.latestTargetSnapshot, deps.homeId)
     ),
-    getPlanRebuildNowMs: deps.getPlanRebuildNowMs,
     savePowerTracker: deps.savePowerTracker,
     getStructuredDebugEmitter: (component, topic) => ctx.getStructuredDebugEmitter(component, topic),
     getOutdoorTemperatureC: deps.getOutdoorTemperatureC,

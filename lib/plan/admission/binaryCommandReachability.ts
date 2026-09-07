@@ -128,7 +128,7 @@ export function createBinaryCommandReachability(params: {
       //
       // That ordering is the whole argument, and it is sufficient. Deliberately
       // do NOT prop it up with a claim about how soon the next rebuild arrives —
-      // two such claims look true and are not. `POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS`
+      // two such claims look true and are not. `powerSampleRebuildCadence().maxIntervalMs`
       // (30 s) is evaluated per ARRIVING sample, so it bounds nothing on
       // `power_source = flow`, where cadence is the owner's Flow cadence and
       // `installPowerSampleFreshnessEscalation` is explicitly not a heartbeat. And
@@ -136,7 +136,7 @@ export function createBinaryCommandReachability(params: {
       // max-interval escape (`lib/plan/rebuildScheduler/policy.ts`), holding
       // rebuilds up to `TIGHT_NOOP_BACKOFF_MAX_MS` (120 s) in exactly the
       // tight-headroom state a failed resume creates — and the usual escape,
-      // `invalidateRebuildSuppressionForObservation`, cannot fire, because a
+      // `PlanRebuildThrottle.onObservation`, cannot fire, because a
       // device that stopped answering emits no observation.
       //
       // Nor does the confirmation deadline cover it. The timer `onDispatchAccepted`

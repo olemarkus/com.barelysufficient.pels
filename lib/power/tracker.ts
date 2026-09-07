@@ -107,7 +107,7 @@ async function persistPowerSample(params: {
   /**
    * The power lane's own "the latch moved, decide again" callback. It takes no
    * trigger: the pipeline that supplies it resolves one from the sample it just
-   * admitted (`schedulePlanRebuildFromSignal`). It used to be handed the string
+   * admitted (`PlanRebuildThrottle.onSample`). It used to be handed the string
    * `'power_tracker_persist'`, which every implementation discarded.
    */
   rebuildPlanFromCache: () => Promise<void>;

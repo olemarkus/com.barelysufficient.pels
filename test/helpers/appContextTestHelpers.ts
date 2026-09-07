@@ -2,6 +2,7 @@ import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import { steppedStoresForTest } from './steppedStores';
+import { createInertPlanRebuildThrottle } from './powerRebuildScheduler';
 import { vi } from 'vitest';
 import {
   requireInitializedAppContext,
@@ -127,7 +128,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let defaultComputeDynamicSoftLimit: (() => number) | undefined;
   const lastKnownPowerKw: LearnedPeaksByDeviceId = {};
   let lastNotifiedOperatingMode = 'Home';
-  let powerSampleRebuildState = { lastMs: 0, lastRebuildPowerW: 0 };
+  const planRebuildThrottle = createInertPlanRebuildThrottle();
   const latestTargetSnapshot = latestTargetSnapshotOverride ?? [];
   const priceOptimizationEnabled = priceOptimizationEnabledOverride ?? false;
   const priceOptimizationSettings = priceOptimizationSettingsOverride ?? {};
@@ -302,8 +303,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     get lastPositiveMeasuredPowerKw() { return {}; },
     get lastNotifiedOperatingMode() { return lastNotifiedOperatingMode; },
     set lastNotifiedOperatingMode(value) { lastNotifiedOperatingMode = value; },
-    get powerSampleRebuildState() { return powerSampleRebuildState; },
-    set powerSampleRebuildState(value) { powerSampleRebuildState = value; },
+    get planRebuildThrottle() { return planRebuildThrottle; },
     get latestTargetSnapshot() { return latestTargetSnapshot; },
     getUiPickerDevices: () => latestTargetSnapshot,
     getCreateSmartTaskCandidateDevices: () => ({ state: 'ready', devices: latestTargetSnapshot }),

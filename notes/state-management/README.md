@@ -157,7 +157,7 @@ Post-release executor boundary rollout:
   in the reading that carries it.
 
   What an observation may still do is clear the rebuild suppressions
-  (`lib/plan/rebuildScheduler/observationSuppression.ts`), so the reading already on its way is not
+  (`PlanRebuildThrottle.onObservation`, `lib/plan/rebuildScheduler/throttle.ts`), so the reading already on its way is not
   throttled away by an "unactionable" verdict about a house that has since changed. That changes
   whether the next reading decides, never what it decides from.
 - Transitional stepped-load action adapters may still use planner-effective step fields as command

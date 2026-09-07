@@ -7,12 +7,13 @@
 //     pending-command store never saw the device's commands, so it would report
 //     PELS's own write as an outside action and fabricate a hold;
 //   - the rebuild-suppression invalidation — each bundle keeps its own
-//     `PowerSampleRebuildState`, so clearing main's leaves the owning home
+//     rebuild throttle, so clearing main's leaves the owning home
 //     holding a "nothing is actionable" verdict about a house that changed.
 //
 // This lane used to request a plan rebuild too, and most of this file tested
 // where that rebuild was routed. It does not any more: a device event is not what
 // a whole-home capacity decision is about (root `AGENTS.md` § Control Flow).
+import { throttleMemoryFixture } from '../helpers/powerRebuildScheduler';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   invalidateOwningHomeRebuildSuppression,
@@ -179,7 +180,11 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
 describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
   const buildCtxWithSuppressions = (): AppContext => {
     const ctx = createAppContextMock({});
-    ctx.powerSampleRebuildState = { lastMs: 1_000, tightNoopStreak: 3, backoffUntilMs: 120_000 };
+    ctx.planRebuildThrottle['restore'](throttleMemoryFixture({
+      lastRebuild: { atMs: 1_000, powerW: 0, hardCapBreach: { breached: false, deficitKw: 0 } },
+      noopStreak: 3,
+      holdoff: { untilMs: 120_000, cause: 'noop' },
+    }));
     return ctx;
   };
 
@@ -205,7 +210,7 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
 
     expect(invalidateSubHome).toHaveBeenCalledTimes(1);
     // Main's state is a different house and must not move.
-    expect(ctx.powerSampleRebuildState).toMatchObject({ tightNoopStreak: 3, backoffUntilMs: 120_000 });
+    expect(ctx.planRebuildThrottle.snapshot()).toMatchObject({ noopStreak: 3, holdoff: { untilMs: 120_000, cause: 'noop' } });
   });
 
   it('clears main\'s suppressions when no sub-home owns the device', () => {
@@ -217,10 +222,10 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
       getHomeRuntimeRegistry: () => routerFor({}),
     });
 
-    expect(ctx.powerSampleRebuildState).toMatchObject({
-      shortfallSuppressionInvalidated: true,
-      tightNoopStreak: 0,
-      backoffUntilMs: undefined,
+    expect(ctx.planRebuildThrottle.snapshot()).toMatchObject({
+      suppressionInvalidated: true,
+      noopStreak: 0,
+      holdoff: null,
     });
   });
 });

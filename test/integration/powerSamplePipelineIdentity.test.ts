@@ -15,6 +15,8 @@ import { PowerSamplePipeline } from '../../setup/powerSamplePipeline';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
+import { initialPlanRebuildThrottleMemory, PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
+import { powerSampleRebuildCadence } from '../../setup/planRebuildIntentPolicy';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 
 const buildPipeline = (
@@ -31,10 +33,25 @@ const buildPipeline = (
   // Power-driven scheduling stages a pending promise on this state and awaits
   // it; the scheduler stub below "executes" each accepted intent immediately by
   // resolving that staged promise, so the ingest path settles like production.
-  let rebuildState: { lastMs: number; lastRebuildPowerW: number; pendingResolve?: (r?: string) => void } = {
-    lastMs: 0,
-    lastRebuildPowerW: 0,
-  };
+  // The scheduler stub executes every accepted intent at once by calling back
+  // into the throttle, so the ingest path settles like production.
+  const scheduler = {
+    request: vi.fn(() => {
+        onRebuildRequest?.();
+      void throttle.execute();
+      return { status: 'accepted' as const, keptIntent: { kind: 'signal' as const, reason: 'power_delta' as const } };
+    }),
+  } as unknown as PlanRebuildScheduler;
+  const throttle: PlanRebuildThrottle = new PlanRebuildThrottle(
+    {
+      getScheduler: () => scheduler,
+      getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
+      getNowMs: Date.now,
+      rebuildPlanFromCache: async () => ({ actionChanged: false, appliedActions: false, failed: false }),
+    },
+    powerSampleRebuildCadence(),
+    initialPlanRebuildThrottleMemory(),
+  );
   return new PowerSamplePipeline({
     createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),
     getPowerTracker: () => powerTracker,
@@ -57,17 +74,8 @@ const buildPipeline = (
       computeDynamicSoftLimit: () => 9.5,
     } as unknown as PlanService),
     getDeviceManager: () => undefined,
-    planRebuildScheduler: {
-      request: vi.fn(() => {
-        onRebuildRequest?.();
-        rebuildState.pendingResolve?.('executed');
-        return { status: 'accepted' };
-      }),
-    } as unknown as PlanRebuildScheduler,
-    getPowerSampleRebuildState: () => rebuildState,
-    setPowerSampleRebuildState: (state) => { rebuildState = state as typeof rebuildState; },
+    planRebuildThrottle: throttle,
     getLatestTargetSnapshot: () => [],
-    getPlanRebuildNowMs: () => Date.now(),
     savePowerTracker: (state) => { powerTracker = state; savedStates.push(state); },
     getStructuredDebugEmitter: () => vi.fn(),
     ...(noteResolvedHomeMeter === undefined ? {} : { noteResolvedHomeMeter }),

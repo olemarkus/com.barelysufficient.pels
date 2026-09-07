@@ -1,10 +1,26 @@
 import type { PlanService } from '../lib/plan/planService';
 import {
-  executePendingPowerRebuild,
-  type PowerSampleRebuildState,
-} from '../lib/plan/rebuildScheduler/powerDriven';
-import { TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS } from '../lib/plan/rebuildScheduler/policy';
+  initialPlanRebuildThrottleMemory,
+  PlanRebuildThrottle,
+  type PlanRebuildThrottleDeps,
+} from '../lib/plan/rebuildScheduler/throttle';
 import type { PlanRebuildScheduler, RebuildIntent } from '../lib/plan/rebuildScheduler/scheduler';
+import type { RebuildCadence } from '../lib/plan/rebuildScheduler/rebuildSignal';
+
+/**
+ * How often a home's rebuild throttle may rebuild — one cadence for every
+ * home. Collapsed under `NODE_ENV=test` so a suite is not paced by it.
+ */
+export const powerSampleRebuildCadence = (): RebuildCadence => ({
+  minIntervalMs: process.env.NODE_ENV === 'test' ? 0 : 2000,
+  stableMinIntervalMs: process.env.NODE_ENV === 'test' ? 0 : 15000,
+  maxIntervalMs: process.env.NODE_ENV === 'test' ? 100 : 30 * 1000,
+});
+
+/** A home's rebuild throttle at the app's cadence, starting from nothing remembered. */
+export const createHomePlanRebuildThrottle = (deps: PlanRebuildThrottleDeps): PlanRebuildThrottle => (
+  new PlanRebuildThrottle(deps, powerSampleRebuildCadence(), initialPlanRebuildThrottleMemory())
+);
 
 const FLOW_REBUILD_COOLDOWN_MS = 1000;
 // Leading window before the first flow rebuild runs, so a burst of settings cards in one
@@ -27,44 +43,24 @@ export const getAppPlanRebuildNowMs = (): number => (
 );
 
 export type PlanRebuildIntentPolicyDeps = {
-  getPowerSampleRebuildState: () => PowerSampleRebuildState;
-  setPowerSampleRebuildState: (state: PowerSampleRebuildState) => void;
-  /**
-   * The scheduler's own clock read (`scheduler.now().nowMs`, which resolves back
-   * to `getAppPlanRebuildNowMs` above). Injected rather than called directly so
-   * a test can stamp a deterministic execution time without faking timers.
-   */
-  getPlanRebuildNowMs: () => number;
+  /** Late-bound: the throttle is constructed after the scheduler this policy serves. */
+  getPlanRebuildThrottle: () => PlanRebuildThrottle;
   getPlanService: () => PlanService;
 };
 
 /**
  * The two decisions `PlanRebuildScheduler` delegates back to the app: WHEN a
- * queued rebuild intent may run (per-kind due time, including the tight-
- * unactionable execution floor and the flow coalesce/cooldown window), and HOW
- * it is executed (power-driven intents go through the pending-rebuild state
- * machine; a flow intent is a plain cache rebuild).
+ * queued rebuild intent may run and HOW it is executed. Power-driven intents
+ * (`signal`, `hardCap`) are the throttle's — it queued them, it knows their due
+ * time and runs them; this policy owns only the flow coalesce/cooldown window.
  */
 export class PlanRebuildIntentPolicy {
   constructor(private readonly deps: PlanRebuildIntentPolicyDeps) {}
 
   resolveDueAtMs(intent: RebuildIntent, state: ReturnType<PlanRebuildScheduler['now']>): number {
     const nowMs = state.nowMs;
-    const rebuildState = this.deps.getPowerSampleRebuildState();
-    // Execution-side floor: while nothing is actionable, no trigger (signal or
-    // hardCap) may execute a rebuild faster than the floor after the last one.
-    // Anchored to `lastMs` (set only on a real execution) so `now` deterministically
-    // passes it after the interval rather than sliding forward on each recompute.
-    // Requires `lastMs > 0`: with a monotonic clock (`performance.now`) an un-run
-    // scheduler (`lastMs === 0`) is process start, and `0 + interval` is a real
-    // future time that would wrongly defer the very first (initial-sample) rebuild.
-    const floorMs = rebuildState.tightUnactionable === true
-      && rebuildState.lastMs > 0
-      ? rebuildState.lastMs + TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS
-      : Number.NEGATIVE_INFINITY;
-    if (intent.kind === 'hardCap') return Math.max(nowMs, floorMs);
-    if (intent.kind === 'signal') {
-      return Math.max(rebuildState.pendingDueMs ?? nowMs, floorMs);
+    if (intent.kind === 'hardCap' || intent.kind === 'signal') {
+      return this.deps.getPlanRebuildThrottle().dueAtMs(intent, nowMs);
     }
     if (intent.kind === 'flow') {
       if (state.activeIntent?.kind === 'flow') {
@@ -80,16 +76,7 @@ export class PlanRebuildIntentPolicy {
 
   executeIntent(intent: RebuildIntent): Promise<void> {
     if (intent.kind === 'signal' || intent.kind === 'hardCap') {
-      return executePendingPowerRebuild(
-        {
-          getState: () => this.deps.getPowerSampleRebuildState(),
-          setState: (state) => {
-            this.deps.setPowerSampleRebuildState(state);
-          },
-        },
-        () => this.deps.getPlanRebuildNowMs(),
-        (trigger) => this.deps.getPlanService().rebuildPlanFromCache(trigger),
-      );
+      return this.deps.getPlanRebuildThrottle().execute();
     }
     return this.deps.getPlanService()
       .rebuildPlanFromCache(intent.reason, { detail: intent.detail })

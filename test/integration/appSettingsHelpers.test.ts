@@ -1,3 +1,4 @@
+import { createInertPlanRebuildThrottle } from '../helpers/powerRebuildScheduler';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 
@@ -164,8 +165,7 @@ const buildContext = (): AppContext => {
     get lastPositiveMeasuredPowerKw() { return {}; },
     get lastNotifiedOperatingMode() { return 'Home'; },
     set lastNotifiedOperatingMode(_value) {},
-    get powerSampleRebuildState() { return { lastMs: 0, lastRebuildPowerW: 0 }; },
-    set powerSampleRebuildState(_value) {},
+    get planRebuildThrottle() { return createInertPlanRebuildThrottle(); },
     get latestTargetSnapshot() { return []; },
     get priceOptimizationEnabled() { return false; },
     get priceOptimizationSettings() { return {}; },

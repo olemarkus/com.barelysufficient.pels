@@ -15,7 +15,7 @@ import { installPowerSampleFreshnessEscalation } from '../powerSampleFreshnessEs
 import { requireDeviceManager } from '../appInit/contextGuards';
 import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 
-// Base freshness-heartbeat cadence (mirrors `POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS`
+// Base freshness-heartbeat cadence (mirrors `powerSampleRebuildCadence().maxIntervalMs`
 // in `setup/powerSamplePipeline.ts`). The test value is coarser than the poll
 // cadence so a 10-minute stale-escalation test doesn't fire thousands of ticks.
 

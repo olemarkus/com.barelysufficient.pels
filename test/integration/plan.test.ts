@@ -1,3 +1,4 @@
+import { rememberLastRebuild } from '../helpers/powerRebuildScheduler';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import type MyApp from '../../app.ts';
@@ -284,10 +285,7 @@ describe('Device plan snapshot', () => {
     // The shed-everything plan is unactionable, so subsequent rebuilds ride the
     // max-interval escape — simulate that interval having elapsed before each cycle.
     const openMaxIntervalEscape = () => {
-      app.powerSampleRebuildState = {
-        ...app.powerSampleRebuildState,
-        lastMs: Date.now() - 31_000,
-      };
+      rememberLastRebuild(app.planRebuildThrottle, Date.now() - 31_000);
     };
 
     // Second cycle: still in overshoot, state remains stable (no double-log)
@@ -966,10 +964,7 @@ describe('Device plan snapshot', () => {
 
     // The shed-everything plan is unactionable, so the next rebuild rides the
     // max-interval escape — simulate that interval having elapsed.
-    app.powerSampleRebuildState = {
-      ...app.powerSampleRebuildState,
-      lastMs: Date.now() - 31_000,
-    };
+    rememberLastRebuild(app.planRebuildThrottle, Date.now() - 31_000);
     await app['powerSamplePipeline'].recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
@@ -1188,10 +1183,7 @@ describe('Device plan snapshot', () => {
 
     // The shed-everything plan is unactionable, so the next rebuild rides the
     // max-interval escape — simulate that interval having elapsed.
-    app.powerSampleRebuildState = {
-      ...app.powerSampleRebuildState,
-      lastMs: Date.now() - 31_000,
-    };
+    rememberLastRebuild(app.planRebuildThrottle, Date.now() - 31_000);
     await app['powerSamplePipeline'].recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
@@ -1518,7 +1510,7 @@ describe('Device plan snapshot', () => {
 
     // Soft-limit changes alone no longer trigger an immediate rebuild.
     // Force the periodic max-interval rebuild path for this restore check.
-    app.powerSampleRebuildState.lastMs = app['getPlanRebuildNowMs']() - 200;
+    rememberLastRebuild(app.planRebuildThrottle, app['getPlanRebuildNowMs']() - 200);
     await app['powerSamplePipeline'].recordPowerSample(500);
     plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: { id: string }) => d.id === 'dev-1')?.plannedState).toBe('keep');
@@ -2167,10 +2159,7 @@ describe('Device plan snapshot', () => {
     // `checkShortfall`) ride the max-interval escape and its execution floor —
     // simulate that interval having elapsed before each recovery sample.
     const openMaxIntervalEscape = () => {
-      app.powerSampleRebuildState = {
-        ...app.powerSampleRebuildState,
-        lastMs: Date.now() - 31_000,
-      };
+      rememberLastRebuild(app.planRebuildThrottle, Date.now() - 31_000);
     };
 
     openMaxIntervalEscape();

@@ -32,8 +32,7 @@ import type {
 } from './createHomeCapacityBundle';
 import type { HomeTrackerPersistence } from '../../lib/power/homeTrackerPersistence';
 import type { StableSampleRevision } from '../powerSamplePipeline';
-import { invalidateRebuildSuppressionForObservation } from '../../lib/plan/rebuildScheduler/observationSuppression';
-import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';
+import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 
 export type PreparedBundleSampleFence = {
   bindReader: (reader: () => StableSampleRevision) => void;
@@ -367,9 +366,8 @@ type HomeCapacityBundleApiParams = {
   markTornDown: () => void;
   reloadModeCatalog: (allowPendingOwnershipGeneration?: boolean) => void;
   isModeCatalogInitialized: () => boolean;
-  /** THIS bundle's own rebuild state (never main's) — see `OwningHomeHooks`. */
-  getRebuildState: () => PowerSampleRebuildState;
-  setRebuildState: (state: PowerSampleRebuildState) => void;
+  /** THIS bundle's own rebuild throttle (never main's) — see `OwningHomeHooks`. */
+  planRebuildThrottle: PlanRebuildThrottle;
 };
 
 export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams): HomeCapacityBundle {
@@ -418,7 +416,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
         planEngine.clearRecentBinaryOffCommand(deviceId)),
       rebuildPlan: (trigger) => planService.rebuildPlanFromCache(trigger),
       invalidateRebuildSuppression: () => {
-        params.setRebuildState(invalidateRebuildSuppressionForObservation(params.getRebuildState()));
+        params.planRebuildThrottle.onObservation();
       },
     }),
     updateHomeConfig: (next) => {

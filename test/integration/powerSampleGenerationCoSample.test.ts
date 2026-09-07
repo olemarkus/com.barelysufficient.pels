@@ -22,6 +22,8 @@ import { PowerSamplePipeline } from '../../setup/powerSamplePipeline';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
+import { initialPlanRebuildThrottleMemory, PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
+import { powerSampleRebuildCadence } from '../../setup/planRebuildIntentPolicy';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 
 const T0 = Date.parse('2026-07-27T10:00:00Z');
@@ -33,14 +35,28 @@ type Taps = {
 
 const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePipeline; taps: Taps } => {
   let powerTracker: PowerTrackerState = {};
-  let rebuildState: { lastMs: number; lastRebuildPowerW: number; pendingResolve?: (r?: string) => void } = {
-    lastMs: 0,
-    lastRebuildPowerW: 0,
-  };
   const taps: Taps = {
     curtailment: vi.fn<(netW: number, generationW: number | undefined, nowMs: number) => void>(),
     pvForecast: vi.fn<(generationW: number | undefined, nowMs: number, netW?: number) => void>(),
   };
+  // The scheduler stub executes every accepted intent at once by calling back
+  // into the throttle, so the ingest path settles like production.
+  const scheduler = {
+    request: vi.fn(() => {
+      void throttle.execute();
+      return { status: 'accepted' as const, keptIntent: { kind: 'signal' as const, reason: 'power_delta' as const } };
+    }),
+  } as unknown as PlanRebuildScheduler;
+  const throttle: PlanRebuildThrottle = new PlanRebuildThrottle(
+    {
+      getScheduler: () => scheduler,
+      getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
+      getNowMs: Date.now,
+      rebuildPlanFromCache: async () => ({ actionChanged: false, appliedActions: false, failed: false }),
+    },
+    powerSampleRebuildCadence(),
+    initialPlanRebuildThrottleMemory(),
+  );
   const pipeline = new PowerSamplePipeline({
     createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),
     getPowerTracker: () => powerTracker,
@@ -63,16 +79,8 @@ const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePi
       computeDynamicSoftLimit: () => 9.5,
     } as unknown as PlanService),
     getDeviceManager: () => undefined,
-    planRebuildScheduler: {
-      request: vi.fn(() => {
-        rebuildState.pendingResolve?.('executed');
-        return { status: 'accepted' };
-      }),
-    } as unknown as PlanRebuildScheduler,
-    getPowerSampleRebuildState: () => rebuildState,
-    setPowerSampleRebuildState: (state) => { rebuildState = state as typeof rebuildState; },
+    planRebuildThrottle: throttle,
     getLatestTargetSnapshot: () => [],
-    getPlanRebuildNowMs: () => Date.now(),
     // Production's `savePowerTracker` calls `setPowerTracker`, so the next
     // `getPowerTracker()` sees the admitted sample. Discarding the write leaves
     // the tracker permanently unlatched — a state no admitted sample produces.
