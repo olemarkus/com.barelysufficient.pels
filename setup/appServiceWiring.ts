@@ -201,7 +201,7 @@ export class AppServiceWiring {
 
   constructor(private readonly deps: AppServiceWiringDeps) {
     const { ctx } = deps;
-    this.mainHomeScope = buildMainHomeScope(deps.ctx);
+    this.mainHomeScope = buildMainHomeScope(deps.ctx, deps.isMainActuationStopped);
     ctx.rebuildOwningHomePlanForDevice = (deviceId, trigger) => (
       this.rebuildOwningHomePlanForDevice(deviceId, trigger)
     );

@@ -6,9 +6,11 @@
  * factories used to hardwire singleton closures over `AppContext`. `HomeScope`
  * lifts those closures into an injected bundle so multi-home wiring can
  * construct N engines/services, each with per-home closures, without touching
- * the factories again. `buildMainHomeScope` reproduces the exact pre-refactor
- * closures: same live `ctx` reads, same unsuffixed settings keys
- * (`homeScopedSettingsKey` is the identity for the main home).
+ * the factories again. `buildMainHomeScope` keeps the same live `ctx` reads and
+ * the same unsuffixed settings keys (`homeScopedSettingsKey` is the identity for
+ * the main home). It used to reproduce the pre-refactor closures byte-for-byte;
+ * that stopped when Main's `pels_status` gained its own actuation posture, which
+ * is what "omitted means the main home" was costing everywhere else.
  *
  * R7b adds the POLICY block: the price/objective/surplus closures the
  * factories previously read straight off `ctx`. The main home binds them to
@@ -36,7 +38,6 @@ import type { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagn
 import type { AppContext } from '../../lib/app/appContext';
 import { resolveConfiguredDevicePriority } from '../../lib/utils/capacityHelpers';
 import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingBinaryCommands';
-import { createBinaryCommandReachability } from '../../lib/plan/admission/binaryCommandReachability';
 // Direct file imports (not the `setup/appInit.ts` barrel): the barrel also
 // exports the plan factories, which import this module — going through the
 // barrel would create a module cycle.
@@ -48,13 +49,9 @@ import {
   DeferredObjectiveDecorationController,
 } from '../../lib/objectives/deferredObjectives';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
-import {
-  CAPACITY_IN_SHORTFALL,
-  DEVICE_LAST_CONTROLLED_MS,
-  MAIN_HOME_ID,
-  PELS_STATUS,
-  homeScopedSettingsKey,
-} from '../../lib/utils/settingsKeys';
+import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import { createHomeCommandReachability } from './createHomeCommandReachability';
+import { createHomeSignalWriters } from './homeSignalWriters';
 
 /**
  * The closure bundle one home hands to its plan engine/service factories.
@@ -174,11 +171,17 @@ export type HomeScope = {
 };
 
 /**
- * The main home's scope: closures over the exact same `ctx` fields and the
- * exact same (unsuffixed) settings keys the factories hardwired before this
- * bundle existed. Zero behavior change by construction.
+ * The main home's scope: closures over the `ctx` fields and the unsuffixed
+ * settings keys the factories hardwired before this bundle existed. It used to
+ * reproduce them byte-for-byte, and that identity was the point — but it is
+ * also what let "a member omitted" mean "the main home" everywhere else in this
+ * lane. Main's `pels_status` now carries its own actuation posture like every
+ * other home's, and its posture flips force a status write the same way.
+ *
+ * `isTornDown` is Main's teardown edge (`stopMainActuation`), fencing the
+ * persisted-signal writers exactly as a meter area's bundle fences its own.
  */
-export function buildMainHomeScope(ctx: AppContext): HomeScope {
+export function buildMainHomeScope(ctx: AppContext, isTornDown: () => boolean): HomeScope {
   const homeId: HomeId = MAIN_HOME_ID;
   const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   // Smart-task controller: lives in the app-wiring layer so the planner engine
@@ -219,22 +222,8 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     // single-home behavior.
     resolveDeviceExclusion: (deviceId) => resolveSmartTaskDeviceExclusion(ctx, deviceId),
   });
-  const binaryCommandReachability = createBinaryCommandReachability({
-    requestRebuild: () => {
-      queueMicrotask(() => {
-        void requirePlanService(ctx).rebuildPlanFromCache('binary_command_reachability_changed');
-      });
-    },
-    scheduleRebuild: (deviceId, dueAtMs) => {
-      const key = `binaryCommandReachability:${homeId}:${deviceId}`;
-      ctx.timers.registerTimeout(key, setTimeout(() => {
-        ctx.timers.clear(key);
-        void requirePlanService(ctx).rebuildPlanFromCache('binary_command_reachability_deadline');
-      }, Math.max(0, dueAtMs - Date.now())));
-    },
-    clearScheduledRebuild: (deviceId) => {
-      ctx.timers.clear(`binaryCommandReachability:${homeId}:${deviceId}`);
-    },
+  const binaryCommandReachability = createHomeCommandReachability(ctx, homeId, (trigger) => {
+    void requirePlanService(ctx).rebuildPlanFromCache(trigger);
   });
   return {
     homeId,
@@ -265,15 +254,14 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     },
     binaryCommandLifecycle: binaryCommandReachability.lifecycle,
     disposeBinaryCommandReachability: binaryCommandReachability.dispose,
-    setCapacityInShortfall: (inShortfall) => (
-      ctx.homey.settings.set(homeScopedSettingsKey(CAPACITY_IN_SHORTFALL, homeId), inShortfall)
-    ),
-    persistLastControlledMs: (lastControlledMs) => (
-      ctx.homey.settings.set(homeScopedSettingsKey(DEVICE_LAST_CONTROLLED_MS, homeId), lastControlledMs)
-    ),
-    writePelsStatus: (status) => (
-      ctx.homey.settings.set(homeScopedSettingsKey(PELS_STATUS, homeId), status)
-    ),
+    // Main has a teardown edge like any other home: `runUninit` calls
+    // `stopMainActuation()` as its FIRST statement, to "close the final Main
+    // write seam before any awaited or synchronous cleanup". Its persisted
+    // writers were the one Main component that did not read that signal —
+    // `mainTracker` already does — so a rebuild continuation dispatched before
+    // uninit could still write `pels_status` and, worse,
+    // `device_last_controlled_ms`, which the next boot hydrates from.
+    ...createHomeSignalWriters(ctx, homeId, isTornDown),
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
     getCurrentHourPriceLevel: () => ctx.getCurrentHourPriceLevel(),
     // Late-bound closure: the curtailment estimator is wired post-startup

@@ -94,7 +94,7 @@ describe('app init plan service wiring', () => {
       deviceManager: undefined,
     });
 
-    expect(() => createPlanEngine(ctx, buildMainHomeScope(ctx), { capacityGuard: ctx.capacityGuard })).toThrow(
+    expect(() => createPlanEngine(ctx, buildMainHomeScope(ctx, () => false), { capacityGuard: ctx.capacityGuard })).toThrow(
       'DeviceTransport must be initialized before plan engine setup.',
     );
   });
@@ -110,7 +110,7 @@ describe('app init plan service wiring', () => {
       } as unknown as AppContext['deviceManager'],
       logDebug,
     });
-    const engine = createPlanEngine(engineCtx, buildMainHomeScope(engineCtx), { capacityGuard: engineCtx.capacityGuard });
+    const engine = createPlanEngine(engineCtx, buildMainHomeScope(engineCtx, () => false), { capacityGuard: engineCtx.capacityGuard });
 
     expect(engine).toBeDefined();
     (capturedPlanBuilderDeps.current as unknown as { logDebug: (...args: unknown[]) => void }).logDebug('debug payload', 123);
@@ -142,7 +142,7 @@ describe('app init plan service wiring', () => {
         getConfiguredMeterSources: () => configuredMeterSources,
       } as unknown as NonNullable<AppContext['homeMembership']>,
     });
-    createPlanEngine(engineCtx, buildMainHomeScope(engineCtx), { capacityGuard: engineCtx.capacityGuard });
+    createPlanEngine(engineCtx, buildMainHomeScope(engineCtx, () => false), { capacityGuard: engineCtx.capacityGuard });
     const actuator = (
       capturedPlanExecutorDeps.current as unknown as { actuator: Actuator }
     ).actuator;
@@ -224,7 +224,7 @@ describe('app init plan service wiring', () => {
       getAssociatedCar: () => undefined,
       getSnapshot: () => serviceCtx.latestTargetSnapshot,
     } as unknown as AppContext['deviceManager'];
-    const service = createPlanService(serviceCtx, buildMainHomeScope(serviceCtx), requirePlanEngine(serviceCtx));
+    const service = createPlanService(serviceCtx, buildMainHomeScope(serviceCtx, () => false), requirePlanEngine(serviceCtx));
 
     const planDevices = (service as unknown as {
       deps: { getPlanDevices: () => Array<{ id: string; currentOn?: boolean; objectiveKind?: string }> };
@@ -266,7 +266,7 @@ describe('app init plan service wiring', () => {
       deviceManager: undefined,
     });
 
-    expect(() => createPlanService(ctx, buildMainHomeScope(ctx), requirePlanEngine(ctx))).toThrow(
+    expect(() => createPlanService(ctx, buildMainHomeScope(ctx, () => false), requirePlanEngine(ctx))).toThrow(
       'DeviceTransport must be initialized before plan engine setup.',
     );
   });

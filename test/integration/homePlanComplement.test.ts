@@ -243,14 +243,14 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
 
   it('includes every device while no sub-homes exist', () => {
     const ctx = makeCtx(makeMembershipService(membershipInputs));
-    const scope = buildMainHomeScope(ctx);
+    const scope = buildMainHomeScope(ctx, () => false);
     expect(scope.getPlanDevices().map((device) => device.id)).toEqual(['device-main', 'device-sub']);
   });
 
   it('excludes a sub-home zone member from the main plan devices', () => {
     createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
     const ctx = makeCtx(makeMembershipService(membershipInputs));
-    const scope = buildMainHomeScope(ctx);
+    const scope = buildMainHomeScope(ctx, () => false);
     expect(scope.getPlanDevices().map((device) => device.id)).toEqual(['device-main']);
   });
 
@@ -258,7 +258,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
     createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
     createDeviceHomeAssignmentsStore(homeyLike).write({ 'device-sub': 'main' });
     const ctx = makeCtx(makeMembershipService(membershipInputs));
-    const scope = buildMainHomeScope(ctx);
+    const scope = buildMainHomeScope(ctx, () => false);
     expect(scope.getPlanDevices().map((device) => device.id)).toEqual(['device-main', 'device-sub']);
   });
 
@@ -272,7 +272,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       capacityPriorities: { Home: { 'device-main': 5, 'device-sub': 9 } },
       operatingMode: 'Home',
     });
-    const scope = buildMainHomeScope(ctx);
+    const scope = buildMainHomeScope(ctx, () => false);
     const priorities = () => Object.fromEntries(
       scope.getPlanDevices().map((device) => [device.id, device.priority]),
     );
@@ -322,7 +322,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       operatingMode: 'Home',
     });
 
-    expect(buildMainHomeScope(ctx).getPlanDevices().map(({ id, priority }) => ({ id, priority }))).toEqual([
+    expect(buildMainHomeScope(ctx, () => false).getPlanDevices().map(({ id, priority }) => ({ id, priority }))).toEqual([
       { id: 'device-main', priority: 2 },
       { id: 'device-sub', priority: 1 },
     ]);

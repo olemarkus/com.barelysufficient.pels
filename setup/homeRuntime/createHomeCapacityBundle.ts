@@ -48,7 +48,6 @@ import type {
 } from '../../lib/power/trackerTypes';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
 import type { PlanService } from '../../lib/plan/planService';
-import { createBinaryCommandReachability } from '../../lib/plan/admission/binaryCommandReachability';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
@@ -58,9 +57,7 @@ import {
   isNumberMap,
 } from '../../lib/utils/appTypeGuards';
 import {
-  CAPACITY_IN_SHORTFALL,
   DEVICE_LAST_CONTROLLED_MS,
-  PELS_STATUS,
   homeScopedSettingsKey,
 } from '../../lib/utils/settingsKeys';
 import { createCapacitySettingsStore } from '../capacitySettingsStoreAdapter';
@@ -86,6 +83,8 @@ import {
 } from './homeModeCatalog';
 import { installHomeCapacityBundleSourceRecovery } from './homeCapacityBundleSourceRecovery';
 import type { HomeScope } from './homeScope';
+import { createHomeCommandReachability } from './createHomeCommandReachability';
+import { createHomeSignalWriters } from './homeSignalWriters';
 import {
   createHomeTrackerPersistence,
 } from '../../lib/power/homeTrackerPersistence';
@@ -302,33 +301,13 @@ function buildSubHomeScope(params: {
     getTracker, getServiceForSync, getPlanEngineForCommandProvenance, modeCatalog,
     meterSilenceMonitor,
   } = params;
-  const binaryCommandReachability = createBinaryCommandReachability({
-    requestRebuild: () => {
-      queueMicrotask(() => {
-        if (!isTornDown()) void getServiceForSync()?.rebuildPlanFromCache('binary_command_reachability_changed');
-      });
-    },
-    scheduleRebuild: (deviceId, dueAtMs) => {
-      const key = `binaryCommandReachability:${homeId}:${deviceId}`;
-      ctx.timers.registerTimeout(key, setTimeout(() => {
-        if (isTornDown()) return;
-        ctx.timers.clear(key);
-        void getServiceForSync()?.rebuildPlanFromCache('binary_command_reachability_deadline');
-      }, Math.max(0, dueAtMs - Date.now())));
-    },
-    clearScheduledRebuild: (deviceId) => {
-      ctx.timers.clear(`binaryCommandReachability:${homeId}:${deviceId}`);
-    },
+  // Same lane the main home wires, with this area's own way of reaching its
+  // plan service: a torn-down bundle drops the rebuild rather than driving a
+  // service it no longer owns. The scheduled timer key is cleared either way,
+  // so teardown leaves nothing behind in the shared registry.
+  const binaryCommandReachability = createHomeCommandReachability(ctx, homeId, (trigger) => {
+    if (!isTornDown()) void getServiceForSync()?.rebuildPlanFromCache(trigger);
   });
-  // Suffixed persisted-signal write, fenced on teardown: an in-flight
-  // rebuild/reconcile continuation that resolves AFTER teardown must not
-  // re-create this home's suffixed keys (nor clobber a same-`homeId` bundle
-  // re-created after this one). Actuation is fenced separately at the actuator
-  // seam (see `createPlanEngine` `isActuationFenced`).
-  const writeSuffixed = (baseKey: string, value: unknown): void => {
-    if (isTornDown()) return;
-    ctx.homey.settings.set(homeScopedSettingsKey(baseKey, homeId), value);
-  };
   return {
     homeId,
     // Names THIS area on the global hard-cap Flow triggers, which every home
@@ -362,9 +341,7 @@ function buildSubHomeScope(params: {
     },
     binaryCommandLifecycle: binaryCommandReachability.lifecycle,
     disposeBinaryCommandReachability: binaryCommandReachability.dispose,
-    setCapacityInShortfall: (inShortfall) => writeSuffixed(CAPACITY_IN_SHORTFALL, inShortfall),
-    persistLastControlledMs: (lastControlledMs) => writeSuffixed(DEVICE_LAST_CONTROLLED_MS, lastControlledMs),
-    writePelsStatus: (status) => writeSuffixed(PELS_STATUS, status),
+    ...createHomeSignalWriters(ctx, homeId, isTornDown),
     // Capacity-only policy: no price optimization, no price level (so its status
     // reads UNKNOWN and `price_level_changed` never fires against MAIN's level),
     // no surplus term, no dynamic-soft-limit override. The smart-task seam is
