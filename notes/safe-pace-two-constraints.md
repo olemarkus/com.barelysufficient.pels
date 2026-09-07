@@ -50,7 +50,7 @@ followable is keyed to something `grep` can still find after the next refactor.
 | `hardCapKw` | `limitKw`, `capacitySettings.limitKw` | capacity settings |
 | `safetyMarginKw` | `marginKw` | capacity settings |
 | `hourlyAllowanceKWh` | `netBudgetKWh`, `hourBudgetKWh`, `budgetKWh` | `resolveUsableCapacityKw` |
-| `sustainableRateKw` | same value as the row above, read as a rate; the canonical identifier exists only as a local inside `computeDynamicSoftLimit` | `resolveUsableCapacityKw` |
+| `sustainableRateKw` | *(landed in `lib/objectives/deferredObjectives/**` and its three wirings; elsewhere still a local inside `computeDynamicSoftLimit`)* | `resolveUsableCapacityKw` |
 | `capacityPaceKw` | `allowedKw`, `capacitySoftLimit`; *(landed at the consumers, in the rebuild scheduler, and in every log field)* | `computeDynamicSoftLimit` |
 | `projectedExemptKw` | *(landed)* | `sumBudgetExemptProjectedUsageKw` |
 | `measuredExemptKw` | *(landed as a sum, not yet as a published scalar)* | `sumBudgetExemptMeasuredUsageKw` |
@@ -86,10 +86,14 @@ device's draw can make capacity the binding axis and keep the latch — and the
 non-exempt holds — alive longer; that is the boost/exemption priority working as
 intended, not a spiral (the lane closes as soon as the source flips to `capacity`).
 
-`hardCapKw` is a partial exception: the name is already in wide use across
-`lib/objectives/deferredObjectives/**`, the settings UI, and
-`homeScope.getHardCapKw()`, so adopting it in the capacity and plan paths is a
-rename onto a name the codebase already carries rather than a new coinage.
+`hardCapKw` is a partial exception: the name is already in wide use across the
+settings UI, so adopting it in the capacity and plan paths is a rename onto a
+name the codebase already carries rather than a new coinage. It used to be in
+equally wide use across `lib/objectives/deferredObjectives/**` and
+`homeScope.getSustainableRateKw()`, where it named the ceiling the feasibility probes
+paced against — but that ceiling was the raw `limitKw` while the guard sheds
+against `limitKw - marginKw`, so the probes ran one safety margin optimistic.
+Both the value and the name were corrected to `sustainableRateKw`.
 `safetyMarginKw` is **not** in the same position — it appears only in the settings
 UI, so that half is a genuinely new name everywhere else.
 
@@ -108,7 +112,7 @@ pre-empting that migration.
 
 `hourlyAllowanceKWh` is settings all the way down: a pure function of two settings
 values with no runtime state. It belongs to whoever owns `capacitySettings` and
-should be handed out as a resolved value, exactly like `homeScope.getHardCapKw()`
+should be handed out as a resolved value, exactly like `homeScope.getSustainableRateKw()`
 already does for the cap itself. No consumer should ever perform the subtraction, including
 the settings UI, which should receive it through the contract rather than
 recomputing it in the browser.

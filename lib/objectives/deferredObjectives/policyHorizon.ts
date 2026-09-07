@@ -97,7 +97,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   // (its `startUtc` floors to the same epoch hour), its `controlledShareKWh` /
   // `backgroundKWh` / `grossBackgroundKWh` are overlaid onto that bucket.
   // When absent, the bucket runs with no daily-budget cap and the per-hour
-  // hard cap becomes the only constraint.
+  // sustainable rate becomes the only constraint.
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   // When true (an at-risk smart task that was granted the "exempt from budget"
   // rescue permission), the per-bucket daily-budget cap is lifted so the planner
@@ -105,12 +105,9 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   // soft daily-budget throttle; physical capacity stays enforced downstream at
   // admission and the capacity guard.
   exemptFromBudget?: boolean;
-  // Configured hard cap in kW. When provided alongside the daily-budget snapshot's
-  // gross background forecast, each bucket gets a `reservedHeadroomKw` forecast
-  // (`hardCapKw − grossBackgroundKw`) that a fully-reserved smart task can use to
-  // promote its committed floor step. Optional: missing → no forecast → the planner
-  // stays on the min-step floor.
-  hardCapKw?: number | null;
+  // The rate the capacity guard will admit (`limitKw - marginKw`), which bounds
+  // each bucket's reserved headroom. Always supplied by the producer.
+  sustainableRateKw: number;
   // Hourly claims already made by higher-priority smart tasks. Physical power
   // is always deducted; planned energy is deducted only for non-exempt tasks.
   higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
@@ -122,7 +119,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
     priceHorizon,
     dailyBudgetSnapshot,
     exemptFromBudget = false,
-    hardCapKw = null,
+    sustainableRateKw,
     higherPriorityReservations = [],
   } = params;
   if (!priceOptimizationEnabled) {
@@ -141,7 +138,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
     buckets: mapPolicyBuckets(
       splitPolicyBucketsAtReservationBoundaries(sourceBuckets, higherPriorityReservations),
       exemptFromBudget,
-      hardCapKw,
+      sustainableRateKw,
       higherPriorityReservations,
     ),
     horizonBucketCount: sourceBuckets.length,
@@ -252,8 +249,8 @@ type BudgetOverlay = {
 };
 
 // No matching snapshot bucket: run with no daily-budget cap. `backgroundKWh = 0`
-// (NOT null) is REQUIRED so `resolveReservedHeadroomKw` returns `hardCapKw` (the
-// per-hour hard cap becomes the constraint); `controlledShareKWh = null` keeps
+// (NOT null) is REQUIRED so `resolveReservedHeadroomKw` returns `sustainableRateKw` (the
+// per-hour sustainable rate becomes the constraint); `controlledShareKWh = null` keeps
 // `resolveMaxUsefulEnergyKWh` null (no daily-budget cap).
 const NO_BUDGET_OVERLAY: BudgetOverlay = {
   backgroundKWh: 0,
@@ -351,8 +348,8 @@ const collectDayBudgetOverlays = (
   // controlled share of 0 — clamping every smart task's allocation to zero useful
   // energy (`cannot_meet`) whenever the user has daily budget off. Contribute NO
   // overlay so each bucket falls through to `NO_BUDGET_OVERLAY` and the per-hour
-  // hard cap becomes the only constraint, matching the "no daily budget ⇒ hard cap
-  // only" contract.
+  // sustainable rate becomes the only constraint, matching the "no daily budget ⇒
+  // capacity only" contract.
   if (!day.budget.enabled) return [];
   const starts = day.buckets.startUtc;
   if (!Array.isArray(starts)) return [];
@@ -475,7 +472,7 @@ const coversHorizon = (params: {
 const mapPolicyBuckets = (
   buckets: PolicyBucketSource[],
   exemptFromBudget: boolean,
-  hardCapKw: number | null,
+  sustainableRateKw: number,
   higherPriorityReservations: readonly DeferredObjectivePriorityReservation[],
 ): DeferredObjectiveHorizonBucket[] => {
   return buckets.map((bucket) => {
@@ -483,7 +480,7 @@ const mapPolicyBuckets = (
     const cap = resolveMaxUsefulEnergyKWh(bucket, exemptFromBudget);
     const reservedHeadroomKw = resolveReservedHeadroomKw(
       bucket,
-      hardCapKw,
+      sustainableRateKw,
       higher?.admissionPowerKw ?? 0,
     );
     return {
@@ -604,16 +601,22 @@ const resolveReservationsForBucket = (
 // were unavailable and the planner falls back to its existing live guards.
 const resolveReservedHeadroomKw = (
   bucket: PolicyBucketSource,
-  hardCapKw: number | null,
+  sustainableRateKw: number,
   higherPriorityAdmissionPowerKw: number,
 ): number | null => {
-  if (hardCapKw === null || !Number.isFinite(hardCapKw) || hardCapKw <= 0) return null;
+  // A pace of zero is reachable and is REPORTED, not suppressed: `modeCards.ts`
+  // validates a Flow-set hard cap as `> 0` without comparing it to the persisted
+  // margin, so `limitKw` below `marginKw` floors the rate at 0. Returning `null`
+  // there would omit the key, and `resolveBucketStepCapacityKWh` reads an omitted
+  // headroom as `POSITIVE_INFINITY` — turning "the guard admits nothing" into
+  // "unlimited", the fabricated stand-in the root AGENTS.md forbids. Zero is a
+  // measurement; it travels as zero.
   const physicalBackgroundKWh = bucket.grossBackgroundKWh ?? bucket.backgroundKWh;
   if (physicalBackgroundKWh === null) return null;
   const durationHours = (bucket.endMs - bucket.startMs) / (60 * 60 * 1000);
   if (durationHours <= 0) return null;
   const uncontrolledKw = Math.max(0, physicalBackgroundKWh / durationHours);
-  return Math.max(0, hardCapKw - uncontrolledKw - Math.max(0, higherPriorityAdmissionPowerKw));
+  return Math.max(0, sustainableRateKw - uncontrolledKw - Math.max(0, higherPriorityAdmissionPowerKw));
 };
 
 const resolveMaxUsefulEnergyKWh = (

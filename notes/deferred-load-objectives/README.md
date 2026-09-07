@@ -264,7 +264,7 @@ the allocator actually applies stacks three caps via `Math.min`:
   legitimately be 0 for an hour, which is a forecast of no room rather than a physical
   limit; see "An unbooked hour is not a stand-down" below for what that means downstream.
 - **Forecast hard-cap headroom** — `bucket.reservedHeadroomKw × durationHours`, where
-  `reservedHeadroomKw = (hardCapKw − grossBackgroundKWh/duration) × sharePerTask` is the
+  `reservedHeadroomKw = (sustainableRateKw − grossBackgroundKWh/duration) × sharePerTask` is the
   per-bucket physical headroom forecast from `policyHorizon.ts`. `backgroundKWh` remains the
   net daily-budget reserve for the pacing slice above; `grossBackgroundKWh` prevents solar
   self-consumption from overstating physical room. When the forecast is unavailable

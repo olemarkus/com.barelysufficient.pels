@@ -135,7 +135,7 @@ type BucketSegment = {
   // per-hour kWh the allocator can commit so a hour with low forecast
   // headroom can't over-promise even when step capacity has more to give.
   // `undefined` when the producer (`policyHorizon.ts`) could not compute a
-  // forecast — typically `hardCapKw === null` or `backgroundKWh === null`;
+  // forecast — typically `backgroundKWh === null`;
   // in that case the per-hour cap falls back to step capacity ∧
   // daily-budget only.
   reservedHeadroomKw: number | undefined;

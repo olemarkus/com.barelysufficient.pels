@@ -37,6 +37,11 @@ import {
   withTemperatureDiscriminant,
   type PlanInputDevice,
 } from '../../lib/plan/planTypes';
+// Deliberately non-binding: a rate no plan in these cases can reach, so the
+// reserved-headroom forecast never selects a lower rung than the case intends.
+// (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
+// to the FLOOR rung, so a high rate is what preserves these cases' behaviour.)
+const TEST_SUSTAINABLE_RATE_KW = 100;
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 const DEADLINE_MS = NOW_MS + 6 * 60 * 60 * 1000;
@@ -79,6 +84,7 @@ const buildDiagnosticsParams = (overrides: {
   deviceIds?: string[];
   resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
 }) => ({
+  sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
   nowMs: NOW_MS,
   timeZone: 'UTC',
   devices: overrides.devices,

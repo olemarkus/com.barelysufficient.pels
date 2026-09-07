@@ -253,7 +253,7 @@ type ReservationHour = DeferredObjectiveActivePlanHourV1 & {
 const resolveLegacyAdmissionPowerKw = (params: {
   hour: DeferredObjectiveActivePlanHourV1;
   device: ObjectiveDeviceInput | undefined;
-  hardCapKw: number | null | undefined;
+  sustainableRateKw: number;
   deadlineAtMs: number;
 }): number => {
   const persisted = params.hour.plannedAdmissionPowerKw;
@@ -277,16 +277,14 @@ const resolveLegacyAdmissionPowerKw = (params: {
     });
     if (step) return step.admissionPowerKw;
   }
-  return typeof params.hardCapKw === 'number' && Number.isFinite(params.hardCapKw) && params.hardCapKw > 0
-    ? params.hardCapKw
-    : Math.max(0, params.hour.plannedKWh);
+  return params.sustainableRateKw;
 };
 
 const reservationsFromHours = (params: {
   deviceId: string;
   hours: readonly ReservationHour[];
   device: ObjectiveDeviceInput | undefined;
-  hardCapKw: number | null | undefined;
+  sustainableRateKw: number;
   exemptFromBudget: boolean;
   deadlineAtMs: number;
 }): DeferredObjectivePriorityReservation[] => params.hours.flatMap((hour) => {
@@ -301,7 +299,7 @@ const reservationsFromHours = (params: {
     admissionPowerKw: resolveLegacyAdmissionPowerKw({
       hour,
       device: params.device,
-      hardCapKw: params.hardCapKw,
+      sustainableRateKw: params.sustainableRateKw,
       deadlineAtMs: params.deadlineAtMs,
     }),
     exemptFromBudget: params.exemptFromBudget,
@@ -332,7 +330,7 @@ export const buildPriorityReservations = (params: {
   objective: DeferredObjectiveSettingsEntry;
   device: ObjectiveDeviceInput | undefined;
   activePlans: DeferredObjectiveActivePlansV1 | null | undefined;
-  hardCapKw: number | null | undefined;
+  sustainableRateKw: number;
 }): DeferredObjectivePriorityReservation[] => {
   const activePlan = resolveActiveCommittedPlan({
     activePlans: params.activePlans,
@@ -378,7 +376,7 @@ export const buildPriorityReservations = (params: {
     hours: persistedHours,
     deviceId: params.diagnostic.deviceId,
     device: params.device,
-    hardCapKw: params.hardCapKw,
+    sustainableRateKw: params.sustainableRateKw,
     exemptFromBudget,
     deadlineAtMs: params.objective.deadlineAtMs,
   });

@@ -204,7 +204,7 @@ const buildBuilder = (
     getPowerTracker: () => powerTrackerRef.current,
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
-    getHardCapKw: () => capacitySettings.limitKw,
+    getCapacitySettings: () => capacitySettings,
   });
   return new PlanBuilder({
       getInferredSurplusKw: () => 0,
@@ -343,7 +343,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getPowerTracker: () => powerTrackerRef.current,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
-      getHardCapKw: () => 100,
+      getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
     });
     const builder = new PlanBuilder({
       getInferredSurplusKw: () => 0,
@@ -599,7 +599,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getPowerTracker: () => powerTracker,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
-      getHardCapKw: () => 100,
+      getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
     });
     const builder = new PlanBuilder({
       getInferredSurplusKw: () => 0,

@@ -53,10 +53,10 @@ export const resolveHorizonPlanWithRescue = (params: {
   // same per-bucket `reservedHeadroomKw` forecast as the baseline buckets —
   // a fully-reserved task running on the exempt rebuild still needs the
   // forecast for Slice 2's floor-step promotion.
-  hardCapKw?: number | null;
+  sustainableRateKw: number;
   // Device priority on the same scale used by `planSort` (lower number = more
   // important; `1` is top). Slice-2 floor promotion only fires when the device
-  // is strictly top-priority: the reserved-headroom forecast (`hardCap − gross
+  // is strictly top-priority: the reserved-headroom forecast (`sustainableRate − gross
   // background`) implicitly assumes any controlled concurrent load can be
   // displaced, which is only true at priority 1. Non-top-priority tasks stay on
   // the min-step floor even with both rescue permissions set.
@@ -82,7 +82,7 @@ export const resolveHorizonPlanWithRescue = (params: {
   //  2. limit-lower-priority `'always'` lets the task displace lower-priority
   //     controlled devices when claiming physical headroom.
   //  3. device is strictly top priority (`=== 1`). The reserved-headroom
-  //     forecast (`hardCap − gross background`) implicitly assumes every
+  //     forecast (`sustainableRate − gross background`) implicitly assumes every
   //     controlled concurrent watt can be displaced, which only holds at the top. A
   //     non-top task with both permissions can still be denied by a *higher*-
   //     priority controlled device (which `limit-lower-priority` cannot shed),
@@ -127,7 +127,7 @@ export const resolveHorizonPlanWithRescue = (params: {
     priceHorizon: params.priceHorizon,
     dailyBudgetSnapshot,
     exemptFromBudget: true,
-    hardCapKw: params.hardCapKw,
+    sustainableRateKw: params.sustainableRateKw,
     higherPriorityReservations: params.higherPriorityReservations,
   });
   if (exemptHorizon.reasonCode) {

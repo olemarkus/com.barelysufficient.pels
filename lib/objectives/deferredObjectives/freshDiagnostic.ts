@@ -87,7 +87,7 @@ export const buildFreshDiagnostic = (params: {
   commitment: DeferredObjectiveActivePlanHourV1[] | undefined;
   aheadOfHourMilestone: boolean;
   profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
-  hardCapKw?: number | null;
+  sustainableRateKw: number;
   higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
 }): DeferredObjectiveDiagnostic => {
   const {
@@ -109,7 +109,7 @@ export const buildFreshDiagnostic = (params: {
     priceOptimizationEnabled,
     priceHorizon,
     dailyBudgetSnapshot,
-    hardCapKw: params.hardCapKw,
+    sustainableRateKw: params.sustainableRateKw,
     // Strict top-priority gate for Slice-2 floor promotion; see comment in
     // rescueReplan.ts. Lower number = more important on PELS's planSort scale;
     // `=== 1` is the only safe v1 floor for the reserved-headroom forecast.

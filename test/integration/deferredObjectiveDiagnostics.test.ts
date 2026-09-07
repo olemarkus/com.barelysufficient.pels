@@ -40,6 +40,11 @@ import type { DeferredObjectivePlanHistoryV5 } from '../../packages/contracts/sr
 import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives/activePlanSignature';
 import { buildPriorityReservations } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { buildHoursFromHorizonPlan } from '../../lib/objectives/deferredObjectives/activePlanSchedule';
+// Deliberately non-binding: a rate no plan in these cases can reach, so the
+// reserved-headroom forecast never selects a lower rung than the case intends.
+// (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
+// to the FLOOR rung, so a high rate is what preserves these cases' behaviour.)
+const TEST_SUSTAINABLE_RATE_KW = 100;
 
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
@@ -536,6 +541,7 @@ describe('resolveDeferredObjectiveDeadline', () => {
 describe('buildDeferredObjectivePolicyHorizon', () => {
   it('carries the raw per-bucket price through to the horizon buckets', () => {
     const result = buildDeferredObjectivePolicyHorizon({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
@@ -554,6 +560,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
 
   it("sets per-bucket maxUsefulEnergyKWh from the hour's own controlled share", () => {
     const result = buildDeferredObjectivePolicyHorizon({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
@@ -576,6 +583,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     // be offered it. Differencing the plateaued cumulative used to return 0 here
     // and silently unbook the entire tail of the day.
     const result = buildDeferredObjectivePolicyHorizon({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
@@ -596,6 +604,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     // The producer already floors the share at zero (`buildPlanBreakdown`), so a
     // background-swamped hour arrives as a plain 0 rather than a negative to clamp.
     const result = buildDeferredObjectivePolicyHorizon({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
@@ -616,6 +625,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     // same silent unbooking this whole change fixes, arriving from the other
     // direction. Resolve to "no daily-budget cap" and let the hard cap bind.
     const result = buildDeferredObjectivePolicyHorizon({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
@@ -633,6 +643,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
 
   it('omits the per-bucket cap when the controlled share is missing (legacy snapshot)', () => {
     const result = buildDeferredObjectivePolicyHorizon({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
@@ -653,12 +664,14 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
     };
     const capped = buildDeferredObjectivePolicyHorizon({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot(snapshot),
     });
     const exempt = buildDeferredObjectivePolicyHorizon({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
@@ -680,7 +693,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedControlledKWh: Array.from({ length: 24 }, () => 3.5),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
       }),
-      hardCapKw: 10,
+      sustainableRateKw: 10,
       higherPriorityReservations: [{
         deviceId: 'higher-device',
         topologyKey: 'hour-0',
@@ -711,7 +724,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         allowedCumKWh: Array.from({ length: 24 }, (_, index) => (index + 1) * 10),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
       }),
-      hardCapKw: 10,
+      sustainableRateKw: 10,
       higherPriorityReservations: [
         {
           deviceId: 'higher-device',
@@ -769,7 +782,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         { startMs: sourceStartMs + HOUR_MS, price: 5 },
       ],
       dailyBudgetSnapshot: null,
-      hardCapKw: 10,
+      sustainableRateKw: 10,
       higherPriorityReservations: [{
         deviceId: 'higher-device',
         topologyKey: 'fractional-hour-0',
@@ -812,7 +825,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
         plannedGrossUncontrolledKWh: Array.from({ length: 24 }, () => 2.5),
       }),
-      hardCapKw: 5,
+      sustainableRateKw: 5,
     });
 
     expect(result.reasonCode).toBeNull();
@@ -830,7 +843,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       dailyBudgetSnapshot: buildSnapshot({
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => -1),
       }),
-      hardCapKw: 5,
+      sustainableRateKw: 5,
     });
 
     expect(result.reasonCode).toBeNull();
@@ -924,7 +937,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         )),
       }),
       priceOptimizationEnabled: true,
-      hardCapKw: 1.5,
+      sustainableRateKw: 1.5,
     });
     const high = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-1');
     const low = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-2');
@@ -978,7 +991,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         )),
       }),
       priceOptimizationEnabled: true,
-      hardCapKw: 2.1,
+      sustainableRateKw: 2.1,
     });
     const low = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-2');
     expect(low && resolvedTrajectoryStatus(low)).toBe('on_track');
@@ -1006,7 +1019,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
       }),
       priceOptimizationEnabled: true,
-      hardCapKw: 1.5,
+      sustainableRateKw: 1.5,
     };
     const first = buildDeferredObjectiveDiagnostics({ ...common, devices: [highPending, lowDevice] });
     const firstLow = first.find((diagnostic) => diagnostic.deviceId === 'ev-2')!;
@@ -1117,7 +1130,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       powerTracker: buildPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
       priceOptimizationEnabled: true,
-      hardCapKw: 1.5,
+      sustainableRateKw: 1.5,
       activePlans: {
         version: 1,
         plansByDeviceId: {
@@ -1199,7 +1212,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       }),
       priceOptimizationEnabled: true,
       activePlans,
-      hardCapKw: 1.5,
+      sustainableRateKw: 1.5,
       priorityAllocationTracker: tracker,
       getBasePriorityForDevice: (deviceId) => (deviceId === 'z-high' ? 1 : 2),
     });
@@ -1230,7 +1243,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       }),
       priceOptimizationEnabled: true,
       activePlans,
-      hardCapKw: 1.5,
+      sustainableRateKw: 1.5,
       priorityAllocationTracker: tracker,
       getBasePriorityForDevice: (deviceId) => (deviceId === 'z-high' ? 1 : 2),
     });
@@ -1309,7 +1322,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       powerTracker: buildPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
       priceOptimizationEnabled: true,
-      hardCapKw: 1.5,
+      sustainableRateKw: 1.5,
       priorityAllocationTracker: tracker,
       activePlans: {
         version: 1,
@@ -1394,14 +1407,14 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: false,
       activePlans,
-      hardCapKw: 10,
+      sustainableRateKw: 10,
     });
     const [reservation] = buildPriorityReservations({
       diagnostic: diagnostic!,
       objective,
       device,
       activePlans,
-      hardCapKw: 10,
+      sustainableRateKw: 10,
     });
 
     expect(reservation?.admissionPowerKw).toBe(2);
@@ -1417,6 +1430,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // adds one more hour, so deadline at 22:00 (5 hours after NOW_MS=17:00)
     // keeps the plan on_track with the reserve untouched.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -1453,6 +1467,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     };
     const run = (settings: typeof baseSettings) => buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -1525,6 +1540,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     prices[new Date(NOW_MS + HOUR_MS).getUTCHours()] = 5;
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -1598,6 +1614,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     prices[new Date(NOW_MS + HOUR_MS).getUTCHours()] = 5;
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -1664,6 +1681,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const activePlans = buildCommittedEvPlans(deadlineAtMs);
     const run = (nowMs: number) => buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -1704,6 +1722,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       [{ startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 }],
     );
     return buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -1742,6 +1761,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       stateOfCharge: stateOfChargeFixture({ percent: 43, observedAtMs: NOW_MS }),
     });
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [device],
@@ -1764,6 +1784,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('runs the allocator at bootstrap when no commitment covers the active hour', () => {
     // No activePlans ⇒ resolveCommittedHours undefined ⇒ fresh allocation even mid-hour.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -1782,6 +1803,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -1833,6 +1855,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     };
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -1850,7 +1873,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       objective: settings.objectivesByDeviceId['ev-1']!,
       device: buildDevice(),
       activePlans,
-      hardCapKw: 10,
+      sustainableRateKw: 10,
     });
     expect(reservation?.plannedKWh).toBe(3);
   });
@@ -1882,6 +1905,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     };
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -1936,6 +1960,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     };
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({ stateOfCharge: stateOfChargeFixture({ percent: 43, observedAtMs: NOW_MS }) })],
@@ -1993,6 +2018,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     prices[new Date(NOW_MS + HOUR_MS).getUTCHours()] = 5;
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: settleNowMs,
       timeZone: 'UTC',
       devices: [buildDevice({ stateOfCharge: stateOfChargeFixture({ percent: 43, observedAtMs: settleNowMs }) })],
@@ -2065,6 +2091,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     };
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -2121,6 +2148,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       };
     };
     const run = (plans: DeferredObjectiveActivePlansV1) => buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildTemperatureDevice()],
@@ -2150,6 +2178,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('plans a persisted temperature objective from learned kWh per degree', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildTemperatureDevice()],
@@ -2193,6 +2222,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     });
     const run = (m2: number) => buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildTemperatureDevice()],
@@ -2230,6 +2260,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     });
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -2249,6 +2280,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // must surface `cannot_meet`, not silently accept the inflated rate.
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00'); // 4 hours after NOW_MS
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildTemperatureDevice({
@@ -2300,6 +2332,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // diagnostic must carry that so the UI can tell the user the budget — not the
     // device or the schedule — is the constraint.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -2323,6 +2356,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // Use a 22:00 deadline so the 4 kWh need at 1 kW fits inside the primary
     // window without dipping into the 1-hour deadline reserve.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -2344,6 +2378,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // resolver asks a value question only. See `lib/observer/AGENTS.md` for the
     // doctrine and `diagnosticProgress.ts` for the gate.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildTemperatureDevice()],
@@ -2361,6 +2396,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('does not plan a temperature objective for a device that has never reported a value', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildTemperatureDevice({ currentTemperature: undefined })],
@@ -2386,6 +2422,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // field is gone from `ObjectiveDeviceInput` entirely, so there is no stamp
     // left here to refuse a reading over.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildTemperatureDevice({ currentTemperature: 55 })],
@@ -2407,6 +2444,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // could not reach the satisfied path and the energy resolver computed zero
     // need — the task planned no hours and never admitted the charger.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({ evChargingState: 'plugged_in' })],
@@ -2422,6 +2460,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('rolls a past local deadline to tomorrow and waits when tomorrow prices are missing', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -2443,6 +2482,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('plans a next-day objective once tomorrow price horizon is available', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -2460,6 +2500,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('does not plan when the price feature is disabled', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -2480,6 +2521,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('does not surface stale EV progress when the price feature is disabled', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
@@ -2504,6 +2546,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const { recorder, saved } = buildHistoryRecorder();
     const [satisfied] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
@@ -2515,6 +2558,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: false,
     });
     const [staleBelowTarget] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS + HOUR_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
@@ -2544,6 +2588,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('marks a met EV objective as satisfied even when price planning is disabled', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
@@ -2573,6 +2618,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // classifies only `plugged_out` / `plugged_in_discharging`), so nothing
     // upstream may divert it.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
@@ -2596,6 +2642,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('marks a met EV objective as satisfied while waiting for tomorrow prices', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
@@ -2627,6 +2674,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       { priceOptimizationEnabled: true, dailyBudgetSnapshot: buildSnapshot({ includeTomorrow: false }) },
     ]) {
       const [diagnostic] = buildDeferredObjectiveDiagnostics({
+        sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
         nowMs: NOW_MS,
         timeZone: 'UTC',
         devices: [buildTemperatureDevice({ currentTemperature: 66 })],
@@ -2658,6 +2706,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       deadlineLocalTime: '22:00',
     }));
     const satisfied = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
@@ -2669,6 +2718,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: true,
     })[0];
     const tracking = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
@@ -2697,6 +2747,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // Target = current + 2% so a bootstrap of 1.0 kWh/% yields a feasible 2 kWh
     // within the ~4h horizon of the default test deadline.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -2720,6 +2771,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('uses the learned profile (not bootstrap) when kWh-per-percent is known', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -2742,6 +2794,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // plan time — neither was in the debug payload before. A learned profile
     // populates both on the diagnostic.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -2766,6 +2819,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // The configured mode (`*Mode`) and whether the producer engaged it
     // (`*Applied`) must both be visible at plan time.
     const [withoutRescue] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -2782,6 +2836,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     const [withRescue] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -2801,6 +2856,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const heaterDevice = buildTemperatureDevice({ currentTemperature: 40 });
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [heaterDevice],
@@ -2885,6 +2941,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     };
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [heater],
@@ -2967,6 +3024,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     };
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [heater],
@@ -3039,6 +3097,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     };
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [heater],
@@ -3093,6 +3152,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     }))) as PlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [tank],
@@ -3133,6 +3193,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('marks a met objective as satisfied without requiring a charger rate', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice({
@@ -3158,6 +3219,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // leaves the final hour (21:00 → 22:00) as reserve. The plan lands in
     // the four primary hours, so the reserve stays untouched.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -3180,6 +3242,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // hours can carry 3 kWh, so the final hour (the reserve) must absorb the
     // remaining 1 kWh. That dip is exactly what at_risk should announce.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -3207,6 +3270,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // would fit the full 4 kWh, so the verdict is at_risk, not a flat cannot_meet
     // false negative. The floor commitment still leaves 1 kWh unplanned.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -3230,6 +3294,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // exists. 0.2 kWh fits in 0.5 h of reserve at 1 kW.
     const deadlineAtMs = NOW_MS + HOUR_MS / 2;
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
@@ -3372,7 +3437,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
         priceOptimizationEnabled: true,
-        hardCapKw: HARDCAP_KW,
+        sustainableRateKw: HARDCAP_KW,
       });
       expect(diagnostic).toMatchObject({
         trajectory: { kind: 'resolved', status: 'on_track' },
@@ -3410,7 +3475,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
         priceOptimizationEnabled: true,
-        hardCapKw: HARDCAP_KW,
+        sustainableRateKw: HARDCAP_KW,
       });
       // The permission is live for the planner's boost lane...
       expect(diagnostic.limitLowerPriorityApplied).toBe(true);
@@ -3440,7 +3505,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
         priceOptimizationEnabled: true,
-        hardCapKw: HARDCAP_KW,
+        sustainableRateKw: HARDCAP_KW,
       });
       expect(diagnostics).toHaveLength(2);
       const byDevice = new Map(diagnostics.map((diagnostic) => [diagnostic.deviceId, diagnostic]));
@@ -3487,7 +3552,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
         priceOptimizationEnabled: true,
-        hardCapKw: HARDCAP_KW,
+        sustainableRateKw: HARDCAP_KW,
       });
       const byDevice = new Map(diagnostics.map((d) => [d.deviceId, d]));
       expect(byDevice.get('ev-1')).toMatchObject({ trajectory: { kind: 'resolved', status: 'on_track' } });
@@ -3581,7 +3646,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
         priceOptimizationEnabled: true,
-        hardCapKw: HARDCAP_KW,
+        sustainableRateKw: HARDCAP_KW,
         activePlans,
       });
       expect(diagnostics).toHaveLength(2);
@@ -3615,11 +3680,13 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     powerTracker: buildPowerTracker(),
     dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     priceOptimizationEnabled: true,
+    sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
   });
 
   // at_risk recipe: cumulative daily budget plateaus at the 20 kWh cap, so the
   // horizon is budget-bound (mirrors the dailyBudgetExhaustedBucketCount test).
   const atRiskParams = () => ({
+    sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
     nowMs: NOW_MS,
     timeZone: 'UTC',
     devices: [buildDevice()],
@@ -3727,6 +3794,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
   // the SESSION question, which is `false` for every non-EV device.
   it('keeps the external-off hold on a non-EV device that is merely unavailable', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       // `commandableNow: false` mirrors what the producer emits for an
@@ -3867,6 +3935,7 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
   };
 
   const unpluggedDiagnostics = (): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveDiagnostics({
+    sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
     nowMs: NOW_MS,
     timeZone: 'UTC',
     devices: [buildDevice({ evChargingState: 'plugged_out' })],
@@ -3940,6 +4009,7 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
   });
 
   const plannedDiagnostics = (): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveDiagnostics({
+    sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
     nowMs: NOW_MS,
     timeZone: 'UTC',
     devices: [buildDevice()],

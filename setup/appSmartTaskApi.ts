@@ -395,7 +395,8 @@ export class AppSmartTaskApi {
       dailyBudgetSnapshot,
       buildPriceHorizon: createObjectivePriceHorizonBuilder(this.ctx),
       priceOptimizationEnabled: this.ctx.priceOptimizationEnabled,
-      hardCapKw: this.ctx.capacitySettings.limitKw,
+      // See `homeScope.ts`: probes pace against what the guard admits.
+      capacitySettings: this.ctx.capacitySettings,
       // The price store exposes a per-kWh RATE label; `previewDeferredObjectivePlan`
       // converts it to a money unit for the total `costEstimate`.
       priceRateLabel,

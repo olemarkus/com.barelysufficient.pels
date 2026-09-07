@@ -94,7 +94,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   buildPriceHorizon: BuildPriceHorizon;
   priceOptimizationEnabled: boolean;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
-  hardCapKw?: number | null;
+  sustainableRateKw: number;
   priorityAllocationTracker?: PriorityAllocationTracker;
   // Current mode-catalog priority producer. The batch allocator projects its
   // complete visible-plus-grace roster to unique relative ranks on every read.
@@ -209,7 +209,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
         objective,
         device,
         activePlans: params.activePlans,
-        hardCapKw: params.hardCapKw,
+        sustainableRateKw: params.sustainableRateKw,
       }));
       if (freshAllocation && reservations.length > previousReservationCount) {
         higherTaskBootstrapped = true;
@@ -373,7 +373,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   buildPriceHorizon: BuildPriceHorizon;
   priceOptimizationEnabled: boolean;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
-  hardCapKw?: number | null;
+  sustainableRateKw: number;
   higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
   forceFreshAllocation?: boolean;
   // Producer-resolved exclusion (see `buildDeferredObjectiveDiagnostics`): a
@@ -442,7 +442,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
       priceHorizon,
       dailyBudgetSnapshot,
       activePlans,
-      hardCapKw: params.hardCapKw,
+      sustainableRateKw: params.sustainableRateKw,
       higherPriorityReservations: params.higherPriorityReservations,
     }));
   }
@@ -465,7 +465,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     priceOptimizationEnabled,
     priceHorizon,
     dailyBudgetSnapshot,
-    hardCapKw: params.hardCapKw,
+    sustainableRateKw: params.sustainableRateKw,
     higherPriorityReservations: params.higherPriorityReservations,
   });
   // Price optimization turned OFF is a deliberate config state, not a transient data
@@ -503,7 +503,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     priceHorizon,
     dailyBudgetSnapshot,
     activePlans,
-    hardCapKw: params.hardCapKw,
+    sustainableRateKw: params.sustainableRateKw,
     higherPriorityReservations: params.higherPriorityReservations,
     // Serve frozen unless we are re-planning; `replan` already required the horizon
     // to be available, so the fresh path always has a usable `policyHorizon`.
@@ -552,7 +552,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   priceHorizon: PriceHorizonEntry[];
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
-  hardCapKw?: number | null;
+  sustainableRateKw: number;
   higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
   frozenRead?: FrozenReadInputs | null;
   frozenFallback?: FrozenReadInputs | null;
@@ -676,7 +676,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     commitment,
     aheadOfHourMilestone,
     profileEnergy,
-    hardCapKw: params.hardCapKw,
+    sustainableRateKw: params.sustainableRateKw,
     higherPriorityReservations: params.higherPriorityReservations,
   });
 };

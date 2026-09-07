@@ -260,7 +260,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       objective,
       device: undefined,
       activePlans: null,
-      hardCapKw: 10,
+      sustainableRateKw: 10,
     });
     expect(freshReservations.map((reservation) => reservation.admissionPowerKw)).toEqual([1, 2]);
     const reservations = buildPriorityReservations({
@@ -274,7 +274,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       objective,
       device: undefined,
       activePlans: normalized,
-      hardCapKw: 10,
+      sustainableRateKw: 10,
     });
     expect(reservations.flatMap((reservation) => reservation.energySegments)).toEqual([
       { startMs: firstStartMs, endMs: splitMs, plannedKWh: 0.4 },
@@ -349,7 +349,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       objective,
       device: undefined,
       activePlans: normalized,
-      hardCapKw: 10,
+      sustainableRateKw: 10,
     });
     expect(restartReservations).toMatchObject([{ admissionPowerKw: 2 }]);
   });

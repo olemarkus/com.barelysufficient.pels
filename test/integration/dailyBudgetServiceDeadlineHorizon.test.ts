@@ -21,6 +21,11 @@ import {
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
 } from '../../lib/utils/settingsKeys';
 import { COMBINED_PRICES_VERSION, type CombinedPricesV2 } from '../../lib/price/priceTypes';
+// Deliberately non-binding: a rate no plan in these cases can reach, so the
+// reserved-headroom forecast never selects a lower rung than the case intends.
+// (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
+// to the FLOOR rung, so a high rate is what preserves these cases' behaviour.)
+const TEST_SUSTAINABLE_RATE_KW = 100;
 
 const TZ = 'Europe/Oslo';
 // 2026-05-10 21:00 local (Oslo CEST, UTC+2). Below the 06:00 next-day deadline
@@ -131,6 +136,7 @@ describe('DailyBudgetService → deferred objective policy horizon', () => {
     let snapshot = service.getSnapshot();
     expect(snapshot?.todayKey).toBe('2026-05-10');
     let horizon = buildDeferredObjectivePolicyHorizon({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       deadlineAtMs: DEADLINE_MS,
       priceOptimizationEnabled: true,
@@ -159,6 +165,7 @@ describe('DailyBudgetService → deferred objective policy horizon', () => {
 
     // policyHorizon now covers the 06:00 next-day deadline.
     horizon = buildDeferredObjectivePolicyHorizon({
+      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
       nowMs: NOW_MS,
       deadlineAtMs: DEADLINE_MS,
       priceOptimizationEnabled: true,

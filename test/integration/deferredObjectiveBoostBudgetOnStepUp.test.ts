@@ -264,7 +264,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     getPowerTracker: () => powerTracker,
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (start, deadline) => buildPriceHorizonFromCombined(buildCombinedPrices(), start, deadline),
-    getHardCapKw: () => LIMIT_KW,
+    getCapacitySettings: () => ({ limitKw: LIMIT_KW, marginKw: 0 }),
   });
 
   const builder = new PlanBuilder({

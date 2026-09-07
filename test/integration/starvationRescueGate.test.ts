@@ -200,7 +200,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(hoursInDay), nowMs, deadlineAtMs),
-    getHardCapKw: () => 100,
+    getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
   });
   return new PlanBuilder({
       getInferredSurplusKw: () => 0,

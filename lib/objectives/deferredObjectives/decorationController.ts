@@ -1,4 +1,6 @@
 import { resolvedTrajectoryStatus } from './diagnosticTypes';
+import { resolveUsableCapacityKw } from '../../power/capacityModel';
+import type { CapacitySettings } from '../../power/capacityModel';
 import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
@@ -28,7 +30,10 @@ export type DeferredObjectiveDecorationControllerDeps = {
   getTimeZone?: () => string;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
-  getHardCapKw: () => number;
+  // The persisted capacity scalars. The rate the guard admits is derived here,
+  // in the domain, rather than in the wiring layer that reads the settings:
+  // `lib/power` owns the subtraction, and `setup/` answers no power question.
+  getCapacitySettings: () => CapacitySettings;
   /** Live priority from the user's current saved mode; runtime order is derived on read. */
   getBasePriorityForDevice?: (deviceId: string) => unknown;
   // Price-layer allocation-horizon producer, injected by the wiring layer. The
@@ -105,7 +110,7 @@ export class DeferredObjectiveDecorationController {
         buildPriceHorizon: this.deps.buildPriceHorizon,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         activePlans: this.deps.getDeferredObjectiveActivePlans?.() ?? null,
-        hardCapKw: this.deps.getHardCapKw(),
+        sustainableRateKw: resolveUsableCapacityKw(this.deps.getCapacitySettings()),
         priorityAllocationTracker: this.priorityAllocationTracker,
         getBasePriorityForDevice: this.deps.getBasePriorityForDevice,
         resolveDeviceExclusion: this.deps.resolveDeviceExclusion,

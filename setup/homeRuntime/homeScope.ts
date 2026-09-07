@@ -206,7 +206,7 @@ export function buildMainHomeScope(ctx: AppContext, isTornDown: () => boolean): 
     getTimeZone: () => ctx.getTimeZone(),
     getPowerTracker: () => ctx.powerTracker,
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
-    getHardCapKw: () => ctx.capacitySettings.limitKw,
+    getCapacitySettings: () => ctx.capacitySettings,
     getBasePriorityForDevice: (deviceId) => (
       resolveConfiguredDevicePriority(ctx.capacityPriorities, ctx.operatingMode, deviceId)
     ),

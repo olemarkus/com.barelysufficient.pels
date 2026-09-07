@@ -266,7 +266,10 @@ type PreviewContext = {
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
-  hardCapKw: number | null;
+  // Both readings come from one owner: the probes pace at `limitKw - marginKw`
+  // while `atCapNow` measures against `limitKw`. Most cases use a zero margin,
+  // which makes the two equal.
+  capacitySettings: { limitKw: number; marginKw: number };
   // Optional override for the price-RATE label fed into the preview. Defaults
   // to "øre/kWh" (the Norway scheme) so most cases exercise the rate→amount
   // conversion (costUnit must come back "øre").
@@ -290,7 +293,7 @@ const runPreview = (params: {
   powerTracker: params.ctx.powerTracker,
   dailyBudgetSnapshot: params.ctx.dailyBudgetSnapshot,
   priceOptimizationEnabled: params.ctx.priceOptimizationEnabled,
-  hardCapKw: params.ctx.hardCapKw,
+  capacitySettings: params.ctx.capacitySettings,
   priceRateLabel: params.ctx.priceRateLabel ?? 'øre/kWh',
 });
 
@@ -339,7 +342,7 @@ describe('previewDeferredObjectivePlan', () => {
         powerTracker: buildEvPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
         dailyBudgetSnapshot: snapshot,
         priceOptimizationEnabled: true,
-        hardCapKw: 1.5,
+        capacitySettings: { limitKw: 1.5, marginKw: 0 },
       },
     });
     const [highDiagnostic] = buildDeferredObjectiveDiagnostics({
@@ -351,7 +354,7 @@ describe('previewDeferredObjectivePlan', () => {
       dailyBudgetSnapshot: snapshot,
       priceOptimizationEnabled: true,
       activePlans: null,
-      hardCapKw: 1.5,
+      sustainableRateKw: 1.5,
     });
     const highHours = new Set((buildHoursFromHorizonPlan(highDiagnostic!) ?? []).map((hour) => hour.startsAtMs));
 
@@ -378,7 +381,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker,
       dailyBudgetSnapshot,
       priceOptimizationEnabled: true,
-      hardCapKw: 1.5,
+      sustainableRateKw: 1.5,
       getBasePriorityForDevice: (deviceId) => (deviceId === 'z-high' ? 1 : 2),
     });
     const { recorder } = buildRecorder();
@@ -400,7 +403,7 @@ describe('previewDeferredObjectivePlan', () => {
         powerTracker,
         dailyBudgetSnapshot,
         priceOptimizationEnabled: true,
-        hardCapKw: 1.5,
+        capacitySettings: { limitKw: 1.5, marginKw: 0 },
       },
     });
 
@@ -413,7 +416,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
@@ -443,7 +446,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices }),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
@@ -469,7 +472,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: null,
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
@@ -491,7 +494,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker({ lastPowerW: 10_000, lastTimestamp: NOW_MS }),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     // A tight deadline forces the planner to schedule the current hour.
     const estimate = runPreview({
@@ -507,11 +510,31 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker({ lastPowerW: 2_000, lastTimestamp: NOW_MS }),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({
       deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
     });
+    expect(estimate.atCapNow).toBe(false);
+  });
+
+  // The regression that made this pair of inputs necessary: `atCapNow` briefly
+  // shared the probes' input, so a home with a safety margin saw "your hard cap
+  // is maxed out" fire one margin early. The cap is physical and does not move
+  // when the margin does.
+  it('measures atCapNow against the hard cap, not the pace the probes run at', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      // 9.0 kW: above the 8 kW pace a 2 kW margin leaves, below the 10 kW cap.
+      powerTracker: buildEvPowerTracker({ lastPowerW: 9_000, lastTimestamp: NOW_MS }),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      capacitySettings: { limitKw: 10, marginKw: 2 },
+    };
+    const estimate = runPreview({
+      deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
+    });
+    expect(estimate.scheduledHours.some((hour) => hour.startsAtMs === CURRENT_HOUR_START_MS)).toBe(true);
     expect(estimate.atCapNow).toBe(false);
   });
 
@@ -522,7 +545,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker({ lastPowerW: 10_000, lastTimestamp: NOW_MS - 10 * 60 * 1000 }),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({
       deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
@@ -538,7 +561,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker({ lastPowerW: 10_000, lastTimestamp: NOW_MS + 5 * 60 * 1000 }),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({
       deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
@@ -557,7 +580,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({
       deviceId: 'ev-1',
@@ -577,7 +600,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     // The gate keeps only `exemptFromBudget` for a device that can't use the boost.
     const estimate = runPreview({
@@ -598,7 +621,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
     expect(estimate.grantedRescuePermissions).toBeUndefined();
@@ -610,7 +633,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildTemperaturePowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'heater-1', candidate: temperatureCandidate(), ctx });
 
@@ -630,7 +653,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: { objectiveProfiles: {} } as PowerTrackerState,
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'heater-1', candidate: temperatureCandidate(), ctx });
 
@@ -656,7 +679,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildTemperaturePowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'heater-1', candidate: temperatureCandidate(), ctx });
 
@@ -673,7 +696,7 @@ describe('previewDeferredObjectivePlan', () => {
       // is not a missing profile, but it still earns explicit copy instead of
       // falling through to the generic unavailable line.
       priceOptimizationEnabled: false,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
@@ -687,7 +710,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
@@ -702,7 +725,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_NEAR_MS }), ctx });
 
@@ -717,7 +740,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx });
 
@@ -733,7 +756,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
@@ -750,7 +773,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
@@ -769,7 +792,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: false,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
@@ -786,7 +809,7 @@ describe('previewDeferredObjectivePlan', () => {
       // there is no schedule to price.
       dailyBudgetSnapshot: null,
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
@@ -802,7 +825,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: true,
-      hardCapKw: 10,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
       // Homey Energy / Flow schemes expose an already-amount-shaped label
       // (a bare currency or the neutral fallback) — no "/kWh" to strip.
       priceRateLabel: 'NOK',
@@ -847,7 +870,7 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
     'matches recorder hours, energy, and finish for a $name objective',
     ({ deviceId, device, powerTracker, candidate }) => {
       const dailyBudgetSnapshot = buildSnapshot();
-      const hardCapKw = 10;
+      const sustainableRateKw = 10;
 
       // Live path: build the diagnostic exactly as the plan cycle does, feed it
       // to the recorder, and read what it persists.
@@ -861,7 +884,7 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
         dailyBudgetSnapshot,
         priceOptimizationEnabled: true,
         activePlans: null,
-        hardCapKw,
+        sustainableRateKw,
       });
       expect(diagnostics).toHaveLength(1);
       const diag = diagnostics[0]!;
@@ -888,7 +911,10 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
       const estimate = runPreview({
         deviceId,
         candidate,
-        ctx: { device, powerTracker, dailyBudgetSnapshot, priceOptimizationEnabled: true, hardCapKw },
+        ctx: {
+          device, powerTracker, dailyBudgetSnapshot, priceOptimizationEnabled: true,
+          capacitySettings: { limitKw: sustainableRateKw, marginKw: 0 },
+        },
       });
 
       // Scheduled hours must match exactly (same shared `buildHoursFromHorizonPlan`).

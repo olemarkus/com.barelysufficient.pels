@@ -136,13 +136,14 @@ export type DeferredObjectiveHorizonBucket = {
   price?: number | null;
   maxUsefulEnergyKWh?: number;
   // Producer-resolved per-bucket forecast of the physical headroom a smart task
-  // has in this hour: hard cap minus the gross background forecast
+  // has in this hour: `sustainableRateKw` minus the gross background forecast
   // (`plannedGrossUncontrolledKWh / duration`) minus higher-priority smart-task
   // claims. This stays separate from the net `plannedUncontrolledKWh` daily-budget
   // cap input, because solar can make net background lower than physical
-  // background load. Note it is built from the RAW configured hard cap, without
-  // the capacity safety margin the live guard applies — so it is marginally more
-  // generous than what the runtime will actually admit.
+  // background load. `sustainableRateKw` is `limitKw - marginKw` — the rate the
+  // live guard actually admits. It used to be the RAW configured cap, which made
+  // this forecast one safety margin more generous than the runtime, and probed
+  // every rung inside that band as reachable.
   //
   // Two consumers, with different fallbacks when it is missing:
   //   - `resolveStepForBucket` (`horizonPlanner.ts`) promotes a FULLY-RESERVED

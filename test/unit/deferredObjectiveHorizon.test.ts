@@ -440,7 +440,7 @@ describe('planDeferredObjectiveHorizon', () => {
   });
 
   it('treats missing reservedHeadroomKw as no headroom cap (back-compat)', () => {
-    // Buckets without a `reservedHeadroomKw` forecast (e.g. hardCapKw or
+    // Buckets without a `reservedHeadroomKw` forecast (e.g. sustainableRateKw or
     // backgroundKWh unavailable) must not collapse the per-hour cap to
     // zero. The allocator falls back to step capacity ∧ daily-budget,
     // identical to pre-headroom-cap behavior.

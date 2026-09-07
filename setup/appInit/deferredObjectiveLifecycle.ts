@@ -232,7 +232,7 @@ export function createDeferredObjectiveLifecycleEmitter(
     getDeferredObjectiveActivePlans: () => (
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),
-    getHardCapKw: () => ctx.capacitySettings.limitKw,
+    getCapacitySettings: () => ctx.capacitySettings,
     getBasePriorityForDevice: (deviceId) => (
       resolveConfiguredDevicePriority(ctx.capacityPriorities, ctx.operatingMode, deviceId)
     ),

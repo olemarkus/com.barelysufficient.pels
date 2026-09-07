@@ -1,4 +1,6 @@
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
+import { resolveUsableCapacityKw } from '../../power/capacityModel';
+import type { CapacitySettings } from '../../power/capacityModel';
 import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
@@ -42,7 +44,11 @@ export type PreviewDeferredObjectivePlanParams = {
   // preview's price-curve / cost readers pending the preview migration).
   buildPriceHorizon: BuildPriceHorizon;
   priceOptimizationEnabled: boolean;
-  hardCapKw: number | null;
+  // The persisted capacity scalars, which carry BOTH readings this producer
+  // needs: the pace the probes run at (`limitKw - marginKw`) and the physical
+  // ceiling `atCapNow` is measured against. Handed over unresolved so the
+  // derivation happens here, in the domain, not in the wiring layer.
+  capacitySettings: CapacitySettings;
   // Existing main-home planning inputs and objectives make the preview
   // priority-aware. Optional for backward-compatible isolated callers.
   devices?: ObjectiveDeviceInput[];
@@ -91,7 +97,7 @@ export const previewDeferredObjectivePlan = (
     // A candidate has no persisted active plan, so no committed hours bias the
     // allocation — this is deliberately the fresh-optimizer view.
     activePlans: null,
-    hardCapKw: params.hardCapKw,
+    sustainableRateKw: resolveUsableCapacityKw(params.capacitySettings),
     // The exclusion travels down BOTH paths. Without it here, a preview taken
     // without the coordinated inputs (no `settings`/`devices`) would project a
     // rosy schedule for a device the create lane then refuses, and the two
@@ -116,7 +122,7 @@ export const previewDeferredObjectivePlan = (
       buildPriceHorizon: params.buildPriceHorizon,
       priceOptimizationEnabled: params.priceOptimizationEnabled,
       activePlans: params.activePlans ?? null,
-      hardCapKw: params.hardCapKw,
+      sustainableRateKw: resolveUsableCapacityKw(params.capacitySettings),
       getBasePriorityForDevice: params.getBasePriorityForDevice,
       resolveDeviceExclusion: params.resolveDeviceExclusion,
       forceFreshDeviceId: params.deviceId,
@@ -130,7 +136,7 @@ export const previewDeferredObjectivePlan = (
     nowMs: params.nowMs,
     deadlineAtMs: params.candidate.deadlineAtMs,
     powerTracker: params.powerTracker,
-    hardCapKw: params.hardCapKw,
+    hardCapKw: params.capacitySettings.limitKw,
     // The candidate handed to this producer is ALREADY gated by the caller
     // (`AppSmartTaskApi.gateCandidateExtraPermissions` runs before this), so its `rescue`
     // is the surviving permission set — reflect it onto the estimate verbatim.
@@ -192,16 +198,15 @@ const AT_CAP_THRESHOLD = 0.98;
 // "runs now" implication with a measured
 // fact (draw vs cap), NEVER a suggestion to raise the cap (the cap is physical).
 // Returns undefined when the inputs can't support the claim (no scheduled current
-// hour, no/zero hard cap, or no fresh measured sample) so the UI omits the line
-// rather than guessing.
+// hour, or no fresh measured sample) so the UI omits the line rather than
+// guessing.
 const resolveAtCapNow = (params: {
   scheduledHours: DeferredObjectivePlanPreviewHour[];
   powerTracker: PowerTrackerState;
-  hardCapKw: number | null;
+  hardCapKw: number;
   nowMs: number;
 }): boolean | undefined => {
   const { scheduledHours, powerTracker, hardCapKw, nowMs } = params;
-  if (typeof hardCapKw !== 'number' || !Number.isFinite(hardCapKw) || hardCapKw <= 0) return undefined;
   const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
   const runsCurrentHour = scheduledHours.some((hour) => hour.startsAtMs === currentHourStartMs);
   if (!runsCurrentHour) return undefined;
@@ -266,10 +271,12 @@ const buildEstimateFromDiagnostic = (params: {
   nowMs: number;
   deadlineAtMs: number;
   powerTracker: PowerTrackerState;
-  hardCapKw: number | null;
+  hardCapKw: number;
   rescue: DeferredObjectiveRescuePermissions | undefined;
 }): DeferredObjectivePlanPreviewEstimate => {
-  const { diag, dailyBudgetSnapshot, priceRateLabel, nowMs, deadlineAtMs, powerTracker, hardCapKw, rescue } = params;
+  const {
+    diag, dailyBudgetSnapshot, priceRateLabel, nowMs, deadlineAtMs, powerTracker, hardCapKw, rescue,
+  } = params;
   const grantedRescuePermissions = resolveGrantedRescuePermissions(rescue);
   // No horizon plan attached → the planner could not project (missing prices,
   // missing device reading, price feature off, …). Surface `unavailable` with

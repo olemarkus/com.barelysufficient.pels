@@ -438,27 +438,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       this is tracked here; it was not, hence this entry. Files:
       `lib/objectives/deferredObjectives/horizonPlanner.ts`, `.../floorShortfallCause.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`. Source: 2026-08-09 investigation of an EV smart
-      task reporting `time_capacity` while every hour of its plan was budget-shaped.
-      **Sequence against `` `reservedHeadroomKw` is built from the RAW hard cap ``.** It argues
-      budget-flavoured statuses already appear too optimistically because `reservedHeadroomKw` is
-      built from the raw hard cap. Naming the budget more often without that fix widens the surface
-      it calls dishonest. [P2]
-
-- [ ] **`reservedHeadroomKw` is built from the RAW hard cap, while the live guard sheds against
-      `limitKw − marginKw`.** `getHardCapKw: () => ctx.capacitySettings.limitKw`
-      (`setup/homeRuntime/homeScope.ts`, `setup/appInit/deferredObjectiveLifecycle.ts`) feeds
-      `policyHorizon.resolveReservedHeadroomKw`, but the planner paces against
-      `capacityPaceKw`, derived from `hourlyAllowanceKWh = max(0, limitKw − marginKw)`
-      (`resolveUsableCapacityKw`). So the forecast is one safety margin more generous than what
-      the runtime will admit. That was tolerable while the value was only a kWh ceiling; it now also
-      SELECTS the rung the feasibility probes test, so any rung sitting in the
-      `(limitKw − marginKw, limitKw]` band is probed as reachable when the guard will never admit
-      it. Direction is optimistic-only and the probes are classification-only, so the failure mode
-      is a status label — `at_risk` / `limited_by_daily_budget` where `cannot_meet` was honest,
-      offering a budget remedy that will not actually free the device. Fixing it means subtracting
-      the margin at both wirings, which also tightens `resolveStepForBucket`'s committed floor
-      promotion — hence its own change rather than a rider. Source: pels-layering-guardian on
-      PR #2061. [P2]
+      task reporting `time_capacity` while every hour of its plan was budget-shaped. [P2]
 
 - [ ] **Latch `currentHourClaim` for the hour instead of recomputing it through the whole `:58`
       window.** `isPastHourSettleMark` is true from `:58:00` to `:59:59`, so the fresh allocator —
