@@ -1,5 +1,6 @@
 import { mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
+import { startResourceWarningListeners } from '../../lib/diagnostics/resourceWarnings';
 
 const resolveSmapsSummaryMock = vi.fn();
 
@@ -95,6 +96,70 @@ describe('Homey resource warning perf logging', () => {
       expect(records[2]?.perfContextSuppressed).toBe(true);
     } finally {
       errorSpy.mockRestore();
+    }
+  });
+
+  // The warning is the platform saying the pooled pages have to go; answering
+  // it is the app's one lever. The first warning of a run is unlogged but still
+  // answered, and a storm arriving every 10 s gets one reclaim per interval.
+  it('answers a memwarn with one rate-limited heap reclaim, from the first warning', async () => {
+    const app = createApp();
+    const logSpy = vi.spyOn(app, 'log').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(app, 'error').mockImplementation(() => undefined);
+    try {
+      await app.onInit();
+      logSpy.mockClear();
+      errorSpy.mockClear();
+      mockHomeyInstance.emit('memwarn', { count: 1, limit: 5 });
+      mockHomeyInstance.emit('memwarn', { count: 2, limit: 5 });
+      mockHomeyInstance.emit('memwarn', { count: 3, limit: 5 });
+      const reclaims = logSpy.mock.calls
+        .map(([m]) => JSON.parse(String(m)) as {
+          event?: string; trigger?: string; durationMs?: number; heapTotalBeforeMb?: number; heapTotalAfterMb?: number;
+        })
+        .filter((r) => r.event === 'heap_pages_reclaimed');
+      expect(reclaims).toHaveLength(1);
+      expect(reclaims[0]).toEqual(expect.objectContaining({
+        trigger: 'memwarn',
+        durationMs: expect.any(Number),
+        heapTotalBeforeMb: expect.any(Number),
+        heapTotalAfterMb: expect.any(Number),
+      }));
+      // The unlogged first warning is still the one that reclaimed: two logged
+      // warnings follow it, and neither produced a second reclaim.
+      const warnings = errorSpy.mock.calls.map(([m]) => (JSON.parse(String(m)) as { event?: string }).event);
+      expect(warnings).toEqual(['homey_memwarn', 'homey_memwarn']);
+    } finally {
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  // The backstop exists so the plateau never forms between warnings; it must
+  // fire on its own clock and stop with the listeners it was started with.
+  it('reclaims on the backstop interval and stops with the listeners', async () => {
+    const app = createApp();
+    const logSpy = vi.spyOn(app, 'log').mockImplementation(() => undefined);
+    try {
+      await app.onInit();
+      // A second, module-level start on the same emitter, under fake timers so
+      // only ITS interval is driven — the app's own polling stays real.
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      const stop = startResourceWarningListeners({ homey: mockHomeyInstance });
+      expect(stop).toBeDefined();
+      logSpy.mockClear();
+      const reclaims = (): number => logSpy.mock.calls
+        .filter(([m]) => (JSON.parse(String(m)) as { event?: string; trigger?: string }).event === 'heap_pages_reclaimed'
+          && (JSON.parse(String(m)) as { trigger?: string }).trigger === 'interval')
+        .length;
+      vi.advanceTimersByTime(10 * 60_000);
+      expect(reclaims()).toBe(1);
+      stop?.();
+      vi.advanceTimersByTime(10 * 60_000);
+      expect(reclaims()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+      logSpy.mockRestore();
     }
   });
 

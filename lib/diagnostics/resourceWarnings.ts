@@ -4,6 +4,7 @@ import { getPerfSnapshot } from '../utils/perfCounters';
 import { getRecentPlanRebuildTraces, summarizeRecentPlanRebuildTraces } from '../utils/planRebuildTrace';
 import { listRecentRuntimeSpans, listRuntimeSpans } from '../utils/runtimeTrace';
 import { getLogger } from '../logging/logger';
+import { reclaimHeapPages } from './heapReclaim';
 
 const resourceWarningLogger = getLogger('perf/resource-warnings');
 
@@ -193,6 +194,64 @@ const createWarningContextBudget = (): WarningContextBudget => {
   };
 };
 
+/**
+ * How often a memory warning may trigger a reclaim.
+ *
+ * Warnings arrive every ~10 s in a storm, and a collection that just ran has
+ * nothing more to give back for a while; each one is also a ~10 ms
+ * stop-the-world pause. The interval only has to outlast a storm's cadence.
+ */
+const HEAP_RECLAIM_MIN_INTERVAL_MS = 30_000;
+
+/**
+ * The backstop cadence, so the plateau never forms between warnings.
+ *
+ * The pooled pages accumulate over hours: production climbed ~18 MB in two
+ * hours and then sat 1–2 MB under the warn line, where a run of consecutive
+ * warnings is only a matter of time. Returning them every ten minutes keeps
+ * RSS near the post-boot baseline instead of letting it drift up to where the
+ * watchdog starts counting. See `heapReclaim.ts` for the measurement.
+ */
+const HEAP_RECLAIM_INTERVAL_MS = 10 * 60_000;
+
+type HeapReclaimTrigger = 'memwarn' | 'interval';
+
+type HeapReclaimer = {
+  /** Reclaim now unless one ran within the minimum interval. */
+  reclaim(trigger: HeapReclaimTrigger, nowMs: number): void;
+};
+
+// One record per reclaim, on the info channel: the before/after pair is the
+// evidence the next day's RSS curve gets read against. A runtime without an
+// exposed collector says so once and then stays silent, since nothing about
+// it changes between warnings.
+const createHeapReclaimer = (): HeapReclaimer => {
+  let lastReclaimAtMs: number | null = null;
+  let unavailableLogged = false;
+  return {
+    reclaim(trigger, nowMs) {
+      if (lastReclaimAtMs !== null && nowMs - lastReclaimAtMs < HEAP_RECLAIM_MIN_INTERVAL_MS) return;
+      lastReclaimAtMs = nowMs;
+      const outcome = reclaimHeapPages();
+      if (outcome.status === 'unavailable') {
+        if (unavailableLogged) return;
+        unavailableLogged = true;
+        resourceWarningLogger.warn({ event: 'heap_reclaim_unavailable', trigger, reason: outcome.reason });
+        return;
+      }
+      resourceWarningLogger.info({
+        event: 'heap_pages_reclaimed',
+        trigger,
+        durationMs: outcome.durationMs,
+        heapTotalBeforeMb: outcome.before.heapTotalMb,
+        heapTotalAfterMb: outcome.after.heapTotalMb,
+        rssBeforeMb: outcome.before.rssMb,
+        rssAfterMb: outcome.after.rssMb,
+      });
+    },
+  };
+};
+
 // The WARNING itself is never throttled — every one is still logged, because
 // the arrival rate is itself the signal. Only the context is rationed, and a
 // record that goes without says how many preceded it, so a reader can tell a
@@ -232,7 +291,21 @@ export const startResourceWarningListeners = (
   // and tests do not inherit one another's.
   const contextBudget = createWarningContextBudget();
   const cpuwarn = createWarnLogger('cpuwarn', contextBudget);
-  const memwarn = createWarnLogger('memwarn', contextBudget);
+  const logMemwarn = createWarnLogger('memwarn', contextBudget);
+  // The warning is logged first, so its perf payload records the state the
+  // platform actually objected to; the reclaim then answers it. The first
+  // warning of a run (`count === 1`) goes unlogged but still answered — it is
+  // the earliest moment the pooled pages can be handed back.
+  const reclaimer = createHeapReclaimer();
+  const memwarn = (payload: unknown): void => {
+    try {
+      logMemwarn(payload);
+    } finally {
+      // The diagnostic walks traces and spans at the moment memory is tightest;
+      // if that ever throws, the one lever that answers the warning still runs.
+      reclaimer.reclaim('memwarn', Date.now());
+    }
+  };
   const unload = (): void => {
     resourceWarningLogger.info({ event: 'homey_unload' });
   };
@@ -240,8 +313,11 @@ export const startResourceWarningListeners = (
   emitter.on('cpuwarn', cpuwarn);
   emitter.on('memwarn', memwarn);
   emitter.on('unload', unload);
+  const backstop = setInterval(() => reclaimer.reclaim('interval', Date.now()), HEAP_RECLAIM_INTERVAL_MS);
+  backstop.unref();
 
   return () => {
+    clearInterval(backstop);
     if (typeof emitter.off === 'function') {
       emitter.off('cpuwarn', cpuwarn);
       emitter.off('memwarn', memwarn);

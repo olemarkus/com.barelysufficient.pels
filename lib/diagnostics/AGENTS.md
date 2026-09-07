@@ -8,6 +8,7 @@
 - `deviceDiagnosticsModel.ts` / `deviceDiagnosticsStateStore.ts` — diagnostics types and typed persistence boundary.
 - `periodicStatus.ts` — periodic status snapshot logging.
 - `perfLogging.ts` / `gcObserver.ts` / `resourceWarnings.ts` / `smapsRollup.ts` / `heapSnapshotHandler.ts` — performance and memory telemetry (Homey RSS ceiling is 160 MB; baseline ~130 MB).
+- `heapReclaim.ts` — the app's one memory lever: obtains V8's collector at runtime and runs a `last-resort` collection, which returns the emptied-but-committed pages an ordinary collection keeps (`reclaimed`, with a before/after footprint) or answers `unavailable` once on a runtime that cannot expose it. Driven only by `resourceWarnings.ts`: every Homey `memwarn` (rate-limited to one per 30 s) and a ten-minute backstop interval, both torn down with the resource-warnings task. Telemetry-side only — it never feeds a planner decision.
 
 Design-of-record: `notes/starvation/README.md`; intended-target model also in `lib/plan/planDiagnostics.ts`.
 
