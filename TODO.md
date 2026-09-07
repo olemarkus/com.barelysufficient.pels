@@ -1440,11 +1440,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 - [ ] **P1 — the remaining history keys still ride `homey.settings`, and every write of any key
       pays for all of them.** The SDK's `ManagerSettings.set` ships the ENTIRE settings object to
       core on every write of any key (`notes/settings-key-ownership.md` § "Which store"). The power
-      tracker (`lib/power/trackerStore.ts`) and the weather history
-      (`lib/weather/weatherHistoryStore.ts`) moved to the userdata store
-      (`lib/store/userdataDatabase.ts`); these have not, and together they are still ~530 kB of the
-      blob: `deferred_objective_plan_history` +
-      `_v5` (280 kB) and `deferred_objective_active_plans` (28 kB, `setup/appInit/deferredRecorders.ts`),
+      tracker (`lib/power/trackerStore.ts`), the weather history
+      (`lib/weather/weatherHistoryStore.ts`) and the smart-task plan history
+      (`lib/objectives/deferredObjectives/planHistoryStore.ts`) moved to the userdata store
+      (`lib/store/userdataDatabase.ts`); these have not, and together they are still ~250 kB of the
+      blob: `deferred_objective_active_plans` (28 kB, `setup/appInit/deferredRecorders.ts`),
       `device_diagnostics_v1` (82 kB, `setup/deviceDiagnosticsStateAdapter.ts`), the tariff/price
       caches `nettleie_data`, `combined_prices`, `electricity_prices` (`setup/priceDataAdapter.ts`,
       `setup/priceCombinedPricesAdapter.ts`), `device_action_log_by_device`,

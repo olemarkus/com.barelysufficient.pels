@@ -34,7 +34,6 @@ export {
 } from './planHistory';
 export {
   normalizeDeferredObjectivePlanHistory,
-  parseDeferredObjectivePlanHistory,
 } from './planHistorySettings';
 export { DeferredObjectiveActivePlanRecorder } from './activePlanRecorder';
 export {

@@ -334,6 +334,9 @@ class PelsApp extends PelsAppBase implements AppContext {
   public getWeatherHistoryStore(): AppUserdataStores['weatherHistoryStore'] {
     return this.openedUserdataStores.weatherHistoryStore;
   }
+  public getUserdataDatabase(): AppUserdataStores['database'] {
+    return this.openedUserdataStores.database;
+  }
   private closeUserdataDatabase(): void {
     this.userdataStores?.database.close();
     this.userdataStores = undefined;

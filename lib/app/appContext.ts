@@ -1,5 +1,6 @@
 import type { TrackerStore } from '../power/trackerStore';
 import type { WeatherHistoryStore } from '../weather/weatherHistoryStore';
+import type { UserdataDatabase } from '../store/userdataDatabase';
 import type {
   ObservedEvChargingStateRead,
   ObservedStateOfChargeRead,
@@ -112,6 +113,12 @@ export type AppContext = {
   getTrackerStore: () => TrackerStore;
   /** The weather history's rows in the userdata database; throws before the boot step that opens it. */
   getWeatherHistoryStore: () => WeatherHistoryStore;
+  /**
+   * The open userdata database, for a domain's wiring to build its repository
+   * on (`setup/appInit/deferredRecorders.ts` is the pattern); throws before
+   * the boot step that opens it.
+   */
+  getUserdataDatabase: () => UserdataDatabase;
   /** Tell the settings UI a home's tracker persisted (the store produces no settings echo). */
   emitPowerTrackerPersisted: (homeId: string) => void;
   loadCapacitySettings: () => void;

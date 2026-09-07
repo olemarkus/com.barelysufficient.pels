@@ -454,7 +454,7 @@ as an in-page route off `index.html`.):
   active plan, and start a fresh pending active plan. History and the current-plan hero now
   both treat a target/deadline edit as abandoning the committed schedule and starting a new
   run.
-- Entries are persisted to `deferred_objective_plan_history` with a 30-entry rolling cap.
+- Entries are persisted to the userdata store, one row per entry (`planHistoryStore.ts`), with a 30-entry rolling cap.
   Throttled writes happen on finalize (rare); `onUninit` flushes any pending entries.
 - The Settings UI fetches this via `/ui_deferred_objective_history` and renders
   per-device cards in the History tab next to the existing current-plan view.

@@ -7,13 +7,13 @@ import {
 } from '../../setup/appInit';
 import {
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
-  DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
   DEFERRED_OBJECTIVES_SETTINGS,
 } from '../../lib/utils/settingsKeys';
-import type { DeferredObjectivePlanHistoryEntry } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { AppContext } from '../../lib/app/appContext';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { createPlanHistoryStore, type PlanHistoryStore } from '../../lib/objectives/deferredObjectives/planHistoryStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -37,6 +37,9 @@ const HOUR_MS = 60 * 60 * 1000;
 describe('deferred-objective back-fill after an in-session migration retry', () => {
   let store: Map<string, unknown>;
   let getKeysImpl: () => string[];
+  // The plan history lives in the userdata database; one database spans the boots below.
+  let userdataDatabase: UserdataDatabase;
+  let planHistoryStore: PlanHistoryStore;
 
   const buildCtx = (now: number): AppContext => {
     const homey = {
@@ -54,6 +57,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
     } as unknown as AppContext['homey'];
     return createAppContextMock({
       homey,
+      getUserdataDatabase: () => userdataDatabase,
       getNow: () => new Date(now),
       getTimeZone: () => 'Europe/Oslo',
       // No managed devices this session: diagnostics are empty, so the only way the
@@ -72,6 +76,8 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
   beforeEach(() => {
     vi.useFakeTimers();
     store = new Map<string, unknown>();
+    userdataDatabase = openUserdataDatabase(IN_MEMORY_DATABASE);
+    planHistoryStore = createPlanHistoryStore(userdataDatabase);
   });
 
   afterEach(() => {
@@ -121,7 +127,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
     // Boot back-fill bailed: marker unset, watermark untouched, history empty, latch set.
     expect(store.get(DEFERRED_OBJECTIVES_PERKEY_MIGRATED)).toBeUndefined();
     expect(store.get(DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK)).toBe(oldWatermark);
-    expect(store.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)).toBeUndefined();
+    expect(planHistoryStore.read()).toBeNull();
     expect(ctx.deferredObjectiveBackfillPending).toBe(true);
 
     // (2) + (3) In-session tick: getKeys() now succeeds. The lifecycle's
@@ -141,9 +147,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
 
     // The migrated task's elapsed deadline was back-filled into persisted history —
     // NOT silently skipped. This is the core regression assertion.
-    const history = store.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING) as
-      | { entries: DeferredObjectivePlanHistoryEntry[] }
-      | undefined;
+    const history = planHistoryStore.read();
     expect(history).toBeDefined();
     const backfilled = (history?.entries ?? []).filter(
       (entry) => entry.deviceId === 'legacy-heater'
@@ -266,7 +270,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
     expect(store.get(DEFERRED_OBJECTIVES_PERKEY_MIGRATED)).toBe(true);
     expect(store.get(DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK)).toBe(oldWatermark);
     expect(ctx.deferredObjectiveBackfillPending).toBe(true);
-    expect(store.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)).toBeUndefined();
+    expect(planHistoryStore.read()).toBeNull();
 
     // (3) Next healthy tick: getKeys() stays truthy → the pending back-fill completes,
     // recording the migrated task's elapsed deadline that the flake deferred.
@@ -275,9 +279,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
     vi.setSystemTime(healthyTickMs);
     emitter.tick(healthyTickMs);
 
-    const history = store.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING) as
-      | { entries: DeferredObjectivePlanHistoryEntry[] }
-      | undefined;
+    const history = planHistoryStore.read();
     const backfilled = (history?.entries ?? []).filter(
       (entry) => entry.deviceId === 'legacy-heater'
         && entry.deadlineAtMs === elapsedDeadlineMs,
@@ -354,9 +356,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
     const nextEmitter = createDeferredObjectiveLifecycleEmitter(nextCtx);
     nextEmitter.tick(nextTickMs);
 
-    const history = store.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING) as
-      | { entries: DeferredObjectivePlanHistoryEntry[] }
-      | undefined;
+    const history = planHistoryStore.read();
     const backfilled = (history?.entries ?? []).filter(
       (entry) => entry.deviceId === 'legacy-heater'
         && entry.deadlineAtMs === elapsedDeadlineMs,

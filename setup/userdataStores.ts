@@ -3,10 +3,13 @@ import { openAppUserdataDatabase, type UserdataDatabase } from '../lib/store/use
 import { createWeatherHistoryStore, type WeatherHistoryStore } from '../lib/weather/weatherHistoryStore';
 
 /**
- * The userdata database and every repository on it, opened together at the
- * app's first boot step and closed together last at teardown. A repository
- * is a `lib/` component that takes the open database; this is the one place
- * that lists them, so a new data family is wired by adding a line here.
+ * The userdata database, opened at the app's first boot step and closed last
+ * at teardown, with the two repositories that predate the rule that a domain's
+ * wiring builds its own repository from `AppContext.getUserdataDatabase()`
+ * (`setup/appInit/deferredRecorders.ts` is the pattern): a repository is a
+ * `lib/` component that takes the open database, and listing every domain
+ * here would make this file the cross-peer composition the wiring rules
+ * forbid.
  */
 export type AppUserdataStores = {
   database: UserdataDatabase;

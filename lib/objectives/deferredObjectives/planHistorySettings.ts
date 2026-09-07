@@ -21,8 +21,8 @@ import { toPlanHistoryRecord } from '../../../packages/shared-domain/src/deferre
 import { isFiniteNumber } from '../../utils/appTypeGuards';
 
 // Bumped to 5 when persistence switched to compact, device-independent rows.
-// v4 remains on its original settings key so a rollback can still read the
-// old archive; the v5 adapter migrates that archive without overwriting it.
+// v3/v4 envelopes are read only by the one-shot boot import into the userdata
+// store (`planHistoryStore.ts`), which retires the settings keys after.
 // v4 was introduced in v2.7.2 alongside the smart-task history-detail trio:
 // `progressSamples`, `kwhPerUnitMean` (on revision snapshots), `deliveredKWh`
 // + `totalCost`, `revisions[]`, and (extension, no version bump) the

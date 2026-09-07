@@ -28,7 +28,7 @@ The Smart tasks surface has three primary pages:
 Each is wired to its own data source: live plan reads from the
 active-plan recorder snapshot in
 `SettingsUiBootstrap.deferredObjectiveActivePlans`; history reads from
-the rolling 30-entry cap in `deferred_objective_plan_history`.
+the rolling 30-entry cap in the userdata store's plan-history rows (`lib/objectives/deferredObjectives/planHistoryStore.ts`).
 
 ## The lived state at review time
 

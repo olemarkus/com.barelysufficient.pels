@@ -73,12 +73,11 @@ import {
   registerAppFlowCards,
 } from '../../setup/appInit';
 import { requirePlanEngine } from '../../setup/appInit/contextGuards';
-import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives';
+import { DeferredObjectivePlanHistoryRecorder, normalizeDeferredObjectivePlanHistory } from '../../lib/objectives/deferredObjectives';
+import { createPlanHistoryStore } from '../../lib/objectives/deferredObjectives/planHistoryStore';
 import { disableDeferredObjectiveInSettings } from '../../setup/appInit/deferredRecorders';
 import {
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
-  DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING,
-  DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
 } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
@@ -413,41 +412,10 @@ describe('app init plan service wiring', () => {
     expect(watermarkCalls[0]![1] as number).toBeGreaterThan(0);
   });
 
-  it('treats a malformed SDK key list as unavailable history instead of throwing', () => {
+  it('loads the history from the store and persists a finalized run back to it', () => {
     const ctx = createAppContextMock();
-    (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>).mockReturnValue(null);
-
-    const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
-
-    expect(recorder.getHistorySnapshot()).toEqual({ version: 5, entries: [] });
-  });
-
-  it('trusts a valid history value without consulting the unrelated key-list read', () => {
-    const ctx = createAppContextMock();
-    const getSpy = ctx.homey.settings.get as unknown as ReturnType<typeof vi.fn>;
-    getSpy.mockImplementation((key: string) => (
-      key === DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING ? { version: 5, entries: [] } : undefined
-    ));
-    const getKeysSpy = ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>;
-    getKeysSpy.mockImplementation(() => { throw new Error('transient key-list failure'); });
-
-    const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
-
-    expect(recorder.getHistorySnapshot()).toEqual({ version: 5, entries: [] });
-    expect(getKeysSpy).not.toHaveBeenCalled();
-  });
-
-  it('keeps legacy v4 history untouched and imports rollback-era rows into v5', () => {
-    const ctx = createAppContextMock();
-    const store = new Map<string, unknown>();
-    (ctx.homey.settings.get as unknown as ReturnType<typeof vi.fn>)
-      .mockImplementation((key: string) => store.get(key));
-    (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>)
-      .mockImplementation(() => [...store.keys()]);
-    (ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>)
-      .mockImplementation((key: string, value: unknown) => { store.set(key, value); });
     const legacyEntry: DeferredObjectivePlanHistoryEntry = {
-      id: 'legacy-v4',
+      id: 'stored-1',
       deviceId: 'dev',
       deviceName: 'Water Heater',
       objectiveKind: 'temperature',
@@ -469,14 +437,10 @@ describe('app init plan service wiring', () => {
       originalPlan: null,
       finalPlan: null,
     };
-    const legacySnapshot = { version: 4 as const, entries: [legacyEntry] };
-    store.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING, legacySnapshot);
+    createPlanHistoryStore(ctx.getUserdataDatabase()).write(normalizeDeferredObjectivePlanHistory({ version: 4, entries: [legacyEntry] }));
 
     const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
-    expect(recorder.getHistorySnapshot().entries[0]).toMatchObject({
-      id: 'legacy-v4',
-      targetValue: 65,
-    });
+    expect(recorder.getHistorySnapshot().entries[0]).toMatchObject({ id: 'stored-1', targetValue: 65 });
     recorder.backfillFromConfig([{
       deviceId: 'dev',
       objectiveKind: 'temperature',
@@ -485,22 +449,39 @@ describe('app init plan service wiring', () => {
       targetPercent: null,
     }], 3_600_000, 7_200_001);
     expect(recorder.flushIfDirty()).toBe(true);
-    expect(store.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING)).toEqual(legacySnapshot);
+    expect(createPlanHistoryStore(ctx.getUserdataDatabase()).read()?.entries.map((entry) => entry.id))
+      .toEqual(['stored-1', expect.any(String)]);
+    // Nothing goes to settings any more.
+    const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
+    expect(setSpy.mock.calls.some(([key]) => String(key).startsWith('deferred_objective_plan_history'))).toBe(false);
+  });
 
-    const rollbackEntry: DeferredObjectivePlanHistoryEntry = {
-      ...legacyEntry,
-      id: 'rollback-v4',
-      deadlineAtMs: 10_800_000,
-      finalizedAtMs: 10_800_000,
-      metAtMs: 10_799_999,
-    };
-    store.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING, {
-      version: 4,
-      entries: [legacyEntry, rollbackEntry],
+  it('keeps persistence closed while the store cannot be read, and reopens on the next good read', () => {
+    const ctx = createAppContextMock();
+    const database = ctx.getUserdataDatabase();
+    const store = createPlanHistoryStore(database);
+    store.write(normalizeDeferredObjectivePlanHistory({ version: 5, entries: [] }));
+    // The recorder builds its own repository on the same database; its first
+    // read fails at the database (I/O), every later one answers.
+    let transactions = 0;
+    const originalTransaction = database.transaction.bind(database);
+    vi.spyOn(database, 'transaction').mockImplementation((work) => {
+      transactions += 1;
+      if (transactions === 1) throw new Error('disk busy');
+      return originalTransaction(work);
     });
-    const reupgraded = createDeferredObjectivePlanHistoryRecorder(ctx);
-    expect(reupgraded.getHistorySnapshot().entries.map((entry) => entry.id))
-      .toEqual(['legacy-v4', expect.any(String), 'rollback-v4']);
+    const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
+    expect(recorder.getHistorySnapshot()).toEqual({ version: 5, entries: [] });
+    recorder.backfillFromConfig([{
+      deviceId: 'dev',
+      objectiveKind: 'temperature',
+      deadlineAtMs: 7_200_000,
+      targetTemperatureC: 70,
+      targetPercent: null,
+    }], 3_600_000, 7_200_001);
+    // The flush re-reads first; the store answers now, so the write lands.
+    expect(recorder.flushIfDirty()).toBe(true);
+    expect(store.read()?.entries).toHaveLength(1);
   });
 
   it('advances the watermark to now after a successful startup back-fill scan', () => {
@@ -764,11 +745,7 @@ describe('app init plan service wiring', () => {
     });
     (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>)
       .mockReturnValue(['deferred_objective.dev_a']);
-    setSpy.mockImplementation((key: string) => {
-      if (key === DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING) {
-        throw new Error('disk full');
-      }
-    });
+    vi.spyOn(createPlanHistoryStore(ctx.getUserdataDatabase()), 'write').mockImplementation(() => { throw new Error('disk full'); });
 
     createDeferredObjectivePlanHistoryRecorder(ctx);
 

@@ -53,7 +53,7 @@ const logger = getLogger('plan/deferred-history');
 // (per-day for HH:mm objectives), so 30 entries covers ~one month of history per device for a
 // single-device household and shorter spans for multi-device homes. Bounded JSON size keeps
 // startup reads cheap on Homey Pro.
-const HISTORY_ENTRY_CAP = 30;
+export const HISTORY_ENTRY_CAP = 30;
 
 // If a previously-tracked diagnostic stops appearing for this long while its deadline is still
 // in the future, treat the run as abandoned (settings disabled, device removed, evaluator

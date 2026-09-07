@@ -203,6 +203,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     hydratePowerTracker: vi.fn(),
     getTrackerStore: () => trackerStore,
     getWeatherHistoryStore: () => weatherHistoryStore,
+    getUserdataDatabase: () => userdataDatabase,
     emitPowerTrackerPersisted: vi.fn(),
     loadCapacitySettings: vi.fn(),
     loadTemperatureControlPolicySettings: vi.fn(),

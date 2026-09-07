@@ -12,7 +12,6 @@ import {
   DeferredObjectivePlanHistoryRecorder,
   normalizeDeferredObjectiveActivePlans,
   normalizeDeferredObjectivePlanHistory,
-  parseDeferredObjectivePlanHistory,
   objectiveKeyListIsTrustworthy,
   readAllObjectives,
   readObjectiveForDevice,
@@ -24,15 +23,13 @@ import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferr
 import {
   DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
-  DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING,
-  DEFERRED_OBJECTIVE_PLAN_HISTORY_INITIALIZED,
-  DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
 } from '../../lib/utils/settingsKeys';
 import { resolveSmartTaskHomeScope } from './smartTaskHomeScope';
 import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { AppContext } from '../../lib/app/appContext';
+import { createPlanHistoryStoreForApp } from './planHistoryStore';
 
 // How long the deferred-objective observation watermark can be stale before we advance it
 // during normal observe ticks. Without this idle advance the watermark only moves forward
@@ -120,27 +117,36 @@ export const writeWatermark = (ctx: AppContext, ms: number): void => {
 export function createDeferredObjectivePlanHistoryRecorder(
   ctx: AppContext,
 ): DeferredObjectivePlanHistoryRecorder {
+  const store = createPlanHistoryStoreForApp(ctx);
   let loadUnavailable = false;
   const recorder = new DeferredObjectivePlanHistoryRecorder({
+    // The store either answers or throws (I/O). A throw keeps the recorder's
+    // persistence closed until a later load succeeds, so an empty in-memory
+    // history can never be written over one the process failed to read.
     load: () => {
-      const result = readPlanHistory(ctx);
-      if (!result.persistenceSafe && !loadUnavailable) {
-        loadUnavailable = true;
-        ctx.getStructuredLogger('deferred_objectives')?.warn({
-          event: 'deferred_objective_plan_history_load_unavailable', reason: result.reason,
-        });
-      } else if (result.persistenceSafe && loadUnavailable) {
+      let snapshot: ReturnType<typeof normalizeDeferredObjectivePlanHistory>;
+      try {
+        snapshot = store.read() ?? normalizeDeferredObjectivePlanHistory(null);
+      } catch (error) {
+        if (!loadUnavailable) {
+          loadUnavailable = true;
+          ctx.getStructuredLogger('deferred_objectives')?.warn({
+            event: 'deferred_objective_plan_history_load_unavailable', err: normalizeError(error),
+          });
+        }
+        return { snapshot: normalizeDeferredObjectivePlanHistory(null), persistenceSafe: false };
+      }
+      if (loadUnavailable) {
         loadUnavailable = false;
         ctx.getStructuredLogger('deferred_objectives')?.info({
           event: 'deferred_objective_plan_history_load_recovered',
         });
       }
-      return { snapshot: result.snapshot, persistenceSafe: result.persistenceSafe };
+      return { snapshot, persistenceSafe: true };
     },
     save: (next) => {
       try {
-        ctx.homey.settings.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING, next);
-        ctx.homey.settings.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_INITIALIZED, true);
+        store.write(next);
         return true;
       } catch (error) {
         ctx.getStructuredLogger('deferred_objectives')?.error({
@@ -172,114 +178,6 @@ export function createDeferredObjectivePlanHistoryRecorder(
   runStartupBackfill(ctx, recorder);
   return recorder;
 }
-
-type PlanHistoryReadResult = {
-  snapshot: ReturnType<typeof normalizeDeferredObjectivePlanHistory>;
-  persistenceSafe: boolean;
-  reason: 'none' | 'read_failed' | 'malformed' | 'transient_absence' | 'key_list_unavailable';
-};
-
-type PlanHistoryKeyListResult =
-  | { state: 'resolved'; marker: unknown; keys: string[] }
-  | { state: 'unavailable'; reason: 'read_failed' | 'key_list_unavailable' };
-
-const readPlanHistoryKeys = (ctx: AppContext): PlanHistoryKeyListResult => {
-  let marker: unknown;
-  let keys: unknown;
-  try {
-    marker = ctx.homey.settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_INITIALIZED);
-    keys = ctx.homey.settings.getKeys();
-  } catch {
-    return { state: 'unavailable', reason: 'read_failed' };
-  }
-  if (!Array.isArray(keys) || !keys.every((key) => typeof key === 'string') || keys.length === 0) {
-    return { state: 'unavailable', reason: 'key_list_unavailable' };
-  }
-  return { state: 'resolved', marker, keys };
-};
-
-const readLegacyPlanHistory = (
-  ctx: AppContext,
-  keys: readonly string[],
-): PlanHistoryReadResult => {
-  const empty = normalizeDeferredObjectivePlanHistory(null);
-  let legacyRaw: unknown;
-  try {
-    legacyRaw = ctx.homey.settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING);
-  } catch {
-    return { snapshot: empty, persistenceSafe: false, reason: 'read_failed' };
-  }
-  if (legacyRaw !== null && legacyRaw !== undefined) {
-    const parsed = parseDeferredObjectivePlanHistory(legacyRaw);
-    if (parsed.state === 'unavailable') {
-      return { snapshot: empty, persistenceSafe: false, reason: 'malformed' };
-    }
-    return { snapshot: parsed.snapshot, persistenceSafe: true, reason: 'none' };
-  }
-  if (keys.includes(DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING)) {
-    return { snapshot: empty, persistenceSafe: false, reason: 'transient_absence' };
-  }
-  return { snapshot: empty, persistenceSafe: true, reason: 'none' };
-};
-
-const readPlanHistory = (ctx: AppContext): PlanHistoryReadResult => {
-  const empty = normalizeDeferredObjectivePlanHistory(null);
-  let raw: unknown;
-  try {
-    raw = ctx.homey.settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING);
-  } catch {
-    return { snapshot: empty, persistenceSafe: false, reason: 'read_failed' };
-  }
-  if (raw !== null && raw !== undefined) {
-    const parsed = parseDeferredObjectivePlanHistory(raw);
-    if (parsed.state === 'unavailable') {
-      return { snapshot: empty, persistenceSafe: false, reason: 'malformed' };
-    }
-    return {
-      snapshot: mergeLegacyPlanHistory(ctx, parsed.snapshot),
-      persistenceSafe: true,
-      reason: 'none',
-    };
-  }
-  const keyList = readPlanHistoryKeys(ctx);
-  if (keyList.state === 'unavailable') {
-    return { snapshot: empty, persistenceSafe: false, reason: keyList.reason };
-  }
-  if (keyList.marker === true || keyList.keys.includes(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)) {
-    return { snapshot: empty, persistenceSafe: false, reason: 'transient_absence' };
-  }
-  return readLegacyPlanHistory(ctx, keyList.keys);
-};
-
-const mergeLegacyPlanHistory = (
-  ctx: AppContext,
-  current: ReturnType<typeof normalizeDeferredObjectivePlanHistory>,
-): ReturnType<typeof normalizeDeferredObjectivePlanHistory> => {
-  let raw: unknown;
-  try {
-    raw = ctx.homey.settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING);
-  } catch {
-    return current;
-  }
-  if (raw === null || raw === undefined) return current;
-  if (typeof raw !== 'object') return current;
-  const legacyVersion = (raw as Record<string, unknown>).version;
-  // Rollback imports only need V3/V4, the versions this key can hold. The
-  // parser refuses anything else anyway; keeping the check explicit here says
-  // which versions a rollback is expected to produce, and keeps the merge from
-  // depending on that parser detail.
-  if (legacyVersion !== 3 && legacyVersion !== 4) return current;
-  const parsed = parseDeferredObjectivePlanHistory(raw);
-  if (parsed.state === 'unavailable') return current;
-  const currentIds = new Set(current.entries.map((entry) => entry.id));
-  return {
-    version: current.version,
-    entries: [
-      ...current.entries,
-      ...parsed.snapshot.entries.filter((entry) => !currentIds.has(entry.id)),
-    ],
-  };
-};
 
 // Look up the persisted V2 combined-prices entry whose hour-aligned
 // `startsAt` equals `hourStartMs` and map its already-resolved
