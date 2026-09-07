@@ -2,15 +2,15 @@ import { requirePlanService } from './contextGuards';
 import { PriceCoordinator } from '../../lib/price/priceCoordinator';
 import { PriceFlowTagPublisher } from '../../lib/price/priceFlowTags';
 import { resolveHomeyEnergyApiFromSdk } from '../../lib/utils/homeyEnergy';
-import { createPriceOptimizationSettingsStore } from '../priceOptimizationSettingsAdapter';
-import { createPriceDataStore } from '../priceDataAdapter';
+import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptimizationSettingsStore';
+import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import type { AppContext } from '../../lib/app/appContext';
 
 export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
   return new PriceCoordinator({
     homey: ctx.homey,
-    priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(ctx.homey),
-    priceDataStore: createPriceDataStore(ctx.homey),
+    priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(ctx.homey.settings),
+    priceDataStore: createPriceDataStore(ctx.homey.settings),
     getTimeZone: () => ctx.getTimeZone(),
     getHomeyEnergyApi: () => resolveHomeyEnergyApiFromSdk(ctx.homey),
     getPowerTracker: () => ctx.powerTracker,

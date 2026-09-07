@@ -1,18 +1,20 @@
 import { describe, expect, test, vi } from 'vitest';
+import type { Mock } from 'vitest';
 import {
   combinedPriceDataFromStore,
   flattenAllHours,
 } from '../../lib/price/priceStore';
-import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
+import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
+import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 
 const TZ = 'Europe/Oslo';
 
 // Each call builds a fresh reader (instance-scoped refetch guard) — equivalent
 // to the production singleton for non-re-entrant reads. The re-entrancy test
 // below deliberately reuses one reader instance.
-const readStore = (homey: unknown, requestRefetch: () => void, now: Date, tz: string) =>
-  createCombinedPricesReader({ homey: homey as never, requestRefetch }).readStore(now, tz);
+const readStore = (settings: SettingsPort, requestRefetch: () => void, now: Date, tz: string) =>
+  createCombinedPricesReader(settings, requestRefetch).readStore(now, tz);
 
 const buildStore = (): CombinedPricesV2 => ({
   version: 2,
@@ -29,21 +31,29 @@ const buildStore = (): CombinedPricesV2 => ({
   lastFetched: '2026-05-10T00:00:00.000Z',
 });
 
-const buildHomey = (initial: unknown) => {
+/** Every member of the port, spied, each spy carrying that member's own signature. */
+type SettingsPortStub = { [K in keyof SettingsPort]: Mock<SettingsPort[K]> };
+
+/**
+ * A LIVE settings double: a write is visible to the next read, as the real
+ * store is. The mapped return type rather than a trailing `satisfies` is what
+ * holds each spy to the port's own signature — see the reasoning in
+ * `test/mocks/deviceDiagnosticsRecorder.ts`.
+ */
+const buildSettings = (initial: unknown): SettingsPortStub => {
   let value = initial;
   return {
-    settings: {
-      get: vi.fn(() => value),
-      set: vi.fn((_key: string, next: unknown) => { value = next; }),
-    },
+    get: vi.fn((_key: string) => value),
+    set: vi.fn((_key: string, next: unknown) => { value = next; }),
+    unset: vi.fn((_key: string) => { value = undefined; }),
   };
 };
 
 describe('readStore', () => {
   test('returns the V2 store, pruned in place', () => {
-    const homey = buildHomey({ ...buildStore(), days: { ...buildStore().days, '2026-05-01': { hours: [] } } });
+    const settings = buildSettings({ ...buildStore(), days: { ...buildStore().days, '2026-05-01': { hours: [] } } });
     const requestRefetch = vi.fn();
-    const result = readStore(homey, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
+    const result = readStore(settings, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
     expect(result).not.toBeNull();
     expect(Object.keys(result!.days).sort()).toEqual(['2026-05-09', '2026-05-10', '2026-05-11']);
     expect(requestRefetch).not.toHaveBeenCalled();
@@ -53,23 +63,23 @@ describe('readStore', () => {
   // `{ version: 2, days: { '...': null } }` previously passed `isCombinedPricesV2`
   // and then crashed `flattenAllHours` when it dereferenced `day.hours`.
   test('treats malformed V2 day entries as non-V2 and triggers recovery', () => {
-    const homey = buildHomey({
+    const settings = buildSettings({
       version: 2,
       days: { '2026-05-10': null },
       avgPrice: 1, lowThreshold: 0, highThreshold: 2,
       priceScheme: 'norway', priceUnit: 'NOK/kWh',
     });
     const requestRefetch = vi.fn();
-    const result = readStore(homey, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
+    const result = readStore(settings, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
     expect(result).toBeNull();
-    expect(homey.settings.set).toHaveBeenCalledWith('combined_prices', null);
+    expect(settings.set).toHaveBeenCalledWith('combined_prices', null);
     expect(requestRefetch).toHaveBeenCalledTimes(1);
   });
 
   test('treats V2 payload missing top-level metadata as non-V2', () => {
-    const homey = buildHomey({ version: 2, days: {} });
+    const settings = buildSettings({ version: 2, days: {} });
     const requestRefetch = vi.fn();
-    const result = readStore(homey, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
+    const result = readStore(settings, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
     expect(result).toBeNull();
     expect(requestRefetch).toHaveBeenCalledTimes(1);
   });
@@ -90,9 +100,9 @@ describe('readStore', () => {
       minDiffOre: 0,
       lastFetched: '2026-05-10T00:00:00.000Z',
     };
-    const homey = buildHomey(legacy);
+    const settings = buildSettings(legacy);
     const requestRefetch = vi.fn();
-    const result = readStore(homey, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
+    const result = readStore(settings, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
 
     expect(result).not.toBeNull();
     expect(result!.version).toBe(2);
@@ -102,8 +112,8 @@ describe('readStore', () => {
     expect(result!.lastFetched).toBe('2026-05-10T00:00:00.000Z');
     // The migration must persist V2 to settings so subsequent direct reads
     // (settingsUiApi, widget) see V2 too.
-    expect(homey.settings.set).toHaveBeenCalledTimes(1);
-    const written = homey.settings.set.mock.calls[0][1] as { version: number };
+    expect(settings.set).toHaveBeenCalledTimes(1);
+    const written = settings.set.mock.calls[0][1] as { version: number };
     expect(written.version).toBe(2);
     // No refetch needed: V1 has all the entries already, the migration is
     // self-contained.
@@ -123,24 +133,24 @@ describe('readStore', () => {
       priceScheme: 'flow',
       priceUnit: 'price units',
     };
-    const homey = buildHomey(legacy);
+    const settings = buildSettings(legacy);
     const requestRefetch = vi.fn();
-    const result = readStore(homey, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
+    const result = readStore(settings, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
 
     expect(result).not.toBeNull();
     expect(result!.version).toBe(2);
     expect(result!.days).toEqual({});
     expect(result!.priceScheme).toBe('flow');
-    expect(homey.settings.set).toHaveBeenCalledTimes(1);
+    expect(settings.set).toHaveBeenCalledTimes(1);
     expect(requestRefetch).toHaveBeenCalledTimes(1);
   });
 
   test('returns null and does not refetch when settings is null', () => {
-    const homey = buildHomey(null);
+    const settings = buildSettings(null);
     const requestRefetch = vi.fn();
-    const result = readStore(homey, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
+    const result = readStore(settings, requestRefetch, new Date('2026-05-10T12:00:00.000Z'), TZ);
     expect(result).toBeNull();
-    expect(homey.settings.set).not.toHaveBeenCalled();
+    expect(settings.set).not.toHaveBeenCalled();
     expect(requestRefetch).not.toHaveBeenCalled();
   });
 
@@ -148,13 +158,23 @@ describe('readStore', () => {
     // A truly malformed payload (not V2 and not V1-shaped) must still drop and
     // request a refetch. The guard prevents recursion if the refetcher reads
     // synchronously.
-    const homey = buildHomey({ unrelated: 'shape' });
+    // NOT the live double: the recovery path writes `null` before it calls the
+    // refetcher, so a live read would answer the re-entrant call with `null`
+    // and return early — `guardedRequestRefetch` would never be re-entered and
+    // this test would pass whether or not the guard existed. Answering the
+    // malformed payload every time is what drives the re-entrant read back
+    // into the refetch, leaving the guard as the only thing ending it.
+    const settings: SettingsPortStub = {
+      get: vi.fn((_key: string) => ({ unrelated: 'shape' })),
+      set: vi.fn(),
+      unset: vi.fn(),
+    };
     // Re-entrancy must go through the SAME reader instance for the guard to
     // engage (it is instance-scoped); production shares one reader on AppContext.
     const requestRefetch = vi.fn(() => {
       reader.readStore(new Date('2026-05-10T12:00:00.000Z'), TZ);
     });
-    const reader = createCombinedPricesReader({ homey: homey as never, requestRefetch });
+    const reader = createCombinedPricesReader(settings, requestRefetch);
     reader.readStore(new Date('2026-05-10T12:00:00.000Z'), TZ);
     expect(requestRefetch).toHaveBeenCalledTimes(1);
   });

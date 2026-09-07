@@ -1,7 +1,7 @@
 import type Homey from 'homey';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { PriceFlowTagPublisher, PRICE_FLOW_TAG_ID, PRICE_LIST_UPDATED_TRIGGER_ID } from '../../lib/price/priceFlowTags';
-import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
+import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
 import { mockHomeyInstance } from '../mocks/homey';
 import { captureLogger } from '../utils/loggerCapture';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
@@ -44,7 +44,7 @@ const tokenValue = (): string => (mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_
 const newPublisher = () => new PriceFlowTagPublisher({
   homey: homeyLike,
   getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-  combinedPricesReader: createCombinedPricesReader({ homey: homeyLike, requestRefetch: () => {} }),
+  combinedPricesReader: createCombinedPricesReader(mockHomeyInstance.settings, () => {}),
   log: () => {},
   debugStructured: () => {},
 });
@@ -174,7 +174,7 @@ describe('PriceFlowTagPublisher', () => {
         },
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader({ homey: homeyLike, requestRefetch: () => {} }),
+      combinedPricesReader: createCombinedPricesReader(mockHomeyInstance.settings, () => {}),
       log: () => {},
       debugStructured: () => {},
     });
@@ -200,7 +200,7 @@ describe('PriceFlowTagPublisher', () => {
         },
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader({ homey: homeyLike, requestRefetch: () => {} }),
+      combinedPricesReader: createCombinedPricesReader(mockHomeyInstance.settings, () => {}),
       log: () => {},
       debugStructured: () => {},
     });
@@ -227,7 +227,7 @@ describe('PriceFlowTagPublisher', () => {
         },
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader({ homey: homeyLike, requestRefetch: () => {} }),
+      combinedPricesReader: createCombinedPricesReader(mockHomeyInstance.settings, () => {}),
       log: () => {},
       debugStructured: () => {},
     });
@@ -253,7 +253,7 @@ describe('PriceFlowTagPublisher', () => {
         },
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader({ homey: homeyLike, requestRefetch: () => {} }),
+      combinedPricesReader: createCombinedPricesReader(mockHomeyInstance.settings, () => {}),
       log: () => {},
       debugStructured: () => {},
     });
@@ -285,7 +285,7 @@ describe('PriceFlowTagPublisher', () => {
         },
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
-      combinedPricesReader: createCombinedPricesReader({ homey: homeyLike, requestRefetch: () => {} }),
+      combinedPricesReader: createCombinedPricesReader(mockHomeyInstance.settings, () => {}),
       log: () => {},
       debugStructured: () => {},
     });

@@ -9,8 +9,8 @@
  * produced them — source resolution stays inside `PriceService`.
  *
  * All cached price-data persistence goes through the typed stores
- * (`priceDataStore`, the combined-prices store) — never add ad-hoc
- * `settings.set` of price payloads here. Module invariants (leaf rule,
+ * (`priceDataStore`, the combined-prices store) — never read or write a
+ * price payload through `settings` directly here. Module invariants (leaf rule,
  * store boundaries): `lib/price/AGENTS.md`.
  */
 import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
@@ -20,7 +20,6 @@ import PriceService from './priceService';
 import type { BudgetPriceInputs } from './budgetPrice';
 import { type CombinedHourlyPrice, isCombinedPricesV1 } from './priceTypes';
 import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
-import { COMBINED_PRICES } from '../utils/settingsKeys';
 import type { PriceOptimizationSettingsStore } from './priceOptimizationSettingsStore';
 import type { PriceDataStore } from './priceDataStore';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
@@ -263,7 +262,7 @@ export class PriceCoordinator {
    */
   catchUpCombinedPricesRotation(): void {
     if (this.priceService.getPriceScheme() !== 'flow') return;
-    const existingPayload = this.deps.homey.settings.get(COMBINED_PRICES);
+    const existingPayload = this.deps.priceDataStore.readCombinedRaw();
     // A persisted V1 shape must run through the combined-prices reader's
     // migration first; rebuilding it here would clobber that path. Leave it.
     if (isCombinedPricesV1(existingPayload)) {

@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance } from '../../mocks/homey';
 import { PriceCoordinator } from '../../../lib/price/priceCoordinator';
-import { createPriceOptimizationSettingsStore } from '../../../setup/priceOptimizationSettingsAdapter';
-import { createPriceDataStore } from '../../../setup/priceDataAdapter';
+import { createPriceOptimizationSettingsStore } from '../../../lib/price/priceOptimizationSettingsStore';
+import { createPriceDataStore } from '../../../lib/price/priceDataStore';
 import { PriceLevel } from '../../../lib/price/priceLevels';
 import { COMBINED_PRICES, FLOW_PRICES_TODAY, PRICE_SCHEME } from '../../../lib/utils/settingsKeys';
 
 const createCoordinator = () => new PriceCoordinator({
   homey: mockHomeyInstance as never,
-  priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance as never),
-  priceDataStore: createPriceDataStore(mockHomeyInstance as never),
+  priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
+  priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
   getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
   getPowerTracker: () => ({}),
   getCurrentPriceLevel: () => PriceLevel.NORMAL,
@@ -76,8 +76,8 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const coordinator = new PriceCoordinator({
       homey: mockHomeyInstance as never,
-      priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance as never),
-      priceDataStore: createPriceDataStore(mockHomeyInstance as never),
+      priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
+      priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getPowerTracker: () => ({}),
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
@@ -262,8 +262,8 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const coordinator = new PriceCoordinator({
       homey: mockHomeyInstance as never,
-      priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance as never),
-      priceDataStore: createPriceDataStore(mockHomeyInstance as never),
+      priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
+      priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getPowerTracker: () => ({}),
       getCurrentPriceLevel: () => PriceLevel.NORMAL,

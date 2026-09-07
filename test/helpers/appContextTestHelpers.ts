@@ -16,7 +16,7 @@ import { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
 import { normalizePowerSource } from '../../lib/power/powerSource';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
-import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
+import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
@@ -187,7 +187,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     startupBootstrap: undefined,
     getPvForecastSourceUiStatus: () => ({ kind: 'unknown' }),
     homey,
-    combinedPricesReader: createCombinedPricesReader({ homey, requestRefetch: () => undefined }),
+    combinedPricesReader: createCombinedPricesReader(homey.settings, () => undefined),
     log: vi.fn(),
     error: vi.fn(),
     logDebug: vi.fn(),

@@ -11,7 +11,7 @@ import {
   buildDeferredObjectivePolicyHorizon,
 } from '../../lib/objectives/deferredObjectives/policyHorizon';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
-import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
+import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
 import { createDailyBudgetStateStore } from '../../setup/dailyBudgetStateAdapter';
 import {
@@ -88,7 +88,7 @@ const buildService = (initialSettings: SettingsStore): {
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => true,
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 2 }),
-    combinedPricesReader: createCombinedPricesReader({ homey, requestRefetch: () => undefined }),
+    combinedPricesReader: createCombinedPricesReader(homey.settings, () => undefined),
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
     dailyBudgetStateStore: createDailyBudgetStateStore(homey),
   });

@@ -8,7 +8,7 @@
 import type Homey from 'homey';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PriceService from '../../lib/price/priceService';
-import { createPriceDataStore } from '../../setup/priceDataAdapter';
+import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { mockHomeyInstance } from '../mocks/homey';
 import { VAT_MULTIPLIER_STANDARD } from '../../lib/price/priceComponents';
 import { EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR, PRICE_SCHEME } from '../../lib/utils/settingsKeys';
@@ -20,7 +20,7 @@ const createService = (): PriceService => new PriceService(
   { log: () => {}, debugStructured: () => {} },
   () => TZ,
   undefined,
-  createPriceDataStore(mockHomeyInstance as never),
+  createPriceDataStore(mockHomeyInstance.settings),
   () => ({}),
 );
 

@@ -13,9 +13,9 @@ import {
   ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT,
 } from '../../lib/price/priceComponents';
 import { PriceCoordinator } from '../../lib/price/priceCoordinator';
-import { createPriceOptimizationSettingsStore } from '../../setup/priceOptimizationSettingsAdapter';
-import { createPriceDataStore } from '../../setup/priceDataAdapter';
-import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
+import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptimizationSettingsStore';
+import { createPriceDataStore } from '../../lib/price/priceDataStore';
+import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
 import { flattenAllHours, readCombinedPriceData } from '../../lib/price/priceStore';
 import { buildPriceFactors } from '../../lib/dailyBudget/dailyBudgetPrices';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
@@ -1340,8 +1340,8 @@ describe('Price optimization', () => {
 
   const createPriceCoordinatorForTest = (overrides: Partial<ConstructorParameters<typeof PriceCoordinator>[0]> = {}): PriceCoordinator => new PriceCoordinator({
     homey: mockHomeyInstance as never,
-    priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance as never),
-    priceDataStore: createPriceDataStore(mockHomeyInstance as never),
+    priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
+    priceDataStore: createPriceDataStore(mockHomeyInstance.settings),
     getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
     getPowerTracker: () => ({}),
     getCurrentPriceLevel: () => PriceLevel.NORMAL,
@@ -1750,10 +1750,7 @@ describe('Price optimization', () => {
 
       // Read back through the persisted-store reader path (the adapter every
       // combined-prices consumer uses), not the in-memory producer.
-      const reader = createCombinedPricesReader({
-        homey: mockHomeyInstance as never,
-        requestRefetch: () => {},
-      });
+      const reader = createCombinedPricesReader(mockHomeyInstance.settings, () => {});
       const data = readCombinedPriceData(reader, new Date(), APP_TIME_ZONE);
       const persisted = data?.prices?.find((entry) => entry.startsAt === surplusHourIso);
       expect(persisted?.budgetPrice).toBe(1);

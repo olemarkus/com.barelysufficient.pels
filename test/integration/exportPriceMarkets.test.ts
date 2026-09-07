@@ -19,7 +19,7 @@
 import type Homey from 'homey';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PriceService from '../../lib/price/priceService';
-import { createPriceDataStore } from '../../setup/priceDataAdapter';
+import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { mockHomeyInstance } from '../mocks/homey';
 import { VAT_MULTIPLIER_STANDARD } from '../../lib/price/priceComponents';
 import { getDateKeyInTimeZone, getDateKeyStartMs } from '../../lib/utils/dateUtils';
@@ -38,7 +38,7 @@ const createService = (energyApi?: HomeyEnergyApi): PriceService => new PriceSer
   { log: () => {}, debugStructured: () => {} },
   () => TZ,
   energyApi ? () => energyApi : undefined,
-  createPriceDataStore(mockHomeyInstance as never),
+  createPriceDataStore(mockHomeyInstance.settings),
   () => ({}),
 );
 

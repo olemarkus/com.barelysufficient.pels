@@ -1,6 +1,6 @@
 import type Homey from 'homey';
 import PriceService from '../../lib/price/priceService';
-import { createPriceDataStore } from '../../setup/priceDataAdapter';
+import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { mockHomeyInstance } from '../mocks/homey';
 import { PRICE_SCHEME } from '../../lib/utils/settingsKeys';
 import { getDateKeyInTimeZone, getZonedParts } from '../../lib/utils/dateUtils';
@@ -26,7 +26,7 @@ const createService = (): PriceService => new PriceService(
   { log: () => {}, debugStructured: () => {} },
   () => TZ,
   undefined,
-  createPriceDataStore(mockHomeyInstance as never),
+  createPriceDataStore(mockHomeyInstance.settings),
   () => ({}),
 );
 

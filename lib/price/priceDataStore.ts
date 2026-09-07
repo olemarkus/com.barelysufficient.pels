@@ -1,3 +1,11 @@
+import type { SettingsPort } from '../ports/homeyRuntime';
+import {
+  COMBINED_PRICES,
+  ELECTRICITY_PRICES,
+  ELECTRICITY_PRICES_AREA,
+  HOMEY_PRICES_CURRENCY,
+  NETTLEIE_DATA,
+} from '../utils/settingsKeys';
 import type { SpotPriceEntry } from './spotPriceFetch';
 import type { FlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import type { CombinedPricesV2 } from './priceTypes';
@@ -31,3 +39,23 @@ export type PriceDataStore = {
   readCombinedRaw(): unknown;
   writeCombined(payload: CombinedPricesV2): void;
 };
+
+/**
+ * The settings-backed {@link PriceDataStore}. It lives beside the port it
+ * implements because the reads and the keys they use are the price module's
+ * own: `setup/` hands over a {@link SettingsPort} and knows nothing about which
+ * keys back which field.
+ */
+export const createPriceDataStore = (settings: SettingsPort): PriceDataStore => ({
+  readSpotPrices: () => settings.get(ELECTRICITY_PRICES),
+  writeSpotPrices: (prices) => settings.set(ELECTRICITY_PRICES, prices),
+  readSpotPriceArea: () => settings.get(ELECTRICITY_PRICES_AREA),
+  writeSpotPriceArea: (area) => settings.set(ELECTRICITY_PRICES_AREA, area),
+  readNettleie: () => settings.get(NETTLEIE_DATA),
+  writeNettleie: (data) => settings.set(NETTLEIE_DATA, data),
+  readFlowPayload: (key) => settings.get(key),
+  writeFlowPayload: (key, payload) => settings.set(key, payload),
+  writeHomeyPricesCurrency: (unit) => settings.set(HOMEY_PRICES_CURRENCY, unit),
+  readCombinedRaw: () => settings.get(COMBINED_PRICES),
+  writeCombined: (payload) => settings.set(COMBINED_PRICES, payload),
+});

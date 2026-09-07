@@ -108,7 +108,7 @@
 
 ## Adapter naming (superseded, migrating out)
 
-- The `*Adapter.ts` pattern here — 14 files (`priceDataAdapter.ts`, `dailyBudgetSettingsAdapter.ts`, `deviceDiagnosticsStateAdapter.ts`, …) — predates § "No domain logic". Each implements a typed store port on top of `homey.settings`, which makes `setup/` the layer that reads the SDK: exactly what the rule says it must not be. **Do not add another.** A new store port is implemented in the `lib/` module that declares it, taking a `SettingsPort` from `lib/ports/homeyRuntime.ts`; `setup/` hands the port over and nothing else. The 40 `setup/` files importing from `'homey'` are the migration surface.
+- The `*Adapter.ts` pattern here — 11 files (`dailyBudgetSettingsAdapter.ts`, `deviceDiagnosticsStateAdapter.ts`, `capacitySettingsStoreAdapter.ts`, …) — predates § "No domain logic". Each implements a typed store port on top of `homey.settings`, which makes `setup/` the layer that reads the SDK: exactly what the rule says it must not be. **Do not add another.** A new store port is implemented in the `lib/` module that declares it, taking a `SettingsPort` from `lib/ports/homeyRuntime.ts`; `setup/` hands the port over and nothing else. The 37 `setup/` files importing from `'homey'` are the migration surface (40 before the price lane moved).
 - **The invariant these files carry survives the move unchanged.** The I/O half remembers nothing between calls, and a port's stateful half — a cache, a `dirty` flag, a load-phase classification, an abandon-grace window — lives WITH the port in `lib/`, because that state is the domain's and the grace policy is a domain rule (`notes/persisted-settings-state.md`). "Adapter" is not a licence to hold state; see § "No state".
 
 ## What does not belong here
