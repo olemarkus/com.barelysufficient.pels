@@ -370,7 +370,11 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
       planRebuildThrottle: throttle,
       getPlanEngine: () => planEngine,
       getPlanService: () => planService,
+      getPowerTracker: () => ctx.powerTracker,
+      getCapacitySettings: () => ctx.capacitySettings,
       getCapacityGuard: () => guard,
+      // Never called: these samples carry no meter identity.
+      noteResolvedHomeMeter: () => {},
       // Write back as production does (`savePowerTracker` -> `setPowerTracker`),
       // so the latch the scheduler reads is the sample just admitted.
       savePowerTracker: (state) => { saved = state; ctx.powerTracker = state; },

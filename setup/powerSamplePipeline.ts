@@ -86,10 +86,11 @@ export type PowerSamplePipelineDeps = {
    * with the ingest's own `nowMs` — so the identity, the watts, and their
    * timestamp move as ONE admitted operation. A request superseded by
    * coalescing drops its identity claim together with its watts; flow and
-   * sub-home samples never carry the field and never publish. No-op when
-   * absent (sub-home pipelines).
+   * sub-home samples never carry the field and never publish — the guard is the
+   * identity itself, so every home wires this and no home has to be asked
+   * whether it owns the whole-home meter.
    */
-  noteResolvedHomeMeter?: (deviceId: string, sampleAtMs: number) => void;
+  noteResolvedHomeMeter: (deviceId: string, sampleAtMs: number) => void;
 };
 
 type PowerSampleOptions = {
@@ -281,7 +282,7 @@ export class PowerSamplePipeline {
   private publishResolvedHomeMeter(request: PowerSampleRequest): void {
     if (request.meterDeviceId === undefined) return;
     try {
-      this.deps.noteResolvedHomeMeter?.(request.meterDeviceId, request.nowMs);
+      this.deps.noteResolvedHomeMeter(request.meterDeviceId, request.nowMs);
     } catch {
       incPerfCounter('power_sample_identity_publish_failed_total');
     }

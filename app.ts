@@ -260,7 +260,19 @@ class PelsApp extends PelsAppBase implements AppContext {
     planRebuildThrottle: this.planRebuildThrottle,
     getPlanEngine: () => this.planEngine,
     getPlanService: () => this.planService,
+    // The Main home's capacity state, named the same way a meter area names its
+    // own. These reads are ambient on the app context, which is why the factory
+    // used to default to them; the pipeline is a per-home component either way,
+    // so the home it serves says where its state lives.
+    getPowerTracker: () => this.powerTracker,
+    getCapacitySettings: () => this.capacitySettings,
     getCapacityGuard: () => this.capacityGuard,
+    // Main's meter IS the whole-home meter, so Main is the home that feeds
+    // membership's sampled-meter ownership fence. Lazy: membership is wired
+    // after the pipeline.
+    noteResolvedHomeMeter: (deviceId, sampleAtMs) => (
+      this.homeMembershipService?.noteResolvedHomeMeter(deviceId, sampleAtMs)
+    ),
     savePowerTracker: (state) => this.savePowerTracker(state),
     getOutdoorTemperatureC: () => this.weatherCollector?.getCurrentOutdoorTemperatureC(),
     recordPvGenerationSample: (genW, nowMs, netW) => this.pvForecast?.recordSample(genW, nowMs, netW),

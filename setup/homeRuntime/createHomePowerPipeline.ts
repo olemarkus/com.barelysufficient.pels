@@ -8,13 +8,15 @@
  * closures.
  *
  * R7b: sub-home capacity bundles construct additional pipelines through the
- * same factory. The capacity closures (`getPowerTracker`/`getCapacitySettings`)
- * default to the ctx (main home) reads when omitted and are overridden with
- * per-bundle state for sub-homes; `getCapacityGuard` and the rebuild throttle
- * are always the caller's. The weather/PV/curtailment taps are caller-supplied and simply
- * NOT passed for sub-home pipelines: a sub-home meter's net W is not the
- * home's grid power, so feeding it to the PV forecast or the
- * curtailment-surplus estimator would corrupt them.
+ * same factory. Every home names its own capacity state — tracker, capacity
+ * scalars, guard and rebuild throttle are required deps. The tracker and the
+ * scalars used to be optional, falling back to the `ctx` reads when omitted,
+ * which meant "omitted" silently spelled "the main home": the one home whose
+ * capacity state is ambient on the context got its wiring for free, and the
+ * shape of a home's pipeline depended on which home it was. The weather/PV/
+ * curtailment taps are caller-supplied and simply NOT passed for sub-home
+ * pipelines: a sub-home meter's net W is not the home's grid power, so feeding
+ * it to the PV forecast or the curtailment-surplus estimator would corrupt them.
  */
 import { createSampleIngestQueue } from '../../lib/power/sampleIngestQueue';
 import type CapacityGuard from '../../lib/power/capacityGuard';
@@ -23,7 +25,7 @@ import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
-import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
+import type { HomeId } from '../../lib/utils/settingsKeys';
 import { filterDevicesForHome } from '../homeMembership';
 import { resolveFreshGenerationW } from '../../lib/observer/generationFreshness';
 import type { ObservedHomePower } from '../../lib/observer/observedHomePower';
@@ -42,11 +44,11 @@ export type HomePowerPipelineDeps = {
   savePowerTracker: (state: PowerTrackerState) => void;
   /** This home's rebuild throttle — the sample's one exit into the planner. */
   planRebuildThrottle: PlanRebuildThrottle;
-  // Per-home capacity closures (R7b). Omitted = the ctx (main home) reads,
-  // preserving the pre-R7b wiring byte-for-byte; sub-home bundles supply their
-  // own tracker/settings/guard so two homes never share capacity state.
-  getPowerTracker?: () => PowerTrackerState;
-  getCapacitySettings?: () => { limitKw: number; marginKw: number };
+  // Per-home capacity state. Required for every home, main included: two homes
+  // never share a tracker, capacity scalars or a guard, so there is no home for
+  // which one of these is the obvious default.
+  getPowerTracker: () => PowerTrackerState;
+  getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityGuard: () => CapacityGuard;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
   getOutdoorTemperatureC?: () => number | undefined;
@@ -64,14 +66,22 @@ export type HomePowerPipelineDeps = {
    * capacity-only and must never adopt the main home's production.
    */
   observedHomePower?: ObservedHomePower;
+  /**
+   * Publish the identity of the meter an ingested sample came from, into
+   * membership's sampled-meter ownership fence. Only the home whose meter IS
+   * the whole-home meter has anything to publish, and it is the home that says
+   * so: Main binds the membership note, a meter area binds nothing to do. This
+   * factory used to decide that itself, from `homeId === MAIN_HOME_ID`.
+   */
+  noteResolvedHomeMeter: (deviceId: string, sampleAtMs: number) => void;
 };
 
 export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSamplePipeline {
   const { ctx } = deps;
   return new PowerSamplePipeline({
     createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),
-    getPowerTracker: deps.getPowerTracker ?? (() => ctx.powerTracker),
-    getCapacitySettings: deps.getCapacitySettings ?? (() => ctx.capacitySettings),
+    getPowerTracker: deps.getPowerTracker,
+    getCapacitySettings: deps.getCapacitySettings,
     getCapacityGuard: deps.getCapacityGuard,
     getPlanEngine: deps.getPlanEngine,
     getPlanService: deps.getPlanService,
@@ -100,18 +110,7 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
       : undefined,
     recordPvGenerationSample: deps.recordPvGenerationSample,
     recordCurtailmentSample: deps.recordCurtailmentSample,
-    // Main home only: the sampled whole-home meter identity feeds membership's
-    // ownership fence, and only Main's samples carry one. Sub-home pipelines
-    // never receive identity-carrying options (their `recordMeterSample` route
-    // passes bare watts), so this is defence in depth on top of that. Lazy over
-    // ctx: membership is wired after the pipeline.
-    ...(deps.homeId === MAIN_HOME_ID
-      ? {
-        noteResolvedHomeMeter: (deviceId: string, sampleAtMs: number) => (
-          ctx.homeMembership?.noteResolvedHomeMeter(deviceId, sampleAtMs)
-        ),
-      }
-      : {}),
+    noteResolvedHomeMeter: deps.noteResolvedHomeMeter,
   });
 }
 

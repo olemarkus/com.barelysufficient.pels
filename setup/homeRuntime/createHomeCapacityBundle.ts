@@ -436,6 +436,13 @@ function createBundleSamplePipeline(params: {
     getPowerTracker: params.getPowerTracker,
     getCapacitySettings: params.getCapacitySettings,
     getCapacityGuard: params.getCapacityGuard,
+    // A meter area's meter is not the whole-home meter, so this area has no
+    // identity to publish into membership's sampled-meter ownership fence —
+    // adopting one would settle or latch MAIN's write fence from a meter Main
+    // does not own. Its samples also carry no identity to publish
+    // (`recordMeterSample` ingests bare watts), so this is the second of two
+    // independent guards rather than the only one.
+    noteResolvedHomeMeter: () => {},
     // No weather/PV/curtailment taps for sub-homes: a sub-home meter's net W is
     // not the home's grid power — feeding it to those estimators would corrupt them.
   });

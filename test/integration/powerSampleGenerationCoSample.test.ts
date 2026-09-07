@@ -59,6 +59,8 @@ const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePi
   );
   const pipeline = new PowerSamplePipeline({
     createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),
+    // Never called here: these samples carry no meter identity.
+    noteResolvedHomeMeter: () => {},
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({ limitKw: 12, marginKw: 0.5 }),

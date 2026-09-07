@@ -20,7 +20,7 @@ import { powerSampleRebuildCadence } from '../../setup/planRebuildIntentPolicy';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 
 const buildPipeline = (
-  noteResolvedHomeMeter?: (deviceId: string, sampleAtMs: number) => void,
+  noteResolvedHomeMeter: (deviceId: string, sampleAtMs: number) => void,
   savedStates: PowerTrackerState[] = [],
   onRebuildRequest?: () => void,
 ) => {
@@ -78,7 +78,7 @@ const buildPipeline = (
     getLatestTargetSnapshot: () => [],
     savePowerTracker: (state) => { powerTracker = state; savedStates.push(state); },
     getStructuredDebugEmitter: () => vi.fn(),
-    ...(noteResolvedHomeMeter === undefined ? {} : { noteResolvedHomeMeter }),
+    noteResolvedHomeMeter,
   });
 };
 
