@@ -4,13 +4,15 @@ import type { Loggers, StructuredDebugEmitter } from '../logging/logger';
 import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { DeviceOverviewLogRecorder } from './deviceOverviewLog';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
-import type { ObservedTemperatureRead } from '../observer/observedDeviceStateProjection';
+import type {
+  ObservedStateOfChargeRead,
+  ObservedTemperatureRead,
+} from '../observer/observedDeviceStateProjection';
 import type { PelsStatus } from './pelsStatus';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PlanEngine } from './planEngine';
 import type { PlanInputDevice } from './planTypes';
 import type {
-  DeviceStateOfChargeSnapshot,
   EvChargingState,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
@@ -85,7 +87,7 @@ export type PlanServiceDeps = {
    * the reading behind it — a planner that held a percentage would sooner or
    * later be asked to compare one.
    */
-  getObservedStateOfCharge?: (deviceId: string) => DeviceStateOfChargeSnapshot | undefined;
+  getObservedStateOfCharge: (deviceId: string) => ObservedStateOfChargeRead;
   // Temperature readings for the settings-UI overview are observational truth,
   // not planner command state. In particular, a temperature-control-disabled
   // device is projected to the planner as binary but still shows the external

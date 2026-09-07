@@ -2,7 +2,7 @@ import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   EvObservedProbe,
-  StateOfChargeObservedProbe,
+  ObservedStateOfChargeProbe,
   SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
 } from '../../contracts/src/types';
@@ -101,9 +101,9 @@ const buildDevice = (
   id: string,
   name: string,
   overrides: Partial<
-    TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe
+    TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe
   > = {},
-): TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+): TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   available: true,
   id,
   name,
@@ -481,11 +481,60 @@ describe('device detail managed state saves', () => {
     expect((document.querySelector('#device-detail-soc-row') as HTMLElement | null)?.hidden).toBe(false);
     expect((document.querySelector('#device-detail-soc-value') as HTMLElement | null)?.textContent)
       .toBe('Not reported');
-    // The subline carries only the observation time; no status enum leaks, and
-    // there is no percentage to leak either — the producer has no level here.
+    // Nothing leaks into the subline: no status enum, no percentage — and with no
+    // level, no time either. The subline used to read the RAW report's stamp,
+    // which outlives the level, so this card said "Not reported · Updated 2 h
+    // ago", dating a reading that no longer applied. Only the level crosses the
+    // observer seam now, so there is nothing here to date.
     const updated = (document.querySelector('#device-detail-soc-updated') as HTMLElement | null)?.textContent;
-    expect(updated).toContain('Updated');
+    expect(updated).toBe('');
     expect(updated).not.toContain('Status:');
+    expect(updated).not.toContain('42');
+  });
+
+  it('dates the EV SoC subline when the charger does have a level', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({ renderDevices: vi.fn() }));
+    vi.doMock('../src/ui/modes.ts', () => ({ renderPriorities: vi.fn() }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToast: vi.fn().mockResolvedValue(undefined),
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({ logSettingsError: vi.fn().mockResolvedValue(undefined) }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(createHomeyMock({ settings: { managed_devices: { 'ev-1': true } } }));
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+    state.latestDevices = [buildDevice('ev-1', 'Driveway Charger', {
+      deviceClass: 'evcharger',
+      deviceType: 'onoff',
+      targets: [],
+      stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.now() - 2 * 60 * 60 * 1000 }),
+    })];
+    state.managedMap = { 'ev-1': true };
+    state.controllableMap = { 'ev-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'ev-1': 1 } };
+    state.modeTargets = { Home: {} };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('ev-1');
+    await flushPromises();
+
+    // The level carries its own stamp, so a card that shows a percentage can
+    // always date it — the pair travels together or not at all.
+    expect((document.querySelector('#device-detail-soc-value') as HTMLElement | null)?.textContent)
+      .toBe('42 %');
+    expect((document.querySelector('#device-detail-soc-updated') as HTMLElement | null)?.textContent)
+      .toContain('Updated');
   });
 
   it('restores the controllable checkbox when saving fails', async () => {

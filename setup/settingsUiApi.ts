@@ -33,12 +33,15 @@ import type {
   SettingsUiPowerStatusRead,
   SettingsUiPricesPayload,
   SettingsUiResetPowerStatsResponse,
+  SettingsUiDeviceSnapshot,
 } from '../packages/contracts/src/settingsUiApi';
 import type {
   DecoratedDeviceSnapshot,
   ProjectedObservedDeviceState,
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
+import { readObservedStateOfCharge } from '../lib/observer/observedDeviceStateProjection';
+import { withResolvedStateOfCharge } from '../lib/observer/observedStateOfChargeProjection';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { hasSolarProductionCandidate } from '../lib/device/solarPresence';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
@@ -189,12 +192,17 @@ const asDailyBudgetModelSettings = (value: unknown): Partial<DailyBudgetModelSet
 // (`latestTargetSnapshot`) plus the unmanaged-but-eligible picker devices. Auto-tracked
 // observe-only role devices (home batteries → 'battery', PV → 'solarpanel') ride the
 // managed half here; callers decide whether to expose or merely detect them.
-const getRawSettingsUiDeviceCandidates = ({ homey }: ApiContext): DecoratedDeviceSnapshot[] => {
+const getRawSettingsUiDeviceCandidates = (
+  { homey }: ApiContext,
+): SettingsUiDeviceSnapshot[] => {
   const managed = getLatestDevicesForUiFromApp(homey) ?? [];
   const unmanagedEligible = getUiPickerDevicesFromApp(homey);
-  return withResolvedPriorities(
-    homey,
-    withLiveObservedState(homey, withAssociatedCars(homey, [...managed, ...unmanagedEligible])),
+  return withResolvedStateOfCharge(
+    withResolvedPriorities(
+      homey,
+      withLiveObservedState(homey, withAssociatedCars(homey, [...managed, ...unmanagedEligible])),
+    ),
+    (deviceId) => readObservedStateOfCharge(getObservedStateForUiFromApp(homey, deviceId)),
   );
 };
 
@@ -256,7 +264,6 @@ const LIVE_OBSERVED_FIELDS = [
   'measuredPowerKw',
   'measuredPowerObservedAtMs',
   'temperature',
-  'stateOfCharge',
   'evCharging',
   'evChargingObservedAtMs',
   'evChargingState',

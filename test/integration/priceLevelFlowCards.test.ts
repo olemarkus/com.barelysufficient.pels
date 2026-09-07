@@ -101,6 +101,7 @@ describe('Price level flow cards', () => {
     });
 
     const planService = new PlanService({
+      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],

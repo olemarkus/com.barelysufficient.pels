@@ -4,7 +4,7 @@ import type {
   EvBoostConfig,
   MeasuredPowerObservedProbe,
   ObservedDeviceState,
-  StateOfChargeObservedProbe,
+  ObservedStateOfChargeProbe,
   SteppedLoadDescriptorProbe,
   TemperatureBoostConfig,
 } from '../../../contracts/src/types.ts';
@@ -19,12 +19,15 @@ export { isGrayStateDevice } from '../../../shared-domain/src/deviceStatePredica
 // so callers (e.g. `state.latestDevices`) pass unchanged. First surface of the
 // settings-UI snapshot-consumer decoupling (notes/state-management/).
 export type SettingsUiDeviceListItem = ObservedDeviceState
-  // The `/ui_devices` snapshot physically carries the observed SoC bag and the
-  // measured-power reading the base type omits (SoC- and measured-power-observed
-  // slices); the detail SoC/boost panes and `supportsPowerDevice` read them.
-  // The guard proves PRESENCE only; whether the charger has a level is
-  // `stateOfCharge.level.kind`, which consumers still read for themselves.
-  & StateOfChargeObservedProbe
+  // `/ui_devices` serves state of charge ALREADY RESOLVED to the level
+  // (`withResolvedStateOfCharge`), so this carries the consumer-side probe, not
+  // the transport's working bag. While this said `StateOfChargeObservedProbe` the
+  // UI could reach `report.percent` — the observation layer's raw carry-forward,
+  // which outlives the level it was resolved into — and a reader that took it for
+  // the device's charge compiled fine. The guard proves PRESENCE only; whether
+  // the charger has a level is `stateOfCharge.level.kind`, which consumers read
+  // for themselves.
+  & ObservedStateOfChargeProbe
   & MeasuredPowerObservedProbe
   & Pick<DeviceDescriptor,
     | 'deviceClass' | 'deviceType' | 'budgetExempt' | 'flowBacked'

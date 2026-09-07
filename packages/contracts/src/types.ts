@@ -240,9 +240,11 @@ export type DeviceStateOfChargeSnapshot = {
      * outlives the level it was resolved into, so a charger whose car has gone
      * still carries the percentage that car left behind. `level` is the answer to
      * "what is this device's charge", and the only one a consumer may act on.
-     * `report.observedAtMs` is fair game as what it says — when the charger last
-     * reported anything — which is why the device-detail "Updated …" subline reads
-     * it and survives a level going away.
+     * `report.observedAtMs` says something honest — when the charger last reported
+     * anything — but no consumer outside this layer can reach it: the observer
+     * resolves state of charge to `ObservedStateOfCharge` before it crosses. A
+     * card that wants to date what it shows reads the stamp inside the known
+     * level, which is the stamp of the reading it is showing.
      *
      * Nested rather than sitting flat beside `level` so the distinction is visible
      * at every call site: `report.percent` cannot be mistaken for the resolved
@@ -638,6 +640,31 @@ export type StateOfChargeObservedFields = {
     stateOfCharge: DeviceStateOfChargeSnapshot;
 };
 
+/**
+ * The state of charge as everything OUTSIDE the observation layer sees it: the
+ * level, and nothing else.
+ *
+ * `DeviceStateOfChargeSnapshot` is the transport's working state — it also
+ * carries `report`, `capabilityId`, the session pair and `source`, which exist
+ * for carry-forward and change detection and answer no question a consumer has.
+ * This is what the observer resolves it to (`readObservedStateOfCharge`), and it
+ * is what crosses to the settings UI.
+ *
+ * Note what this type does and does not buy. It does NOT stop the bag being
+ * assigned here: `DeviceStateOfChargeSnapshot` carries `level` plus extras, so it
+ * is structurally assignable and any non-literal path would take it. What closes
+ * the seam is `withResolvedStateOfCharge`, which BUILDS the value rather than
+ * forwarding a field. What this type buys is the other half — a consumer holding
+ * it cannot reach `report`.
+ */
+export type ObservedStateOfCharge = {
+    level: DeviceStateOfChargeSnapshot['level'];
+};
+
+/** The consumer-side carrier: present for a device that reports a charge. */
+export type ObservedStateOfChargeProbe = {
+    stateOfCharge?: ObservedStateOfCharge;
+};
 /**
  * State-of-charge observed cluster as a plain optional: the "might have an
  * observed state-of-charge" loose shape the OWNER seams carry (transport

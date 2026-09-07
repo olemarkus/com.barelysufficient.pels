@@ -14,11 +14,14 @@ import type {
 import { normalizePlanMeta } from './planStatusHelpers';
 import type { DevicePlan, PlanMeta } from './planTypes';
 import type {
-  DeviceStateOfChargeSnapshot,
+  ObservedStateOfCharge,
   EvChargingState,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
-import type { ObservedTemperatureRead } from '../observer/observedDeviceStateProjection';
+import type {
+  ObservedStateOfChargeRead,
+  ObservedTemperatureRead,
+} from '../observer/observedDeviceStateProjection';
 import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import {
@@ -37,7 +40,7 @@ export type SettingsOverviewReadModelDeps = {
   // The device's battery level, for the charger card. Observer-owned like the
   // plug-state above: the plan device carries the boost DECISION, never the
   // reading it was made from.
-  getObservedStateOfCharge?: (deviceId: string) => DeviceStateOfChargeSnapshot | undefined;
+  getObservedStateOfCharge: (deviceId: string) => ObservedStateOfChargeRead;
   getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
   // Observational device kind, for the temperature card. Supplied as a
   // built-once map sourced from the raw, undecorated snapshot so there is no
@@ -142,17 +145,18 @@ function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsU
  * or nullable temperature fields on this DTO.
  */
 /**
- * The card's battery level, projected to the one property the wire type declares
- * rather than passed whole: the observation layer's session/invalidation
- * bookkeeping is its own business, and `level` is the producer's complete answer
- * to whether this charger has a battery level (`notes/ev-soc-layering.md`).
+ * The card's battery level. The observer already projected away its own
+ * session/invalidation bookkeeping, so this reads the semantic result and
+ * re-shapes nothing: `absent` is "this device reports no state of charge",
+ * distinct from a present reading whose `level` says there is none
+ * (`notes/ev-soc-layering.md`).
  */
 function resolveOverviewStateOfCharge(
   deviceId: string,
   deps: SettingsOverviewReadModelDeps,
-): { level: DeviceStateOfChargeSnapshot['level'] } | undefined {
-  const stateOfCharge = deps.getObservedStateOfCharge?.(deviceId);
-  return stateOfCharge ? { level: stateOfCharge.level } : undefined;
+): ObservedStateOfCharge | undefined {
+  const read = deps.getObservedStateOfCharge(deviceId);
+  return read.kind === 'observed' ? read.value : undefined;
 }
 
 export function buildSettingsOverviewDeviceReadModel(

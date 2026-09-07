@@ -1,17 +1,23 @@
 import type {
-  DeviceStateOfChargeSnapshot,
   EvSocUnavailableReason,
+  ObservedStateOfCharge,
 } from '../../contracts/src/types';
 
 /**
- * Settings-UI copy of `test/utils/stateOfChargeFixture.ts`.
+ * Settings-UI counterpart of `test/utils/stateOfChargeFixture.ts`, and NOT the
+ * same shape.
  *
- * Duplicated deliberately: the settings UI is its own package and must not reach
- * into the runtime test tree, so consolidating these two would cross the package
- * boundary the architecture rules draw (`AGENTS.md` — "accept code duplication
- * if consolidation would violate an architectural boundary"). Both build the
- * snapshot the way the producer does, so a fixture cannot describe a state the
- * producer would never emit.
+ * The runtime fixture builds the transport's `DeviceStateOfChargeSnapshot`. The
+ * settings UI never sees one: `/ui_devices` resolves state of charge to the level
+ * before serving it (`withResolvedStateOfCharge`), so this builds
+ * `ObservedStateOfCharge` — what a settings-UI consumer is actually handed.
+ * Building the bag here would let a test drive a consumer with a shape production
+ * never serves, and a `report.percent` read would pass green while finding
+ * `undefined` in the WebView.
+ *
+ * Separate file rather than a shared one: the settings UI is its own package and
+ * must not reach into the runtime test tree (`AGENTS.md` — "accept code
+ * duplication if consolidation would violate an architectural boundary").
  */
 
 /**
@@ -26,46 +32,26 @@ import type {
 const UNSTATED_OBSERVED_AT_MS = 1;
 
 /**
- * Builds a `DeviceStateOfChargeSnapshot` the way the producer builds one, so a
- * fixture cannot describe a state the producer would never emit.
+ * Builds the state of charge a settings-UI consumer is handed: the level alone.
  *
- * One argument decides both the raw `report.percent` the observation layer keeps
- * and the resolved `level` consumers act on, exactly as the producer does.
- * Hand-written literals had drifted apart from each other, and a consumer test
- * then proved behaviour against a snapshot the producer cannot emit.
+ * Deliberately NOT the transport's parameters. `capabilityId`, the session pair
+ * and the car id shape a level at the producer, and by the time the value
+ * reaches this side that work is done — accepting them here would let a test
+ * think it had set something the code under test cannot see.
  *
- * Pass `unavailable` to build the no-level case — the percentage is still
- * carried, because the producer carries it too; what it does not do is call it
- * the device's level.
+ * Pass `unavailable` for the no-level case: the charger reports, but PELS has no
+ * level to show for it. That is distinct from the device carrying no state of
+ * charge at all, which is the field being absent.
  */
 export const stateOfChargeFixture = (params: {
   percent: number;
   observedAtMs?: number;
   unavailable?: EvSocUnavailableReason;
-  capabilityId?: string;
-  sessionStartedAtMs?: number;
-  invalidatedAtMs?: number;
-  /** Present = the level was read off this car; absent = the charger reported it. */
-  carId?: string;
-}): DeviceStateOfChargeSnapshot => {
-  const {
-    percent, unavailable, observedAtMs, capabilityId, carId, ...session
-  } = params;
-  // A known level needs a stamp and an unavailable one does not — the producer's
-  // rule, and now the type's: `observedAtMs` rides inside the known arm. So an
-  // un-timed caller asking for a known level gets the placeholder, while one
-  // asking for `unavailable` keeps the un-timed report the producer really emits.
-  const stamp = observedAtMs ?? (unavailable === undefined ? UNSTATED_OBSERVED_AT_MS : undefined);
+}): ObservedStateOfCharge => {
+  const { percent, unavailable, observedAtMs } = params;
   return {
-    ...session,
-    report: {
-      percent,
-      ...(stamp === undefined ? {} : { observedAtMs: stamp }),
-    },
-    capabilityId: capabilityId ?? 'measure_battery',
-    source: carId === undefined ? { kind: 'charger' } : { kind: 'car', carId },
     level: unavailable === undefined
-      ? { kind: 'known', percent, observedAtMs: stamp ?? UNSTATED_OBSERVED_AT_MS }
+      ? { kind: 'known', percent, observedAtMs: observedAtMs ?? UNSTATED_OBSERVED_AT_MS }
       : { kind: 'unavailable', reasonCode: unavailable },
   };
 };

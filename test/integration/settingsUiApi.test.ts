@@ -62,6 +62,9 @@ describe('settingsUiApi', () => {
     // / `hasObservedReportedStep` narrowing (and `supportsPowerDevice`) works only
     // if the served objects physically carry these — a producer rebuild that drops
     // any of them must fail here.
+    //
+    // `stateOfCharge` is the one that is carried RESOLVED rather than verbatim:
+    // it is fed in as the transport's bag and must come out as the level alone.
     let latestDevices: Record<string, unknown>[] = options.latestDevicesOverride ?? [
       { id: 'dev-1', name: 'Heater', deviceType: 'temperature', currentTemperature: 18.5, measuredPowerKw: 1.2 },
       {
@@ -459,7 +462,12 @@ describe('settingsUiApi', () => {
           priority: 2,
           deviceClass: 'evcharger',
           evChargingState: 'plugged_in_charging',
-          stateOfCharge: stateOfChargeFixture({ percent: 80 }),
+          // RESOLVED, not the bag that was fed in: `withResolvedStateOfCharge`
+          // projects to the level before serving, so the transport's `report`,
+          // `capabilityId`, session pair and `source` never reach the WebView.
+          // Asserted with `toEqual`, so a regression that starts forwarding the
+          // whole bag again fails here rather than silently re-opening the seam.
+          stateOfCharge: { level: stateOfChargeFixture({ percent: 80 }).level },
           steppedLoadProfile: {
             steps: [
               { id: 'off', planningPowerW: 0 },
@@ -647,6 +655,39 @@ describe('settingsUiApi', () => {
       binaryControl: { on: false },
       priority: 1,
     }]);
+  });
+
+
+  // The sibling of the fallback case asserted in "builds dedicated read payloads":
+  // there the observer has no entry and the stored parse is projected, here it has
+  // one and the LIVE read is projected. Both arms have to emit the level alone, or
+  // the two paths hand the WebView different shapes for the same fact.
+  it('serves the observed state of charge resolved to the level, not the transport bag', () => {
+    const homey = createHomey({
+      latestDevicesOverride: [{
+        id: 'ev-1',
+        name: 'Charger',
+        deviceClass: 'evcharger',
+        available: true,
+        stateOfCharge: stateOfChargeFixture({ percent: 11, observedAtMs: 1_000 }),
+      }],
+      observedStateById: {
+        'ev-1': {
+          id: 'ev-1',
+          name: 'Charger',
+          available: true,
+          stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: 2_000 }),
+        },
+      },
+    });
+
+    const [device] = getSettingsUiDevicesPayload({ homey: homey as never }).devices;
+    // The observer's reading wins over the stored parse (80, not 11) — and it
+    // arrives as the level alone. `toEqual` so a regression that forwards the bag
+    // again fails here rather than quietly widening the wire.
+    expect((device as { stateOfCharge?: unknown }).stateOfCharge).toEqual({
+      level: { kind: 'known', percent: 80, observedAtMs: 2_000 },
+    });
   });
 
   it('does not let the raw observation overwrite what the control decorator resolved', () => {

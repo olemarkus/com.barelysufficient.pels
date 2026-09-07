@@ -11,7 +11,7 @@ import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   EvObservedProbe,
-  StateOfChargeObservedProbe,
+  ObservedStateOfChargeProbe,
   SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
 } from '../../contracts/src/types';
@@ -127,9 +127,9 @@ const buildDom = () => {
 const buildDevice = (
   id: string,
   overrides: Partial<
-    TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe
+    TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe
   > = {},
-): TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
+): TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe => ({ expectedPowerKw: 1, expectedPowerSource: 'default',
   available: true,
   id,
   name: id,

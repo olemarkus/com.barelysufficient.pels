@@ -6,13 +6,48 @@ The observation layer (`lib/device/transport/stateOfCharge.ts`,
 `lib/device/transport/managerObservation.ts`,
 `lib/device/transport/flowReportedCapabilities.ts`) is responsible for resolving a
 device's SoC from whichever inputs are available — native capability values,
-flow-reported synthetic values, session timestamps. Downstream layers
-(plan / executor / contracts / UI) read `level` off the resolved
-`DeviceStateOfChargeSnapshot` and act on that alone:
+flow-reported synthetic values, session timestamps. Downstream layers read
+`level` and act on that alone:
 
 ```ts
-level: { kind: 'known'; percent } | { kind: 'unavailable'; reasonCode }
+level:
+  | { kind: 'known'; percent; observedAtMs }
+  | { kind: 'unavailable'; reasonCode }
 ```
+
+## Amendment (2026-09-07): the level is all that leaves the observer
+
+Downstream layers no longer receive `DeviceStateOfChargeSnapshot` at all. That
+type is the transport's WORKING state — `level` plus `report`, `capabilityId`,
+the session pair and `source`, which exist for carry-forward and change
+detection — and while it crossed the observer seam, `report.percent` was
+reachable by anything that narrowed on presence. It is the raw last reading and
+it outlives the level it was resolved into, so a consumer that took it for the
+device's charge showed a departed car's level as "now".
+
+The observer now resolves on the way out:
+
+```ts
+readObservedStateOfCharge(state)
+  → { kind: 'observed'; value: ObservedStateOfCharge } | { kind: 'absent' }
+```
+
+and `withResolvedStateOfCharge` (`lib/observer/observedStateOfChargeProjection.ts`)
+projects every device the same way before `/ui_devices` serves it — BUILDING the
+value rather than forwarding a field, which is what a copy-list seam like
+`LIVE_OBSERVED_FIELDS` cannot do. `ObservedStateOfCharge` (`{ level }`) is what
+plan, the settings UI and the widgets see.
+
+`absent` is a statement about the OBSERVER, not the device: no projection entry,
+or an entry carrying no charge. It is not the same as a present reading whose
+`level` says there is none — that one is a statement the transport resolved about
+a charger that does report.
+
+Known exits still carrying the raw type, in descending order of reach:
+`getObservedState` / `appContext` hand out `ProjectedObservedDeviceState`, which
+still intersects the transport probe; `toPlanDevice` keeps the bag on the plan
+input device, so `lib/objectives` declares it (reading only `level`); and the
+`ev_soc_reported` flow-card event reads `report.observedAtMs` for its log line.
 
 **The producer publishes no staleness, freshness, or currency signal, and no
 consumer may invent one.** A battery level is reported on change and can only

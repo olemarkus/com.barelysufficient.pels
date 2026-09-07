@@ -5,6 +5,7 @@ import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsType
 import type { PowerTrackerState } from './powerTrackerTypes.js';
 import type {
   DecoratedDeviceSnapshot,
+  ObservedStateOfChargeProbe,
   EvChargingState,
   SettingsUiLogEntry,
 } from './types.js';
@@ -328,6 +329,17 @@ export type SettingsUiPlanPayload = {
   homeScope?: SettingsUiHomeScope;
 };
 
+/**
+ * A device as `/ui_devices` serves it: the decorated snapshot, with the state of
+ * charge already resolved to the level.
+ *
+ * The decoration carrier alone would leave `stateOfCharge` un-narrowed and raw —
+ * the settings UI physically received the transport's whole working bag, and its
+ * own device type widened straight back to it. Naming the resolved carrier here
+ * makes the payload's shape the contract rather than a convention.
+ */
+export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOfChargeProbe;
+
 export type SettingsUiDevicesPayload = {
   // Served from the app-layer DECORATED device list (`latestTargetSnapshot`),
   // so the payload carries the stepped-load step-command/planning decoration
@@ -335,12 +347,18 @@ export type SettingsUiDevicesPayload = {
   // as the decoration carrier rather than the raw transport snapshot.
   // The served objects are the transport-owned snapshots, which physically
   // carry the observed EV plug-state the base type omits (`EvObservedFields`
-  // slice). Deliberately NOT probe-widened here: exposing `EvObservedProbe` on
-  // the consumer contract would re-permit un-narrowed optional reads across the
-  // settings-UI — consumers must narrow through `isEvObserved`. The physical
+  // slice). Deliberately NOT probe-widened for that: exposing `EvObservedProbe`
+  // on the consumer contract would re-permit un-narrowed optional reads across
+  // the settings-UI — consumers must narrow through `isEvObserved`. The physical
   // carriage is pinned by the ui_devices payload test instead
   // (`test/integration/settingsUiApi.test.ts`).
-  devices: DecoratedDeviceSnapshot[];
+  //
+  // State of charge is the exception, and it is declared rather than physical:
+  // it is RESOLVED before it is served (`withResolvedStateOfCharge`), so what
+  // crosses is the level and not the transport's working bag. Saying so in the
+  // type is the point — while the payload merely carried the bag, the settings
+  // UI's own device type widened straight back to it and read the raw report.
+  devices: SettingsUiDeviceSnapshot[];
   // True when the home has at least one auto-tracked solar/PV device (deviceClass
   // 'solarpanel'). The PV device itself is excluded from `devices` (observe-only), so
   // this home-level flag is the only signal the settings UI has that solar exists — it

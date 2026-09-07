@@ -19,7 +19,7 @@ import type {
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
 import type {
   ObservedDeviceState,
-  StateOfChargeObservedProbe,
+  ObservedStateOfChargeProbe,
   TemperatureObservedProbe,
 } from '../../../contracts/src/types.ts';
 import { hasObservedTemperature } from '../../../shared-domain/src/temperatureObservedState.ts';
@@ -57,8 +57,10 @@ const resolveCurrentValue = (
   // Probe-widened: the `/ui_devices` snapshot physically carries the observed
   // temperature / SoC the base type omits; `hasObservedTemperature` /
   // `hasObservedStateOfCharge` narrow it (a present reading is finite by the
-  // producer invariant — no re-check).
-  device: (ObservedDeviceState & TemperatureObservedProbe & StateOfChargeObservedProbe) | undefined,
+  // producer invariant — no re-check). SoC is the RESOLVED probe: what the
+  // payload serves is the level, so declaring the transport's bag here would let
+  // a `report.percent` read compile and then find `undefined` at runtime.
+  device: (ObservedDeviceState & TemperatureObservedProbe & ObservedStateOfChargeProbe) | undefined,
   kind: ResolvedDeferredObjectiveActivePlanV1['objectiveKind'],
 ): number | null => {
   if (!device) return null;

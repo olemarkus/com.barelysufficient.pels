@@ -9,7 +9,7 @@ import type {
   DeferredObjectiveSettingsV1,
   DeferredObjectiveSettingsEntry,
 } from '../../contracts/src/deferredObjectiveSettings.ts';
-import type { StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../contracts/src/types.ts';
+import type { ObservedStateOfChargeProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../contracts/src/types.ts';
 import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 import { toResolvedActivePlans } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
 
@@ -74,7 +74,7 @@ const enabledEvEntry: DeferredObjectiveSettingsEntry = {
   deadlineAtMs: T0 + 12 * HOUR_MS,
 };
 
-const devices: (TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [
+const devices: (TargetDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = [
   { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev_a', name: 'Living-room heater', targets: [], binaryControl: { on: false }, temperature: { currentTemperature: 18.4, target: { id: 'target_temperature', unit: 'C', value: 20 } } },
   { available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
     id: 'dev_b',

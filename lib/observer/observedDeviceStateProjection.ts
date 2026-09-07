@@ -1,5 +1,5 @@
 import type {
-  DeviceStateOfChargeSnapshot,
+  ObservedStateOfCharge,
   EvChargingState,
   EvObservedProbe,
   ObservedDeviceState,
@@ -31,22 +31,38 @@ export function readObservedEvChargingState(
 }
 
 /**
- * Owner-blessed raw read of the observed state of charge, for PRODUCER wiring
- * only — the settings-UI read model surfaces the level on its device card
- * (`getObservedStateOfCharge` in `createPlanService`). Same shape and same
- * reason as `readObservedEvChargingState` above: `stateOfCharge` is omitted
- * from `ObservedDeviceState` (state-of-charge-observed slice), the projection's
- * stored values physically carry it, and everything that is not this seam
- * narrows through `hasObservedStateOfCharge`.
+ * Semantic result at the observer boundary, exactly like
+ * `ObservedTemperatureRead` below. Absence is explicit so adjacent layers never
+ * reinterpret a nullable reading as evidence or a default.
  *
- * The bag is handed over whole and unjudged. Whether a level is usable is the
- * bag's own `level` discriminant, resolved upstream by the transport
- * (`notes/ev-soc-layering.md`) — this reads no freshness and applies no gate.
+ * `absent` means THE OBSERVER has no state-of-charge observation for this
+ * device: no projection entry at all, or an entry carrying none. It is not a
+ * statement about the device — a caller holding another source may still find
+ * one, which is what the settings-UI projection's fallback does.
+ *
+ * Neither arm means "no level". That is `value.level.kind`, a statement the
+ * transport resolved about a device that does report one.
+ */
+export type ObservedStateOfChargeRead =
+    | { kind: 'observed'; value: ObservedStateOfCharge }
+    | { kind: 'absent' };
+
+/**
+ * Owner projection of the observed state-of-charge cluster for producer wiring.
+ * `stateOfCharge` is omitted from `ObservedDeviceState` (state-of-charge-observed
+ * slice) and the projection's stored values physically carry it, so this seam
+ * probe-widens to reach it — and resolves it, so that nothing downstream has to.
+ *
+ * Whether a level is usable is the `level` discriminant the transport already
+ * resolved (`notes/ev-soc-layering.md`); this reads no freshness and applies no
+ * gate of its own.
  */
 export function readObservedStateOfCharge(
     state: (ObservedDeviceState & StateOfChargeObservedProbe) | undefined,
-): DeviceStateOfChargeSnapshot | undefined {
-    return state?.stateOfCharge;
+): ObservedStateOfChargeRead {
+    const stateOfCharge = state?.stateOfCharge;
+    if (!stateOfCharge) return { kind: 'absent' };
+    return { kind: 'observed', value: { level: stateOfCharge.level } };
 }
 
 /**

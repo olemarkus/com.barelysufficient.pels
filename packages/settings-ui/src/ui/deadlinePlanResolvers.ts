@@ -6,9 +6,9 @@ import type {
 } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import type {
-  DeviceStateOfChargeSnapshot,
   ObservedDeviceState,
-  StateOfChargeObservedProbe,
+  ObservedStateOfCharge,
+  ObservedStateOfChargeProbe,
   SteppedLoadProfile,
   TemperatureObservedProbe,
 } from '../../../contracts/src/types.ts';
@@ -71,11 +71,11 @@ export type DeadlineProgress = {
 
 /**
  * The percentage a present SoC bag stands behind, or `null` when it stands behind
- * none. Never the raw `report.percent`, which is the observation layer's own
- * carry-forward bookkeeping and outlives the level it was resolved into.
+ * none. The raw report never reaches here: `/ui_devices` serves the level alone,
+ * so there is no carry-forward percentage to mistake for the device's charge.
  */
 const observedStateOfChargePercent = (
-  stateOfCharge: DeviceStateOfChargeSnapshot,
+  stateOfCharge: ObservedStateOfCharge,
 ): number | null => (
   stateOfCharge.level.kind === 'known' ? stateOfCharge.level.percent : null
 );
@@ -85,8 +85,11 @@ export const resolveProgress = (params: {
   // `/ui_devices` snapshot the base type omits; `hasObservedTemperature` /
   // `hasObservedStateOfCharge` narrow it (present implies finite), falling back to
   // the profile sample when there is no live reading. Widened onto the observed
-  // base, not the decorated snapshot: no descriptor field is read here.
-  device: ObservedDeviceState & TemperatureObservedProbe & StateOfChargeObservedProbe;
+  // base, not the decorated snapshot: no descriptor field is read here. SoC is
+  // the RESOLVED probe — the payload serves the level, so declaring the
+  // transport's bag would let a `report.percent` read compile and then find
+  // `undefined` at runtime.
+  device: ObservedDeviceState & TemperatureObservedProbe & ObservedStateOfChargeProbe;
   objective: DeferredObjectiveSettingsEntry;
   profile: DeviceObjectiveProfile | null;
 }): DeadlineProgress | null => {

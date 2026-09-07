@@ -7,11 +7,20 @@ import {
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 
+// Both observer reads are REQUIRED deps, so every double states both. A test that
+// cares about only one still has to say the other is absent — which is the point:
+// an un-wired accessor stopped being a third way of saying "no reading".
+const absentStateOfCharge = {
+  getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+};
+
 const absentTemperature = {
+  ...absentStateOfCharge,
   getObservedTemperature: () => ({ kind: 'absent' } as const),
 };
 
 const observedTemperature = (currentTarget: number, currentTemperature: number) => ({
+  ...absentStateOfCharge,
   getObservedTemperature: () => ({
     kind: 'observed' as const,
     value: { currentTarget, currentTemperature },
@@ -269,17 +278,26 @@ describe('settingsOverviewReadModel', () => {
     const device = buildPlanDevice({ id: 'ev-1', binaryCapabilityId: 'evcharger_charging' });
 
     // Sourced from the OBSERVER, which owns the reading — the plan device carries
-    // the boost decision, never the level it was made from. Projected to what the
-    // wire type declares: the observation layer's session bookkeeping is its own
-    // business (`notes/ev-soc-layering.md`).
+    // the boost decision, never the level it was made from. The observer has
+    // already projected away its own session bookkeeping, so the read model
+    // re-shapes nothing (`notes/ev-soc-layering.md`). The level still comes from
+    // the producer's fixture so this cannot drift from a shape it can emit.
     expect(buildSettingsOverviewDeviceReadModel(device, {
       ...absentTemperature,
-      getObservedStateOfCharge: () => stateOfChargeFixture({
-        percent: 64, observedAtMs: 1_000, sessionStartedAtMs: 500,
+      getObservedStateOfCharge: () => ({
+        kind: 'observed' as const,
+        value: {
+          level: stateOfChargeFixture({
+            percent: 64, observedAtMs: 1_000, sessionStartedAtMs: 500,
+          }).level,
+        },
       }),
     }).stateOfCharge).toEqual({ level: { kind: 'known', percent: 64, observedAtMs: 1_000 } });
 
-    // With no observer dep wired there is no reading to show.
+    // An ABSENT read shows nothing. Distinct from a present read whose `level`
+    // says there is none: that one is a statement about a charger that does
+    // report, and it reaches the card as `stateOfCharge` with an unavailable
+    // level rather than as no reading at all.
     expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).stateOfCharge).toBeUndefined();
   });
 

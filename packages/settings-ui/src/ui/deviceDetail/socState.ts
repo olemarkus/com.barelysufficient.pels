@@ -39,13 +39,15 @@ export function setDeviceDetailSocState(device: SettingsUiDeviceDetailItem | nul
   // "No car connected", "Not reported"), so the subline only carries the time the
   // reading arrived — it must NOT leak a raw status enum ("Status: stale").
   //
-  // Read off the RAW report, not the level: the subline says when the charger
-  // last told PELS anything, which stays true — and stays worth showing — for the
-  // "No car connected" case, where there is no level to carry a stamp.
+  // Read off the LEVEL, which is all that crosses the seam now. The subline used
+  // to come from the raw report's stamp, which outlives the level — so a charger
+  // whose car had gone read "No car connected · Updated 2 h ago", timestamping a
+  // reading that no longer applied. With no level there is nothing to date.
+  //
   // Finiteness-gated, not merely presence-gated: this is the WebView side of the
   // Homey API bridge, an untrusted transport with no validating adapter in front
   // of it, and a junk stamp would render "Updated Invalid Date".
-  const reportedAtMs = soc.report.observedAtMs;
+  const reportedAtMs = soc.level.kind === 'known' ? soc.level.observedAtMs : undefined;
   if (reportedAtMs === undefined || !Number.isFinite(reportedAtMs)) {
     deviceDetailSocUpdated.textContent = '';
     return;
