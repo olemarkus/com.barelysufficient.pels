@@ -1649,6 +1649,45 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       as a supported mode to whoever touches transport next. Source: observer cleanup sweep,
       2026-09-03. [P2]
 
+- [ ] **The topic-gated debug emitter is still threaded through parameter objects that never use
+      it.** `getDebugEmitter(component, topic)` (`lib/logging/logger.ts`) is the ambient way to
+      reach the channel, and `getStructuredDebugEmitter` is now the same emitter under the wiring's
+      name — so dropping a threaded `debugStructured` parameter changes nothing about what a file
+      emits. What remains is the deletion. Most declarations belong to files that only forward the
+      emitter to a callee, and `lib/plan/planDebugDedupe.ts` is the worked example of the end
+      state: it resolves its own emitter and gates on its own topic, and its remaining
+      `debugStructured?` parameter is a pass-through its callers may simply stop passing.
+      Fix, one cluster per PR, leaf-first — the rest of `lib/plan/restore/**`, `lib/plan/shedding/**`,
+      the `lib/plan` builder plus `planTargetControl.ts`, `lib/device/transport/**`,
+      `lib/objectives/**`, then `lib/dailyBudget` + `lib/diagnostics` + `lib/observer`, and last
+      `setup/**` + `flowCards/**` with the `Loggers` type: replace the parameter with a module-scope
+      `getDebugEmitter(...)`, delete the field from that file's parameter types and from every
+      intermediate that only forwarded it, and delete the fallbacks of the form
+      `debugStructured ?? (p) => moduleLogger.debug(p)` — those emit nothing in production, because
+      the pino root runs at `info`, and they are what make the optional parameter look free. Three
+      of them hide behind a named `debugFallbackEmit` const (`dailyBudgetManager.ts`,
+      `deviceDiagnosticsService.ts`, `deviceDiagnosticsPersistence.ts`) and two more use a local
+      `logger` rather than `moduleLogger`, so grep the `??` rather than the literal. In specs, the
+      second argument of `captureLogger(level, topics)` (`test/utils/loggerCapture.ts`) replaces the
+      `debugStructured` spy.
+      Two invariants every cluster must hold. **`component` and `topic` stay separate arguments**:
+      `devices` events are emitted under `devices`, `reconcile`, and `snapshot`, and Flow-card
+      settings events are `component: 'flow'` on topic `settings`. And **a gate must name the same
+      topic as the sink it guards** — `planChangeTracker.ts` still reads
+      `Boolean(this.deps.debugStructured) && (this.deps.isPlanDebugEnabled?.() ?? true)`, where the
+      presence half is always true and so the real gate is the `?? true` default; move it onto
+      `isDebugTopicEnabled('plan')` in the same change rather than merely dropping its `?`, or
+      `buildPlanDebugSummaryEvent` starts running with the topic off. `planDebugDedupe.ts` had that
+      exact defect and is fixed.
+      The threaded predicates that shadow the topic set go with the parameter:
+      `isPlanDebugEnabled` and `isOverviewDebugEnabled` (`setup/appInit/createPlanService.ts`),
+      `isDebugEnabled` (`setup/appInit/deviceDiagnosticsService.ts`), and `isDebugTopicEnabled`
+      (`setup/appInit/createDailyBudgetService.ts`, plus the two closures in `app.ts` feeding
+      `SchedulerTelemetryObserver` and `createBackgroundTasks`). Each is a second spelling of
+      `isDebugTopicEnabled`, which reads the one published set.
+      Done when `grep -rn 'debugStructured?:' app.ts lib setup flowCards drivers` returns nothing,
+      those predicates are gone with it, and the distinct `(component, debugTopic)` pairs in a
+      production log are unchanged before and after. [P2]
 ## Docs
 
 - [ ] **The docs define safe pace as "hard cap minus safety margin", which is wrong.**

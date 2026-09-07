@@ -4,6 +4,7 @@ import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCa
 import type { ProjectedObservedDeviceState, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
+import { getDebugEmitter, getDebugTopics, setDebugTopics } from '../lib/logging/logger';
 import type { StructuredDebugEmitter, Logger as PinoLogger } from '../lib/logging/logger';
 import type { DevicePlan, PendingTargetObservationSource } from '../lib/plan/planTypes';
 import type { PlanService } from '../lib/plan/planService';
@@ -175,11 +176,15 @@ abstract class AppRuntimeApi extends Base {
     return this.structuredLogger?.child({ component });
   }
   public getApiStructuredLogger(): PinoLogger | undefined { return this.getStructuredLogger('api'); }
+  /**
+   * The wiring-side name for {@link getDebugEmitter}. Callers that still take a
+   * threaded `debugStructured` are handed one from here; a caller that resolves
+   * its own emitter should reach for `getDebugEmitter` directly. Both are the
+   * same emitter, so a file migrating off the parameter changes nothing about
+   * what it emits.
+   */
   public getStructuredDebugEmitter(component: string, debugTopic: DebugLoggingTopic): StructuredDebugEmitter {
-    return (payload) => {
-      if (!this.structuredLogger || !this.context.debugLoggingTopics.has(debugTopic)) return;
-      this.structuredLogger.child({ component }, { level: 'debug' }).debug({ ...payload, debugTopic });
-    };
+    return getDebugEmitter(component, debugTopic);
   }
   public getDynamicSoftLimitOverride(): number | null {
     if (
@@ -200,7 +205,22 @@ abstract class AppRuntimeApi extends Base {
   public get priceOptimizationSettings() {
     return this.requirePriceCoordinator().getPriceOptimizationSettings();
   }
+  /**
+   * The enabled debug topics, delegating to the process-wide set rather than
+   * holding a second copy of it. The debug emitters gate on that set, and
+   * several consumers close over `debugLoggingTopics.has(topic)` to decide
+   * whether to BUILD a debug payload — the scheduler telemetry observer,
+   * background tasks, and the plan/overview/diagnostics/daily-budget
+   * predicates. A second copy would let those readers say yes while the
+   * emitter's gate said no: the payload built, the line dropped.
+   */
+  public get debugLoggingTopics(): Set<DebugLoggingTopic> { return getDebugTopics(); }
+
+  public set debugLoggingTopics(value: Set<DebugLoggingTopic>) { setDebugTopics(value); }
+
   public updateDebugLoggingEnabled = (logChange = false): void => {
+    // One write: the context accessor publishes process-wide, so the emitters
+    // and every `debugLoggingTopics.has(...)` closure read the same set.
     this.context.debugLoggingTopics = buildDebugLoggingTopics({ settings: this.homey.settings, logChange });
   };
   public notifyOperatingModeChanged(mode: string): void {

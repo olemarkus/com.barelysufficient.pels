@@ -20,7 +20,9 @@ import {
   MAX_LOGGER_CACHE_SIZE,
   __resetLoggerCacheGuardForTest,
   createRootLogger,
+  getDebugEmitter,
   getLogger,
+  setDebugTopics,
   setRootLogger,
 } from '../../lib/logging/logger';
 
@@ -110,5 +112,52 @@ describe('getLogger cache guard', () => {
       getLogger(`cache-guard/aftermath-${index}`);
     }
     expect(cacheGrowthWarnings(dest)).toHaveLength(0);
+  });
+});
+
+describe('getDebugEmitter component cache guard', () => {
+  let dest: PassThrough;
+
+  beforeEach(() => {
+    dest = new PassThrough();
+    // A fresh root also gives a fresh per-root component map, so unlike the
+    // module cache above this suite starts from an empty cache every time.
+    setRootLogger(createRootLogger(dest, 'warn'));
+    setDebugTopics(new Set(['plan']));
+    __resetLoggerCacheGuardForTest();
+  });
+
+  afterEach(() => {
+    setRootLogger(createRootLogger(new PassThrough(), 'silent'));
+    setDebugTopics(new Set());
+  });
+
+  const componentWarnings = (stream: PassThrough): ParsedLine[] => (
+    drain(stream).filter((line) => line.event === 'debug_component_cache_growth_exceeded')
+  );
+
+  it('does not warn while distinct components stay under the threshold', () => {
+    for (let index = 0; index < 3; index += 1) {
+      getDebugEmitter(`debug-guard/under-${index}`, 'plan')({ event: 'probe' });
+    }
+    expect(componentWarnings(dest)).toHaveLength(0);
+  });
+
+  it('warns exactly once when distinct components cross the threshold', () => {
+    for (let index = 0; index < MAX_LOGGER_CACHE_SIZE + 25; index += 1) {
+      getDebugEmitter(`debug-guard/cross-${index}`, 'plan')({ event: 'probe' });
+    }
+    const warnings = componentWarnings(dest);
+    expect(warnings).toHaveLength(1);
+    const [warning] = warnings;
+    expect(warning.threshold).toBe(MAX_LOGGER_CACHE_SIZE);
+    expect(warning.module).toBe('logging/cache');
+    expect((warning.latestComponent as string).startsWith('debug-guard/cross-')).toBe(true);
+  });
+
+  it('reuses one child per component rather than growing on every emit', () => {
+    const emit = getDebugEmitter('debug-guard/stable', 'plan');
+    for (let index = 0; index < 500; index += 1) emit({ event: 'probe' });
+    expect(componentWarnings(dest)).toHaveLength(0);
   });
 });

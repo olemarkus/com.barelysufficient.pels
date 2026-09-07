@@ -31,7 +31,6 @@ import {
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
 } from './lib/objectives/deferredObjectives';
-import type { DebugLoggingTopic } from './packages/shared-domain/src/utils/debugLogging';
 import { AppDeviceControlHelpers } from './setup/appDeviceControlHelpers';
 import { createSteppedStores, type SteppedStores } from './setup/appInit/createSteppedStores';
 import { DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, MAIN_HOME_ID } from './lib/utils/settingsKeys';
@@ -152,7 +151,6 @@ class PelsApp extends PelsAppBase implements AppContext {
   public deviceControlProfiles: DeviceControlProfiles = {};
   public deviceTargetPowerConfigs: DeviceTargetPowerConfigsWithReachability = {};
   public shedBehaviors: Record<string, ShedBehavior> = {};
-  public debugLoggingTopics = new Set<DebugLoggingTopic>();
   public dailyBudgetService!: DailyBudgetService;
   public deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
 

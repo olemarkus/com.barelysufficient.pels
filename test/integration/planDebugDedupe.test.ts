@@ -4,11 +4,19 @@ import {
   buildComparableDeviceReason,
   PLAN_REASON_CODES,
 } from '../../packages/shared-domain/src/planReasonSemantics';
+import { setDebugTopics } from '../../lib/logging/logger';
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
+
+// Emission is gated on the `plan` topic — the function resolves its own
+// emitter, so the capture is how a spec observes it. The capture owns the
+// destination too, so an enabled topic does not write onto stdout.
+let capture: LoggerCapture;
+beforeEach(() => { capture = captureLogger('debug', ['plan']); });
+afterEach(() => { capture.restore(); });
 
 describe('planDebugDedupe', () => {
   it('suppresses repeated cooldown/backoff chatter while the block reason is unchanged', () => {
     const state = createPlanEngineState();
-    const debugStructured = vi.fn();
 
     emitRestoreDebugEventOnChange({
       state,
@@ -27,7 +35,6 @@ describe('planDebugDedupe', () => {
           remainingSec: 10,
         }),
       },
-      debugStructured,
     });
     emitRestoreDebugEventOnChange({
       state,
@@ -46,15 +53,13 @@ describe('planDebugDedupe', () => {
           remainingSec: 9,
         }),
       },
-      debugStructured,
     });
 
-    expect(debugStructured).toHaveBeenCalledTimes(1);
+    expect(capture.findEvents('restore_blocked_setback')).toHaveLength(1);
   });
 
   it('emits again when the restore decision materially changes', () => {
     const state = createPlanEngineState();
-    const debugStructured = vi.fn();
 
     emitRestoreDebugEventOnChange({
       state,
@@ -66,7 +71,6 @@ describe('planDebugDedupe', () => {
         toStepId: 'step-2',
         availableKw: 1.24,
       },
-      debugStructured,
     });
     emitRestoreDebugEventOnChange({
       state,
@@ -78,7 +82,6 @@ describe('planDebugDedupe', () => {
         toStepId: 'step-2',
         availableKw: 1.241,
       },
-      debugStructured,
     });
     emitRestoreDebugEventOnChange({
       state,
@@ -90,15 +93,17 @@ describe('planDebugDedupe', () => {
         toStepId: 'step-3',
         availableKw: 1.24,
       },
-      debugStructured,
     });
 
-    expect(debugStructured).toHaveBeenCalledTimes(2);
+    expect(capture.findEvents('restore_stepped_admitted')).toHaveLength(2);
   });
 
-  it('skips work entirely when no emitter is configured and module logger is silent', () => {
-    // Default test root is silent — no debugStructured override means nothing emits,
-    // so the dedupe optimization should bail out before computing a signature.
+  it('skips the signature work when the topic is off', () => {
+    // The old gate asked whether the caller passed an emitter, which the plan
+    // wiring does unconditionally — so it was always open, and this walked and
+    // stringified a payload on every restore decision with `plan` switched off.
+    // The absent map entry is the proof it now returns before that work.
+    setDebugTopics(new Set());
     const state = createPlanEngineState();
 
     emitRestoreDebugEventOnChange({
@@ -111,6 +116,7 @@ describe('planDebugDedupe', () => {
       },
     });
 
+    expect(capture.events).toHaveLength(0);
     expect(state.restoreDecisionLogByKey['stepped:dev-1']).toBeUndefined();
   });
 });

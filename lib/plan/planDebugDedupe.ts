@@ -1,35 +1,35 @@
 import { roundLogValue } from '../logging/logDedupe';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, isDebugTopicEnabled } from '../logging/logger';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { PlanEngineState } from './planState';
 
-const logger = getLogger('plan/debug-dedupe');
+const emitPlanDebug = getDebugEmitter('plan', 'plan');
 
 export function emitRestoreDebugEventOnChange(params: {
   state: PlanEngineState;
   key: string;
   payload: Record<string, unknown>;
   signaturePayload?: Record<string, unknown>;
-  /** Deprecated. Pass-through still accepted while callers migrate to the
-   *  module logger; future chips drop this. New callers should omit it. */
+  /** The threaded plan emitter, while callers still forward one. Omitting it is
+   *  equivalent — the fallback is the same `plan`-topic channel — and every
+   *  caller may drop it when `lib/plan/restore` migrates off the parameter.
+   *  Until then it must stay a `plan`-topic emitter: the gate below names that
+   *  topic, so an emitter carrying a different one would be gated by `plan` and
+   *  stamped with something else. */
   debugStructured?: StructuredDebugEmitter;
 }): void {
   const { state, key, payload, signaturePayload, debugStructured } = params;
-  // Skip the recursive normalization + JSON.stringify when nothing would
-  // emit anyway. Module-logger path uses pino's level check (cheap); the
-  // legacy debugStructured path is presence-gated (the caller hands us a
-  // function only when the topic is enabled).
-  const willEmit = debugStructured !== undefined || logger.isLevelEnabled('debug');
-  if (!willEmit) return;
+  // Skip the recursive normalization + JSON.stringify when the topic is off.
+  // Whether an emitter was passed says nothing about that: the plan wiring
+  // hands one to every caller unconditionally and the topic check lives inside
+  // it, so the previous presence gate was always open and this walked and
+  // stringified a payload on every restore decision with `plan` switched off.
+  if (!isDebugTopicEnabled('plan')) return;
   const signature = JSON.stringify(normalizeSignatureValue(signaturePayload ?? payload));
   if (state.restoreDecisionLogByKey[key] === signature) return;
   const restoreDecisionLogByKey = state.restoreDecisionLogByKey;
   restoreDecisionLogByKey[key] = signature;
-  if (debugStructured) {
-    debugStructured(payload);
-  } else {
-    logger.debug(payload);
-  }
+  (debugStructured ?? emitPlanDebug)(payload);
 }
 
 export function clearRestoreDebugEvent(state: PlanEngineState, key: string): void {

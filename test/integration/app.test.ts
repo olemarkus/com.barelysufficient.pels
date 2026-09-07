@@ -42,12 +42,14 @@ vi.mock('../../lib/device/liveFeed', () => {
 });
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 import { deviceTransportDouble } from '../utils/deviceObservationMock';
+import { captureLogger } from '../utils/loggerCapture';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
+  DEBUG_LOGGING_TOPICS,
   DEVICE_CONTROL_PROFILES,
   DEVICE_LAST_CONTROLLED_MS,
   EV_BOOST_SETTINGS,
@@ -379,38 +381,48 @@ describe('MyApp initialization', () => {
     expect(child).toHaveBeenCalledWith({ component: 'reconcile' });
   });
 
+  // The emitter reads the process-wide topic set, so these drive the real seam
+  // — the persisted setting through `updateDebugLoggingEnabled` — rather than
+  // assigning the app's own field. That is the half `test/unit/debugEmitter`
+  // cannot cover: that the settings path publishes the set at all.
   it('emits structured debug payloads only when the topic is enabled', () => {
-    const app = createApp();
-    const childLogger = { debug: vi.fn() };
-    const child = vi.fn().mockReturnValue(childLogger);
+    const capture = captureLogger('debug', []);
+    try {
+      const app = createApp();
+      mockHomeyInstance.settings.set(DEBUG_LOGGING_TOPICS, ['diagnostics']);
+      app.updateDebugLoggingEnabled();
 
-    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
-    app.debugLoggingTopics = new Set(['diagnostics']);
+      app.getStructuredDebugEmitter('reconcile', 'diagnostics')({
+        event: 'device_update_processed',
+        deviceId: 'dev-1',
+      });
 
-    const emitDebug = app.getStructuredDebugEmitter('reconcile', 'diagnostics');
-    emitDebug({ event: 'device_update_processed', deviceId: 'dev-1' });
-
-    expect(child).toHaveBeenCalledWith({ component: 'reconcile' }, { level: 'debug' });
-    expect(childLogger.debug).toHaveBeenCalledWith({
-      event: 'device_update_processed',
-      deviceId: 'dev-1',
-      debugTopic: 'diagnostics',
-    });
+      expect(capture.findEvent('device_update_processed')).toMatchObject({
+        component: 'reconcile',
+        deviceId: 'dev-1',
+        debugTopic: 'diagnostics',
+      });
+    } finally {
+      capture.restore();
+    }
   });
 
   it('suppresses structured debug payloads when the topic is disabled', () => {
-    const app = createApp();
-    const childLogger = { debug: vi.fn() };
-    const child = vi.fn().mockReturnValue(childLogger);
+    const capture = captureLogger('debug', []);
+    try {
+      const app = createApp();
+      mockHomeyInstance.settings.set(DEBUG_LOGGING_TOPICS, ['plan']);
+      app.updateDebugLoggingEnabled();
 
-    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
-    app.debugLoggingTopics = new Set();
+      app.getStructuredDebugEmitter('reconcile', 'diagnostics')({
+        event: 'device_update_processed',
+        deviceId: 'dev-1',
+      });
 
-    const emitDebug = app.getStructuredDebugEmitter('reconcile', 'diagnostics');
-    emitDebug({ event: 'device_update_processed', deviceId: 'dev-1' });
-
-    expect(child).not.toHaveBeenCalled();
-    expect(childLogger.debug).not.toHaveBeenCalled();
+      expect(capture.findEvent('device_update_processed')).toBeUndefined();
+    } finally {
+      capture.restore();
+    }
   });
 
   it('emits rate-limited structured plan rebuild scheduler replacement events', () => {

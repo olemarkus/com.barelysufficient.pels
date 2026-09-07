@@ -18,6 +18,7 @@ import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
 import { planRestoreForSteppedDevice } from '../../lib/plan/restore/helpers';
 import { applyShedTemperatureHold } from '../../lib/plan/planReasons';
 import { createPlanEngineState } from '../../lib/plan/planState';
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { applyRestorePlan } from '../../lib/plan/restore';
 import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 import { buildSwapState, exportSwapState } from '../../lib/plan/swap';
@@ -72,6 +73,13 @@ const buildBinarySteppedPlanDevice = (
 const buildContext = (overrides: PlanCycleSpec = {}): { context: PlanContext; power: MeasuredPower } => (
   buildPlanCycle({ total: FIXTURE_TOTAL_KW, headroom: 1, hourBucketKey: '1970-01-01T00', ...overrides })
 );
+
+// Restore-decision debug events are gated on the `plan` topic; these specs
+// assert on the emitter, so they run with it switched on. The capture owns the
+// destination too, so the enabled topic does not write onto stdout.
+let capture: LoggerCapture;
+beforeEach(() => { capture = captureLogger('debug', ['plan']); });
+afterEach(() => { capture.restore(); });
 
 describe('restore cooldown backoff', () => {
   beforeEach(() => {

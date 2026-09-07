@@ -34,8 +34,9 @@
 
 Logging uses a pino-based structured logger (`lib/logging/`). Logs are JSON objects routed through a Homey-aware destination.
 
-- **New logs** go through the structured logger: use `logger.info()` for normal runtime events, `logger.error()` for error-sink events, and topic-gated structured debug emitters for structured debug payloads.
-- **Debug logs** are gated by topic flags (`lib/utils/debugLogging.ts`): `plan`, `diagnostics`, `price`, `daily_budget`, `devices`, `settings`, `perf`.
+- **New logs** go through the structured logger: `getLogger(module).info()` for normal runtime events and `.error()` for error-sink events, and `getDebugEmitter(component, topic)` (`lib/logging/logger.ts`) for structured debug payloads.
+- **`getLogger(module).debug()` emits nothing in production** — the pino root runs at `info`, so a child that inherits its level drops the line. Debug payloads go through `getDebugEmitter`, whose child sits at `level: 'debug'`; to skip work that only exists to build such a payload, ask `isDebugTopicEnabled(topic)`. Full rules: `notes/logging/README.md`.
+- **Debug logs** are gated by the topic flags the owner toggles in settings, defined by `DEBUG_LOGGING_TOPICS` in `packages/shared-domain/src/utils/debugLogging.ts` — that list is the source of truth, so read it rather than trusting a copy.
 - **Legacy prose logs** (`this.log()` / `this.logDebug(topic, ...)`) still exist and may be migrated incrementally. Do not add new ones.
 - Never use `console.log`.
 - When a helper is refactored to be more generic, make its log messages generic too.

@@ -26,6 +26,23 @@ This note is for contributors changing runtime logging.
   ambient capability — the ALS context is the Node-side equivalent of Go's
   `context.Context` for request-scoped values. This eliminates the deps-propagation
   problem where every layer redeclares `structuredLog?` / `debugStructured?`.
+- **`getLogger(module).debug(...)` emits nothing in production.** The root runs at `info`, so a
+  child that inherits its level drops every debug line. Converting a topic-gated debug event onto
+  the module logger therefore deletes it: PR #2252 did this to `fetchZoneTree` and silently lost
+  `zone_tree_fetch_failed` / `zone_tree_fetched`. Reserve `getLogger` for `info`/`warn`/`error`.
+- A debug event goes through `getDebugEmitter(component, topic)` (`lib/logging/logger.ts`), the
+  ambient counterpart to `getLogger`: it resolves a child at `level: 'debug'` against the same
+  process-wide root and gates on the topic set the owner toggles, published by
+  `setDebugTopics(...)` from `updateDebugLoggingEnabled`. Use it in place of a threaded
+  `debugStructured` parameter — `getStructuredDebugEmitter` on the app is the same emitter under
+  the wiring's name, so a file that drops the parameter changes nothing about what it emits.
+  `component` and `topic` are separate arguments and stay that way: `devices` events are emitted
+  under `devices`, `reconcile`, and `snapshot`, and Flow-card settings events are
+  `component: 'flow'` on topic `settings`.
+- Skipping work that exists only to build a debug payload — a signature, a JSON dump, a derived
+  summary — asks `isDebugTopicEnabled(topic)`. Do not gate that on whether an emitter was passed
+  in: the wiring supplies one unconditionally and the topic check lives inside it, so a presence
+  gate is always open (`planDebugDedupe.ts` carried exactly that bug).
 - Transport still routes by Homey SDK log level callbacks, but payloads should remain JSON
   objects with stable field names.
 - AsyncLocalStorage lives in `lib/logging/alsContext.ts`. PlanService establishes
@@ -36,9 +53,9 @@ This note is for contributors changing runtime logging.
   no longer belongs to the home/rebuild that happened to schedule it.
 - `incidentId` is still attached manually by `CapacityGuard`; other important flows still lack
   automatic correlation IDs.
-- Debug-level structured events should follow the existing debug-topic model. When a topic is
-  enabled, the corresponding child logger may lower its level to `debug`; otherwise debug events
-  stay suppressed while higher-severity structured events still flow.
+- Debug-level structured events follow the debug-topic model above: with the topic enabled the
+  emitter's child logs at `debug`, and with it disabled nothing is written, while higher-severity
+  structured events still flow through `getLogger`.
 
 ## Current Structured Events
 
