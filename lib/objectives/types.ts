@@ -1,5 +1,5 @@
 import type {
-  DeviceStateOfChargeSnapshot,
+  ObservedStateOfCharge,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 
@@ -99,7 +99,11 @@ export type ObjectiveDeviceInput = {
    */
   currentDrawKw: number;
   currentTemperature?: number;
-  stateOfCharge?: DeviceStateOfChargeSnapshot;
+  // The RESOLVED level, not the transport's working state. This layer reads only
+  // `level.kind`/`percent`; declaring the whole bag let it reach `report` and the
+  // session bookkeeping it has no business with, and made a transport-internal
+  // change look like an objectives-layer change.
+  stateOfCharge?: ObservedStateOfCharge;
   // No observation-freshness field. The progress resolvers ask value questions
   // only — a finite `currentTemperature` is itself the proof the device has
   // reported. The sampler's time coordinate is `observedAtMs` on

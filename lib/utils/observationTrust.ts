@@ -18,7 +18,7 @@
  * single source (the latter cannot import `lib/observer/`).
  */
 import { isFiniteNumber } from './appTypeGuards';
-import type { DeviceStateOfChargeSnapshot } from '../../packages/contracts/src/types';
+import type { ObservedStateOfCharge } from '../../packages/contracts/src/types';
 
 type TrustedTemperatureInput = {
   currentTemperature?: number;
@@ -30,7 +30,7 @@ type TrustedTemperatureInput = {
 // `stateOfCharge` from a device type would not have broken a single call site —
 // it would have made them all read `undefined` and answer "no level" forever.
 type TrustedStateOfChargeInput = {
-  stateOfCharge: DeviceStateOfChargeSnapshot;
+  stateOfCharge: ObservedStateOfCharge;
 };
 
 export function getTrustedCurrentTemperatureC(
@@ -47,6 +47,6 @@ export function getTrustedStateOfCharge(
   // No `Number.isFinite` re-check: `normalizeStateOfChargePercent` guarantees a
   // finite percentage at the producer, and `level` already answers whether there
   // is one at all (producer invariant).
-  const level = device.stateOfCharge.level;
-  return level?.kind === 'known' ? level.percent : undefined;
+  const { level } = device.stateOfCharge;
+  return level.kind === 'known' ? level.percent : undefined;
 }

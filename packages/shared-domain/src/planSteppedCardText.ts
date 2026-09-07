@@ -1,5 +1,5 @@
 import type {
-  DeviceStateOfChargeSnapshot,
+  ObservedStateOfCharge,
   EvChargingState,
   SteppedLoadProfile,
 } from '../../contracts/src/types';
@@ -356,7 +356,7 @@ export const resolveSteppedLevelFact = (device: {
   steppedLoad?: SteppedLoadCardState;
   evChargingState?: EvChargingState;
   deviceRole?: 'ev_charger';
-  stateOfCharge?: { level: DeviceStateOfChargeSnapshot['level'] };
+  stateOfCharge?: ObservedStateOfCharge;
 }): string | null => {
   if (isSteppedCardOffLikeState(device.currentState)) return null;
   const stepId = device.steppedLoad?.reportedStepId ?? null;
@@ -384,7 +384,7 @@ export const resolveSteppedLevelFact = (device: {
  * to show and nothing to qualify — the device-detail readout says why.
  */
 const resolveBatteryFact = (
-  stateOfCharge: { level: DeviceStateOfChargeSnapshot['level'] } | undefined,
+  stateOfCharge: ObservedStateOfCharge | undefined,
 ): string | null => {
   const level = stateOfCharge?.level;
   return level?.kind === 'known' ? `${Math.round(level.percent)} %` : null;

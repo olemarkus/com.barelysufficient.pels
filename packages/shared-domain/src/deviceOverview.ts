@@ -1,5 +1,5 @@
 import type {
-  DeviceStateOfChargeSnapshot,
+  ObservedStateOfCharge,
   EvChargingState,
   SteppedLoadProfile,
   SteppedLoadStep,
@@ -173,9 +173,7 @@ export type DeviceOverviewSnapshot = {
   // transition signature so a flip (true→false) re-renders the card even when the
   // normalized plannedTarget is unchanged.
   surplusAbsorbActive?: boolean;
-  stateOfCharge?: {
-    level: DeviceStateOfChargeSnapshot['level'];
-  };
+  stateOfCharge?: ObservedStateOfCharge;
 };
 
 export type DeviceOverviewStrings = {
