@@ -37,8 +37,7 @@ Logging uses a pino-based structured logger (`lib/logging/`). Logs are JSON obje
 - **New logs** go through the structured logger: `getLogger(module).info()` for normal runtime events and `.error()` for error-sink events, and `getDebugEmitter(component, topic)` (`lib/logging/logger.ts`) for structured debug payloads.
 - **`getLogger(module).debug()` emits nothing in production** — the pino root runs at `info`, so a child that inherits its level drops the line. Debug payloads go through `getDebugEmitter`, whose child sits at `level: 'debug'`; to skip work that only exists to build such a payload, ask `isDebugTopicEnabled(topic)`. Full rules: `notes/logging/README.md`.
 - **Debug logs** are gated by the topic flags the owner toggles in settings, defined by `DEBUG_LOGGING_TOPICS` in `packages/shared-domain/src/utils/debugLogging.ts` — that list is the source of truth, so read it rather than trusting a copy.
-- **Legacy prose logs** (`this.log()` / `this.logDebug(topic, ...)`) still exist and may be migrated incrementally. Do not add new ones.
-- Never use `console.log`.
+- **Legacy logging is banned, and enforced.** `npm run logging:no-legacy` (in `ci:checks`) refuses, in runtime code: any `.debug()` outside `lib/logging/` — dark on a pino module logger, topic-gated prose on the injected SDK `Logger`, and hand-rolled on a `.child(..., {level:'debug'})`, which is the point: one spelling, three behaviours, and the call site cannot say which; prose via `logDebug(topic, '…')` / `this.log('…')` (no `event` field to filter on); a computed level (`logger[level](…)`), which can resolve to a dark `debug`; and `console.*` (bypasses the Homey destination entirely). Files that predate the ban carry a shrinking budget in `scripts/logging-legacy-allowlist.txt`; a budget may only go down. Rules of record: `notes/logging/README.md` § "Legacy logging is banned".
 - When a helper is refactored to be more generic, make its log messages generic too.
 
 ## Homey SDK

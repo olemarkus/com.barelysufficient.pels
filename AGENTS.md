@@ -59,6 +59,15 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 - Domain modules (`lib/device`, `lib/power`, `lib/objectives`, `lib/plan`, `lib/price`, `lib/dailyBudget`, `lib/observer`, `lib/executor`, `lib/actuator`, `lib/weather`, `lib/solar`, `lib/home`) must not import `lib/app/**` (`no-domain-to-app-layer`). Those twelve are the domain peer set the rule matches — keep this list and the `from` path in `.dependency-cruiser.cjs` in step.
 - `setup/**` may import `lib/**` and `packages/**`; the reverse is forbidden by the `no-lib-to-setup` dep-cruiser rule.
 - **The wiring layer holds no state.** `setup/**` gets no mutable field, no module-level `let` or `var`, no field holding a mutable container. It constructs and connects; anything that changes as the app runs is a component owned by a `lib/` module. State in the wiring layer sits above these boundaries, so it becomes a back-channel between modules forbidden to talk with no import edge for `arch:check` to see. Enforced by `npm run setup:stateless`; the shrinking allowlist of files predating the rule is `scripts/setup-stateless-allowlist.txt`. Full rule: `setup/AGENTS.md` § "No state".
+- **A logging call whose visibility you cannot read is banned.** `.debug()` outside `lib/logging/`
+  is dark on a pino module logger (the root runs at `info`), topic-gated prose on the injected SDK
+  `Logger`, and correct-but-hand-rolled on a `.child(..., {level:'debug'})` — three behaviours, one
+  spelling, so the call site never says which. Use `getDebugEmitter(component, topic)`. Also banned:
+  prose via `logDebug(topic, '…')` / `this.log('…')`, a computed level (`logger[level](…)`), and
+  `console.*`. Enforced by `npm run logging:no-legacy` over the runtime backend roots (`app.ts`,
+  `api.ts`, `lib/**`, `setup/**`, `flowCards/**`, `drivers/**`); the shrinking allowlist of files
+  predating the rule is `scripts/logging-legacy-allowlist.txt`, and its per-file counts may only go
+  down. Full rule: `notes/logging/README.md` § "Legacy logging is banned".
 - `flowCards/**` must not import `packages/settings-ui/**` or `drivers/**`.
 - Accept code duplication if consolidation would violate an architectural boundary. Add a comment explaining the constraint.
 - **A parameter object must be a domain object.** If a function takes an object, that object
@@ -194,6 +203,7 @@ coordinate across worktrees because `flock` is unavailable.
 ```bash
 npm run lint                # ESLint entire codebase (zero warnings)
 npm run arch:check          # dependency-cruiser architecture boundaries
+npm run logging:no-legacy   # no dark .debug(), prose logDebug/this.log, or console.*
 npm run deadcode:check      # Unused exports detection
 npm run typecheck:unused    # TypeScript unused symbols check
 npm run ci:checks           # Full static analysis suite (all lints + typecheck + arch + deadcode), runs steps in parallel
@@ -238,7 +248,7 @@ Key timing:
 | **Overview hero design spec** | `notes/overview-hero-spec.md` |
 | **Personas / who each surface serves** | `notes/personas.md` |
 
-Structured logging is canonical for new runtime logs (pino, `lib/logging/`); the rules live in `lib/AGENTS.md`.
+Structured logging is canonical for new runtime logs (pino, `lib/logging/`); the rules live in `lib/AGENTS.md`. **Legacy logging is banned and enforced** by `npm run logging:no-legacy`: no `.debug()` outside `lib/logging/` (its visibility depends on the receiver and the call site cannot say which), no prose `logDebug`/`this.log`, no computed log level, no `console.*`. The shrinking allowlist of files predating the rule is `scripts/logging-legacy-allowlist.txt`.
 
 ---
 

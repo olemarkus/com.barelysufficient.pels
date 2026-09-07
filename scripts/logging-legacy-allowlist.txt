@@ -1,0 +1,113 @@
+# Runtime files that still log a way that is invisible or unfilterable, and
+# predate the ban (notes/logging/README.md § "Legacy logging is banned",
+# enforced by scripts/check-logging-legacy.mjs).
+#
+# What counts, and what each one costs:
+#   - `.debug()` on any receiver outside lib/logging/. Depending on the receiver
+#     this is either DARK (a pino child of the `info` root — never written) or
+#     topic-gated SDK PROSE (no `event` field). The call site does not say
+#     which, which is the point. Replacement: `getDebugEmitter(component, topic)`.
+#   - `logDebug(...)` / `log(...)` prose through the Homey SDK.
+#   - a computed log level (`logger[level](…)`), which can resolve to a dark debug.
+#   - `console.*`, which bypasses the Homey destination entirely.
+#
+# Format: "<path> <site count>". The count is a budget and may only SHRINK.
+# Both drift directions fail the guard: a higher count means new legacy logging
+# landed in a file that is supposed to be shedding it, and a lower one means the
+# line was not updated after a migration. So this list cannot rot into a
+# permanent exemption. When the last line goes, DELETE THIS FILE — the guard
+# then requires its absence.
+#
+# Counts are as of the guard's introduction (63 files, 122 sites).
+
+# --- Executor lane (highest value: these are the events people go looking for) ---
+# Four events `notes/logging/README.md` lists as current — target_command_skipped,
+# restore_command_skipped, binary_command_skipped, stepped_load_command_skipped —
+# are emitted from here (and from lib/plan/planBinaryControlHelpers.ts, in the
+# plan lane below) through a pino module logger, and therefore appear ZERO times
+# in a production log. They answer "why was this device not commanded?", which is
+# the first question asked when a device will not respond. Drain these first.
+lib/executor/binaryControlShared.ts 2
+lib/executor/binaryExecutor.ts 2
+lib/executor/binaryRestoreHelpers.ts 6
+lib/executor/executorSupport.ts 4
+lib/executor/planExecutorDispatch.ts 2
+lib/executor/shedReleaseActuation.ts 4
+lib/executor/steppedLoadExecutor.ts 2
+lib/executor/steppedLoadExecutorCommand.ts 2
+lib/executor/steppedLoadExecutorRestore.ts 4
+lib/executor/targetExecutor.ts 7
+lib/executor/targetPendingCommand.ts 2
+
+# --- Device / transport lane ------------------------------------------------
+# Snapshot, fetch, zone and write paths. Most of these are the INJECTED SDK
+# `Logger` (lib/utils/types.ts), whose `.debug` is topic-gated prose via
+# `ctx.logDebug('devices', …)` — so unlike the executor lane these lines DO
+# reach the log, they just carry no `event` field to filter or count on.
+# `managerZones.ts` documents the distinction in its own comment.
+lib/device/devicePowerEstimate.ts 1
+lib/device/deviceTransport.ts 1
+lib/device/evCarLinkStore.ts 1
+lib/device/liveFeed.ts 2
+lib/device/managerControl.ts 5
+lib/device/managerRuntime.ts 1
+lib/device/measuredPowerResolver.ts 2
+lib/device/transport/deviceUpdateHandling.ts 2
+lib/device/transport/deviceWrites.ts 1
+lib/device/transport/homePowerPoll.ts 1
+lib/device/transport/managerFetch.ts 6
+lib/device/transport/managerParseSnapshot.ts 2
+lib/device/transport/managerZones.ts 4
+lib/device/transport/observationMerge.ts 1
+lib/device/transport/snapshotRefresh.ts 4
+
+# --- Entry points and wiring ------------------------------------------------
+# `api.ts` is NOT here: its console.error runs before a root logger exists and is
+# exempted by name in the guard, so this list can reach zero and be deleted.
+app.ts 2
+setup/appInit/createDailyBudgetService.ts 1
+setup/appInit/createPlanEngine.ts 2
+setup/appInit/priceServices.ts 2
+setup/appInit/wireDeviceTransport.ts 1
+setup/appRuntimeApi.ts 1
+setup/appServiceWiring.ts 1
+setup/appSmartTaskApi.ts 1
+setup/appSnapshotHelpers.ts 1
+setup/backgroundTasksController.ts 1
+setup/homeMembership.ts 1
+setup/homeRuntime/homeRuntimeRegistryLogs.ts 1
+setup/homeRuntime/homeTrackerConfigSafety.ts 1
+setup/powerSampleFreshnessEscalation.ts 2
+setup/settingsUiApi.ts 2
+
+# --- Plan and observer lane -------------------------------------------------
+# Includes planBinaryControlHelpers.ts, which owns binary_command_skipped (one of
+# the four dark events above), and planServiceRebuild.ts, whose computed level
+# resolves to `debug` for actionChanged-only rebuilds — so plan_rebuild_completed
+# is absent from production for exactly that case while its info branches are
+# present. telemetryObserver.ts is the opposite case: a correct topic-gated debug
+# child, written by hand instead of calling getDebugEmitter.
+lib/observer/pendingBinaryCommands.ts 4
+lib/plan/admission/headroomReserve.ts 1
+lib/plan/admission/surplusAbsorb.ts 1
+lib/plan/planBinaryControlHelpers.ts 4
+lib/plan/planBoost.ts 1
+lib/plan/planBuilderMaterialization.ts 1
+lib/plan/planBuilderSilentMeter.ts 1
+lib/plan/planChangeTracker.ts 1
+lib/plan/planServiceRebuild.ts 1
+lib/plan/rebuildScheduler/telemetryObserver.ts 1
+lib/plan/restore/swap.ts 1
+
+# --- Remaining domain modules -----------------------------------------------
+lib/dailyBudget/dailyBudgetManager.ts 1
+lib/dailyBudget/dailyBudgetService.ts 2
+lib/diagnostics/deviceDiagnosticsPersistence.ts 1
+lib/diagnostics/deviceDiagnosticsService.ts 1
+lib/objectives/deferredObjectives/activePlanRecorder.ts 1
+lib/objectives/deferredObjectives/diagnosticAnnounce.ts 1
+lib/objectives/deferredObjectives/planHistory.ts 1
+lib/power/soleMeterAdoption.ts 2
+lib/utils/dateUtils.ts 1
+lib/utils/httpClient.ts 1
+lib/utils/settingsHandlers.ts 2

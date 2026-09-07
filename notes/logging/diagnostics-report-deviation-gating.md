@@ -8,8 +8,12 @@ Companion to `notes/logging/README.md`.
 A Homey diagnostics report is a ring buffer of only ~100 log lines, captured by a
 non-technical user with **no debug topics enabled**. Only ungated info/warn/error
 structured lines reach it (`getStructuredLogger(component)` is ungated, `app.ts`;
-`getStructuredDebugEmitter` is topic-gated; `logDebug` prose is topic-gated). Every
-routine info line evicts an older line that might be the actual evidence.
+`getStructuredDebugEmitter`/`getDebugEmitter` are topic-gated; `logDebug` prose is
+topic-gated). `logger.debug(...)` is a third case and not a gate at all — the pino
+root runs at `info` and that child inherits it, so those lines are absent from every
+report, debug topics or not, and are banned for new code (`notes/logging/README.md`
+§ "Legacy logging is banned"). Every routine info line evicts an older line that
+might be the actual evidence.
 
 The goal: make a default (no-debug) report self-diagnosing for common runtime issues —
 the EV stepped-load clamp, starvation, capacity overshoot, command-vs-report mismatch —
@@ -18,8 +22,8 @@ without a round-trip to enable debug topics and reproduce.
 ## Measured baseline
 
 Measured from `/tmp/pels/start.main.0a4464c3.stdout.log`, ~86 h, 14-device install,
-counting only **default-visible** lines (structured, no `debugTopic`; all high-volume
-prose is `logDebug`/`logger.debug`, gated):
+counting only **default-visible** lines (structured, no `debugTopic`; high-volume prose
+is `logDebug`, topic-gated, and `logger.debug`, which never emits at all):
 
 - **~1.9 default-visible lines/min → ~100-line buffer survives ~50 min** on this install
   (install-dependent; more EV/thermostat churn pushes it down).
