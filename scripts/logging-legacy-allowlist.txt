@@ -108,6 +108,13 @@ lib/objectives/deferredObjectives/activePlanRecorder.ts 1
 lib/objectives/deferredObjectives/diagnosticAnnounce.ts 1
 lib/objectives/deferredObjectives/planHistory.ts 1
 lib/power/soleMeterAdoption.ts 2
+# `dateUtils.ts` has a twin at packages/shared-domain/src/utils/dateUtils.ts with
+# the same console.warn in the same fallback, and that package is OUTSIDE this
+# guard's scope on purpose: shared-domain also runs in the settings-ui WebView,
+# where console IS the only channel. So do not close this line by deleting the
+# lib copy and importing the shared one — the guard would go quiet while the
+# console.warn kept running in the runtime. Close it by giving the runtime path
+# a real logger, whichever copy survives.
 lib/utils/dateUtils.ts 1
 lib/utils/httpClient.ts 1
 lib/utils/settingsHandlers.ts 2

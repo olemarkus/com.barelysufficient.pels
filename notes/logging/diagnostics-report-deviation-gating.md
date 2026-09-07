@@ -21,9 +21,11 @@ without a round-trip to enable debug topics and reproduce.
 
 ## Measured baseline
 
-Measured from `/tmp/pels/start.main.0a4464c3.stdout.log`, ~86 h, 14-device install,
-counting only **default-visible** lines (structured, no `debugTopic`; high-volume prose
-is `logDebug`, topic-gated, and `logger.debug`, which never emits at all):
+Measured from `/tmp/pels/start.main.0a4464c3.stdout.log` over an ~86 h window on a
+14-device install, counting only **default-visible** lines (structured, no `debugTopic`;
+high-volume prose is `logDebug`, topic-gated, and `logger.debug`, which never emits at
+all). That path is a live log that rotates, so it is shorter now — the counts below are
+the measurement, not something re-derivable from the file today:
 
 - **~1.9 default-visible lines/min → ~100-line buffer survives ~50 min** on this install
   (install-dependent; more EV/thermostat churn pushes it down).
