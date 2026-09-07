@@ -33,6 +33,7 @@ import {
   createPriceCoordinator,
   createPriceFlowTagPublisher,
   persistDeferredObjectiveObservationWatermark,
+  requirePlanEngine,
   resolvePlanService,
   subscribePlanObservedState,
 } from './appInit';
@@ -475,7 +476,7 @@ export class AppServiceWiring {
 
   initPlanService(): void {
     const { ctx } = this.deps;
-    ctx.planService = createPlanService(ctx, this.mainHomeScope);
+    ctx.planService = createPlanService(ctx, this.mainHomeScope, requirePlanEngine(ctx));
     installMainFreshnessEscalation(
       ctx,
       () => this.deps.isMainActuationStopped(),

@@ -45,15 +45,28 @@ export type PlanEngineWiring = {
   }>;
   getCurrentHourPriceLevel: () => PriceLevel;
   getInferredSurplusKw: () => number;
-  isExternalOffHeld?: (deviceId: string) => boolean;
+  /**
+   * "Leave off until turned on again", resolved once for every home in
+   * `createPlanEngine`. Required: a home wired without it would silently make
+   * the executor's restore carve-out a no-op for that home's devices.
+   */
+  isExternalOffHeld: (deviceId: string) => boolean;
   /** Pre-shed setpoint anchor store — the persisted adapter, shared across
    * homes (device ids are globally unique). Required: a home wired without it
    * would silently lose anchors across restarts. */
   getPowerTracker: () => PowerTrackerState;
-  getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
-  decorateDeferredObjectives?: PlanBuilderDeps['decorateDeferredObjectives'];
+  /** Scope-owned; a capacity-only home binds the constant `null`, not an absent member. */
+  getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
+  /**
+   * Scope-owned smart-task seam. Required here even though the BUILDER tolerates
+   * absence (a directly constructed builder in a unit test wires no controller):
+   * every home this factory wires has an answer, and a capacity-only one binds
+   * `decorateWithoutDeferredObjectives`.
+   */
+  decorateDeferredObjectives: NonNullable<PlanBuilderDeps['decorateDeferredObjectives']>;
   getShedBehavior: (deviceId: string) => ShedBehavior;
-  getDynamicSoftLimitOverride?: () => number | null;
+  /** Scope-owned; a capacity-only home binds the constant `null`, not an absent member. */
+  getDynamicSoftLimitOverride: () => number | null;
   logTargetRetryComparison?: (params: {
     deviceId: string;
     name: string;
@@ -64,7 +77,8 @@ export type PlanEngineWiring = {
     retryCount: number;
     skipContext: 'plan' | 'shedding' | 'overshoot';
   }) => Promise<void> | void;
-  syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
+  /** Scope-owned, so the sync targets THIS home's plan service. Every home binds one. */
+  syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;

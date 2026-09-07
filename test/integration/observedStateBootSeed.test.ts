@@ -20,6 +20,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPlanService } from '../../setup/appInit/createPlanService';
+import { requirePlanEngine } from '../../setup/appInit/contextGuards';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
 import { readObservedEvChargingState } from '../../lib/observer/observedDeviceStateProjection';
@@ -103,7 +104,7 @@ describe('boot seed closes the cold-start EV state-chip gap (#4)', () => {
     expect(projection.getObservedState('ev-1')).toBeUndefined();
     expect(ctx.getObservedState('ev-1')).toBeUndefined();
 
-    const service = createPlanService(ctx, buildMainHomeScope(ctx));
+    const service = createPlanService(ctx, buildMainHomeScope(ctx), requirePlanEngine(ctx));
     // The first plan build runs `getPlanDevices`, which seeds the projection.
     (service as unknown as { deps: { getPlanDevices: () => unknown[] } }).deps.getPlanDevices();
 
@@ -127,7 +128,7 @@ describe('boot seed closes the cold-start EV state-chip gap (#4)', () => {
       observed: { ...projectObservedState(evDevice('ev-1', 'plugged_in_charging')) },
     });
 
-    const service = createPlanService(ctx, buildMainHomeScope(ctx));
+    const service = createPlanService(ctx, buildMainHomeScope(ctx), requirePlanEngine(ctx));
     (service as unknown as { deps: { getPlanDevices: () => unknown[] } }).deps.getPlanDevices();
 
     // Seed is additive — the recorded 'plugged_in_charging' wins over the

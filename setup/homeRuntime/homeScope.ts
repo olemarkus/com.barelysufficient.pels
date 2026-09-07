@@ -156,18 +156,21 @@ export type HomeScope = {
    */
   getDeviceDiagnostics: () => DeviceDiagnosticsService | undefined;
   /**
-   * Smart-task decoration seam. Absent = identity decoration (the planner's
-   * own `buildIdentityDecorationBundle` fallback) — how sub-home bundles stay
-   * smart-task-free without the engine branching on which home it serves.
+   * Smart-task decoration seam. A capacity-only home binds
+   * `decorateWithoutDeferredObjectives` (the identity bundle in the seam's own
+   * shape) — how sub-home bundles stay smart-task-free without the engine
+   * branching on which home it serves. It used to say that by omitting the
+   * member and letting the builder's own fallback fire, which made "this home
+   * has no smart tasks" indistinguishable from "nobody wired this home".
    */
-  decorateDeferredObjectives?: PlanEngineWiring['decorateDeferredObjectives'];
+  decorateDeferredObjectives: PlanEngineWiring['decorateDeferredObjectives'];
   /**
    * Post-actuation live-plan-state sync, targeting THIS home's plan service
    * (main: the app's inline-sync delegator; sub-home bundles: a late-bound
    * closure over the bundle's own service — syncing main's would touch the
-   * wrong plan). Optional like the engine dep it feeds.
+   * wrong plan). Every home binds one.
    */
-  syncLivePlanStateAfterTargetActuation?: PlanEngineWiring['syncLivePlanStateAfterTargetActuation'];
+  syncLivePlanStateAfterTargetActuation: PlanEngineWiring['syncLivePlanStateAfterTargetActuation'];
 };
 
 /**

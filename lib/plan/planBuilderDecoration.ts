@@ -7,6 +7,7 @@
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import type {
   DeferredDecorationBundle,
+  DeferredDecorationInput,
   DeferredReleaseIntent,
 } from '../../packages/planner-types/src/deferredDecoration';
 
@@ -21,6 +22,17 @@ export function buildIdentityDecorationBundle(devices: PlanInputDevice[]): Defer
     deferredReleaseIntentByDeviceId: {},
     admittedDeviceIds: new Set<string>(),
   };
+}
+
+/**
+ * The decoration seam a home with no smart tasks binds: the identity bundle,
+ * in the seam's own shape. A meter area is capacity-only by scope (multi-home
+ * v1 defers smart tasks per home), so it names this rather than leaving the
+ * member off its `HomeScope` — "no smart tasks here" is a thing a home says,
+ * not a hole in its wiring that the builder happens to paper over.
+ */
+export function decorateWithoutDeferredObjectives(input: DeferredDecorationInput): DeferredDecorationBundle {
+  return buildIdentityDecorationBundle(input.devices);
 }
 
 /**

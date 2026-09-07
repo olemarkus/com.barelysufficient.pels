@@ -72,6 +72,7 @@ import {
   persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
 } from '../../setup/appInit';
+import { requirePlanEngine } from '../../setup/appInit/contextGuards';
 import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives';
 import { disableDeferredObjectiveInSettings } from '../../setup/appInit/deferredRecorders';
 import {
@@ -223,7 +224,7 @@ describe('app init plan service wiring', () => {
       getAssociatedCar: () => undefined,
       getSnapshot: () => serviceCtx.latestTargetSnapshot,
     } as unknown as AppContext['deviceManager'];
-    const service = createPlanService(serviceCtx, buildMainHomeScope(serviceCtx));
+    const service = createPlanService(serviceCtx, buildMainHomeScope(serviceCtx), requirePlanEngine(serviceCtx));
 
     const planDevices = (service as unknown as {
       deps: { getPlanDevices: () => Array<{ id: string; currentOn?: boolean; objectiveKind?: string }> };
@@ -237,6 +238,9 @@ describe('app init plan service wiring', () => {
     expect(tempDevice?.currentOn).toBeUndefined();
   });
 
+  // The service takes its engine by value now, so an absent one is not
+  // expressible at the call. The fail-fast moved to the read the main-home
+  // wiring makes on its way in (`initPlanService`).
   it('fails fast when plan engine wiring is missing', () => {
     const ctx = createAppContextMock({
       planEngine: undefined,
@@ -251,17 +255,18 @@ describe('app init plan service wiring', () => {
       getStructuredDebugEmitter: () => vi.fn(),
     });
 
-    expect(() => createPlanService(ctx, buildMainHomeScope(ctx))).toThrow(
+    expect(() => requirePlanEngine(ctx)).toThrow(
       'PlanEngine must be initialized before plan service setup.',
     );
   });
 
   it('fails fast when plan service device manager wiring is missing', () => {
     const ctx = createAppContextMock({
+      planEngine: {} as AppContext['planEngine'],
       deviceManager: undefined,
     });
 
-    expect(() => createPlanService(ctx, buildMainHomeScope(ctx))).toThrow(
+    expect(() => createPlanService(ctx, buildMainHomeScope(ctx), requirePlanEngine(ctx))).toThrow(
       'DeviceTransport must be initialized before plan engine setup.',
     );
   });

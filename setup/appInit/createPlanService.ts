@@ -1,4 +1,4 @@
-import { requireDeviceManager, requirePlanEngine } from './contextGuards';
+import { requireDeviceManager } from './contextGuards';
 import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
 import { requireLastSampleAtMs } from '../../lib/power/lastTotalPower';
 import { PlanService } from '../../lib/plan/planService';
@@ -18,17 +18,17 @@ import { PowerMeasurementGate } from '../../lib/power/powerMeasurementGate';
 // reach the warning without burning wall-clock.
 const NO_POWER_SAMPLE_WARN_MS = process.env.NODE_ENV === 'test' ? 500 : 5 * 60 * 1000;
 
-// `planEngine` is the engine this service drives: the main home omits it (the
-// wiring assigns `ctx.planEngine` before `initPlanService`, the historical
-// coupling); a sub-home capacity bundle MUST pass its own engine — falling
-// through to `ctx.planEngine` would silently drive the MAIN home's engine.
-export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?: PlanEngine): PlanService {
+// `planEngine` is the engine this service drives, named by every home. The main
+// home used to omit it and fall through to `ctx.planEngine` — which worked only
+// because main's engine is the one that happens to be ambient on the context,
+// and made the default silently wrong for anyone else who omitted it.
+export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine: PlanEngine): PlanService {
   const deviceManager = requireDeviceManager(ctx);
   return new PlanService({
     homeId: scope.homeId,
     homey: ctx.homey,
     writePelsStatus: scope.writePelsStatus,
-    planEngine: planEngine ?? requirePlanEngine(ctx),
+    planEngine,
     // Home-scoped plan-device source (boot/hot-plug projection seed + eviction +
     // `toPlanDevice` + shared planned-set predicate); the invariants are
     // documented at the closure in `setup/homeRuntime/homeScope.ts`.

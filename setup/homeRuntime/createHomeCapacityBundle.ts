@@ -9,9 +9,9 @@
  *
  * Capacity-only by construction: the sub-home `HomeScope` binds
  * `getDailyBudgetSnapshot: () => null`, price-optimization/cheap/expensive to
- * `false`, the surplus term to `null`, and omits the smart-task decoration
- * seam — the shared plan factories then collapse to pure capacity control
- * without branching on which home they serve.
+ * `false`, the surplus term to `null`, and `decorateWithoutDeferredObjectives`
+ * for the smart-task seam — the shared plan factories then collapse to pure
+ * capacity control without branching on which home they serve.
  *
  * That is a claim about POLICY INPUTS, not about the write surface. The mode
  * target is the RESTORE ANCHOR rather than a policy, so `getOperatingMode` /
@@ -49,7 +49,8 @@ import type {
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
 import type { PlanService } from '../../lib/plan/planService';
 import { createBinaryCommandReachability } from '../../lib/plan/admission/binaryCommandReachability';
-import CapacityGuard from '../../lib/power/capacityGuard';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
+import type CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import { createHomePlanRebuildThrottle } from '../planRebuildIntentPolicy';
@@ -366,8 +367,8 @@ function buildSubHomeScope(params: {
     writePelsStatus: (status) => writeSuffixed(PELS_STATUS, status),
     // Capacity-only policy: no price optimization, no price level (so its status
     // reads UNKNOWN and `price_level_changed` never fires against MAIN's level),
-    // no surplus term, no smart-task decoration (absent = identity), no
-    // dynamic-soft-limit override.
+    // no surplus term, no dynamic-soft-limit override. The smart-task seam is
+    // bound to the identity decoration further down, not left off.
     getPriceOptimizationEnabled: () => false,
     getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getInferredSurplusKw: () => 0,
@@ -388,6 +389,9 @@ function buildSubHomeScope(params: {
     // succeeds.
     getOperatingMode: () => modeCatalog.getSnapshot().operatingMode,
     getModeDeviceTargets: () => modeCatalog.getSnapshot().targets,
+    // No smart tasks in a meter area (multi-home v1 defers them per home), so
+    // the decoration seam is the identity one, named rather than omitted.
+    decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     // Capacity-only UI/side-effect posture: no shared `plan_updated` emit (the
     // settings UI reads only MAIN's plan stream), and no shared diagnostics
     // recorder (a sub-home plan pollutes main's per-boot epoch).
