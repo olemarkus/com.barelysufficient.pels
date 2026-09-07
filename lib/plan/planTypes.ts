@@ -277,21 +277,20 @@ export function withSteppedDiscriminant<TBase extends object>(
   // instead of failing loudly. Enforcement belongs at the producers, which build
   // the pair through `SteppedClusterFields`.
   if (isSteppedLoadSnapshot(loose)) {
-    const { steppedLoadProfile, selectedStepId, planningPowerKw, ...base } = loose;
-    // The casts here are the seam's honest shape: the probe types the fields as
+    // The cast here is the seam's honest shape: the probe types the fields as
     // independent optionals, so nothing here PROVES they co-vary. Making the
     // parameter a co-presence union does prove it, but the resulting errors at
     // the call sites are unreadable (`Omit` chains over intersections resolve
     // to "two different types with this name exist"), which buys enforcement at
     // the cost of anyone being able to act on it. Enforcement lives at the
     // producers instead: each builds the trio as a `SteppedClusterFields`
-    // value, where a partial cluster is a plain, local compile error.
-    return {
-      ...base,
-      steppedLoadProfile,
-      selectedStepId: selectedStepId as string,
-      planningPowerKw: planningPowerKw as number,
-    };
+    // value, where a partial cluster is a plain, local compile error. The
+    // object itself is returned as is — a stepped device keeps every field
+    // (see `withBinaryDiscriminant` on why a copy here is not free).
+    return loose;
+  }
+  if (!('steppedLoadProfile' in loose) && !('selectedStepId' in loose) && !('planningPowerKw' in loose)) {
+    return loose;
   }
   const {
     steppedLoadProfile: _stripped,
@@ -354,15 +353,16 @@ export function withTemperatureDiscriminant<TBase extends object>(
 ):
   | (Omit<TBase, keyof TemperatureDiscriminantProbe> & TemperatureKind)
   | Omit<TBase, keyof TemperatureDiscriminantProbe> {
-  const { currentTarget, currentTemperature, plannedTarget, ...base } = loose;
+  // A temperature device keeps its cluster, and a non-temperature object that
+  // carries none of it has nothing to strip: both are returned as is (see
+  // `withBinaryDiscriminant` on why a copy here is not free).
   if (isTemperatureControlDevice(loose)) {
-    return {
-      ...base,
-      currentTarget: currentTarget as number,
-      currentTemperature: currentTemperature as number,
-      plannedTarget: plannedTarget as number,
-    };
+    return loose;
   }
+  if (!('currentTarget' in loose) && !('currentTemperature' in loose) && !('plannedTarget' in loose)) {
+    return loose;
+  }
+  const { currentTarget: _t, currentTemperature: _c, plannedTarget: _p, ...base } = loose;
   return { ...base };
 }
 
@@ -397,7 +397,21 @@ export function withBinaryDiscriminant<TBase>(
 ):
   | (Omit<TBase, keyof BinaryControlDiscriminantProbe> & BinaryControlKind)
   | Omit<TBase, keyof BinaryControlDiscriminantProbe> {
-  const { binaryControl: _strippedBinaryControl, currentOn, ...base } = loose;
+  // Nothing to strip: the object already has the shape the return type names,
+  // so it is returned as is. These three wrappers used to copy every device they
+  // were handed — a full copy per wrapper per device per plan build, 11% of the
+  // build's allocation — for a regrouping that is type-level only. The checks
+  // are on KEY presence, not value: a probe key present with `undefined` is
+  // still stripped, exactly as the copy path below removes it, so the key set a
+  // consumer sees (`'currentOn' in dev`) is the same either way.
+  // Read once, as a local: this wrapper is where the cluster is keyed on the
+  // resolved boolean, so the test lives here and consumers ask
+  // `isBinaryPlanDevice` instead (`scripts/check-device-kind-vocab.mjs`).
+  const { currentOn } = loose;
+  if (!('binaryControl' in loose) && (!('currentOn' in loose) || currentOn !== undefined)) {
+    return loose;
+  }
+  const { binaryControl: _strippedBinaryControl, currentOn: _strippedCurrentOn, ...base } = loose;
   // The discriminant is the producer-resolved `currentOn` ALONE: the producer
   // resolves the strict boolean once (`resolveCurrentOn` at `toPlanDevice` /
   // the fixture builders' mirror), so a bag carrying only the raw

@@ -103,11 +103,35 @@ function getAllowedReasonRules(plannedState: string): readonly ReasonCodeRule[] 
   }
 }
 
+// Listed only on a failure: every device on every build passes through the
+// validator, and building the list (or a closure that would) for the passing
+// case was an allocation for nobody.
+const listReasonCodes = (rules: readonly ReasonCodeRule[]): string[] => rules.map((rule) => rule.code);
+
+/**
+ * The rule whose reason `dev` carries without the posture flag it requires, or
+ * null when the reason needs no flag or the flag is set. Plain loops, not
+ * `find`/`some`: this runs for every device on every build, and each closure was
+ * an allocation for a lookup over two rules.
+ */
+function resolveUnsatisfiedRequiredFlag(
+  dev: DevicePlanDevice,
+  reasonCode: string,
+): (typeof REASON_REQUIRED_FLAGS)[number] | null {
+  for (const rule of REASON_REQUIRED_FLAGS) {
+    if (rule.code !== reasonCode) continue;
+    for (const flag of rule.flags) {
+      if (dev[flag] === true) return null;
+    }
+    return rule;
+  }
+  return null;
+}
+
 function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidationIssue | null {
   const plannedState = typeof dev.plannedState === 'string' ? dev.plannedState.trim() : '';
   const reasonCode = dev.reason.code;
   const allowedReasonRules = getAllowedReasonRules(plannedState);
-  const allowedReasonCodes = allowedReasonRules.map((rule) => rule.code);
 
   if (!plannedState || allowedReasonRules.length === 0) {
     return {
@@ -115,17 +139,23 @@ function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidation
       deviceName: dev.name,
       plannedState: plannedState || '<empty>',
       reasonCode,
-      allowedReasonCodes,
+      allowedReasonCodes: listReasonCodes(allowedReasonRules),
     };
   }
 
-  if (!allowedReasonRules.some((rule) => rule.code === reasonCode)) {
+  // Plain loops, not `some`/`find`: this runs for every device on every build,
+  // and each closure was an allocation for a lookup over a handful of rules.
+  let allowed = false;
+  for (const rule of allowedReasonRules) {
+    if (rule.code === reasonCode) { allowed = true; break; }
+  }
+  if (!allowed) {
     return {
       deviceId: dev.id,
       deviceName: dev.name,
       plannedState,
       reasonCode,
-      allowedReasonCodes,
+      allowedReasonCodes: listReasonCodes(allowedReasonRules),
     };
   }
 
@@ -135,14 +165,14 @@ function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidation
   // hide a real capacity/budget hold behind a deliberate-posture classification,
   // and `externalOffHold` would claim PELS is respecting an off action it never
   // observed. Cheap to check at finalization; a violation is a planner bug.
-  const requiredFlag = REASON_REQUIRED_FLAGS.find((rule) => rule.code === reasonCode);
-  if (requiredFlag && !requiredFlag.flags.some((flag) => dev[flag] === true)) {
+  const requiredFlag = resolveUnsatisfiedRequiredFlag(dev, reasonCode);
+  if (requiredFlag) {
     return {
       deviceId: dev.id,
       deviceName: dev.name,
       plannedState,
       reasonCode,
-      allowedReasonCodes,
+      allowedReasonCodes: listReasonCodes(allowedReasonRules),
       requiredFlags: requiredFlag.flags,
     };
   }

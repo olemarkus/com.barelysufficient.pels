@@ -16,7 +16,7 @@ import { getHighestKnownPowerKw } from '../observer/observedPower';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import {
   isSteppedLoadDevice,
-  resolveSteppedKeepDesiredStepId,
+  resolveSteppedKeepDesiredStepIdFor,
   resolveSteppedLoadInitialDesiredStepId,
 } from './planSteppedLoad';
 import { isBinaryPlanDevice } from './planBinaryDevice';
@@ -34,27 +34,16 @@ function resolveExpectedPowerKw(
   plannedState: 'shed' | 'keep',
   effectiveDesiredStepId: string | undefined,
 ): number {
-  const steppedExpectedPowerKw = resolveSteppedExpectedPowerKw({
-    dev,
-    currentState,
-    plannedState,
-    effectiveDesiredStepId,
-  });
+  const steppedExpectedPowerKw = resolveSteppedExpectedPowerKw(dev, currentState, plannedState, effectiveDesiredStepId);
   if (steppedExpectedPowerKw !== null) return steppedExpectedPowerKw;
   return getHighestKnownPowerKw(dev).kw;
 }
-function resolveSteppedExpectedPowerKw(params: {
-  dev: PlanInputDevice;
-  currentState: string;
-  plannedState: 'shed' | 'keep';
-  effectiveDesiredStepId: string | undefined;
-}): number | null {
-  const {
-    dev,
-    currentState,
-    plannedState,
-    effectiveDesiredStepId,
-  } = params;
+function resolveSteppedExpectedPowerKw(
+  dev: PlanInputDevice,
+  currentState: string,
+  plannedState: 'shed' | 'keep',
+  effectiveDesiredStepId: string | undefined,
+): number | null {
   if (
     plannedState === 'keep'
     && currentState === 'off'
@@ -185,16 +174,9 @@ export function buildBasePlanDevice(params: {
     && shedDesiredStepId !== undefined
     && shedDesiredStepId !== dev.selectedStepId;
   const plannedState = resolvePlannedState(controllable, shedSet.has(dev.id) || isSteppedShed);
-  const effectiveDesiredStepId = resolveSteppedKeepDesiredStepId({
-    ...dev,
-    currentState,
-    plannedState,
-    desiredStepId,
-  }, {
-    anyOtherDeviceLimited: params.anyOtherDeviceLimited,
-    boostActive,
-    surplusCeilingStepId,
-  });
+  const effectiveDesiredStepId = resolveSteppedKeepDesiredStepIdFor(
+    dev, plannedState, desiredStepId, params.anyOtherDeviceLimited, boostActive, surplusCeilingStepId,
+  );
   const baseReason: DeviceReason = controllable
     ? shedReasons.get(dev.id) ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
     : { code: PLAN_REASON_CODES.capacityControlOff };

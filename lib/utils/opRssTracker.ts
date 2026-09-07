@@ -25,7 +25,9 @@ let rssSupported: boolean | undefined;
 export const safeRss = (): number | null => {
   if (rssSupported === false) return null;
   try {
-    const rss = process.memoryUsage().rss;
+    // `memoryUsage.rss()` answers with the one number; `memoryUsage()` builds a
+    // five-field object per read, and a plan build reads this ~24 times.
+    const rss = process.memoryUsage.rss();
     rssSupported = true;
     return rss;
   } catch {
@@ -37,13 +39,15 @@ export const safeRss = (): number | null => {
 const record = (key: string, bytes: number): void => {
   if (!key || !Number.isFinite(bytes)) return;
   const cur = window[key];
-  window[key] = cur
-    ? {
-      count: cur.count + 1,
-      totalBytes: cur.totalBytes + bytes,
-      maxBytes: Math.max(cur.maxBytes, bytes),
-    }
-    : { count: 1, totalBytes: bytes, maxBytes: bytes };
+  // Advance the entry in place: a fresh object per sample was one allocation
+  // per timed stage per plan build, for a counter nothing else holds.
+  if (cur) {
+    cur.count += 1;
+    cur.totalBytes += bytes;
+    cur.maxBytes = Math.max(cur.maxBytes, bytes);
+    return;
+  }
+  window[key] = { count: 1, totalBytes: bytes, maxBytes: bytes };
 };
 
 /**

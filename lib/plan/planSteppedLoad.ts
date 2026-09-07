@@ -259,31 +259,44 @@ export const resolveSteppedLoadTransition = (
 };
 /* eslint-enable complexity, sonarjs/cognitive-complexity */
 
-export const resolveSteppedKeepDesiredStepId = (
-  device: Pick<StepCapableDevice, 'steppedLoadProfile'> & StepIdentityFields & {
-    currentState?: string;
-    currentOn?: boolean;
-    plannedState?: string;
-  },
-  options: {
-    anyOtherDeviceLimited?: boolean;
-    boostActive?: boolean;
-    /**
-     * The rung this cycle's surplus allocation bought a surplus-TRACKING device
-     * (`PlanEngineState.surplusTrackingByDevice`), resolved by the producer
-     * and passed flat. A CEILING, never a target: it can only lower the answer
-     * this function would otherwise give, so capacity shedding stays the ceiling
-     * above it and the ordinary keep logic still owns everything below.
-     */
-    surplusCeilingStepId?: string;
-  } = {},
+/** The device shape both keep-step entries read: the ladder, the step identity and the on/off axis. */
+type SteppedKeepDevice = Pick<StepCapableDevice, 'steppedLoadProfile'> & StepIdentityFields & {
+  currentState?: string;
+  currentOn?: boolean;
+  plannedState?: string;
+};
+
+/**
+ * `resolveSteppedKeepDesiredStepId` with this cycle's decision — `plannedState`
+ * and the step the planner wants — passed beside the device instead of stamped
+ * onto a copy of it. The planner calls this one: it decides those two for an
+ * INPUT device, and copying the whole device to carry them cost a device copy
+ * per stepped device per build. The executor, which holds a plan device that
+ * already carries both, uses the two-argument form.
+ */
+export const resolveSteppedKeepDesiredStepIdFor = (
+  device: SteppedKeepDevice,
+  plannedState: string | undefined,
+  desiredStepId: string | undefined,
+  /** Another device is limited this cycle: fairness clamps the keep step to the lowest active rung. */
+  anyOtherDeviceLimited: boolean,
+  /** A boost is live: it bypasses the fairness clamp and the surplus ceiling alike. */
+  boostActive: boolean,
+  /**
+   * The rung this cycle's surplus allocation bought a surplus-TRACKING device
+   * (`PlanEngineState.surplusTrackingByDevice`), resolved by the producer and
+   * passed flat. A CEILING, never a target: it can only lower the answer, so
+   * capacity shedding stays the ceiling above it and the ordinary keep logic
+   * still owns everything below.
+   */
+  surplusCeilingStepId: string | undefined,
 ): string | undefined => {
   const profile = getSteppedLoadProfileForDevice(device);
-  if (!profile) return device.desiredStepId;
-  if (device.plannedState !== 'keep') return device.desiredStepId;
+  if (!profile) return desiredStepId;
+  if (plannedState !== 'keep') return desiredStepId;
 
   const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
-  if (!lowestActiveStep) return device.desiredStepId;
+  if (!lowestActiveStep) return desiredStepId;
   const lowestActiveStepId = lowestActiveStep.id;
 
   // On/off is kind-aware: a binary stepper reads `currentOn`, a step-only stepper
@@ -291,13 +304,13 @@ export const resolveSteppedKeepDesiredStepId = (
   // for a step-only device (no `currentOn`) and fall through to the reported-step
   // path below, abandoning an in-flight step-down toward `desiredStepId`.
   if (isPlanDeviceObservedOn(device)) {
-    const baseStepId = device.desiredStepId && isSteppedLoadOffStep(profile, device.desiredStepId)
+    const baseStepId = desiredStepId && isSteppedLoadOffStep(profile, desiredStepId)
       ? lowestActiveStepId
-      : device.desiredStepId;
+      : desiredStepId;
     // Boost bypasses the surplus ceiling deliberately, exactly as it bypasses
     // the lowest-active fairness clamp: a boost is a live demand the owner (or a
     // smart task) asked for, and "use only your own sun" must not outrank it.
-    if (options.boostActive) {
+    if (boostActive) {
       return resolveHigherSteppedLoadStepId({
         profile,
         firstStepId: baseStepId,
@@ -308,25 +321,41 @@ export const resolveSteppedKeepDesiredStepId = (
       profile,
       stepId: baseStepId,
       lowestActiveStep,
-      anyOtherDeviceLimited: options.anyOtherDeviceLimited === true,
-    }), options.surplusCeilingStepId);
+      anyOtherDeviceLimited,
+    }), surplusCeilingStepId);
   }
 
   if (isPlanDeviceObservedOff(device)) {
-    return clampToSurplusCeiling(profile, lowestActiveStepId, options.surplusCeilingStepId);
+    return clampToSurplusCeiling(profile, lowestActiveStepId, surplusCeilingStepId);
   }
 
   const selectedStep = getSteppedLoadStep(profile, resolvePlannerEffectiveStepId(device));
   if (!selectedStep || selectedStep.planningPowerW <= 0) {
-    return clampToSurplusCeiling(profile, lowestActiveStepId, options.surplusCeilingStepId);
+    return clampToSurplusCeiling(profile, lowestActiveStepId, surplusCeilingStepId);
   }
   return clampToSurplusCeiling(profile, clampToLowestActiveWhenOtherDevicesLimited({
     profile,
     stepId: selectedStep.id,
     lowestActiveStep,
-    anyOtherDeviceLimited: options.anyOtherDeviceLimited === true,
-  }), options.surplusCeilingStepId);
+    anyOtherDeviceLimited,
+  }), surplusCeilingStepId);
 };
+
+export const resolveSteppedKeepDesiredStepId = (
+  device: SteppedKeepDevice,
+  options: {
+    anyOtherDeviceLimited?: boolean;
+    boostActive?: boolean;
+    surplusCeilingStepId?: string;
+  } = {},
+): string | undefined => resolveSteppedKeepDesiredStepIdFor(
+  device,
+  device.plannedState,
+  device.desiredStepId,
+  options.anyOtherDeviceLimited === true,
+  options.boostActive === true,
+  options.surplusCeilingStepId,
+);
 
 /**
  * Lower `stepId` to the surplus allocation's rung when it sits above it. Never
