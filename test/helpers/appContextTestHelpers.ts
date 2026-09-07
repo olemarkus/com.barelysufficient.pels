@@ -1,4 +1,5 @@
 import { createTrackerStore } from '../../lib/power/trackerStore';
+import { createWeatherHistoryStore } from '../../lib/weather/weatherHistoryStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import { steppedStoresForTest } from './steppedStores';
@@ -183,7 +184,9 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     debugStructured: vi.fn(),
   });
 
-  const trackerStore = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
+  const userdataDatabase = openUserdataDatabase(IN_MEMORY_DATABASE);
+  const trackerStore = createTrackerStore(userdataDatabase);
+  const weatherHistoryStore = createWeatherHistoryStore(userdataDatabase);
   const context: AppContext = {
     startupBootstrap: undefined,
     getPvForecastSourceUiStatus: () => ({ kind: 'unknown' }),
@@ -199,6 +202,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     notifyOperatingModeChanged: vi.fn(),
     hydratePowerTracker: vi.fn(),
     getTrackerStore: () => trackerStore,
+    getWeatherHistoryStore: () => weatherHistoryStore,
     emitPowerTrackerPersisted: vi.fn(),
     loadCapacitySettings: vi.fn(),
     loadTemperatureControlPolicySettings: vi.fn(),

@@ -7,27 +7,28 @@
  * the learned hourly averages and the learned smart-task profiles all ride in
  * it, and a user upgrading should keep every one of them.
  *
- * Import rules, per home:
- * - the store already holds rows → the blob is stale, the key is unset;
- * - the store is empty and the blob salvages to a plausible tracker → written
- *   whole, then the key is unset. The previous release wrote the blob under a
- *   looser guard, so it is read at the finest grain: a bad entry is dropped
- *   (logged), never the history around it;
- * - the read is suspect (a listed key answering empty or a value with no
- *   tracker in it, a throwing SDK, a store that cannot be read or written) →
- *   nothing is touched, and the next boot tries again. A listed key reading
- *   back malformed is a failed read, not an affirmative absence
- *   (`notes/persisted-settings-state.md`); one transient must never cost the
- *   history, and a blob that is truly garbage costs its bytes, never the key.
+ * The rules — suspect read, unusable value — are the store's
+ * (`lib/store/legacySettingsImport.ts`). What is the tracker's: the previous
+ * release wrote the blob under a looser guard than the store applies, so it
+ * is read at the finest grain (`salvagePowerTrackerState`): a bad entry is
+ * dropped and named, never the history around it. And the blob goes UNDER
+ * whatever the store already holds: a boot whose import deferred still
+ * hydrates an empty tracker and persists it at the first prune, and the next
+ * boot's import must keep both — the history from the blob, the hours since
+ * from the store.
  *
  * Delete this module once no install older than the release that introduced
  * the store can still be upgraded.
  */
 import { getLogger } from '../logging/logger';
+import type { SettingsPort } from '../ports/homeyRuntime';
+import {
+  importLegacySettingsKey, listLegacySettingsKeys, type LegacyImportResult,
+} from '../store/legacySettingsImport';
 import { salvagePowerTrackerState } from '../utils/appTypeGuards';
 import { normalizeError } from '../utils/errorUtils';
 import { MAIN_HOME_ID, POWER_TRACKER_STATE, type HomeId } from '../utils/settingsKeys';
-import type { SettingsPort } from '../ports/homeyRuntime';
+import { withHistoryUnder } from './homeTrackerPersistence';
 import type { TrackerStore } from './trackerStore';
 
 const importLogger = getLogger('power/tracker-legacy-import');
@@ -50,131 +51,57 @@ const legacyHomeId = (key: string): HomeId | null => {
   return key.startsWith(prefix) && key.length > prefix.length ? key.slice(prefix.length) : null;
 };
 
-type Outcome = 'imported' | 'retired' | 'deferred';
-
-const importOne = (
+/** Import one home's blob; `dropped` names what the salvage left out of an import. */
+const importHome = (
   settings: SettingsPort,
   store: TrackerStore,
   key: string,
   homeId: HomeId,
-): Outcome => {
-  let raw: unknown;
-  try {
-    raw = settings.get(key);
-  } catch (error) {
-    importLogger.warn({
-      event: 'legacy_power_tracker_import_deferred', homeId,
-      reason: 'read_threw',
-      err: normalizeError(error),
-    });
-    return 'deferred';
-  }
-  if (raw === undefined || raw === null) {
-    // A listed key that answers empty is the SDK omission the abandon-grace
-    // rule names: not evidence of anything, and never a reason to unset.
-    importLogger.warn({
-      event: 'legacy_power_tracker_import_deferred', homeId,
-      reason: 'listed_key_empty',
-    });
-    return 'deferred';
-  }
-  let existing;
-  try {
-    existing = store.load(homeId);
-  } catch (error) {
-    importLogger.warn({
-      event: 'legacy_power_tracker_import_deferred', homeId,
-      reason: 'store_unreadable',
-      err: normalizeError(error),
-    });
-    return 'deferred';
-  }
-  if (existing !== null) {
-    settings.unset(key);
-    importLogger.info({
-      event: 'legacy_power_tracker_key_retired', homeId,
-      reason: 'store_already_holds_home',
-    });
-    return 'retired';
-  }
-  return importFresh(settings, store, key, homeId, raw);
-};
-
-/** The store holds nothing for the home: write what the blob salvages to, then retire the key. */
-const importFresh = (
-  settings: SettingsPort,
-  store: TrackerStore,
-  key: string,
-  homeId: HomeId,
-  raw: unknown,
-): Outcome => {
-  const salvaged = salvagePowerTrackerState(raw);
-  if (salvaged === null) {
-    importLogger.warn({
-      event: 'legacy_power_tracker_import_deferred', homeId,
-      reason: 'blob_not_a_tracker',
-    });
-    return 'deferred';
-  }
-  try {
-    store.replace(homeId, salvaged.state);
-  } catch (error) {
-    importLogger.warn({
-      event: 'legacy_power_tracker_import_deferred', homeId,
-      reason: 'store_write_failed',
-      err: normalizeError(error),
-    });
-    return 'deferred';
-  }
-  settings.unset(key);
-  if (salvaged.dropped.length > 0) {
-    importLogger.error({ event: 'legacy_power_tracker_import_salvaged', homeId, dropped: salvaged.dropped });
-  }
-  importLogger.info({
-    event: 'legacy_power_tracker_imported', homeId,
-    buckets: Object.keys(salvaged.state.buckets ?? {}).length,
+): LegacyImportResult['outcome'] => {
+  let dropped: readonly string[] = [];
+  const outcome = importLegacySettingsKey(settings, key, {
+    holds: () => false,
+    adopt: (raw) => {
+      const salvaged = salvagePowerTrackerState(raw);
+      if (salvaged === null) return false;
+      const stored = store.load(homeId);
+      store.replace(homeId, stored === null ? salvaged.state : withHistoryUnder(stored, salvaged.state));
+      dropped = salvaged.dropped;
+      return true;
+    },
   });
-  return 'imported';
+  if (outcome.outcome === 'imported') {
+    if (dropped.length > 0) importLogger.error({ event: 'legacy_power_tracker_import_salvaged', homeId, dropped });
+    importLogger.info({ event: 'legacy_power_tracker_imported', homeId });
+  } else if (outcome.outcome === 'retired') {
+    importLogger.info({ event: 'legacy_power_tracker_key_retired', homeId, reason: outcome.reason });
+  } else if (outcome.error === undefined) {
+    importLogger.warn({ event: 'legacy_power_tracker_import_deferred', homeId, reason: outcome.reason });
+  } else {
+    importLogger.warn({
+      event: 'legacy_power_tracker_import_deferred', homeId, reason: outcome.reason, err: normalizeError(outcome.error),
+    });
+  }
+  return outcome.outcome;
 };
 
 /**
  * Import every legacy tracker blob the settings still carry into the store,
- * retiring each key as it goes. Best-effort at the SDK: a throwing `unset`
- * leaves a key the next boot retires again, and nothing reads it meanwhile.
+ * retiring each key as it goes.
  */
 export const importLegacyPowerTrackers = (
   settings: SettingsPort,
   store: TrackerStore,
 ): LegacyTrackerImport => {
   const result: LegacyTrackerImport = { imported: [], retired: [], deferred: [] };
-  let keys: string[];
-  try {
-    keys = settings.getKeys();
-  } catch (error) {
-    importLogger.warn({
-      event: 'legacy_power_tracker_import_deferred',
-      reason: 'key_list_threw',
-      err: normalizeError(error),
-    });
+  const keys = listLegacySettingsKeys(settings, (candidate) => legacyHomeId(candidate) !== null);
+  if (keys === null) {
+    importLogger.warn({ event: 'legacy_power_tracker_import_deferred', reason: 'key_list_threw' });
     return result;
   }
   for (const key of keys) {
-    const homeId = legacyHomeId(key);
-    if (homeId === null) continue;
-    let outcome: Outcome;
-    try {
-      outcome = importOne(settings, store, key, homeId);
-    } catch (error) {
-      // The unset itself threw: the store may hold the home now, and the next
-      // boot finds it there and retires the key.
-      importLogger.warn({
-        event: 'legacy_power_tracker_import_deferred', homeId,
-        reason: 'unset_threw',
-        err: normalizeError(error),
-      });
-      outcome = 'deferred';
-    }
-    result[outcome].push(homeId);
+    const homeId = legacyHomeId(key) ?? MAIN_HOME_ID;
+    result[importHome(settings, store, key, homeId)].push(homeId);
   }
   return result;
 };

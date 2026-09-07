@@ -206,9 +206,14 @@ export const MODE_TARGET_OWNERSHIP_STATE_INITIALIZED = 'mode_target_ownership_st
 export const POWER_CALIBRATION = 'power_calibration';
 export const POWER_CALIBRATION_INITIALIZED = 'power_calibration_initialized';
 // Weather-insight feature: config blob (enable flag + device ids, written by the
-// Settings UI master switch/pickers or via `homey api`) plus the persisted
-// usage/temperature history.
+// Settings UI master switch/pickers or via `homey api`).
 export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
+/**
+ * The LEGACY weather-history key: the usage/temperature history persisted as
+ * one settings blob before it moved to the userdata store. Read once, at
+ * boot, by the import that carries an upgraded install's history into the
+ * store and then unsets the key (`lib/weather/weatherHistoryStore.ts`).
+ */
 export const WEATHER_HISTORY_STATE = 'weather_history_state';
 // Learned PV-generation forecast: recorded generation history + concurrent irradiance.
 export const PV_FORECAST_STATE = 'pv_forecast_state';

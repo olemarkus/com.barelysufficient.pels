@@ -2,7 +2,8 @@ import type Homey from 'homey';
 import type { Logger as PinoLogger } from 'pino';
 import { MockSettings } from '../mocks/homey';
 import { createSettingsHandler, type SettingsHandlerDeps } from '../../lib/utils/settingsHandlers';
-import { createWeatherHistoryStore } from '../../setup/weatherHistoryStateAdapter';
+import { createWeatherHistoryStore, type WeatherHistoryStore } from '../../lib/weather/weatherHistoryStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { readMainMeterSelection } from '../../setup/mainMeterSettings';
 import { readConfiguredPowerSource } from '../../setup/powerSourceSettings';
 import { readWholeHomeMeterScopeSignature } from '../../setup/weatherMeterScopeSignature';
@@ -14,7 +15,6 @@ import {
   HOMEY_ENERGY_METER_DEVICE_ID,
   POWER_SOURCE,
   WEATHER_ADVISOR_SETTINGS,
-  WEATHER_HISTORY_STATE,
 } from '../../lib/utils/settingsKeys';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 
@@ -69,6 +69,7 @@ const learnedHistory = (overrides: Partial<WeatherHistoryState> = {}): WeatherHi
 
 type Harness = {
   homey: { settings: MockSettings };
+  store: WeatherHistoryStore;
   collector: WeatherCollector;
   handle: (key: string) => Promise<void>;
   weatherLogger: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn> };
@@ -100,7 +101,8 @@ const buildHarness = (
   if (options.omitHomesConfig !== true) {
     homey.settings.set(HOMES_CONFIG, options.homesConfig ?? areaConfig(AREA_METER));
   }
-  homey.settings.set(WEATHER_HISTORY_STATE, history);
+  const store = createWeatherHistoryStore(openUserdataDatabase(IN_MEMORY_DATABASE));
+  store.write(history);
   if (options.failHomesMarkerBackfill === true) {
     const originalSet = homey.settings.set.bind(homey.settings);
     vi.spyOn(homey.settings, 'set').mockImplementation((key: string, value: unknown) => {
@@ -110,7 +112,7 @@ const buildHarness = (
   }
   const weatherLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const collector = new WeatherCollector({
-    store: createWeatherHistoryStore(homeyCast),
+    store,
     readDevice: async () => ({
       id: 'out-1',
       name: 'Outdoor',
@@ -165,6 +167,7 @@ const buildHarness = (
   collector.start();
   return {
     homey,
+    store,
     collector,
     handle: (key: string) => handler(key),
     weatherLogger,
@@ -172,8 +175,8 @@ const buildHarness = (
   };
 };
 
-const persistedState = (homey: { settings: MockSettings }): WeatherHistoryState => (
-  homey.settings.get(WEATHER_HISTORY_STATE) as WeatherHistoryState
+const persistedState = (harness: { store: WeatherHistoryStore }): WeatherHistoryState => (
+  harness.store.read() as WeatherHistoryState
 );
 
 describe('weather meter-scope invalidation through the settings-change seam', () => {
@@ -205,7 +208,7 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     expect(memory.meterScopeSignature).toBe(STAMPED_SIGNATURE);
     expect(memory.records[0].kwhTotal).toBe(30);
     expect(harness.collector.isBackfillRunning()).toBe(false);
-    expect(persistedState(harness.homey).meterKwhBackfillDone).toBe(true);
+    expect(persistedState(harness).meterKwhBackfillDone).toBe(true);
     expect(harness.weatherLogger.info).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'weather_meter_scope_invalidated',
     }));
@@ -250,7 +253,7 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     expect(memory.meterKwhBackfillDone).toBe(true);
     expect(memory.latestFit).toBeDefined();
     expect(memory.records[0].kwhTotal).toBe(30);
-    expect(persistedState(harness.homey).records[0].kwhTotal).toBe(30);
+    expect(persistedState(harness).records[0].kwhTotal).toBe(30);
     expect(harness.weatherLogger.info).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'weather_meter_scope_invalidated',
     }));
@@ -283,7 +286,7 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     // day on or before the switch day before the underlying tracker is read.
     expect(memory.records[0].kwhTotal).toBeUndefined();
     expect(trackerRead).not.toHaveBeenCalled();
-    expect(persistedState(harness.homey).meterKwhBackfillDone).toBeUndefined();
+    expect(persistedState(harness).meterKwhBackfillDone).toBeUndefined();
     harness.stop();
   });
 
@@ -322,7 +325,7 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
       tempMeanC: -5,
       quality: { missingKwh: true },
     });
-    const persisted = persistedState(harness.homey);
+    const persisted = persistedState(harness);
     expect(persisted.meterKwhBackfillDone).toBeUndefined();
     expect(persisted.meterScopeSinceDateKey).toBe('2026-01-10');
     expect(persisted.records[0].kwhTotal).toBeUndefined();
@@ -524,8 +527,8 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     // Adoption is persisted on the start edge itself. If it waited for the
     // normal debounce, a crash could leave the old history unstamped and let a
     // later meter/source change be adopted without invalidating it.
-    expect(persistedState(harness.homey).meterScopeSignature).toBe(STAMPED_SIGNATURE);
-    expect(persistedState(harness.homey).meterKwhBackfillDone).toBe(true);
+    expect(persistedState(harness).meterScopeSignature).toBe(STAMPED_SIGNATURE);
+    expect(persistedState(harness).meterKwhBackfillDone).toBe(true);
     await vi.advanceTimersByTimeAsync(0);
 
     const memory = harness.collector.getHistoryStateSnapshot();

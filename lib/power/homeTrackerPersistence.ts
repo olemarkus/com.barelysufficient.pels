@@ -43,7 +43,7 @@ const TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
  * win, and every keyed family keeps the stored entries the run has not
  * touched.
  */
-const withHistoryUnder = (current: PowerTrackerState, stored: PowerTrackerState): PowerTrackerState => {
+export const withHistoryUnder = (current: PowerTrackerState, stored: PowerTrackerState): PowerTrackerState => {
   const merged: PowerTrackerState & Record<string, unknown> = { ...stored, ...current };
   for (const [key, storedValue] of Object.entries(stored)) {
     const currentValue: unknown = current[key as keyof PowerTrackerState];

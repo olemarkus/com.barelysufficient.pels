@@ -36,11 +36,13 @@ const PERSIST_RETRY_MS = 60 * 1000;
 /** Retry a transiently unavailable scope read before any new kWh evidence is admitted. */
 const METER_SCOPE_RETRY_MS = 60 * 1000;
 /**
- * Window after an absent/implausible settings read during which persisting is
- * refused. A transient SDK miss must not let an empty in-memory state
- * overwrite years of temperature history that cannot be reconstructed
- * (`notes/persisted-settings-state.md`). On a genuinely fresh install this
- * only delays the very first write — harmless.
+ * Window after an absent/implausible/unreadable store read during which
+ * persisting is refused. A transient read failure must not let an empty
+ * in-memory state overwrite years of temperature history that cannot be
+ * reconstructed (`notes/persisted-settings-state.md`). The store's `null` is
+ * an affirmative empty; only a throw (I/O) is the transient the window is
+ * for. On a genuinely fresh install this only delays the very first write —
+ * harmless.
  */
 const LOAD_GRACE_MS = 5 * 60 * 1000;
 const CURRENT_TEMP_STALENESS_MS = 2 * HOUR_MS;
@@ -68,6 +70,13 @@ export class WeatherCollector {
   private state: WeatherHistoryState = emptyWeatherHistoryState();
   private dirty = false;
   private loadedImplausibleAtMs?: number;
+  /**
+   * The last store read threw (I/O). Distinct from absent: an empty store is
+   * an affirmative answer the grace window may expire on, an unreadable one is
+   * not — nothing is written until a read succeeds, or the in-memory state
+   * diffed against rows it never saw would delete them.
+   */
+  private storeUnreadable = false;
   private lastTemperatureC?: number;
   /**
    * When the outdoor device was last read successfully. Staleness gates on
@@ -230,7 +239,7 @@ export class WeatherCollector {
   flush(): void {
     if (!this.dirty) return;
     if (this.loadedImplausibleAtMs !== undefined && !this.tryRecoverPersistedState()) {
-      if (this.isLoadGraceActive()) {
+      if (this.storeUnreadable || this.isLoadGraceActive()) {
         this.deps.logger.warn({ event: 'weather_history_flush_skipped_grace' });
         return;
       }
@@ -238,9 +247,23 @@ export class WeatherCollector {
     this.writeState();
   }
 
+  /** The store's answer, or `readable: false` when the read threw (I/O). */
+  private readStore(): { readable: true; raw: unknown } | { readable: false } {
+    try {
+      const raw = this.deps.store.read();
+      this.storeUnreadable = false;
+      return { readable: true, raw };
+    } catch (error) {
+      this.storeUnreadable = true;
+      this.deps.logger.warn({ event: 'weather_history_state_unreadable', err: normalizeError(error) });
+      return { readable: false };
+    }
+  }
+
   private loadState(): void {
-    const raw = this.deps.store.read();
-    const normalized = normalizeWeatherHistoryState(raw, this.getCurrentDateKey());
+    const read = this.readStore();
+    const raw = read.readable ? read.raw : undefined;
+    const normalized = read.readable ? normalizeWeatherHistoryState(raw, this.getCurrentDateKey()) : null;
     if (normalized) {
       this.state = normalized;
       this.loadedImplausibleAtMs = undefined;
@@ -248,6 +271,7 @@ export class WeatherCollector {
     }
     this.state = emptyWeatherHistoryState();
     this.loadedImplausibleAtMs = this.deps.getNowMs();
+    if (!read.readable) return;
     if (raw === undefined || raw === null) {
       this.deps.logger.info({ event: 'weather_history_state_absent' });
     } else {
@@ -388,14 +412,16 @@ export class WeatherCollector {
 
   private persistIfDue(): void {
     if (!this.dirty) return;
-    // While the boot read was absent/implausible, every persist attempt first
-    // re-reads the store: a transient SDK miss usually heals within seconds,
-    // and adopting the recovered blob (merging the few in-memory samples onto
-    // it) is the only way a miss does NOT end in overwriting irreplaceable
-    // history. Emptiness is accepted only after every retry across the grace
-    // window came back unreadable.
+    // While the boot read was absent/implausible/unreadable, every persist
+    // attempt first re-reads the store: a transient I/O failure usually heals
+    // within seconds, and adopting the recovered state (merging the few
+    // in-memory samples onto it) is the only way a miss does NOT end in
+    // overwriting irreplaceable history. Emptiness is accepted only after
+    // every retry across the grace window came back empty or unreadable.
     if (this.loadedImplausibleAtMs !== undefined && !this.tryRecoverPersistedState()) {
-      if (this.isLoadGraceActive()) {
+      // An unreadable store never expires the grace: emptiness is only ever
+      // accepted from a store that answered.
+      if (this.storeUnreadable || this.isLoadGraceActive()) {
         this.schedulePersist(PERSIST_RETRY_MS);
         return;
       }
@@ -406,7 +432,9 @@ export class WeatherCollector {
 
   /** Re-reads the store after a failed boot read; merges and clears the grace on success. */
   private tryRecoverPersistedState(): boolean {
-    const normalized = normalizeWeatherHistoryState(this.deps.store.read(), this.getCurrentDateKey());
+    const read = this.readStore();
+    if (!read.readable) return false;
+    const normalized = normalizeWeatherHistoryState(read.raw, this.getCurrentDateKey());
     if (!normalized) return false;
     this.state = mergeRecoveredState(normalized, this.state);
     this.loadedImplausibleAtMs = undefined;

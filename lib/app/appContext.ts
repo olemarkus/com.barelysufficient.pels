@@ -1,4 +1,5 @@
 import type { TrackerStore } from '../power/trackerStore';
+import type { WeatherHistoryStore } from '../weather/weatherHistoryStore';
 import type {
   ObservedStateOfChargeRead,
   ObservedTemperatureRead,
@@ -109,6 +110,8 @@ export type AppContext = {
   hydratePowerTracker: () => void;
   /** The power tracker's rows in the userdata database; throws before the boot step that opens it. */
   getTrackerStore: () => TrackerStore;
+  /** The weather history's rows in the userdata database; throws before the boot step that opens it. */
+  getWeatherHistoryStore: () => WeatherHistoryStore;
   /** Tell the settings UI a home's tracker persisted (the store produces no settings echo). */
   emitPowerTrackerPersisted: (homeId: string) => void;
   loadCapacitySettings: () => void;

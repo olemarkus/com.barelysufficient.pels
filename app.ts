@@ -324,9 +324,15 @@ class PelsApp extends PelsAppBase implements AppContext {
   private openUserdata(): void {
     this.userdataStores = this.openUserdataStores();
   }
-  public getTrackerStore(): AppUserdataStores['trackerStore'] {
+  private get openedUserdataStores(): AppUserdataStores {
     if (this.userdataStores === undefined) throw new Error('the userdata database is not open');
-    return this.userdataStores.trackerStore;
+    return this.userdataStores;
+  }
+  public getTrackerStore(): AppUserdataStores['trackerStore'] {
+    return this.openedUserdataStores.trackerStore;
+  }
+  public getWeatherHistoryStore(): AppUserdataStores['weatherHistoryStore'] {
+    return this.openedUserdataStores.weatherHistoryStore;
   }
   private closeUserdataDatabase(): void {
     this.userdataStores?.database.close();

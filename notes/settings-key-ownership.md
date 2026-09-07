@@ -100,14 +100,16 @@ with opposite cost profiles:
   learned data and caches: sad if lost, never mission-critical, always
   regenerable. A write costs the bytes written and core never sees it. The
   power tracker's hourly/daily series were the first to move
-  (`lib/power/trackerStore.ts`, one row per bucket, diffed writes); the plan
-  history, diagnostics, weather history, calibration and the price/tariff
-  caches follow.
+  (`lib/power/trackerStore.ts`, one row per bucket, diffed writes), the
+  weather history second (`lib/weather/weatherHistoryStore.ts`, one row per
+  day); the plan history, diagnostics, calibration and the price/tariff caches
+  follow in that order.
 
 Owner ruling 2026-09-07. A key that moves is imported ONCE, at boot, on the
 first boot that finds the store empty for the home and the legacy value
 plausible; the key is then unset and nothing reads it again. A suspect read
 leaves the key for the next boot — one transient must never cost a user's
-history (`lib/power/trackerLegacySettings.ts` is the pattern). The settings UI
+history (`lib/store/legacySettingsImport.ts` holds the rules; each family's
+import beside its store hands in what "holds" and "adopt" mean). The settings UI
 reaches history through `api.js` endpoints and the store's own realtime push,
 never through a settings key.

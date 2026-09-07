@@ -10,7 +10,6 @@ import { snapshotShowsBudgetExhausted } from '../../packages/shared-domain/src/d
 import { getDateKeyInTimeZone } from '../../lib/utils/dateUtils';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import { getLogger } from '../../lib/logging/logger';
-import { createWeatherHistoryStore } from '../weatherHistoryStateAdapter';
 import { readMainMeterSelection } from '../mainMeterSettings';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
 import { readWholeHomeMeterScopeSignature } from '../weatherMeterScopeSignature';
@@ -104,12 +103,12 @@ export function createWeatherCollector(
     AppContext,
     'homey' | 'powerTracker' | 'getNow' | 'getTimeZone' | 'capacitySettings'
     | 'deviceDiagnosticsService' | 'deferredObjectivePlanHistoryRecorder' | 'resolveManagedState'
-    | 'dailyBudgetService'
+    | 'dailyBudgetService' | 'getWeatherHistoryStore'
   >,
 ): WeatherCollector {
   const logger = getLogger('weather');
   return new WeatherCollector({
-    store: createWeatherHistoryStore(ctx.homey),
+    store: ctx.getWeatherHistoryStore(),
     readDevice: (deviceId) => getRawDevice(deviceId),
     fetchInsights: (path) => getRawFromHomeyApi(path),
     getDailyKwh: (dateKey) => resolveDailyKwh({

@@ -1,25 +1,28 @@
-import type Homey from 'homey';
 import type { Logger as PinoLogger } from 'pino';
 import { MockSettings } from '../mocks/homey';
-import { createWeatherHistoryStore } from '../../setup/weatherHistoryStateAdapter';
+import { createWeatherHistoryStore, type WeatherHistoryStore } from '../../lib/weather/weatherHistoryStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
 import { normalizeWeatherHistoryState } from '../../lib/weather/weatherHistory';
-import { WEATHER_ADVISOR_SETTINGS, WEATHER_HISTORY_STATE } from '../../lib/utils/settingsKeys';
+import { WEATHER_ADVISOR_SETTINGS } from '../../lib/utils/settingsKeys';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 
-// Integration seam: real settings adapter + real collector over the mock
-// Homey settings store — only the device transport and Insights reads are
-// stubbed at the outward seam.
+// Integration seam: the real store over an in-memory userdata database + the
+// real collector over the mock Homey settings — only the device transport
+// and Insights reads are stubbed at the outward seam.
 
 const OSLO = 'Europe/Oslo';
 const START_MS = Date.UTC(2026, 0, 10, 10, 0, 0);
 
+const freshStore = (): WeatherHistoryStore => createWeatherHistoryStore(openUserdataDatabase(IN_MEMORY_DATABASE));
+
 const buildCollector = (
   homey: { settings: MockSettings },
+  store: WeatherHistoryStore,
   meterScopeSignature?: string,
 ) => new WeatherCollector({
-  store: createWeatherHistoryStore(homey as unknown as Homey.App['homey']),
+  store,
   readDevice: async () => ({
     id: 'out-1',
     name: 'Outdoor',
@@ -40,7 +43,7 @@ const buildCollector = (
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as PinoLogger,
 });
 
-describe('weather history persistence through homey.settings', () => {
+describe('weather history persistence through the userdata store', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(START_MS);
@@ -54,38 +57,40 @@ describe('weather history persistence through homey.settings', () => {
     const homey = { settings: new MockSettings() };
     homey.settings.set(WEATHER_ADVISOR_SETTINGS, { enabled: true, outdoorDeviceId: 'out-1' });
 
-    const first = buildCollector(homey);
+    const store = freshStore();
+    const first = buildCollector(homey, store);
     first.start();
-    // A truly fresh install has no persisted blob, so the abandon-grace
+    // A truly fresh install has no persisted history, so the abandon-grace
     // window holds the first write back for five minutes; the first retry
     // after expiry lands it.
     await vi.advanceTimersByTimeAsync(331_000);
     first.stop();
 
-    const persisted = homey.settings.get(WEATHER_HISTORY_STATE) as WeatherHistoryState;
+    const persisted = store.read() as WeatherHistoryState;
     expect(persisted.accumulators?.['2026-01-10']).toMatchObject({ count: 1, minC: -3.5 });
     // Empty Insights history ⇒ the one-shot backfill marker stays unset.
     expect(persisted.backfilledDeviceId).toBeUndefined();
 
     // Same local hour after restart: the re-sample must dedupe against the
     // persisted accumulator instead of double-counting.
-    const second = buildCollector(homey);
+    const second = buildCollector(homey, store);
     second.start();
     await vi.advanceTimersByTimeAsync(0);
     second.stop();
-    const afterRestart = homey.settings.get(WEATHER_HISTORY_STATE) as WeatherHistoryState;
+    const afterRestart = store.read() as WeatherHistoryState;
     expect(afterRestart.accumulators?.['2026-01-10']?.count).toBe(1);
   });
 
   it('does nothing when the feature flag is absent', async () => {
     const homey = { settings: new MockSettings() };
-    const collector = buildCollector(homey);
+    const store = freshStore();
+    const collector = buildCollector(homey, store);
     collector.start();
     expect(vi.getTimerCount()).toBe(0);
     await vi.advanceTimersByTimeAsync(60_000);
     collector.stop();
     expect(vi.getTimerCount()).toBe(0);
-    expect(homey.settings.getKeys()).not.toContain(WEATHER_HISTORY_STATE);
+    expect(store.read()).toBeNull();
   });
 
   it('re-forgets recovered old-scope state before persisting it', async () => {
@@ -100,7 +105,8 @@ describe('weather history persistence through homey.settings', () => {
       tempSampleCount: 24,
       quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
     };
-    homey.settings.set(WEATHER_HISTORY_STATE, {
+    const store = freshStore();
+    store.write({
       records: [staleRecord],
       backfilledDeviceId: 'out-1',
       backfillVersion: 2,
@@ -110,18 +116,19 @@ describe('weather history persistence through homey.settings', () => {
       controlledBackfillVersion: 2,
       meterScopeSignature: 'source:homey_energy|main:meter-old',
     });
-    const originalGet = homey.settings.get.bind(homey.settings);
+    // The boot read fails once (I/O); the collector's grace re-read recovers it.
+    const originalRead = store.read.bind(store);
     let historyReads = 0;
-    vi.spyOn(homey.settings, 'get').mockImplementation((key: string) => {
-      if (key === WEATHER_HISTORY_STATE && historyReads++ === 0) return undefined;
-      return originalGet(key);
+    vi.spyOn(store, 'read').mockImplementation(() => {
+      if (historyReads++ === 0) throw new Error('disk busy');
+      return originalRead();
     });
 
-    const collector = buildCollector(homey, 'source:flow');
+    const collector = buildCollector(homey, store, 'source:flow');
     collector.start();
     await vi.advanceTimersByTimeAsync(30_000);
 
-    const persisted = originalGet(WEATHER_HISTORY_STATE) as WeatherHistoryState;
+    const persisted = originalRead() as WeatherHistoryState;
     expect(persisted.meterKwhBackfillDone).toBeUndefined();
     expect(persisted.meterKwhDeviceId).toBeUndefined();
     expect(persisted.kwhPurgeVersion).toBeUndefined();
@@ -133,6 +140,39 @@ describe('weather history persistence through homey.settings', () => {
       tempMeanC: -2,
       quality: { missingKwh: true },
     });
+    collector.stop();
+  });
+
+  // An unreadable store is not an empty one: the grace window may expire on
+  // an affirmative empty, never on a read that keeps throwing — the empty
+  // in-memory state diffed against rows it never saw would delete them.
+  it('never writes while the store stays unreadable past the grace window, and recovers once it answers', async () => {
+    const homey = { settings: new MockSettings() };
+    homey.settings.set(WEATHER_ADVISOR_SETTINGS, { enabled: true, outdoorDeviceId: 'out-1' });
+    const store = freshStore();
+    store.write({ records: [{
+      dateKey: '2025-03-01', tempMeanC: -2, tempMinC: -6, tempMaxC: 1, tempSampleCount: 24,
+      quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: false },
+    }] });
+    const originalRead = store.read.bind(store);
+    let unreadable = true;
+    vi.spyOn(store, 'read').mockImplementation(() => {
+      if (unreadable) throw new Error('disk busy');
+      return originalRead();
+    });
+    const write = vi.spyOn(store, 'write');
+
+    const collector = buildCollector(homey, store);
+    collector.start();
+    await vi.advanceTimersByTimeAsync(20 * 60_000);
+    expect(write).not.toHaveBeenCalled();
+
+    unreadable = false;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(write).toHaveBeenCalled();
+    const persisted = originalRead() as WeatherHistoryState;
+    expect(persisted.records.map((record) => record.dateKey)).toContain('2025-03-01');
+    expect(persisted.accumulators?.['2026-01-10']).toBeDefined();
     collector.stop();
   });
 
@@ -157,11 +197,9 @@ describe('weather history persistence through homey.settings', () => {
       }],
       budgetPressure: { kwh: 13.9, throughDateKey: '2026-07-31' },
     };
-    const homey = { settings: new MockSettings() };
-    homey.settings.set(WEATHER_HISTORY_STATE, persisted);
-    const normalized = normalizeWeatherHistoryState(
-      createWeatherHistoryStore(homey as unknown as Homey.App['homey']).read(),
-    );
+    const store = freshStore();
+    store.write(persisted as unknown as WeatherHistoryState);
+    const normalized = normalizeWeatherHistoryState(store.read());
     expect(normalized?.budgetPressure).toEqual({ kwh: 13.9, throughDateKey: '2026-07-31' });
     expect(normalized?.records[0].appliedBudgetKwh).toBe(44);
     expect(normalized?.records[0].suppression?.blockedByHeadroomMs).toBe(6 * 60 * 60 * 1000);
@@ -171,11 +209,9 @@ describe('weather history persistence through homey.settings', () => {
     // It is added straight onto a persisted budget, so a malformed value must
     // restart the loop at zero rather than propagate.
     const roundTrip = (budgetPressure: unknown) => {
-      const homey = { settings: new MockSettings() };
-      homey.settings.set(WEATHER_HISTORY_STATE, { records: [], budgetPressure });
-      return normalizeWeatherHistoryState(
-        createWeatherHistoryStore(homey as unknown as Homey.App['homey']).read(),
-      )?.budgetPressure;
+      const store = freshStore();
+      store.write({ records: [], budgetPressure } as unknown as WeatherHistoryState);
+      return normalizeWeatherHistoryState(store.read())?.budgetPressure;
     };
     expect(roundTrip({ kwh: 5 })).toBeUndefined();
     expect(roundTrip({ throughDateKey: 'd' })).toBeUndefined();

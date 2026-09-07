@@ -36,12 +36,20 @@ describe('importLegacyPowerTrackers', () => {
     expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: [], deferred: [] });
   });
 
-  it('retires a blob the store has already outgrown without importing it', () => {
+  // A boot whose import deferred still hydrates an empty tracker and persists
+  // it at the first prune; the next boot's import keeps both: the blob's
+  // history under the store's newer hours and latch.
+  it('imports the blob under what the store already holds, keeping both', () => {
     const { settings, store } = rig();
-    store.save('main', { ...HISTORY, lastPowerW: 1_200, lastTimestamp: 2_000 });
+    store.save('main', { lastPowerW: 1_200, lastTimestamp: 2_000, buckets: { '2026-03-03T11:00:00.000Z': 0.4 } });
     settings.set('power_tracker_state', HISTORY);
-    expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: ['main'], deferred: [] });
-    expect(store.load('main')?.lastPowerW).toBe(1_200);
+    expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: ['main'], retired: [], deferred: [] });
+    expect(store.load('main')).toEqual({
+      ...HISTORY,
+      lastPowerW: 1_200,
+      lastTimestamp: 2_000,
+      buckets: { ...HISTORY.buckets, '2026-03-03T11:00:00.000Z': 0.4 },
+    });
     expect(settings.get('power_tracker_state')).toBeNull();
   });
 
@@ -112,12 +120,16 @@ describe('importLegacyPowerTrackers', () => {
     settings.set('power_tracker_state', HISTORY);
     const getKeys = vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('sdk down'); });
     expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: [], deferred: [] });
+    expect(settings.get('power_tracker_state')).toEqual(HISTORY);
     getKeys.mockRestore();
     const unset = vi.spyOn(settings, 'unset').mockImplementation(() => { throw new Error('sdk down'); });
     expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: [], deferred: ['main'] });
     expect(store.load('main')).toEqual(HISTORY);
     unset.mockRestore();
-    expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: ['main'], deferred: [] });
+    // The next boot imports again — under the rows the first boot left, which
+    // are the same history — and this time the key goes.
+    expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: ['main'], retired: [], deferred: [] });
+    expect(store.load('main')).toEqual(HISTORY);
     expect(settings.get('power_tracker_state')).toBeNull();
   });
 });

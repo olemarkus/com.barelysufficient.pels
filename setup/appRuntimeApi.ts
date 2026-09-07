@@ -1,5 +1,6 @@
 import { emitPowerTrackerPersistedForApp } from './settingsUiAppRuntime';
 import { importLegacyPowerTrackers } from '../lib/power/trackerLegacySettings';
+import { importLegacyWeatherHistory } from '../lib/weather/weatherHistoryStore';
 import { openUserdataStores, type AppUserdataStores } from './userdataStores';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import type Homey from 'homey';
@@ -344,6 +345,7 @@ abstract class AppRuntimeApi extends Base {
     runBootMigrations({ homey: this.homey });
     // The store opened at the first boot step; the trackers hydrate from it later.
     importLegacyPowerTrackers(this.homey.settings, this.context.getTrackerStore());
+    importLegacyWeatherHistory(this.homey.settings, this.context.getWeatherHistoryStore());
   }
   public areFlowBackedCardsAvailable(): boolean { return this.flowBacked.areFlowBackedCardsAvailable(); }
   public loadCapacitySettings = (): void => {

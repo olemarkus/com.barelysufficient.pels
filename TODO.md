@@ -1445,18 +1445,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 - [ ] **P1 — the remaining history keys still ride `homey.settings`, and every write of any key
       pays for all of them.** The SDK's `ManagerSettings.set` ships the ENTIRE settings object to
       core on every write of any key (`notes/settings-key-ownership.md` § "Which store"). The power
-      tracker moved to the userdata store (`lib/store/userdataDatabase.ts`,
-      `lib/power/trackerStore.ts`); these have not, and together they are still ~700 kB of the
-      blob: `weather_history_state` (190 kB, `lib/weather/`), `deferred_objective_plan_history` +
+      tracker (`lib/power/trackerStore.ts`) and the weather history
+      (`lib/weather/weatherHistoryStore.ts`) moved to the userdata store
+      (`lib/store/userdataDatabase.ts`); these have not, and together they are still ~530 kB of the
+      blob: `deferred_objective_plan_history` +
       `_v5` (280 kB) and `deferred_objective_active_plans` (28 kB, `setup/appInit/deferredRecorders.ts`),
       `device_diagnostics_v1` (82 kB, `setup/deviceDiagnosticsStateAdapter.ts`), the tariff/price
       caches `nettleie_data`, `combined_prices`, `electricity_prices` (`setup/priceDataAdapter.ts`,
       `setup/priceCombinedPricesAdapter.ts`), `device_action_log_by_device`,
       `target_devices_snapshot` / `device_plan_snapshot`, `power_calibration`, `device_power_peaks`
       and `learned_thermostat_deadband_c`. Change: one repository per family beside its domain,
-      taking the open database (the tracker store is the pattern: rows or one JSON row per event,
-      diffed writes, the legacy key imported once at boot and unset, a suspect read deferring to
-      the next boot, and the settings UI served through `api.js`).
+      taking the open database (the tracker and weather stores are the pattern: rows or one JSON
+      row per event, diffed writes, the legacy key imported once at boot through
+      `lib/store/legacySettingsImport.ts` and unset, and the settings UI served through `api.js`).
       Then `pels_status` (0.6 kB, ~50 writes/h, `lib/plan/planStatusWriter.ts`) stops being a
       settings write: an `api.js` read plus the realtime push the UI already gets. Done when
       `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production Homey is
