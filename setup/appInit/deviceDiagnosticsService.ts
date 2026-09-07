@@ -1,10 +1,10 @@
 import { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
-import { createDeviceDiagnosticsStateStore } from '../deviceDiagnosticsStateAdapter';
+import { createDeviceDiagnosticsStateStoreForApp } from './deviceDiagnosticsStateStore';
 import type { AppContext } from '../../lib/app/appContext';
 
 export const createDeviceDiagnosticsService = (ctx: AppContext): DeviceDiagnosticsService => (
   new DeviceDiagnosticsService({
-    diagnosticsStateStore: createDeviceDiagnosticsStateStore(ctx.homey),
+    diagnosticsStateStore: createDeviceDiagnosticsStateStoreForApp(ctx),
     getTimeZone: () => ctx.getTimeZone(),
     isDebugEnabled: () => ctx.debugLoggingTopics.has('diagnostics'),
     structuredLog: ctx.getStructuredLogger('diagnostics'),

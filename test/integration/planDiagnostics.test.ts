@@ -14,10 +14,9 @@ import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
-  DEVICE_DIAGNOSTICS_STATE_KEY,
   DeviceDiagnosticsService,
 } from '../../lib/diagnostics/deviceDiagnosticsService';
-import { createDeviceDiagnosticsStateStore } from '../../setup/deviceDiagnosticsStateAdapter';
+import { createInMemoryDeviceDiagnosticsStateStore } from '../helpers/inMemoryDeviceDiagnosticsStateStore';
 import { getDateKeyInTimeZone, getDateKeyStartMs } from '../../lib/utils/dateUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
@@ -1076,15 +1075,8 @@ describe('daily-bound headroom starvation flows through to the overview budget b
   });
 
   it('resolves to a stable budget bucket that offers a rescue (no cycle-to-cycle flip)', () => {
-    const store = new Map<string, unknown>();
-    const settings = {
-      get: (key: string) => store.get(key),
-      set: (key: string, value: unknown) => {
-        store.set(key, value);
-      },
-    };
     const service = new DeviceDiagnosticsService({
-      diagnosticsStateStore: createDeviceDiagnosticsStateStore({ settings } as never),
+      diagnosticsStateStore: createInMemoryDeviceDiagnosticsStateStore(),
       getTimeZone: () => 'Europe/Oslo',
       isDebugEnabled: () => false,
     });
@@ -1110,7 +1102,6 @@ describe('daily-bound headroom starvation flows through to the overview budget b
     expect([...seenCountingCauses]).toEqual(['daily_budget']);
     expect(service.getOverviewStarvation('heater-1')).toMatchObject({ isStarved: true });
 
-    expect(DEVICE_DIAGNOSTICS_STATE_KEY).toBe('device_diagnostics_v1');
     service.destroy();
   });
 
@@ -1151,15 +1142,8 @@ describe('daily-bound headroom starvation flows through to the overview budget b
   });
 
   it('holds a stable counting cause while the plan reason oscillates dailyBudget <-> insufficient_headroom', () => {
-    const store = new Map<string, unknown>();
-    const settings = {
-      get: (key: string) => store.get(key),
-      set: (key: string, value: unknown) => {
-        store.set(key, value);
-      },
-    };
     const service = new DeviceDiagnosticsService({
-      diagnosticsStateStore: createDeviceDiagnosticsStateStore({ settings } as never),
+      diagnosticsStateStore: createInMemoryDeviceDiagnosticsStateStore(),
       getTimeZone: () => 'Europe/Oslo',
       isDebugEnabled: () => false,
     });
@@ -1205,15 +1189,8 @@ describe('a device held under a restore cooldown accumulates held-back time', ()
   });
 
   const createService = () => {
-    const store = new Map<string, unknown>();
-    const settings = {
-      get: (key: string) => store.get(key),
-      set: (key: string, value: unknown) => {
-        store.set(key, value);
-      },
-    };
     return new DeviceDiagnosticsService({
-      diagnosticsStateStore: createDeviceDiagnosticsStateStore({ settings } as never),
+      diagnosticsStateStore: createInMemoryDeviceDiagnosticsStateStore(),
       getTimeZone: () => 'Europe/Oslo',
       isDebugEnabled: () => false,
     });
@@ -1305,10 +1282,8 @@ describe('turn_off shed reaches the persisted demand counters', () => {
   );
 
   const createService = () => {
-    const store = new Map<string, unknown>();
-    const settings = { get: (key: string) => store.get(key), set: (key: string, value: unknown) => store.set(key, value) };
     return new DeviceDiagnosticsService({
-      diagnosticsStateStore: createDeviceDiagnosticsStateStore({ settings } as never),
+      diagnosticsStateStore: createInMemoryDeviceDiagnosticsStateStore(),
       getTimeZone: () => TZ,
       isDebugEnabled: () => false,
       structuredLog: { info: () => {}, error: () => {} } as never,

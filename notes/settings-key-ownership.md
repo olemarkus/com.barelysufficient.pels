@@ -102,8 +102,10 @@ with opposite cost profiles:
   power tracker's hourly/daily series were the first to move
   (`lib/power/trackerStore.ts`, one row per bucket, diffed writes), the
   weather history second (`lib/weather/weatherHistoryStore.ts`, one row per
-  day); the plan history, diagnostics, calibration and the price/tariff caches
-  follow in that order.
+  day), the smart-task plan history (`lib/objectives/deferredObjectives/planHistoryStore.ts`,
+  one row per run) and the device diagnostics
+  (`lib/diagnostics/deviceDiagnosticsStateStore.ts`, one row per device-day)
+  after them; calibration and the price/tariff caches follow.
 
 Owner ruling 2026-09-07. A key that moves is imported ONCE, at boot, on the
 first boot that finds the store empty for the home and the legacy value

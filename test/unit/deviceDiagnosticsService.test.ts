@@ -1,34 +1,16 @@
-import type { Mock } from 'vitest';
-import {
-  DEVICE_DIAGNOSTICS_STATE_KEY,
-  DeviceDiagnosticsService,
-} from '../../lib/diagnostics/deviceDiagnosticsService';
+import { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { DeviceDiagnosticsPlanObservation } from '../../lib/diagnostics/deviceDiagnosticsService';
-import { createDeviceDiagnosticsStateStore } from '../../setup/deviceDiagnosticsStateAdapter';
+import { createInMemoryDeviceDiagnosticsStateStore } from '../helpers/inMemoryDeviceDiagnosticsStateStore';
 import { getDateKeyStartMs } from '../../lib/utils/dateUtils';
-
-type MockSettings = {
-  get: Mock;
-  set: Mock;
-};
 
 const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean } = {}) => {
   const { initialState, isDebugEnabled = true } = params;
-  const store = new Map<string, unknown>();
-  if (initialState !== undefined) {
-    store.set(DEVICE_DIAGNOSTICS_STATE_KEY, initialState);
-  }
-  const settings: MockSettings = {
-    get: vi.fn((key: string) => store.get(key)),
-    set: vi.fn((key: string, value: unknown) => {
-      store.set(key, value);
-    }),
-  };
+  const stateStore = createInMemoryDeviceDiagnosticsStateStore(initialState);
   const debugStructured = vi.fn();
   const structuredInfo = vi.fn();
   const structuredError = vi.fn();
   const service = new DeviceDiagnosticsService({
-    diagnosticsStateStore: createDeviceDiagnosticsStateStore({ settings } as never),
+    diagnosticsStateStore: stateStore,
     getTimeZone: () => 'Europe/Oslo',
     isDebugEnabled: () => isDebugEnabled,
     structuredLog: { info: structuredInfo, error: structuredError } as never,
@@ -36,8 +18,7 @@ const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean }
   });
   return {
     service,
-    store,
-    settings,
+    stateStore,
     debugStructured,
     structuredInfo,
     structuredError,
@@ -1297,8 +1278,7 @@ describe('DeviceDiagnosticsService', () => {
       },
     });
 
-    expect(versionMismatch.settings.set).toHaveBeenCalledWith(
-      DEVICE_DIAGNOSTICS_STATE_KEY,
+    expect(versionMismatch.stateStore.write).toHaveBeenCalledWith(
       expect.objectContaining({ version: 2 }),
     );
     expect(versionMismatch.debugStructured).toHaveBeenCalledWith(
@@ -1367,8 +1347,7 @@ describe('DeviceDiagnosticsService', () => {
   it('repairs invalid primitive persisted payloads', () => {
     const invalid = createDeps({ initialState: 'broken-payload' });
 
-    expect(invalid.settings.set).toHaveBeenCalledWith(
-      DEVICE_DIAGNOSTICS_STATE_KEY,
+    expect(invalid.stateStore.write).toHaveBeenCalledWith(
       expect.objectContaining({ version: 2, devicesById: {} }),
     );
     expect(invalid.debugStructured).toHaveBeenCalledWith(
@@ -1407,7 +1386,7 @@ describe('DeviceDiagnosticsService', () => {
   });
 
   it('throttles repeated diagnostics persistence writes within the flush window', () => {
-    const { service, settings } = createDeps();
+    const { service, stateStore } = createDeps();
     const start = Date.now();
 
     service.recordControlEvent({
@@ -1416,7 +1395,7 @@ describe('DeviceDiagnosticsService', () => {
       deviceId: 'heater-1',
     });
     vi.runOnlyPendingTimers();
-    expect(settings.set).toHaveBeenCalledTimes(1);
+    expect(stateStore.write).toHaveBeenCalledTimes(1);
 
     const secondTs = start + (60 * 1000);
     vi.setSystemTime(new Date(secondTs));
@@ -1427,11 +1406,11 @@ describe('DeviceDiagnosticsService', () => {
     });
 
     vi.advanceTimersByTime((4 * 60 * 1000) - 1);
-    expect(settings.set).toHaveBeenCalledTimes(1);
+    expect(stateStore.write).toHaveBeenCalledTimes(1);
 
     vi.setSystemTime(new Date(start + (5 * 60 * 1000)));
     vi.advanceTimersByTime(1);
-    expect(settings.set).toHaveBeenCalledTimes(2);
+    expect(stateStore.write).toHaveBeenCalledTimes(2);
   });
 
   it('unrefs throttled flush timers so diagnostics persistence does not block process exit', () => {

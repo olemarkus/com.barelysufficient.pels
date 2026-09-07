@@ -1441,11 +1441,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       pays for all of them.** The SDK's `ManagerSettings.set` ships the ENTIRE settings object to
       core on every write of any key (`notes/settings-key-ownership.md` § "Which store"). The power
       tracker (`lib/power/trackerStore.ts`), the weather history
-      (`lib/weather/weatherHistoryStore.ts`) and the smart-task plan history
-      (`lib/objectives/deferredObjectives/planHistoryStore.ts`) moved to the userdata store
-      (`lib/store/userdataDatabase.ts`); these have not, and together they are still ~250 kB of the
-      blob: `deferred_objective_active_plans` (28 kB, `setup/appInit/deferredRecorders.ts`),
-      `device_diagnostics_v1` (82 kB, `setup/deviceDiagnosticsStateAdapter.ts`), the tariff/price
+      (`lib/weather/weatherHistoryStore.ts`), the smart-task plan history
+      (`lib/objectives/deferredObjectives/planHistoryStore.ts`) and the device diagnostics
+      (`lib/diagnostics/deviceDiagnosticsStateStore.ts`) moved to the userdata store
+      (`lib/store/userdataDatabase.ts`); these have not, and together they are still ~170 kB of the
+      blob: `deferred_objective_active_plans` (28 kB, `setup/appInit/deferredRecorders.ts`), the tariff/price
       caches `nettleie_data`, `combined_prices`, `electricity_prices` (`setup/priceDataAdapter.ts`,
       `setup/priceCombinedPricesAdapter.ts`), `device_action_log_by_device`,
       `target_devices_snapshot` / `device_plan_snapshot`, `power_calibration`, `device_power_peaks`

@@ -43,11 +43,6 @@ export type {
   DeviceDiagnosticsStarvationCountingCause,
   DeviceDiagnosticsStarvationPauseReason,
 } from '../../packages/contracts/src/deviceDiagnosticsTypes';
-export {
-  DEVICE_DIAGNOSTICS_STATE_KEY,
-  DEVICE_DIAGNOSTICS_WINDOW_DAYS,
-  DEVICE_DIAGNOSTICS_PERSIST_VERSION,
-} from './deviceDiagnosticsPersistence';
 
 const moduleLogger = getLogger('diagnostics/device');
 // Hoisted once so `emitDebug` allocates no per-call closure on the (test-only;
