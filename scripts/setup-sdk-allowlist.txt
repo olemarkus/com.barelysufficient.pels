@@ -1,0 +1,46 @@
+# setup/ files that import from 'homey'. The wiring layer does not touch the
+# SDK: it hands the owning module a structural port from
+# lib/ports/homeyRuntime.ts and that module does the read
+# (setup/AGENTS.md § "No domain logic").
+#
+# A plain file list — importing the SDK is binary, so there is nothing to
+# budget. A file that stops importing it must be removed from this list.
+# Regenerate with `node scripts/check-setup-boundaries.mjs --seed`, never by
+# hand. When the last line goes, DELETE THIS FILE.
+#
+# Seeded at 34 files.
+
+setup/appBootMigrations.ts
+setup/appDebugHelpers.ts
+setup/appDeviceSupport.ts
+setup/appHostApi.ts
+setup/appInit/wireDeviceTransport.ts
+setup/appManagedDeviceMigration.ts
+setup/appPowerTracker.ts
+setup/appRuntimeApi.ts
+setup/appServiceWiring.ts
+setup/appSettingsHelpers.ts
+setup/backgroundTasksController.ts
+setup/dailyBudgetSettingsAdapter.ts
+setup/dailyBudgetStateAdapter.ts
+setup/deviceDiagnosticsStateAdapter.ts
+setup/flowBackedCardAccess.ts
+setup/homeMembership.ts
+setup/homeMeterOwnership.ts
+setup/homeRegistryAdapter.ts
+setup/homeRuntime/homeModeCatalog.ts
+setup/homeRuntime/homeModeOwnershipStore.ts
+setup/multiHomeActivation.ts
+setup/priceLevelSettings.ts
+setup/settingsRepository.ts
+setup/settingsUiApi.ts
+setup/settingsUiAppRuntime.ts
+setup/settingsUiHomeScope.ts
+setup/settingsUiHomesApi.ts
+setup/settingsUiSmartTaskApi.ts
+setup/settingsUiStarvationRescueApi.ts
+setup/soleMeterAdoption.ts
+setup/steppedProfileRepair.ts
+setup/targetPowerReachabilitySettings.ts
+setup/temperatureShedFloorDefaults.ts
+setup/weatherMeterScopeSignature.ts

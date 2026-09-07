@@ -1442,6 +1442,21 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Architecture and tooling debt
 
+- [ ] **P2 — four `setup/` files crossed the peer boundary while the guard sat unmerged, and the
+      seed banked them.** `npm run setup:boundaries` seeds its ratchet from the tree it merges
+      against, so the counts it now enforces (56 cross-peer, 34 SDK) include four files that were
+      cleaner when the rule was written against `4d5a6488f`: `setup/userdataStores.ts` is new and
+      composes `power` + `weather`; `setup/settingsUiHomesApi.ts` gained a second peer (`home` +
+      `power`); `setup/appRuntimeApi.ts` went 5 → 6 peers (added `weather`); `setup/settingsUiApi.ts`
+      went 3 → 4 (added `objectives`). None is a rule violation the guard let through — it was not
+      running — but each is a concept nobody has named, and seeding froze them as permanent budget.
+      Change: give each its name. `userdataStores.ts` opens one database and hands out two
+      repositories, so the pair belongs behind a single store-opening seam in `lib/store/` that
+      returns them; the other three are read-model composition and want a projection module in a
+      neutral contract package rather than another peer import in the wiring layer. Done when
+      `scripts/setup-peer-allowlist.txt` records 52 or fewer cross-peer files and none of these four
+      appears in it. Source: re-seeding this guard at merge, 2026-09-07.
+
 - [ ] **P1 — the remaining history keys still ride `homey.settings`, and every write of any key
       pays for all of them.** The SDK's `ManagerSettings.set` ships the ENTIRE settings object to
       core on every write of any key (`notes/settings-key-ownership.md` § "Which store"). The power

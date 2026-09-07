@@ -20,6 +20,7 @@ await runParallel([
   { label: 'binary:seam', command: 'npm', args: ['run', 'binary:seam'] },
   { label: 'executor:settle-seam', command: 'npm', args: ['run', 'executor:settle-seam'] },
   { label: 'setup:stateless', command: 'npm', args: ['run', 'setup:stateless'] },
+  { label: 'setup:boundaries', command: 'npm', args: ['run', 'setup:boundaries'] },
   { label: 'params:no-bundles', command: 'npm', args: ['run', 'params:no-bundles'] },
   { label: 'logging:no-legacy', command: 'npm', args: ['run', 'logging:no-legacy'] },
   { label: 'executor:plan-edge', command: 'npm', args: ['run', 'executor:plan-edge'] },

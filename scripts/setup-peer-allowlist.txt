@@ -1,0 +1,67 @@
+# setup/ files that import two or more domain peers, and therefore compose
+# domains rather than wire them (setup/AGENTS.md § "No domain logic").
+#
+# Format: "<path> <peer count>". The count is the budget and may only
+# SHRINK. A count that goes up fails the guard; a count left stale after a
+# migration fails too, so the list cannot rot into a permanent exemption.
+# Regenerate with `node scripts/check-setup-boundaries.mjs --seed`, never by
+# hand. When the last line goes, DELETE THIS FILE.
+#
+# Seeded at 56 files.
+
+setup/appDebugHelpers.ts 2  # device, plan
+setup/appDeviceControlFeedback.ts 2  # executor, plan
+setup/appDeviceControlHelpers.ts 4  # device, executor, observer, plan
+setup/appDeviceControlSteppedState.ts 2  # device, plan
+setup/appHostApi.ts 6  # dailyBudget, device, objectives, power, price, weather
+setup/appInit/calibrationViews.ts 3  # device, objectives, observer
+setup/appInit/composedPlanEngine.ts 3  # executor, observer, plan
+setup/appInit/createGenerationPollSource.ts 3  # device, observer, power
+setup/appInit/createHomeyEnergyPollSource.ts 2  # device, power
+setup/appInit/createMainCapacityGuard.ts 2  # plan, power
+setup/appInit/createPlanEngine.ts 5  # actuator, executor, observer, plan, power
+setup/appInit/createPlanService.ts 3  # observer, plan, power
+setup/appInit/createSteppedStores.ts 2  # executor, observer
+setup/appInit/createWeatherCollector.ts 3  # device, objectives, weather
+setup/appInit/deferredRecorders.ts 2  # objectives, price
+setup/appInit/objectivePriceHorizon.ts 2  # objectives, price
+setup/appInit/planEngineWiring.ts 7  # actuator, dailyBudget, executor, observer, plan, power, price
+setup/appInit/registerAppFlowCards.ts 2  # objectives, power
+setup/appInit/residualKwForPlanDevice.ts 3  # device, observer, plan
+setup/appInit/startBackgroundCollectors.ts 2  # solar, weather
+setup/appInit/startPostStartupBackgroundTasks.ts 2  # solar, weather
+setup/appInit/toPlanDevice.ts 3  # device, observer, plan
+setup/appInit/weatherAdvisorReadoutAssembler.ts 2  # device, weather
+setup/appInit/wireDeviceTransport.ts 2  # device, observer
+setup/appInit/wireHomeRuntimeRegistry.ts 2  # device, home
+setup/appNativeWiring.ts 2  # device, plan
+setup/appPowerTracker.ts 3  # dailyBudget, device, power
+setup/appRuntimeApi.ts 6  # dailyBudget, device, observer, plan, power, weather
+setup/appServiceWiring.ts 5  # device, observer, plan, solar, weather
+setup/appSettingsHelpers.ts 4  # device, plan, power, price
+setup/appSnapshotHelpers.ts 3  # device, plan, power
+setup/appTargetPowerReachability.ts 3  # device, executor, observer
+setup/appTargetPowerReachabilityWiring.ts 2  # device, plan
+setup/backgroundTasksController.ts 3  # objectives, price, weather
+setup/homeMainMeterAuthority.ts 2  # home, power
+setup/homeMembership.ts 2  # home, observer
+setup/homeRuntime/createBundleCapacityGuard.ts 2  # plan, power
+setup/homeRuntime/createHomeCapacityBundle.ts 4  # home, plan, power, price
+setup/homeRuntime/createHomePowerPipeline.ts 3  # observer, plan, power
+setup/homeRuntime/homeCapacityBundleApi.ts 3  # home, plan, power
+setup/homeRuntime/homeCapacityBundleReadiness.ts 2  # plan, power
+setup/homeRuntime/homeRuntimeRegistry.ts 2  # home, power
+setup/homeRuntime/homeRuntimeRegistryLogs.ts 2  # home, power
+setup/homeRuntime/homeScope.ts 6  # dailyBudget, objectives, observer, plan, power, price
+setup/homeRuntime/homeTrackerConfigSafety.ts 2  # home, power
+setup/homeyEnergySolarForecastAdapter.ts 2  # device, solar
+setup/homeyLocationAdapter.ts 2  # device, solar
+setup/lifecycleFallbackDeviceProjection.ts 2  # device, executor
+setup/lifecycleFallbackRequest.ts 3  # executor, observer, plan
+setup/powerSampleFreshnessEscalation.ts 2  # plan, power
+setup/powerSamplePipeline.ts 4  # device, objectives, plan, power
+setup/settingsUiApi.ts 4  # device, objectives, observer, power
+setup/settingsUiHomesApi.ts 2  # home, power
+setup/soleMeterAdoption.ts 2  # device, power
+setup/soleMeterAdoptionEligibility.ts 2  # home, power
+setup/userdataStores.ts 2  # power, weather
