@@ -7,9 +7,10 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 
 /* -------------------------------------------------------------------------- *
  * PlanStatusWriter persist cadence. Pins the per-home posture-flip guarantee:
- * a change in the effective (membership-gated) dry-run must force a status
- * persist even inside the volatile throttle window, while the main home (which
- * passes `dryRunEffective: undefined`) keeps its exact throttle cadence.
+ * a change in the dry-run this home's planner gates on must force a status
+ * persist even inside the volatile throttle window, while a posture that has
+ * not moved leaves the throttle cadence exactly as it was. Every home supplies
+ * a posture, so there is no home-kind case to pin any more.
  * -------------------------------------------------------------------------- */
 
 const VOLATILE_WRITE_THROTTLE_MS = 60 * 1000;
@@ -54,12 +55,12 @@ type Harness = {
   computeSpy: ReturnType<typeof vi.fn>;
   /** Every `price_level_changed` fire, in order. */
   fired: TriggerRecord[];
-  setDryRun: (value: boolean | undefined) => void;
+  setDryRun: (value: boolean) => void;
   setLastPowerUpdate: (value: number | null) => void;
   setPriceLevel: (value: PriceLevel) => void;
 };
 
-const makeWriter = (initialDryRun: boolean | undefined, mainHome: boolean): Harness => {
+const makeWriter = (initialDryRun: boolean): Harness => {
   let dryRun = initialDryRun;
   let lastPowerUpdate = 1_745_000_000_000;
   let priceLevel = PriceLevel.UNKNOWN;
@@ -71,8 +72,8 @@ const makeWriter = (initialDryRun: boolean | undefined, mainHome: boolean): Harn
     writePelsStatus: writeSpy,
     getCurrentHourPriceLevel: () => priceLevel,
     getLastPowerUpdate: computeSpy,
-    // The main home wires no getEffectiveDryRun; sub-homes supply one.
-    getEffectiveDryRun: mainHome ? undefined : () => dryRun as boolean,
+    // Every home supplies its own posture; there is no home-kind branch left.
+    getCapacityDryRun: () => dryRun,
   });
   return {
     writer,
@@ -97,7 +98,7 @@ describe('PlanStatusWriter posture-flip persist', () => {
   });
 
   it('forces a persist when the effective dry-run flips inside the throttle window', () => {
-    const h = makeWriter(true, false);
+    const h = makeWriter(true);
 
     nowSpy.mockReturnValue(BASE_MS);
     h.writer.update(plan(3), CHANGES); // initial persist
@@ -119,7 +120,7 @@ describe('PlanStatusWriter posture-flip persist', () => {
     // block stops rebuilding, so a write swallowed by the throttle would leave
     // the widget and the Insights capabilities asserting a measured headroom
     // for the whole outage. Both directions bust the throttle (main home too).
-    const h = makeWriter(undefined, true);
+    const h = makeWriter(false);
 
     nowSpy.mockReturnValue(BASE_MS);
     h.writer.update(plan(3), CHANGES);
@@ -138,8 +139,8 @@ describe('PlanStatusWriter posture-flip persist', () => {
     expect(h.writeSpy.mock.calls[2][0]).toMatchObject({ powerKnown: true, headroomKw: 3 });
   });
 
-  it('still throttles a non-posture volatile change inside the window (sub-home)', () => {
-    const h = makeWriter(false, false);
+  it('still throttles a non-posture volatile change inside the window', () => {
+    const h = makeWriter(false);
 
     nowSpy.mockReturnValue(BASE_MS);
     h.writer.update(plan(3), CHANGES); // initial persist
@@ -153,20 +154,19 @@ describe('PlanStatusWriter posture-flip persist', () => {
     expect(h.writeSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves the main-home cadence untouched (posture-flip branch is inert)', () => {
-    const h = makeWriter(undefined, true);
+  it('publishes posture and meter total for every home, and holds the cadence while the posture is stable', () => {
+    const h = makeWriter(false);
 
     nowSpy.mockReturnValue(BASE_MS);
     h.writer.update(plan(3), CHANGES); // initial persist
     expect(h.writeSpy).toHaveBeenCalledTimes(1);
-    // The persisted main-home blob gains neither sub-home field (byte-identity):
-    // both serialize away because the values are undefined.
+    // Both fields used to be sub-home-only, which made their presence a
+    // statement about home kind rather than about this home's posture.
     const persisted = JSON.parse(JSON.stringify(h.writeSpy.mock.calls[0][0]));
-    expect(Object.prototype.hasOwnProperty.call(persisted, 'dryRunEffective')).toBe(false);
-    expect(Object.prototype.hasOwnProperty.call(persisted, 'totalKw')).toBe(false);
+    expect(persisted).toMatchObject({ dryRunEffective: false, totalKw: 3 });
 
-    // A volatile change inside the window is throttled, exactly as before —
-    // the undefined effective dry-run never trips the posture-flip force.
+    // A volatile change inside the window is still throttled: the posture did
+    // not move, so the force-write branch stays inert.
     h.setLastPowerUpdate(1_000_000);
     nowSpy.mockReturnValue(BASE_MS + 5000);
     h.writer.update(plan(3), CHANGES);
@@ -191,7 +191,7 @@ describe('PlanStatusWriter dead-computation skip', () => {
   afterEach(() => { nowSpy.mockRestore(); });
 
   it('does not build the status on a throttled cycle that cannot write', () => {
-    const h = makeWriter(undefined, true);
+    const h = makeWriter(false);
 
     h.writer.update(plan(3), CHANGES); // initial persist: must compute
     expect(h.writeSpy).toHaveBeenCalledTimes(1);
@@ -214,7 +214,7 @@ describe('PlanStatusWriter dead-computation skip', () => {
   });
 
   it('still builds inside the window when the action signature changed', () => {
-    const h = makeWriter(undefined, true);
+    const h = makeWriter(false);
 
     h.writer.update(plan(3), CHANGES);
     expect(h.writeSpy).toHaveBeenCalledTimes(1);
@@ -237,7 +237,7 @@ describe('PlanStatusWriter dead-computation skip', () => {
   // fired there is not fired late, it is never fired. Here the whole cheap hour
   // begins and ends between two rebuilds an hour apart.
   it('fires price_level_changed on a cycle the dead-work skip throws away', () => {
-    const h = makeWriter(undefined, true);
+    const h = makeWriter(false);
 
     h.writer.update(plan(3), CHANGES); // initial persist, level UNKNOWN
     expect(h.fired).toHaveLength(0);
@@ -256,7 +256,7 @@ describe('PlanStatusWriter dead-computation skip', () => {
   });
 
   it('does not re-fire price_level_changed while the level holds across skipped cycles', () => {
-    const h = makeWriter(undefined, true);
+    const h = makeWriter(false);
 
     h.setPriceLevel(PriceLevel.EXPENSIVE);
     h.writer.update(plan(3), CHANGES);
@@ -271,7 +271,7 @@ describe('PlanStatusWriter dead-computation skip', () => {
   });
 
   it('still builds inside the window when the dry-run posture flips (sub-home)', () => {
-    const h = makeWriter(true, false);
+    const h = makeWriter(true);
 
     h.writer.update(plan(3), CHANGES);
     expect(h.writeSpy).toHaveBeenCalledTimes(1);

@@ -66,6 +66,7 @@ describe('pels status limit reason', () => {
       plan,
       priceLevel: PriceLevel.NORMAL,
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+      dryRunEffective: false,
     });
 
     expect(status.limitReason).toBe(expected);
@@ -90,6 +91,7 @@ describe('pels status limit reason', () => {
       plan,
       priceLevel: PriceLevel.NORMAL,
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+      dryRunEffective: false,
     });
 
     // The held device still counts in devicesOff even though the reason is a
@@ -115,6 +117,7 @@ describe('pels status limit reason', () => {
       plan,
       priceLevel: PriceLevel.NORMAL,
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+      dryRunEffective: false,
     });
 
     expect(status.limitReason).toBe('none');
@@ -157,6 +160,7 @@ describe('pels status limit reason', () => {
       plan,
       priceLevel: PriceLevel.NORMAL,
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+      dryRunEffective: false,
     });
 
     expect(status.limitReason).toBe('none');
@@ -182,6 +186,7 @@ describe('pels status limit reason', () => {
       plan,
       priceLevel: PriceLevel.NORMAL,
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+      dryRunEffective: false,
     });
 
     expect(status.capacityShortfall).toBe(true);
@@ -208,6 +213,7 @@ describe('pels status limit reason', () => {
       plan,
       priceLevel,
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+      dryRunEffective: false,
     });
     expect(status.priceLevel).toBe(priceLevel);
   });
@@ -226,6 +232,7 @@ describe('pels status projected-over-hard-cap flag', () => {
     plan: buildPlanWithMeta(buildPlanMeta(meta)),
     priceLevel: PriceLevel.NORMAL,
     lastPowerUpdate: Date.UTC(2026, 6, 5, 12, 0, 0),
+    dryRunEffective: false,
   });
 
   it('flags the trajectory when projected hour energy lands past the cap', () => {
@@ -279,50 +286,83 @@ describe('pels status projected-over-hard-cap flag', () => {
   });
 });
 
-describe('pels status effective dry-run posture (R7b, per-home Limits card)', () => {
+describe('pels status effective dry-run posture (per-home Limits card)', () => {
   const emptyPlan: DevicePlan = {
     meta: buildPlanMeta({ totalKw: 0, softLimitKw: 6, headroomKw: 1 }),
     devices: [],
   };
-  const statusWith = (dryRunEffective?: boolean) => buildPelsStatus({
+  const statusWith = (dryRunEffective: boolean) => buildPelsStatus({
     plan: emptyPlan,
     priceLevel: PriceLevel.NORMAL,
     lastPowerUpdate: 1_745_000_000_000,
     dryRunEffective,
   });
 
-  it('emits the effective dry-run when a sub-home bundle supplies it', () => {
+  it('emits the posture every home supplies, whichever way it reads', () => {
     expect(statusWith(true).dryRunEffective).toBe(true);
     expect(statusWith(false).dryRunEffective).toBe(false);
   });
 
-  it('omits the field for the main home (undefined ⇒ JSON-dropped ⇒ byte-identical blob)', () => {
-    const status = statusWith(undefined);
-    expect(status.dryRunEffective).toBeUndefined();
-    // The persisted blob must not gain a key for the main home.
-    expect(Object.prototype.hasOwnProperty.call(JSON.parse(JSON.stringify(status)), 'dryRunEffective')).toBe(false);
+  it('always writes the key: a home without a posture is not expressible', () => {
+    const persisted = JSON.parse(JSON.stringify(statusWith(false)));
+    expect(Object.prototype.hasOwnProperty.call(persisted, 'dryRunEffective')).toBe(true);
   });
 });
 
-describe('pels status whole-area total (per-home Limits "Power now")', () => {
+describe('pels status hard-cap trajectory (measured figures only)', () => {
+  // `projectedOverHardCap` is a projection FROM the reading. On the silent-meter
+  // fail-closed pass `meta.totalKw` is the carried pre-outage kW, and the
+  // silence block then stops rebuilding — so a verdict published there would sit
+  // frozen in the blob for the whole outage, beside a payload that withholds
+  // every figure it was derived from.
+  const overCapMeta = { totalKw: 9.5, usedKWh: 9, minutesRemaining: 30, hardCapLimitKw: 10 };
+  const statusFor = (meta: DevicePlan['meta']) => buildPelsStatus({
+    plan: { meta, devices: [] },
+    priceLevel: PriceLevel.NORMAL,
+    lastPowerUpdate: 1_745_000_000_000,
+    dryRunEffective: false,
+  });
+
+  it('publishes the verdict on a measured plan', () => {
+    expect(statusFor(buildPlanMeta(overCapMeta)).projectedOverHardCap).toBe(true);
+  });
+
+  it('withholds it on an unmeasured plan, with the reading it was derived from', () => {
+    const status = statusFor(buildUnmeasuredPlanMeta(overCapMeta));
+    expect(status.projectedOverHardCap).toBeUndefined();
+    expect(status.totalKw).toBeUndefined();
+    expect(status.powerKnown).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(
+      JSON.parse(JSON.stringify(status)),
+      'projectedOverHardCap',
+    )).toBe(false);
+  });
+});
+
+describe('pels status meter total (Limits "Power now")', () => {
   const drawPlan: DevicePlan = {
     meta: buildPlanMeta({ totalKw: 5.2, softLimitKw: 6, headroomKw: 0.8 }),
     devices: [],
   };
-  const statusWith = (dryRunEffective?: boolean) => buildPelsStatus({
+  const statusWith = (dryRunEffective: boolean) => buildPelsStatus({
     plan: drawPlan,
     priceLevel: PriceLevel.NORMAL,
     lastPowerUpdate: 1_745_000_000_000,
     dryRunEffective,
   });
 
-  it('emits the meter total for a sub-home so the card renders Power now without per-device attribution', () => {
+  it('emits the meter total so a card renders Power now without per-device attribution', () => {
     expect(statusWith(true).totalKw).toBe(5.2);
     expect(statusWith(false).totalKw).toBe(5.2);
   });
 
-  it('omits the total for the main home (undefined dry-run ⇒ JSON-dropped ⇒ byte-identical blob)', () => {
-    const status = statusWith(undefined);
+  it('omits the total only when the plan was unmeasured — measurement, not home kind', () => {
+    const status = buildPelsStatus({
+      plan: { meta: buildUnmeasuredPlanMeta({ totalKw: 5.2, softLimitKw: 6 }), devices: [] },
+      priceLevel: PriceLevel.NORMAL,
+      lastPowerUpdate: 1_745_000_000_000,
+      dryRunEffective: false,
+    });
     expect(status.totalKw).toBeUndefined();
     expect(Object.prototype.hasOwnProperty.call(JSON.parse(JSON.stringify(status)), 'totalKw')).toBe(false);
   });

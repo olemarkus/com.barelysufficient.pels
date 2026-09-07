@@ -123,7 +123,7 @@ export class PlanService {
       writePelsStatus: deps.writePelsStatus,
       getCurrentHourPriceLevel: deps.getCurrentHourPriceLevel,
       getLastPowerUpdate: deps.getLastPowerUpdate,
-      getEffectiveDryRun: deps.getStatusEffectiveDryRun,
+      getCapacityDryRun: deps.getCapacityDryRun,
       structuredLog: deps.loggers?.structuredLog,
     });
     this.changeTracker = new PlanChangeTracker({

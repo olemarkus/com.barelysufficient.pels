@@ -21,8 +21,8 @@ import type {
 type PelsStatusComputation = {
   status: PelsStatus;
   statusJson: string;
-  /** The effective (membership-gated) dry-run this write reflects; undefined for the main home. */
-  dryRunEffective: boolean | undefined;
+  /** The effective (membership-gated) dry-run this write reflects. */
+  dryRunEffective: boolean;
   /** Whether the plan behind this write was measured (`powerKnown` on the blob). */
   powerIsMeasured: boolean;
 };
@@ -40,12 +40,12 @@ type PlanStatusWriterDeps = {
   /** The tracker's stamp; a status is computed only behind the measurement gate, so it exists. */
   getLastPowerUpdate: () => number;
   /**
-   * When set, the effective (membership-gated) dry-run this bundle actuates on,
-   * written into `pels_status` as `dryRunEffective` for the per-home Limits
-   * card's honest posture. Sub-homes only — the main home omits it so its
-   * persisted blob stays byte-identical.
+   * The effective (membership-gated) dry-run this home actuates on, written into
+   * `pels_status` as `dryRunEffective` for its Limits card's honest posture. The
+   * same read the planner and the service gate on — there is no second notion of
+   * "the dry-run, for status purposes".
    */
-  getEffectiveDryRun?: () => boolean;
+  getCapacityDryRun: () => boolean;
   structuredLog?: PinoLogger;
 };
 
@@ -58,9 +58,10 @@ export class PlanStatusWriter {
    * The effective dry-run captured at the last persist. A change vs the current
    * value is a material posture flip (control activated from an already-planned
    * dry-run shed, or the membership gate opening) that must force a status write
-   * even inside the volatile throttle window — otherwise the per-home Limits card
-   * lags (still "Simulating" after control is live, or vice versa). Undefined for
-   * the main home, so its cadence is untouched (undefined never differs).
+   * even inside the volatile throttle window — otherwise the home's Limits card
+   * lags (still "Simulating" after control is live, or vice versa). Undefined
+   * until the first write, and inert: both readers return before the comparison
+   * while `lastPelsStatusWriteMs === 0`, so the `undefined` arm decides nothing.
    */
   private lastPelsStatusWrittenDryRunEffective: boolean | undefined = undefined;
   /**
@@ -134,7 +135,7 @@ export class PlanStatusWriter {
   private computationIsDeadWork(actionChanged: boolean, powerIsMeasured: boolean, now: number): boolean {
     if (this.lastPelsStatusWriteMs === 0) return false;
     if (actionChanged) return false;
-    if (this.deps.getEffectiveDryRun?.() !== this.lastPelsStatusWrittenDryRunEffective) return false;
+    if (this.deps.getCapacityDryRun() !== this.lastPelsStatusWrittenDryRunEffective) return false;
     if (powerIsMeasured !== this.lastPelsStatusWrittenPowerIsMeasured) return false;
     return now - this.lastPelsStatusWriteMs <= VOLATILE_WRITE_THROTTLE_MS;
   }
@@ -145,7 +146,7 @@ export class PlanStatusWriter {
     changes?: StatusPlanChanges,
   ): PelsStatusComputation {
     const lastPowerUpdate = normalizeLastPowerUpdate(this.deps.getLastPowerUpdate(), STATUS_POWER_BUCKET_MS);
-    const dryRunEffective = this.deps.getEffectiveDryRun?.();
+    const dryRunEffective = this.deps.getCapacityDryRun();
     const inputKey = buildPelsStatusInputKey({
       changes,
       priceLevel,
@@ -174,7 +175,7 @@ export class PlanStatusWriter {
     plan: DevicePlan;
     priceLevel: PriceLevel;
     lastPowerUpdate: number;
-    dryRunEffective?: boolean;
+    dryRunEffective: boolean;
   }): PelsStatus {
     const { inputKey, plan, priceLevel, lastPowerUpdate, dryRunEffective } = params;
     if (this.lastPelsStatusInputKey === inputKey && this.lastPelsStatusResult) {
@@ -196,7 +197,7 @@ export class PlanStatusWriter {
     status: PelsStatus,
     statusJson: string,
     actionChanged: boolean,
-    dryRunEffective: boolean | undefined,
+    dryRunEffective: boolean,
     powerIsMeasured: boolean,
     now: number,
   ): number {
@@ -208,7 +209,7 @@ export class PlanStatusWriter {
   private resolveWriteReason(
     statusJson: string,
     actionChanged: boolean,
-    dryRunEffective: boolean | undefined,
+    dryRunEffective: boolean,
     powerIsMeasured: boolean,
     now: number,
   ): PelsStatusWriteReason | null {
@@ -221,8 +222,8 @@ export class PlanStatusWriter {
     if (powerIsMeasured !== this.lastPelsStatusWrittenPowerIsMeasured) return 'posture_flip';
     // A posture flip (effective dry-run changed since the last persist) is
     // material even without an action-signature change — force the write so the
-    // per-home Limits card reflects live/simulating promptly, busting the
-    // volatile throttle. No-op for the main home (undefined === undefined).
+    // home's Limits card reflects live/simulating promptly, busting the
+    // volatile throttle.
     if (dryRunEffective !== this.lastPelsStatusWrittenDryRunEffective) return 'posture_flip';
     if (now - this.lastPelsStatusWriteMs > VOLATILE_WRITE_THROTTLE_MS) return 'throttle';
 
@@ -233,7 +234,7 @@ export class PlanStatusWriter {
   private writeStatus(
     status: PelsStatus,
     statusJson: string,
-    dryRunEffective: boolean | undefined,
+    dryRunEffective: boolean,
     powerIsMeasured: boolean,
     reason: PelsStatusWriteReason,
     now: number,

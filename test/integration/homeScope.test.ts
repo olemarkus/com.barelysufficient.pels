@@ -26,6 +26,7 @@ describe('buildMainHomeScope', () => {
     devicesOn: 0,
     devicesOff: 0,
     lastPowerUpdate: 1_745_000_000_000,
+    dryRunEffective: false,
   };
 
   it('writes the persisted signals to the unsuffixed main-home keys', () => {

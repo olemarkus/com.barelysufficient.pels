@@ -129,10 +129,18 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   `PlanEngine`/`PlanService` assembled through a **`HomeScope`** closure bundle.
 - Bundles are strictly **capacity-only** by construction — the sub-home
   `HomeScope` hard-wires `getDailyBudgetSnapshot: () => null`,
-  `getPriceOptimizationEnabled: () => false`, and a no-op objective decoration,
-  and writes a suffixed `pels_status:<id>`. `buildMainHomeScope` reproduces
-  today's live-context closures exactly (the identity proof is the untouched
-  existing suite).
+  `getPriceOptimizationEnabled: () => false`, and
+  `decorateWithoutDeferredObjectives` (the identity decoration, named rather
+  than omitted), and writes a suffixed `pels_status:<id>`.
+- **Neither home is the default the other falls back to.** `HomeScope` has no
+  optional members and the shared factories take no home-kind branch: every
+  home names its own tracker, capacity scalars, guard, rebuild state, plan
+  engine, decoration seam and actuation posture. `buildMainHomeScope` used to
+  reproduce the pre-multi-home closures byte-for-byte, and the difference showed
+  up as "omitted" meaning "the main home" — a sub-home that left a member off
+  got main's ambient `AppContext` state instead of a typed error. Main's
+  `pels_status` gained `dryRunEffective` and `totalKw` when that stopped being
+  true; both are additive, and the posture is the same read the planner gates on.
 - **Per-meter sample routing:** one `fetchLivePowerReport` per poll fans out via
   `extractLiveMeterPowerWatts(report, meterId)` — each sub-home's own meter item
   (with a real device id; `totalCumulative` is their sum) into that bundle's

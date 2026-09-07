@@ -14,7 +14,7 @@ export type PelsStatus = {
    * (`powerKnown: false`): the blob carries no headroom then rather than a
    * stand-in number an automation could compare against (owner ruling
    * 2026-09-02). The same goes for the other measured figures below. Omission
-   * is how this blob already spells absence (`totalKw`, `dryRunEffective`);
+   * is how this blob spells "not measured" (`totalKw` included);
    * `powerNowKw` is the one field whose `null` spelling predates that and stays.
    */
   headroomKw?: number;
@@ -43,7 +43,15 @@ export type PelsStatus = {
    * PERSISTED shape classify that at their own adapter.)
    */
   lastPowerUpdate: number;
-  dryRunEffective?: boolean;
+  /**
+   * The dry-run the writing home's PLANNER gates on. A meter area's folds in its
+   * membership and source-epoch gates, so it is genuinely effective; Main's is
+   * the persisted intent, because Main's separate actuation fence
+   * (`isMainActuationFenced`) is applied at the actuator seam and not to the
+   * planner. So Main can read "active" here inside its boot fence window. The
+   * name is the one the field has published since R7b and is kept.
+   */
+  dryRunEffective: boolean;
 };
 
 export function buildPelsStatus(params: {
@@ -58,35 +66,20 @@ export function buildPelsStatus(params: {
   priceLevel: PriceLevel;
   lastPowerUpdate: number;
   /**
-   * The EFFECTIVE (membership-gated) dry-run this home actuates on —
-   * `getCapacityDryRun()`, which folds in the R7b boot-window zone-tree gate.
-   * Written so the per-home Limits card shows honest posture (persisted-live but
-   * no committed zone tree still reads Simulating). Sub-homes only: the main
-   * home passes `undefined`, so the field is JSON-omitted and its persisted
-   * `pels_status` blob stays byte-identical.
+   * The dry-run this home's planner gates on — `getCapacityDryRun()`, which for
+   * a meter area folds in the R7b boot-window zone-tree gate (persisted-live but
+   * no committed zone tree still reads Simulating on its Limits card) and for
+   * Main is the persisted intent, per the field doc above. EVERY home has one
+   * and writes it. The main home used to pass `undefined` to keep its blob
+   * byte-identical, which made one optional boolean carry two orthogonal
+   * meanings — actuation posture AND home kind — and left main's own posture
+   * flips invisible to the write-forcing that exists for that transition.
    */
-  dryRunEffective?: boolean;
+  dryRunEffective: boolean;
 }): PelsStatus {
   const { plan, priceLevel, lastPowerUpdate, dryRunEffective } = params;
   const summary = summarizePlanForStatus(plan);
   const limitReason = resolveLimitReason(plan, summary);
-  // Sub-home status blobs (the only ones with a defined `dryRunEffective`) also
-  // carry the whole-area meter total so the per-home Limits card can render
-  // "Power now" from the live total even when per-device attribution
-  // (controlledKw/uncontrolledKw) is absent. The main home passes
-  // `dryRunEffective: undefined`, so the field is JSON-omitted and its persisted
-  // blob stays byte-identical.
-  //
-  // This overloads one optional boolean with two orthogonal meanings — actuation
-  // posture AND home kind. The first time the main home writes its own posture
-  // (reasonable enough; main has one too), `totalKw` starts appearing in main's
-  // persisted blob, changing a payload external Flow automations read. If you
-  // give main a posture, pass the area-total decision explicitly at the same
-  // time rather than leaving it inferred from `dryRunEffective !== undefined`.
-  const areaTotalKw = dryRunEffective !== undefined && typeof plan.meta.totalKw === 'number'
-    ? plan.meta.totalKw
-    : undefined;
-
   return {
     ...resolveMeasuredStatusFields(plan.meta),
     hourlyLimitKw: plan.meta.softLimitKw,
@@ -96,13 +89,10 @@ export function buildPelsStatus(params: {
     limitReason,
     capacityShortfall: plan.meta.capacityShortfall ?? false,
     shortfallBudgetThresholdKw: plan.meta.shortfallBudgetThresholdKw,
-    projectedOverHardCap: resolveProjectedOverHardCap(plan),
-    totalKw: areaTotalKw,
     priceLevel,
     devicesOn: summary.devicesOn,
     devicesOff: summary.devicesOff,
     lastPowerUpdate,
-    // Undefined for the main home ⇒ JSON-omitted ⇒ its blob is byte-identical.
     dryRunEffective,
   };
 }
@@ -111,7 +101,7 @@ export function buildPelsStatus(params: {
  * The status blob's measured figures, from the meta's measured variant — the
  * one branch on the signal this writer makes. An unmeasured plan contributes
  * nothing here, so the persisted blob spells "no measurement" by JSON omission
- * (its existing convention — `totalKw`, `dryRunEffective`) and never by a
+ * (its existing convention — `totalKw` too) and never by a
  * number; `powerNowKw` keeps its published `null` spelling.
  *
  * `hardCapHeadroomKw`: no PELS surface consumes it any more (the headroom
@@ -123,7 +113,8 @@ function resolveMeasuredStatusFields(
 ): Pick<
   PelsStatus,
   | 'powerNowKw' | 'powerKnown' | 'headroomKw' | 'shortfallBudgetHeadroomKw'
-  | 'hardCapHeadroomKw' | 'controlledKw' | 'uncontrolledKw'
+  | 'hardCapHeadroomKw' | 'controlledKw' | 'uncontrolledKw' | 'totalKw'
+  | 'projectedOverHardCap'
 > {
   // `powerNowKw` is the blob's "measured draw or null" and `powerKnown` its
   // backward-compatible twin; `pels_status` is a persisted payload external
@@ -132,6 +123,25 @@ function resolveMeasuredStatusFields(
   return {
     powerNowKw: meta.totalKw,
     powerKnown: true,
+    // Same figure as `powerNowKw`, under the name the blob has published for a
+    // meter area since R7b. No PELS surface reads it — the per-home Limits card
+    // reads `powerNowKw` — and it is kept for the same reason as
+    // `hardCapHeadroomKw` below: `pels_status` is a persisted payload external
+    // automations may read, so a field it has shipped is not withdrawn on the
+    // strength of having no reader in this repo. What DID change is that it used
+    // to be resolved out in `buildPelsStatus` from `dryRunEffective !== undefined`
+    // — i.e. from home kind — which both overloaded that boolean and published
+    // the figure on a meter area's UNMEASURED plan.
+    totalKw: meta.totalKw,
+    // A projection FROM the reading, so it stands or falls with the reading. On
+    // the silent-meter fail-closed pass `meta.totalKw` is the carried pre-outage
+    // kW, and publishing a cap-trajectory verdict derived from it — beside a blob
+    // that withholds every figure it was derived from — is the same stand-in an
+    // automation could compare against that the omission ruling (2026-09-02)
+    // keeps out, wearing a boolean instead of a number. The silence block stops
+    // rebuilding after that pass, so such a verdict would sit frozen in the blob
+    // for the whole outage with nothing scheduled to correct it.
+    projectedOverHardCap: resolveProjectedOverHardCap(meta),
     headroomKw: meta.headroomKw,
     shortfallBudgetHeadroomKw: meta.shortfallBudgetHeadroomKw,
     hardCapHeadroomKw: meta.hardCapHeadroomKw,
@@ -150,8 +160,8 @@ function resolveMeasuredStatusFields(
 // the headroom widget's danger state so it reconciles with the Overview
 // hero's chip, which computes the same projection and predicate live via the
 // shared helpers.
-function resolveProjectedOverHardCap(plan: DevicePlan): boolean {
-  const { totalKw, usedKWh, minutesRemaining, hardCapLimitKw } = plan.meta;
+function resolveProjectedOverHardCap(meta: PlanMeta): boolean {
+  const { totalKw, usedKWh, minutesRemaining, hardCapLimitKw } = meta;
   if (typeof totalKw !== 'number' || typeof usedKWh !== 'number'
     || typeof minutesRemaining !== 'number' || typeof hardCapLimitKw !== 'number') {
     return false;

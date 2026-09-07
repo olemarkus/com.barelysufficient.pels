@@ -142,10 +142,7 @@ export const normalizeLastPowerUpdate = (
   return Math.floor(lastPowerUpdate / safeBucketMs) * safeBucketMs;
 };
 
-const resolveDryRunKey = (dryRunEffective: boolean | undefined): string => {
-  if (dryRunEffective === undefined) return 'na';
-  return dryRunEffective ? 'sim' : 'live';
-};
+const resolveDryRunKey = (dryRunEffective: boolean): string => (dryRunEffective ? 'sim' : 'live');
 
 export const buildPelsStatusInputKey = (params: {
   changes?: PlanStatusInputChanges;
@@ -155,7 +152,7 @@ export const buildPelsStatusInputKey = (params: {
   priceLevel: PriceLevel;
   lastPowerUpdate: number;
   powerIsMeasured: boolean;
-  dryRunEffective?: boolean;
+  dryRunEffective: boolean;
 }): string => {
   const {
     changes, priceLevel, lastPowerUpdate, powerIsMeasured, dryRunEffective,

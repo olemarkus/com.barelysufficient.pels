@@ -10,7 +10,6 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { HomeScope } from '../homeRuntime/homeScope';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
-import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { PowerMeasurementGate } from '../../lib/power/powerMeasurementGate';
 
 // How long a home may sit with no meter reading before the gate warns. Matches
@@ -68,12 +67,12 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
       }
       return map;
     },
+    // Gates the rebuild outcome AND publishes this home's posture into
+    // `pels_status:<id>` (unsuffixed for main) so its Limits card reads
+    // honestly: persisted-live but no committed zone tree still shows
+    // Simulating. One read for both — the status used to take a second,
+    // sub-home-only dep for it.
     getCapacityDryRun: scope.getCapacityDryRun,
-    // Sub-homes publish their EFFECTIVE (membership-gated) dry-run into
-    // `pels_status:<id>` so the per-home Limits card shows honest posture. The
-    // main home omits it (undefined ⇒ JSON-dropped) — its `pels_status` blob
-    // stays byte-identical to origin/main.
-    getStatusEffectiveDryRun: scope.homeId === MAIN_HOME_ID ? undefined : scope.getCapacityDryRun,
     loggers: {
       structuredLog: ctx.getStructuredLogger('plan'),
       debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),

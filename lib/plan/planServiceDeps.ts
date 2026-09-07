@@ -97,15 +97,14 @@ export type PlanServiceDeps = {
   // (the planner no longer carries `controlModel`). Built once per serialize from
   /** Confirmed producer profile for UI; excludes any planner-only probe rung. */
   getSteppedLoadProfileById?: () => Map<string, SteppedLoadProfile>;
-  getCapacityDryRun: () => boolean;
   /**
-   * When set, the effective (membership-gated) dry-run this bundle actuates on,
-   * written into `pels_status` as `dryRunEffective` so the per-home Limits card
-   * shows honest posture (R7b: persisted-live but no committed zone tree still
-   * reads Simulating). Sub-homes only — the main home omits it so its persisted
-   * `pels_status` blob stays byte-identical.
+   * The EFFECTIVE (membership-gated) dry-run this home actuates on. Drives the
+   * rebuild outcome AND the `dryRunEffective` the status blob publishes — there
+   * used to be a second dep for the latter, supplied for meter areas and left
+   * off for the main home, which is how the blob ended up encoding home kind in
+   * a field's presence.
    */
-  getStatusEffectiveDryRun?: () => boolean;
+  getCapacityDryRun: () => boolean;
   // The current hour's RESOLVED price level from ONE combined-series build;
   // see `PriceService.getCurrentHourPriceLevel`.
   getCurrentHourPriceLevel: () => PriceLevel;
