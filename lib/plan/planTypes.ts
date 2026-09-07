@@ -422,6 +422,10 @@ type DevicePlanDeviceBase = {
   // output plan device as on the input device. Stamped by the producer in
   // `lib/plan/planDevices.ts`.
   deviceType?: 'temperature' | 'onoff';
+  // Carried flat for the same reason as `deviceClass`: it is producer-resolved
+  // identity, and the settings-overview read model used to re-derive it from
+  // whether a plug-state reading existed rather than forward it.
+  deviceRole?: 'ev_charger';
   // `binaryControl` is split off onto the orthogonal `BinaryControlKind` cluster;
   // reach it through the `isBinaryPlanDevice` guard (`lib/plan/planBinaryDevice.ts`).
   // Present iff the producer resolved a binary `currentOn` value.

@@ -189,6 +189,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
@@ -241,6 +242,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
@@ -284,6 +286,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',

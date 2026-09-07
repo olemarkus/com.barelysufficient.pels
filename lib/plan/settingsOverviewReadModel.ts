@@ -19,6 +19,7 @@ import type {
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type {
+  ObservedEvChargingStateRead,
   ObservedStateOfChargeRead,
   ObservedTemperatureRead,
 } from '../observer/observedDeviceStateProjection';
@@ -35,7 +36,7 @@ export type SettingsOverviewReadModelDeps = {
   // (`ObservedDeviceState.evChargingState`), not the planner. The settings-UI
   // read model surfaces the raw string for display, so it reads it from the
   // observer here rather than off the plan device (which no longer carries it).
-  getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
+  getObservedEvChargingState: (deviceId: string) => ObservedEvChargingStateRead;
   getAssociatedCarChargingState?: (deviceId: string) => EvChargingState | undefined;
   // The device's battery level, for the charger card. Observer-owned like the
   // plug-state above: the plan device carries the boost DECISION, never the
@@ -159,6 +160,19 @@ function resolveOverviewStateOfCharge(
   return read.kind === 'observed' ? read.value : undefined;
 }
 
+/**
+ * The plug-state for the card, or nothing. `absent` is the observer having no
+ * reading — not a statement that the device is not a charger, which is what
+ * reading presence used to be pressed into meaning.
+ */
+function resolveOverviewEvChargingState(
+  deviceId: string,
+  deps: SettingsOverviewReadModelDeps,
+): EvChargingState | undefined {
+  const read = deps.getObservedEvChargingState(deviceId);
+  return read.kind === 'observed' ? read.value : undefined;
+}
+
 export function buildSettingsOverviewDeviceReadModel(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps,
@@ -201,8 +215,15 @@ export function buildSettingsOverviewDeviceReadModel(
     currentState: device.currentState,
     plannedState: device.plannedState,
     binaryControllable: isBinaryPlanDevice(device),
-    deviceRole: deps.getObservedEvChargingState?.(device.id) !== undefined ? 'ev_charger' : undefined,
-    evChargingState: deps.getObservedEvChargingState?.(device.id),
+    // Forwarded from the producer, which resolves it from the device's own
+    // identity (`deviceClass === 'evcharger'` or an `evcharger_charging` binary
+    // capability, `managerParseDeviceFields`). It used to be re-derived HERE from
+    // whether a plug-state reading existed — inferring what a device IS from
+    // whether it has said anything yet — so a charger that had not reported since
+    // boot was not a charger, and the card lost its battery line and its EV copy
+    // with it. Two producers for one fact, and the one downstream was guessing.
+    deviceRole: device.deviceRole,
+    evChargingState: resolveOverviewEvChargingState(device.id, deps),
     carChargingState: deps.getAssociatedCarChargingState?.(device.id),
     ...temperatureFields,
     currentDrawKw: device.currentDrawKw,

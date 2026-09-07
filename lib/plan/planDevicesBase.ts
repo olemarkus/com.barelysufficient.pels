@@ -217,6 +217,7 @@ export function buildBasePlanDevice(params: {
     id: dev.id,
     name: dev.name,
     deviceClass: dev.deviceClass,
+    deviceRole: dev.deviceRole,
     deviceType: dev.deviceType,
     ...resolveInputBinaryControlField(dev),
     currentState,

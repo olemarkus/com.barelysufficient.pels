@@ -12,6 +12,7 @@ import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/plan
 // an un-wired accessor stopped being a third way of saying "no reading".
 const absentStateOfCharge = {
   getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+  getObservedEvChargingState: () => ({ kind: 'absent' } as const),
 };
 
 const absentTemperature = {
@@ -267,11 +268,41 @@ describe('settingsOverviewReadModel', () => {
     // The observer is the canonical owner; the read model must surface ITS value.
     expect(buildSettingsOverviewDeviceReadModel(device, {
       ...absentTemperature,
-      getObservedEvChargingState: (id) => (id === 'ev-1' ? 'plugged_in_charging' : undefined),
+      getObservedEvChargingState: (id: string) => (id === 'ev-1'
+        ? ({ kind: 'observed', value: 'plugged_in_charging' } as const)
+        : ({ kind: 'absent' } as const)),
     }).evChargingState).toBe('plugged_in_charging');
 
-    // With no observer dep wired, the plan device must not leak a raw plug-state.
+    // An ABSENT read shows no plug-state — and, unlike before, says nothing about
+    // whether the device is a charger. That is `deviceRole`, forwarded from the
+    // producer rather than inferred from this read's presence.
     expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).evChargingState).toBeUndefined();
+  });
+
+  // The defect this replaced: `deviceRole` was `getObservedEvChargingState(id)
+  // !== undefined ? 'ev_charger' : undefined`, so a charger that had not reported
+  // a plug-state yet was not a charger — and the card lost its battery line and
+  // its EV copy with it, until the boot seed happened to fill the projection.
+  // Identity comes from the producer; a reading's absence says nothing about it.
+  it('calls a charger a charger before it has reported any plug-state', () => {
+    const device = buildPlanDevice({
+      id: 'ev-1',
+      deviceRole: 'ev_charger',
+      binaryCapabilityId: 'evcharger_charging',
+    });
+
+    const read = buildSettingsOverviewDeviceReadModel(device, absentTemperature);
+    expect(read.deviceRole).toBe('ev_charger');
+    // …and still reports no plug-state, which is the honest half of the answer.
+    expect(read.evChargingState).toBeUndefined();
+  });
+
+  it('does not call a non-charger a charger just because it reported something', () => {
+    const device = buildPlanDevice({ id: 'heater-1' });
+    expect(buildSettingsOverviewDeviceReadModel(device, {
+      ...absentTemperature,
+      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' } as const),
+    }).deviceRole).toBeUndefined();
   });
 
   it('surfaces the EV battery reading so the card can show it beside the level', () => {
@@ -426,7 +457,7 @@ describe('settingsOverviewReadModel', () => {
     it('carries the boost decision through for a charger', () => {
       const deps = {
         ...absentTemperature,
-        getObservedEvChargingState: () => 'plugged_in_charging' as const,
+        getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in_charging' } as const),
       };
       expect(buildSettingsOverviewDeviceReadModel(boosting(), deps).boostActive).toBe(true);
     });

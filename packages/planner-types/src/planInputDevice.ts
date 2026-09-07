@@ -135,6 +135,19 @@ export type PlanInputDeviceBase = {
   targets: TargetCapabilitySnapshot[];
   deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
+  /**
+   * Producer-resolved device identity, for the surfaces that ask "is this an EV
+   * charger" — never re-derived downstream.
+   *
+   * Identity, not observation, so it belongs on the plan device where
+   * `stateOfCharge` and a plug-state do not. The transport resolves it once
+   * (`deviceClass === 'evcharger'` or an `evcharger_charging` binary capability,
+   * `managerParseDeviceFields`) and it has ridden here on the `...deviceFields`
+   * spread ever since — undeclared, so the settings-overview read model could not
+   * see it and inferred the same fact from whether a plug-state reading existed
+   * instead. Declared now, so the two answers cannot diverge again.
+   */
+  deviceRole?: 'ev_charger';
   // No device-observation freshness field: the plan trusts the producer-resolved
   // `currentOn`/`currentState`. Nothing anywhere ages a device observation out —
   // a Homey driver only republishes a capability on value CHANGE, so silence

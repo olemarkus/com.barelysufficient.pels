@@ -1,6 +1,7 @@
 import type { TrackerStore } from '../power/trackerStore';
 import type { WeatherHistoryStore } from '../weather/weatherHistoryStore';
 import type {
+  ObservedEvChargingStateRead,
   ObservedStateOfChargeRead,
   ObservedTemperatureRead,
 } from '../observer/observedDeviceStateProjection';
@@ -44,7 +45,6 @@ import type {
   EvBoostConfig,
   EvBoostSettings,
   EvCarAssociations,
-  EvChargingState,
   ObservedDeviceState,
   ProjectedObservedDeviceState,
   TargetDeviceSnapshot,
@@ -189,7 +189,7 @@ export type AppContext = {
   getObservedRecord: (deviceId: string) => ProjectedObservedDeviceState | undefined;
   getObservedStateOfCharge: (deviceId: string) => ObservedStateOfChargeRead;
   getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
-  getObservedEvChargingState: (deviceId: string) => EvChargingState | undefined;
+  getObservedEvChargingState: (deviceId: string) => ObservedEvChargingStateRead;
   /** Observer-owned accepted-write counter; see `ObservedDeviceStateProjection.getRevision`. */
   getObservationRevision: () => number;
   // Boot/hot-plug seed: fill the observed-state projection's EMPTY slots from the

@@ -109,6 +109,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
   const deps = {
     homeId: 'main',
     getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+    getObservedEvChargingState: () => ({ kind: 'absent' } as const),
     getObservedTemperature: () => ({ kind: 'absent' } as const),
     planBuildGate: openPlanBuildGate(),
     homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -175,6 +176,7 @@ describe('PlanService', () => {
 
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
         kind: 'observed',
         value: { currentTarget: observedTarget, currentTemperature: 21 },
@@ -235,6 +237,7 @@ describe('PlanService', () => {
 
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -762,6 +765,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -815,6 +819,7 @@ describe('PlanService', () => {
   it('serializes enriched UI plan fields without changing the runtime snapshot', () => {
     const { service } = createPlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
         kind: 'observed',
         value: { currentTarget: 18, currentTemperature: 16 },
@@ -932,6 +937,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -1001,6 +1007,7 @@ describe('PlanService', () => {
 
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -1036,6 +1043,7 @@ describe('PlanService', () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -1088,6 +1096,7 @@ describe('PlanService', () => {
 
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -1134,6 +1143,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -1221,6 +1231,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -1304,6 +1315,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
         kind: 'observed',
         value: { currentTarget: 18, currentTemperature: 21 },
@@ -1403,6 +1415,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
         kind: 'observed',
         value: { currentTarget: 20, currentTemperature: 21 },
@@ -1477,6 +1490,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -1557,6 +1571,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -1667,6 +1682,7 @@ describe('PlanService', () => {
       ];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -1788,6 +1804,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -1898,6 +1915,7 @@ describe('PlanService', () => {
       ];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -2042,6 +2060,7 @@ describe('PlanService', () => {
       ];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -2157,6 +2176,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
         kind: 'observed',
         value: { currentTarget: 21, currentTemperature: 21 },
@@ -2224,6 +2244,7 @@ describe('PlanService', () => {
     const applySheddingToDevice = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -2309,6 +2330,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -2363,6 +2385,7 @@ describe('PlanService', () => {
     const buildDevicePlanSnapshot = vi.fn().mockResolvedValue(buildPlan(20, 'keep'));
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -2454,6 +2477,7 @@ describe('PlanService', () => {
     const syncPendingBinaryCommands = vi.fn(() => false);
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -2532,6 +2556,7 @@ describe('PlanService', () => {
 
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -2637,6 +2662,7 @@ describe('PlanService', () => {
 
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -2720,6 +2746,7 @@ describe('PlanService', () => {
 
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -2765,6 +2792,7 @@ describe('PlanService', () => {
     const buildPelsStatusSpy = vi.spyOn(pelsStatusModule, 'buildPelsStatus');
     const planService = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -2820,6 +2848,7 @@ describe('PlanService', () => {
 
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -2874,6 +2903,7 @@ describe('PlanService', () => {
 
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -3257,6 +3287,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -3315,6 +3346,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -3403,6 +3435,7 @@ describe('PlanService', () => {
       };
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -3452,6 +3485,7 @@ describe('PlanService', () => {
       })];
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -3494,6 +3528,7 @@ describe('PlanService', () => {
     const applySheddingToDevice = vi.fn().mockResolvedValue(true);
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
@@ -3529,6 +3564,7 @@ describe('PlanService', () => {
     const applySheddingToDevice = vi.fn().mockResolvedValue(false);
     const service = new PlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],

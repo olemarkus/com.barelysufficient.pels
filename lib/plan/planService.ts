@@ -93,7 +93,7 @@ const serializePlanForUi = (
   return buildSettingsOverviewReadModel(plan, {
     getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
     getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),
-    getObservedEvChargingState: (deviceId) => deps.getObservedEvChargingState?.(deviceId),
+    getObservedEvChargingState: deps.getObservedEvChargingState,
     getAssociatedCarChargingState: (deviceId) => deps.getAssociatedCarChargingState?.(deviceId),
     getObservedStateOfCharge: deps.getObservedStateOfCharge,
     getObservedTemperature: deps.getObservedTemperature,

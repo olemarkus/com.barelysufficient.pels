@@ -43,6 +43,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
         } as never,
         getObservationStale: () => false,
         getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+        getObservedEvChargingState: () => ({ kind: 'absent' } as const),
         getObservedTemperature: () => ({
           kind: 'observed',
           value: { currentTarget: 16, currentTemperature: 20.8 },
@@ -73,6 +74,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     } as DevicePlan;
     const deps = {
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
         kind: 'observed' as const,
         value: { currentTarget: 21, currentTemperature: 21.1 },

@@ -239,7 +239,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     // split: the record no longer answers these questions.
     getObservedStateOfCharge: vi.fn(() => ({ kind: 'absent' } as const)),
     getObservedTemperature: vi.fn(() => ({ kind: 'absent' } as const)),
-    getObservedEvChargingState: vi.fn(() => undefined),
+    getObservedEvChargingState: vi.fn(() => ({ kind: 'absent' } as const)),
     getObservationRevision: vi.fn(() => 0),
     seedObservedStateFromSnapshot: vi.fn(),
     isCapacityControlEnabled: vi.fn(() => false),

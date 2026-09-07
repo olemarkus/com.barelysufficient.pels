@@ -6,7 +6,6 @@ import type { AppContext, FlowBackedCapabilityReportOutcome } from '../lib/app/a
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
 import type {
-  EvChargingState,
   ObservedDeviceState,
   ProjectedObservedDeviceState,
   TargetDeviceSnapshot,
@@ -17,6 +16,7 @@ import {
   readObservedTemperatureState,
 } from '../lib/observer/observedDeviceStateProjection';
 import type {
+  ObservedEvChargingStateRead,
   ObservedStateOfChargeRead,
   ObservedTemperatureRead,
 } from '../lib/observer/observedDeviceStateProjection';
@@ -186,12 +186,7 @@ abstract class AppRuntimeApi extends Base {
     return readObservedTemperatureState(this.observedDeviceStateProjection.getObservedState(deviceId));
   }
 
-  /**
-   * Still `| undefined` rather than a semantic result: unlike its two siblings,
-   * the EV plug-state read has not been converted yet. Same defect, separate
-   * fact — it is the next one.
-   */
-  public getObservedEvChargingState(deviceId: string): EvChargingState | undefined {
+  public getObservedEvChargingState(deviceId: string): ObservedEvChargingStateRead {
     return readObservedEvChargingState(this.observedDeviceStateProjection.getObservedState(deviceId));
   }
   public seedObservedStateFromSnapshot(): void {

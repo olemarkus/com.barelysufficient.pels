@@ -24,6 +24,7 @@ import { requirePlanEngine } from '../../setup/appInit/contextGuards';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
 import { readObservedEvChargingState } from '../../lib/observer/observedDeviceStateProjection';
+import type { ObservedEvChargingStateRead } from '../../lib/observer/observedDeviceStateProjection';
 import { projectObservedState } from '../../lib/device/observedStateProjection';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
@@ -111,10 +112,10 @@ describe('boot seed closes the cold-start EV state-chip gap (#4)', () => {
     // The settings-UI read model now reads the device's REAL plug-state for cycle 1.
     const readEvState = (
       service as unknown as {
-        deps: { getObservedEvChargingState?: (id: string) => EvChargingState | undefined };
+        deps: { getObservedEvChargingState?: (id: string) => ObservedEvChargingStateRead };
       }
     ).deps.getObservedEvChargingState;
-    expect(readEvState?.('ev-1')).toBe('plugged_in');
+    expect(readEvState?.('ev-1')).toEqual({ kind: 'observed', value: 'plugged_in' });
     expect(ctx.getObservedState('ev-1')).toBeDefined();
   });
 
@@ -135,9 +136,9 @@ describe('boot seed closes the cold-start EV state-chip gap (#4)', () => {
     // snapshot's 'plugged_in'.
     const readEvState = (
       service as unknown as {
-        deps: { getObservedEvChargingState?: (id: string) => EvChargingState | undefined };
+        deps: { getObservedEvChargingState?: (id: string) => ObservedEvChargingStateRead };
       }
     ).deps.getObservedEvChargingState;
-    expect(readEvState?.('ev-1')).toBe('plugged_in_charging');
+    expect(readEvState?.('ev-1')).toEqual({ kind: 'observed', value: 'plugged_in_charging' });
   });
 });

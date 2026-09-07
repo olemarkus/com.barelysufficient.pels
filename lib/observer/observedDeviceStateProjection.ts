@@ -24,10 +24,16 @@ import type {
  * the raw value to the one sanctioned seam. Everything else narrows through
  * `isEvObserved`.
  */
+export type ObservedEvChargingStateRead =
+    | { kind: 'observed'; value: EvChargingState }
+    | { kind: 'absent' };
+
 export function readObservedEvChargingState(
     state: (ObservedDeviceState & EvObservedProbe) | undefined,
-): EvChargingState | undefined {
-    return state?.evChargingState;
+): ObservedEvChargingStateRead {
+    const evChargingState = state?.evChargingState;
+    if (evChargingState === undefined) return { kind: 'absent' };
+    return { kind: 'observed', value: evChargingState };
 }
 
 /**

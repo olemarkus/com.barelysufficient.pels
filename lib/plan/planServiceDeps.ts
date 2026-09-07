@@ -5,6 +5,7 @@ import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/
 import type { DeviceOverviewLogRecorder } from './deviceOverviewLog';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import type {
+  ObservedEvChargingStateRead,
   ObservedStateOfChargeRead,
   ObservedTemperatureRead,
 } from '../observer/observedDeviceStateProjection';
@@ -73,7 +74,7 @@ export type PlanServiceDeps = {
   // EV charging state for the settings-UI read model, sourced from the observer
   // (its canonical owner — `ObservedDeviceState`), not the plan device. The
   // planner no longer carries the raw `evChargingState`.
-  getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
+  getObservedEvChargingState: (deviceId: string) => ObservedEvChargingStateRead;
   /**
    * The plug state reported by the CAR associated with this charger, when the
    * user has ticked one and the probe matched it. Absent means PELS has no car
