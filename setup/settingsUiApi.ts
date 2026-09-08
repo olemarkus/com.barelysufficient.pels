@@ -35,13 +35,14 @@ import type {
   SettingsUiResetPowerStatsResponse,
   SettingsUiDeviceSnapshot,
 } from '../packages/contracts/src/settingsUiApi';
+import { readObservedStateOfCharge } from '../lib/observer/observedDeviceStateProjection';
+import type { ObservedStateOfChargeRead } from '../lib/observer/observedDeviceStateProjection';
 import type {
   DecoratedDeviceSnapshot,
   ProjectedObservedDeviceState,
-  TargetDeviceSnapshot,
+  StateOfChargeObservedProbe,
 } from '../packages/contracts/src/types';
-import { readObservedStateOfCharge } from '../lib/observer/observedDeviceStateProjection';
-import { withResolvedStateOfCharge } from '../lib/observer/observedStateOfChargeProjection';
+import { hasObservedStateOfCharge } from '../packages/shared-domain/src/stateOfChargeObservedState';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { hasSolarProductionCandidate } from '../lib/device/solarPresence';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
@@ -192,43 +193,6 @@ const asDailyBudgetModelSettings = (value: unknown): Partial<DailyBudgetModelSet
 // (`latestTargetSnapshot`) plus the unmanaged-but-eligible picker devices. Auto-tracked
 // observe-only role devices (home batteries → 'battery', PV → 'solarpanel') ride the
 // managed half here; callers decide whether to expose or merely detect them.
-const getRawSettingsUiDeviceCandidates = (
-  { homey }: ApiContext,
-): SettingsUiDeviceSnapshot[] => {
-  const managed = getLatestDevicesForUiFromApp(homey) ?? [];
-  const unmanagedEligible = getUiPickerDevicesFromApp(homey);
-  return withResolvedStateOfCharge(
-    withResolvedPriorities(
-      homey,
-      withLiveObservedState(homey, withAssociatedCars(homey, [...managed, ...unmanagedEligible])),
-    ),
-    (deviceId) => readObservedStateOfCharge(getObservedStateForUiFromApp(homey, deviceId)),
-  );
-};
-
-/**
- * Stamp each device's rank through the mode catalog owner.
- *
- * Priority is a property of a SET, not of a device: it is meaningful only
- * relative to the other devices being ranked. The transport used to stamp it
- * per device while parsing, where no set exists, so its only possible answer for
- * a device nobody had ranked was a shared default — and with nothing configured
- * every device carried the same number, leaving the Overview's order to fall out
- * of the snapshot array. Resolving here, over the set this payload is about,
- * gives the strict 1..N the owner guarantees.
- */
-const withResolvedPriorities = (
-  homey: Homey.App['homey'],
-  devices: DecoratedDeviceSnapshot[],
-): DecoratedDeviceSnapshot[] => {
-  const catalog = getModeCatalogForUiFromApp(homey);
-  const ranks = rankModeDevices(
-    devices.map((device) => device.id),
-    (deviceId) => catalog.priorities[catalog.operatingMode]?.[deviceId],
-  );
-  return devices.map((device) => ({ ...device, priority: ranks[device.id] }));
-};
-
 /**
  * The observed fields `/ui_devices` refreshes from the observer projection.
  *
@@ -272,40 +236,8 @@ const LIVE_OBSERVED_FIELDS = [
   'lastUpdated',
 ] as const satisfies readonly (keyof ProjectedObservedDeviceState)[];
 
-/**
- * Refreshes each device's observed state from the observer projection that owns
- * it.
- *
- * Same read-time treatment, and the same reason, as `withAssociatedCars` below:
- * `latestTargetSnapshot` is rebuilt on the device poll
- * (`DEVICE_POLL_INTERVAL_MS`), so the observed values it carries are up to one
- * poll interval old while the settings UI re-reads this payload continuously.
- *
- * Two absences are deliberately no-ops rather than writes, because neither is a
- * reading PELS took:
- *
- * - a device with no projection entry keeps its stored snapshot. For a managed
- *   device that means "not observed yet" (boot). It is also the permanent state
- *   of an unmanaged PICKER device: the projection is fed from the committed
- *   runtime snapshot, which drops unmanaged devices, so picker rows are served
- *   from their cached parse and are NOT refreshed here.
- * - a field the projection does not carry keeps its stored value, rather than
- *   being blanked to `undefined`.
- */
-const withLiveObservedState = (
-  homey: ApiContext['homey'],
-  devices: DecoratedDeviceSnapshot[],
-): DecoratedDeviceSnapshot[] => devices.map((device) => {
-  const observed = getObservedStateForUiFromApp(homey, device.id);
-  return observed
-    ? { ...device, ...pickLiveObservedFields(observed, resolveLiveObservedFields(device)) }
-    : device;
-});
 
-// The stepped branch of the decorator is the only one that resolves
-// `binaryControl`, and it is the only branch that stamps this control model —
-// so this is the exact condition under which the stored value is a decision
-// rather than an observation.
+
 const resolveLiveObservedFields = (
   device: DecoratedDeviceSnapshot,
 ): readonly (keyof ProjectedObservedDeviceState)[] => (
@@ -314,9 +246,6 @@ const resolveLiveObservedFields = (
     : [...LIVE_OBSERVED_FIELDS, 'binaryControl']
 );
 
-// The listed fields the projection actually carries, as a patch. A field the
-// projection omits is left out rather than written as `undefined`, so the
-// stored value carries forward instead of being blanked.
 const pickLiveObservedFields = (
   observed: ProjectedObservedDeviceState,
   fields: readonly (keyof ProjectedObservedDeviceState)[],
@@ -327,24 +256,85 @@ const pickLiveObservedFields = (
 );
 
 /**
- * Decorates each device with the car associated with it right now, resolved from
- * live probe state at READ time.
+ * The state of charge, projected to the level.
  *
- * Deliberately not a transport snapshot field: the association changes on the
- * realtime feed within seconds of a plug edge, while snapshots are rebuilt only
- * on the device poll and are replaced wholesale by every device re-parse — so a
- * stored copy would be absent most of the time and up to one poll interval
- * behind after unplugging. `getAssociatedCar` answers `undefined` for every device that is
- * not a charger with both an eligibility set and a live session.
+ * An absent read means the OBSERVER has none — no projection entry, or an entry
+ * carrying no charge — so it falls through to the stored parse, which is how a
+ * picker row (never in the projection, by design) keeps the level from its cached
+ * parse. Both paths emit the same shape.
  */
-const withAssociatedCars = (
-  homey: ApiContext['homey'],
-  devices: TargetDeviceSnapshot[],
-): DecoratedDeviceSnapshot[] => devices.map((device) => {
-  const associatedCar = getAssociatedCarForUiFromApp(homey, device.id);
-  return associatedCar ? { ...device, associatedCar } : device;
-});
+const resolveStateOfCharge = (
+  device: DecoratedDeviceSnapshot & StateOfChargeObservedProbe,
+  read: ObservedStateOfChargeRead,
+): SettingsUiDeviceSnapshot['stateOfCharge'] => {
+  if (read.kind === 'observed') return read.value;
+  return hasObservedStateOfCharge(device) ? { level: device.stateOfCharge.level } : undefined;
+};
 
+/**
+ * Builds the device list `/ui_devices` serves — once, in one pass.
+ *
+ * It used to be four sequential maps over the whole list (associated cars, the
+ * live-observed overlay, priorities, the resolved state of charge), each
+ * allocating a fresh object per device. Nothing named the assembled thing, so
+ * what the list WAS could only be learned by reading four functions and inferring
+ * that their order did not matter — and adding a fifth field looked like adding a
+ * fifth pass.
+ *
+ * Only priorities need the list as a list, because ranking is relative; they are
+ * resolved up front and applied with everything else. The observer projection is
+ * consulted ONCE per device — the state-of-charge read takes the record rather
+ * than the id, where two id-keyed reads used to pay for the same lookup twice.
+ *
+ * This is API-layer assembly, so it lives with the endpoint it serves rather than
+ * in `lib/`: the settings-UI payload is a CONSUMER of the domain, not part of it.
+ * It sits in `setup/` only because the API layer has no home of its own yet —
+ * see `notes/state-management/snapshot-decomposition.md` § "The API layer has no
+ * home".
+ */
+const buildSettingsUiDeviceList = (
+  homey: ApiContext['homey'],
+  devices: readonly (DecoratedDeviceSnapshot & StateOfChargeObservedProbe)[],
+): SettingsUiDeviceSnapshot[] => {
+  const catalog = getModeCatalogForUiFromApp(homey);
+  const priorities = rankModeDevices(
+    devices.map((device) => device.id),
+    (deviceId) => catalog.priorities[catalog.operatingMode]?.[deviceId],
+  );
+  return devices.map((device) => {
+    const observed = getObservedStateForUiFromApp(homey, device.id);
+    const associatedCar = getAssociatedCarForUiFromApp(homey, device.id);
+    const stateOfCharge = resolveStateOfCharge(device, readObservedStateOfCharge(observed));
+    return {
+      ...device,
+      // Two absences are deliberately no-ops rather than writes, because neither
+      // is a reading PELS took: a device with no projection entry keeps its
+      // stored snapshot (permanent for an unmanaged PICKER row, which the
+      // projection drops), and a field the projection omits keeps its stored
+      // value rather than being blanked.
+      ...(observed ? pickLiveObservedFields(observed, resolveLiveObservedFields(device)) : {}),
+      ...(associatedCar ? { associatedCar } : {}),
+      ...(stateOfCharge ? { stateOfCharge } : {}),
+      priority: priorities[device.id],
+    };
+  });
+};
+
+const getRawSettingsUiDeviceCandidates = (
+  { homey }: ApiContext,
+): SettingsUiDeviceSnapshot[] => {
+  const managed = getLatestDevicesForUiFromApp(homey) ?? [];
+  const unmanagedEligible = getUiPickerDevicesFromApp(homey);
+  return buildSettingsUiDeviceList(homey, [...managed, ...unmanagedEligible]);
+};
+
+// The stepped branch of the decorator is the only one that resolves
+// `binaryControl`, and it is the only branch that stamps this control model —
+// so this is the exact condition under which the stored value is a decision
+// rather than an observation.
+// The listed fields the projection actually carries, as a patch. A field the
+// projection omits is left out rather than written as `undefined`, so the
+// stored value carries forward instead of being blanked.
 const getSettingsUiPlan = ({ homey }: ApiContext): SettingsUiPlanSnapshot | null => (
   getPlanSnapshotForUiFromHomey(homey)
 );

@@ -311,6 +311,53 @@ store, because:
    `ObservedDeviceState`.
 6. **Convert `toPlanDevice` to `(descriptor, observed)`**; replace `...device` spread
    with explicit copies; `getPlanDevices` zips the two.
+## The API layer has no home
+
+Surfaced while doing 6.4, and worth stating because it will keep recurring.
+
+The settings-UI payload assembly is a CONSUMER of the domain, not part of it. It
+belongs to neither layer it can currently be filed under:
+
+- `lib/**` is domain. A settings-UI DTO spanning decorated control state, mode
+  priorities, transport-owned car associations and observed state is not a domain
+  concept, and filing it under whichever domain will accept its imports —
+  `lib/observer` was tried and reverted — hides peer dependencies behind injected
+  callbacks without making them that domain's concerns.
+- `setup/**` is wiring, and holds no domain logic by rule. The assembly is
+  projection over domain values, which the rule names explicitly.
+
+So it sits in `setup/settingsUiApi.ts` today because there is nowhere else, which
+is the same failure the no-domain-logic rule describes, one layer up. That rule
+already says what to do about it: *"A file needing two domains at once is a
+concept nobody has named."* The unnamed concept here is the API layer itself —
+`api.ts` at the root is its only acknowledged surface, and the payload builders
+that feed it live in `setup/`.
+
+Naming it (an `api/` peer that may import `lib/**` and `packages/**`, that
+`setup/` wires and that nothing in `lib/` may import) is a migration, not a file
+move: it needs a dependency-cruiser peer entry, the AGENTS.md layer table, and
+the `setup/settingsUi*` payload modules moved together. Out of scope for the
+decomposition stages, but it is why 6.4's builder sits where it does.
+
+6.4. **One owner for the settings-UI device list** — DONE. `/ui_devices` used to
+   assemble its payload in four sequential passes over the whole device list
+   (`withAssociatedCars` → `withLiveObservedState` → `withResolvedPriorities` →
+   `withResolvedStateOfCharge`), each allocating a fresh object per device, spread
+   across `setup/settingsUiApi.ts`. Nothing named the assembled thing, so the cost
+   of a payload read was not answerable from any one place and a fifth pass was
+   the natural way to add a field. `buildSettingsUiDeviceList`
+   (`lib/observer/settingsUiDeviceList.ts`) does it once, with the order stated:
+   priorities resolve up front because ranking is relative, everything else is
+   per-device. The projection is looked up ONCE per device rather than twice —
+   the state-of-charge read now takes the record rather than the id.
+   Behaviour-preserving by construction, including the two absences that are
+   deliberately no-ops: a device with no projection entry keeps its stored parse
+   (permanent for an unmanaged picker row, which the projection drops), and a
+   field the projection omits keeps its stored value. Both pinned in
+   `test/unit/settingsUiDeviceList.test.ts`. `setup/settingsUiApi.ts` drops from
+   806 to 674 lines and no longer names `DecoratedDeviceSnapshot`,
+   `ProjectedObservedDeviceState` or `TargetDeviceSnapshot` at all.
+
 6.5. **Descriptor read for the callers that never wanted an observation** — the
    stage this staging was missing. Stage 3 introduced `DeviceDescriptor` as a
    *type* with no owner behind it, so stage 7's clearing list had no route: an

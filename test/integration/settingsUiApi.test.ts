@@ -471,7 +471,7 @@ describe('settingsUiApi', () => {
           priority: 2,
           deviceClass: 'evcharger',
           evChargingState: 'plugged_in_charging',
-          // RESOLVED, not the bag that was fed in: `withResolvedStateOfCharge`
+          // RESOLVED, not the bag that was fed in: `buildSettingsUiDeviceList`
           // projects to the level before serving, so the transport's `report`,
           // `capabilityId`, session pair and `source` never reach the WebView.
           // Asserted with `toEqual`, so a regression that starts forwarding the
@@ -671,6 +671,34 @@ describe('settingsUiApi', () => {
   // there the observer has no entry and the stored parse is projected, here it has
   // one and the LIVE read is projected. Both arms have to emit the level alone, or
   // the two paths hand the WebView different shapes for the same fact.
+  // The fallback arm of the one-pass build. A device the observer has no entry for
+  // keeps its stored parse — permanent for an unmanaged picker row, since the
+  // projection is fed from the committed runtime snapshot and that drops
+  // unmanaged devices — and its state of charge is projected to the level on that
+  // path too, so the live path and the fallback cannot hand the WebView different
+  // shapes for the same fact. Neither absence is a reading PELS took, so neither
+  // is written as one.
+  it('keeps a device the observer has no entry for on its stored parse', () => {
+    const homey = createHomey({
+      latestDevicesOverride: [{
+        id: 'ev-1',
+        name: 'Charger',
+        deviceClass: 'evcharger',
+        available: false,
+        lastUpdated: 1_000,
+        stateOfCharge: stateOfChargeFixture({ percent: 55, observedAtMs: 1_000 }),
+      }],
+      observedStateById: {},
+    });
+
+    const [device] = getSettingsUiDevicesPayload({ homey: homey as never }).devices;
+    expect(device?.available).toBe(false);
+    expect(device?.lastUpdated).toBe(1_000);
+    expect((device as { stateOfCharge?: unknown }).stateOfCharge).toEqual({
+      level: { kind: 'known', percent: 55, observedAtMs: 1_000 },
+    });
+  });
+
   it('serves the observed state of charge resolved to the level, not the transport bag', () => {
     const homey = createHomey({
       latestDevicesOverride: [{
