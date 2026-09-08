@@ -280,9 +280,9 @@ export class PlanExecutor {
     if (pending.desired) {
       if (pending.logContext === 'capacity_control_off') {
         // Route through the narrow mutators so the surplus-posture stamp
-        // (`surplusOnlyShedByDevice`) is cleared in lockstep with the decision clock.
+        // (`shedDecisions.surplusOnlyByDevice`) is cleared in lockstep with the decision clock.
         this.state.actuation.clearShed(deviceId);
-        this.state.clearShedDecision(deviceId);
+        this.state.shedDecisions.clearFor(deviceId);
       } else {
         this.recordRestoreActuation(deviceId, liveDevice.name, now);
         recordActivationAttemptStarted({

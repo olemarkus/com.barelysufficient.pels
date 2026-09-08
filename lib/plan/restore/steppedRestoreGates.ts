@@ -108,7 +108,7 @@ export function applySteppedDeviceGates(params: {
     return true;
   }
   const waitingForOtherRecovery = deviceIsActive
-    && hasOtherDevicesBlockingSteppedRestore(deviceMap, dev.id, state.shedDecidedMs);
+    && hasOtherDevicesBlockingSteppedRestore(deviceMap, dev.id, state.shedDecisions.decidedMs);
   const waitingReason = resolveCapacityRestoreBlockReason({
     timing: gateTiming,
     waitingForOtherRecovery,

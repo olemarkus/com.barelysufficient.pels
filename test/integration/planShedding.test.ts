@@ -3605,7 +3605,7 @@ describe('buildSheddingPlan', () => {
       // ran — a solar-surplus dump load, a deferred force-shed. Re-asserting from
       // that set would hand them a capacity shed reason, which mislabels them and
       // makes `isAnyOtherDeviceLimited` clamp unrelated stepped loads.
-      state.lastPlannedShedIds = new Set(['vvb', 'kontor-vk']);
+      state.shedDecisions.lastPlannedShedIds = new Set(['vvb', 'kontor-vk']);
 
       vi.setSystemTime(new Date(Date.now() + 10_000));
 

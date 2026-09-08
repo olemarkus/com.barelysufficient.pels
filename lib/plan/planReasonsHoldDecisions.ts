@@ -249,7 +249,7 @@ function resolveHoldGating(
   const atMinTemp = isTemperature
     && (dev.currentTarget === floorC || dev.plannedTarget === floorC);
   const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === floorC;
-  const wasShedLastPlan = state.lastPlannedShedIds.has(dev.id);
+  const wasShedLastPlan = state.shedDecisions.lastPlannedShedIds.has(dev.id);
   const eligible = dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan;
   const shouldAbortRestoreForShortfall = guardInShortfall && eligible;
   const shouldHold = timing.inShedWindow && eligible;

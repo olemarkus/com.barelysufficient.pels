@@ -141,7 +141,7 @@ the **binary** disable path stamped capacity cooldown markers
 `lastInstabilityMs` / `lastDeviceShedMs` for a non-capacity event → mis-paced restores. Fixed by
 routing the binary disable (direct + flow-backed, non-EV + EV `binary_release`) through a reason-blind
 diagnostic-only dispatch off the capacity path (`pendingBinaryCommands.lifecycleRelease`
-discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decision-time clock vs
+discriminator), plus the marker-ownership decomposition (`shedDecidedMs`, now `ShedDecisions.decidedMs`, decision-time clock vs
 `lastDeviceShedMs` actuation clock). Superseded #1249. This was the first down-payment on goal 2
 (disable off the capacity write path).
 

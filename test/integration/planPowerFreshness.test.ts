@@ -253,9 +253,16 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
       lastPowerW: 2_000,
     };
-    const builder = buildBuilder({ tracker });
+    const state = createPlanEngineState();
+    const builder = buildBuilder({ tracker, state });
 
     const failClosedPlan = await builder.buildDevicePlanSnapshot([buildDevice()]);
+    // The fail-closed pass records its decision, not just its plan: the first
+    // measured cycle after the meter returns needs the decision clock to know
+    // this device was held, or it restores everything at once. `dev` carries no
+    // surplus posture, so only the shed set can put it here.
+    expect(state.shedDecisions.decidedMs.dev).toEqual(expect.any(Number));
+    expect(state.shedDecisions.surplusOnlyByDevice.dev).toBeUndefined();
     // The unmeasured build carries the signal and NO derived figure: no
     // headroom, no managed/background split, nothing a consumer could do
     // arithmetic on (owner ruling 2026-09-02).

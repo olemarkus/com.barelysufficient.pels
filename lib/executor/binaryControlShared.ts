@@ -55,7 +55,7 @@ PlanExecutorBinaryContext,
  * merge-blocking invariant: a device whose standing shed decision was the
  * baseline-off dump-load posture must NEVER be force-turned-ON when capacity
  * control is turned off (or the device unmanaged). Reads the plan-less-safe
- * `surplusOnlyShedByDevice` stamp on engine state — never the plan device — so a
+ * `shedDecisions.surplusOnlyByDevice` stamp on engine state — never the plan device — so a
  * cold/absent plan cannot bypass it. When it fires, it clears the shed
  * bookkeeping (PELS releases its claim on the device) and returns `true` so the
  * caller skips commanding ON. Both binary-restore lanes
@@ -67,7 +67,7 @@ export const skipRestoreForSurplusPosture = (
   deviceId: string,
   name: string,
 ): boolean => {
-  if (ctx.state.surplusOnlyShedByDevice[deviceId] !== true) return false;
+  if (ctx.state.shedDecisions.surplusOnlyByDevice[deviceId] !== true) return false;
   emitExecutorDebug({
     event: 'restore_command_skipped',
     reasonCode: 'surplus_only_posture',
@@ -76,7 +76,7 @@ export const skipRestoreForSurplusPosture = (
     logContext: 'capacity_control_off',
   });
   ctx.state.actuation.clearShed(deviceId);
-  ctx.state.clearShedDecision(deviceId); // clears shedDecidedMs + the surplus stamp
+  ctx.state.shedDecisions.clearFor(deviceId); // clears the decision clock + the surplus stamp
   return true;
 };
 

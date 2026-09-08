@@ -433,7 +433,7 @@ describe('buildInitialPlanDevices', () => {
 
   it('forces a shed stepped load to lowest active step while another device is recovering', () => {
     const state = createPlanEngineState();
-    state.shedDecidedMs.gang = Date.now() - 60_000;
+    state.shedDecisions.decidedMs.gang = Date.now() - 60_000;
     const steppedDevice = steppedInput({
       id: 'dev-1',
       name: 'Water Heater',

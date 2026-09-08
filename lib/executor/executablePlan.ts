@@ -248,7 +248,7 @@ export type ExecutableBinaryIntent = DesiredBinaryKind & {
    * control the owner then turned off. Without this release it stays off
    * forever, because shed selection does not consult commandability while both
    * restore paths do. `applyUncontrolledBinaryRestore` gates it on
-   * `state.shedDecidedMs`, so it can only ever fire for a shed PELS itself
+   * `shedDecisions.decidedMs`, so it can only ever fire for a shed PELS itself
    * decided.
    *
    * It is NOT a general "is this device controllable" flag and must not be read

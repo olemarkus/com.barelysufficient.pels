@@ -259,11 +259,11 @@ const uncontrolledRestoreIntent = {
 describe('external-off hold — executor carve-outs', () => {
   it('never force-turns-ON a held device when it is unmanaged or control is switched off', async () => {
     // The shape that gets here: PELS shed the device at some point (so
-    // `shedDecidedMs` is still stamped), the user then turned it off themselves,
+    // `shedDecisions.decidedMs` is still stamped), the user then turned it off themselves,
     // and only then was Power-limit control disabled. Losing control authority is
     // not consent to undo the user's own off action.
     const h = buildExecutorCtx(true);
-    h.state.shedDecidedMs[HEATER] = 1000;
+    h.state.shedDecisions.decidedMs[HEATER] = 1000;
 
     const applied = await applyUncontrolledBinaryRestore(h.ctx, uncontrolledRestoreIntent, undefined);
     expect(applied).toBe(false);
@@ -295,7 +295,7 @@ describe('external-off hold — executor carve-outs', () => {
 
   it('control case: with no hold, every one of those lanes still restores', async () => {
     const uncontrolled = buildExecutorCtx(false);
-    uncontrolled.state.shedDecidedMs[HEATER] = 1000;
+    uncontrolled.state.shedDecisions.decidedMs[HEATER] = 1000;
     expect(await applyUncontrolledBinaryRestore(uncontrolled.ctx, uncontrolledRestoreIntent, undefined))
       .toBe(true);
     expect(uncontrolled.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: true }]);

@@ -236,7 +236,7 @@ export class PlanMaterializationStages {
     normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
   ): FinalizedPlanResult {
     return trackPlanStage('plan_finalize_ms', () => finalizePlanDevices(
-      planDevices, normalizedShedFloorCByDevice, this.state.lastPlannedShedIds, {
+      planDevices, normalizedShedFloorCByDevice, this.state.shedDecisions.lastPlannedShedIds, {
       onInvalidReasonPair: (issue) => {
         this.deps.structuredLog?.warn({
           event: 'plan_reason_pair_invalid',

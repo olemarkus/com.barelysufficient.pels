@@ -80,7 +80,7 @@ export const applyUncontrolledBinaryRestore = async (
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
   if (!intent || !intent.desiredOn || intent.source !== 'uncontrolled') return false;
-  const shedDecided = ctx.state.shedDecidedMs[intent.deviceId];
+  const shedDecided = ctx.state.shedDecisions.decidedMs[intent.deviceId];
   if (!shedDecided) return false;
   // "Run on solar surplus" carve-out (shared home for the merge-blocking
   // invariant): a baseline-off dump load must never be force-turned-ON on

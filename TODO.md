@@ -88,6 +88,21 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Shed and restore control
 
+- [ ] **P2 — clearing a device's shed decision leaves it in the previous-build shed set, so the
+      next build cannot re-stamp it.** `ShedDecisions.clearFor` (`lib/plan/shedDecisions.ts`) drops
+      `decidedMs` and the surplus stamp but leaves the id in `lastPlannedShedIds`, and
+      `recordPlannedShed` stamps the decision clock only on ENTRY into the shed set. So a device
+      whose decision the executor's capacity-control-off lanes clear (`lib/executor/planExecutor.ts`,
+      `lib/executor/binaryControlShared.ts`) while capacity still holds it shed carries no
+      `decidedMs` for the rest of the hold, and then reads false for recovering, stepped-restore
+      blocking and the restore-log source. The planner's own release guards exactly this
+      (`releaseAbandonedSurplusPosture` skips a device the shed set still holds); the two executor
+      lanes do not. Change: rule on whether `clearFor` should also drop the id from
+      `lastPlannedShedIds` (re-arming the edge) or whether the executor lanes should skip a device
+      still in the shed set as the planner's does. Done when a spec drives a capacity-control-off
+      restore on a device the plan still sheds, and asserts what the next build's `decidedMs` says.
+      Source: adversarial review of the shed-decision state layer, 2026-09-08.
+
 - [ ] **The restore cooldown's base window does not reach the measured restore-latency tail, and
       the stamp that gates it is global.** One ruling has to settle both halves — how long the gate
       is and what it is keyed on — because each answer bounds the other.
@@ -776,7 +791,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       *Persona:* prosumer on the flow source who has opted a dump load into solar surplus.
       **Absorbed from the merged restore-lane item, which has a DIFFERENT trigger.** Turning the
       toggle off calls `releaseAbandonedSurplusPosture`, clearing the device-level
-      `surplusOnlyShedByDevice` marker with no reset involved, so persisting the feed-level
+      `shedDecisions.surplusOnlyByDevice` marker with no reset involved, so persisting the feed-level
       capability cannot preserve the off baseline after de-opt. Both are needed: the marker must
       survive de-opt and clear on observed-on or re-engagement, and it must also suppress generic
       managed-binary restore candidacy. [P1]

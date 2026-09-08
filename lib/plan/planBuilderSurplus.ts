@@ -14,6 +14,7 @@
  */
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { PlanEngineState } from './planState';
+import type { ShedDecisions } from './shedDecisions';
 import type { MeasuredPower, PlanContext } from './planContext';
 import type { PlanInputDevice } from './planTypes';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -96,7 +97,7 @@ export function runSurplusPass(params: {
     forceShedSet: decoration.forceShedSet,
     surplusHoldIds: surplusHold.holdIds,
     admittedDevices,
-    state,
+    shedDecisions: state.shedDecisions,
   });
   return surplusHold.reasonById;
 }
@@ -152,7 +153,7 @@ export function runSilentMeterSurplusHold(
     forceShedSet: decoration.forceShedSet,
     surplusHoldIds: surplusHold.holdIds,
     admittedDevices,
-    state,
+    shedDecisions: state.shedDecisions,
   });
   return surplusHold.reasonById;
 }
@@ -182,34 +183,34 @@ export function applyPostSheddingHolds(params: {
   forceShedSet: Iterable<string>;
   surplusHoldIds: Iterable<string>;
   admittedDevices: PlanInputDevice[];
-  state: Pick<PlanEngineState, 'surplusOnlyShedByDevice' | 'clearShedDecision'>;
+  shedDecisions: ShedDecisions;
 }): void {
   mergeHoldsIntoShedSet(params.shedSet, [params.forceShedSet, params.surplusHoldIds]);
   clearShedStepTargets(params.shedStepTargets, params.surplusHoldIds);
   releaseAbandonedSurplusPosture({
-    state: params.state, admittedDevices: params.admittedDevices, shedSet: params.shedSet,
+    shedDecisions: params.shedDecisions, admittedDevices: params.admittedDevices, shedSet: params.shedSet,
   });
 }
 
 /**
  * Release the stale shed bookkeeping of a device that WAS surplus-held but is no
  * longer a dump-load candidate this cycle (the user toggled "Run on solar
- * surplus" off, or the device was unmanaged). Clears `shedDecidedMs` and the
- * `surplusOnlyShedByDevice` stamp so the device is no longer RECORDED as a
+ * surplus" off, or the device was unmanaged). Clears `shedDecisions.decidedMs` and the
+ * `shedDecisions.surplusOnlyByDevice` stamp so the device is no longer RECORDED as a
  * PELS-shed / dump-load device.
  *
  * Why this matters: leaving the stale stamps in place mis-attributes the device
  * as PELS-shed to the decision-time readers — the stepped-restore-blocking gate
- * (`hasOtherDevicesBlockingSteppedRestore` reads `shedDecidedMs`) and the
+ * (`hasOtherDevicesBlockingSteppedRestore` reads `shedDecisions.decidedMs`) and the
  * executor's capacity-control-off carve-out (`skipRestoreForSurplusPosture`
- * reads `surplusOnlyShedByDevice`) — so a later capacity-control-off or a
+ * reads `shedDecisions.surplusOnlyByDevice`) — so a later capacity-control-off or a
  * neighbouring stepped restore would branch on stale surplus state. Clearing
  * them returns the device to a clean, plainly-managed record.
  *
  * NOTE (deliberate scope): this does NOT keep a released dump load OFF. Once the
  * posture is gone the device is a plain managed binary device, and PELS's
  * generic restore lane runs off managed binary devices under available power
- * (pre-existing behaviour, independent of this feature and of `shedDecidedMs`).
+ * (pre-existing behaviour, independent of this feature and of `shedDecisions.decidedMs`).
  * Persisting a released dump load's OFF baseline needs a managed-restore policy
  * change and is deliberately out of scope here.
  *
@@ -229,12 +230,12 @@ export function applyPostSheddingHolds(params: {
  * by accident.
  */
 export function releaseAbandonedSurplusPosture(params: {
-  state: Pick<PlanEngineState, 'surplusOnlyShedByDevice' | 'clearShedDecision'>;
+  shedDecisions: ShedDecisions;
   admittedDevices: PlanInputDevice[];
   shedSet: ReadonlySet<string>;
 }): void {
-  const { state, admittedDevices, shedSet } = params;
-  const stampedIds = Object.keys(state.surplusOnlyShedByDevice);
+  const { shedDecisions, admittedDevices, shedSet } = params;
+  const stampedIds = Object.keys(shedDecisions.surplusOnlyByDevice);
   if (stampedIds.length === 0) return;
   const surplusOnlyNow = new Set(
     admittedDevices.filter((dev) => dev.surplusOnly === true).map((dev) => dev.id),
@@ -242,6 +243,6 @@ export function releaseAbandonedSurplusPosture(params: {
   for (const id of stampedIds) {
     if (surplusOnlyNow.has(id)) continue; // still a dump-load device — keep the stamp
     if (shedSet.has(id)) continue; // capacity still holds it off — keep its decision clock
-    state.clearShedDecision(id); // clears shedDecidedMs + the surplusOnlyShedByDevice stamp
+    shedDecisions.clearFor(id); // clears the decision clock + the surplus stamp
   }
 }

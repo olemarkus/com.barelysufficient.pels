@@ -229,7 +229,7 @@ describe('Device plan snapshot', () => {
     // Regression for the marker under-stamp: the restore-eligibility readers must
     // see a device the planner decided to shed even when the executor issues no
     // write. In dry-run the plan builds (decision facts run) but actuation is
-    // short-circuited (no `lastDeviceShedMs`). `shedDecidedMs` is the decision-time
+    // short-circuited (no `lastDeviceShedMs`). `shedDecisions.decidedMs` is the decision-time
     // fact, so it must be stamped regardless.
     const dev1 = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
     await dev1.setCapabilityValue('measure_power', 5000); // 5 kW
@@ -256,7 +256,7 @@ describe('Device plan snapshot', () => {
 
     const state = app.planEngine.state;
     // Decision-time clock: stamped by the planner at finalization...
-    expect(state.shedDecidedMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.shedDecisions.decidedMs['dev-1']).toEqual(expect.any(Number));
     // ...actuation-time clock: unset because dry-run never issues the write.
     expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
   });
@@ -1008,7 +1008,7 @@ describe('Device plan snapshot', () => {
     ]);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
-    app.planEngine.state.lastPlannedShedIds = new Set(['dev-1']);
+    app.planEngine.state.shedDecisions.lastPlannedShedIds = new Set(['dev-1']);
 
     await app.planService.rebuildPlanFromCache('unknown');
 
@@ -1034,7 +1034,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    app.planEngine.state.shedDecidedMs['dev-1'] = Date.now();
+    app.planEngine.state.shedDecisions.decidedMs['dev-1'] = Date.now();
 
     app.deviceManager.setSnapshotForTests([
       {
@@ -1112,7 +1112,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    app.planEngine.state.shedDecidedMs['dev-1'] = Date.now();
+    app.planEngine.state.shedDecisions.decidedMs['dev-1'] = Date.now();
 
     app.deviceManager.setSnapshotForTests([
       {
@@ -3444,7 +3444,7 @@ describe('Dry run mode', () => {
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
-    app.planEngine.state.lastPlannedShedIds = new Set();
+    app.planEngine.state.shedDecisions.lastPlannedShedIds = new Set();
 
     app.deviceManager.setSnapshotForTests([
       {

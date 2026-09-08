@@ -916,7 +916,7 @@ describe('applyShedTemperatureHold', () => {
   it('admits an exempt setpoint device on the capacity axis while a non-exempt one stays held', () => {
     const run = (budgetExempt: boolean) => {
       const state = createPlanEngineState();
-      state.lastPlannedShedIds.add('dev-temp');
+      state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
       return applyShedTemperatureHold({
         // Scalar-only harness: flat integer floors, so the raw fallback IS the
         // normalized value and an empty map preserves each spec's behaviour.
@@ -1026,7 +1026,7 @@ describe('applyShedTemperatureHold', () => {
     const now = Date.UTC(2024, 0, 1, 12, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastPlannedShedIds = new Set(['dev-temp']);
+    state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
     state.activationPenaltyByDevice['dev-temp'] = { level: 1, lastSetbackMs: now - 1_000 };
 
     const held = applyShedTemperatureHold({
@@ -1095,7 +1095,7 @@ describe('applyShedTemperatureHold', () => {
       currentTarget?: number;
     } = {}) => {
       const state = createPlanEngineState();
-      state.lastPlannedShedIds.add('dev-temp');
+      state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
       if (params.lastControlledMs !== undefined) {
         state.actuation.lastDeviceControlledMs['dev-temp'] = params.lastControlledMs;
       }

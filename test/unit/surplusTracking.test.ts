@@ -489,7 +489,7 @@ describe('a solar stop that lands on a device capacity already priced', () => {
       forceShedSet: [],
       surplusHoldIds: [CHARGER_ID],
       admittedDevices: [buildTracker()],
-      state,
+      shedDecisions: state.shedDecisions,
     });
 
     expect(shedSet.has(CHARGER_ID)).toBe(true);
@@ -506,7 +506,7 @@ describe('a solar stop that lands on a device capacity already priced', () => {
       forceShedSet: [],
       surplusHoldIds: [],
       admittedDevices: [buildTracker()],
-      state,
+      shedDecisions: state.shedDecisions,
     });
 
     expect(shedStepTargets.get(CHARGER_ID)).toBe('medium');

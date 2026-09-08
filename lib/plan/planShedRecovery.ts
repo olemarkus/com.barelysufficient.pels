@@ -25,7 +25,7 @@ export function isNonSteppedDeviceRecovering(
   if (state.swapByDevice[candidate.id]?.swappedOutFor || state.swapByDevice[candidate.id]?.pendingTarget) {
     return true;
   }
-  const shedDecidedMs = state.shedDecidedMs[candidate.id];
+  const shedDecidedMs = state.shedDecisions.decidedMs[candidate.id];
   if (shedDecidedMs == null) return false;
   const lastRestoreMs = state.actuation.lastDeviceRestoreMs[candidate.id];
   return lastRestoreMs == null || lastRestoreMs < shedDecidedMs;

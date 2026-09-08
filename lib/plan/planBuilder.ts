@@ -291,12 +291,8 @@ export class PlanBuilder {
     this.stages.syncHeadroomCardState(planDevices, nowTs);
     const finalized = this.stages.finalizePlan(planDevices, normalizedShedFloorCByDevice);
     // Decision-time shed clock (edge-set) + the plan-less-safe surplus-posture
-    // stamp — semantics on `PlanEngineState.recordPlannedShedDecisions`.
-    this.state.recordPlannedShedDecisions({
-      shedIds: finalized.lastPlannedShedIds,
-      surplusOnlyIds: new Set(admittedDevices.filter((dev) => dev.surplusOnly === true).map((dev) => dev.id)),
-      nowTs,
-    });
+    // stamp — semantics on `ShedDecisions.recordPlannedShed`.
+    this.state.shedDecisions.recordPlannedShed(finalized.lastPlannedShedIds, admittedDevices, nowTs);
     const capacityLimitKw = this.capacitySettings.limitKw;
     const shortfallBudgetThresholdKw = this.computeShortfallThreshold();
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({

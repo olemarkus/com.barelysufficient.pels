@@ -400,7 +400,7 @@ describe('restore cooldown backoff', () => {
 
   it('blocks stepped-load step-up while another previously shed device is still restoring', () => {
     const state = createPlanEngineState();
-    state.shedDecidedMs['dev-off'] = Date.now() - 30_000;
+    state.shedDecisions.decidedMs['dev-off'] = Date.now() - 30_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -599,7 +599,7 @@ describe('restore cooldown backoff', () => {
 
   it('blocks stepped-load step-up while a shed-temperature device is still awaiting restore confirmation', () => {
     const state = createPlanEngineState();
-    state.shedDecidedMs['dev-temp'] = Date.now() - 30_000;
+    state.shedDecisions.decidedMs['dev-temp'] = Date.now() - 30_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1620,7 +1620,7 @@ describe('restore cooldown backoff', () => {
     vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.actuation.lastRestoreMs = now - 5_000;
-    state.lastPlannedShedIds = new Set(['first-temp', 'second-temp']);
+    state.shedDecisions.lastPlannedShedIds = new Set(['first-temp', 'second-temp']);
     const planDevices = ['first-temp', 'second-temp'].map((id, index) => buildPlanDevice({
       id,
       name: id,
@@ -1682,7 +1682,7 @@ describe('restore cooldown backoff', () => {
     vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.actuation.lastRestoreMs = now - 5_000;
-    state.lastPlannedShedIds.add('temp');
+    state.shedDecisions.lastPlannedShedIds = new Set(['temp']);
     const planDevices = [
       buildPlanDevice({
         id: 'binary', name: 'Heater', currentState: 'off', plannedState: 'keep', expectedPowerKw: 0.5,
@@ -1734,7 +1734,7 @@ describe('restore cooldown backoff', () => {
     vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.actuation.lastRestoreMs = now - 5_000;
-    state.lastPlannedShedIds.add('dev-temp');
+    state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
     const planDevices = [buildPlanDevice({
       id: 'dev-temp',
       name: 'Thermostat',
@@ -2946,7 +2946,7 @@ describe('restore admission — headroom and penalty gates', () => {
 
   it('uses full restore need for target-based restore instead of buffer-only headroom', () => {
     const state = createPlanEngineState();
-    state.lastPlannedShedIds = new Set(['dev-temp']);
+    state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
 
     const result = applyShedTemperatureHold({
         // Scalar-only harness: flat integer floors — empty map keeps behaviour.
@@ -2987,7 +2987,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const now = Date.UTC(2024, 0, 1, 10, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastPlannedShedIds = new Set(['dev-temp']);
+    state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
     state.activationPenaltyByDevice['dev-temp'] = { level: 1, lastSetbackMs: now - 1_000 };
 
     const result = applyShedTemperatureHold({
@@ -3192,7 +3192,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
 
   it('rejects target restore when postReserveMarginKw is below floor', () => {
     const state = createPlanEngineState();
-    state.lastPlannedShedIds = new Set(['dev-temp']);
+    state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
     // This exercises the target-restore headroom path via applyShedTemperatureHold
     const result = applyShedTemperatureHold({
         // Scalar-only harness: flat integer floors — empty map keeps behaviour.

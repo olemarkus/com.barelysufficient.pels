@@ -540,9 +540,10 @@ type DevicePlanDeviceBase = {
   // deadline floor). Drives the device card's "Raised to use your solar power" reason line.
   surplusAbsorbActive?: boolean;
   // Producer-resolved "Run on solar surplus" dump-load posture, forwarded flat from
-  // `PlanInputDevice.surplusOnly` (see its doc block). Rides the plan device so the
-  // builder can maintain the plan-less-safe `surplusOnlyShedByDevice` stamp from the
-  // finalized shed set.
+  // `PlanInputDevice.surplusOnly` (see its doc block). The plan-less-safe
+  // `shedDecisions.surplusOnlyByDevice` stamp is built from the INPUT devices,
+  // not from this copy; this one rides the plan device for the readers that
+  // have only the plan — the reason-flag validation and the settings UI.
   surplusOnly?: true;
   // Producer-resolved "Match solar surplus" tracking posture, forwarded flat from
   // `PlanInputDevice.surplusTracking` (see its doc block). Rides the plan device

@@ -150,7 +150,7 @@ export const applyCapacityControlOffRestoreWithSnapshot = async (
   // dump load on capacity-control-off/unmanage. See `skipRestoreForSurplusPosture`.
   if (skipRestoreForSurplusPosture(ctx, deviceId, name)) return false;
   // "Leave off until turned on again" reaches this lane too. A device that still
-  // carries `shedDecidedMs` from an earlier capacity shed, is then turned off
+  // carries `shedDecisions.decidedMs` from an earlier capacity shed, is then turned off
   // outside PELS, and is then unmanaged (or has Power-limit control switched off)
   // would otherwise be force-turned-ON here — the one thing the hold forbids.
   // Losing control authority is not consent to undo the user's own off action.
