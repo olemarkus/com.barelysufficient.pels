@@ -10,7 +10,6 @@ import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { AppContext } from '../../lib/app/appContext';
-import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import type { HomeScope } from '../homeRuntime/homeScope';
 import type { PlanEngineWiring } from './planEngineWiring';
 import { ComposedPlanEngine } from './composedPlanEngine';
@@ -23,12 +22,19 @@ export type CreatePlanEngineOptions = {
    */
   capacityGuard: CapacityGuard;
   /**
-   * Additional point-of-use fence for a home runtime's actuation. When true,
-   * every device write no-ops at the single actuator seam. Sub-home bundles
-   * use this for teardown and source-epoch changes; ownership is always
-   * checked separately for every home.
+   * This home's point-of-use actuation fence. When true, every device write
+   * no-ops at the single actuator seam. It carries the conditions that can
+   * change DURING an apply — a home torn down, its meter source epoch
+   * replaced, its prepared plan generation superseded — which the once-per-
+   * build gates cannot catch: a plan can be superseded between its first SDK
+   * write and its tenth.
+   *
+   * It carries no membership knowledge. Which devices are this home's is
+   * settled when the plan is built (`filterDevicesForHome`), and a device that
+   * moves home afterwards is handled by re-planning both homes, not by
+   * second-guessing the plan at the write.
    */
-  isActuationFenced?: (deviceId: string) => boolean;
+  isActuationFenced: (deviceId: string) => boolean;
 };
 
 export type PlanEngineCompositionResult = {
@@ -144,18 +150,17 @@ export function createPlanEngineComposition(
   if (!baseActuator) {
     throw new Error('Device actuator must be initialized before plan engine setup.');
   }
-  // Ownership is re-checked at the final write seam for EVERY home. Plan
-  // membership is resolved when a build starts, but a pin/zone/config change
-  // can race an already-queued continuation; returning requested:false lets
-  // the executor abandon that stale command without claiming success.
-  const actuator: Actuator = createFencedActuator(baseActuator, (deviceId) => {
-    const currentHomeId = ctx.homeMembership?.getHomeIdForDevice(deviceId) ?? MAIN_HOME_ID;
-    const meterSources = ctx.homeMembership?.getConfiguredMeterSources();
-    return currentHomeId !== scope.homeId
-      || meterSources?.state === 'unavailable'
-      || meterSources?.deviceIds.has(deviceId) === true
-      || options?.isActuationFenced?.(deviceId) === true;
-  });
+  // The home's own fence, and nothing else. This used to also re-read
+  // membership per write and drop the command when the device had since moved
+  // home or turned out to be a configured meter — but both were already
+  // settled when the plan was built: `filterDevicesForHome` gives a home only
+  // its own members and drops every meter, and fails closed to an empty list
+  // when ownership cannot be resolved. So those clauses could only ever fire
+  // on a plan that was already stale, using home identity as a proxy for
+  // staleness. A device that changes home mid-apply is an ordinary
+  // reconciliation: the write lands, both homes re-plan, and the next cycle
+  // decides from the new membership (owner ruling 2026-09-08).
+  const actuator: Actuator = createFencedActuator(baseActuator, options.isActuationFenced);
 
   const deps: PlanEngineWiring = {
     getHomeDisplayName: scope.getHomeDisplayName,
