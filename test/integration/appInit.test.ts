@@ -82,7 +82,6 @@ import {
 } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
-import type { ConfiguredMeterSources } from '../../lib/home/membership';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { DeferredObjectivePlanHistoryEntry } from '../../packages/contracts/src/deferredObjectivePlanHistory';
@@ -93,7 +92,7 @@ describe('app init plan service wiring', () => {
       deviceManager: undefined,
     });
 
-    expect(() => createPlanEngine(ctx, buildMainHomeScope(ctx, () => false), { capacityGuard: ctx.capacityGuard })).toThrow(
+    expect(() => createPlanEngine(ctx, buildMainHomeScope(ctx, () => false), { capacityGuard: ctx.capacityGuard, isActuationFenced: () => false })).toThrow(
       'DeviceTransport must be initialized before plan engine setup.',
     );
   });
@@ -109,7 +108,7 @@ describe('app init plan service wiring', () => {
       } as unknown as AppContext['deviceManager'],
       logDebug,
     });
-    const engine = createPlanEngine(engineCtx, buildMainHomeScope(engineCtx, () => false), { capacityGuard: engineCtx.capacityGuard });
+    const engine = createPlanEngine(engineCtx, buildMainHomeScope(engineCtx, () => false), { capacityGuard: engineCtx.capacityGuard, isActuationFenced: () => false });
 
     expect(engine).toBeDefined();
     (capturedPlanBuilderDeps.current as unknown as { logDebug: (...args: unknown[]) => void }).logDebug('debug payload', 123);
@@ -117,13 +116,9 @@ describe('app init plan service wiring', () => {
     expect(logDebug).toHaveBeenCalledWith('plan', 'debug payload', 123);
   });
 
-  it('rechecks main-home ownership at the final actuator seam', async () => {
+  it('fences writes on this home\'s own fence, and on nothing else', async () => {
     const setCapability = vi.fn(async (..._args: unknown[]) => undefined);
-    let currentHomeId = 'main';
-    let configuredMeterSources: ConfiguredMeterSources = {
-      state: 'resolved' as const,
-      deviceIds: new Set<string>(),
-    };
+    let fenced = false;
     const engineCtx = createAppContextMock({
       deviceManager: {
         setCapability,
@@ -136,16 +131,23 @@ describe('app init plan service wiring', () => {
         resolveTemperatureTarget: (_deviceId: string, desired: number) => desired,
         requestSteppedLoadStep: vi.fn(async () => ({ requested: false })),
       } as unknown as AppContext['deviceManager'],
+      // Membership says the device belongs to ANOTHER home. The actuator no
+      // longer asks: which devices are this home's was settled when the plan
+      // was built, and a device that moves home mid-apply reconciles on the
+      // next cycle rather than having its write second-guessed here.
       homeMembership: {
-        getHomeIdForDevice: () => currentHomeId,
-        getConfiguredMeterSources: () => configuredMeterSources,
+        getHomeIdForDevice: () => 'h_a',
+        getConfiguredMeterSources: () => ({ state: 'resolved' as const, deviceIds: new Set(['heater-1']) }),
       } as unknown as NonNullable<AppContext['homeMembership']>,
     });
-    // A healthy default policy leaves this test focused on the ownership fence.
+    // A healthy default policy leaves this test focused on the actuation fence.
     vi.mocked(engineCtx.homey.settings.get).mockImplementation((key) => (
       key === 'temperature_control_modes' ? {} : null
     ));
-    createPlanEngine(engineCtx, buildMainHomeScope(engineCtx, () => false), { capacityGuard: engineCtx.capacityGuard });
+    createPlanEngine(engineCtx, buildMainHomeScope(engineCtx, () => false), {
+      capacityGuard: engineCtx.capacityGuard,
+      isActuationFenced: () => fenced,
+    });
     const actuator = (
       capturedPlanExecutorDeps.current as unknown as { actuator: Actuator }
     ).actuator;
@@ -161,21 +163,10 @@ describe('app init plan service wiring', () => {
       kind: 'target',
       requestedTargetValue: 21,
     });
-    configuredMeterSources = {
-      state: 'resolved',
-      deviceIds: new Set(['heater-1']),
-    };
-    await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
-    configuredMeterSources = {
-      state: 'unavailable',
-      deviceIds: new Set(['previous-main-meter']),
-    };
-    await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
-    configuredMeterSources = {
-      state: 'resolved',
-      deviceIds: new Set(),
-    };
-    currentHomeId = 'h_a';
+
+    // The one thing that still fences a write mid-apply: this home's own
+    // posture (torn down, source epoch replaced, plan generation superseded).
+    fenced = true;
     await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
 
     expect(setCapability).toHaveBeenCalledExactlyOnceWith(
