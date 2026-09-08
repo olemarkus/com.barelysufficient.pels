@@ -24,7 +24,7 @@ import type { PriceOptDeviceConfig } from './planBuilderSurplus';
 import type { PowerTrackerState } from '../power/tracker';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import type { Logger as PinoLogger } from '../logging/logger';
 import { buildInitialPlanDevices } from './planDevices';
 import type { ShortfallOffState } from './planOffStateReason';
 import { applyRestorePlan, type RestorePlanResult } from './restore';
@@ -59,7 +59,6 @@ export type PlanMaterializationDeps = {
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
-  debugStructured?: StructuredDebugEmitter;
   logDebug: (...args: unknown[]) => void;
 };
 
@@ -104,7 +103,6 @@ export class PlanMaterializationStages {
         getInferredSurplusKw: this.deps.getInferredSurplusKw,
         getOperatingMode: () => this.deps.getOperatingMode(),
         pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
-        debugStructured: this.deps.debugStructured,
       },
     }));
   }
@@ -156,7 +154,6 @@ export class PlanMaterializationStages {
       restoredThisCycle: restoreResult.restoredThisCycle,
       guardInShortfall: sheddingPlan.guardInShortfall,
       sheddingActive: sheddingPlan.sheddingActive,
-      debugStructured: this.deps.debugStructured,
       getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
     }));
   }
@@ -322,7 +319,6 @@ export class PlanMaterializationStages {
         normalizedShedFloorCByDevice,
         deviceDiagnostics: this.deps.deviceDiagnostics,
         structuredLog: this.deps.structuredLog,
-        debugStructured: this.deps.debugStructured,
         deviceNameById,
         logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       },

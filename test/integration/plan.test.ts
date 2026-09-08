@@ -18,6 +18,7 @@ import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../util
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { buildPlanInputDevice, buildPlanMeta, buildPlanDevice } from '../utils/planTestUtils';
 import { capturePlanBuilderStructuredLog } from '../helpers/planBuilderLogCapture';
+import { captureLogger } from '../utils/loggerCapture';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
@@ -2854,8 +2855,8 @@ describe('Device plan snapshot', () => {
       app.planEngine.state.sheddingActive = false;
     }
 
-    // Capture structured log events from the plan engine
-    const structuredEvents = capturePlanBuilderStructuredLog(app, true);
+    // Swap verdicts are `plan`-topic debug events with their own emitter.
+    const swapCapture = captureLogger('debug', ['plan']);
 
     // Simulate what happens when periodic refresh and power sample happen close together
     // This replicates production behavior at 08:22:36 where:
@@ -2866,9 +2867,13 @@ describe('Device plan snapshot', () => {
       app['powerSamplePipeline'].recordPowerSample(3000),
     ]);
 
-    // Should only have ONE of each, not duplicates
-    expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(1);
-    expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_shed').length).toBe(1);
+    try {
+      // Should only have ONE of each, not duplicates
+      expect(swapCapture.findEvents('restore_swap_approved')).toHaveLength(1);
+      expect(swapCapture.findEvents('restore_swap_shed')).toHaveLength(1);
+    } finally {
+      swapCapture.restore();
+    }
   });
 
   it('does not re-plan swap when swap is already pending (e.g. after API timeout)', async () => {
@@ -2915,18 +2920,18 @@ describe('Device plan snapshot', () => {
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put').mockRejectedValue(new Error('Timeout after 10000ms'));
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
-    // Capture structured log events from the plan engine
-    const structuredEvents = capturePlanBuilderStructuredLog(app, true);
+    // Swap verdicts are `plan`-topic debug events with their own emitter.
+    const swapCapture = captureLogger('debug', ['plan']);
 
     try {
       // First power sample - should plan the swap
       await app['powerSamplePipeline'].recordPowerSample(3000);
       await flushPromises(); // Let async shedding attempt complete
 
-      expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(1);
+      expect(swapCapture.findEvents('restore_swap_approved')).toHaveLength(1);
 
       // Clear events for second sample
-      structuredEvents.length = 0;
+      swapCapture.events.length = 0;
 
       // Second power sample - should NOT re-plan the same swap
       // The swap is already pending (dev-high in pendingSwapTargets)
@@ -2935,9 +2940,10 @@ describe('Device plan snapshot', () => {
 
       // BUG: Without the fix, this would be 1 (re-planning the same swap)
       // With the fix, this should be 0 (swap already pending)
-      expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(0);
+      expect(swapCapture.findEvents('restore_swap_approved')).toHaveLength(0);
       expect(stderrSpy).toHaveBeenCalled();
     } finally {
+      swapCapture.restore();
       stderrSpy.mockRestore();
       putSpy.mockRestore();
       errorSpy.mockRestore();

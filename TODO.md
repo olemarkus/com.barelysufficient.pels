@@ -1673,10 +1673,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       reach the channel, and `getStructuredDebugEmitter` is now the same emitter under the wiring's
       name — so dropping a threaded `debugStructured` parameter changes nothing about what a file
       emits. What remains is the deletion. Most declarations belong to files that only forward the
-      emitter to a callee, and `lib/plan/planDebugDedupe.ts` is the worked example of the end
-      state: it resolves its own emitter and gates on its own topic, and its remaining
-      `debugStructured?` parameter is a pass-through its callers may simply stop passing.
-      Fix, one cluster per PR, leaf-first — the rest of `lib/plan/restore/**`, `lib/plan/shedding/**`,
+      emitter to a callee. `lib/plan/restore/**` is done and is the worked example: once
+      `emitRestoreDebugEventOnChange` and `emitSwapDebug` resolved their own emitters, every
+      forward above them was dead and came out, `RestoreDeps.debugStructured` included — ten
+      declarations for two terminal readers.
+      Two dead logger fields on that same path are left because removing them is not a logging
+      change: `RestoreDeps.logDebug` (`lib/plan/restore/types.ts`) is REQUIRED and has no reader
+      under `lib/plan/restore/**` — its only mention is the forwarding literal in
+      `planBuilderMaterialization.ts` that builds the deps — and `RestoreDeps.deviceNameById` has
+      none either. Because `logDebug` is required, roughly 120 test deps literals carry a
+      `logDebug: vi.fn()` that feeds nothing. Delete both fields and the forwarding literal, then
+      the literals; done when `grep -rn 'logDebug' lib/plan/restore` returns nothing.
+      Fix, one cluster per PR, leaf-first — `lib/plan/shedding/**`,
       the `lib/plan` builder plus `planTargetControl.ts`, `lib/device/transport/**`,
       `lib/objectives/**`, then `lib/dailyBudget` + `lib/diagnostics` + `lib/observer`, and last
       `setup/**` + `flowCards/**` with the `Loggers` type: replace the parameter with a module-scope
@@ -1739,16 +1747,16 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       level is readable at the call site. Done when an actionChanged-only rebuild produces a
       `plan_rebuild_completed` line with `debugTopic: 'plan'` and the file leaves the allowlist. [P2]
 
-- [ ] **122 runtime sites still log a way that is invisible or unfilterable.**
+- [ ] **121 runtime sites still log a way that is invisible or unfilterable.**
       `npm run logging:no-legacy` bans four shapes — any `.debug()` outside `lib/logging/` (dark on
       a pino module logger, topic-gated prose on the injected SDK `Logger`, hand-rolled on a
       `.child(..., {level:'debug'})`, and the call site cannot say which), prose via `logDebug` /
       `this.log`, a computed log level, and `console.*` — and freezes the pre-existing ones in
       `scripts/logging-legacy-allowlist.txt` with per-file budgets that may only shrink. Lanes,
       largest first: `lib/executor` (37, the dark command-skip events above, worth doing first),
-      `lib/device` (34, mostly injected-prose `.debug` that does emit but carries no `event` field),
-      entry points and wiring (20), `lib/plan` + `lib/observer` (17), and the remaining domain
-      modules (14). Fix per file: replace the call with a module-scope
+      `lib/device` (34), entry points and wiring (20), `lib/plan` + `lib/observer` (16), and the
+      remaining domain modules (14). Most of the device lane is injected-prose `.debug` that does
+      emit but carries no `event` field. Fix per file: replace the call with a module-scope
       `getDebugEmitter(component, topic)`, or with `getLogger(module).info(...)` where the event
       deserves to be visible by default, and lower the budget. Done when the allowlist file is
       deleted and the guard requires its absence — `api.ts`'s pre-logger `console.error` is

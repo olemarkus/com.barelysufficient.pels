@@ -1,6 +1,5 @@
 import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
 import type { PlanEngineState } from '../planState';
-import type { StructuredDebugEmitter } from '../../logging/logger';
 import {
   PLAN_REASON_CODES,
 } from '../../../packages/shared-domain/src/planReasonSemantics';
@@ -43,13 +42,12 @@ export function admitSteppedRestore(params: {
   lowestNonZeroStep: { id: string; planningPowerW: number } | null;
   deltaKw: number;
   availableHeadroom: number;
-  debugStructured?: StructuredDebugEmitter;
   restoreDebugKey: string;
   swapExecutor?: SteppedSwapExecutor;
   headroomReserves: readonly HeadroomReserve[];
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep,
-    deltaKw, availableHeadroom, debugStructured, restoreDebugKey, swapExecutor,
+    deltaKw, availableHeadroom, restoreDebugKey, swapExecutor,
     headroomReserves } = params;
   const restoreBuffer = computeRestoreBufferKw(deltaKw);
   const needed = deltaKw + restoreBuffer;
@@ -108,7 +106,7 @@ export function admitSteppedRestore(params: {
     }
     return rejectSteppedRestoreForInsufficientHeadroom({
       dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-      admission, availableHeadroom, needed, debugStructured, restoreDebugKey,
+      admission, availableHeadroom, needed, restoreDebugKey,
     });
   }
   setRestorePlanDevice(deviceMap, dev.id, {
@@ -141,7 +139,6 @@ export function admitSteppedRestore(params: {
       minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       decision: 'admitted',
     },
-    debugStructured,
   });
   return { availableHeadroom: availableHeadroom - needed, restoredOneThisCycle: true };
 }
@@ -153,10 +150,9 @@ export function blockSteppedRestoreForShedInvariant(params: {
   nextStep: { id: string; planningPowerW: number };
   lowestNonZeroStep: { id: string; planningPowerW: number } | null;
   phase: 'startup' | 'runtime';
-  debugStructured?: StructuredDebugEmitter;
   restoreDebugKey: string;
 }): boolean {
-  const { dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, debugStructured, restoreDebugKey } = params;
+  const { dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, restoreDebugKey } = params;
   // Boost is the user's priority override: it bypasses the fairness invariant.
   // No draw-evidence consult here — `resolveBoostActive` already released the
   // boost if the device is drawing nothing, so an active boost IS a device with
@@ -199,7 +195,6 @@ export function blockSteppedRestoreForShedInvariant(params: {
         decision: 'rejected',
         rejectionReason: 'shed_invariant',
       },
-      debugStructured,
     });
     state.steppedRestoreRejectedByDevice[dev.id] = {
       requestedStepId: nextStep.id,
@@ -237,11 +232,10 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
   admission: RestoreAdmissionMetrics;
   availableHeadroom: number;
   needed: number;
-  debugStructured?: StructuredDebugEmitter;
   restoreDebugKey: string;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-    admission, availableHeadroom, needed, debugStructured, restoreDebugKey } = params;
+    admission, availableHeadroom, needed, restoreDebugKey } = params;
   const reason = buildRestoreHeadroomReason({
     neededKw: needed,
     availableKw: availableHeadroom,
@@ -272,7 +266,6 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
       decision: 'rejected',
       rejectionReason: 'insufficient_headroom',
     },
-    debugStructured,
   });
   return { availableHeadroom, restoredOneThisCycle: false };
 }

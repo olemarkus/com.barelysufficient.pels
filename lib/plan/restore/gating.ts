@@ -94,7 +94,6 @@ export function planRestoreForDevice(
     deviceName: dev.name,
     state,
     stepped: false,
-    debugStructured: deps.debugStructured,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -134,7 +133,6 @@ export function planRestoreForDevice(
         decision: 'admitted',
         ...penaltyFields,
       },
-      debugStructured: deps.debugStructured,
     });
     restoredThisCycle.add(dev.id);
     recordBatchAdmission(batchState, restoreNeed.needed);
@@ -161,10 +159,9 @@ function rejectBinaryRestore(
   loop: RestoreLoopState,
   reason: DevicePlanDevice['reason'],
 ): RestoreLoopState {
-  const { state, deviceMap, deps, phase } = cycle;
+  const { state, deviceMap, phase } = cycle;
   const { availableHeadroom } = loop;
   const restoreDebugKey = `binary:${dev.id}`;
-  const debugStructured = deps.debugStructured;
   setDevice(deviceMap, dev.id, {
     plannedState: 'shed',
     reason,
@@ -182,7 +179,6 @@ function rejectBinaryRestore(
       decision: 'rejected',
       rejectionReason: reason.code,
     },
-    debugStructured,
   });
   return loop;
 }
@@ -199,12 +195,11 @@ function rejectBinaryRestoreForMeterSettling(
   loop: RestoreLoopState,
   gateRestoredOne: boolean,
 ): RestoreLoopState {
-  const { state, deviceMap, deps, timing, phase } = cycle;
+  const { state, deviceMap, timing, phase } = cycle;
   const { availableHeadroom } = loop;
   const lastRestoreTs = state.lastRestoreMs;
   const restoredOneThisCycle = gateRestoredOne;
   const restoreDebugKey = `binary:${dev.id}`;
-  const debugStructured = deps.debugStructured;
   const remainingSec = resolveMeterSettlingRemainingSec({ timing, lastRestoreTs, restoredOneThisCycle }) ?? 0;
   const reason = buildMeterSettlingReason(
     remainingSec,
@@ -227,7 +222,6 @@ function rejectBinaryRestoreForMeterSettling(
       decision: 'rejected',
       rejectionReason: reason.code,
     },
-    debugStructured,
   });
   return loop;
 }
@@ -239,11 +233,10 @@ function rejectBinaryRestoreForInsufficientHeadroom(
   restoreNeed: ReturnType<typeof getRestoreNeed>,
   admission: ReturnType<typeof buildRestoreAdmissionMetrics>,
 ): RestoreLoopState {
-  const { state, deviceMap, deps, phase } = cycle;
+  const { state, deviceMap, phase } = cycle;
   const { availableHeadroom } = loop;
   const powerSource = resolveRestorePowerSource(dev);
   const restoreDebugKey = `binary:${dev.id}`;
-  const debugStructured = deps.debugStructured;
   setDevice(deviceMap, dev.id, buildInsufficientHeadroomUpdate({
     neededKw: restoreNeed.needed,
     availableKw: availableHeadroom,
@@ -268,7 +261,6 @@ function rejectBinaryRestoreForInsufficientHeadroom(
       decision: 'rejected',
       rejectionReason: 'insufficient_headroom',
     },
-    debugStructured,
   });
   return loop;
 }

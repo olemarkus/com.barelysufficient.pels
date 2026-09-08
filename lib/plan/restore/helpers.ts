@@ -1,7 +1,6 @@
 import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
 import type { RestoreTiming } from './timing';
 import { resolveSurplusCeilingStepId, type PlanEngineState } from '../planState';
-import type { StructuredDebugEmitter } from '../../logging/logger';
 import {
   getInactiveReason,
   getSteppedRestoreCandidates,
@@ -116,7 +115,6 @@ export function blockRestoreForRecentActivationSetback(params: {
   deviceName: string | undefined;
   state: PlanEngineState;
   stepped: boolean;
-  debugStructured?: StructuredDebugEmitter;
 }): boolean {
   const {
     deviceMap,
@@ -124,7 +122,6 @@ export function blockRestoreForRecentActivationSetback(params: {
     deviceName,
     state,
     stepped,
-    debugStructured,
   } = params;
   const remainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId });
   if (remainingMs === null) return false;
@@ -151,7 +148,6 @@ export function blockRestoreForRecentActivationSetback(params: {
       remainingMs,
       stepped,
     },
-    debugStructured,
   });
   return true;
 }
@@ -205,12 +201,11 @@ export function planRestoreForSteppedDevice(params: {
   timing: RestoreDeviceTiming;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
-  debugStructured?: StructuredDebugEmitter;
   swapExecutor?: SteppedSwapExecutor;
   headroomReserves?: readonly HeadroomReserve[];
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle,
-    debugStructured, swapExecutor, headroomReserves = [] } = params;
+    swapExecutor, headroomReserves = [] } = params;
   const restoreDebugKey = `stepped:${dev.id}`;
   if (keepInactiveSteppedDeviceInactive({
     dev,
@@ -246,13 +241,12 @@ export function planRestoreForSteppedDevice(params: {
     availableHeadroom,
     phase,
     requestedStepId: requestedStep?.id ?? null,
-    debugStructured,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
   if (blockRestoreForRecentActivationSetback({
-    deviceMap, deviceId: dev.id, deviceName: dev.name, state, stepped: true, debugStructured,
+    deviceMap, deviceId: dev.id, deviceName: dev.name, state, stepped: true,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -279,7 +273,6 @@ export function planRestoreForSteppedDevice(params: {
     phase,
     state,
     restoreDebugKey,
-    debugStructured,
     availableHeadroom,
     restoredOneThisCycle,
     setDevice: (updates) => setRestorePlanDevice(deviceMap, dev.id, updates),
@@ -292,7 +285,7 @@ export function planRestoreForSteppedDevice(params: {
   }
 
   if (blockSteppedRestoreForShedInvariant({
-    dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, debugStructured, restoreDebugKey,
+    dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, restoreDebugKey,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -307,7 +300,6 @@ export function planRestoreForSteppedDevice(params: {
     lowestNonZeroStep,
     deltaKw,
     availableHeadroom,
-    debugStructured,
     restoreDebugKey,
     swapExecutor,
     headroomReserves,

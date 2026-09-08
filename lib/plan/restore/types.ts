@@ -1,4 +1,4 @@
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
+import type { Logger as PinoLogger } from '../../logging/logger';
 import type { HeadroomReserve, resolveRestoreDecisionPhase } from '../admission';
 import type { DevicePlanDevice, ShedBehavior } from '../planTypes';
 import type { SwapState, SwapStateSnapshot } from '../swap';
@@ -17,7 +17,6 @@ export type RestoreDeps = {
   normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
-  debugStructured?: StructuredDebugEmitter;
   deviceNameById?: ReadonlyMap<string, string>;
   logDebug: (...args: unknown[]) => void;
 };

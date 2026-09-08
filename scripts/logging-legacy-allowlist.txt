@@ -18,7 +18,7 @@
 # permanent exemption. When the last line goes, DELETE THIS FILE — the guard
 # then requires its absence.
 #
-# Counts are as of the guard's introduction (63 files, 122 sites).
+# Counts were 63 files / 122 sites at the guard's introduction; 62 files / 121 sites now.
 
 # --- Executor lane (highest value: these are the events people go looking for) ---
 # Four events `notes/logging/README.md` lists as current — target_command_skipped,
@@ -97,7 +97,6 @@ lib/plan/planBuilderSilentMeter.ts 1
 lib/plan/planChangeTracker.ts 1
 lib/plan/planServiceRebuild.ts 1
 lib/plan/rebuildScheduler/telemetryObserver.ts 1
-lib/plan/restore/swap.ts 1
 
 # --- Remaining domain modules -----------------------------------------------
 lib/dailyBudget/dailyBudgetManager.ts 1

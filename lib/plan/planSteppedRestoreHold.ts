@@ -1,5 +1,4 @@
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import type { StructuredDebugEmitter } from '../logging/logger';
 import { incPerfCounter } from '../utils/perfCounters';
 import type { DevicePlanDevice, SteppedPlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
@@ -20,7 +19,6 @@ export function applySteppedRestoreAttemptHold(params: {
   phase: 'startup' | 'runtime';
   state: PlanEngineState;
   restoreDebugKey: string;
-  debugStructured?: StructuredDebugEmitter;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   setDevice: (updates: Partial<DevicePlanDevice>) => void;
@@ -34,7 +32,6 @@ export function applySteppedRestoreAttemptHold(params: {
     phase,
     state,
     restoreDebugKey,
-    debugStructured,
     availableHeadroom,
     restoredOneThisCycle,
     setDevice,
@@ -89,7 +86,6 @@ export function applySteppedRestoreAttemptHold(params: {
         decision: 'deferred',
         reasonCode: pendingRestoreHold.reasonCode,
       },
-      debugStructured,
     });
     return {
       handled: true,

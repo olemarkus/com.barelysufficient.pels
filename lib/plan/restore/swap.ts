@@ -1,4 +1,4 @@
-import { getLogger } from '../../logging/logger';
+import { getDebugEmitter } from '../../logging/logger';
 import type { DevicePlanDevice } from '../planTypes';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
@@ -22,7 +22,7 @@ import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { buildRestoreAdmissionLogFields, buildRestoreAdmissionMetrics } from '../admission';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
-import type { RestoreCycle, RestoreDeps } from './types';
+import type { RestoreCycle } from './types';
 
 /**
  * What a swap attempt did with the device.
@@ -41,7 +41,7 @@ export type SwapRestoreOutcome =
   | { kind: 'decided'; availableHeadroom: number; restoredOneThisCycle: boolean }
   | { kind: 'no_source' };
 
-const logger = getLogger('plan/restore');
+const emitPlanDebug = getDebugEmitter('plan', 'plan');
 
 /**
  * What to merge onto the device on each swap outcome. Both are always present:
@@ -67,7 +67,7 @@ export function attemptSwapRestore(
   restoreDebugKey: string,
   updates: SwapDeviceUpdates,
 ): SwapRestoreOutcome {
-  const { deviceMap, swapState, state, restoredThisCycle, deps } = cycle;
+  const { deviceMap, swapState, state, restoredThisCycle } = cycle;
   const measurementTs = cycle.timing.measurementTs;
   const { admitted: admittedDeviceUpdate, rejected: rejectedDeviceUpdate } = updates;
 
@@ -127,7 +127,7 @@ export function attemptSwapRestore(
       plannedState: 'shed',
       reason: { code: PLAN_REASON_CODES.swappedOut, targetName: dev.name },
     });
-    emitSwapDebug(deps, {
+    emitSwapDebug({
       event: 'restore_swap_shed',
       shedDeviceId: shedDev.id,
       shedDeviceName: shedDev.name,
@@ -195,7 +195,7 @@ function rejectSwapRestoreWithCandidates(
   restoreDebugKey: string,
   rejectedDeviceUpdate: Partial<DevicePlanDevice>,
 ): SwapRestoreOutcome {
-  const { deviceMap, state, deps, phase } = cycle;
+  const { deviceMap, state, phase } = cycle;
   setDevice(deviceMap, dev.id, buildRejectedSwapUpdate(
     availableHeadroom, restoreNeed, rejectedDeviceUpdate, swap,
   ));
@@ -225,7 +225,6 @@ function rejectSwapRestoreWithCandidates(
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
     },
-    debugStructured: deps.debugStructured,
   });
   return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
 }
@@ -236,8 +235,8 @@ function emitSwapApprovedDebug(
   restoreNeed: RestoreNeed,
   swap: ReturnType<typeof buildSwapCandidates>,
 ): void {
-  const { deps, phase } = cycle;
-  emitSwapDebug(deps, {
+  const { phase } = cycle;
+  emitSwapDebug({
     event: 'restore_swap_approved',
     restoreType: 'swap',
     deviceId: dev.id,
@@ -259,12 +258,14 @@ function emitSwapApprovedDebug(
 
 // A swap approval and the sheds that fund it are events, not a standing state,
 // so they emit every time rather than through the decision gate.
-function emitSwapDebug(deps: RestoreDeps, payload: Record<string, unknown>): void {
-  if (deps.debugStructured) {
-    deps.debugStructured(payload);
-    return;
-  }
-  logger.debug(payload);
+/**
+ * Swap verdicts go to the `plan` debug topic, resolved here rather than threaded
+ * in. The old fallback for a missing emitter was `logger.debug`, which the pino
+ * root at `info` discards — so a caller that omitted the emitter silently lost
+ * the line rather than getting a quieter one.
+ */
+function emitSwapDebug(payload: Record<string, unknown>): void {
+  emitPlanDebug(payload);
 }
 
 /**
@@ -283,7 +284,7 @@ function rejectSwapRestoreForMeasurement(
   rejectedDeviceUpdate: Partial<DevicePlanDevice>,
   rejectionReason: 'no_measurement' | 'awaiting_fresh_measurement',
 ): SwapRestoreOutcome {
-  const { deviceMap, state, deps, phase } = cycle;
+  const { deviceMap, state, phase } = cycle;
   setDevice(deviceMap, dev.id, buildRejectedSwapUpdate(
     availableHeadroom, restoreNeed, rejectedDeviceUpdate, null,
   ));
@@ -303,7 +304,6 @@ function rejectSwapRestoreForMeasurement(
       decision: 'rejected',
       rejectionReason,
     },
-    debugStructured: deps.debugStructured,
   });
   return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
 }

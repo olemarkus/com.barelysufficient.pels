@@ -33,7 +33,6 @@ import {
   type BinaryControlDiscriminantProbe,
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
-import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -74,12 +73,23 @@ const buildContext = (overrides: PlanCycleSpec = {}): { context: PlanContext; po
   buildPlanCycle({ total: FIXTURE_TOTAL_KW, headroom: 1, hourBucketKey: '1970-01-01T00', ...overrides })
 );
 
-// Restore-decision debug events are gated on the `plan` topic; these specs
-// assert on the emitter, so they run with it switched on. The capture owns the
-// destination too, so the enabled topic does not write onto stdout.
+// Restore-decision events resolve their own `plan`-topic emitter
+// (`emitRestoreDebugEventOnChange`), so the capture is how a spec observes them.
+// The swap events still take a threaded emitter and stay on a spy. The capture
+// owns the destination too, so the enabled topic never reaches stdout.
 let capture: LoggerCapture;
 beforeEach(() => { capture = captureLogger('debug', ['plan']); });
 afterEach(() => { capture.restore(); });
+
+/** Restore-decision events for one device, in order. */
+const restoreEventsFor = (event: string, deviceId: string): Record<string, unknown>[] => (
+  capture.findEvents(event).filter((entry) => entry['deviceId'] === deviceId)
+);
+
+/** The stepped restore verdicts in order, which is stronger than a bare count. */
+const steppedVerdicts = (): (string | undefined)[] => (
+  capture.eventNames().filter((name) => name?.startsWith('restore_stepped_'))
+);
 
 describe('restore cooldown backoff', () => {
   beforeEach(() => {
@@ -2998,7 +3008,6 @@ describe('restore admission — headroom and penalty gates', () => {
       penaltyLevel: 1,
       lastSetbackMs: now - 1_000,
     };
-    const debugStructured = vi.fn();
 
     const result = applyShedTemperatureHold({
         // Scalar-only harness: flat integer floors — empty map keeps behaviour.
@@ -3026,14 +3035,13 @@ describe('restore admission — headroom and penalty gates', () => {
       availableHeadroom: 3,
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
-      debugStructured,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18 }),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-temp');
     expect(device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined).toBe(18);
     expect(reasonText(device?.reason)).toMatch(/activation backoff/);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.findEvents('restore_rejected')).toContainEqual(expect.objectContaining({
       event: 'restore_rejected',
       restoreType: 'target',
       deviceId: 'dev-temp',
@@ -3244,7 +3252,6 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
 
   it('keeps binary restore summaries non-contradictory when raw available exceeds need', () => {
     const state = createPlanEngineState();
-    const debugStructured = vi.fn();
     const result = applyRestorePlan({
       planDevices: [
         buildPlanDevice({
@@ -3260,7 +3267,6 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
       sheddingActive: false,
       deps: {
         ...makeDepsFloor(),
-        debugStructured,
       },
     });
 
@@ -3269,7 +3275,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
       'insufficient headroom to restore after reserves (need 0.65kW, available 1.00kW, '
       + 'post-reserve margin 0.095kW < 0.250kW)',
     );
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.findEvents('restore_rejected')).toContainEqual(expect.objectContaining({
       event: 'restore_rejected',
       restoreType: 'binary',
       availableKw: 0.995,
@@ -3781,7 +3787,6 @@ describe('stepped-load shed invariant', () => {
       ['binary-shed', shedDevice],
       ['dev-step', steppedDev],
     ]);
-    const debugStructured = vi.fn();
 
     planRestoreForSteppedDevice({
       dev: steppedDevOf(deviceMap),
@@ -3790,10 +3795,9 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      debugStructured,
     });
 
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.findEvents('restore_stepped_rejected')).toContainEqual(expect.objectContaining({
       event: 'restore_stepped_rejected',
       blockedByShedInvariant: true,
       shedDeviceCount: 1,
@@ -3813,7 +3817,6 @@ describe('stepped-load shed invariant', () => {
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
     const deviceMap = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);
-    const debugStructured = vi.fn();
 
     const callArgs = {
       dev: steppedDevOf(deviceMap),
@@ -3823,16 +3826,15 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
       logDebug: vi.fn(),
-      debugStructured,
     };
 
     // First call: emits
     planRestoreForSteppedDevice(callArgs);
-    expect(debugStructured).toHaveBeenCalledTimes(1);
+    expect(steppedVerdicts()).toEqual(['restore_stepped_rejected']);
 
     // Second call with identical params: suppressed
     planRestoreForSteppedDevice({ ...callArgs, dev: steppedDevOf(deviceMap) });
-    expect(debugStructured).toHaveBeenCalledTimes(1);
+    expect(steppedVerdicts()).toEqual(['restore_stepped_rejected']);
   });
 
   it('restore_stepped_rejected re-emits when shed count changes', () => {
@@ -3843,7 +3845,6 @@ describe('stepped-load shed invariant', () => {
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
-    const debugStructured = vi.fn();
 
     // First call with 1 shed device
     const map1 = new Map([['shed-1', shed1], ['dev-step', steppedDev]]);
@@ -3854,9 +3855,8 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      debugStructured,
     });
-    expect(debugStructured).toHaveBeenCalledTimes(1);
+    expect(steppedVerdicts()).toEqual(['restore_stepped_rejected']);
 
     // Second call with 2 shed devices: different shed count → re-emits
     const map2 = new Map([['shed-1', shed1], ['shed-2', shed2], ['dev-step', steppedDev]]);
@@ -3867,13 +3867,12 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      debugStructured,
     });
-    expect(debugStructured).toHaveBeenCalledTimes(2);
-    expect(debugStructured).toHaveBeenLastCalledWith(expect.objectContaining({
+    expect(steppedVerdicts()).toEqual(['restore_stepped_rejected', 'restore_stepped_rejected']);
+    expect(capture.findEvents('restore_stepped_rejected').at(-1)).toMatchObject({
       event: 'restore_stepped_rejected',
       shedDeviceCount: 2,
-    }));
+    });
   });
 
   it('restore_stepped_rejected re-emits after device was unblocked and shed resumes', () => {
@@ -3884,9 +3883,7 @@ describe('stepped-load shed invariant', () => {
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
-    const debugCalls: unknown[] = [];
-    const debugStructured = (payload: unknown) => debugCalls.push(payload);
-    const rejectedCalls = () => debugCalls.filter((c) => (c as { event?: unknown } | undefined)?.event === 'restore_stepped_rejected');
+    const rejectedCalls = (): Record<string, unknown>[] => capture.findEvents('restore_stepped_rejected');
 
     // First: blocked, emits
     const mapShed = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);
@@ -3897,7 +3894,6 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      debugStructured,
     });
     expect(rejectedCalls()).toHaveLength(1);
 
@@ -3910,7 +3906,6 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      debugStructured,
     });
 
     // Third: shed resumes → first rejection again, must re-emit
@@ -3921,7 +3916,6 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      debugStructured,
     });
     expect(rejectedCalls()).toHaveLength(2);
   });
@@ -3934,7 +3928,6 @@ describe('stepped-load shed invariant', () => {
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
-    const debugStructured = vi.fn();
     const activeCooldownTiming = { ...makeShedTiming(), inRestoreCooldown: true, restoreCooldownRemainingSec: 30 };
 
     // Round 1: shed active, blocked by invariant → emits
@@ -3946,9 +3939,8 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      debugStructured,
     });
-    expect(debugStructured).toHaveBeenCalledTimes(1);
+    expect(steppedVerdicts()).toEqual(['restore_stepped_rejected']);
 
     // Round 2: shed cleared, cooldown active — active device bypasses global cooldown and
     // admits the step-up to 'max', clearing the invariant tracking as a side effect.
@@ -3960,9 +3952,8 @@ describe('stepped-load shed invariant', () => {
       timing: activeCooldownTiming,
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      debugStructured,
     });
-    expect(debugStructured).toHaveBeenCalledTimes(2); // step-up admitted → debug event emitted
+    expect(steppedVerdicts()).toEqual(['restore_stepped_rejected', 'restore_stepped_admitted']);
 
     // Round 3: new shed episode starts → must re-emit (tracking was cleared in round 2)
     planRestoreForSteppedDevice({
@@ -3972,9 +3963,8 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      debugStructured,
     });
-    expect(debugStructured).toHaveBeenCalledTimes(3);
+    expect(steppedVerdicts()).toEqual(['restore_stepped_rejected', 'restore_stepped_admitted', 'restore_stepped_rejected']);
   });
 
   it('logs stepped restore rejection when an off stepped device is held by meter settling', () => {
@@ -3993,7 +3983,6 @@ describe('stepped-load shed invariant', () => {
       desiredStepId: undefined,
     });
     const deviceMap = new Map([['dev-step', steppedDev]]);
-    const debugStructured = vi.fn();
 
     planRestoreForSteppedDevice({
       dev: steppedDevOf(deviceMap),
@@ -4009,10 +3998,9 @@ describe('stepped-load shed invariant', () => {
       },
       availableHeadroom: 5,
       restoredOneThisCycle: true,
-      debugStructured,
     });
 
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.findEvents('restore_stepped_rejected')).toContainEqual(expect.objectContaining({
       event: 'restore_stepped_rejected',
       deviceId: 'dev-step',
       deviceName: 'Tank',
@@ -4204,7 +4192,6 @@ describe('stepped-load shed invariant', () => {
 
   it('allows an off stepped restore to swap out a lower-priority active device', () => {
     const state = createPlanEngineState();
-    const debugStructured = vi.fn();
     const result = applyRestorePlan({
       planDevices: [
         steppedPlanDevice({
@@ -4237,7 +4224,6 @@ describe('stepped-load shed invariant', () => {
         normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
-        debugStructured,
       },
     });
 
@@ -4260,7 +4246,7 @@ describe('stepped-load shed invariant', () => {
       requestedTargetStepId: 'low',
       requestedDesiredStepId: 'low',
     });
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.findEvents('restore_swap_approved')).toContainEqual(expect.objectContaining({
       event: 'restore_swap_approved',
       deviceId: 'dev-step',
       shedDeviceIds: ['lower-priority'],
@@ -4269,7 +4255,6 @@ describe('stepped-load shed invariant', () => {
 
   it('does not use swap capacity for an active stepped upgrade', () => {
     const state = createPlanEngineState();
-    const debugStructured = vi.fn();
     const result = applyRestorePlan({
       planDevices: [
         steppedPlanDevice({
@@ -4303,7 +4288,6 @@ describe('stepped-load shed invariant', () => {
         normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
-        debugStructured,
       },
     });
 
@@ -4315,14 +4299,13 @@ describe('stepped-load shed invariant', () => {
     expect(lowerPriority?.plannedState).toBe('keep');
     expect(result.restoredOneThisCycle).toBe(false);
     expect(result.stateUpdates.swapByDevice).toEqual({});
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.findEvents('restore_swap_approved')).not.toContainEqual(expect.objectContaining({
       event: 'restore_swap_approved',
     }));
   });
 
   it('allows a temperature-boosted active stepped upgrade to swap out lower-priority load', () => {
     const state = createPlanEngineState();
-    const debugStructured = vi.fn();
     const result = applyRestorePlan({
       planDevices: [
         steppedPlanDevice({
@@ -4356,7 +4339,6 @@ describe('stepped-load shed invariant', () => {
         normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
-        debugStructured,
       },
     });
 
@@ -4379,7 +4361,7 @@ describe('stepped-load shed invariant', () => {
       requestedTargetStepId: 'max',
       requestedDesiredStepId: 'max',
     });
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.findEvents('restore_swap_approved')).toContainEqual(expect.objectContaining({
       event: 'restore_swap_approved',
       deviceId: 'dev-step',
       shedDeviceIds: ['lower-priority'],
@@ -4836,17 +4818,11 @@ describe('a restore decision is made once, and logged once', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  // Typed as the emitter the deps actually take, so the spy stays assignable
-  // without widening `RestoreDeps`.
-  const debugSpy = () => vi.fn<StructuredDebugEmitter>();
-  type DebugSpy = ReturnType<typeof debugSpy>;
-
-  const swapDeps = (debugStructured: DebugSpy) => ({
+  const swapDeps = () => ({
     powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
     normalizedShedFloorCByDevice: new Map(),
     getShedBehavior: () => ({ action: 'turn_off' as const }),
     logDebug: vi.fn(),
-    debugStructured,
   });
 
   // An off device wanting more than the house has, plus one lower-priority
@@ -4862,15 +4838,12 @@ describe('a restore decision is made once, and logged once', () => {
     }),
   ];
 
-  const rejectionsFor = (debugStructured: DebugSpy, deviceId: string) => (
-    debugStructured.mock.calls
-      .map(([payload]) => payload)
-      .filter((payload) => payload['event'] === 'restore_rejected' && payload['deviceId'] === deviceId)
+  const rejectionsFor = (deviceId: string): Record<string, unknown>[] => (
+    restoreEventsFor('restore_rejected', deviceId)
   );
 
   it('re-announces a swap rejection only when the situation changes', () => {
     const state = createPlanEngineState();
-    const debugStructured = debugSpy();
     // 0.4 kW of swappable draw is nowhere near the 1.2 kW need, so the swap is
     // searched, found wanting, and reaches the same verdict on every rebuild.
     const run = () => applyRestorePlan({
@@ -4878,53 +4851,51 @@ describe('a restore decision is made once, and logged once', () => {
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
-      deps: swapDeps(debugStructured),
+      deps: swapDeps(),
     });
     run();
     run();
     run();
 
     // The swap rejection was the one restore emitter that wrote unconditionally.
-    expect(rejectionsFor(debugStructured, 'dev')).toEqual([
+    expect(rejectionsFor('dev')).toEqual([
       expect.objectContaining({ restoreType: 'swap', rejectionReason: 'insufficient_headroom' }),
     ]);
   });
 
   it('does not announce a rejection for a device the swap goes on to admit', () => {
     const state = createPlanEngineState();
-    const debugStructured = debugSpy();
     // 1.5 kW freed on top of 0.5 kW clears the 1.2 kW need and both reserves.
     const result = applyRestorePlan({
       planDevices: blockedRestoreWithSource(1.5),
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
-      deps: swapDeps(debugStructured),
+      deps: swapDeps(),
     });
 
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.findEvents('restore_swap_approved')).toContainEqual(expect.objectContaining({
       event: 'restore_swap_approved', deviceId: 'dev',
     }));
     // The swap had not decided yet when the old code announced this.
-    expect(rejectionsFor(debugStructured, 'dev')).toEqual([]);
+    expect(rejectionsFor('dev')).toEqual([]);
     expect(result.planDevices.find((d) => d.id === 'src')?.plannedState).toBe('shed');
   });
 
   it('rejects on the direct figures when nothing is running to swap out', () => {
     const state = createPlanEngineState();
-    const debugStructured = debugSpy();
     applyRestorePlan({
       // The only other device draws nothing, so it can fund no swap.
       planDevices: blockedRestoreWithSource(0),
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
-      deps: swapDeps(debugStructured),
+      deps: swapDeps(),
     });
 
     // One line, from the direct path, carrying the available power the card
     // shows — not the swap arithmetic's `available − swap reserve`.
-    expect(rejectionsFor(debugStructured, 'dev')).toEqual([
+    expect(rejectionsFor('dev')).toEqual([
       expect.objectContaining({
         restoreType: 'binary',
         availableKw: 0.5,
@@ -4936,7 +4907,6 @@ describe('a restore decision is made once, and logged once', () => {
 
   it('lets a stepped restore reject on its own figures when there is no swap source', () => {
     const state = createPlanEngineState();
-    const debugStructured = debugSpy();
     applyRestorePlan({
       planDevices: [
         steppedPlanDevice({
@@ -4966,27 +4936,26 @@ describe('a restore decision is made once, and logged once', () => {
       ...buildContext({ headroomRaw: 0.3, headroom: 0.3 }),
       state,
       sheddingActive: false,
-      deps: swapDeps(debugStructured),
+      deps: swapDeps(),
     });
 
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.findEvents('restore_stepped_rejected')).toContainEqual(expect.objectContaining({
       event: 'restore_stepped_rejected',
       deviceId: 'dev-step',
       rejectionReason: 'insufficient_headroom',
     }));
-    expect(rejectionsFor(debugStructured, 'dev-step')).toEqual([]);
+    expect(rejectionsFor('dev-step')).toEqual([]);
   });
 
   it('names the meter, not the shortfall, when a swap stands down for want of a reading', () => {
     const state = createPlanEngineState();
-    const debugStructured = debugSpy();
     applyRestorePlan({
       planDevices: blockedRestoreWithSource(0.4),
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
       deps: {
-        ...swapDeps(debugStructured),
+        ...swapDeps(),
         // No reading yet: `buildRestoreTiming` resolves `measurementTs` from the
         // tracker, so a tracker with no timestamp is a cold start.
         powerTracker: { lastTimestamp: undefined } as unknown as PowerTrackerState,
@@ -4995,7 +4964,7 @@ describe('a restore decision is made once, and logged once', () => {
 
     // These two stand-downs used to log nothing, and were covered only by the
     // caller's pre-announcement mislabelling them `insufficient_headroom`.
-    expect(rejectionsFor(debugStructured, 'dev')).toEqual([
+    expect(rejectionsFor('dev')).toEqual([
       expect.objectContaining({
         restoreType: 'swap',
         rejectionReason: 'no_measurement',
@@ -5005,7 +4974,6 @@ describe('a restore decision is made once, and logged once', () => {
 
   it('holds a swap target mid-handshake even after its sources stop drawing', () => {
     const state = createPlanEngineState();
-    const debugStructured = debugSpy();
     // Approve a swap, then re-plan with the source drawing nothing:
     // `hasSwappableDraw` is now false, and the short-circuit must not fire ahead
     // of the handshake gates that keep the target pending.
@@ -5014,7 +4982,7 @@ describe('a restore decision is made once, and logged once', () => {
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
-      deps: swapDeps(debugStructured),
+      deps: swapDeps(),
     });
     state.swapByDevice = approved.stateUpdates.swapByDevice;
     const result = applyRestorePlan({
@@ -5022,7 +4990,7 @@ describe('a restore decision is made once, and logged once', () => {
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
-      deps: swapDeps(debugStructured),
+      deps: swapDeps(),
     });
 
     expect(result.planDevices.find((d) => d.id === 'dev')?.reason).toEqual(

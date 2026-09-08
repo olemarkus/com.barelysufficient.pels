@@ -91,7 +91,7 @@ function emitRestoreRejectedDebug(
   rejectionReason: string,
   payload: Record<string, unknown>,
 ): void {
-  const { state, debugStructured } = pass;
+  const { state } = pass;
   const phase = resolveRestoreDecisionPhase(state.currentRebuildTrigger);
   emitRestoreDebugEventOnChange({
     state,
@@ -105,7 +105,6 @@ function emitRestoreRejectedDebug(
       rejectionReason,
       ...payload,
     },
-    debugStructured,
   });
 }
 
@@ -220,7 +219,7 @@ export function resolveRestoreDecision(
   observedAtShedFloor: boolean,
   baseShedReason: PlanReasonDecision | undefined,
 ): HoldDecision {
-  const { state, restoredThisCycle, headroomReserves, debugStructured } = pass;
+  const { state, restoredThisCycle, headroomReserves } = pass;
   const { availableHeadroom } = loop;
   const phase = resolveRestoreDecisionPhase(state.currentRebuildTrigger);
   const restoreDebugKey = `target:${dev.id}`;
@@ -286,7 +285,6 @@ export function resolveRestoreDecision(
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
     },
-    debugStructured,
   });
   return {
     type: 'restore',

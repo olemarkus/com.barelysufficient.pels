@@ -6,7 +6,6 @@ import { shedFloorCFor } from './normalizedShedFloor';
 import type { PlanEngineState } from './planState';
 import type { HeadroomReserve } from './admission';
 import type { RestoreHeadroomLedger } from './restore/headroomLedger';
-import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   PLAN_REASON_CODES,
   type DeviceReason,
@@ -151,7 +150,6 @@ export type ShedHoldParams = {
    * setpoint lane must fork the same way to name the same cause.
    */
   sheddingActive: boolean;
-  debugStructured?: StructuredDebugEmitter;
   getShedBehavior: (deviceId: string) => ShedBehavior;
   /**
    * The capability-normalized shed floor per temperature device, resolved once
@@ -190,7 +188,6 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     headroomReserves,
     guardInShortfall = false,
     sheddingActive,
-    debugStructured,
     getShedBehavior,
     normalizedShedFloorCByDevice,
   } = params;
@@ -211,7 +208,6 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     sheddingActive,
     normalizedShedFloorCByDevice,
     restoredThisCycle,
-    debugStructured,
   };
 
   for (const dev of planDevices) {

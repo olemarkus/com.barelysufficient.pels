@@ -1,7 +1,6 @@
 import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
 import type { RestoreTiming } from './timing';
 import type { PlanEngineState } from '../planState';
-import type { StructuredDebugEmitter } from '../../logging/logger';
 import {
   resolveCapacityRestoreBlockReason,
   resolveMeterSettlingCountdownTiming,
@@ -44,7 +43,6 @@ export function applySteppedDeviceGates(params: {
   availableHeadroom: number;
   phase: 'startup' | 'runtime';
   requestedStepId: string | null;
-  debugStructured?: StructuredDebugEmitter;
 }): boolean {
   const {
     dev,
@@ -57,7 +55,6 @@ export function applySteppedDeviceGates(params: {
     availableHeadroom,
     phase,
     requestedStepId,
-    debugStructured,
   } = params;
   const lastRestoreTs = deviceIsActive
     ? (state.lastDeviceRestoreMs[dev.id] ?? null)
@@ -84,7 +81,6 @@ export function applySteppedDeviceGates(params: {
 
       availableHeadroom,
       requestedStepId,
-      debugStructured,
     });
     return true;
   }
@@ -108,7 +104,6 @@ export function applySteppedDeviceGates(params: {
 
       availableHeadroom,
       requestedStepId,
-      debugStructured,
     });
     return true;
   }
@@ -131,7 +126,6 @@ export function applySteppedDeviceGates(params: {
 
       availableHeadroom,
       requestedStepId,
-      debugStructured,
     });
     return true;
   }
@@ -146,7 +140,6 @@ function emitSteppedRestoreGateRejection(params: {
   rejectionReason: 'meter_settling' | 'restore_gate' | 'waiting_for_other_recovery';
   availableHeadroom: number;
   requestedStepId: string | null;
-  debugStructured?: StructuredDebugEmitter;
 }): void {
   const {
     dev,
@@ -156,7 +149,6 @@ function emitSteppedRestoreGateRejection(params: {
     rejectionReason,
     availableHeadroom,
     requestedStepId,
-    debugStructured,
   } = params;
   emitRestoreDebugEventOnChange({
     state,
@@ -172,6 +164,5 @@ function emitSteppedRestoreGateRejection(params: {
       decision: 'rejected',
       rejectionReason,
     },
-    debugStructured,
   });
 }

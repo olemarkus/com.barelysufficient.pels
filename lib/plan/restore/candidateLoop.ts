@@ -58,7 +58,6 @@ export function planSteppedRestoreThroughSourceHold(
     timing: cycle.timing,
     availableHeadroom: loop.availableHeadroom,
     restoredOneThisCycle: loop.restoredOneThisCycle,
-    debugStructured: cycle.deps.debugStructured,
     swapExecutor: lane.steppedSwapExecutor,
     headroomReserves: cycle.headroomReserves,
   });

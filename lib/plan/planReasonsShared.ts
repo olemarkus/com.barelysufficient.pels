@@ -2,7 +2,6 @@ import type { ClassifiedPlanReason } from './planReasonStrings';
 import type { PlanEngineState } from './planState';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { HeadroomReserve } from './admission';
-import type { StructuredDebugEmitter } from '../logging/logger';
 import type { RestoreTiming } from './restore/timing';
 /** Local shape: the pending-restore countdown a hold names. */
 export type PendingRestoreDelay = { remainingSec: number; countdownStartedAtMs: number; countdownTotalSec: number };
@@ -50,7 +49,6 @@ export type HoldPass = {
   readonly sheddingActive: boolean;
   readonly normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
   readonly restoredThisCycle: Set<string>;
-  readonly debugStructured?: StructuredDebugEmitter;
 };
 
 /** The running pair the per-device loop threads through the pass. */
