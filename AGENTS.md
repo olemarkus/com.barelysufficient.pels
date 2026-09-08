@@ -81,7 +81,10 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
   per-file counts may only go down. The
   inverse costs as much and no script can see it: taking a domain object you already hold and
   exploding it into loose scalars downstream, or narrowing it into a per-callee `Pick<>`. When you
-  hold the object, pass the object. Full rule: the header of `scripts/check-param-bundles.mjs`.
+  hold the object, pass the object. Naming or nesting a bag does not make it a
+  domain object: trace its concept, owner, construction, and callers. A passing
+  guard is not evidence of semantic compliance. Full rule: the header of
+  `scripts/check-param-bundles.mjs`.
 
 **Known transitional allowance:** `lib/utils/**` still has two imports from `lib/power` and `lib/plan` (`todo-tighten-utils-layering`, registered at warn severity in `.dependency-cruiser.cjs` — that rule is the tracking, there is no `TODO.md` entry). Both are type-only: `appTypeGuards.ts` → `PowerTrackerState`, `capacityHelpers.ts` → `ShedAction`/`ShedBehavior`. The `lib/device` edge is gone, and so is the last value import — `settingsHandlers.ts` → `CapacityGuard` went with the guard's settings mirror, since the capacity scalars now have one owner and nothing copies them. Do not expand the set.
 
@@ -91,6 +94,7 @@ One rule, two faces (`docs/architecture.md` § "Clean and trusted interfaces bet
 
 - Every external/outer layer — Homey SDK reads, network fetches, the settings/persisted store, flow-card args, inbound API bodies, the clock — must validate and discriminate untrusted input into a strongly-typed, resolved value *before* handing it to an adjacent layer. Finiteness-gate numbers (`Number.isFinite`) and shape-guard objects. Use flat `null`/`undefined` only for genuine domain absence; API/settings absence, malformed data, or read failure must become an explicit semantic result rather than a nullable business value. Never let a raw `NaN`/`Infinity`/malformed/partial value flow inward into a sum, comparison, persisted write, or control decision.
 - Adapters that read Homey/API/settings data own the complete classification of `undefined`, `null`, empty key lists, malformed values, and thrown errors. They must expose a typed semantic result (for example, `resolved | unavailable`) to adjacent layers; downstream domain/control code must not catch adapter exceptions, inspect SDK absence/error provenance, or reinterpret an unavailable read as a default. Tests for SDK weirdness belong at the adapter boundary; business tests inject semantic states.
+- For every new optional, nullable, or discriminated variant, identify the reachable state, its owner, and the behavior it requires. Keep producer-guaranteed fields required. A tagged missing value is not stronger if it merely carries unresolved absence through consumers. Preserve meaningful adapter outcomes, genuine domain absence, and honest UI uncertainty; resolve external failure policy at its owning boundary.
 - Downstream layers may then assume the typed invariant holds; they must not re-validate or branch on the input's source/provenance. A hedging consumer (re-checked finiteness, presence-sniffing, a kept fallback derivation) is a symptom — fix the unclean interface upstream, not the hedge.
 - A transient external failure is a **no-op**, not an event. The default treatment is to decide nothing and carry the last good value forward: a missing power sample keeps the last one, a missing device read keeps the last observation. What must never happen is fabricating a stand-in — an absent reading is not `0`, and reading it as one hands control a value more favourable than anything ever measured. The narrow case the abandon-grace exists for is *loading* persisted state: one corrupt or empty SDK read on startup must not wipe persisted history, so the persistence wrappers hold a grace window before abandoning it (`notes/persisted-settings-state.md`, `feedback_homey_sdk_unreliable`).
 - Do not read the grace window as a licence to invent a third policy for live in-memory progress. Expiring, resetting, or re-earning a running timer because one read went missing is itself a destructive treatment of a transient gap, and it is usually worse than the no-op: on an irregular feed (`power_source = flow`, where a gap between events is ordinary cadence) a per-miss reset can mean the condition never completes at all.
@@ -184,11 +188,43 @@ worktree. Builds, static checks, Homey validation/deploy commands, and non-test
 hook phases do not acquire the lock. Do not bypass the npm scripts with raw
 `npx vitest` or `playwright` commands. Vitest and local Playwright accept only
 one or two workers through
-`PELS_TEST_WORKERS` and `PELS_PLAYWRIGHT_WORKERS`; two is the default. In a
-multi-agent session, the lead agent owns broad validation. Review agents run
-read-only analysis or request a targeted run from the lead instead of launching
-the full suite independently. Non-Linux hosts retain the worker caps but cannot
+`PELS_TEST_WORKERS` and `PELS_PLAYWRIGHT_WORKERS`; two is the tooling default.
+**Agents use one worker:** set `PELS_TEST_WORKERS=1 PELS_PLAYWRIGHT_WORKERS=1`
+on test commands and on agent-launched commit/push commands so hooks inherit it.
+In a multi-agent session, the lead owns all test execution, including scheduling
+test-running hooks. Review agents inspect code and existing results; they do not
+launch tests, builds, coverage, or repo-wide static checks. Implementation agents
+request a named spec and reason from the lead instead of starting a runner.
+Non-Linux hosts retain the worker caps but cannot
 coordinate across worktrees because `flock` is unavailable.
+
+**One heavy validation job at a time.** The lead serializes test commands,
+test-running hooks, builds, repo-wide checks, and browser capture across the
+session's worktrees; the test lock does not protect against overlapping builds
+or browser sessions. A waiting lock is not a reason to start another job or bypass
+the wrapper. Do not queue speculative runs, use watch mode, raise worker/heap
+limits, or disable hooks/locks to get through validation. For UI review, one
+designated browser owner captures the relevant states and shares the artifacts
+with the other reviewers; close owned browser sessions when finished.
+
+**Choose a run before launching it.** Name the changed behavior or unresolved
+failure, the exact spec files, and why existing results do not answer it. Use
+the npm entrypoint with explicit spec filters; check the command forwards them
+and the runner actually selects them. Zero selected tests is not a pass, and a
+filter mistake is not permission to run the whole lane. Documentation, skill,
+copy-only, and other changes without executable behavior do not warrant runtime
+tests. Once relevant validation passes, reuse it until a code change or new
+failure invalidates it. Broad suites, coverage, and aggregate commands such as
+`npm test`, `npm run check`, or `npm run ci:full` belong to the required hooks/CI,
+unless the user explicitly requests that local run. Do not run them manually as
+extra pre-commit/pre-push reassurance.
+
+**Resource failure stops execution.** On OOM, a killed worker, or shell instability,
+stop the validation process tree this session owns and report the command and
+failure. Do not kill unrelated user processes, immediately retry, increase the
+heap/worker count, or substitute a broader command. Continue read-only diagnosis;
+resume execution only after identifying and addressing the resource cause. An
+interrupted run remains unverified, never green.
 
 **Test taxonomy.** Tests are classified into three tiers — **unit** (one pure function, no I/O), **integration** (one layer, only outward seams mocked via shared helpers), **e2e** (nothing internal mocked; driven through an external seam — Homey SDK for runtime e2e, the UI for Playwright e2e — and observed through that seam + structured logs, never parsed prose). Every spec lives in `test/unit/`, `test/integration/`, or `test/e2e/`; shared mocks/helpers/setup stay at `test/` root. jsdom widget-render specs are unit-tier and self-declare their environment via a `// @vitest-environment jsdom` pragma. Before adding or moving a test, read `notes/testing-taxonomy.md` (and `test/AGENTS.md` for the short rules); bump import depth when moving a spec, then run `knip`.
 
@@ -304,11 +340,11 @@ Repo-specific review lenses exist for fan-out checks before opening a non-trivia
 
 | Lens | Trigger surface |
 |-------|-----------------|
-| `pels-layering-guardian` | `lib/plan/**`, `lib/device/**`, `lib/observer/**`, `lib/power/**`, `lib/price/**`, `lib/dailyBudget/**`, `lib/app/**`, `lib/utils/**`, `flowCards/**`, `drivers/**`, `packages/shared-domain/**` |
+| `pels-layering-guardian` | `setup/**`, `lib/ports/**`, `lib/actuator/**`, `packages/contracts/**`, `lib/plan/**`, `lib/device/**`, `lib/observer/**`, `lib/power/**`, `lib/price/**`, `lib/dailyBudget/**`, `lib/app/**`, `lib/utils/**`, `flowCards/**`, `drivers/**`, `packages/shared-domain/**` |
 | `pels-m3-critic` | `packages/settings-ui/**`, any `*Chart*.ts` |
 | `pels-ux-fit` | non-trivial view changes in `packages/settings-ui/src/ui/views/**` |
 | `pels-copy-and-terminology` | `packages/settings-ui/**`, `packages/shared-domain/**` (UI strings, status labels, tooltips, copy helpers) |
-| `pels-runtime-reality` | `lib/plan/**`, `lib/device/**`, `lib/power/**`, `lib/dailyBudget/**`, `lib/price/**`, `drivers/**`, persisted-state handling |
+| `pels-runtime-reality` | `setup/**`, `lib/executor/**`, `lib/actuator/**`, `lib/observer/**`, `lib/plan/**`, `lib/device/**`, `lib/power/**`, `lib/dailyBudget/**`, `lib/price/**`, `drivers/**`, persisted-state handling |
 
 Findings come back classified P0/P1/P2 — P0/P1 fix in the same PR; P2/P3 to `TODO.md`.
 
