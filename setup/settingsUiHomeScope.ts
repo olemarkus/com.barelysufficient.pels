@@ -25,16 +25,17 @@
  *    the scope block says so.
  *
  * Values come from the already-committed per-home read port
- * (`lib/home/homeRuntimeRead.ts`) plus that home's own suffixed `pels_status`
- * blob — the same blob main reads unsuffixed, so the two homes' payloads are
- * assembled from the same kind of source. Nothing here rebuilds a plan,
+ * (`lib/home/homeRuntimeRead.ts`) plus that home's own status out of the
+ * app's registry — the same registry main reads under its own id, so the two
+ * homes' payloads are assembled from the same kind of source. Nothing here rebuilds a plan,
  * refreshes a snapshot, arms a timer or actuates.
  */
 import type Homey from 'homey';
 import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../lib/home/homeRuntimeRead';
 import type { HomeMembershipPort } from '../lib/home/membership';
 import { isValidSubHomeId } from '../lib/home/homeConfig';
-import { PELS_STATUS, homeScopedSettingsKey, type HomeId } from '../lib/utils/settingsKeys';
+import type { HomeId } from '../lib/utils/settingsKeys';
+import type { AppContext } from '../lib/app/appContext';
 import type { SettingsUiPowerStatus } from '../packages/contracts/src/settingsUiApi';
 
 /**
@@ -65,13 +66,12 @@ export type SettingsUiRequestedHomeScope =
 export type ResolvedSubHomeScope = Extract<SettingsUiRequestedHomeScope, { state: 'sub_home' }>;
 
 /**
- * One sub-home's own status-blob read, discriminated at this adapter boundary.
- * `resolved` carries the object-guarded blob; `absent` is genuine absence (the
- * home has not committed a status yet, or the stored value fails the object
- * guard — exactly the cases main's unsuffixed read treats as "no blob").
- * `unavailable` is a THROWN settings read: a transient Homey store failure is
- * not absence, and must neither escape as an untyped transport error nor be
- * dressed up as "no status yet".
+ * One sub-home's own status read, discriminated at this adapter boundary.
+ * `resolved` carries the status its plan service published; `absent` is
+ * genuine absence (the home has not published a status this run, or was torn
+ * down). `unavailable` is an app shell that cannot answer (the boot/uninit
+ * window, `HomeScopeHomey`): not absence, and must neither escape as an
+ * untyped error nor be dressed up as "no status yet".
  */
 export type SubHomeStatusRead =
   | { readonly state: 'resolved'; readonly status: SettingsUiPowerStatus }
@@ -87,6 +87,7 @@ const asQueryRecord = (value: unknown): Record<string, unknown> | null => (
 type HomeScopeApp = Homey.App & {
   homeRuntimeRead?: HomeRuntimeReadPort;
   homeMembership?: HomeMembershipPort;
+  planStatuses?: AppContext['planStatuses'];
 };
 
 /**
@@ -151,28 +152,18 @@ export class SettingsUiHomeScopeAdapter {
   }
 
   /**
-   * That home's own live status blob (`pels_status:<homeId>`), object-guarded —
-   * the same depth of guard main's unsuffixed `pels_status` read applies
-   * (`getSettingsUiPower`); neither path resolves the blob per field yet, and
-   * doing so is one shared change across both.
-   *
-   * The suffixed key is built from a scope the parser resolved, and callers run
-   * it only after {@link readRuntime} proved the runtime owns the home. A
-   * thrown `settings.get` (transient Homey store failure) is classified HERE —
-   * adapters own the complete classification of thrown reads — as
-   * `unavailable`, so the endpoint answers `homeScope: unavailable` instead of
-   * rejecting the whole API request or caching a fabricated "no status yet".
+   * That home's own live status, out of the app's registry — the same read
+   * main's unsuffixed path makes (`getPlanStatusForUiFromApp`). Callers run it
+   * only after {@link readRuntime} proved the runtime owns the home. An app
+   * shell that is not there is classified HERE as `unavailable`, so the
+   * endpoint answers `homeScope: unavailable` instead of caching a fabricated
+   * "no status yet" for the session.
    */
   public readStatus(scope: ResolvedSubHomeScope): SubHomeStatusRead {
-    let status: unknown;
-    try {
-      status = this.homey.settings.get(homeScopedSettingsKey(PELS_STATUS, scope.homeId));
-    } catch {
-      return { state: 'unavailable' };
-    }
-    return status !== null && typeof status === 'object' && !Array.isArray(status)
-      ? { state: 'resolved', status }
-      : { state: 'absent' };
+    const registry = this.app()?.planStatuses;
+    if (!registry) return { state: 'unavailable' };
+    const read = registry.read(scope.homeId);
+    return read.state === 'resolved' ? { state: 'resolved', status: read.status } : { state: 'absent' };
   }
 
   /**

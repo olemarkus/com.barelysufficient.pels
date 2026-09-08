@@ -49,9 +49,9 @@ describe('Overview "Solar now" across status-only power pushes', () => {
     homey = installHomeyMock({
       settings: {
         power_tracker_state: SOLAR_TRACKER,
-        // The RAW blob: this is the persisted settings key, and the mock's
-        // buildUiPower classifies it exactly like the real producer — seeding
-        // the wire shape here would double-wrap the union.
+        // The RAW status, in the mock backend's storage slot for it; the
+        // mock's buildUiPower classifies it exactly like the real producer —
+        // seeding the wire shape here would double-wrap the union.
         pels_status: { lastPowerUpdate: NOW_MS, powerFreshnessState: 'fresh' },
       },
       uiState: { plan: PLAN_SNAPSHOT },

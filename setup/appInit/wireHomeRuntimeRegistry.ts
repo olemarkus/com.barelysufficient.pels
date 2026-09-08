@@ -17,6 +17,7 @@ import type { DeviceTransportParseProviders } from '../../lib/device/transport/m
 import type { HomeRuntimeReadPort } from '../../lib/home/homeRuntimeRead';
 import { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import { createModeOwnershipTransfer } from '../homeRuntime/createModeOwnershipTransfer';
+import { emitPlanStatusPublishedForApp } from '../settingsUiAppRuntime';
 
 /** Construct the registry and run its boot-time reconcile (empty = inert). */
 export const createHomeRuntimeRegistryForApp = (
@@ -65,6 +66,19 @@ export const buildHomeRuntimeReadPort = (
 ): HomeRuntimeReadPort => ({
   readHome: (homeId) => getRegistry()?.readHome(homeId) ?? { state: 'unavailable' },
 });
+
+/**
+ * The WebView hears every home's status publish over realtime, the way it
+ * hears a tracker persist: the status lives in memory
+ * (`AppContext.planStatuses`), so there is no `settings.set` echo to carry a
+ * home's freshness. Subscribed once, before the first plan can build; the
+ * registry dies with the app, so there is nothing to unsubscribe at uninit.
+ */
+export const wirePlanStatusRealtime = (ctx: AppContext): void => {
+  ctx.planStatuses.subscribe((homeId) => {
+    emitPlanStatusPublishedForApp(ctx.homey, homeId, (message, error) => ctx.error(message, error));
+  });
+};
 
 /** The settings-handler hooks (contract: `SettingsHandlerDeps.onHomeScopedSettingChanged`). */
 export const buildHomeRuntimeSettingsHooks = (

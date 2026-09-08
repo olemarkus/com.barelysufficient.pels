@@ -5,6 +5,7 @@ import { HOMES_CONFIG, MAIN_HOME_ID } from '../../contracts/src/settingsKeys.ts'
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes.ts';
 import {
   notifyHomeLimitsSettingChanged,
+  notifyHomeLimitsStatusPublished,
   refreshHomeLimitsOnLimitsPanel,
 } from '../src/ui/homeLimits.ts';
 import { notifyHomeScopeSettingChanged, selectHomeScope } from '../src/ui/homeScope.ts';
@@ -26,11 +27,17 @@ vi.mock('../src/ui/logging.ts', () => ({
  * static-form visibility toggle, and — the core contract — that a meter area's
  * edits hit the SUFFIXED scalar keys (`capacity_*:<homeId>`) while the Main
  * home keeps the bare keys (its untouched static form). Status reads come from
- * `pels_status:<homeId>`. The scope bar is driven through its real DOM select,
+ * its published status. The scope bar is driven through its real DOM select,
  * exactly as a user drives it.
  * -------------------------------------------------------------------------- */
 
 const AREA_ID = 'h_abc';
+
+// The status the runtime holds in memory for the area reaches the card
+// through its scoped `ui_power` payload; the mock backend serves that from
+// its `pels_status:<homeId>` storage slot beside a latched tracker slot.
+const LATCHED_AREA_TRACKER = { lastPowerW: 4000, lastTimestamp: 1_700_000_000_000, buckets: {} };
+
 
 const flushAsync = async () => {
   await new Promise((resolve) => { setTimeout(resolve, 0); });
@@ -269,6 +276,7 @@ describe('control toggle — optimistic rollback + serialization', () => {
       [`capacity_limit_kw:${AREA_ID}`]: 7,
       [`capacity_margin_kw:${AREA_ID}`]: 0.3,
       [dryRunKey]: false,
+      [`power_tracker_state:${AREA_ID}`]: LATCHED_AREA_TRACKER,
       [`pels_status:${AREA_ID}`]: {
         controlledKw: 2.5,
         uncontrolledKw: 1.5,
@@ -655,12 +663,13 @@ describe('per-home writes hit the suffixed keys', () => {
   });
 });
 
-describe('status card from pels_status:<homeId>', () => {
-  it('renders power now + posture from the suffixed status blob', async () => {
+describe('status card from the area\'s published status', () => {
+  it('renders power now + posture from the area\'s live status', async () => {
     install({
       [`capacity_limit_kw:${AREA_ID}`]: 8,
       [`capacity_margin_kw:${AREA_ID}`]: 0.3,
       [`capacity_dry_run:${AREA_ID}`]: false,
+      [`power_tracker_state:${AREA_ID}`]: LATCHED_AREA_TRACKER,
       [`pels_status:${AREA_ID}`]: {
         controlledKw: 2.5, uncontrolledKw: 1.5, powerNowKw: 4, hasLivePowerSample: true, devicesOff: 0, limitReason: 'none',
       },
@@ -674,11 +683,12 @@ describe('status card from pels_status:<homeId>', () => {
     expect(document.querySelector('#home-limits-status-chip')?.textContent).toBe('Active');
   });
 
-  it('re-reads status on a realtime pels_status:<homeId> change', async () => {
+  it('re-reads status on a realtime plan_status_published push for the area', async () => {
     install({
       [`capacity_limit_kw:${AREA_ID}`]: 8,
       [`capacity_margin_kw:${AREA_ID}`]: 0.3,
       [`capacity_dry_run:${AREA_ID}`]: false,
+      [`power_tracker_state:${AREA_ID}`]: LATCHED_AREA_TRACKER,
       [`pels_status:${AREA_ID}`]: { powerNowKw: null, hasLivePowerSample: false, devicesOff: 0, limitReason: 'none' },
     });
     await refreshHomeLimitsOnLimitsPanel();
@@ -686,11 +696,11 @@ describe('status card from pels_status:<homeId>', () => {
     await selectArea(AREA_ID);
     expect(document.querySelector('#home-limits-status-power')?.textContent).toBe('—');
 
-    // Runtime writes a fresh live status; the realtime hook re-reads it.
+    // Runtime publishes a fresh live status; the realtime hook re-reads it.
     homey.__settingsStore[`pels_status:${AREA_ID}`] = {
       controlledKw: 3, uncontrolledKw: 0.5, powerNowKw: 3.5, hasLivePowerSample: true, devicesOff: 2, limitReason: 'hourly',
     };
-    notifyHomeLimitsSettingChanged(`pels_status:${AREA_ID}`);
+    notifyHomeLimitsStatusPublished(AREA_ID);
     await flushAsync();
     expect(document.querySelector('#home-limits-status-power')?.textContent).toBe('3.5 kW');
     expect(document.querySelector('#home-limits-status-line')?.textContent).toBe('Limiting 2 devices to stay under the cap.');

@@ -789,7 +789,9 @@
     capacity_dry_run: true,
     overview_redesign_enabled: false,
 
-    // Status and heartbeat
+    // Status and heartbeat. `pels_status` (and `pels_status:<homeId>`) is this
+    // stub's storage for the status the runtime holds in memory: the UI reads
+    // it only through `ui_power`, never as a setting.
     pels_status: {
       lastPowerUpdate: Date.now() - 12 * 1000,
       // A current-hour price level exists whenever prices cover now (the
@@ -951,8 +953,8 @@
   // Mirrors the real read-boundary classification (`classifyMainPowerStatus`
   // and the scoped composer, setup/settingsUiApi.ts): a tracker with no
   // `lastPowerW` latch is a home whose measurement gate is shut, and its
-  // persisted `pels_status` blob is NEVER served as live — the union arm says
-  // why instead. Keep in sync with the producer.
+  // status is NEVER served as live — the union arm says why instead. Keep in
+  // sync with the producer.
   const classifyPowerStatus = (tracker, statusBlob) => {
     const lastPowerW = tracker && typeof tracker === 'object' ? tracker.lastPowerW : undefined;
     if (typeof lastPowerW !== 'number' || !Number.isFinite(lastPowerW)) {
@@ -1652,7 +1654,7 @@
     if (!scope.scoped) return wholeHomePayload;
     if (scope.homeId === null) return { plan: null, homeScope: { state: 'unavailable' } };
     // The area's OWN committed-plan fixture (`plan_snapshot:<homeId>`, the
-    // same suffix convention as its `pels_status:<homeId>` status blob; in
+    // same suffix convention as its `pels_status:<homeId>` status slot; in
     // production the runtime serves this from the bundle's memory, not a
     // setting). Absence is the honest pre-first-commit `null` — never Main's
     // plan under an area badge.

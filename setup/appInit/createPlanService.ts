@@ -26,7 +26,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
   return new PlanService({
     homeId: scope.homeId,
     homey: ctx.homey,
-    writePelsStatus: scope.writePelsStatus,
+    publishPelsStatus: scope.publishPelsStatus,
     planEngine,
     // Home-scoped plan-device source (boot/hot-plug projection seed + eviction +
     // `toPlanDevice` + shared planned-set predicate); the invariants are
@@ -67,8 +67,8 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
       }
       return map;
     },
-    // Gates the rebuild outcome AND publishes this home's posture into
-    // `pels_status:<id>` (unsuffixed for main) so its Limits card reads
+    // Gates the rebuild outcome AND publishes this home's posture in its
+    // status (under its own home id) so its Limits card reads
     // honestly: persisted-live but no committed zone tree still shows
     // Simulating. One read for both — the status used to take a second,
     // sub-home-only dep for it.

@@ -11,7 +11,9 @@
  * concerns and this classification layer can be read (and tested) on its own.
  */
 
-import { getSetting } from './homey.ts';
+import { getApiReadModel, getSetting, homeScopedApiUri } from './homey.ts';
+import { liveStatusOrNull } from './powerStatusRead.ts';
+import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
 import type { MeterAreaSimulationEntry } from './state.ts';
 import {
   CAPACITY_DRY_RUN,
@@ -19,7 +21,6 @@ import {
   HOMES_CONFIG_INITIALIZED,
   homeScopedSettingsKey,
   MAIN_HOME_ID,
-  PELS_STATUS,
 } from '../../../contracts/src/settingsKeys.ts';
 import { logSettingsError } from './logging.ts';
 
@@ -225,19 +226,18 @@ export type AreaSimulationFlagRead = {
 
 /**
  * The runtime's own effective posture for one meter area, read from the
- * `pels_status:<homeId>` blob its plan writer persists. `dryRunEffective` is
- * the membership-gated switch the bundle actually acts on — the same field
- * the area's Limits card prefers over the persisted intent — so it answers
- * the one question an unset or malformed flag leaves open: is that RUNNING
- * bundle simulating? Every absence is `null` (no claim, never a fabricated
- * one): no blob written yet, a blob predating the field, junk, or a rejected
- * read.
+ * status its plan writer publishes (served live through that area's scoped
+ * `ui_power` payload). `dryRunEffective` is the membership-gated switch the
+ * bundle actually acts on — the same field the area's Limits card prefers
+ * over the persisted intent — so it answers the one question an unset or
+ * malformed flag leaves open: is that RUNNING bundle simulating? Every
+ * absence is `null` (no claim, never a fabricated one): no status published
+ * yet, a gated area, a scoped read the runtime refused, or a rejected read.
  */
 const readAreaRuntimeSimulating = async (homeId: string): Promise<boolean | null> => {
   try {
-    const raw = await getSetting(homeScopedSettingsKey(PELS_STATUS, homeId));
-    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
-    const { dryRunEffective } = raw as { dryRunEffective?: unknown };
+    const payload = await getApiReadModel<SettingsUiPowerPayload>(homeScopedApiUri(SETTINGS_UI_POWER_PATH, homeId));
+    const { dryRunEffective } = liveStatusOrNull(payload.status) ?? {};
     return typeof dryRunEffective === 'boolean' ? dryRunEffective : null;
   } catch (caught) {
     await logSettingsError('Failed to read a meter-area runtime posture', caught, 'capacity');

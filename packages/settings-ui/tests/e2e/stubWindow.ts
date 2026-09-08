@@ -11,6 +11,7 @@ export type StubWindow = Window & {
     __stub: {
       setSetting: (key: string, value: unknown) => void;
       emitSettingsSet: (key: string) => void;
+      emitHomeyEvent: (event: string, ...args: unknown[]) => void;
     };
   };
   __PELS_HOMEY_STUB__: {

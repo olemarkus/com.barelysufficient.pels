@@ -287,6 +287,9 @@ test('Main simulation banner stays truthful while a meter area actively controls
             meterDeviceId: 'dev_rental_meter',
           }],
         },
+        // A latched area tracker: the stub, like the producer, serves a
+        // status as live only behind the area's measurement gate.
+        'power_tracker_state:h_11111111': { lastPowerW: 4000, lastTimestamp: Date.now() },
         'pels_status:h_11111111': {
           controlledKw: 2.5,
           uncontrolledKw: 1.5,
@@ -448,6 +451,7 @@ test('a held pre-GA meter area cannot claim active control or stale live power',
   await seedRentalMeterSnapshot(page);
   await seedHeldRentalArea(page);
   await seedStubSetting(page, `capacity_dry_run:${AREA_ID}`, false);
+  await seedStubSetting(page, `power_tracker_state:${AREA_ID}`, { lastPowerW: 4000, lastTimestamp: Date.now() });
   await seedStubSetting(page, `pels_status:${AREA_ID}`, {
     controlledKw: 2.5,
     uncontrolledKw: 1.5,

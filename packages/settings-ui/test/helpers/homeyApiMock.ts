@@ -271,9 +271,14 @@ const buildUiPlan = async (homey: MockHomeyClient) => {
 
 // Mirrors the real read-boundary classification (`classifyMainPowerStatus`,
 // setup/settingsUiApi.ts): a tracker with no `lastPowerW` latch is a home
-// whose measurement gate is shut, and its persisted `pels_status` blob is
-// never served as live. Keep in sync with the producer (and with the
-// Playwright stub's `classifyPowerStatus`, tests/e2e/fixtures/homey.stub.js).
+// whose measurement gate is shut, and its status is never served as live.
+// Keep in sync with the producer (and with the Playwright stub's
+// `classifyPowerStatus`, tests/e2e/fixtures/homey.stub.js).
+//
+// The status the runtime holds in MEMORY is modelled by the settings-store
+// slots `pels_status` / `pels_status:<homeId>` — this fake backend's own
+// storage, which the UI never reads as a setting: it reaches the status only
+// through this `ui_power` payload, exactly as it does in production.
 const classifyUiPowerStatus = (tracker: unknown, statusBlob: unknown) => {
   const lastPowerW = tracker && typeof tracker === 'object'
     ? (tracker as { lastPowerW?: unknown }).lastPowerW
@@ -286,12 +291,20 @@ const classifyUiPowerStatus = (tracker: unknown, statusBlob: unknown) => {
     : { state: 'unavailable', reason: 'no_status_recorded' };
 };
 
-const buildUiPower = async (homey: MockHomeyClient) => {
+// The `?homeId=` of a scoped read model URI, or `null` for the whole-home read.
+const scopedHomeIdOf = (uri: string): string | null => {
+  const query = uri.split('?')[1];
+  return query === undefined ? null : new URLSearchParams(query).get('homeId');
+};
+
+const buildUiPower = async (homey: MockHomeyClient, homeId: string | null) => {
   const override = getUiOverride(homey, 'power');
-  if (override !== undefined) return override;
+  if (override !== undefined && homeId === null) return override;
   // Mirrors the runtime producer: `{}` is the empty history, and the readings
-  // fact resolves once from the tracker's own stamp.
-  const rawTracker = await getHomeySetting(homey, 'power_tracker_state');
+  // fact resolves once from the tracker's own stamp. A scoped read serves the
+  // area's OWN suffixed tracker slot and status slot (`powerPayloadForHome`).
+  const suffix = homeId === null ? '' : `:${homeId}`;
+  const rawTracker = await getHomeySetting(homey, `power_tracker_state${suffix}`);
   const tracker = rawTracker && typeof rawTracker === 'object' ? rawTracker as Record<string, unknown> : {};
   const lastTimestamp = tracker.lastTimestamp;
   return {
@@ -299,7 +312,8 @@ const buildUiPower = async (homey: MockHomeyClient) => {
     readings: typeof lastTimestamp === 'number' && Number.isFinite(lastTimestamp)
       ? { state: 'received', lastPowerUpdateMs: lastTimestamp }
       : { state: 'never' },
-    status: classifyUiPowerStatus(rawTracker ?? null, await getHomeySetting(homey, 'pels_status')),
+    status: classifyUiPowerStatus(rawTracker ?? null, await getHomeySetting(homey, `pels_status${suffix}`)),
+    ...(homeId === null ? {} : { hasManagedSolarDevice: false, homeScope: { state: 'resolved', homeId } }),
   };
 };
 
@@ -356,7 +370,7 @@ const buildUiBootstrap = async (homey: MockHomeyClient) => ({
   deferredObjectiveActivePlans:
     getUiOverride(homey, 'deferredObjectiveActivePlans') ?? null,
   plan: await buildUiPlan(homey),
-  power: await buildUiPower(homey),
+  power: await buildUiPower(homey, null),
   prices: await buildUiPrices(homey),
 });
 
@@ -370,7 +384,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', SETTINGS_UI_PLAN_PATH)]: (homey) => async () => ({
     plan: await buildUiPlan(homey),
   }),
-  [buildRouteKey('GET', SETTINGS_UI_POWER_PATH)]: (homey) => async () => buildUiPower(homey),
+  [buildRouteKey('GET', SETTINGS_UI_POWER_PATH)]: (homey) => async ({ uri }) => buildUiPower(homey, scopedHomeIdOf(uri)),
   [buildRouteKey('GET', SETTINGS_UI_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH)]: (homey) => async () => buildUiDiagnostics(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICE_LOG_PATH)]: (homey) => async () => (
@@ -438,7 +452,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     getDailyBudgetRead(homey)
   ),
   [buildRouteKey('POST', SETTINGS_UI_RESET_POWER_STATS_PATH)]: (homey) => async () => ({
-    power: await buildUiPower(homey),
+    power: await buildUiPower(homey, null),
     dailyBudget: getDailyBudgetRead(homey),
   }),
   // Overview "Let it run now" rescue. Defaults: an empty rescuable set (so the
@@ -497,12 +511,18 @@ export const buildHomeyApiMock = (
   if (!callback) return;
 
   void (async () => {
-    if (!isDeclaredHomeyApiRoute(method, uri)) {
+    // A query-bearing URI resolves to its exact handler when a test installed
+    // one, else to the path's default handler for the ONE scoped read model
+    // this mock serves from settings slots (`ui_power?homeId=`); every other
+    // scoped read keeps 404ing, which is how the cache specs observe a miss.
+    const path = uri.split('?')[0];
+    if (!isDeclaredHomeyApiRoute(method, path)) {
       callback(buildHomeyApi404(method, uri));
       return;
     }
 
-    const handler = handlers[buildRouteKey(method, uri)];
+    const handler = handlers[buildRouteKey(method, uri)]
+      ?? (path === uri || path === SETTINGS_UI_POWER_PATH ? handlers[buildRouteKey(method, path)] : undefined);
 
     if (!handler) {
       callback(new Error(`No Homey API mock configured for ${method} ${uri}`));

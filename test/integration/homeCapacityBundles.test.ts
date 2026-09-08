@@ -933,24 +933,25 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       .toEqual({ heater: 'invalid:home' });
   });
 
-  it('publishes the EFFECTIVE (membership-gated) dry-run into the per-home status blob', async () => {
+  it('publishes the EFFECTIVE (membership-gated) dry-run into the per-home status', async () => {
     // Persisted-live, but no committed zone tree yet ⇒ effective dry-run true.
-    // The per-home Limits card must read Simulating, so the blob carries it.
+    // The per-home Limits card must read Simulating, so the status carries it.
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     rig.setMembershipReady(false);
     rig.ctx.snapshotWarmupGate = new SnapshotWarmupGate({ timeoutMs: 0 });
     writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     // The area's meter has to have reported once before a plan is built for it,
-    // so there is a status blob to publish at all.
+    // so there is a status to publish at all.
     rig.registry.routeMeterReadings({ 'm-a': 1000 }, Date.now());
     await drainPending();
 
-    const blob = mockHomeyInstance.settings.get('pels_status:h_a') as { dryRunEffective?: boolean } | undefined;
-    expect(blob).toBeTruthy();
-    expect(blob?.dryRunEffective).toBe(true);
-    // The main home's blob is byte-identical to origin/main: it never gains the field.
-    expect(mockHomeyInstance.settings.getKeys()).not.toContain('pels_status');
+    const read = rig.ctx.planStatuses.read('h_a');
+    expect(read.state).toBe('resolved');
+    expect(read.state === 'resolved' && read.status.dryRunEffective).toBe(true);
+    // The status is a registry fact, never a settings key — for the area or for main.
+    expect(mockHomeyInstance.settings.getKeys().filter((key) => key.startsWith('pels_status'))).toEqual([]);
+    expect(rig.ctx.planStatuses.read(MAIN_HOME_ID)).toEqual({ state: 'absent' });
   });
 
   it('a sub-home plan rebuild drives NONE of the shared UI/side-effect singletons', async () => {
@@ -1105,8 +1106,8 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
-    // Held by the gate → no status written yet.
-    expect(mockHomeyInstance.settings.getKeys()).not.toContain('pels_status:h_a');
+    // Held by the gate → no status published yet.
+    expect(rig.ctx.planStatuses.read('h_a')).toEqual({ state: 'absent' });
 
     // Tear down while the rebuild is held, THEN let it resolve post-teardown.
     writeActiveHomesConfig({ subHomes: [] });
@@ -1114,8 +1115,8 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await drainPending();
     heldGate.release('snapshot_ready');
     await drainPending();
-    // The resolving rebuild persisted NO suffixed state (writers fenced on teardown).
-    expect(mockHomeyInstance.settings.getKeys()).not.toContain('pels_status:h_a');
+    // The resolving rebuild published NO status (writers fenced on teardown).
+    expect(rig.ctx.planStatuses.read('h_a')).toEqual({ state: 'absent' });
 
     // A same-homeId recreate is a FRESH bundle with its own (open) fence: it persists.
     rig.ctx.snapshotWarmupGate = new SnapshotWarmupGate({ timeoutMs: 0 });
@@ -1125,7 +1126,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // before it builds (and so persists) anything.
     rig.registry.routeMeterReadings({ 'm-a': 1000 }, Date.now());
     await drainPending();
-    expect(mockHomeyInstance.settings.get('pels_status:h_a')).toBeTruthy();
+    expect(rig.ctx.planStatuses.read('h_a').state).toBe('resolved');
   });
 
   it('P1#5 ready-edge: a newer sample landing mid-rebuild trips the stale fence (no stale restore)', async () => {

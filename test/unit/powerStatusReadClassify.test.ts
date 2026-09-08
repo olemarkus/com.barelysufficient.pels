@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  asPowerStatusBlobRead,
-  classifyPowerStatusRead,
-} from '../../setup/settingsUiAppRuntime';
+import { classifyPowerStatusRead } from '../../setup/settingsUiAppRuntime';
 
-// The ONE classifier every pels_status producer answers through — both
+// The ONE classifier every status producer answers through — both
 // ui_power composers (latch evidence) and the realtime push (recorded-sample
 // evidence). Pinned here so a second resolver can never quietly diverge on
 // the liveness question again.
@@ -37,12 +34,5 @@ describe('classifyPowerStatusRead', () => {
     // first-sample-before-first-plan window.
     expect(classifyPowerStatusRead({ state: 'sample_recorded', sampleAtMs: 4242 }, { state: 'absent' }))
       .toEqual({ state: 'live', status: { lastPowerUpdate: 4242 } });
-  });
-
-  it('object-guards the stored blob into resolved/absent', () => {
-    expect(asPowerStatusBlobRead(blob)).toEqual({ state: 'resolved', status: blob });
-    for (const junk of [null, undefined, 42, 'status', [1]]) {
-      expect(asPowerStatusBlobRead(junk)).toEqual({ state: 'absent' });
-    }
   });
 });

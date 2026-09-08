@@ -64,12 +64,13 @@ export const refreshPlanForUi = (context: string) => {
   runLoggedTask(refreshPlan(), 'Failed to refresh plan', context);
 };
 
-// A selected meter area's own freshness path (multi-home): its suffixed
-// `pels_status:<id>` / `capacity_dry_run:<id>` writes repaint an OPEN
-// Overview from the area's scoped reads (the caller already invalidated the
-// scoped cache entries). Visible-only, unlike `refreshPlanForUi`: these keys
-// fire on every area plan commit, and repainting a hidden panel is pure cost —
-// the Overview activation hook refetches on open anyway.
+// A selected meter area's own freshness path (multi-home): its
+// `plan_status_published` push and its suffixed `capacity_dry_run:<id>` write
+// repaint an OPEN Overview from the area's scoped reads (the caller already
+// invalidated the scoped cache entries). Visible-only, unlike
+// `refreshPlanForUi`: the push fires on every area plan commit, and repainting
+// a hidden panel is pure cost — the Overview activation hook refetches on open
+// anyway.
 export const refreshOverviewPlanIfVisible = (context: string) => {
   if (!isPanelVisible('#overview-panel')) return;
   runLoggedTask(refreshPlan(), 'Failed to refresh plan', context);

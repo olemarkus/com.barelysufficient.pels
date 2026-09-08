@@ -2,11 +2,11 @@
  * Client seam for the classified power-status read
  * (`SettingsUiPowerStatusRead`, packages/contracts/src/settingsUiApi.ts).
  *
- * The producer (setup/settingsUiApi.ts) classifies the persisted `pels_status`
- * blob at the read boundary: `live` means the home's measurement gate is open
- * and the running planner vouches for the blob; `unavailable` names exactly why
- * no live claim exists (gated boot / never sampled this run, no blob committed,
- * scoped read refused, or a failed WebView read). This module is the ONE place
+ * The producer (setup/settingsUiApi.ts) classifies the home's published
+ * status at the read boundary: `live` means the home's measurement gate is
+ * open and the running planner vouches for the status; `unavailable` names
+ * exactly why no live claim exists (gated boot / never sampled this run, no
+ * status published, scoped read refused, or a failed WebView read). This module is the ONE place
  * the WebView validates that shape off its untrusted transports (the Homey API
  * bridge, realtime pushes) and translates it into the view layer's existing
  * absence vocabulary.

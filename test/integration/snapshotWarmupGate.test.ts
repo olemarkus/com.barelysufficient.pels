@@ -193,7 +193,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
-      writePelsStatus: vi.fn(),
+      publishPelsStatus: vi.fn(),
       homey: { settings: { set: vi.fn() } } as never,
       planEngine: {
         buildDevicePlanSnapshot,
@@ -246,7 +246,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
-      writePelsStatus: vi.fn(),
+      publishPelsStatus: vi.fn(),
       homey: { settings: { set: vi.fn() } } as never,
       planEngine: {
         buildDevicePlanSnapshot,
@@ -290,7 +290,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       homeId: 'main',
-      writePelsStatus: vi.fn(),
+      publishPelsStatus: vi.fn(),
       homey: { settings: { set: vi.fn() } } as never,
       planEngine: {
         buildDevicePlanSnapshot,

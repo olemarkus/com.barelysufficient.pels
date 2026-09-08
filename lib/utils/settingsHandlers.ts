@@ -146,8 +146,9 @@ export type SettingsHandlerDeps = {
    *
    * Consumer contract: invocations are NOT serialized against the settings
    * handler queue or against homes-config processing, and are NOT deduped —
-   * expect echoes of the app's own suffixed writes (`pels_status:<homeId>` on
-   * every plan commit). Treat every call as an idempotent
+   * expect echoes of the app's own suffixed writes (`capacity_in_shortfall:<homeId>`,
+   * `device_last_controlled_ms:<homeId>` as the planner and executor run).
+   * Treat every call as an idempotent
    * dirty-mark to reconcile against the homes registry, never as an ordered,
    * deduplicated command. An unknown homeId is transient: dirty-mark and
    * reconcile — never a destructive reset, never a dropped write.

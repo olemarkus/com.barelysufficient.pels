@@ -1,4 +1,4 @@
-import { POWER_TRACKER_PERSISTED_EVENT } from '../../../contracts/src/settingsKeys.ts';
+import { PLAN_STATUS_PUBLISHED_EVENT, POWER_TRACKER_PERSISTED_EVENT } from '../../../contracts/src/settingsKeys.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import { classifyPowerReadingsFact } from '../../../shared-domain/src/powerReadingsBanner.ts';
 import {
@@ -31,6 +31,7 @@ import { repaintOverviewWithRescueGate } from './overviewRescueGate.ts';
 import {
   createSettingsSetHandler,
   createSettingsUnsetHandler,
+  handlePlanStatusPublished,
   handlePowerTrackerPersisted,
 } from './settingsChangeRouter.ts';
 import {
@@ -47,9 +48,9 @@ import {
 import { liveStatusOrNull, resolvePowerStatusRead } from './powerStatusRead.ts';
 
 /**
- * The WebView's realtime subscriptions: the five `homey.on(...)` pushes the app
- * emits (plan / prices / devices / power / tracker persisted) plus the periodic
- * stale-data poll.
+ * The WebView's realtime subscriptions: the six `homey.on(...)` pushes the app
+ * emits (plan / prices / devices / power / tracker persisted / status
+ * published) plus the periodic stale-data poll.
  * The `settings.set` key routing lives in `settingsChangeRouter.ts` and the
  * shell's tab navigation in `tabNavigation.ts`; both are re-exported here so
  * existing importers (`boot.ts`, `deadlinePlanRouter.ts`) keep one entry point.
@@ -74,8 +75,8 @@ const handlePlanUpdated = (plan: unknown) => {
   // the sub-home entries it cannot speak for are dropped rather than left to
   // serve a plan from before this rebuild. A selected sub-home refetches on its
   // next read; its own freshness signals are the suffixed `settings.set` stream
-  // (`pels_status:<homeId>`) and the `power_tracker_persisted` push, both routed
-  // in `settingsChangeRouter.ts`.
+  // the `plan_status_published` and `power_tracker_persisted` pushes, both
+  // routed in `settingsChangeRouter.ts`.
   invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH);
   primeApiCache(SETTINGS_UI_PLAN_PATH, { plan: parsedPlan });
   invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
@@ -200,6 +201,7 @@ export const initRealtimeListeners = () => {
   homey.on('devices_updated', handleDevicesUpdated);
   homey.on('power_updated', handlePowerUpdated);
   homey.on(POWER_TRACKER_PERSISTED_EVENT, handlePowerTrackerPersisted);
+  homey.on(PLAN_STATUS_PUBLISHED_EVENT, handlePlanStatusPublished);
   homey.on('settings.set', withSettingsKey('settings.set', createSettingsSetHandler()));
   homey.on('settings.unset', withSettingsKey('settings.unset', createSettingsUnsetHandler()));
 

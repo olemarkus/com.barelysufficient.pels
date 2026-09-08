@@ -90,6 +90,7 @@ const prepareShot = async (page: Page, shot: Shot): Promise<void> => {
   }
   // Same device count in both limits shots so the simulating→active pair reads
   // as one area before/after turning control on, not a phantom count change.
+  await seedStubSetting(page, `power_tracker_state:${AREA_ID}`, { lastPowerW: 4000, lastTimestamp: Date.now() });
   await seedStubSetting(page, `pels_status:${AREA_ID}`, {
     controlledKw: 2.5, uncontrolledKw: 1.5, powerKnown: true,
     devicesOff: 1, limitReason: 'hourly',

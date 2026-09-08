@@ -17,6 +17,8 @@ import {
   resetSettingsUiPowerStats,
 } from '../../setup/settingsUiApi';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../packages/contracts/src/settingsUiApi';
+import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
+import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 
 describe('settingsUiApi', () => {
@@ -26,6 +28,8 @@ describe('settingsUiApi', () => {
       capacitySettings?: { limitKw: number; marginKw: number };
       cloudHomeyId?: string;
       latestPlanSnapshot?: Record<string, unknown> | null;
+      /** The main home's published status; `null` for a home that has published none this run. */
+      planStatus?: Record<string, unknown> | null;
       settings?: Record<string, unknown>;
       latestDevicesOverride?: Record<string, unknown>[];
       uiPickerDevices?: Record<string, unknown>[];
@@ -35,7 +39,6 @@ describe('settingsUiApi', () => {
     const store = new Map<string, unknown>([
       ['combined_prices', { prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] }],
       ['power_tracker_state', { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } }],
-      ['pels_status', { lastPowerUpdate: 123, priceLevel: 'cheap' }],
       ['homey_prices_currency', 'NOK'],
       ['homey_prices_today', { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' }],
       ['homey_prices_tomorrow', { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' }],
@@ -84,8 +87,12 @@ describe('settingsUiApi', () => {
     ];
     // Latched by default (production `recordPowerSample` stamps `lastPowerW`
     // and `lastTimestamp` together): the harness home is a MEASURED home, so
-    // the classified `pels_status` read serves the blob as live. Tests for the
-    // gated read clear the latch explicitly.
+    // the classified status read serves the published status as live. Tests
+    // for the gated read clear the latch explicitly.
+    const planStatuses = createPlanStatusRegistry();
+    if (options.planStatus !== null) {
+      planStatuses.publish(MAIN_HOME_ID, (options.planStatus ?? { lastPowerUpdate: 123, priceLevel: 'cheap' }) as never);
+    }
     let powerTracker: Record<string, unknown> = {
       lastPowerW: 5200,
       lastTimestamp: 123,
@@ -198,6 +205,7 @@ describe('settingsUiApi', () => {
         ? { capacityDryRun: options.capacityDryRun }
         : {}),
       ...(options.capacitySettings ? { capacitySettings: options.capacitySettings } : {}),
+      planStatuses,
       log,
       error,
       refreshTargetDevicesSnapshot,
@@ -295,11 +303,11 @@ describe('settingsUiApi', () => {
       .toEqual({ limitKw: 12, marginKw: 0.4 });
   });
 
-  // The read boundary classifies the persisted `pels_status` blob against the
-  // same predicate the plan-build gate asks of the same live tracker
+  // The read boundary classifies the published status against the same
+  // predicate the plan-build gate asks of the same live tracker
   // (`hasPowerMeasurement`). A gated boot — no meter reading THIS run — must
-  // not serve the previous run's blob as live, and must not destroy it either.
-  it('answers no_measurement — and preserves the stored blob — while the live tracker holds no measurement', () => {
+  // not serve a status as live.
+  it('answers no_measurement while the live tracker holds no measurement', () => {
     const homey = createHomey();
     // A gated boot: the live tracker restored no latch (never sampled this
     // run / corrupt restore / in-place meter swap cleared it).
@@ -310,13 +318,10 @@ describe('settingsUiApi', () => {
     // Usage HISTORY still serves — the tracker field is accounting, not a
     // liveness claim; its consumers age it themselves.
     expect(payload.tracker).toEqual({ buckets: { '2026-03-03T00:00:00.000Z': 1.2 } });
-    // The persisted blob survives untouched: a shut gate changes only what the
-    // read CLAIMS, never the stored state.
-    expect(homey.settings.get('pels_status')).toEqual({ lastPowerUpdate: 123, priceLevel: 'cheap' });
   });
 
-  it('answers no_status_recorded when the home is measured but no pels_status blob is committed yet', () => {
-    const homey = createHomey({ settings: { pels_status: undefined } });
+  it('answers no_status_recorded when the home is measured but has published no status yet', () => {
+    const homey = createHomey({ planStatus: null });
     expect(getSettingsUiPowerPayload({ homey: homey as never }).status)
       .toEqual({ state: 'unavailable', reason: 'no_status_recorded' });
   });

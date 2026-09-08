@@ -257,7 +257,7 @@ test.describe('Power source setting', () => {
       stub.setSetting('power_tracker_state', { lastPowerW: 5200, lastTimestamp: Date.now() - 120_000 });
       stub.setSetting('pels_status', { lastPowerUpdate: Date.now() - 120_000 });
       stub.setSetting('app_heartbeat', Date.now());
-      stub.emitSettingsSet('pels_status');
+      stub.emitHomeyEvent('plan_status_published', { homeId: 'main' });
     });
 
     const banner = page.locator('#stale-data-banner');
@@ -271,7 +271,7 @@ test.describe('Power source setting', () => {
     // Re-trigger stale banner refresh so the hint text updates
     await page.evaluate(() => {
       const stub = (window as unknown as StubWindow).Homey.__stub;
-      stub.emitSettingsSet('pels_status');
+      stub.emitHomeyEvent('plan_status_published', { homeId: 'main' });
     });
 
     await expect(banner).toContainText('Pick a whole-home meter');

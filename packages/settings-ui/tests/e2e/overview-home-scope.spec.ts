@@ -5,7 +5,7 @@ import { pickHomeScope, seedStubSetting } from './fixtures/homes';
  * Per-home Overview (multi-home 6b): the Overview honours the shell's home
  * scope. Main selection keeps the whole-home hero and cards; picking a meter
  * area renders THAT AREA'S own plan (its `plan_snapshot:<id>` fixture) with
- * the Main-only smart-task row omitted; the area's suffixed `pels_status:<id>`
+ * the Main-only smart-task row omitted; the area's `plan_status_published` push
  * stream repaints the open panel; a Main `plan_updated` push (which re-seeds
  * the BARE cache entry) must never paint Main's plan under the area's name;
  * and an area the runtime cannot serve gets the honest notice instead of
@@ -69,12 +69,6 @@ const installStubSettings = async (page: Page, settings: Record<string, unknown>
   }, settings);
 };
 
-const emitStubSettingSet = (page: Page, key: string) => page.evaluate((settingKey) => {
-  (window as unknown as {
-    Homey: { __stub: { emitSettingsSet: (k: string) => void } };
-  }).Homey.__stub.emitSettingsSet(settingKey);
-}, key);
-
 const emitHomeyEvent = (page: Page, event: string, payload: unknown) => page.evaluate(([e, p]) => {
   (window as unknown as {
     Homey: { __stub: { emitHomeyEvent: (event: string, payload: unknown) => void } };
@@ -122,7 +116,7 @@ test.describe('Overview follows the shown home', () => {
     await expect(page.locator('#plan-cards [data-device-id="dev_heatpump"]')).toHaveCount(0);
     await expect(page.locator('#plan-smart-task-row')).toHaveCount(0);
 
-    // The area's suffixed `pels_status:<id>` write is its only realtime
+    // The area's `plan_status_published` push is its only realtime plan
     // freshness signal (`plan_updated` stays Main's); it must repaint the
     // open panel from the area's scoped read.
     await seedStubSetting(
@@ -130,7 +124,7 @@ test.describe('Overview follows the shown home', () => {
       `plan_snapshot:${AREA_ID}`,
       buildPlanFixture(1.2, { id: 'dev_bedroom', name: 'Bedroom Thermostat' }),
     );
-    await emitStubSettingSet(page, `pels_status:${AREA_ID}`);
+    await emitHomeyEvent(page, 'plan_status_published', { homeId: AREA_ID });
     await expect(heroPowerValue(page)).toHaveText('1.2');
 
     // THE TRAP: a Main `plan_updated` push re-seeds the BARE cache entry with

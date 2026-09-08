@@ -16,13 +16,13 @@ import * as contractKeys from '../../packages/contracts/src/settingsKeys';
 describe('contracts settings-key mirrors match lib/utils/settingsKeys', () => {
   it('mirrors the home-scoping constants byte for byte', () => {
     expect(contractKeys.MAIN_HOME_ID).toBe(libKeys.MAIN_HOME_ID);
-    expect(contractKeys.PELS_STATUS).toBe(libKeys.PELS_STATUS);
     expect(contractKeys.POWER_TRACKER_PERSISTED_EVENT).toBe(libKeys.POWER_TRACKER_PERSISTED_EVENT);
+    expect(contractKeys.PLAN_STATUS_PUBLISHED_EVENT).toBe(libKeys.PLAN_STATUS_PUBLISHED_EVENT);
     expect(contractKeys.HOMES_CONFIG).toBe(libKeys.HOMES_CONFIG);
   });
 
   it('mirrors homeScopedSettingsKey behaviour on both sides of the main split', () => {
-    for (const baseKey of [libKeys.PELS_STATUS, libKeys.CAPACITY_LIMIT_KW]) {
+    for (const baseKey of [libKeys.CAPACITY_DRY_RUN, libKeys.CAPACITY_LIMIT_KW]) {
       expect(contractKeys.homeScopedSettingsKey(baseKey, contractKeys.MAIN_HOME_ID))
         .toBe(libKeys.homeScopedSettingsKey(baseKey, libKeys.MAIN_HOME_ID));
       expect(contractKeys.homeScopedSettingsKey(baseKey, 'h_area1'))

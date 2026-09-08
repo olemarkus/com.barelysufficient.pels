@@ -39,7 +39,6 @@
  *
  * Governing references: `docs/technical.md`, `lib/plan/AGENTS.md`.
  */
-import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { normalizeError } from '../utils/errorUtils';
 import { buildPlanDetailSignature } from './planLogging';
@@ -120,7 +119,7 @@ export class PlanService {
     });
     this.planStatusWriter = new PlanStatusWriter({
       homey: deps.homey,
-      writePelsStatus: deps.writePelsStatus,
+      publishPelsStatus: deps.publishPelsStatus,
       getCurrentHourPriceLevel: deps.getCurrentHourPriceLevel,
       getLastPowerUpdate: deps.getLastPowerUpdate,
       getCapacityDryRun: deps.getCapacityDryRun,
@@ -206,9 +205,6 @@ export class PlanService {
     return this.withHomeLogContext(() => this.deps.planEngine.handleShortfallCleared());
   }
 
-  getLastNotifiedPriceLevel(): PriceLevel {
-    return this.planStatusWriter.getLastNotifiedPriceLevel();
-  }
 
   getLatestPlanSnapshot(): DevicePlan | null {
     return this.latestPlanSnapshot;

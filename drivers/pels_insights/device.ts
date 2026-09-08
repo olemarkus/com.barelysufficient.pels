@@ -3,37 +3,23 @@ import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
 import { getAllModes } from '../../lib/utils/capacityHelpers';
 import { getLogger } from '../../lib/logging/logger';
 import { normalizeError } from '../../lib/utils/errorUtils';
+import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import type { PelsStatus } from '../../lib/plan/pelsStatus';
+import { planStatusRegistryOf } from '../../lib/plan/planStatusRegistry';
 import { buildModeEnumValues, type ModeEnumValue } from './modeEnum';
 
 const deviceLogger = getLogger('driver/pels-insights');
 
-type StatusData = {
-  /**
-   * False when the plan behind the status had no measurement (the silent-meter
-   * fail-closed pass). The blob then omits every measured figure, and the
-   * capabilities that mirror them are CLEARED rather than left charting the
-   * last measured value through the outage (`MEASURED_CAPABILITY_IDS`).
-   */
-  powerKnown?: boolean;
-  headroomKw?: number;
-  hourlyLimitKw?: number;
-  hourlyUsageKwh?: number;
-  dailyBudgetRemainingKwh?: number;
-  dailyBudgetExceeded?: boolean;
-  limitReason?: 'none' | 'hourly' | 'daily' | 'both';
-  capacityShortfall?: boolean;
-  shortfallBudgetThresholdKw?: number;
-  shortfallBudgetHeadroomKw?: number | null;
-  hardCapHeadroomKw?: number | null;
-  controlledKw?: number;
-  uncontrolledKw?: number;
-  priceLevel?: 'cheap' | 'normal' | 'expensive' | 'unknown';
-  devicesOn?: number;
-  devicesOff?: number;
-};
-
+/**
+ * The capabilities mirror the main home's live status (`PelsStatus`), heard
+ * from the app's in-memory registry: read once at init, then on every
+ * publish. `powerKnown: false` — the silent-meter fail-closed pass — omits
+ * every measured figure, and the capabilities that mirror them are CLEARED
+ * rather than left charting the last measured value through the outage
+ * (`MEASURED_CAPABILITY_IDS`).
+ */
 type CapabilityEntry = {
-  key: keyof StatusData;
+  key: keyof PelsStatus;
   id: string;
   type: 'string' | 'number' | 'boolean';
 };
@@ -162,7 +148,20 @@ class PelsInsightsDevice extends Homey.Device {
 
     await this.refreshModeOptions();
     await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
-    await this.updateFromStatus();
+    // `homey.app` is the running PELS app; a shell without the registry (a
+    // torn-down app) leaves the capabilities at their last values, like a
+    // status that has not been published yet. Subscribed BEFORE the initial
+    // read is applied: the apply awaits a chain of capability writes, and a
+    // publish landing during it must be heard rather than missed until the
+    // next one. Every apply goes through `applyStatus`, so the two land in
+    // publish order rather than interleaving their capability writes.
+    const planStatuses = planStatusRegistryOf(this.homey.app);
+    this.unsubscribePlanStatus = planStatuses?.subscribe((homeId, published) => {
+      if (homeId !== MAIN_HOME_ID) return;
+      void this.applyStatus(published);
+    }) ?? null;
+    const status = planStatuses?.read(MAIN_HOME_ID);
+    if (status?.state === 'resolved') await this.applyStatus(status.status);
     await this.removeRetiredPlanImagesFromDevice();
 
     this.registerCapabilityListener('mode_indicator', async (value: unknown) => {
@@ -181,16 +180,14 @@ class PelsInsightsDevice extends Homey.Device {
       if (key === 'capacity_in_shortfall') {
         await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
       }
-
-      if (key === 'pels_status') {
-        await this.updateFromStatus();
-      }
     });
   }
 
   async onUninit(): Promise<void> {
     // Stop any coalesced refresh from touching the SDK after teardown.
     this.destroyed = true;
+    this.unsubscribePlanStatus?.();
+    this.unsubscribePlanStatus = null;
     if (this.modeOptionsRefreshTimer !== null) {
       clearImmediate(this.modeOptionsRefreshTimer);
       this.modeOptionsRefreshTimer = null;
@@ -198,6 +195,19 @@ class PelsInsightsDevice extends Homey.Device {
   }
 
   private destroyed = false;
+
+  private unsubscribePlanStatus: (() => void) | null = null;
+
+  // Statuses are applied one at a time, in publish order: an apply is a chain
+  // of awaited capability writes, and two overlapping applies could leave the
+  // capabilities showing a mix of an older and a newer status.
+  private statusApplyQueue: Promise<void> = Promise.resolve();
+
+  private applyStatus(status: PelsStatus): Promise<void> {
+    this.statusApplyQueue = this.statusApplyQueue
+      .then(() => (this.destroyed ? undefined : this.updateFromStatus(status)));
+    return this.statusApplyQueue;
+  }
 
   private modeOptionsRefreshTimer: ReturnType<typeof setImmediate> | null = null;
 
@@ -330,10 +340,7 @@ class PelsInsightsDevice extends Homey.Device {
     }
   }
 
-  async updateFromStatus(): Promise<void> {
-    const status = this.homey.settings.get('pels_status') as StatusData | null;
-    if (!status) return;
-
+  async updateFromStatus(status: PelsStatus): Promise<void> {
     try {
       for (const { key, id, type } of STATUS_CAPABILITY_MAP) {
         const value = status[key];

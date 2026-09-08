@@ -669,7 +669,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       (`setup/homeRuntime/homeRuntimeRegistry.ts`) drops every reading unless the source is
       `homey_energy`, and a sub-home pipeline has no other sample entry — so its tracker never
       latches a sample, `hasPowerMeasurement` stays false, `PowerMeasurementGate` never opens, and no
-      plan (and therefore no `pels_status:<homeId>` blob) is ever written for that area. Its state is
+      plan (and therefore no status) is ever published for that area. Its state is
       "never had a reading", not "the reading went stale": the area tracker never latches, so there
       is no timestamp for a staleness arm to read — and the cause is the power source, which the
       copy must name. Actuation is already correctly withheld (`resolveEffectiveDryRun` forces
@@ -1507,11 +1507,10 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       taking the open database (the tracker and weather stores are the pattern: rows or one JSON
       row per event, diffed writes, the legacy key imported once at boot through
       `lib/store/legacySettingsImport.ts` and unset, and the settings UI served through `api.js`).
-      Then `pels_status` (0.6 kB, ~50 writes/h, `lib/plan/planStatusWriter.ts`) stops being a
-      settings write: an `api.js` read plus the realtime push the UI already gets. Done when
-      `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production Homey is
-      under ~100 kB and the perf counter `settings_write_ms` no longer records a write above a few
-      milliseconds. Also retire the two dev harnesses that still read the retired tracker key —
+      Done when `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production
+      Homey is under ~100 kB and the perf counter `daily_budget_persist_ms` — the one periodic
+      settings writer left — no longer records a write above a few milliseconds. Also retire the
+      two dev harnesses that still read the retired tracker key —
       `scripts/measure-settings-ui-homey.mjs` (`buildPowerPayload`) and the fixture in
       `scripts/benchmark-settings-ui-boot.mjs` — by pointing them at the `ui_power` API payload.
 

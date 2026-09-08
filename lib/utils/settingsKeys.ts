@@ -14,6 +14,13 @@ export const POWER_TRACKER_STATE = 'power_tracker_state';
  * under no settings key. Mirrored in `packages/contracts/src/settingsKeys.ts`.
  */
 export const POWER_TRACKER_PERSISTED_EVENT = 'power_tracker_persisted';
+/**
+ * Realtime push emitted after every status publish, for every home
+ * (`{ homeId }`): the settings UI's freshness signal for a status that lives
+ * in memory (`lib/plan/planStatusRegistry.ts`), under no settings key.
+ * Mirrored in `packages/contracts/src/settingsKeys.ts`.
+ */
+export const PLAN_STATUS_PUBLISHED_EVENT = 'plan_status_published';
 // Canonical id of the primary home. The main home keeps the historical
 // unsuffixed settings keys; additional homes (multi-home train) scope their
 // keys via `homeScopedSettingsKey`. The home domain proper lands in a sibling
@@ -155,7 +162,6 @@ export const DEVICE_TARGET_POWER_REACHABILITY = 'device_target_power_reachabilit
 export const DEVICE_LAST_CONTROLLED_MS = 'device_last_controlled_ms';
 export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';
 export const CAPACITY_IN_SHORTFALL = 'capacity_in_shortfall';
-export const PELS_STATUS = 'pels_status';
 export const PRICE_OPTIMIZATION_SETTINGS = 'price_optimization_settings';
 export const PRICE_OPTIMIZATION_ENABLED = 'price_optimization_enabled';
 export const PRICE_THRESHOLD_PERCENT = 'price_threshold_percent';

@@ -498,6 +498,9 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       // writers/tracker-save, so any in-flight rebuild/reconcile/heartbeat/sample
       // continuation dispatched before this point can neither actuate nor persist.
       markTornDown();
+      // A torn-down home has no status: the registry serves `absent` for it
+      // from here on, and the fenced writer cannot publish one again.
+      ctx.planStatuses.retire(homeId);
       scope.disposeBinaryCommandReachability();
       planRebuildScheduler.cancelAll('home_bundle_teardown');
       ctx.timers.clear(timerKey('planRebuild'));

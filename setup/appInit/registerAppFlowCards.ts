@@ -45,7 +45,7 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getAllModes: () => ctx.getAllModes(),
     getCurrentOperatingMode: () => ctx.operatingMode,
     handleOperatingModeChange: (rawMode) => ctx.handleOperatingModeChange(rawMode),
-    getCurrentPriceLevel: () => ctx.getCurrentPriceLevel(),
+    getCurrentPriceLevel: () => ctx.getCurrentHourPriceLevel(),
     areFlowBackedCardsAvailable: () => ctx.areFlowBackedCardsAvailable(),
     recordPowerSample: async (powerW) => {
       const source = readConfiguredPowerSource(ctx.homey.settings);

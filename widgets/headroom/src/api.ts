@@ -1,28 +1,30 @@
 import { handleWidgetClientLog, type WidgetClientLogContext } from '../../_shared/widgetClientLogApi';
 import { hasPowerMeasurement } from '../../../lib/power/lastTotalPower';
+import { MAIN_HOME_ID } from '../../../lib/utils/settingsKeys';
+import { planStatusRegistryOf } from '../../../lib/plan/planStatusRegistry';
 import {
-  asPowerStatusBlobRead,
   classifyPowerStatusRead,
   type PowerMeasurementEvidence,
+  type PowerStatusBlobRead,
 } from '../../../setup/settingsUiAppRuntime';
 import { buildHeadroomWidgetPayload } from './headroomWidgetPayload';
 import type { HeadroomWidgetPayload } from './headroomWidgetTypes';
 
-const PELS_STATUS_SETTING = 'pels_status';
-
 // The widget API handler runs app-side (like the settings-UI api handlers),
-// so `homey.app` is the running PELS app and the live tracker latch is
-// reachable — the same evidence the plan-build gate and the ui_power
-// composers classify against. Typed `unknown` and narrowed below: the app
-// shell is untrusted structure at this seam, and an unreadable app must
-// classify as no measurement rather than serve the persisted blob as live.
+// so `homey.app` is the running PELS app: the main home's live status and
+// the live tracker latch are both reachable — the same evidence the
+// plan-build gate and the ui_power composers classify against. Typed
+// `unknown` and narrowed below: the app shell is untrusted structure at this
+// seam, and an unreadable app must classify as no measurement and no status.
 type WidgetApiContext = {
   homey: {
     app: unknown;
-    settings: {
-      get: (key: string) => unknown;
-    };
   };
+};
+
+const toStatusRead = (app: unknown): PowerStatusBlobRead => {
+  const read = planStatusRegistryOf(app)?.read(MAIN_HOME_ID);
+  return read?.state === 'resolved' ? { state: 'resolved', status: read.status } : { state: 'absent' };
 };
 
 const toLatchEvidence = (app: unknown): PowerMeasurementEvidence => {
@@ -38,10 +40,7 @@ const toLatchEvidence = (app: unknown): PowerMeasurementEvidence => {
 
 export const getHeadroom = async ({ homey }: WidgetApiContext): Promise<HeadroomWidgetPayload> => (
   buildHeadroomWidgetPayload({
-    status: classifyPowerStatusRead(
-      toLatchEvidence(homey.app),
-      asPowerStatusBlobRead(homey.settings.get(PELS_STATUS_SETTING)),
-    ),
+    status: classifyPowerStatusRead(toLatchEvidence(homey.app), toStatusRead(homey.app)),
   })
 );
 

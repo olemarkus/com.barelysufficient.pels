@@ -5,7 +5,9 @@ import {
   primeApiCache,
   setHomeyClient,
 } from '../src/ui/homey.ts';
-import { createSettingsSetHandler, createSettingsUnsetHandler, handlePowerTrackerPersisted } from '../src/ui/settingsChangeRouter.ts';
+import {
+  createSettingsSetHandler, createSettingsUnsetHandler, handlePlanStatusPublished, handlePowerTrackerPersisted,
+} from '../src/ui/settingsChangeRouter.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PLAN_PATH,
@@ -14,14 +16,13 @@ import {
 import {
   DEVICE_HOME_ASSIGNMENTS,
   HOMES_CONFIG,
-  PELS_STATUS,
 } from '../../contracts/src/settingsKeys.ts';
 
 /* -------------------------------------------------------------------------- *
  * The settings-change router's per-home cache routes (multi-home R5b).
  *
- * A sub-home's ONLY freshness signals are its suffixed `pels_status:<id>`
- * `settings.set` and the `power_tracker_persisted` push carrying its id — the
+ * A sub-home's ONLY freshness signals are the `plan_status_published` and
+ * `power_tracker_persisted` pushes carrying its id — the
  * realtime `plan_updated` / `power_updated` pushes are the main home's and are
  * never widened. And the roster/pin blobs (`homes_config` /
  * `device_home_assignments`) decide which homes resolve and which devices a
@@ -62,8 +63,8 @@ describe('settings-change router sweeps home-scoped read models', () => {
     setHomeyClient(null);
   });
 
-  it('a suffixed pels_status write drops scoped plan+power and keeps the bare entries', async () => {
-    createSettingsSetHandler()(`${PELS_STATUS}:${AREA}`);
+  it('a plan_status_published push for an area drops scoped plan+power and keeps the bare entries', async () => {
+    handlePlanStatusPublished({ homeId: AREA });
 
     expect(await isCached(scoped(SETTINGS_UI_PLAN_PATH), 'area-plan')).toBe(false);
     expect(await isCached(scoped(SETTINGS_UI_POWER_PATH), 'area-power')).toBe(false);
@@ -106,9 +107,24 @@ describe('settings-change router sweeps home-scoped read models', () => {
     expect(await isCached(SETTINGS_UI_POWER_PATH, 'bare-power')).toBe(true);
   });
 
-  it('a suffixed status write leaves scoped devices cached (no devices field reads it)', async () => {
-    createSettingsSetHandler()(`${PELS_STATUS}:${AREA}`);
+  it('an area status publish leaves scoped devices cached (no devices field reads it)', async () => {
+    handlePlanStatusPublished({ homeId: AREA });
     expect(await isCached(scoped(SETTINGS_UI_DEVICES_PATH), 'area-devices')).toBe(true);
+  });
+
+  it('a plan_status_published push for the main home sweeps the power entries of every home and nothing else', async () => {
+    handlePlanStatusPublished({ homeId: 'main' });
+    expect(await isCached(SETTINGS_UI_POWER_PATH, 'bare-power')).toBe(false);
+    expect(await isCached(scoped(SETTINGS_UI_POWER_PATH), 'area-power')).toBe(false);
+    expect(await isCached(SETTINGS_UI_PLAN_PATH, 'bare-plan')).toBe(true);
+    expect(await isCached(SETTINGS_UI_DEVICES_PATH, 'bare-devices')).toBe(true);
+  });
+
+  it('a malformed plan_status_published push sweeps nothing', async () => {
+    handlePlanStatusPublished({ homeId: 42 });
+    handlePlanStatusPublished(undefined);
+    expect(await isCached(scoped(SETTINGS_UI_POWER_PATH), 'area-power')).toBe(true);
+    expect(await isCached(SETTINGS_UI_POWER_PATH, 'bare-power')).toBe(true);
   });
 
   it.each([[HOMES_CONFIG], [DEVICE_HOME_ASSIGNMENTS]])(
@@ -130,12 +146,11 @@ describe('settings-change router sweeps home-scoped read models', () => {
   });
 
   // The UNSET mirror: Homey delivers deletes as `settings.unset`, and an unset
-  // suffixed status (area retirement) or roster/pins blob de-resolves the
-  // same scoped read models a set rewrites — none of these keys is set-only.
-  // Without this route a deleted area's cached payloads would keep serving
-  // `homeScope: resolved` for the rest of the WebView session.
+  // roster/pins blob de-resolves the same scoped read models a set rewrites —
+  // neither key is set-only. Without this route a deleted area's cached
+  // payloads would keep serving `homeScope: resolved` for the rest of the
+  // WebView session.
   it.each([
-    [`${PELS_STATUS}:${AREA}`],
     [HOMES_CONFIG],
     [DEVICE_HOME_ASSIGNMENTS],
   ])('a %s UNSET drops the scoped plan+power entries and keeps the bare ones', async (key) => {

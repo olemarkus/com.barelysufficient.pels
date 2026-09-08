@@ -59,6 +59,7 @@ import type { SteppedCommandStore } from '../executor/steppedCommandStore';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { HomeMembershipPort } from '../home/membership';
 import type { HomeRuntimeReadPort } from '../home/homeRuntimeRead';
+import type { PlanStatusRegistry } from '../plan/planStatusRegistry';
 import type { GenerationPollSource } from '../power/sources/generationPoll';
 import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
 import type { PlanRebuildThrottle } from '../plan/rebuildScheduler/throttle';
@@ -133,7 +134,6 @@ export type AppContext = {
   recordPowerSample: (powerW: number, nowMs?: number) => Promise<PowerSampleAdmission>;
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getFlowSnapshot: () => Promise<TargetDeviceSnapshot[]>;
-  getCurrentPriceLevel: () => PriceLevel;
   /**
    * Both current-hour price flags from ONE combined-series build — see
    * `PriceService.getCurrentHourPriceLevel`. Replaces the separate
@@ -292,6 +292,12 @@ export type AppContext = {
   get priceOptimizationEnabled(): boolean;
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;
   capacityGuard: CapacityGuard;
+  /**
+   * Every home's live status, published by its plan service after a rebuild
+   * and read by the settings-UI API, the widget and the Insights driver. In
+   * memory, never a settings key: `lib/plan/planStatusRegistry.ts`.
+   */
+  readonly planStatuses: PlanStatusRegistry;
   readonly deferredObjectiveStatusBus: DeferredObjectiveStatusBus;
   readonly deferredObjectivePlanRevisionBus: DeferredObjectivePlanRevisionBus;
   readonly deferredObjectiveEndedBus: DeferredObjectiveEndedBus;

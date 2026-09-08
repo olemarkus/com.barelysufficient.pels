@@ -11,7 +11,7 @@
 //
 // Scenarios:
 // 1. Independence — a sub-home meter overshoot sheds ONLY sub-home devices;
-//    a main overshoot sheds ONLY main devices; suffixed `pels_status:<id>` +
+//    a main overshoot sheds ONLY main devices; the area's own published status +
 //    `capacity_in_shortfall:<id>` are written.
 // 2. Boot-window double-control guards — neither a PINNED member nor ordinary
 //    zone-rule membership can be actuated by the wrong home while the zone-tree
@@ -49,6 +49,8 @@ import {
   HOMEY_ENERGY_METER_DEVICE_ID,
 } from '../../lib/utils/settingsKeys';
 import { drainPending } from '../utils/asyncDrain';
+import type { PlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
+import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 const writeActiveHomesConfig = (config: HomeConfig): void => {
@@ -190,6 +192,13 @@ const wasCalledWith = (
   callPath === path && (body as { value?: unknown } | undefined)?.value === value
 ));
 
+// The `dryRunEffective` a home's published status carries, or `undefined`
+// while it has published none.
+const publishedDryRunEffective = (app: { planStatuses: PlanStatusRegistry }, homeId: string): boolean | undefined => {
+  const read = app.planStatuses.read(homeId);
+  return read.state === 'resolved' ? read.status.dryRunEffective : undefined;
+};
+
 describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
   beforeEach(() => {
     // 'Date' MUST be faked: under NODE_ENV=test the plan-rebuild scheduler
@@ -243,10 +252,10 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     expect(callsFor(putSpy, 'device-main')).toEqual([]);
 
     // Sustained overshoot with nothing left to shed → the sub-home's OWN
-    // shortfall signal; its status blob exists under the suffixed key. Main's
+    // shortfall signal; its status is published under its own home id. Main's
     // unsuffixed shortfall signal stays untouched (never true).
     await advancePollsUntil(() => mockHomeyInstance.settings.get('capacity_in_shortfall:h_sub') === true);
-    expect(mockHomeyInstance.settings.get('pels_status:h_sub')).toBeTruthy();
+    expect(app.planStatuses.read('h_sub').state).toBe('resolved');
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).not.toBe(true);
 
     // Now the MAIN meter overshoots (sub recovers): only main's device sheds.
@@ -363,9 +372,12 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
       false,
       flowPhaseStart,
     )).toBe(false);
-    expect((mockHomeyInstance.settings.get('pels_status:h_sub') as
-      | { dryRunEffective?: unknown }
-      | undefined)?.dryRunEffective).toBe(true);
+    // The source switch tore the bundle down and built a replacement; under the
+    // flow source that replacement receives no samples, so it builds no plan and
+    // publishes no status. (The settings-key era read the torn-down bundle's
+    // stale blob here — a previous era's posture served as current, which is
+    // exactly what the registry retires on teardown.)
+    expect(app.planStatuses.read('h_sub')).toEqual({ state: 'absent' });
   }, 30_000);
 
   it('boot-window guard: a PINNED sub-home member is not actuated before a zone-tree commit; the shed lands after the tree arrives', async () => {
@@ -779,13 +791,13 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
       await drainPending();
     }
     expect(callsFor(putSpy, 'device-sub-heat')).toEqual([]);
-    // A never-sampled area builds no plan at all, so it also publishes no status
-    // blob — the old positive control (reading `dryRunEffective: false` here)
+    // A never-sampled area builds no plan at all, so it also publishes no
+    // status — the old positive control (reading `dryRunEffective: false` here)
     // can no longer run in this phase. It moves below instead: proving the SAME
     // bundle is live and allowed to actuate the moment its meter reports proves
     // the silence above was the missing measurement and not some unrelated gate
     // (dry-run, membership, source epoch) suppressing every write.
-    expect(mockHomeyInstance.settings.getKeys()).not.toContain('pels_status:h_sub');
+    expect(app.planStatuses.read('h_sub')).toEqual({ state: 'absent' });
 
     // The meter comes back. Now the area's draw is known and well under its
     // 6 kW cap, so the same mode target is applied — the hold is on the unknown,
@@ -800,9 +812,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     // The relocated positive control (see above): live, not dry-run, not fenced.
     // Had any of those been suppressing the writes, this would still read true
     // or stay absent now that a measurement exists.
-    expect((mockHomeyInstance.settings.get('pels_status:h_sub') as
-      | { dryRunEffective?: unknown }
-      | undefined)?.dryRunEffective).toBe(false);
+    expect(publishedDryRunEffective(app, 'h_sub')).toBe(false);
   }, 30_000);
 
   // A silent-meter area gets no power-driven rebuilds and the freshness
@@ -842,7 +852,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     }
 
     // No plan: no published status, and the pending mode raise stays unwritten.
-    expect(mockHomeyInstance.settings.get('pels_status')).toBeFalsy();
+    expect(app.planStatuses.read(MAIN_HOME_ID)).toEqual({ state: 'absent' });
     expect(callsFor(putSpy, 'device-main-heat')).toEqual([]);
 
     // The meter appears. The sample schedules its own rebuild, so the plan
@@ -854,7 +864,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
       () => wasCalledWith(putSpy, TEMP_CAP('device-main-heat'), 22, meterLivePhaseStart),
       60,
     );
-    expect(mockHomeyInstance.settings.get('pels_status')).toBeTruthy();
+    expect(app.planStatuses.read(MAIN_HOME_ID).state).toBe('resolved');
   }, 30_000);
 
   it('applies a cooler-mode lowering to an area heater while the area meter is silent', async () => {

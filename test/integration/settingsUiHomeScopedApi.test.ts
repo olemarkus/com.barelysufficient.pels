@@ -22,6 +22,8 @@ import {
 import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../../lib/home/homeRuntimeRead';
 import type { HomeMembershipPort } from '../../lib/home/membership';
 import { buildSettingsUiPlanMeta } from '../utils/planTestUtils';
+import { createPlanStatusRegistry, type PlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
+import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 
 const AREA_ID = 'h_area1';
 
@@ -29,13 +31,6 @@ const AREA_ID = 'h_area1';
 const deviceIds = (payload: { devices: { id: string }[] }): string[] => (
   payload.devices.map((device) => device.id)
 );
-
-// Hoisted for the same nesting reason: a store override that fails ONLY the
-// area's suffixed status key and serves every other key from the real store.
-const failOnlyScopedStatus = (readRealSetting: (key: string) => unknown) => (key: string): unknown => {
-  if (key === `pels_status:${AREA_ID}`) throw new Error('transient settings-store failure');
-  return readRealSetting(key);
-};
 
 // The other settings read the scoped composers perform: the global
 // `power_source` gate behind the solar fields.
@@ -47,7 +42,7 @@ const failOnlyPowerSource = (readRealSetting: (key: string) => unknown) => (key:
 const AREA_PLAN = { generatedAtMs: 42, meta: buildSettingsUiPlanMeta({ totalKw: 1.5 }), devices: [] };
 // Latched (production `recordPowerSample` stamps `lastPowerW` and
 // `lastTimestamp` together): the served area is a MEASURED home, so its
-// suffixed blob classifies as live. The gated-area test clears the latch.
+// published status classifies as live. The gated-area test clears the latch.
 const AREA_TRACKER = { lastPowerW: 1500, lastTimestamp: 4242, buckets: { '2026-07-26T10:00:00.000Z': 0.4 } };
 
 const areaReading = (
@@ -97,6 +92,7 @@ type ScopedApiApp = {
   powerTracker: Record<string, unknown>;
   homeRuntimeRead?: HomeRuntimeReadPort;
   homeMembership?: HomeMembershipPort;
+  planStatuses?: PlanStatusRegistry;
 };
 
 const installBoundary = (options: {
@@ -106,14 +102,22 @@ const installBoundary = (options: {
   pendingGeneration?: boolean;
   settings?: Record<string, unknown>;
   areaTracker?: Record<string, unknown>;
+  /** Statuses published this run; the default has both the whole home and the area published. */
+  planStatuses?: PlanStatusRegistry;
+  /** `false` models the boot/uninit window: an app shell with no registry on it. */
+  hasRegistry?: boolean;
 } = {}) => {
   const seeded: Record<string, unknown> = {
     power_source: 'homey_energy',
-    pels_status: { headroomKw: 9, priceLevel: 'cheap' },
-    [`pels_status:${AREA_ID}`]: { headroomKw: 3, priceLevel: 'normal' },
     power_tracker_state: { buckets: {} },
     ...options.settings,
   };
+  const planStatuses = options.planStatuses ?? (() => {
+    const registry = createPlanStatusRegistry();
+    registry.publish(MAIN_HOME_ID, { headroomKw: 9, priceLevel: 'cheap' } as never);
+    registry.publish(AREA_ID, { headroomKw: 3, priceLevel: 'normal' } as never);
+    return registry;
+  })();
   Object.entries(seeded).forEach(([key, value]) => {
     mockHomeyInstance.settings.set(key, value);
   });
@@ -136,6 +140,7 @@ const installBoundary = (options: {
     getUiPickerDevices: () => [],
     getLatestPlanSnapshotForUi: () => null,
     powerTracker: { lastPowerW: 5200, lastTimestamp: 4242, buckets: {} },
+    ...(options.hasRegistry === false ? {} : { planStatuses }),
     ...(options.hasReadPort === false ? {} : { homeRuntimeRead }),
     ...(options.hasMembership === false ? {} : { homeMembership }),
   };
@@ -312,31 +317,26 @@ describe('settings-UI `?homeId=` endpoints', () => {
     });
 
     it('reports absence when the area has committed no plan or status yet', () => {
-      const { homey } = installBoundary({ settings: { [`pels_status:${AREA_ID}`]: undefined } });
+      const { homey } = installBoundary({ planStatuses: createPlanStatusRegistry() });
       expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } }).status)
         .toEqual({ state: 'unavailable', reason: 'no_status_recorded' });
     });
 
-    it('never serves a gated area its stale suffixed blob as live — and preserves the blob', () => {
+    it('never serves a gated area a status as live', () => {
       // The area's live tracker holds no measurement (its meter never reported
-      // this run), so the suffixed blob is a previous era's: the classified
-      // read says so instead of serving the previous run's numbers as live.
+      // this run): the classified read says so instead of serving numbers as
+      // live, whatever the registry holds for the area.
       const { homey } = installBoundary({ areaTracker: { buckets: {} } });
       const power = getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } });
       expect(power.status).toEqual({ state: 'unavailable', reason: 'no_measurement' });
       expect(power.homeScope).toEqual({ state: 'resolved', homeId: AREA_ID });
-      // The stored blob survives untouched — the read changes only its claim.
-      expect(homey.settings.get(`pels_status:${AREA_ID}`))
-        .toEqual({ headroomKw: 3, priceLevel: 'normal' });
     });
 
-    it('classifies a thrown scoped status read as unavailable, not a rejected request', () => {
-      // A transient Homey settings failure at the adapter boundary must become
-      // `homeScope: unavailable` (never an escaping transport error that
-      // rejects the whole API request, and never a resolved payload with a
-      // fabricated "no status yet" that the client could cache).
-      const { homey, get, readRealSetting } = installBoundary();
-      get.mockImplementation(failOnlyScopedStatus(readRealSetting));
+    it('classifies an app shell without the registry as unavailable, not as "no status yet"', () => {
+      // The boot/uninit window: the shell is there but carries no registry.
+      // That must become `homeScope: unavailable` — never a resolved payload
+      // with a fabricated "no status yet" that the client could cache.
+      const { homey } = installBoundary({ hasRegistry: false });
 
       expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
         tracker: {}, readings: { state: 'never' }, status: { state: 'unavailable', reason: 'home_scope_unavailable' }, homeScope: { state: 'unavailable' },

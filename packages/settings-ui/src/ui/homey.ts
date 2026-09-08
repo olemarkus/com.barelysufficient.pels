@@ -207,9 +207,9 @@ const isApiCacheWriteStillValid = (uri: string, generationAtFetch: number): bool
  * membership is still provisional, while its bundle is unwired, or when a
  * settings read behind the payload transiently failed. Every one of those
  * clears on its own without necessarily bumping this path's invalidation
- * generation — a home committing its first status writes only
- * `pels_status:<id>`, which `settingsChangeRouter` deliberately excludes from
- * the DEVICES sweep — so caching the refusal would pin an empty, badge-less
+ * generation — a home committing its first status announces only a
+ * `plan_status_published` push, which `settingsChangeRouter` deliberately
+ * excludes from the DEVICES sweep — so caching the refusal would pin an empty, badge-less
  * sub-home view for the rest of the WebView session. Skipping the write costs
  * one refetch per read while unavailable and self-heals the moment the runtime
  * can answer; the generation gate below stays untouched and still applies to

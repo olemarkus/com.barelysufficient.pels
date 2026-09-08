@@ -1,5 +1,14 @@
-import type { PowerTrackerPersistedPayload } from '../packages/contracts/src/settingsKeys';
-import { POWER_TRACKER_PERSISTED_EVENT } from '../lib/utils/settingsKeys';
+import type {
+  PlanStatusPublishedPayload,
+  PowerTrackerPersistedPayload,
+} from '../packages/contracts/src/settingsKeys';
+import {
+  MAIN_HOME_ID,
+  PLAN_STATUS_PUBLISHED_EVENT,
+  POWER_TRACKER_PERSISTED_EVENT,
+  type HomeId,
+} from '../lib/utils/settingsKeys';
+import type { AppContext } from '../lib/app/appContext';
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../lib/power/tracker';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
@@ -31,6 +40,8 @@ const appNotReadyError = (capability: string): Error => (
 );
 
 type SettingsUiRuntimeApp = Homey.App & {
+  /** Every home's live status (`AppContext.planStatuses`). */
+  planStatuses?: AppContext['planStatuses'];
   operatingMode?: string;
   capacityPriorities?: Record<string, Record<string, number>>;
   latestTargetSnapshot?: TargetDeviceSnapshot[];
@@ -50,19 +61,23 @@ type SettingsUiRuntimeApp = Homey.App & {
   ) => Promise<void>;
   replacePowerTrackerForUi?: (nextState: PowerTrackerState) => void;
 };
-/** A stored `pels_status` blob, object-guarded into the two states a read can hold. */
+/** A home's live status, or its absence: nothing published this run, or the app shell is not there. */
 export type PowerStatusBlobRead =
   | { readonly state: 'resolved'; readonly status: SettingsUiPowerStatus }
   | { readonly state: 'absent' };
 
-export const asPowerStatusBlobRead = (value: unknown): PowerStatusBlobRead => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? { state: 'resolved', status: value }
-    : { state: 'absent' }
-);
+/**
+ * One home's status out of the running app's registry. `absent` before the
+ * home's first plan of this run, after its teardown, and while the app shell
+ * is not there (the boot/uninit window) — never a previous run's blob.
+ */
+export const getPlanStatusForUiFromApp = (homey: Homey.App['homey'], homeId: HomeId): PowerStatusBlobRead => {
+  const read = getRuntimeApp(homey)?.planStatuses?.read(homeId);
+  return read?.state === 'resolved' ? { state: 'resolved', status: read.status } : { state: 'absent' };
+};
 
 /**
- * The measurement evidence a `pels_status` read is classified against, passed
+ * The measurement evidence a status read is classified against, passed
  * explicitly so every producer — both `ui_power` composers AND the realtime
  * push — answers the one liveness question through the one classifier below,
  * never through a second resolver that can drift.
@@ -83,9 +98,8 @@ export type PowerMeasurementEvidence =
   | { readonly state: 'sample_recorded'; readonly sampleAtMs: number };
 
 /**
- * Classify the `pels_status` blob AT THE READ. `none` evidence answers
- * `no_measurement` regardless of the blob — a gated home keeps its persisted
- * blob (`notes/persisted-settings-state.md`) but is never served it as live.
+ * Classify the status AT THE READ. `none` evidence answers `no_measurement`
+ * regardless of the status — a gated home is never served one as live.
  */
 export const classifyPowerStatusRead = (
   evidence: PowerMeasurementEvidence,
@@ -122,11 +136,11 @@ const toRealtimeMeasurementEvidence = (powerTracker: PowerTrackerState): PowerMe
 };
 
 const resolveRealtimePowerStatus = (
-  rawStatus: unknown,
+  status: PowerStatusBlobRead,
   powerTracker: PowerTrackerState,
 ): SettingsUiPowerStatusRead => classifyPowerStatusRead(
   toRealtimeMeasurementEvidence(powerTracker),
-  asPowerStatusBlobRead(rawStatus),
+  status,
 );
 
 const getRuntimeApp = (homey: Homey.App['homey']): SettingsUiRuntimeApp | null => {
@@ -274,7 +288,7 @@ export const emitSettingsUiPowerUpdatedForApp = (
   const api = homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
   const realtime = api?.realtime;
   if (typeof realtime !== 'function') return;
-  const status = homey.settings.get('pels_status') as unknown;
+  const status = getPlanStatusForUiFromApp(homey, MAIN_HOME_ID);
   // Status-only push: no tracker (the WebView preserves its cached one). The
   // readings stamp resolves from the same tracker the status rode in on;
   // with no finite stamp (a half-latch) the field is omitted, and the
@@ -305,6 +319,26 @@ export const emitPowerTrackerPersistedForApp = (
   const payload: PowerTrackerPersistedPayload = { homeId };
   realtime.call(api, POWER_TRACKER_PERSISTED_EVENT, payload)
     .catch((error: unknown) => onError('Failed to emit power_tracker_persisted event', error as Error));
+};
+
+/**
+ * A home's status published (`plan_status_published`). The status lives in
+ * memory — no settings key, no `settings.set` echo — so, exactly like the
+ * tracker push above, the WebView hears the home id and refetches that home's
+ * power read model (Main's stale-data banner, an area's Overview and Limits
+ * card).
+ */
+export const emitPlanStatusPublishedForApp = (
+  homey: Homey.App['homey'],
+  homeId: string,
+  onError: (message: string, error: Error) => void,
+): void => {
+  const api = homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
+  const realtime = api?.realtime;
+  if (typeof realtime !== 'function') return;
+  const payload: PlanStatusPublishedPayload = { homeId };
+  realtime.call(api, PLAN_STATUS_PUBLISHED_EVENT, payload)
+    .catch((error: unknown) => onError('Failed to emit plan_status_published event', error as Error));
 };
 
 export const refreshSettingsUiDevicesForApp = async (homey: Homey.App['homey']): Promise<TargetDeviceSnapshot[]> => {

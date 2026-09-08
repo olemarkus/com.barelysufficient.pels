@@ -32,7 +32,6 @@ import {
   MODE_CATALOG_INITIALIZED,
   MODE_DEVICE_TARGETS,
   NORWAY_PRICE_MODEL,
-  PELS_STATUS,
   homeScopedSettingsKey,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
@@ -41,11 +40,12 @@ import {
   PRICE_SCHEME,
   WEATHER_ADVISOR_SETTINGS,
   PV_FORECAST_SOURCE,
+  PLAN_STATUS_PUBLISHED_EVENT,
   POWER_TRACKER_PERSISTED_EVENT,
 } from '../../../contracts/src/settingsKeys.ts';
 import { refreshCurrentModes } from './currentModes.ts';
 import { loadAdvancedSettings, loadCapacitySettings, notifyAreaSimulationSettingChanged } from './capacity.ts';
-import { notifyHomeLimitsSettingChanged } from './homeLimits.ts';
+import { notifyHomeLimitsSettingChanged, notifyHomeLimitsStatusPublished } from './homeLimits.ts';
 import { getHomeScope, notifyHomeScopeSettingChanged } from './homeScope.ts';
 import {
   invalidateApiCache,
@@ -197,12 +197,6 @@ const refreshPriceSettings = (key: string) => {
   refreshPricesIfVisible('settings.set');
 };
 
-const refreshPowerSettings = (key: string) => {
-  if (key !== PELS_STATUS) return;
-  invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
-  refreshStaleDataStatus('settings.set');
-};
-
 /** The Main home's tracker persisted: the whole-home power read models are stale. */
 const refreshMainPowerTracker = (context: string) => {
   invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
@@ -217,21 +211,6 @@ const refreshMainPowerTracker = (context: string) => {
   refreshStaleDataStatus(context);
   refreshDailyBudgetIfVisible(context);
 };
-
-// A sub-home commits a plan by persisting its own suffixed `pels_status:<id>`,
-// and its tracker persists announce themselves through the
-// `power_tracker_persisted` push (`handlePowerTrackerPersisted` below) — the
-// ONLY freshness signals a sub-home gets, because the realtime `plan_updated`
-// / `power_updated` streams are the main home's and are deliberately never
-// widened (widening them would repaint Main's Overview from a sub-home's
-// device set in a Homey-cached stale WebView).
-//
-// Drop every home-scoped plan/power entry on any such write rather than parsing
-// the id out of the key: resolving suffixed keys client-side is the precedent
-// this train is correcting, and the over-broad sweep costs at most one refetch
-// per area while being impossible to get wrong. The BARE entries are untouched —
-// a sub-home write says nothing about the whole home.
-const SUFFIXED_HOME_PLAN_KEY_PREFIXES = [`${PELS_STATUS}:`];
 
 const refreshHomeScopedReadModels = (key: string, context: string) => {
   // The roster (`homes_config`) and the device→home pins
@@ -254,22 +233,48 @@ const refreshHomeScopedReadModels = (key: string, context: string) => {
   // cache entry was already invalidated by the caller.
   const isSelectedAreaSimulationKey = selectedHomeId !== MAIN_HOME_ID
     && key === homeScopedSettingsKey(CAPACITY_DRY_RUN, selectedHomeId);
-  if (!SUFFIXED_HOME_PLAN_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) {
-    if (isSelectedAreaSimulationKey) refreshOverviewPlanIfVisible(context);
-    return;
-  }
+  if (isSelectedAreaSimulationKey) refreshOverviewPlanIfVisible(context);
+};
+
+// A home commits a plan by publishing its status, and the runtime announces
+// that through the `plan_status_published` push carrying the home id — the
+// status lives in the app's memory, under no settings key, so there is no
+// `settings.set` echo. Together with `power_tracker_persisted` it is the ONLY
+// freshness signal a sub-home gets, because the realtime `plan_updated` /
+// `power_updated` streams are the main home's and are deliberately never
+// widened (widening them would repaint Main's Overview from a sub-home's
+// device set in a Homey-cached stale WebView).
+/** Main's status published: the whole-home power read models are stale, and the stale-data banner re-reads. */
+const refreshMainPlanStatus = (context: string) => {
+  invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
+  refreshStaleDataStatus(context);
+};
+
+/**
+ * An area's status published. Drop every home-scoped plan/power entry rather
+ * than only that area's — the over-broad sweep costs at most one refetch per
+ * area while being impossible to get wrong; the BARE entries are untouched,
+ * because an area's publish says nothing about the whole home. The SELECTED
+ * area's committed plan repaints a visible Overview from the scoped reads
+ * just invalidated (Main's Overview mirror is the `plan_updated` push), and
+ * an open Limits card for it re-reads its status.
+ */
+const refreshAreaPlanStatus = (homeId: string, context: string) => {
   invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH);
   invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
-  if (selectedHomeId === MAIN_HOME_ID) return;
-  // The SELECTED area's committed plan (`pels_status:<id>` — its plan
-  // service persists this on every commit, the area's only plan-freshness
-  // signal) repaints a visible Overview from the scoped reads just
-  // invalidated above. Main's Overview mirror is the `plan_updated` push. The
-  // key is REBUILT from the selected scope and compared whole, never parsed
-  // (the `notifyHomeLimitsSettingChanged` precedent).
-  if (key === homeScopedSettingsKey(PELS_STATUS, selectedHomeId)) {
-    refreshOverviewPlanIfVisible(context);
-  }
+  if (getHomeScope().selectedHomeId !== homeId) return;
+  refreshOverviewPlanIfVisible(context);
+  notifyHomeLimitsStatusPublished(homeId);
+};
+
+/** The runtime published a home's status (`plan_status_published`), routed by the home id it carries. */
+export const handlePlanStatusPublished = (payload: unknown) => {
+  const homeId = payload !== null && typeof payload === 'object'
+    ? (payload as { homeId?: unknown }).homeId
+    : undefined;
+  if (typeof homeId !== 'string' || homeId.length === 0) return;
+  if (homeId === MAIN_HOME_ID) refreshMainPlanStatus(PLAN_STATUS_PUBLISHED_EVENT);
+  else refreshAreaPlanStatus(homeId, PLAN_STATUS_PUBLISHED_EVENT);
 };
 
 /** An area's tracker persisted: its scoped read models are stale, and a visible surface showing it repaints. */
@@ -367,10 +372,8 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // the set path, because NONE of the keys that route reads is set-only: an
   // unset `capacity_dry_run:<selectedId>` returns the runtime posture to its
   // simulating boot default (an open area Overview must repaint, not keep the
-  // live-control voice); an unset `pels_status:<id>` retires an area's
-  // committed payloads (the cached scoped entries must drop with them); and an
-  // unset roster/pins blob de-resolves the scoped homes just like a rewrite
-  // does.
+  // live-control voice), and an unset roster/pins blob de-resolves the scoped
+  // homes just like a rewrite does.
   refreshHomeScopedReadModels(key, 'settings.unset');
 };
 
@@ -436,7 +439,6 @@ export const createSettingsSetHandler = () => (key: string) => {
   }
 
   refreshPriceSettings(key);
-  refreshPowerSettings(key);
   refreshHomeScopedReadModels(key, 'settings.set');
   refreshDailyBudgetSettings(key);
 };

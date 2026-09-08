@@ -39,7 +39,9 @@ import {
 } from './appInit';
 import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
 import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
-import { buildHomeRuntimeReadPort, createHomeRuntimeRegistryForApp } from './appInit/wireHomeRuntimeRegistry';
+import {
+  buildHomeRuntimeReadPort, createHomeRuntimeRegistryForApp, wirePlanStatusRealtime,
+} from './appInit/wireHomeRuntimeRegistry';
 import { wireDeviceTransport } from './appInit/wireDeviceTransport';
 import type { HomeMembershipService } from './homeMembership';
 import type { PvForecastController } from './appInit/createPvForecastService';
@@ -394,6 +396,7 @@ export class AppServiceWiring {
     // closure over the app's registry handle exposing only `readHome`, so it
     // reports `unavailable` before this step and again once `runUninit` clears it.
     this.deps.ctx.homeRuntimeRead = buildHomeRuntimeReadPort(() => this.deps.getHomeRuntimeRegistry());
+    wirePlanStatusRealtime(this.deps.ctx);
   }
 
   initCapacityGuard(): void {

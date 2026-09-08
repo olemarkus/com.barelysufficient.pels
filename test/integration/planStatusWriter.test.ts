@@ -69,7 +69,7 @@ const makeWriter = (initialDryRun: boolean): Harness => {
   const computeSpy = vi.fn(() => lastPowerUpdate);
   const writer = new PlanStatusWriter({
     homey: { flow: recordingFlow(fired) },
-    writePelsStatus: writeSpy,
+    publishPelsStatus: writeSpy,
     getCurrentHourPriceLevel: () => priceLevel,
     getLastPowerUpdate: computeSpy,
     // Every home supplies its own posture; there is no home-kind branch left.

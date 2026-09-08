@@ -39,7 +39,7 @@ export type HeadroomWidgetStatusBlob = {
 };
 
 /**
- * The classified `pels_status` read the widget API hands in — the same shape
+ * The classified status read the widget API hands in — the same shape
  * the app's own composers serve (`classifyPowerStatusRead`,
  * setup/settingsUiAppRuntime.ts), so the widget answers the liveness question
  * through the one shared classifier instead of trusting the persisted blob.

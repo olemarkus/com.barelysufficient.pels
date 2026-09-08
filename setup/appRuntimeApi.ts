@@ -1,5 +1,6 @@
-import { emitPowerTrackerPersistedForApp } from './settingsUiAppRuntime';
+import { emitPowerTrackerPersistedForApp, emitSettingsUiDevicesUpdatedForApp } from './settingsUiAppRuntime';
 import { openAppUserdataDatabase, type UserdataDatabase } from '../lib/store/userdataDatabase';
+import { retireLegacyPlanStatusKeys } from '../lib/plan/planStatusRegistry';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
@@ -328,6 +329,9 @@ abstract class AppRuntimeApi extends Base {
   public emitPowerTrackerPersisted(homeId: string): void {
     emitPowerTrackerPersistedForApp(this.homey, homeId, (message, error) => this.error(message, error));
   }
+  public emitSettingsUiDevicesUpdated(): void {
+    emitSettingsUiDevicesUpdatedForApp(this.homey, (message, error) => this.error(message, error));
+  }
   protected loadPowerCalibrationStore(): void { this.powerTrackerHelpers.loadPowerCalibrationStore(); }
   protected persistPowerCalibrationIfDue(nowMs: number = Date.now()): void {
     this.powerTrackerHelpers.persistPowerCalibrationIfDue(nowMs);
@@ -338,6 +342,8 @@ abstract class AppRuntimeApi extends Base {
   protected runStartupSettingsMigrations(): void {
     migrateManagedDevices({ homey: this.homey });
     runBootMigrations({ homey: this.homey });
+    // Nothing to import: a status is a fact of the run that publishes it.
+    retireLegacyPlanStatusKeys(this.homey.settings);
   }
   public areFlowBackedCardsAvailable(): boolean { return this.flowBacked.areFlowBackedCardsAvailable(); }
   public loadCapacitySettings = (): void => {

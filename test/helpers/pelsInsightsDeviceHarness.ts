@@ -61,6 +61,8 @@ export class FakeInsightsDeviceBase {
   public homey: {
     settings: FakeInsightsSettings;
     images: MockImagesManager;
+    /** The running PELS app as the SDK hands it in: untyped, absent until set. */
+    app?: unknown;
   } = {
     settings: new FakeInsightsSettings(),
     images: createMockImagesManager(),

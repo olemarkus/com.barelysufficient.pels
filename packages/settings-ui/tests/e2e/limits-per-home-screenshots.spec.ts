@@ -55,12 +55,14 @@ const prepareState = async (page: Page, state: StateName): Promise<void> => {
     await seedStubSetting(page, `capacity_limit_kw:${AREA_ID}`, 8);
     await seedStubSetting(page, `capacity_margin_kw:${AREA_ID}`, 0.3);
     await seedStubSetting(page, `capacity_dry_run:${AREA_ID}`, false);
+    await seedStubSetting(page, `power_tracker_state:${AREA_ID}`, { lastPowerW: 4000, lastTimestamp: Date.now() });
     await seedStubSetting(page, `pels_status:${AREA_ID}`, {
       controlledKw: 2.5, uncontrolledKw: 1.5, powerKnown: true,
       devicesOff: 1, limitReason: 'hourly',
     });
   }
   if (state === 'simulation') {
+    await seedStubSetting(page, `power_tracker_state:${AREA_ID}`, { lastPowerW: 4000, lastTimestamp: Date.now() });
     await seedStubSetting(page, `pels_status:${AREA_ID}`, {
       controlledKw: 3, uncontrolledKw: 1, powerKnown: true,
       devicesOff: 2, limitReason: 'hourly',

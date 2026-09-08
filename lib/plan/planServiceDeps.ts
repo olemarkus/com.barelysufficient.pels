@@ -63,7 +63,7 @@ export type PlanServiceDeps = {
    */
   homeId: HomeId;
   homey: { settings: SettingsPort; flow: FlowPort; api: ApiPort };
-  writePelsStatus: (status: PelsStatus) => void;
+  publishPelsStatus: (status: PelsStatus) => void;
   planEngine: PlanServicePlanEngine;
   getPlanDevices: () => PlanInputDevice[];
   // Minimal observer projection for binary confirmation; never raw transport

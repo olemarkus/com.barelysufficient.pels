@@ -30,6 +30,7 @@ import {
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
 } from './lib/objectives/deferredObjectives';
+import { createPlanStatusRegistry, type PlanStatusRegistry } from './lib/plan/planStatusRegistry';
 import { AppDeviceControlHelpers } from './setup/appDeviceControlHelpers';
 import { createSteppedStores, type SteppedStores } from './setup/appInit/createSteppedStores';
 import { DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, MAIN_HOME_ID } from './lib/utils/settingsKeys';
@@ -53,7 +54,6 @@ import {
 import * as homeMode from './setup/homeRuntime/homeOperatingMode';
 import type { Logger as PinoLogger } from './lib/logging/logger';
 import { normalizeError } from './lib/utils/errorUtils';
-import { emitSettingsUiDevicesUpdatedForApp } from './setup/settingsUiAppRuntime';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import { createGenerationPollSource } from './setup/appInit/createGenerationPollSource';
 import { createHomeyEnergyPollSource } from './setup/appInit/createHomeyEnergyPollSource';
@@ -110,6 +110,7 @@ class PelsApp extends PelsAppBase implements AppContext {
   public set powerTracker(value: PowerTrackerState) { this.mainTracker.adopt(value); }
   protected powerCalibrationStore: PowerCalibrationStore = new PowerCalibrationStore();
   public capacityGuard!: CapacityGuard;
+  public readonly planStatuses: PlanStatusRegistry = createPlanStatusRegistry();
   public readonly deferredObjectiveStatusBus: DeferredObjectiveStatusBus = createDeferredObjectiveStatusBus();
   public readonly deferredObjectivePlanRevisionBus: DeferredObjectivePlanRevisionBus
     = createDeferredObjectivePlanRevisionBus();
@@ -383,10 +384,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     persistFilledModeTargets: (snapshot) => createModeTargetPersistence(this.ctx)(snapshot),
     getFlowReportedDeviceIds: () => this.getFlowReportedDeviceIds(),
     emitFlowBackedRefreshRequests: async (deviceIds) => this.emitFlowBackedRefreshRequests(deviceIds),
-    emitSettingsUiDevicesUpdated: () => emitSettingsUiDevicesUpdatedForApp(
-      this.homey,
-      (message, error) => this.error(message, error),
-    ),
+    emitSettingsUiDevicesUpdated: () => this.emitSettingsUiDevicesUpdated(),
     recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample),
     resolveMainMeterSelection: () => this.settingsRepository.loadMainMeterSelection(),
     ...this.targetPowerReachabilityWiring.snapshotDeps,

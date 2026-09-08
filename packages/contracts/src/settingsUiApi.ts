@@ -432,8 +432,14 @@ export type SettingsUiPowerStatus = {
   lastPowerUpdate?: number | null;
   priceLevel?: string | null;
   powerNowKw?: number | null;
-  /** Back-compat for external `pels_status` readers; derived from `powerNowKw`. */
+  /** Whether the plan behind this status was measured; derived from `powerNowKw`. */
   powerKnown?: boolean;
+  /** The effective (membership-gated) dry-run the publishing home actuates on. */
+  dryRunEffective?: boolean;
+  /** Devices the plan currently holds off; the Limits card's count. */
+  devicesOff?: number;
+  /** Which ceiling is limiting the home right now; the Limits card's status line. */
+  limitReason?: 'none' | 'hourly' | 'daily' | 'both';
   capacityShortfall?: boolean;
   shortfallBudgetThresholdKw?: number;
   shortfallBudgetHeadroomKw?: number | null;
@@ -455,12 +461,10 @@ export type SettingsUiPowerStatus = {
  *   in-place meter swap cleared it, or a corrupt tracker restore). The latch
  *   is durable on purpose: an ordinary restart of an ever-measured home
  *   restores it (the planner's restored-sample policy) and stays `live`,
- *   with the running planner rewriting the blob promptly. When this arm DOES
- *   resolve, any persisted `pels_status` blob describes a previous era and
- *   must not be served as live — the blob itself is preserved untouched
- *   (`lib/power/powerMeasurementGate.ts`).
- * - `no_status_recorded` — a measurement exists but no parsable `pels_status`
- *   blob has been committed yet (first plan not yet written).
+ *   with the running planner publishing a status promptly. When this arm DOES
+ *   resolve, no status is served as live (`lib/power/powerMeasurementGate.ts`).
+ * - `no_status_recorded` — a measurement exists but the home has published no
+ *   status this run yet (first plan not yet built).
  * - `home_scope_unavailable` — the `?homeId=` read could not be served; the
  *   payload is the empty shape and its `homeScope` block says the same.
  * - `read_failed` — the WebView-side transport adapter could not obtain or
@@ -474,11 +478,11 @@ export type SettingsUiPowerStatusUnavailableReason =
   | 'read_failed';
 
 /**
- * The classified result of reading the home's `pels_status`. The producer
+ * The classified result of reading the home's live status. The producer
  * (`getSettingsUiPower` / `powerPayloadForHome`, setup/settingsUiApi.ts)
  * resolves it at the read boundary: `live` means the running planner vouches
- * for the blob (the home's measurement gate is open, so the blob is maintained
- * by THIS run); `unavailable` means no live status claim exists and the reason
+ * for the status (the home's measurement gate is open, so the status is
+ * THIS run's); `unavailable` means no live status claim exists and the reason
  * arm says exactly why. Consumers branch on `state` and never re-derive
  * liveness from blob fields such as `lastPowerUpdate`.
  */

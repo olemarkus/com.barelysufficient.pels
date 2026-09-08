@@ -7,7 +7,6 @@ import {
   CAPACITY_MARGIN_KW,
   DEVICE_LAST_CONTROLLED_MS,
   MAIN_HOME_ID,
-  PELS_STATUS,
 } from '../../lib/utils/settingsKeys';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
@@ -15,7 +14,8 @@ import type { AppContext } from '../../lib/app/appContext';
 
 // Identity proof for the main-home scope: the persisted writers must hit the
 // EXACT unsuffixed keys the factories hardwired before the HomeScope refactor
-// (`homeScopedSettingsKey` is the identity for `MAIN_HOME_ID`), and the
+// (`homeScopedSettingsKey` is the identity for `MAIN_HOME_ID`), the status
+// goes to the registry under `MAIN_HOME_ID`, and the
 // capacity-scalar getters must be LIVE reads of the in-memory `ctx` snapshot —
 // never re-reads through the persisted settings store.
 describe('buildMainHomeScope', () => {
@@ -29,19 +29,20 @@ describe('buildMainHomeScope', () => {
     dryRunEffective: false,
   };
 
-  it('writes the persisted signals to the unsuffixed main-home keys', () => {
+  it('writes the persisted signals to the unsuffixed main-home keys and publishes the status under main', () => {
     const ctx = createAppContextMock();
     const scope = buildMainHomeScope(ctx, () => false);
     const setSpy = ctx.homey.settings.set as unknown as Mock;
 
     scope.setCapacityInShortfall(true);
     scope.persistLastControlledMs({ 'device-1': 123 });
-    scope.writePelsStatus(minimalStatus);
+    scope.publishPelsStatus(minimalStatus);
 
     expect(scope.homeId).toBe(MAIN_HOME_ID);
     expect(setSpy).toHaveBeenCalledWith(CAPACITY_IN_SHORTFALL, true);
     expect(setSpy).toHaveBeenCalledWith(DEVICE_LAST_CONTROLLED_MS, { 'device-1': 123 });
-    expect(setSpy).toHaveBeenCalledWith(PELS_STATUS, minimalStatus);
+    expect(ctx.planStatuses.read(MAIN_HOME_ID)).toEqual({ state: 'resolved', status: minimalStatus });
+    expect(setSpy).not.toHaveBeenCalledWith('pels_status', expect.anything());
   });
 
   it('reads the capacity scalars live off the ctx snapshot, not the settings store', () => {

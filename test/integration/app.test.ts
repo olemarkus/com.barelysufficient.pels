@@ -55,6 +55,7 @@ import {
   EV_BOOST_SETTINGS,
   FLOW_REPORTED_DEVICE_CAPABILITIES,
   OPERATING_MODE_SETTING,
+  MAIN_HOME_ID,
 } from '../../lib/utils/settingsKeys';
 import {
   SHED_COOLDOWN_MS,
@@ -1704,9 +1705,9 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
     await waitForSnapshot();
-    // The state the classifier exists to close: a persisted blob from a
-    // previous era survives in settings while nothing this run vouches for it.
-    mockHomeyInstance.settings.set('pels_status', { lastPowerUpdate: 1, powerFreshnessState: 'fresh' });
+    // The state the classifier exists to close: a status stands in the
+    // registry while nothing this run vouches for it any more.
+    app.planStatuses.publish(MAIN_HOME_ID, { lastPowerUpdate: 1, powerFreshnessState: 'fresh' } as never);
     mockHomeyInstance.api.clearRealtimeEvents();
 
     // A tracker replacement with no measurement latch (import/backfill of
@@ -1724,9 +1725,9 @@ describe('MyApp initialization', () => {
     // (the WebView keeps its last-known one) and no tracker.
     expect(powerEvents[0].data).not.toHaveProperty('readings');
     expect(powerEvents[0].data).not.toHaveProperty('tracker');
-    // The stored blob is preserved — the push changed only the claim.
-    expect(mockHomeyInstance.settings.get('pels_status'))
-      .toEqual({ lastPowerUpdate: 1, powerFreshnessState: 'fresh' });
+    // The published status is preserved — the push changed only the claim.
+    expect(app.planStatuses.read(MAIN_HOME_ID))
+      .toEqual({ state: 'resolved', status: { lastPowerUpdate: 1, powerFreshnessState: 'fresh' } });
   });
 
   it('coalesces same-hour power tracker settings persistence while a save is pending', async () => {
@@ -2645,20 +2646,22 @@ describe('computeDynamicSoftLimit', () => {
     vi.restoreAllMocks();
   });
 
-  it('sets pels_status even with no devices so stale data banner shows', async () => {
+  it('publishes a status even with no devices so stale data banner shows', async () => {
     // No devices configured
     setMockDrivers({});
 
     const app = createApp();
     await initApp(app);
 
-    // pels_status should be set even with no devices
-    const status = mockHomeyInstance.settings.get('pels_status') as { lastPowerUpdate?: unknown };
-    expect(status).toBeDefined();
+    // A status is published even with no devices — into the registry, never a settings key.
+    const read = app.planStatuses.read(MAIN_HOME_ID);
+    expect(read.state).toBe('resolved');
     // The stamp is the seeded sample's — a status exists only behind the
     // measurement gate, so it always carries a real timestamp.
-    expect(typeof status.lastPowerUpdate).toBe('number');
-    expect(Number.isFinite(status.lastPowerUpdate)).toBe(true);
+    const status = read.state === 'resolved' ? read.status : null;
+    expect(typeof status?.lastPowerUpdate).toBe('number');
+    expect(Number.isFinite(status?.lastPowerUpdate)).toBe(true);
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain('pels_status');
   });
 
   it('builds device plan in dry-run mode without actuating', async () => {
@@ -2686,10 +2689,10 @@ describe('computeDynamicSoftLimit', () => {
     expect(plan.devices).toBeDefined();
     expect(plan.devices.length).toBeGreaterThan(0);
 
-    // pels_status should be set
-    const status = mockHomeyInstance.settings.get('pels_status') as { lastPowerUpdate?: unknown };
-    expect(status).toBeDefined();
-    expect(status).toHaveProperty('headroomKw');
+    // A status is published for the main home
+    const read = app.planStatuses.read(MAIN_HOME_ID);
+    expect(read.state).toBe('resolved');
+    expect(read.state === 'resolved' ? read.status : null).toHaveProperty('headroomKw');
   });
 
   it('backfills managed devices from price optimization settings on first run', async () => {

@@ -1,9 +1,10 @@
 /**
  * Boundary resolver + copy for the per-home Limits status card (multi-home U3).
  *
- * The card reads the meter area's live status blob (`pels_status:<homeId>`),
+ * The card reads the meter area's live status (its scoped `ui_power` status),
  * which the runtime writes as the full PelsStatus shape (`lib/plan/pelsStatus.ts`).
- * That blob is untrusted settings data, so this module shape-guards it into a
+ * That status crosses the Homey API bridge into the WebView, an untrusted
+ * transport, so this module shape-guards it into a
  * strongly-typed, resolved value at the boundary (AGENTS.md validation rule):
  * finiteness-gate every number, express absence as flat `null`, and never let a
  * raw `NaN`/partial object reach the view. The view then renders the resolved
@@ -112,7 +113,7 @@ const isRealLimitReason = (reason: HomeLimitsLimitReason): boolean => (
 // ── Resolver ─────────────────────────────────────────────────────────────────
 
 /**
- * Shape the raw `pels_status:<homeId>` blob into the typed status the card
+ * Shape the area's raw live status into the typed status the card
  * renders. `dryRun` and `hardCapKw` come from the meter area's own scalar
  * settings (always known), so the posture chip and cap stat render even before
  * the area has produced a status blob.

@@ -2,7 +2,7 @@ import type { FlowPort } from '../ports/homeyRuntime';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { buildPelsStatus, type PelsStatus } from './pelsStatus';
 import { PriceLevel } from '../price/priceLevels';
-import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
+import { incPerfCounter } from '../utils/perfCounters';
 import { VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import {
   buildPelsStatusInputKey,
@@ -29,7 +29,8 @@ type PelsStatusComputation = {
 
 type PlanStatusWriterDeps = {
   homey: { flow: FlowPort };
-  writePelsStatus: (status: PelsStatus) => void;
+  /** Publish this home's status into the app's in-memory registry (`lib/plan/planStatusRegistry.ts`). */
+  publishPelsStatus: (status: PelsStatus) => void;
   /**
    * The current hour's RESOLVED level, `UNKNOWN` included — one combined-series
    * build, and the ONLY price read this writer makes. It used to also read the
@@ -55,7 +56,7 @@ export class PlanStatusWriter {
   private lastPelsStatusResult: PelsStatus | null = null;
   private lastPelsStatusWriteMs = 0;
   /**
-   * The effective dry-run captured at the last persist. A change vs the current
+   * The effective dry-run captured at the last publish. A change vs the current
    * value is a material posture flip (control activated from an already-planned
    * dry-run shed, or the membership gate opening) that must force a status write
    * even inside the volatile throttle window — otherwise the home's Limits card
@@ -65,7 +66,7 @@ export class PlanStatusWriter {
    */
   private lastPelsStatusWrittenDryRunEffective: boolean | undefined = undefined;
   /**
-   * Whether the last persisted blob was built from a measured plan. A flip is
+   * Whether the last published status was built from a measured plan. A flip is
    * material even inside the volatile throttle: the one unmeasured build (the
    * silent-meter fail-closed pass) writes `powerKnown: false` and omits every
    * measured figure, and after it the silence block stops rebuilding — so a
@@ -94,8 +95,8 @@ export class PlanStatusWriter {
     this.lastNotifiedPriceLevel = priceLevel;
 
     if (this.computationIsDeadWork(changes?.actionChanged === true, plan.meta.powerIsMeasured, now)) {
-      incPerfCounter('settings_set.pels_status_skipped_throttle_total');
-      incPerfCounter('settings_set.pels_status_compute_skipped_total');
+      incPerfCounter('plan_status_skipped_throttle_total');
+      incPerfCounter('plan_status_compute_skipped_total');
       return 0;
     }
     const computation = this.compute(plan, priceLevel, changes);
@@ -220,14 +221,14 @@ export class PlanStatusWriter {
     // transition is what the widget's empty state and the blob's omitted
     // headroom hang on (see `lastPelsStatusWrittenPowerIsMeasured`).
     if (powerIsMeasured !== this.lastPelsStatusWrittenPowerIsMeasured) return 'posture_flip';
-    // A posture flip (effective dry-run changed since the last persist) is
+    // A posture flip (effective dry-run changed since the last publish) is
     // material even without an action-signature change — force the write so the
     // home's Limits card reflects live/simulating promptly, busting the
     // volatile throttle.
     if (dryRunEffective !== this.lastPelsStatusWrittenDryRunEffective) return 'posture_flip';
     if (now - this.lastPelsStatusWriteMs > VOLATILE_WRITE_THROTTLE_MS) return 'throttle';
 
-    incPerfCounter('settings_set.pels_status_skipped_throttle_total');
+    incPerfCounter('plan_status_skipped_throttle_total');
     return null;
   }
 
@@ -239,17 +240,18 @@ export class PlanStatusWriter {
     reason: PelsStatusWriteReason,
     now: number,
   ): number {
-    const writeStart = Date.now();
-    this.deps.writePelsStatus(status);
+    // The publish runs every listener inline — the realtime push to the
+    // WebView, the Insights driver's capability writes — so its time is still
+    // worth a metric, as `plan_rebuild_status_write_ms`.
+    const publishStart = Date.now();
+    this.deps.publishPelsStatus(status);
     this.lastPelsStatusWrittenJson = statusJson;
     this.lastPelsStatusWrittenDryRunEffective = dryRunEffective;
     this.lastPelsStatusWrittenPowerIsMeasured = powerIsMeasured;
     this.lastPelsStatusWriteMs = now;
-    const writeMs = Date.now() - writeStart;
-    addPerfDuration('settings_write_ms', writeMs);
-    incPerfCounter('settings_set.pels_status');
-    incPerfCounter(`settings_set.pels_status_reason.${reason}_total`);
-    return writeMs;
+    incPerfCounter('plan_status_published');
+    incPerfCounter(`plan_status_published_reason.${reason}_total`);
+    return Date.now() - publishStart;
   }
 
   private notifyPriceLevelChanged(priceLevel: PriceLevel): void {

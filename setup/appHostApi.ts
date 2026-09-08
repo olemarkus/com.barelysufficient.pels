@@ -52,7 +52,6 @@ import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import { SMART_TASK_WIDGET_WRITE_ORIGIN } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
 import type { RefreshTargetDevicesSnapshotOptions } from './appSnapshotHelpers';
-import { readCurrentPriceLevel } from './priceLevelSettings';
 
 /**
  * Stable Homey/widget/settings-API façade. Bodies either resolve a value from
@@ -138,13 +137,6 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
    */
   public async getFlowDeviceDescriptors(): Promise<DeviceDescriptorRead[]> {
     return this.getFlowSnapshot();
-  }
-
-  public getCurrentPriceLevel(): PriceLevel {
-    return readCurrentPriceLevel(
-      this.homey.settings,
-      () => this.requirePlanService().getLastNotifiedPriceLevel(),
-    );
   }
 
   public get latestTargetSnapshot(): DecoratedDeviceSnapshot[] {

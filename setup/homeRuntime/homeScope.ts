@@ -87,11 +87,12 @@ export type HomeScope = {
   getPlanDevices: () => PlanInputDevice[];
   binaryCommandLifecycle: BinaryCommandLifecycleListener;
   disposeBinaryCommandReachability: () => void;
-  // Persisted-signal writers. Each writes this home's key
-  // (`homeScopedSettingsKey(base, homeId)` — the bare key for the main home).
+  // Signal writers. The two settings keys are this home's
+  // (`homeScopedSettingsKey(base, homeId)` — the bare key for the main home);
+  // the status goes to the in-memory registry under this home's id.
   setCapacityInShortfall: (inShortfall: boolean) => void;
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
-  writePelsStatus: (status: PelsStatus) => void;
+  publishPelsStatus: (status: PelsStatus) => void;
   // ---- Policy block (R7b) ----
   // Main binds live ctx reads; sub-home scopes bind disabled constants so
   // their engines collapse to pure capacity control.
@@ -259,7 +260,7 @@ export function buildMainHomeScope(ctx: AppContext, isTornDown: () => boolean): 
     // write seam before any awaited or synchronous cleanup". Its persisted
     // writers were the one Main component that did not read that signal —
     // `mainTracker` already does — so a rebuild continuation dispatched before
-    // uninit could still write `pels_status` and, worse,
+    // uninit could still publish a status and, worse, write
     // `device_last_controlled_ms`, which the next boot hydrates from.
     ...createHomeSignalWriters(ctx, homeId, isTornDown),
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,

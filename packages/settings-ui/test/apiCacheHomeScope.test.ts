@@ -207,8 +207,8 @@ describe('unavailable scoped responses', () => {
   // while a home's membership is provisional, while its bundle is unwired, or
   // when a settings read behind the payload transiently fails. Each of those
   // clears without necessarily sweeping this path — a home committing its first
-  // status writes `pels_status:<id>`, which the change router deliberately
-  // excludes from the devices sweep — so a cached refusal would pin an empty
+  // status announces a `plan_status_published` push, which the change router
+  // deliberately excludes from the devices sweep — so a cached refusal would pin an empty
   // sub-home view for the rest of the WebView session.
   const responses: unknown[] = [];
   const client: HomeySettingsClient = {

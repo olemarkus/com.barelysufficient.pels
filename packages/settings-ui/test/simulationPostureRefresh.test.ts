@@ -11,7 +11,6 @@ import {
   CAPACITY_DRY_RUN,
   HOMES_CONFIG,
   HOMES_CONFIG_INITIALIZED,
-  PELS_STATUS,
 } from '../../contracts/src/settingsKeys.ts';
 
 /* -------------------------------------------------------------------------- *
@@ -30,7 +29,10 @@ import {
 
 const AREA_ID = 'h_rental';
 const AREA_FLAG_KEY = `${CAPACITY_DRY_RUN}:${AREA_ID}`;
-const AREA_STATUS_KEY = `${PELS_STATUS}:${AREA_ID}`;
+// The mock backend's storage slots for the area's in-memory status and
+// tracker: the UI reads them only through the scoped `ui_power` payload.
+const AREA_STATUS_SLOT = `pels_status:${AREA_ID}`;
+const AREA_TRACKER_SLOT = `power_tracker_state:${AREA_ID}`;
 const ACTIVATED_ROSTER = {
   activationVersion: 1,
   subHomes: [{ homeId: AREA_ID, name: 'Rental unit', rootZoneId: 'z_rental' }],
@@ -199,13 +201,14 @@ describe('meter-area simulation posture refresh', () => {
   it('reads a live area from the runtime posture when the reloaded WebView has no history', async () => {
     // The capacity bundle does not restart with the WebView: an area switched
     // live before its flag was unset stays live in the runtime, which says so
-    // in its own `pels_status:<id>` blob. Without that read a fresh WebView
-    // would repaint the area with the boot default and claim a simulation
-    // nobody is running.
+    // in the status it publishes. Without that read a fresh WebView would
+    // repaint the area with the boot default and claim a simulation nobody is
+    // running.
     setup({
       [HOMES_CONFIG]: ACTIVATED_ROSTER,
       [HOMES_CONFIG_INITIALIZED]: true,
-      [AREA_STATUS_KEY]: { limitReason: 'none', devicesOff: 0, dryRunEffective: false },
+      [AREA_TRACKER_SLOT]: { lastPowerW: 900, lastTimestamp: 1_700_000_000_000, buckets: {} },
+      [AREA_STATUS_SLOT]: { limitReason: 'none', devicesOff: 0, dryRunEffective: false },
     });
 
     notifyAreaSimulationSettingChanged(AREA_FLAG_KEY);

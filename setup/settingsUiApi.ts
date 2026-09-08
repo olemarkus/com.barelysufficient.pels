@@ -11,7 +11,7 @@ import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTy
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
 import { resolveSurplusPoolReachable } from '../packages/shared-domain/src/solar/surplusPoolReachable';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
-import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
+import { DEFERRED_OBJECTIVES_SETTINGS, MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import {
   SettingsUiHomeScopeAdapter,
   type ResolvedSubHomeScope,
@@ -47,10 +47,10 @@ import { hasSolarProductionCandidate } from '../lib/device/solarPresence';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
 import type { WeatherAdvisorReadout } from '../packages/contracts/src/weatherAdvisorTypes';
 import {
-  asPowerStatusBlobRead,
   classifyPowerStatusRead,
   type PowerMeasurementEvidence,
   getAssociatedCarForUiFromApp,
+  getPlanStatusForUiFromApp,
   getLatestDevicesForUiFromApp,
   getModeCatalogForUiFromApp,
   getObservedStateForUiFromApp,
@@ -379,16 +379,16 @@ const latchEvidence = (measured: boolean): PowerMeasurementEvidence => (
  * The whole-home classification asks the LIVE tracker, never the persisted
  * rows. The live latch is itself restored across an ordinary restart
  * (`hydratePowerTracker`) — that is the planner's own restored-sample policy,
- * and the open gate then rewrites the rows promptly.
+ * and the open gate then publishes a status promptly.
  * What this classification closes is the truly gated home: first-ever boot,
- * post-meter-swap, or a corrupt tracker restore, where nothing this run will
- * vouch for the stored blob.
+ * post-meter-swap, or a corrupt tracker restore, where no status of this run
+ * exists to serve.
  */
 const classifyMainPowerStatus = (homey: ApiContext['homey']): SettingsUiPowerStatusRead => {
   const liveTracker = getPowerTrackerForUiFromApp(homey);
   return classifyPowerStatusRead(
     latchEvidence(liveTracker !== null && hasPowerMeasurement(liveTracker)),
-    asPowerStatusBlobRead(homey.settings.get('pels_status')),
+    getPlanStatusForUiFromApp(homey, MAIN_HOME_ID),
   );
 };
 
@@ -505,7 +505,7 @@ export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<S
 // Each returns the empty shape plus an `unavailable` scope when the sub-home
 // cannot be served, so a consumer can never mistake the emptiness for a
 // measurement — the solar flags are OMITTED there, never fabricated `false`.
-// Values come from the read port + that home's own suffixed `pels_status`;
+// Values come from the read port + that home's own status in the registry;
 // nothing here rebuilds, refreshes or actuates. The helpers accept only a
 // parser-resolved scope, so no untrusted string can reach them.
 
@@ -545,9 +545,9 @@ const powerPayloadForHome = (
   // status-only push).
   const members = homeScope.filterDevicesForHome(scope, getRawSettingsUiDeviceCandidates({ homey }));
   if (members === null) return UNAVAILABLE_POWER_PAYLOAD;
-  // A thrown status read (transient Homey store failure) is unavailable too:
-  // it is not "no status committed yet", and a resolved payload built from it
-  // could be cached for the session.
+  // A status read the app shell cannot answer (the boot/uninit window) is
+  // unavailable too: it is not "no status published yet", and a resolved
+  // payload built from it could be cached for the session.
   const statusRead = homeScope.readStatus(scope);
   if (statusRead.state === 'unavailable') return UNAVAILABLE_POWER_PAYLOAD;
   // No `power_source` read here any more: with production reaching both sources,
@@ -558,8 +558,8 @@ const powerPayloadForHome = (
   // Same read-boundary classification as the whole-home composer, against this
   // home's OWN live tracker — the identical predicate its bundle's plan-build
   // gate asks (`createPlanService` wires the gate per scope). A gated sub-home
-  // (its area meter never reported this run) keeps its suffixed blob but is
-  // never served it as live. The thrown-read arm was refused above, so only
+  // (its area meter never reported this run) has published nothing and is
+  // served nothing. The unavailable arm was refused above, so only
   // `resolved`/`absent` reach the classifier.
   return {
     tracker: reading.powerTracker,

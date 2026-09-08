@@ -51,38 +51,22 @@ describe('Price level flow cards', () => {
     expect(results).toEqual([{ id: PriceLevel.CHEAP, name: 'Cheap' }]);
   });
 
-  it('matches price_level_is condition against stored status', async () => {
+  // The condition asks the price service for the current hour's level — the
+  // same producer the `price_level_changed` trigger fires from — never a
+  // persisted status blob (the status lives in memory now, and a previous
+  // run's level was the wrong answer anyway).
+  it('matches price_level_is condition against the current hour\'s level', async () => {
     const app = createApp();
+    app.priceCoordinator = partialDouble<MyApp['priceCoordinator']>({
+      getCurrentHourPriceLevel: () => PriceLevel.EXPENSIVE,
+    });
     app.registerFlowCards();
-    mockHomeyInstance.settings.set('pels_status', { priceLevel: PriceLevel.EXPENSIVE });
 
     const listener = mockHomeyInstance.flow._conditionCardListeners.price_level_is;
     expect(typeof listener).toBe('function');
 
     await expect(listener({ level: { id: PriceLevel.EXPENSIVE, name: 'Expensive' } })).resolves.toBe(true);
     await expect(listener({ level: PriceLevel.CHEAP })).resolves.toBe(false);
-  });
-
-  it('uses the last live level when persisted status is malformed', async () => {
-    const app = createApp();
-    app.planService = partialDouble<MyApp['planService']>({ getLastNotifiedPriceLevel: () => PriceLevel.CHEAP });
-    app.registerFlowCards();
-    mockHomeyInstance.settings.set('pels_status', { priceLevel: 'premium' });
-
-    const listener = mockHomeyInstance.flow._conditionCardListeners.price_level_is;
-    await expect(listener({ level: PriceLevel.CHEAP })).resolves.toBe(true);
-  });
-
-  it('uses the last live level when persisted status cannot be read', async () => {
-    const app = createApp();
-    app.planService = partialDouble<MyApp['planService']>({ getLastNotifiedPriceLevel: () => PriceLevel.EXPENSIVE });
-    app.registerFlowCards();
-    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementationOnce(() => {
-      throw new Error('settings unavailable');
-    });
-
-    const listener = mockHomeyInstance.flow._conditionCardListeners.price_level_is;
-    await expect(listener({ level: PriceLevel.EXPENSIVE })).resolves.toBe(true);
   });
 
   it('emits price_level_changed with state when level flips', () => {
@@ -108,7 +92,7 @@ describe('Price level flow cards', () => {
       getSteppedSettleDevices: () => [],
       homeId: 'main',
       homey: mockHomeyInstance as unknown as Homey.App['homey'],
-      writePelsStatus: (status) => mockHomeyInstance.settings.set('pels_status', status),
+      publishPelsStatus: (status) => mockHomeyInstance.settings.set('pels_status', status),
       planEngine: partialDouble<ConstructorParameters<typeof PlanService>[0]['planEngine']>({}),
       getPlanDevices: () => [],
       getSettleDevices: () => [],

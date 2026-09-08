@@ -66,7 +66,6 @@ type PerfSummary = {
   planBuildAvgMs: number;
   planBuildMaxMs: number;
   dailyBudgetAvgMs: number;
-  settingsWriteAvgMs: number;
 };
 
 
@@ -92,7 +91,6 @@ const VALUE_DURATION_KEYS = new Set([
   'daily_budget_update_ms',
   'daily_budget_compute_ms',
   'daily_budget_persist_ms',
-  'settings_write_ms',
   'power_tracker_store_write_ms',
   'device_fetch_ms',
   'device_fetch_full_ms',
@@ -209,7 +207,6 @@ const buildPerfSummary = (delta: PerfDelta): PerfSummary => {
   const queueWait = getDuration(delta.durations, 'plan_rebuild_queue_wait_ms');
   const planBuild = getDuration(delta.durations, 'plan_build_ms');
   const dailyBudget = getDuration(delta.durations, 'daily_budget_update_ms');
-  const settingsWrite = getDuration(delta.durations, 'settings_write_ms');
 
   const rebuildSkipRate = powerSamples > 0 ? skipped / powerSamples : 0;
   const rebuildNoChangeRate = planRebuilds > 0 ? noChange / planRebuilds : 0;
@@ -226,7 +223,6 @@ const buildPerfSummary = (delta: PerfDelta): PerfSummary => {
     planBuildAvgMs: roundTo(planBuild.avgMs || 0, 2),
     planBuildMaxMs: roundTo(planBuild.maxMs || 0, 2),
     dailyBudgetAvgMs: roundTo(dailyBudget.avgMs || 0, 2),
-    settingsWriteAvgMs: roundTo(settingsWrite.avgMs || 0, 2),
   };
 };
 

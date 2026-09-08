@@ -22,6 +22,7 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 import type { ShedBehavior } from '../../lib/plan/planTypes';
+import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import type {
@@ -214,7 +215,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     recordPowerSample: vi.fn(async () => ({ state: 'admitted' as const, revision: 1 })),
     handleOperatingModeChange: vi.fn(async () => undefined),
     getFlowSnapshot: vi.fn(async () => []),
-    getCurrentPriceLevel: vi.fn(),
     getCurrentHourPriceLevel: vi.fn(() => PriceLevel.UNKNOWN),
     areFlowBackedCardsAvailable: vi.fn(() => false),
     setExpectedOverride: vi.fn(() => false),
@@ -317,6 +317,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     // reads `getCurrent`/`hasActive` and writes via `publish`/`setCurrent`, so a
     // `{ subscribe, emit }` shim crashes any code that touches the bus. Default
     // reads return "no active objective"; writers are inert spies.
+    planStatuses: createPlanStatusRegistry(),
     deferredObjectiveStatusBus: {
       publish: vi.fn(),
       setCurrent: vi.fn(),

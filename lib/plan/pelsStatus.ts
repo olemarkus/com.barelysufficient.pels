@@ -7,7 +7,12 @@ import {
 import type { DevicePlan, DevicePlanDevice, PlanMeta } from './planTypes';
 import { NEUTRAL_STARTUP_HOLD_REASON } from './restore/devices';
 
-/** The persisted `pels_status` payload. External Flow automations read it. */
+/**
+ * The live status of a home, published by its plan service into
+ * `planStatusRegistry.ts` and read by the settings-UI API, the headroom widget
+ * and the Insights driver — whose capabilities mirror these fields by name, so
+ * a published field is a contract even when nothing else in the repo reads it.
+ */
 export type PelsStatus = {
   /**
    * JSON-omitted when the plan behind this status had no measurement
@@ -105,8 +110,8 @@ export function buildPelsStatus(params: {
  * number; `powerNowKw` keeps its published `null` spelling.
  *
  * `hardCapHeadroomKw`: no PELS surface consumes it any more (the headroom
- * widget moved to `projectedOverHardCap`); kept because `pels_status` is a
- * persisted payload external automations may read.
+ * widget moved to `projectedOverHardCap`); kept because the field names are
+ * the shape the Insights driver and the widget were built against.
  */
 function resolveMeasuredStatusFields(
   meta: PlanMeta,
@@ -116,9 +121,9 @@ function resolveMeasuredStatusFields(
   | 'hardCapHeadroomKw' | 'controlledKw' | 'uncontrolledKw' | 'totalKw'
   | 'projectedOverHardCap'
 > {
-  // `powerNowKw` is the blob's "measured draw or null" and `powerKnown` its
-  // backward-compatible twin; `pels_status` is a persisted payload external
-  // automations may read, so both keep their published spelling.
+  // `powerNowKw` is the status's "measured draw or null" and `powerKnown` its
+  // backward-compatible twin; the driver and the widget were built against
+  // both, so both keep their published spelling.
   if (!meta.powerIsMeasured) return { powerNowKw: null, powerKnown: false };
   return {
     powerNowKw: meta.totalKw,
@@ -126,9 +131,8 @@ function resolveMeasuredStatusFields(
     // Same figure as `powerNowKw`, under the name the blob has published for a
     // meter area since R7b. No PELS surface reads it — the per-home Limits card
     // reads `powerNowKw` — and it is kept for the same reason as
-    // `hardCapHeadroomKw` below: `pels_status` is a persisted payload external
-    // automations may read, so a field it has shipped is not withdrawn on the
-    // strength of having no reader in this repo. What DID change is that it used
+    // `hardCapHeadroomKw` below: a field the status has shipped is not withdrawn
+    // on the strength of having no reader in this repo. What DID change is that it used
     // to be resolved out in `buildPelsStatus` from `dryRunEffective !== undefined`
     // — i.e. from home kind — which both overloaded that boolean and published
     // the figure on a meter area's UNMEASURED plan.

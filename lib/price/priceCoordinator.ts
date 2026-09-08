@@ -56,6 +56,8 @@ export type PriceCoordinatorDeps = {
 };
 
 export class PriceCoordinator {
+  private lastGoodHourPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
+
   private priceService: PriceService;
   private priceOptimizer?: PriceOptimizer;
   private priceRefreshInterval?: ReturnType<typeof setInterval>;
@@ -312,9 +314,21 @@ export class PriceCoordinator {
     return this.priceService.isCurrentHourCheap();
   }
 
-  /** The resolved level from one combined-series build — see `PriceService.getCurrentHourPriceLevel`. */
+  /**
+   * The resolved level from one combined-series build — see
+   * `PriceService.getCurrentHourPriceLevel`. The build reads a dozen settings
+   * keys, and a Homey settings read can transiently throw; that is a no-op,
+   * not an event: the last resolved level carries forward (`UNKNOWN` before
+   * any), so a Flow condition or the status writer asking mid-transient gets
+   * the last good answer rather than a rejection.
+   */
   getCurrentHourPriceLevel(): PriceLevel {
-    return this.priceService.getCurrentHourPriceLevel();
+    try {
+      this.lastGoodHourPriceLevel = this.priceService.getCurrentHourPriceLevel();
+    } catch (error) {
+      moduleLogger.warn({ event: 'price_level_read_failed', err: normalizeError(error) });
+    }
+    return this.lastGoodHourPriceLevel;
   }
 
   isCurrentHourExpensive(): boolean {

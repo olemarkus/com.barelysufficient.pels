@@ -83,19 +83,23 @@ export const POWER_CALIBRATION = 'power_calibration';
 // Mirror of WEATHER_ADVISOR_SETTINGS in lib/utils/settingsKeys.ts — keep both
 // in sync (the settings UI can't import lib).
 export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
-// Per-home live status blob (`pels_status` for the main home, `pels_status:<id>`
-// for a meter area). Mirror of PELS_STATUS in lib/utils/settingsKeys.ts — keep
-// both in sync (the settings UI can't import lib).
-export const PELS_STATUS = 'pels_status';
 // Realtime push the runtime emits after every tracker persist, for every home
 // (`{ homeId }`; `MAIN_HOME_ID` for the whole home). The tracker lives in the
 // userdata store, under no settings key, so this push is the UI's freshness
-// signal for it: paired with the suffixed `pels_status:<id>` write it is what
-// carries a sub-home's freshness, since `plan_updated` / `power_updated` are
-// the main home's alone. Mirror of POWER_TRACKER_PERSISTED_EVENT in
+// signal for it: paired with the status push below it is what carries a
+// sub-home's freshness, since `plan_updated` / `power_updated` are the main
+// home's alone. Mirror of POWER_TRACKER_PERSISTED_EVENT in
 // lib/utils/settingsKeys.ts — keep both in sync (the settings UI can't import lib).
 export const POWER_TRACKER_PERSISTED_EVENT = 'power_tracker_persisted';
 export type PowerTrackerPersistedPayload = { homeId: string };
+// Realtime push the runtime emits after every status publish, for every home
+// (`{ homeId }`; `MAIN_HOME_ID` for the whole home). The status lives in the
+// app's memory, under no settings key; the UI reads it through `ui_power`
+// (`?homeId=` for a meter area) and this push says when to read again.
+// Mirror of PLAN_STATUS_PUBLISHED_EVENT in lib/utils/settingsKeys.ts — keep
+// both in sync (the settings UI can't import lib).
+export const PLAN_STATUS_PUBLISHED_EVENT = 'plan_status_published';
+export type PlanStatusPublishedPayload = { homeId: string };
 
 // Multi-home roster blob. Mirror of HOMES_CONFIG in lib/utils/settingsKeys.ts —
 // keep both in sync (the settings UI can't import lib). The per-home Limits

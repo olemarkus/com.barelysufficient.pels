@@ -4,8 +4,8 @@ import {
   CAPACITY_MARGIN_KW,
   homeScopedSettingsKey,
   MAIN_HOME_ID,
-  PELS_STATUS,
 } from '../../../contracts/src/settingsKeys.ts';
+import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
 import {
   HOME_LIMITS_CONTROL_FAILED_TOAST,
   HOME_LIMITS_CONTROL_SAVED_TOAST,
@@ -26,7 +26,10 @@ import {
   resolveHomeLimitsStatus,
 } from '../../../shared-domain/src/homeLimitsStatus.ts';
 import { getHomeScope, refreshHomeScope, subscribeToHomeScope } from './homeScope.ts';
-import { getSettingFresh, setSetting } from './homey.ts';
+import {
+  getApiReadModel, getSettingFresh, homeScopedApiUri, invalidateApiCache, setSetting,
+} from './homey.ts';
+import { liveStatusOrNull } from './powerStatusRead.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
 import { state } from './state.ts';
@@ -226,12 +229,29 @@ const renderSection = (): void => {
   renderHomeLimitsSection(mount, { editor });
 };
 
+/**
+ * The area's live status, read FRESH off its scoped power payload (the
+ * runtime holds the status in memory and serves it through `ui_power`; the
+ * `plan_status_published` push says when to read again). `null` is the card's
+ * pre-existing "no live status" vocabulary: nothing published yet, a gated
+ * area, a scoped read the runtime refused, or a failed read.
+ */
+const readAreaStatus = async (homeId: string): Promise<unknown> => {
+  const uri = homeScopedApiUri(SETTINGS_UI_POWER_PATH, homeId);
+  invalidateApiCache(uri);
+  try {
+    return liveStatusOrNull((await getApiReadModel<SettingsUiPowerPayload>(uri)).status);
+  } catch {
+    return null;
+  }
+};
+
 const loadAreaIntoEditor = async (homeId: string, areaName: string): Promise<void> => {
   const [limitRaw, marginRaw, dryRunRaw, statusRaw] = await Promise.all([
     getSettingFresh(homeScopedSettingsKey(CAPACITY_LIMIT_KW, homeId)),
     getSettingFresh(homeScopedSettingsKey(CAPACITY_MARGIN_KW, homeId)),
     getSettingFresh(homeScopedSettingsKey(CAPACITY_DRY_RUN, homeId)),
-    getSettingFresh(homeScopedSettingsKey(PELS_STATUS, homeId)).catch((): unknown => null),
+    readAreaStatus(homeId),
   ]);
   // A meter area that vanished mid-load (removed elsewhere) must not resurrect
   // its editor over a now-different selection.
@@ -262,7 +282,7 @@ const loadAreaIntoEditor = async (homeId: string, areaName: string): Promise<voi
 const reloadAreaStatus = async (): Promise<void> => {
   if (areaEditor === null) return;
   const { homeId } = areaEditor;
-  const statusRaw = await getSettingFresh(homeScopedSettingsKey(PELS_STATUS, homeId)).catch((): unknown => null);
+  const statusRaw = await readAreaStatus(homeId);
   if (areaEditor === null || areaEditor.homeId !== homeId) return;
   areaEditor.statusRaw = statusRaw;
   areaEditor.statusLoaded = true;
@@ -463,20 +483,27 @@ export const refreshHomeLimitsOnLimitsPanel = async (): Promise<void> => {
 };
 
 /**
+ * Realtime `plan_status_published` hook: the runtime published a fresh status
+ * for a meter area; an open card showing that area re-reads it. No-op unless
+ * the limits panel is showing that area.
+ */
+export const notifyHomeLimitsStatusPublished = (homeId: string): void => {
+  if (state.activePanel !== 'limits') return;
+  if (areaEditor === null || areaEditor.homeId !== homeId) return;
+  void reloadAreaStatus();
+};
+
+/**
  * Realtime `settings.set` hook: keep the open card live when the selected meter
- * area's status or scalars change externally (a second WebView, or the runtime
- * writing a fresh `pels_status:<id>`). No-op unless the limits panel is showing
- * a meter area. The roster blob (`homes_config`) is the scope owner's business,
- * not this controller's — `homeScope` refetches it and notifies subscribers.
+ * area's scalars change externally (a second WebView). No-op unless the limits
+ * panel is showing a meter area. The roster blob (`homes_config`) is the scope
+ * owner's business, not this controller's — `homeScope` refetches it and
+ * notifies subscribers.
  */
 export const notifyHomeLimitsSettingChanged = (key: string): void => {
   if (state.activePanel !== 'limits') return;
   const { selectedHomeId } = getHomeScope();
   if (selectedHomeId === MAIN_HOME_ID || areaEditor === null) return;
-  if (key === homeScopedSettingsKey(PELS_STATUS, selectedHomeId)) {
-    void reloadAreaStatus();
-    return;
-  }
   const capKeys = [CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN]
     .map((base) => homeScopedSettingsKey(base, selectedHomeId));
   if (capKeys.includes(key)) {

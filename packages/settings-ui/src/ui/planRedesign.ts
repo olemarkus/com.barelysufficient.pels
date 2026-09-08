@@ -211,8 +211,8 @@ const commitPlan = (plan: PlanSnapshot | null, scope: OverviewScope) => {
  * selected scope this paint must be DROPPED — Main's device set rendered
  * under the area's name would be the exact lie the scope bar promises not to
  * tell. The area keeps reading through its `?homeId=` URI (the prime cannot
- * reach it) and its own freshness rides the suffixed `pels_status:<homeId>`
- * settings stream, routed in `settingsChangeRouter.ts`. The guard also drops
+ * reach it) and its own freshness rides the `plan_status_published` push,
+ * routed in `settingsChangeRouter.ts`. The guard also drops
  * a stale Main read that resolves after the user switched scope mid-flight.
  */
 export const renderPlan = (plan: PlanSnapshot | null) => {

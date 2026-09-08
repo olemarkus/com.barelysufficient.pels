@@ -106,6 +106,14 @@ with opposite cost profiles:
   one row per run) and the device diagnostics
   (`lib/diagnostics/deviceDiagnosticsStateStore.ts`, one row per device-day)
   after them; calibration and the price/tariff caches follow.
+- **Nowhere** — a value that is a fact of the running app and nothing else. The
+  live status (`PelsStatus`, once the `pels_status` / `pels_status:<homeId>`
+  keys) is held in memory by `lib/plan/planStatusRegistry.ts`: every reader —
+  the settings-UI API, the headroom widget, the Insights driver — runs in this
+  process, the WebView and the driver hear a publish over the
+  `plan_status_published` realtime push, and a previous run's status was never
+  the right thing to serve. The old keys are unset once at boot and nothing is
+  imported.
 
 Owner ruling 2026-09-07. A key that moves is imported ONCE, at boot, on the
 first boot that finds the store empty for the home and the legacy value

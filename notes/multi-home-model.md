@@ -131,7 +131,8 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   `HomeScope` hard-wires `getDailyBudgetSnapshot: () => null`,
   `getPriceOptimizationEnabled: () => false`, and
   `decorateWithoutDeferredObjectives` (the identity decoration, named rather
-  than omitted), and writes a suffixed `pels_status:<id>`.
+  than omitted), and publishes its status under its own home id
+  (`lib/plan/planStatusRegistry.ts`).
 - **Neither home is the default the other falls back to.** `HomeScope` has no
   optional members and the shared factories take no home-kind branch: every
   home names its own tracker, capacity scalars, guard, rebuild state, plan
@@ -139,7 +140,7 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   reproduce the pre-multi-home closures byte-for-byte, and the difference showed
   up as "omitted" meaning "the main home" — a sub-home that left a member off
   got main's ambient `AppContext` state instead of a typed error. Main's
-  `pels_status` gained `dryRunEffective` and `totalKw` when that stopped being
+  status gained `dryRunEffective` and `totalKw` when that stopped being
   true; both are additive, and the posture is the same read the planner gates on.
 - **Per-meter sample routing:** one `fetchLivePowerReport` per poll fans out via
   `extractLiveMeterPowerWatts(report, meterId)` — each sub-home's own meter item
@@ -195,8 +196,8 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   - **The realtime `plan_updated` / `power_updated` streams stay the main
     home's.** Widening them would repaint Main's Overview from a sub-home's
     device set in a Homey-cached stale WebView. A sub-home's freshness rides
-    the suffixed `settings.set` stream (`pels_status:<id>`) and the
-    `power_tracker_persisted` realtime push (carrying the home id) instead,
+    the `plan_status_published` and `power_tracker_persisted` realtime pushes
+    (each carrying the home id) instead,
     which the change router turns into a scoped-only cache sweep. Correspondingly, a main-home push re-seeds the bare
     cache entry and drops the scoped entries it cannot speak for
     (`invalidateApiCacheForScopedHomes`), while every other invalidation of a

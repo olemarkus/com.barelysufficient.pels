@@ -579,8 +579,8 @@ describe('the bare-URI-prime realtime trap', () => {
 describe('overlapping same-area refreshes', () => {
   it('an older same-area refresh can never overwrite the newer commit', async () => {
     // Two refreshes for the SAME area overlap on the real paths: an activation
-    // refresh is still awaiting its plan read when the area's `pels_status:<id>`
-    // commit stream starts another. Both pass the home-id check — only the
+    // refresh is still awaiting its plan read when the area's status publish
+    // starts another. Both pass the home-id check — only the
     // per-refresh generation can drop the older settle.
     const { heldCalls } = await installClient({
       api: {
@@ -599,8 +599,8 @@ describe('overlapping same-area refreshes', () => {
     const older = refreshPlan();
     // Refresh B (newer) through the REAL commit-stream route: the router
     // invalidates the scoped cache, then refreshes the visible Overview.
-    const { createSettingsSetHandler } = await import('../src/ui/settingsChangeRouter.ts');
-    createSettingsSetHandler()(`pels_status:${AREA}`);
+    const { handlePlanStatusPublished } = await import('../src/ui/settingsChangeRouter.ts');
+    handlePlanStatusPublished({ homeId: AREA });
     await flushAsync();
     const heldPlanReads = heldCalls.filter((call) => call.uri === SCOPED_PLAN_URI);
     expect(heldPlanReads).toHaveLength(2);
@@ -781,8 +781,8 @@ describe('the selected area\'s tracker persist repaints a visible Overview', () 
     // hourly prune, a meter-swap freshness reset — announced by the
     // `power_tracker_persisted` push, and the Overview hero reads that home's
     // scoped power/plan payloads. Without an Overview route on this push the
-    // hero sits on the cached payload until some later `pels_status:<id>`
-    // write or a tab activation.
+    // hero sits on the cached payload until some later status publish or a
+    // tab activation.
     const api: Record<string, unknown> = {
       '/ui_homes': ROSTER_PAYLOAD,
       '/ui_prices': null,
