@@ -108,6 +108,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getCapacityPaceKw: () => 9.5,
     getLatchedTotalKw: () => null,
     getSnapshot: vi.fn().mockResolvedValue([]),
+    getDeviceDescriptors: vi.fn().mockResolvedValue([]),
     refreshSnapshot: vi.fn().mockResolvedValue(undefined),
     getHomeyDevicesForFlow: vi.fn().mockResolvedValue([]),
     reportFlowBackedCapability: vi.fn(() => stateChangedOutcome()),
@@ -156,6 +157,13 @@ describe('registerFlowCards', () => {
           targetPowerConfig: existing['ev-1'],
         },
       ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          targetPowerConfig: existing['ev-1'],
+        },
+      ]),
     });
     const settingsGet = vi.fn((key: string) => (key === DEVICE_TARGET_POWER_CONFIGS ? existing : undefined));
     const settingsSet = vi.fn();
@@ -198,6 +206,11 @@ describe('registerFlowCards', () => {
         name: 'Garage Charger',
         targetPowerConfig: existing['ev-1'],
       }]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([{
+        id: 'ev-1',
+        name: 'Garage Charger',
+        targetPowerConfig: existing['ev-1'],
+      }]),
     });
     deps.homey.settings.get = vi.fn(() => existing);
     deps.homey.settings.set = vi.fn();
@@ -232,6 +245,23 @@ describe('registerFlowCards', () => {
           targetPowerConfig: { enabled: true, min: 0, max: 7000, step: 100 },
         },
       ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          targetPowerConfig: createEvTargetPowerConfig('ev_charger_3_phase'),
+        },
+        {
+          id: 'ev-2',
+          name: 'Disabled Charger',
+          targetPowerConfig: { enabled: false, preset: 'ev_charger_1_phase' },
+        },
+        {
+          id: 'ev-3',
+          name: 'Continuous Charger',
+          targetPowerConfig: { enabled: true, min: 0, max: 7000, step: 100 },
+        },
+      ]),
     });
 
     registerFlowCards(deps);
@@ -244,6 +274,13 @@ describe('registerFlowCards', () => {
   it('rejects EV charging phase changes for devices not configured in settings first', async () => {
     const { deps, actionListeners } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          targetPowerConfig: { enabled: true, min: 0, max: 7000, step: 100 },
+        },
+      ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
         {
           id: 'ev-1',
           name: 'Garage Charger',
@@ -307,6 +344,7 @@ describe('registerFlowCards', () => {
         settings: { get: settingsGet, set: settingsSet },
       } as unknown as FlowCardDeps['homey'],
       getSnapshot: vi.fn().mockResolvedValue([{ id: 'dev-1', name: 'Heater' }]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([{ id: 'dev-1', name: 'Heater' }]),
     });
 
     registerFlowCards(deps);
@@ -372,6 +410,35 @@ describe('registerFlowCards', () => {
           controlModel: 'binary_power',
         },
       ] as TargetDeviceSnapshot[]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        nativeSteppedSnapshot({
+          id: 'ev-1',
+          expectedPowerKw: 1,
+          name: 'My Easee Charger',
+          deviceClass: 'evcharger',
+          deviceType: 'onoff',
+          binaryCapabilityId: 'evcharger_charging',
+          capabilities: ['measure_power', 'evcharger_charging', 'target_power'],
+          controlAdapter: undefined,
+          suggestedSteppedLoadProfile: undefined,
+          targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: '6a', planningPowerW: 4140 },
+              { id: '16a', planningPowerW: 11040 },
+            ],
+          },
+        }),
+        {
+          id: 'binary-1',
+          expectedPowerKw: 1,
+          name: 'Binary Charger',
+          targets: [],
+          binaryControl: { on: false },
+          controlModel: 'binary_power',
+        },
+      ] as TargetDeviceSnapshot[]),
     });
 
     registerFlowCards(deps);
@@ -386,6 +453,19 @@ describe('registerFlowCards', () => {
   it('reports stepped-load actual step and requests a snapshot refresh plus plan rebuild', async () => {
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
           name: 'Tank',
@@ -445,6 +525,21 @@ describe('registerFlowCards', () => {
           },
         },
       ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Wallbox',
+          controlModel: 'stepped_load',
+          desiredStepId: 'max',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
     });
 
     registerFlowCards(deps);
@@ -470,6 +565,21 @@ describe('registerFlowCards', () => {
   it('does not emit a clamp warn for a within-margin shortfall', async () => {
     const { deps, actionListeners, structuredWarn } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Wallbox',
+          controlModel: 'stepped_load',
+          desiredStepId: 'max',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'near-max', planningPowerW: 2950 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
           name: 'Wallbox',
@@ -518,6 +628,22 @@ describe('registerFlowCards', () => {
           },
         },
       ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Wallbox',
+          controlModel: 'stepped_load',
+          desiredStepId: 'max',
+          stepCommandPending: true,
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
     });
 
     registerFlowCards(deps);
@@ -536,6 +662,20 @@ describe('registerFlowCards', () => {
   it('does not emit a clamp warn when the report matches the commanded step', async () => {
     const { deps, actionListeners, structuredWarn } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Wallbox',
+          controlModel: 'stepped_load',
+          desiredStepId: 'max',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
           name: 'Wallbox',
@@ -674,6 +814,9 @@ describe('registerFlowCards', () => {
       getSnapshot: vi.fn().mockResolvedValue([
         { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [], expectedPowerKw: 1 },
       ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', binaryControl: { on: false }, targets: [], expectedPowerKw: 1 },
+      ]),
     });
 
     registerFlowCards(deps);
@@ -764,6 +907,19 @@ describe('registerFlowCards', () => {
           },
         },
       ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
       refreshSnapshot: vi.fn().mockRejectedValue(new Error('refresh failed')),
     });
 
@@ -808,6 +964,19 @@ describe('registerFlowCards', () => {
           },
         },
       ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
     });
 
     registerFlowCards(deps);
@@ -827,6 +996,7 @@ describe('registerFlowCards', () => {
     const reportSteppedLoadActualStep = vi.fn();
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([nativeSnapshot]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([nativeSnapshot]),
       reportSteppedLoadActualStep,
     });
 
@@ -857,6 +1027,7 @@ describe('registerFlowCards', () => {
     const reportSteppedLoadActualStep = vi.fn();
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([nativeSnapshot]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([nativeSnapshot]),
       reportSteppedLoadActualStep,
     });
 
@@ -897,6 +1068,19 @@ describe('registerFlowCards', () => {
           },
         },
       ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
     });
 
     registerFlowCards(deps);
@@ -925,6 +1109,7 @@ describe('registerFlowCards', () => {
     const reportSteppedLoadActualStep = vi.fn();
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([nativeSnapshot]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([nativeSnapshot]),
       reportSteppedLoadActualStep,
     });
 
@@ -962,6 +1147,7 @@ describe('registerFlowCards', () => {
     const reportSteppedLoadActualStep = vi.fn();
     const { deps, actionListeners, structuredInfo, structuredWarn } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([nativeSnapshot]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([nativeSnapshot]),
       reportSteppedLoadActualStep,
     });
 
@@ -992,6 +1178,20 @@ describe('registerFlowCards', () => {
   it('maps stepped-load power text to a configured step and strips a trailing W', async () => {
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1750 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
           name: 'Tank',
@@ -1051,6 +1251,21 @@ describe('registerFlowCards', () => {
           },
         },
       ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          controlModel: 'stepped_load',
+          targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: '6a', planningPowerW: 4140 },
+              { id: '10a', planningPowerW: 6900 },
+            ],
+          },
+        },
+      ]),
     });
 
     registerFlowCards(deps);
@@ -1075,6 +1290,20 @@ describe('registerFlowCards', () => {
   it('maps compact EV charger amp reports for 1-phase target-power presets', async () => {
     const { deps, actionListeners } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          controlModel: 'stepped_load',
+          targetPowerConfig: { enabled: true, preset: 'ev_charger_1_phase' },
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: '10a', planningPowerW: 2300 },
+            ],
+          },
+        },
+      ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
         {
           id: 'ev-1',
           name: 'Garage Charger',
@@ -1121,6 +1350,25 @@ describe('registerFlowCards', () => {
           },
         },
       ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          controlModel: 'stepped_load',
+          targetPowerConfig: {
+            enabled: true,
+            preset: 'ev_charger_1_phase',
+            max: 7360,
+          },
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: '24a', planningPowerW: 5520 },
+              { id: '28a', planningPowerW: 6440 },
+            ],
+          },
+        },
+      ]),
     });
 
     registerFlowCards(deps);
@@ -1136,6 +1384,19 @@ describe('registerFlowCards', () => {
   it('rejects amp reports for stepped-load devices without an EV target-power preset', async () => {
     const { deps, actionListeners, structuredWarn } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1750 },
+            ],
+          },
+        },
+      ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
           name: 'Tank',
@@ -1185,6 +1446,21 @@ describe('registerFlowCards', () => {
           },
         },
       ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'medium', planningPowerW: 1750 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
     });
 
     registerFlowCards(deps);
@@ -1210,6 +1486,19 @@ describe('registerFlowCards', () => {
   it('logs an explicit rejection when no configured step matches the reported power', async () => {
     const { deps, actionListeners, structuredInfo, structuredWarn } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1750 },
+            ],
+          },
+        },
+      ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
           name: 'Tank',
@@ -1265,6 +1554,19 @@ describe('registerFlowCards', () => {
           },
         },
       ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
     });
 
     registerFlowCards(deps);
@@ -1292,6 +1594,21 @@ describe('registerFlowCards', () => {
   it('rejects upward step matches outside the allowed margin and includes the closest upward step', async () => {
     const { deps, actionListeners, structuredWarn } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'medium', planningPowerW: 1750 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+      getDeviceDescriptors: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
           name: 'Tank',

@@ -1,4 +1,4 @@
-import type { SteppedLoadDescriptorProbe, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 import type { FlowCard, FlowHomeyLike } from '../lib/utils/types';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
@@ -12,7 +12,10 @@ type DeviceRef = RawFlowDeviceArg;
  * descriptor is optional — widened with the probe so `isSteppedLoadSnapshot`
  * can narrow it. The base snapshot type omits `steppedLoadProfile` outright.
  */
-type ExpectedPowerDeviceSnapshot = TargetDeviceSnapshot & SteppedLoadDescriptorProbe;
+// Was a local `TargetDeviceSnapshot & SteppedLoadDescriptorProbe`, which is the
+// descriptor read's shape spelled by hand on top of the whole snapshot. This card
+// asks two descriptor questions — is the device stepped, and what is it called.
+type ExpectedPowerDeviceSnapshot = DeviceDescriptorRead;
 
 type ActionCardHomey = Pick<FlowHomeyLike, 'flow'> & {
   flow: { getActionCard: (id: string) => FlowCard };
@@ -43,11 +46,11 @@ function parseExpectedPowerW(payload: { power_w?: number } | null): number {
  * the owner most likely to need it: someone whose declared load is wrong.
  */
 async function assertOverrideSupported(
-  deps: { getSnapshot: () => Promise<ExpectedPowerDeviceSnapshot[]> },
+  deps: { getDeviceDescriptors: () => Promise<ExpectedPowerDeviceSnapshot[]> },
   deviceId: string,
 ): Promise<void> {
-  const snapshot = await deps.getSnapshot();
-  const device = snapshot.find((entry) => entry.id === deviceId);
+  const descriptors = await deps.getDeviceDescriptors();
+  const device = descriptors.find((entry) => entry.id === deviceId);
   if (device && isSteppedLoadSnapshot(device)) {
     throw new Error(
       'Stepped load devices use configured planning power per step; '
@@ -56,15 +59,15 @@ async function assertOverrideSupported(
   }
 }
 
-function resolveDeviceName(snapshot: TargetDeviceSnapshot[], deviceId: string): string | null {
-  const device = snapshot.find((d) => d.id === deviceId);
+function resolveDeviceName(devices: DeviceDescriptorRead[], deviceId: string): string | null {
+  const device = devices.find((d) => d.id === deviceId);
   return device ? device.name : null;
 }
 
 export function registerExpectedPowerCard(
   homey: ActionCardHomey,
   deps: {
-    getSnapshot: () => Promise<ExpectedPowerDeviceSnapshot[]>;
+    getDeviceDescriptors: () => Promise<ExpectedPowerDeviceSnapshot[]>;
     setExpectedOverride: (deviceId: string, kw: number) => boolean;
     refreshSnapshot: () => Promise<void>;
     rebuildPlan: () => void;
@@ -80,12 +83,12 @@ export function registerExpectedPowerCard(
     const requestedKw = powerW / 1000;
     await assertOverrideSupported(deps, deviceId);
 
-    const snapshot = await deps.getSnapshot();
+    const descriptors = await deps.getDeviceDescriptors();
     const changed = deps.setExpectedOverride(deviceId, requestedKw);
     if (!changed) {
       return true;
     }
-    const deviceName = resolveDeviceName(snapshot, deviceId);
+    const deviceName = resolveDeviceName(descriptors, deviceId);
     deps.getStructuredLogger('devices')?.info({
       event: 'flow_expected_power_set',
       deviceId,
@@ -98,7 +101,7 @@ export function registerExpectedPowerCard(
   });
 
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
-    const snapshot = await deps.getSnapshot();
+    const descriptors = await deps.getDeviceDescriptors();
     return buildDeviceAutocompleteOptions(
       // An observe-only role device (home battery / PV) is force-managed but
       // non-controllable, so an expected-power override on it is a no-op pick.
@@ -107,7 +110,7 @@ export function registerExpectedPowerCard(
       // A configured `loadKw` no longer excludes a device: a manual value
       // outranks `settings.load`, so overriding a wrong declared load is the
       // point rather than a conflict.
-      snapshot.filter(
+      descriptors.filter(
         (d) => !isObserveOnlyRoleClassKey(d.deviceClass)
           && !isSteppedLoadSnapshot(d),
       ),

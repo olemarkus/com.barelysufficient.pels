@@ -1,7 +1,7 @@
 import { BUDGET_EXEMPT_DEVICES, CONTROLLABLE_DEVICES } from '../lib/utils/settingsKeys';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { formatDeviceMustBeProvidedMessage } from '../packages/shared-domain/src/smartTaskRescueStrings';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 import type { FlowCardDeps } from './registerFlowCards';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
 import { readFlowDeviceArg } from './flowArgParsers';
@@ -19,7 +19,7 @@ import { readFlowDeviceArg } from './flowArgParsers';
 // opted in is legitimately `controllable: false` right now, and the capacity-control card
 // is exactly the path to flip it on — filtering on a live flag would block that real enable
 // flow. The role is the immutable signal that the device is observe-only forever.
-const isUserSelectableDevice = (device: TargetDeviceSnapshot): boolean => (
+const isUserSelectableDevice = (device: DeviceDescriptorRead): boolean => (
   !isObserveOnlyRoleClassKey(device.deviceClass)
 );
 
@@ -98,7 +98,7 @@ function registerDeviceBooleanActionCard(params: {
   // Optional eligibility filter. When present, the autocomplete only offers — and the
   // write only acts on — devices that pass it. Used by the capacity-control cards to keep
   // observe-only devices (battery / solar, `controllable: false`) out of the picker.
-  deviceFilter?: (device: TargetDeviceSnapshot) => boolean;
+  deviceFilter?: (device: DeviceDescriptorRead) => boolean;
   deps: FlowCardDeps;
 }): void {
   const { cardId, deps, deviceFilter, ...settingParams } = params;
@@ -120,7 +120,7 @@ function registerDeviceBooleanActionCard(params: {
 
 function registerDeviceSnapshotCondition(params: {
   cardId: string;
-  predicate: (device: TargetDeviceSnapshot) => boolean;
+  predicate: (device: DeviceDescriptorRead) => boolean;
   deps: FlowCardDeps;
 }): void {
   const { cardId, predicate, deps } = params;
@@ -140,20 +140,26 @@ function registerDeviceSnapshotCondition(params: {
   );
 }
 
-async function resolveDeviceFromArgs(args: unknown, deps: FlowCardDeps): Promise<TargetDeviceSnapshot | null> {
+// Descriptors, not the snapshot: these cards resolve a device to write a SETTING
+// on it and to list what is selectable. Neither question is about what the device
+// is currently doing.
+async function resolveDeviceFromArgs(
+  args: unknown,
+  deps: FlowCardDeps,
+): Promise<DeviceDescriptorRead | null> {
   const deviceId = readFlowDeviceArg(args);
   if (!deviceId) return null;
-  const snapshot = await deps.getSnapshot();
-  return snapshot.find((device) => device.id === deviceId) ?? null;
+  const descriptors = await deps.getDeviceDescriptors();
+  return descriptors.find((device) => device.id === deviceId) ?? null;
 }
 
 async function getDeviceOptions(
   deps: FlowCardDeps,
   query: string,
-  deviceFilter?: (device: TargetDeviceSnapshot) => boolean,
+  deviceFilter?: (device: DeviceDescriptorRead) => boolean,
 ): Promise<Array<{ id: string; name: string }>> {
-  const snapshot = await deps.getSnapshot();
-  const eligible = deviceFilter ? snapshot.filter(deviceFilter) : snapshot;
+  const descriptors = await deps.getDeviceDescriptors();
+  const eligible = deviceFilter ? descriptors.filter(deviceFilter) : descriptors;
   return buildDeviceAutocompleteOptions(eligible, query);
 }
 
@@ -163,7 +169,7 @@ async function setDeviceBooleanSetting(params: {
   settingKey: string;
   label: string;
   settingKind: string;
-  deviceFilter?: (device: TargetDeviceSnapshot) => boolean;
+  deviceFilter?: (device: DeviceDescriptorRead) => boolean;
   deps: FlowCardDeps;
 }): Promise<void> {
   const {
@@ -176,8 +182,8 @@ async function setDeviceBooleanSetting(params: {
     deps,
   } = params;
   if (!deviceId) throw new Error(formatDeviceMustBeProvidedMessage(label));
-  const snapshot = await deps.getSnapshot();
-  const device = snapshot.find((entry) => entry.id === deviceId);
+  const descriptors = await deps.getDeviceDescriptors();
+  const device = descriptors.find((entry) => entry.id === deviceId);
   const deviceName = device ? device.name : null;
   // Skip the write for an ineligible device (e.g. an observe-only battery/solar device
   // hand-picked via a stale flow arg): it would only persist a no-op, inconsistent

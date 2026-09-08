@@ -98,8 +98,10 @@ function registerReportActualStepCard(deps: FlowCardDeps): void {
     async (query: string, args?: Record<string, unknown>) => {
       const deviceId = readFlowDeviceArg(args);
       if (!deviceId) return [];
-      const snapshot = await deps.getSnapshot();
-      const device = snapshot.find((entry) => entry.id === deviceId);
+      // The step ladder is descriptor config; listing its rungs asks nothing
+      // about the device's current step.
+      const descriptors = await deps.getDeviceDescriptors();
+      const device = descriptors.find((entry) => entry.id === deviceId);
       const steps = device && isSteppedLoadSnapshot(device) ? device.steppedLoadProfile.steps : [];
       const q = (query || '').toLowerCase();
       return steps
@@ -230,8 +232,8 @@ async function resolveNativeSteppedLoadFlowReportIgnore(
   deviceId: string,
 ): Promise<{ deviceName: string } | null> {
   try {
-    const snapshot = await deps.getSnapshot();
-    const device = snapshot.find((entry) => entry.id === deviceId);
+    const descriptors = await deps.getDeviceDescriptors();
+    const device = descriptors.find((entry) => entry.id === deviceId);
     if (!device || !isNativeSteppedLoadControlEnabled(device)) return null;
     return { deviceName: device.name.trim() || deviceId };
   } catch {
@@ -243,9 +245,9 @@ async function getSteppedLoadDeviceOptions(
   deps: FlowCardDeps,
   query: string,
 ): Promise<Array<{ id: string; name: string }>> {
-  const snapshot = await deps.getSnapshot();
+  const descriptors = await deps.getDeviceDescriptors();
   return buildDeviceAutocompleteOptions(
-    snapshot.filter((device) => isSteppedLoadSnapshot(device)),
+    descriptors.filter((device) => isSteppedLoadSnapshot(device)),
     query,
   );
 }

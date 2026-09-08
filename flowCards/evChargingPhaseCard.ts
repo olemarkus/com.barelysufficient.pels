@@ -2,8 +2,7 @@ import { createEvTargetPowerConfig, isEvTargetPowerPreset } from '../packages/sh
 import { DEVICE_TARGET_POWER_CONFIGS } from '../lib/utils/settingsKeys';
 import { normalizeDeviceTargetPowerConfigs } from '../lib/utils/targetPowerConfig';
 import type {
-  SteppedLoadDescriptorProbe,
-  TargetDeviceSnapshot,
+  DeviceDescriptorRead,
   TargetPowerSteppedLoadPreset,
 } from '../packages/contracts/src/types';
 import type { FlowCardDeps } from './registerFlowCards';
@@ -24,8 +23,8 @@ export function registerEvChargingPhaseCard(deps: FlowCardDeps): void {
   card.registerRunListener(async (args: unknown) => {
     const deviceId = readFlowDeviceArg(args, 'charger');
     const preset = readPhasePreset(args);
-    const snapshot = await deps.getSnapshot();
-    const device = snapshot.find((entry) => entry.id === deviceId);
+    const descriptors = await deps.getDeviceDescriptors();
+    const device = descriptors.find((entry) => entry.id === deviceId);
     if (!deviceId || !device || !isEvPhaseConfiguredDevice(device)) {
       throw new Error(ELIGIBILITY_ERROR);
     }
@@ -47,8 +46,10 @@ export function registerEvChargingPhaseCard(deps: FlowCardDeps): void {
     return true;
   });
   card.registerArgumentAutocompleteListener('charger', async (query: string) => {
-    const snapshot = await deps.getSnapshot();
-    return buildDeviceAutocompleteOptions(snapshot.filter(isEvPhaseConfiguredDevice), query);
+    // A phase preset is CONFIG: which devices can take one, and what one is set
+    // to. Nothing here asks what the charger is doing.
+    const descriptors = await deps.getDeviceDescriptors();
+    return buildDeviceAutocompleteOptions(descriptors.filter(isEvPhaseConfiguredDevice), query);
   });
 }
 
@@ -58,7 +59,7 @@ function readPhasePreset(args: unknown): TargetPowerSteppedLoadPreset {
   throw new Error('EV charging phase must be 1-phase or 3-phase.');
 }
 
-function isEvPhaseConfiguredDevice(device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe): boolean {
+function isEvPhaseConfiguredDevice(device: DeviceDescriptorRead): boolean {
   // `targetPowerConfig` rides the stepped-descriptor probe but is read on its own
   // here (a continuous EV preset can carry it without a full stepped profile), so
   // this is an owner-probe read, not an `isSteppedLoadSnapshot` narrow.

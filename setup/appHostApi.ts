@@ -17,6 +17,7 @@ import {
 import { OPERATING_MODE_SETTING } from '../lib/utils/settingsKeys';
 import type {
   DecoratedDeviceSnapshot,
+  DeviceDescriptorRead,
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
 import type { SettingsUiPlanSnapshot } from '../packages/contracts/src/settingsUiApi';
@@ -121,6 +122,22 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public async getFlowSnapshot(): Promise<DecoratedDeviceSnapshot[]> {
     if (this.latestTargetSnapshot.length === 0) await this.refreshTargetDevicesSnapshot();
     return this.latestTargetSnapshot;
+  }
+
+  /**
+   * The Flow-card device list as DESCRIPTORS: identity and config, no
+   * observations.
+   *
+   * Same underlying value and same lazy first-read refresh as `getFlowSnapshot`
+   * above — deliberately, so this is a pure narrowing of the declared surface
+   * with no behaviour change. Most Flow cards only ever wanted a descriptor:
+   * they resolve a device by id and filter with predicates that read
+   * `deviceClass`, `controlAdapter` or `targetPowerConfig`. Handing them the
+   * whole snapshot let them reach observations they never asked for, and is why
+   * `getSnapshot()` cannot be sealed inside transport yet.
+   */
+  public async getFlowDeviceDescriptors(): Promise<DeviceDescriptorRead[]> {
+    return this.getFlowSnapshot();
   }
 
   public getCurrentPriceLevel(): PriceLevel {

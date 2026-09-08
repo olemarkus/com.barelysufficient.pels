@@ -267,8 +267,18 @@ store, because:
      live in `packages/contracts/src/**` (deploy-excluded source; runtime may only
      `import type` from it, enforced by `test/integration/runtimePackaging.test.ts`).
    - **4b — IN PROGRESS:** route real readers onto the projection (wiring-side observed
-     reads first). **First reader wired:** `toPlanDevice` (`setup/appInit.ts`) resolved
-     `observationStale` from `ctx.getObservedState(id)` (the projection's maintained truth)
+     reads first). **Status correction (2026-09-08):** the "first reader" named below was
+     superseded twice and then deleted with the concept, so it no longer demonstrates
+     anything. The readers that DO exist were wired later and from the other end:
+     the settings-UI state-of-charge read now goes through the observer's resolved
+     `readObservedStateOfCharge` (#2322), `/ui_devices` serves a resolved level rather
+     than the transport bag (#2322), and `AppContext` grew one named read per observed
+     cluster with `getObservedState` narrowed to carry none of them (#2326). All three
+     prereqs below are paid: the epoch hazard by co-creating the projection with the
+     transport, the by-reference hazard by `freezeObserved` (deep-frozen for the nested
+     state-of-charge objects), and the enrichment ordering by deferring the events and
+     flushing after the commit. **Historical, superseded:** `toPlanDevice`
+     (`setup/appInit.ts`) resolved `observationStale` from `ctx.getObservedState(id)` (the projection's maintained truth)
      instead of the snapshot's freshness fields, falling back to the snapshot only for the
      boot window before the first observation lands (identical values there).
      **Superseded:** `observationStale` was subsequently removed from the plan kinds entirely
@@ -301,6 +311,24 @@ store, because:
    `ObservedDeviceState`.
 6. **Convert `toPlanDevice` to `(descriptor, observed)`**; replace `...device` spread
    with explicit copies; `getPlanDevices` zips the two.
+6.5. **Descriptor read for the callers that never wanted an observation** — the
+   stage this staging was missing. Stage 3 introduced `DeviceDescriptor` as a
+   *type* with no owner behind it, so stage 7's clearing list had no route: an
+   audit of the 42 external `getSnapshot()` pullers found most of the Flow cards
+   resolve a device by id and filter on descriptor predicates
+   (`deviceClass`, `controlAdapter`, `targetPowerConfig`) — pulling a ~58-field
+   god-struct array to read a name and a config flag.
+   `DeviceDescriptorRead` (`DeviceDescriptor & SteppedLoadDescriptorProbe`) +
+   `getFlowDeviceDescriptors()` serve them. **DONE for four cards**
+   (`deviceSettingsCards`, `expectedPower`, `steppedLoadFlowCards`,
+   `evChargingPhaseCard`) — checkable as zero `deps.getSnapshot()` remaining in
+   those four files, which is the condition to re-run when adding a fifth; `deadlineObjectiveCards`, `headroomAndEvSocCards` and
+   `steppedLoadReport` genuinely read observations (`targets`, `stateOfCharge`,
+   `reportedStepId`) and convert with stage 5.
+   The narrowing is DECLARATIVE — the served objects still physically carry the
+   observations, exactly as `getObservedState` does since stage 4b. It stops
+   consumers *reading* them, which is what stage 7 needs.
+
 7. **Seal `getSnapshot()` inside transport** once no external caller remains; cruiser-
    enforce. External pullers to clear first: the `app.ts` composition callbacks,
    `AppHostApi`/`AppRuntimeApi`, `setup/flowConflictProbe`,

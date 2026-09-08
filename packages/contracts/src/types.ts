@@ -849,6 +849,30 @@ export type AssociatedCarDecoration = {
 export type DecoratedDeviceSnapshot = TargetDeviceSnapshot & SteppedLoadDecoration
     & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & AssociatedCarDecoration;
 
+/**
+ * A device as a consumer that asks about its IDENTITY and CONFIG sees it —
+ * surface 2 of the observer/transport split
+ * (`notes/state-management/snapshot-decomposition.md`), which the split's staging
+ * needed and never named.
+ *
+ * Descriptor fields never fresher-wins merge, which is the split's own
+ * discriminator: they answer "what is this device and how is it set up", not
+ * "what is it doing now". A caller holding this cannot read `currentOn`,
+ * `temperature`, `stateOfCharge`, `measuredPowerKw` or any other observation —
+ * those come from the observer, resolved, through their own named reads.
+ *
+ * Carries the stepped-descriptor probe because that cluster IS descriptor
+ * (`steppedLoadProfile` is the kind discriminant; `targetPowerConfig` rides with
+ * it), and the predicates that select devices for a Flow card read exactly those.
+ *
+ * The narrowing is DECLARATIVE: the objects served still physically carry the
+ * observed fields, because they are the transport's snapshot. What changes is
+ * that a consumer typed to this cannot reach them — which is what lets
+ * `getSnapshot()` eventually be sealed inside transport (stage 7), since most of
+ * its external callers only ever wanted this.
+ */
+export type DeviceDescriptorRead = DeviceDescriptor & SteppedLoadDescriptorProbe;
+
 export type SettingsUiLogLevel = 'info' | 'warn' | 'error';
 
 export type SettingsUiLogEntry = {

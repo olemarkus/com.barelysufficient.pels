@@ -86,6 +86,7 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getLatchedTotalKw: () => resolveLastTotalPowerKw(ctx.powerTracker),
     getCapacityPaceKw: () => ctx.computeDynamicSoftLimit(),
     getSnapshot: () => ctx.getFlowSnapshot(),
+    getDeviceDescriptors: () => ctx.getFlowDeviceDescriptors(),
     refreshSnapshot: (options) => ctx.refreshTargetDevicesSnapshot(options),
     getHomeyDevicesForFlow: () => ctx.getHomeyDevicesForFlow(),
     reportFlowBackedCapability: (params) => ctx.reportFlowBackedCapability(params),

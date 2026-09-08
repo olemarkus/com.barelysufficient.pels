@@ -27,6 +27,7 @@ const infoSpy = vi.fn();
 const buildDeps = (): FlowCardDeps => ({
   homey: mockHomeyInstance as unknown as FlowCardDeps['homey'],
   getSnapshot: async () => snapshot,
+  getDeviceDescriptors: async () => snapshot,
   getStructuredLogger: () => ({ info: infoSpy } as unknown as ReturnType<FlowCardDeps['getStructuredLogger']>),
 } as unknown as FlowCardDeps);
 

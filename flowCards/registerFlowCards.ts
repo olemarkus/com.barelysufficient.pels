@@ -1,5 +1,5 @@
 import { PriceLevel } from '../lib/price/priceLevels';
-import type { DecoratedDeviceSnapshot } from '../packages/contracts/src/types';
+import type { DecoratedDeviceSnapshot, DeviceDescriptorRead } from '../packages/contracts/src/types';
 import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../setup/appDeviceControlHelpers';
@@ -86,6 +86,12 @@ export type FlowCardDeps = {
   // check reads. The runtime already returns decorated objects; the type just
   // stops narrowing them away.
   getSnapshot: () => Promise<DecoratedDeviceSnapshot[]>;
+  /**
+   * Identity + config, for the cards that select and configure a device rather
+   * than read what it is doing. Separate from `getSnapshot` so a card asking
+   * "which devices can take this setting" cannot reach an observation.
+   */
+  getDeviceDescriptors: () => Promise<DeviceDescriptorRead[]>;
   refreshSnapshot: (options?: { emitFlowBackedRefresh?: boolean }) => Promise<void>;
   getHomeyDevicesForFlow: () => Promise<HomeyDeviceLike[]>;
   reportFlowBackedCapability: (params: {
@@ -143,7 +149,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
   const { homey } = deps;
   try {
     registerExpectedPowerCard(homey, {
-      getSnapshot: () => deps.getSnapshot(),
+      getDeviceDescriptors: () => deps.getDeviceDescriptors(),
       setExpectedOverride: (deviceId, kw) => deps.setExpectedOverride(deviceId, kw),
       refreshSnapshot: () => deps.refreshSnapshot(),
       rebuildPlan: () => requestPlanRebuildFromFlow(deps, 'expected_power'),

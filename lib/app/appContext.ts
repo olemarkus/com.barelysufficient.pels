@@ -41,6 +41,7 @@ import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/d
 import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contracts/src/widgetHostApi';
 import type {
   DecoratedDeviceSnapshot,
+  DeviceDescriptorRead,
   DeviceControlProfiles,
   EvBoostConfig,
   EvBoostSettings,
@@ -281,6 +282,12 @@ export type AppContext = {
   get planRebuildThrottle(): PlanRebuildThrottle;
   get latestTargetSnapshot(): DecoratedDeviceSnapshot[];
   getUiPickerDevices(): DecoratedDeviceSnapshot[];
+  /**
+   * The Flow-card device list as descriptors — identity and config, no
+   * observations. Same value and same lazy refresh as `getFlowSnapshot`; the
+   * narrower declared type is the point.
+   */
+  getFlowDeviceDescriptors(): Promise<DeviceDescriptorRead[]>;
   getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead;
   get priceOptimizationEnabled(): boolean;
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;
