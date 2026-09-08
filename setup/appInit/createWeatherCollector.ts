@@ -14,6 +14,7 @@ import { readMainMeterSelection } from '../mainMeterSettings';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
 import { readWholeHomeMeterScopeSignature } from '../weatherMeterScopeSignature';
 import { readHubCoordinates } from '../homeyLocationAdapter';
+import { createWeatherHistoryStoreForApp } from './weatherHistoryStore';
 
 const LONG_GAP_THRESHOLD_MS = 60 * 60 * 1000;
 /** Fallback contact for the MET User-Agent when the manifest has no homepage/support. */
@@ -103,12 +104,12 @@ export function createWeatherCollector(
     AppContext,
     'homey' | 'powerTracker' | 'getNow' | 'getTimeZone' | 'capacitySettings'
     | 'deviceDiagnosticsService' | 'deferredObjectivePlanHistoryRecorder' | 'resolveManagedState'
-    | 'dailyBudgetService' | 'getWeatherHistoryStore'
+    | 'dailyBudgetService' | 'getUserdataDatabase'
   >,
 ): WeatherCollector {
   const logger = getLogger('weather');
   return new WeatherCollector({
-    store: ctx.getWeatherHistoryStore(),
+    store: createWeatherHistoryStoreForApp(ctx),
     readDevice: (deviceId) => getRawDevice(deviceId),
     fetchInsights: (path) => getRawFromHomeyApi(path),
     getDailyKwh: (dateKey) => resolveDailyKwh({

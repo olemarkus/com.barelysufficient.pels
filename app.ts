@@ -76,8 +76,9 @@ import {
 import type { HomeMembershipService } from './setup/homeMembership';
 import type { HomeRuntimeRegistry } from './setup/homeRuntime/homeRuntimeRegistry';
 import type { PowerTrackerState } from './lib/power/trackerTypes';
-import { AppPowerTracker } from './setup/appPowerTracker';
-import type { AppUserdataStores } from './setup/userdataStores';
+import { AppPowerTracker, createTrackerStoreForApp } from './setup/appPowerTracker';
+import type { TrackerStore } from './lib/power/trackerStore';
+import type { UserdataDatabase } from './lib/store/userdataDatabase';
 import { TimerRegistry } from './lib/utils/timerRegistry';
 import type { FlowReportedCapabilitiesByDevice } from './lib/device/transport/flowReportedCapabilities';
 import { withAppApi } from './setup/appRuntimeApi';
@@ -316,30 +317,34 @@ class PelsApp extends PelsAppBase implements AppContext {
   protected structuredLogger?: PinoLogger;
   public readonly timers = new TimerRegistry();
   /**
-   * The userdata database and its repositories: opened at the first boot
-   * step, closed last at teardown, and absent outside that window — a caller
-   * outside it gets an error, never a lazily opened file nothing would close.
+   * The userdata database and the tracker's repository on it: opened at the
+   * first boot step, closed last at teardown, and absent outside that window
+   * — a caller outside it gets an error, never a lazily opened file nothing
+   * would close. The handles live here because this is the composition root;
+   * each repository is built by its own domain's wiring, so no one file
+   * composes two domains to hand them out.
    */
-  private userdataStores?: AppUserdataStores;
+  private userdataDatabase?: UserdataDatabase;
+  private trackerStore?: TrackerStore;
   private openUserdata(): void {
-    this.userdataStores = this.openUserdataStores();
+    // The database first: the repository is built on the one this holds.
+    this.userdataDatabase = this.openUserdataDatabase();
+    this.trackerStore = createTrackerStoreForApp(this.ctx);
   }
-  private get openedUserdataStores(): AppUserdataStores {
-    if (this.userdataStores === undefined) throw new Error('the userdata database is not open');
-    return this.userdataStores;
+  private opened<T>(handle: T | undefined): T {
+    if (handle === undefined) throw new Error('the userdata database is not open');
+    return handle;
   }
-  public getTrackerStore(): AppUserdataStores['trackerStore'] {
-    return this.openedUserdataStores.trackerStore;
+  public getTrackerStore(): TrackerStore {
+    return this.opened(this.trackerStore);
   }
-  public getWeatherHistoryStore(): AppUserdataStores['weatherHistoryStore'] {
-    return this.openedUserdataStores.weatherHistoryStore;
-  }
-  public getUserdataDatabase(): AppUserdataStores['database'] {
-    return this.openedUserdataStores.database;
+  public getUserdataDatabase(): UserdataDatabase {
+    return this.opened(this.userdataDatabase);
   }
   private closeUserdataDatabase(): void {
-    this.userdataStores?.database.close();
-    this.userdataStores = undefined;
+    this.userdataDatabase?.close();
+    this.userdataDatabase = undefined;
+    this.trackerStore = undefined;
   }
   /**
    * The Main home's power tracker: the same classified persistence component

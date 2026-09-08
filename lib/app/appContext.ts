@@ -1,5 +1,4 @@
 import type { TrackerStore } from '../power/trackerStore';
-import type { WeatherHistoryStore } from '../weather/weatherHistoryStore';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import type {
   ObservedEvChargingStateRead,
@@ -111,8 +110,6 @@ export type AppContext = {
   hydratePowerTracker: () => void;
   /** The power tracker's rows in the userdata database; throws before the boot step that opens it. */
   getTrackerStore: () => TrackerStore;
-  /** The weather history's rows in the userdata database; throws before the boot step that opens it. */
-  getWeatherHistoryStore: () => WeatherHistoryStore;
   /**
    * The open userdata database, for a domain's wiring to build its repository
    * on (`setup/appInit/deferredRecorders.ts` is the pattern); throws before

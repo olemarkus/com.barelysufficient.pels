@@ -10,7 +10,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { openUserdataDatabase } from '../../lib/store/userdataDatabase';
-import { openUserdataStores } from '../../setup/userdataStores';
 
 let appInstances: MyApp[] = [];
 
@@ -66,8 +65,8 @@ export function createApp(options: CreateAppOptions = {}): MyApp {
   // The database is opened at the first boot step, after construction, so
   // this override lands before anything reaches the file the production path
   // would open.
-  app['openUserdataStores'] = () => openUserdataStores(
-    openUserdataDatabase(options.userdataDatabase ?? testUserdataDatabase()),
+  app['openUserdataDatabase'] = () => openUserdataDatabase(
+    options.userdataDatabase ?? testUserdataDatabase(),
   );
   if (!options.preserveStartupRestoreStabilization) {
     const originalInitPlanEngine = app['initPlanEngine'].bind(app);

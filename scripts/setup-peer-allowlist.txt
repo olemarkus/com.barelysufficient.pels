@@ -7,7 +7,7 @@
 # Regenerate with `node scripts/check-setup-boundaries.mjs --seed`, never by
 # hand. When the last line goes, DELETE THIS FILE.
 #
-# Seeded at 56 files.
+# Seeded at 55 files.
 
 setup/appDebugHelpers.ts 2  # device, plan
 setup/appDeviceControlFeedback.ts 2  # executor, plan
@@ -36,7 +36,7 @@ setup/appInit/wireDeviceTransport.ts 2  # device, observer
 setup/appInit/wireHomeRuntimeRegistry.ts 2  # device, home
 setup/appNativeWiring.ts 2  # device, plan
 setup/appPowerTracker.ts 3  # dailyBudget, device, power
-setup/appRuntimeApi.ts 6  # dailyBudget, device, observer, plan, power, weather
+setup/appRuntimeApi.ts 5  # dailyBudget, device, observer, plan, power
 setup/appServiceWiring.ts 5  # device, observer, plan, solar, weather
 setup/appSettingsHelpers.ts 4  # device, plan, power, price
 setup/appSnapshotHelpers.ts 3  # device, plan, power
@@ -64,4 +64,3 @@ setup/settingsUiApi.ts 4  # device, objectives, observer, power
 setup/settingsUiHomesApi.ts 2  # home, power
 setup/soleMeterAdoption.ts 2  # device, power
 setup/soleMeterAdoptionEligibility.ts 2  # home, power
-setup/userdataStores.ts 2  # power, weather

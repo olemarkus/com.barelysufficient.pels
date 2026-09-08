@@ -1,7 +1,5 @@
 import { emitPowerTrackerPersistedForApp } from './settingsUiAppRuntime';
-import { importLegacyPowerTrackers } from '../lib/power/trackerLegacySettings';
-import { importLegacyWeatherHistory } from '../lib/weather/weatherHistoryStore';
-import { openUserdataStores, type AppUserdataStores } from './userdataStores';
+import { openAppUserdataDatabase, type UserdataDatabase } from '../lib/store/userdataDatabase';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
@@ -319,11 +317,13 @@ abstract class AppRuntimeApi extends Base {
     this.powerTrackerHelpers.hydratePowerTracker();
   }
   /**
-   * The app's userdata stores, opened at its first boot step. The test
-   * harness overrides this to open one database per spec file.
+   * The app's userdata database, opened at its first boot step. The
+   * repositories on it are each built by their own domain's wiring; only the
+   * file is opened here. The test harness overrides this to open one database
+   * per spec file.
    */
-  protected openUserdataStores(): AppUserdataStores {
-    return openUserdataStores();
+  protected openUserdataDatabase(): UserdataDatabase {
+    return openAppUserdataDatabase();
   }
   public emitPowerTrackerPersisted(homeId: string): void {
     emitPowerTrackerPersistedForApp(this.homey, homeId, (message, error) => this.error(message, error));
@@ -338,9 +338,6 @@ abstract class AppRuntimeApi extends Base {
   protected runStartupSettingsMigrations(): void {
     migrateManagedDevices({ homey: this.homey });
     runBootMigrations({ homey: this.homey });
-    // The store opened at the first boot step; the trackers hydrate from it later.
-    importLegacyPowerTrackers(this.homey.settings, this.context.getTrackerStore());
-    importLegacyWeatherHistory(this.homey.settings, this.context.getWeatherHistoryStore());
   }
   public areFlowBackedCardsAvailable(): boolean { return this.flowBacked.areFlowBackedCardsAvailable(); }
   public loadCapacitySettings = (): void => {

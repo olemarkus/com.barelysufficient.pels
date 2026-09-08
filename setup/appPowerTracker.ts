@@ -5,6 +5,8 @@ import {
   type HomeTrackerPersistence,
   type HomeTrackerPersistenceDeps,
 } from '../lib/power/homeTrackerPersistence';
+import { createTrackerStore, type TrackerStore } from '../lib/power/trackerStore';
+import { importLegacyPowerTrackers } from '../lib/power/trackerLegacySettings';
 import { MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import {
   PowerCalibrationStore,
@@ -15,6 +17,7 @@ import { emitSettingsUiPowerUpdatedForApp } from './settingsUiAppRuntime';
 import { addPerfDuration } from '../lib/utils/perfCounters';
 import type { DailyBudgetService } from '../lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetUpdateStateOptions } from '../lib/dailyBudget/dailyBudgetTypes';
+import type { AppContext } from '../lib/app/appContext';
 import type { SettingsRepository } from './settingsRepository';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 
@@ -27,6 +30,24 @@ const POWER_CALIBRATION_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
  * would silently double the effective retry latency).
  */
 const POWER_CALIBRATION_PERSIST_GUARD_INTERVAL_MS = 65 * 1000;
+
+/**
+ * The power trackers' repository on the app's userdata database — the one
+ * store every home's tracker persists through — with the one-shot import of
+ * the legacy `power_tracker_state` blobs run before anything reads it.
+ *
+ * Built here, where the app's power tracking is wired, rather than in a file
+ * that opens the database and lists every domain's repository: a domain's
+ * wiring owns its own repository (`setup/appInit/planHistoryStore.ts` is the
+ * pattern), and a wiring file naming two peers is the cross-peer composition
+ * this layer's rules forbid. The composition root holds what comes back, and
+ * closes the database it was built on.
+ */
+export const createTrackerStoreForApp = (ctx: AppContext): TrackerStore => {
+  const store = createTrackerStore(ctx.getUserdataDatabase());
+  importLegacyPowerTrackers(ctx.homey.settings, store);
+  return store;
+};
 
 /**
  * Dependencies for {@link AppPowerTracker}. The Main home's tracker is a
