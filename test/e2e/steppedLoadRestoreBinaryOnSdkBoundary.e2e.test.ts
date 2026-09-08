@@ -18,7 +18,7 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import {

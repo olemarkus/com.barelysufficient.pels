@@ -280,8 +280,7 @@ describe('Device plan snapshot', () => {
 
     // First cycle: overshoot enters
     await app['powerSamplePipeline'].recordPowerSample(5000);
-    expect(app.planEngine.state.wasOvershoot).toBe(true);
-    expect(app.planEngine.state.overshootLogged).toBe(true);
+    expect(app.planEngine.state.overshoot.isActive()).toBe(true);
 
     // The shed-everything plan is unactionable, so subsequent rebuilds ride the
     // max-interval escape — simulate that interval having elapsed before each cycle.
@@ -292,13 +291,12 @@ describe('Device plan snapshot', () => {
     // Second cycle: still in overshoot, state remains stable (no double-log)
     openMaxIntervalEscape();
     await app['powerSamplePipeline'].recordPowerSample(5000);
-    expect(app.planEngine.state.wasOvershoot).toBe(true);
+    expect(app.planEngine.state.overshoot.isActive()).toBe(true);
 
     // Third cycle: power drops — overshoot clears
     openMaxIntervalEscape();
     await app['powerSamplePipeline'].recordPowerSample(0);
-    expect(app.planEngine.state.wasOvershoot).toBe(false);
-    expect(app.planEngine.state.overshootLogged).toBe(false);
+    expect(app.planEngine.state.overshoot.isActive()).toBe(false);
   });
 
   it('logs bounded overshoot-entry contributors with controlled and uncontrolled deltas', async () => {

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { buildEmptyCapacityStateSummary, buildNullCapacityStateSummary } from '../../lib/power/capacityStateSummary';
+import { OvershootIncident } from '../../lib/plan/overshootIncident';
 import { resolvePlanRebuildPosture } from '../../lib/plan/planRebuildPosture';
+
+/** A state whose overshoot incident is open. */
+const activeIncident = (): OvershootIncident => {
+  const incident = new OvershootIncident();
+  incident.enter(Date.now());
+  return incident;
+};
 
 // The one producer of what the throttle gates on. The shortfall half is pinned
 // on the single field it reads: the summary's blocker counters and in-flight
@@ -39,7 +47,7 @@ describe('resolvePlanRebuildPosture', () => {
     // the throttle's anti-storm gates on a plan that cannot change anything.
     const posture = resolvePlanRebuildPosture(
       summaryWith({ remainingActionableControlledLoad: false, remainingReducibleControlledLoad: false }),
-      { pendingSheds: new Set(), pendingRestores: new Set(), pendingTargetCommands: {}, pendingBinaryCommands: {}, wasOvershoot: true },
+      { pendingSheds: new Set(), pendingRestores: new Set(), pendingTargetCommands: {}, pendingBinaryCommands: {}, overshoot: activeIncident() },
     );
     expect(posture.unactionable).toBe(true);
     expect(posture.planConvergenceActive).toBe(false);

@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from './planEngineStateFixture';
 import {
   canRefreshPlanSnapshotFromLiveState,
   hasPlanExecutionDriftAgainstIntent,

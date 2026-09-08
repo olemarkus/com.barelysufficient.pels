@@ -7,7 +7,7 @@ import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/executor/commandRetrySchedule';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   createPendingBinaryCommandStore,
   syncPendingBinaryCommands,

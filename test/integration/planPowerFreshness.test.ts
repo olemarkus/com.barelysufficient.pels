@@ -7,7 +7,7 @@ import {
   POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
   POWER_SAMPLE_STALE_THRESHOLD_MS,
 } from '../../lib/power/sampleFreshness';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';

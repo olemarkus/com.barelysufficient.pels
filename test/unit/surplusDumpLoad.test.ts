@@ -12,10 +12,8 @@ import {
 } from '../../lib/plan/planSurplusAbsorb';
 import { resolveSurplusHold } from '../../lib/plan/shedding/surplusHold';
 import { normalizeShedReasons } from '../../lib/plan/planReasons';
-import {
-  createPlanEngineState,
-  type PlanEngineState,
-} from '../../lib/plan/planState';
+import { type PlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   SURPLUS_ABSORB_SETTLE_MS,
 } from '../../lib/plan/admission/surplusAbsorb';

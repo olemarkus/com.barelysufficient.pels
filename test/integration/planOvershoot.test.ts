@@ -3,8 +3,8 @@ import {
   SHED_GRACE_MAX_MS,
   SOFT_OVERSHOOT_PERSIST_MS,
 } from '../../lib/plan/planConstants';
-import { resolveShedGraceMs, resolveSoftOvershootDecision } from '../../lib/plan/planOvershoot';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { resolveShedGraceMs } from '../../lib/plan/planOvershoot';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 
 describe('resolveSoftOvershootDecision', () => {
   beforeEach(() => {
@@ -19,52 +19,26 @@ describe('resolveSoftOvershootDecision', () => {
   it('ignores rounding-level fluctuations around zero without latching overshoot', () => {
     const state = createPlanEngineState();
 
-    let decision = resolveSoftOvershootDecision({
-      headroomKw: -0.01,
-      hourRemainingKWh: 4.7,
-      restoreTransientPossible: false,
-      state,
-      nowTs: Date.now(),
-    });
+    let decision = state.overshoot.decideSoft(-0.01, 4.7, false, Date.now());
     expect(decision.actionable).toBe(false);
-    state.softOvershootPendingSinceMs = decision.pendingSinceMs;
 
     vi.advanceTimersByTime(5_000);
-    decision = resolveSoftOvershootDecision({
-      headroomKw: 0.002,
-      hourRemainingKWh: 4.7,
-      restoreTransientPossible: false,
-      state,
-      nowTs: Date.now(),
-    });
+    decision = state.overshoot.decideSoft(0.002, 4.7, false, Date.now());
     expect(decision.actionable).toBe(false);
     expect(decision.pendingSinceMs).toBeNull();
-    state.softOvershootPendingSinceMs = decision.pendingSinceMs;
 
     vi.advanceTimersByTime(5_000);
-    decision = resolveSoftOvershootDecision({
-      headroomKw: -0.008,
-      hourRemainingKWh: 4.7,
-      restoreTransientPossible: false,
-      state,
-      nowTs: Date.now(),
-    });
+    decision = state.overshoot.decideSoft(-0.008, 4.7, false, Date.now());
     expect(decision.actionable).toBe(false);
     expect(decision.pendingSinceMs).toBe(Date.now());
   });
 
   it('promotes a small deficit after the dwell time elapses', () => {
     const state = createPlanEngineState();
-    state.softOvershootPendingSinceMs = Date.now() - SOFT_OVERSHOOT_PERSIST_MS;
-    const pendingSinceMs = state.softOvershootPendingSinceMs;
+    const pendingSinceMs = Date.now() - SOFT_OVERSHOOT_PERSIST_MS;
+    state.overshoot['softPendingSinceMs'] = pendingSinceMs;
 
-    const decision = resolveSoftOvershootDecision({
-      headroomKw: -0.01,
-      hourRemainingKWh: 4.7,
-      restoreTransientPossible: false,
-      state,
-      nowTs: Date.now(),
-    });
+    const decision = state.overshoot.decideSoft(-0.01, 4.7, false, Date.now());
 
     expect(decision.actionable).toBe(true);
     expect(decision.pendingSinceMs).toBe(pendingSinceMs);
@@ -73,13 +47,7 @@ describe('resolveSoftOvershootDecision', () => {
   it('treats meaningful overshoot above the deadband as immediately actionable', () => {
     const state = createPlanEngineState();
 
-    const decision = resolveSoftOvershootDecision({
-      headroomKw: -0.2,
-      hourRemainingKWh: 4.7,
-      restoreTransientPossible: false,
-      state,
-      nowTs: Date.now(),
-    });
+    const decision = state.overshoot.decideSoft(-0.2, 4.7, false, Date.now());
 
     expect(decision.actionable).toBe(true);
     // No restore in flight, so nothing to wait for — acting is immediate.
@@ -93,13 +61,7 @@ describe('resolveSoftOvershootDecision', () => {
     it('records the overshoot immediately but defers acting on it', () => {
       const state = createPlanEngineState();
 
-      const decision = resolveSoftOvershootDecision({
-        headroomKw: -1.611,
-        hourRemainingKWh: 4.45,
-        restoreTransientPossible: true,
-        state,
-        nowTs: Date.now(),
-      });
+      const decision = state.overshoot.decideSoft(-1.611, 4.45, true, Date.now());
 
       // Attribution must not wait — the backoff ladder learns from this.
       expect(decision.actionable).toBe(true);
@@ -109,15 +71,9 @@ describe('resolveSoftOvershootDecision', () => {
 
     it('acts once the deficit has burned the energy we were willing to slip', () => {
       const state = createPlanEngineState();
-      state.softOvershootPendingSinceMs = Date.now() - SHED_GRACE_MAX_MS;
+      state.overshoot['softPendingSinceMs'] = Date.now() - SHED_GRACE_MAX_MS;
 
-      const decision = resolveSoftOvershootDecision({
-        headroomKw: -1.611,
-        hourRemainingKWh: 4.45,
-        restoreTransientPossible: true,
-        state,
-        nowTs: Date.now(),
-      });
+      const decision = state.overshoot.decideSoft(-1.611, 4.45, true, Date.now());
 
       expect(decision.shedActionable).toBe(true);
     });
@@ -125,13 +81,7 @@ describe('resolveSoftOvershootDecision', () => {
     it('never defers when the hour has no budget left to absorb the wait', () => {
       const state = createPlanEngineState();
 
-      const decision = resolveSoftOvershootDecision({
-        headroomKw: -1.611,
-        hourRemainingKWh: 0,
-        restoreTransientPossible: true,
-        state,
-        nowTs: Date.now(),
-      });
+      const decision = state.overshoot.decideSoft(-1.611, 0, true, Date.now());
 
       expect(decision.shedActionable).toBe(true);
     });
@@ -178,27 +128,13 @@ describe('resolveSoftOvershootDecision', () => {
   it('keeps a persisted tiny deficit latched across later cycles', () => {
     const state = createPlanEngineState();
     const initialPendingSinceMs = Date.now() - SOFT_OVERSHOOT_PERSIST_MS;
-    state.softOvershootPendingSinceMs = initialPendingSinceMs;
+    state.overshoot['softPendingSinceMs'] = initialPendingSinceMs;
 
-    let decision = resolveSoftOvershootDecision({
-      headroomKw: -0.01,
-      hourRemainingKWh: 4.7,
-      restoreTransientPossible: false,
-      state,
-      nowTs: Date.now(),
-    });
+    let decision = state.overshoot.decideSoft(-0.01, 4.7, false, Date.now());
     expect(decision.actionable).toBe(true);
     expect(decision.pendingSinceMs).toBe(initialPendingSinceMs);
-
-    state.softOvershootPendingSinceMs = decision.pendingSinceMs;
     vi.advanceTimersByTime(5_000);
-    decision = resolveSoftOvershootDecision({
-      headroomKw: -0.01,
-      hourRemainingKWh: 4.7,
-      restoreTransientPossible: false,
-      state,
-      nowTs: Date.now(),
-    });
+    decision = state.overshoot.decideSoft(-0.01, 4.7, false, Date.now());
 
     expect(decision.actionable).toBe(true);
     expect(decision.pendingSinceMs).toBe(initialPendingSinceMs);

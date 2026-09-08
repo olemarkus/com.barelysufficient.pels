@@ -5,7 +5,7 @@ import {
   type LifecycleFallbackObservedState,
   type LifecycleFallbackRequest,
 } from '../../lib/executor/lifecycleFallbackDispatcher';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { prunePendingTargetCommandsForPlan } from '../../lib/plan/planTargetControl';
 import { recordPendingTargetCommandAttempt } from '../../lib/executor/targetCommandRetry';
 import {

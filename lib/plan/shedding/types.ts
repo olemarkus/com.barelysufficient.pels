@@ -2,7 +2,7 @@ import type CapacityGuard from '../../power/capacityGuard';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanContext } from '../planContext';
-import type { PlanEngineState } from '../planState';
+import type { PlanEngineState, SheddingUpdates } from '../planState';
 import type { PlanInputDevice, ShedBehavior } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import type { ShedCandidateSkipSummary } from './candidateSkipLog';
@@ -28,17 +28,7 @@ export type SheddingPlan = {
   shedStepTargets: Map<string, string>;
   sheddingActive: boolean;
   guardInShortfall: boolean;
-  updates: {
-    lastInstabilityMs?: number;
-    lastRecoveryMs?: number;
-    lastShedPlanMeasurementTs?: number;
-    lastShedPlanPowerW?: number;
-    lastShedPlanShedIds?: Set<string>;
-    lastShedPlanAtMs?: number;
-    lastShedPlanNeededKw?: number;
-    lastOvershootEscalationMs?: number;
-    lastOvershootMitigationMs?: number;
-  };
+  updates: SheddingUpdates;
   overshootStats: OvershootStats | null;
 };
 

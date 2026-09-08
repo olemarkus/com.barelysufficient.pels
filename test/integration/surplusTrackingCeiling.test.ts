@@ -8,7 +8,8 @@
 import { describe, expect, it } from 'vitest';
 import { resolveSteppedKeepDesiredStepId } from '../../lib/plan/planSteppedLoad';
 import { resolveSurplusHold } from '../../lib/plan/shedding/surplusHold';
-import { createPlanEngineState, type SurplusTrackingDecision } from '../../lib/plan/planState';
+import { type SurplusTrackingDecision } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanInputDevice, steppedProfile } from '../utils/planTestUtils';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';

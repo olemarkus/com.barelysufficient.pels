@@ -1,7 +1,7 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HEADROOM_RESERVE_MAX_MS } from '../../lib/plan/planConstants';
 import {
   type BinaryControlDiscriminantProbe,

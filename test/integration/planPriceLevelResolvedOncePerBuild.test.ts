@@ -1,7 +1,7 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';

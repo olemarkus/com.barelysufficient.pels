@@ -1422,6 +1422,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Architecture and tooling debt
 
+- [ ] **P2 — "held off by the owner" is defined in the wiring layer.** `resolveExternalOffHoldActive`
+      and `isExternalOffHeldForDevice` (`setup/appInit/toPlanDevice.ts`) classify: no binary handle
+      ⇒ not held, `isHeld` AND still observed off, and a device with no snapshot falls back to the raw
+      hold. That is the one definition the planner and the executor read (`PlanEngineState.
+      isExternalOffHeld`, bound in `setup/appInit/createPlanEngine.ts`), and it lives above the
+      boundary in a file budgeted on `scripts/setup-peer-allowlist.txt`, next to the concept's owner
+      `lib/observer/externalOffHold.ts`. Change: move the resolution beside the hold it reads (the
+      policy answers "held and still off" itself given the observed device), and have the wiring pass
+      only the `(deviceId) => …` binding. Done when `toPlanDevice.ts` no longer reads
+      `externalOffHold` or `resolveCurrentOn` for this question and the peer allowlist entry for it
+      shrinks. Source: layering review of the overshoot-incident state layer, 2026-09-08.
+
 - [ ] **P2 — one plan build reads three clocks.** `PlanBuilder.buildPlanSnapshotWithTimings`
       stamps `nowTs` once (`lib/plan/planBuilder.ts`) and hands it to the overshoot tracker that
       writes `lastSetbackMs`; the restore pass mints its own in `buildRestoreTiming`

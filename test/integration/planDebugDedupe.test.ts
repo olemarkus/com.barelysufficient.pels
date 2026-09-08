@@ -1,5 +1,5 @@
 import { emitRestoreDebugEventOnChange } from '../../lib/plan/planDebugDedupe';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   buildComparableDeviceReason,
   PLAN_REASON_CODES,

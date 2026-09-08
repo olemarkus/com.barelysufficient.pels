@@ -4,7 +4,7 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildLiveStatePlan } from '../../lib/plan/planLiveStateMerge';
 import { isBinaryRestoreCandidate } from '../../lib/plan/restore/devices';
 import { buildSheddingPlan } from '../../lib/plan/shedding';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type {
   BinaryControlDiscriminantProbe,

@@ -14,7 +14,7 @@ import { buildSheddingPlan } from '../../lib/plan/shedding';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import { applyRestorePlan } from '../../lib/plan/restore';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import { steppedInputDevice, steppedPlanDevice } from '../utils/planTestUtils';

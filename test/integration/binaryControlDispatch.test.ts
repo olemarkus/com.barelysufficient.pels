@@ -10,7 +10,7 @@ import {
   syncPendingBinaryCommands,
 } from '../../lib/observer/pendingBinaryCommands';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/observer/controlCommandConfirmation';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';

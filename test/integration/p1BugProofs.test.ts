@@ -8,7 +8,7 @@ import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import { getHighestKnownPowerKw } from '../../lib/observer/observedPower';
 import { getOffDevices, getSteppedRestoreCandidates } from '../../lib/plan/restore/devices';
 import { estimateRestorePower } from '../../lib/plan/restore/accounting';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { updateGuardState } from '../../lib/plan/admission';

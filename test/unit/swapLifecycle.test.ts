@@ -11,7 +11,7 @@ import {
 import { isSwapTargetComplete } from '../../lib/plan/swap/completion';
 import { clearMissingSwapTarget } from '../../lib/plan/swap/lifecycle';
 import { SWAP_TIMEOUT_MS } from '../../lib/plan/planConstants';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   buildPlanDevice as baseBuildPlanDevice,

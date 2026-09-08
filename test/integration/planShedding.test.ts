@@ -7,7 +7,7 @@ import CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { MeasuredPower, PlanContext } from '../../lib/plan/planContext';
 import { SOFT_OVERSHOOT_PERSIST_MS } from '../../lib/plan/planConstants';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type {
   BinaryControlDiscriminantProbe, PlanInputDevice, TemperatureDiscriminantProbe,
@@ -15,7 +15,6 @@ import type {
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildSheddingPlan } from '../../lib/plan/shedding';
 import type { SheddingDeps } from '../../lib/plan/shedding/types';
-import { resolveSoftOvershootDecision } from '../../lib/plan/planOvershoot';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import {
   fixtureCurrentDrawKw,
@@ -109,14 +108,7 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const overshootDecision = resolveSoftOvershootDecision({
-      headroomKw: power.headroomKw,
-      hourRemainingKWh: 4.7,
-      restoreTransientPossible: false,
-      state,
-      nowTs: Date.now(),
-    });
-    state.softOvershootPendingSinceMs = overshootDecision.pendingSinceMs;
+    const overshootDecision = state.overshoot.decideSoft(power.headroomKw, 4.7, false, Date.now());
 
     const result = await buildSheddingPlan(
       context,
@@ -195,7 +187,7 @@ describe('buildSheddingPlan', () => {
 
   it('sheds after a tiny negative headroom persists past the soft overshoot dwell time', async () => {
     const state = createPlanEngineState();
-    state.softOvershootPendingSinceMs = Date.now() - SOFT_OVERSHOOT_PERSIST_MS;
+    state.overshoot['softPendingSinceMs'] = Date.now() - SOFT_OVERSHOOT_PERSIST_MS;
     const capacityGuard = {
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
@@ -219,13 +211,7 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const overshootDecision = resolveSoftOvershootDecision({
-      headroomKw: power.headroomKw,
-      hourRemainingKWh: 4.7,
-      restoreTransientPossible: false,
-      state,
-      nowTs: Date.now(),
-    });
+    const overshootDecision = state.overshoot.decideSoft(power.headroomKw, 4.7, false, Date.now());
 
     const result = await buildSheddingPlan(
       context,
@@ -265,13 +251,7 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const overshootDecision = resolveSoftOvershootDecision({
-      headroomKw: power.headroomKw,
-      hourRemainingKWh: 4.7,
-      restoreTransientPossible: false,
-      state,
-      nowTs: Date.now(),
-    });
+    const overshootDecision = state.overshoot.decideSoft(power.headroomKw, 4.7, false, Date.now());
 
     const result = await buildSheddingPlan(
       context,
@@ -3288,7 +3268,7 @@ describe('buildSheddingPlan', () => {
     expect(result1.shedSet.has('binary-dev')).toBe(false);
 
     // Apply state updates from cycle 1 (lastShedPlanMeasurementTs, lastInstabilityMs).
-    Object.assign(state, result1.updates);
+    state.applySheddingUpdates(result1.updates);
 
     // Cycle 2: stepped-a now at low, stepped-b still at max (preemptive). Its
     // `max -> low` frees 0.9 kW, which covers the 0.8 kW still needed, so again
@@ -3314,7 +3294,7 @@ describe('buildSheddingPlan', () => {
     expect(result2.shedSet.has('stepped-b')).toBe(true);
     expect(result2.shedSet.has('binary-dev')).toBe(false);
 
-    Object.assign(state, result2.updates);
+    state.applySheddingUpdates(result2.updates);
 
     // Cycle 3: both stepped devices at lowest active step. No more preemptive
     // candidates, so normal priority ordering resumes and binary device sheds.
@@ -3342,7 +3322,7 @@ describe('buildSheddingPlan', () => {
 
   it('allows one additional shedding pass after sustained overshoot even without a new measurement', async () => {
     const state = createPlanEngineState();
-    state.overshootStartedMs = Date.now() - 31_000;
+    state.overshoot.enter(Date.now() - 31_000);
     state.lastShedPlanMeasurementTs = 500;
 
     const capacityGuard = {
@@ -3382,12 +3362,12 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('dev-escalate')).toBe(true);
-    expect(result.updates.lastOvershootEscalationMs).toBe(Date.now());
+    expect(result.updates.overshootEscalatedAtMs).toBe(Date.now());
   });
 
   it('does not same-sample escalate again immediately after a fresh-measurement shed', async () => {
     const state = createPlanEngineState();
-    state.overshootStartedMs = Date.now() - 31_000;
+    state.overshoot.enter(Date.now() - 31_000);
 
     const capacityGuard = {
       checkShortfall: vi.fn().mockResolvedValue(undefined),
@@ -3434,10 +3414,10 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(freshResult.shedSet.has('dev-fresh')).toBe(true);
-    expect(freshResult.updates.lastOvershootMitigationMs).toBe(Date.now());
-    expect(freshResult.updates.lastOvershootEscalationMs).toBeUndefined();
+    expect(freshResult.updates.overshootMitigatedAtMs).toBe(Date.now());
+    expect(freshResult.updates.overshootEscalatedAtMs).toBeUndefined();
 
-    Object.assign(state, freshResult.updates);
+    state.applySheddingUpdates(freshResult.updates);
 
     vi.setSystemTime(new Date(Date.now() + 5_000));
 
@@ -3455,7 +3435,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(sameSampleResult.shedSet.size).toBe(0);
-    expect(sameSampleResult.updates.lastOvershootEscalationMs).toBeUndefined();
+    expect(sameSampleResult.updates.overshootEscalatedAtMs).toBeUndefined();
     expect(sameSampleResult.overshootStats).toEqual({
       needed: 0.8,
       eligibleCandidateCount: 1,
@@ -3543,7 +3523,7 @@ describe('buildSheddingPlan', () => {
       deps: Omit<SheddingDeps, 'powerTracker' | 'pendingBinaryCommandStore'>,
     ) => {
       const state = createPlanEngineState();
-      state.overshootStartedMs = Date.now();
+      state.overshoot.enter(Date.now());
       const result = await buildSheddingPlan(
         ...incidentContext({ devices: incidentDevices(), total: 4.351 }),
         state,
@@ -3558,7 +3538,7 @@ describe('buildSheddingPlan', () => {
       expect([...result.shedSet]).toEqual(['vvb']);
       // The pass latches its own selection alongside the reading it acted on.
       expect([...(result.updates.lastShedPlanShedIds ?? [])]).toEqual(['vvb']);
-      Object.assign(state, result.updates);
+      state.applySheddingUpdates(result.updates);
       return state;
     };
 
@@ -3687,7 +3667,7 @@ describe('buildSheddingPlan', () => {
           },
         );
         expect(heldResult.shedSet.size).toBe(0);
-        Object.assign(state, heldResult.updates);
+        state.applySheddingUpdates(heldResult.updates);
       };
       await pollWithUnchangedReading(10_000, 2_000);
       await pollWithUnchangedReading(20_000, 3_000);
@@ -3715,7 +3695,7 @@ describe('buildSheddingPlan', () => {
 
   it('does not escalate same-sample overshoot before the escalation interval elapses', async () => {
     const state = createPlanEngineState();
-    state.overshootStartedMs = Date.now() - 10_000;
+    state.overshoot.enter(Date.now() - 10_000);
     state.lastShedPlanMeasurementTs = 500;
 
     const debugStructured = vi.fn();
@@ -3755,7 +3735,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.size).toBe(0);
-    expect(result.updates.lastOvershootEscalationMs).toBeUndefined();
+    expect(result.updates.overshootEscalatedAtMs).toBeUndefined();
     expect(result.overshootStats).toEqual({
       needed: 0.8,
       eligibleCandidateCount: 1,
@@ -4351,7 +4331,7 @@ describe('buildSheddingPlan', () => {
 
   it('emits a bounded blocker event when sustained overshoot escalation has no candidates left', async () => {
     const state = createPlanEngineState();
-    state.overshootStartedMs = Date.now() - 31_000;
+    state.overshoot.enter(Date.now() - 31_000);
     state.lastShedPlanMeasurementTs = 500;
 
     const structuredLog = {
@@ -4399,7 +4379,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.size).toBe(0);
-    expect(result.updates.lastOvershootEscalationMs).toBe(Date.now());
+    expect(result.updates.overshootEscalatedAtMs).toBe(Date.now());
     expect(structuredLog.info).toHaveBeenCalledWith({
       event: 'capacity_overshoot_escalation_blocked',
       incidentId: 'inc-77',
@@ -4412,7 +4392,7 @@ describe('buildSheddingPlan', () => {
 
   it('does not emit an escalation blocker event when there are no controllable devices at all', async () => {
     const state = createPlanEngineState();
-    state.overshootStartedMs = Date.now() - 31_000;
+    state.overshoot.enter(Date.now() - 31_000);
     state.lastShedPlanMeasurementTs = 500;
 
     const structuredLog = {
@@ -4456,13 +4436,13 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.size).toBe(0);
-    expect(result.updates.lastOvershootEscalationMs).toBe(Date.now());
+    expect(result.updates.overshootEscalatedAtMs).toBe(Date.now());
     expect(structuredLog.info).not.toHaveBeenCalled();
   });
 
   it('does not escalate same-sample daily-budget shedding after the overshoot interval', async () => {
     const state = createPlanEngineState();
-    state.overshootStartedMs = Date.now() - 31_000;
+    state.overshoot.enter(Date.now() - 31_000);
     state.lastShedPlanMeasurementTs = 500;
 
     const debugStructured = vi.fn();
@@ -4502,13 +4482,13 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.size).toBe(0);
-    expect(result.updates.lastOvershootEscalationMs).toBeUndefined();
+    expect(result.updates.overshootEscalatedAtMs).toBeUndefined();
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
 
   it('does escalate same-sample shedding after the interval when capacity is breached under a tighter daily limit', async () => {
     const state = createPlanEngineState();
-    state.overshootStartedMs = Date.now() - 31_000;
+    state.overshoot.enter(Date.now() - 31_000);
     state.lastShedPlanMeasurementTs = 500;
 
     const debugStructured = vi.fn();
@@ -4548,7 +4528,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('dev-cap')).toBe(true);
-    expect(result.updates.lastOvershootEscalationMs).toBe(Date.now());
+    expect(result.updates.overshootEscalatedAtMs).toBe(Date.now());
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_escalating_unchanged_measurement' }));
   });
 

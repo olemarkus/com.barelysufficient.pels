@@ -1,4 +1,4 @@
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { isPlanActivelyConverging } from '../../lib/plan/planStateHelpers';
 
 describe('isPlanActivelyConverging', () => {
@@ -18,7 +18,7 @@ describe('isPlanActivelyConverging', () => {
 
   it('returns true for active overshoot', () => {
     const state = createPlanEngineState();
-    state.wasOvershoot = true;
+    state.overshoot.enter(Date.now());
 
     expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(true);
   });
@@ -28,7 +28,7 @@ describe('isPlanActivelyConverging', () => {
   // rebuilt the plan on every power sample until the cpuwarn watchdog killed the app.
   it('returns false for active overshoot when the last plan proved nothing is actionable', () => {
     const state = createPlanEngineState();
-    state.wasOvershoot = true;
+    state.overshoot.enter(Date.now());
 
     expect(isPlanActivelyConverging(state, { unactionable: true })).toBe(false);
   });

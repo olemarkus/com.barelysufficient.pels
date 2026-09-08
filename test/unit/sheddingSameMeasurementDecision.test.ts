@@ -1,4 +1,4 @@
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { resolveSameMeasurementSheddingDecision } from '../../lib/plan/shedding/overshoot';
 
 const NOW = 1_000_000;
@@ -14,7 +14,7 @@ const shedState = (overrides: {
   lastShedPlanPowerW?: number | null;
   lastShedPlanAtMs?: number | null;
   lastShedPlanNeededKw?: number | null;
-  lastOvershootMitigationMs?: number | null;
+  overshootMitigatedAtMs?: number | null;
   overshootStartedMs?: number | null;
 } = {}) => {
   const state = createPlanEngineState(NOW);
@@ -30,12 +30,14 @@ const shedState = (overrides: {
   state.lastShedPlanNeededKw = overrides.lastShedPlanNeededKw === undefined
     ? NEEDED_KW
     : overrides.lastShedPlanNeededKw;
-  state.lastOvershootMitigationMs = overrides.lastOvershootMitigationMs === undefined
+  const startedMs = overrides.overshootStartedMs === undefined ? NOW - 120_000 : overrides.overshootStartedMs;
+  const mitigatedAtMs = overrides.overshootMitigatedAtMs === undefined
     ? NOW - 10_000
-    : overrides.lastOvershootMitigationMs;
-  state.overshootStartedMs = overrides.overshootStartedMs === undefined
-    ? NOW - 120_000
-    : overrides.overshootStartedMs;
+    : overrides.overshootMitigatedAtMs;
+  // Entering resets the mitigation clock, so the incident opens first and is
+  // then stamped; a null start is an incident that never opened.
+  if (startedMs !== null) state.overshoot.enter(startedMs);
+  if (mitigatedAtMs !== null) state.overshoot.noteMitigation(mitigatedAtMs);
   return state;
 };
 
@@ -190,7 +192,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
   describe('same-sample behaviour is unchanged', () => {
     it('skips a re-shed on the very sample the last shed was planned from', () => {
       const decision = resolveSameMeasurementSheddingDecision(
-      shedState({ lastOvershootMitigationMs: NOW - 1_000 }),
+      shedState({ overshootMitigatedAtMs: NOW - 1_000 }),
       SAMPLE_TS,
       READING_W,
       NEEDED_KW,
@@ -207,7 +209,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
 
     it('escalates on the same sample once the escalation interval has passed', () => {
       const decision = resolveSameMeasurementSheddingDecision(
-      shedState({ lastOvershootMitigationMs: NOW - 30_000 }),
+      shedState({ overshootMitigatedAtMs: NOW - 30_000 }),
       SAMPLE_TS,
       READING_W,
       NEEDED_KW,
@@ -224,7 +226,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
 
     it('never escalates the same sample when escalation is not allowed', () => {
       const decision = resolveSameMeasurementSheddingDecision(
-      shedState({ lastOvershootMitigationMs: NOW - 30_000 }),
+      shedState({ overshootMitigatedAtMs: NOW - 30_000 }),
       SAMPLE_TS,
       READING_W,
       NEEDED_KW,

@@ -1,7 +1,7 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';

@@ -2,7 +2,7 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import type { DevicePlan, PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';

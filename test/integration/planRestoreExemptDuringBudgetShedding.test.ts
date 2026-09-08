@@ -19,7 +19,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { applyRestorePlan } from '../../lib/plan/restore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildPlanDevice, steppedPlanDevice, withFixtureResidualKw } from '../utils/planTestUtils';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';

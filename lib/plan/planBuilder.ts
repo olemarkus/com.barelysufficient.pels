@@ -54,7 +54,7 @@ import {
   ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
   recordCleanWholeHomeSample,
 } from './admission';
-import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
+import type { SoftOvershootDecision } from './planOvershoot';
 import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta } from './planBuilderMeta';
 import { attachDeferredReleaseIntents } from './planBuilderDecoration';
@@ -394,17 +394,15 @@ export class PlanBuilder {
     power: MeasuredPower,
     nowTs: number,
   ): Promise<{ sheddingPlan: SheddingPlan; overshootDecision: SoftOvershootDecision }> {
-    const overshootDecision = resolveSoftOvershootDecision({
-      headroomKw: power.headroomKw,
+    const overshootDecision = this.state.overshoot.decideSoft(
+      power.headroomKw,
       // Stamped by `stampCapacityPace` in `resolvePlanLimits`, from the same
       // hourly budget the soft limit itself is paced against.
-      hourRemainingKWh: this.state.hourlyRemainingKWh,
+      this.state.hourlyRemainingKWh,
       // Only price a wait when a restore PELS issued is still settling.
-      restoreTransientPossible: this.hasOpenActivationAttempt(nowTs),
-      state: this.state,
+      this.hasOpenActivationAttempt(nowTs),
       nowTs,
-    });
-    this.state.softOvershootPendingSinceMs = overshootDecision.pendingSinceMs;
+    );
     // A clean whole-home sample: the house is under its pace, and the hour is
     // not spent (an exhausted hour admits nothing, however the draw reads).
     if (power.headroomKw >= 0 && !this.state.hourlyBudgetExhausted) {
@@ -480,33 +478,7 @@ export class PlanBuilder {
   }
 
   private applySheddingUpdates(sheddingPlan: SheddingPlan): void {
-    if (sheddingPlan.updates.lastInstabilityMs !== undefined) {
-      this.state.lastInstabilityMs = sheddingPlan.updates.lastInstabilityMs;
-    }
-    if (sheddingPlan.updates.lastRecoveryMs !== undefined) {
-      this.state.lastRecoveryMs = sheddingPlan.updates.lastRecoveryMs;
-    }
-    if (sheddingPlan.updates.lastShedPlanMeasurementTs !== undefined) {
-      this.state.lastShedPlanMeasurementTs = sheddingPlan.updates.lastShedPlanMeasurementTs;
-    }
-    if (sheddingPlan.updates.lastShedPlanPowerW !== undefined) {
-      this.state.lastShedPlanPowerW = sheddingPlan.updates.lastShedPlanPowerW;
-    }
-    if (sheddingPlan.updates.lastShedPlanShedIds !== undefined) {
-      this.state.lastShedPlanShedIds = sheddingPlan.updates.lastShedPlanShedIds;
-    }
-    if (sheddingPlan.updates.lastShedPlanAtMs !== undefined) {
-      this.state.lastShedPlanAtMs = sheddingPlan.updates.lastShedPlanAtMs;
-    }
-    if (sheddingPlan.updates.lastShedPlanNeededKw !== undefined) {
-      this.state.lastShedPlanNeededKw = sheddingPlan.updates.lastShedPlanNeededKw;
-    }
-    if (sheddingPlan.updates.lastOvershootEscalationMs !== undefined) {
-      this.state.lastOvershootEscalationMs = sheddingPlan.updates.lastOvershootEscalationMs;
-    }
-    if (sheddingPlan.updates.lastOvershootMitigationMs !== undefined) {
-      this.state.lastOvershootMitigationMs = sheddingPlan.updates.lastOvershootMitigationMs;
-    }
+    this.state.applySheddingUpdates(sheddingPlan.updates);
     if (sheddingPlan.guardInShortfall !== this.state.inShortfall) {
       // Commit the durable signal before advancing the shared planner state.
       // If settings throws, the next build must still observe the transition

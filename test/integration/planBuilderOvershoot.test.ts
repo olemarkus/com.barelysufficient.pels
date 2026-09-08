@@ -4,7 +4,7 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
@@ -270,76 +270,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
     }
   });
 
-  it('reports attribution_inputs_incomplete on a fresh sample after a stale-hold previous (previous total null, baseline exists)', async () => {
-    let lastPowerW = 0;
-    vi.useFakeTimers();
-    try {
-      const state = createPlanEngineState();
-      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
-      vi.setSystemTime(now);
-      // Stamp a build timestamp with no total, so there is no previous total to
-      // diff this sample against. `rememberPlanSnapshot` writes both fields
-      // together, so this pair is constructed rather than reachable — the point is
-      // to exercise the undiffable-previous-total branch in isolation, not to
-      // depict a real first build (which starts with BOTH fields null).
-      state.lastPlanBuiltAtMs = now - 30_000;
-      // PELS has been up long enough to have watched the meter go silent: the
-      // producer will not escalate to fail-closed inside its startup grace,
-      // because a restart reloads a timestamp that is already old.
-      state.appStartedAtMs = now - (11 * 60_000);
-      state.lastPlanTotalKw = null;
-
-      const structuredLog = { info: vi.fn() };
-      const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
-
-      const builder = new PlanBuilder({
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
-        capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getPriceOptimizationSettings: () => ({}),
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        // A sample this cycle, so the current total IS a finite number — only the
-        // PREVIOUS total is missing, which is what must drive attribution_inputs_incomplete.
-        getPowerTracker: () => ({ lastTimestamp: now , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
-        getDynamicSoftLimitOverride: () => 0.7,
-        getShedBehavior: () => ({ action: 'turn_off' }),
-        structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        logDebug: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
-      }, state);
-
-      // A fresh finite total enters overshoot. Because the previous total is null, the
-      // device delta cannot be computed (totalDeltaKw === null) even though THIS sample
-      // is perfectly readable — a true cold start would have NO baseline at all.
-      lastPowerW = (0.8) * 1000;
-      await builder.buildDevicePlanSnapshot([
-        buildDevice({
-          id: 'some-device',
-          name: 'Some Device',
-          currentDrawKw: 0.8,
-        }),
-      ]);
-
-      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
-        event: 'overshoot_entered',
-        overshootTotalDeltaKw: null,
-        overshootAttributionReason: 'attribution_inputs_incomplete',
-        overshootTopControlledContributors: [],
-        overshootTopUncontrolledContributors: [],
-      }));
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it('logs overshoot as exhausted when all shed candidates are already at minimum', async () => {
     let lastPowerW = 0;
     const state = createPlanEngineState();
@@ -464,9 +394,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
   it('clamps overshoot duration to zero when the start timestamp is in the future', async () => {
     let lastPowerW = 0;
     const state = createPlanEngineState();
-    state.wasOvershoot = true;
-    state.overshootLogged = true;
-    state.overshootStartedMs = Date.now() + 5_000;
+    state.overshoot.enter(Date.now() + 5_000);
 
     const structuredLog = { info: vi.fn() };
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });

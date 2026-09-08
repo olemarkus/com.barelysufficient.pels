@@ -1,8 +1,8 @@
 import type { PlanEngineState } from './planState';
+import type { OvershootIncidentRead } from './overshootIncident';
 
-export type PlanConvergenceState = Pick<
+export type PlanConvergenceState = { overshoot: OvershootIncidentRead } & Pick<
   PlanEngineState,
-  | 'wasOvershoot'
   | 'pendingSheds'
   | 'pendingRestores'
   | 'pendingTargetCommands'
@@ -42,5 +42,5 @@ export function isPlanActivelyConverging(
 ): boolean {
   if (!planState) return false;
   if (hasPendingPlanWork(planState)) return true;
-  return planState.wasOvershoot && !options.unactionable;
+  return planState.overshoot.isActive() && !options.unactionable;
 }

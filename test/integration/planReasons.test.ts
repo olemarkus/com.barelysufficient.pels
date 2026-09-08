@@ -8,7 +8,7 @@ import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedge
 import { buildRestoreHeadroomReason } from '../../lib/plan/planReasonStrings';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';

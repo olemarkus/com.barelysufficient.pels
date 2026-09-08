@@ -189,7 +189,7 @@ export class SilentMeterPlanBuilder {
     if (selection.shedSet.size > 0) {
       this.state.sheddingActive = true;
       this.state.lastInstabilityMs = nowTs;
-      this.state.lastOvershootMitigationMs = nowTs;
+      this.state.overshoot.noteMitigation(nowTs);
     }
     return {
       ...selection,

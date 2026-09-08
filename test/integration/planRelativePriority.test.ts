@@ -2,7 +2,7 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { buildIdentityDecorationBundle } from '../../lib/plan/planBuilderDecoration';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';

@@ -30,7 +30,7 @@ import type { PlanExecutorTargetContext } from '../../lib/executor/targetExecuto
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   createPendingBinaryCommandStore,
   type PendingBinaryCommandStore,

@@ -503,7 +503,7 @@ export class PlanExecutor {
             : { kind: 'none' },
         };
       },
-      isExternalOffHeld: (deviceId) => this.state.isExternalOffHeld?.(deviceId) === true,
+      isExternalOffHeld: (deviceId) => this.state.isExternalOffHeld(deviceId),
     };
   }
 

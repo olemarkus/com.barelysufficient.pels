@@ -4,7 +4,6 @@ import {
   SOFT_OVERSHOOT_DEADBAND_KW,
   SOFT_OVERSHOOT_PERSIST_MS,
 } from './planConstants';
-import type { PlanEngineState } from './planState';
 
 const MS_PER_HOUR = 60 * 60 * 1000;
 
@@ -67,31 +66,31 @@ export function resolveShedGraceMs(params: {
   return Math.min(SHED_GRACE_MAX_MS, (tolerableKWh / deficitKw) * MS_PER_HOUR);
 }
 
-export function resolveSoftOvershootDecision(params: {
-  headroomKw: number;
-  hourRemainingKWh: number;
-  /**
-   * True only when this deficit is plausibly a transient PELS itself caused —
-   * an activation attempt is open, meaning a device was restored moments ago and
-   * has not settled. The grace is deliberately scoped to that case.
-   *
-   * It must NOT widen to every deficit: a sustained overshoot with no pending
-   * activation is simply real and should be acted on at once. (The silent-meter
-   * pass never prices a wait — it takes its shed directive without this decision.)
-   */
-  restoreTransientPossible: boolean;
-  state: PlanEngineState;
-  nowTs: number;
-}): SoftOvershootDecision {
-  const {
-    headroomKw, hourRemainingKWh, restoreTransientPossible, state, nowTs,
-  } = params;
+/**
+ * `restoreTransientPossible` is true only when this deficit is plausibly a
+ * transient PELS itself caused — an activation attempt is open, meaning a
+ * device was restored moments ago and has not settled. The grace is
+ * deliberately scoped to that case. It must NOT widen to every deficit: a
+ * sustained overshoot with no pending activation is simply real and should be
+ * acted on at once. (The silent-meter pass never prices a wait — it takes its
+ * shed directive without this decision.)
+ *
+ * `pendingSinceMs` is the deficit clock the previous decision answered, carried
+ * by `OvershootIncident`; null when the last build was under.
+ */
+export function resolveSoftOvershootDecision(
+  headroomKw: number,
+  hourRemainingKWh: number,
+  restoreTransientPossible: boolean,
+  previousPendingSinceMs: number | null,
+  nowTs: number,
+): SoftOvershootDecision {
   if (headroomKw >= 0) {
     return { actionable: false, shedActionable: false, pendingSinceMs: null };
   }
 
   const deficitKw = -headroomKw;
-  const pendingSinceMs = state.softOvershootPendingSinceMs ?? nowTs;
+  const pendingSinceMs = previousPendingSinceMs ?? nowTs;
   const elapsedMs = nowTs - pendingSinceMs;
 
   // A rounding-scale deficit is noise until it proves otherwise — unchanged.

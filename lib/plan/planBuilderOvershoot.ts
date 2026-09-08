@@ -3,14 +3,14 @@
  * snapshot the builder diffs against, sliced out of `planBuilder.ts` to keep
  * that entry point under the line budget.
  *
- * `OvershootTracker` owns the overshoot path: it holds the shared
- * `PlanEngineState` and the log/diagnostics/pending-command seams as fields, so
- * the state mutations stay on `this.state` exactly as they did when these were
- * `PlanBuilder` methods. Behaviour is byte-for-byte unchanged: the overshoot
- * entered/cleared/attributed logs, the attribution-reason classification, the
- * tracked-device snapshot, and the `PlanEngineState` mutations (overshoot
- * clocks, `lastPlan*` snapshot, activation-setback penalties) are identical.
- * Pure helpers that read no shared state stay free functions below.
+ * `OvershootTracker` owns the overshoot path: it opens and closes the
+ * incident on `PlanEngineState.overshoot` from each build's soft-overshoot
+ * verdict, attributes an entry to the restore that tipped it, and keeps the
+ * previous build's plan snapshot — the baseline that attribution diffs the
+ * next entry against — as its own memory, since nothing else reads it. The
+ * log/diagnostics/pending-command seams are read live off the shared deps
+ * object every cycle (never snapshotted at construction). Pure helpers that
+ * read no shared state stay free functions below.
  *
  * `lib/plan` is hot-path: no spread/Array.from in loops, no Array#forEach.
  */
@@ -49,7 +49,22 @@ export type OvershootTrackerDeps = {
   pendingBinaryCommandStore: PendingBinaryCommandStore;
 };
 
+/** The previous build, as the next overshoot entry diffs against it. */
+type LastPlanSnapshot = {
+  /**
+   * The reading's total: the baseline half of a later cycle's overshoot delta.
+   * Every cycle that reaches the tracker is measured (the silent-meter pass
+   * never runs it), so the baseline is always a measured figure.
+   */
+  totalKw: number;
+  builtAtMs: number;
+  devicesById: Record<string, OvershootTrackedPlanDevice>;
+};
+
 export class OvershootTracker {
+  /** Null until the first build this tracker has seen: a true cold start. */
+  private lastPlan: LastPlanSnapshot | null = null;
+
   constructor(
     private readonly state: PlanEngineState,
     private readonly deps: OvershootTrackerDeps,
@@ -80,7 +95,8 @@ export class OvershootTracker {
       nowTs,
     } = params;
     const overshootActive = overshootDecision.actionable;
-    const prevOvershoot = this.state.wasOvershoot;
+    const incident = this.state.overshoot;
+    const prevOvershoot = incident.isActive();
     const trackedPlanDevicesById = trackPlanDevicesForOvershoot(
       planDevices,
       this.state,
@@ -91,10 +107,7 @@ export class OvershootTracker {
     const lastPowerUpdateMs = reading.lastPowerUpdateMs;
     const overshootTimingFields = this.buildOvershootTimingFields(nowTs, lastPowerUpdateMs);
     if (overshootActive && !prevOvershoot) {
-      this.state.overshootLogged = true;
-      this.state.overshootStartedMs = nowTs;
-      this.state.lastOvershootEscalationMs = null;
-      this.state.lastOvershootMitigationMs = null;
+      incident.enter(nowTs);
       const overshootDiagnostics = buildOvershootEntryDiagnostics({
         // From the CONTEXT, not the display bundle. This delta gates
         // `attributeOvershootToRecentRestores`, which calls
@@ -106,9 +119,7 @@ export class OvershootTracker {
         drawKw: power.drawKw,
         nowTs,
         lastPowerUpdateMs,
-        previousTotalKw: this.state.lastPlanTotalKw,
-        previousBuiltAtMs: this.state.lastPlanBuiltAtMs,
-        previousDevicesById: this.state.lastPlanDevicesById,
+        previous: this.lastPlan,
         currentDevicesById: trackedPlanDevicesById,
       });
       this.deps.structuredLog?.info({
@@ -136,14 +147,8 @@ export class OvershootTracker {
         ...overshootDiagnostics.logFields,
       });
       this.attributeOvershootToRecentRestores(deviceNameById, nowTs, overshootDiagnostics);
-    } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
-      this.state.overshootLogged = false;
-      const durationMs = this.state.overshootStartedMs !== null
-        ? Math.max(0, nowTs - this.state.overshootStartedMs)
-        : 0;
-      this.state.overshootStartedMs = null;
-      this.state.lastOvershootEscalationMs = null;
-      this.state.lastOvershootMitigationMs = null;
+    } else if (!overshootActive && prevOvershoot) {
+      const durationMs = incident.clear(nowTs);
       // The unchanged-reading hold's latch belongs to the incident that just
       // ended. Cleared HERE and not on entry: entry runs after this build's
       // shedding pass, so clearing it there would strip the anchor off the very
@@ -156,26 +161,8 @@ export class OvershootTracker {
         ...overshootTimingFields,
         ...buildPlanContextHeadroomLogFields(context, power, reading, capacityLimitKw, shortfallBudgetThresholdKw),
       });
-    } else if (overshootActive && this.state.overshootStartedMs === null) {
-      this.state.overshootStartedMs = nowTs;
     }
-    this.rememberPlanSnapshot(reading, trackedPlanDevicesById, nowTs);
-    this.state.wasOvershoot = overshootActive;
-  }
-
-  private rememberPlanSnapshot(
-    /**
-     * The reading's total: the baseline half of a later cycle's overshoot
-     * delta. Every cycle that reaches this tracker is measured (the silent-meter
-     * pass never runs it), so the baseline is always a measured figure.
-     */
-    reading: PowerCycleDisplay,
-    trackedPlanDevicesById: Record<string, OvershootTrackedPlanDevice>,
-    nowTs: number,
-  ): void {
-    this.state.lastPlanTotalKw = reading.totalKw;
-    this.state.lastPlanBuiltAtMs = nowTs;
-    this.state.lastPlanDevicesById = trackedPlanDevicesById;
+    this.lastPlan = { totalKw: reading.totalKw, builtAtMs: nowTs, devicesById: trackedPlanDevicesById };
   }
 
   private attributeOvershootToRecentRestores(
@@ -237,9 +224,7 @@ export class OvershootTracker {
     lastPowerUpdateAgeMs: number;
   } {
     return {
-      lastPlanBuildAgeMs: typeof this.state.lastPlanBuiltAtMs === 'number'
-        ? Math.max(0, nowTs - this.state.lastPlanBuiltAtMs)
-        : null,
+      lastPlanBuildAgeMs: this.lastPlan === null ? null : Math.max(0, nowTs - this.lastPlan.builtAtMs),
       lastPowerUpdateAgeMs: Math.max(0, nowTs - lastPowerUpdateMs),
     };
   }
@@ -270,11 +255,10 @@ type ResolvedPowerSource = 'measured' | 'expected' | 'planning' | 'off' | 'unkno
 //  - no_previous_snapshot: true cold start — there is no prior plan baseline to
 //    diff against (the engine has not built a plan yet this lifetime).
 //  - attribution_inputs_incomplete: the attribution inputs were not complete
-//    this cycle, so no confident cause can be proven. This single honest reason folds
-//    every uncertainty: a missing previous total, OR a tracked device
+//    this cycle, so no confident cause can be proven: a tracked device
 //    (controllable or uncontrolled) that plausibly carried the rise — its current read
-//    sits above the attribution epsilon — but could not be diffed (current or previous
-//    power unresolvable). Any of these means the rise could be a device PELS merely
+//    sits above the attribution epsilon — could not be diffed (current or previous
+//    power unresolvable). That means the rise could be a device PELS merely
 //    failed to read, so we never blame background load.
 //  - background_load_dominant: a prior baseline existed, and every
 //    tracked device that could plausibly have contributed was diffable, yet the rise
@@ -307,20 +291,18 @@ function buildOvershootEntryDiagnostics(params: {
   drawKw: number;
   nowTs: number;
   lastPowerUpdateMs: number;
-  previousTotalKw: number | null;
-  previousBuiltAtMs: number | null;
-  previousDevicesById: Record<string, OvershootTrackedPlanDevice>;
+  /** The previous build, or null on a true cold start. */
+  previous: LastPlanSnapshot | null;
   currentDevicesById: Record<string, OvershootTrackedPlanDevice>;
 }): OvershootEntryDiagnostics {
   const {
     drawKw,
     nowTs,
     lastPowerUpdateMs,
-    previousTotalKw,
-    previousBuiltAtMs,
-    previousDevicesById,
+    previous,
     currentDevicesById,
   } = params;
+  const previousDevicesById = previous === null ? {} : previous.devicesById;
   const contributors = Object.values(currentDevicesById)
     .map((device) => buildOvershootContributor(device, previousDevicesById[device.id]))
     .filter((contributor): contributor is OvershootEntryContributor => contributor !== null)
@@ -331,15 +313,13 @@ function buildOvershootEntryDiagnostics(params: {
   const uncontrolled = contributors
     .filter((contributor) => !contributor.controllable)
     .slice(0, OVERSHOOT_TOP_CONTRIBUTOR_LIMIT);
-  const totalDeltaKw = (typeof previousTotalKw === 'number' && Number.isFinite(previousTotalKw))
-    ? roundOvershootKw(drawKw - previousTotalKw)
-    : null;
+  const totalDeltaKw = previous === null ? null : roundOvershootKw(drawKw - previous.totalKw);
   const attributedDeltaKw = roundOvershootKw(contributors.reduce((sum, contributor) => sum + contributor.deltaKw, 0));
   const unattributedDeltaKw = totalDeltaKw === null ? null : roundOvershootKw(totalDeltaKw - attributedDeltaKw);
   const attributionReason = resolveOvershootAttributionReason({
     contributors,
     totalDeltaKw,
-    hasPriorPlanBaseline: previousBuiltAtMs !== null || Object.keys(previousDevicesById).length > 0,
+    hasPriorPlanBaseline: previous !== null,
     // A confident cause may only be emitted when the attribution inputs were
     // COMPLETE this cycle. Any uncertainty collapses to one honest
     // `attribution_inputs_incomplete` reason rather than a confident-but-wrong cause.
@@ -354,9 +334,7 @@ function buildOvershootEntryDiagnostics(params: {
     totalDeltaKw,
     contributors,
     logFields: {
-      overshootPlanAgeMs: (
-        typeof previousBuiltAtMs === 'number' ? Math.max(0, nowTs - previousBuiltAtMs) : null
-      ),
+      overshootPlanAgeMs: previous === null ? null : Math.max(0, nowTs - previous.builtAtMs),
       overshootPowerSampleAgeMs: lastPowerUpdateMs !== null ? Math.max(0, nowTs - lastPowerUpdateMs) : null,
       overshootTotalDeltaKw: totalDeltaKw,
       overshootAttributionDeltaKw: attributedDeltaKw,
@@ -405,12 +383,9 @@ function resolveOvershootAttributionReason(params: {
 
 // The SINGLE completeness gate behind a confident attribution verdict. Returns true
 // only when every confident-cause precondition holds:
-//  (a) a finite, diffable total delta exists. This used to be TWO clauses — an
-//      explicit freshness check plus a diffability check — because the delta was
-//      taken from the RAW total, which survives a dropout and could be diffed
-//      into a confident-but-wrong cause. Every cycle that reaches this tracker
-//      is measured now (the silent-meter pass never runs it), so the freshness
-//      clause has nothing left to add; AND
+//  (a) a previous build exists to diff against (its total is always a measured
+//      figure: every cycle that reaches this tracker is measured, the
+//      silent-meter pass never runs it); AND
 //  (b) every tracked device that could PLAUSIBLY have carried the rise — controllable
 //      OR uncontrolled, with a current reading above the attribution epsilon — was
 //      diffable (both current and previous power resolvable).

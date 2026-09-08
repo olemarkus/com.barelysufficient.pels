@@ -15,7 +15,8 @@ import {
   SURPLUS_ABSORB_SETTLE_MS,
   SURPLUS_TRACK_STEP_MIN_INTERVAL_MS,
 } from '../../lib/plan/admission/surplusAbsorb';
-import { createPlanEngineState, type PlanEngineState } from '../../lib/plan/planState';
+import { type PlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice, steppedProfile } from '../utils/planTestUtils';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 

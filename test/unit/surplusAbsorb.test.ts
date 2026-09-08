@@ -1,4 +1,5 @@
-import { createPlanEngineState, type PlanEngineState } from '../../lib/plan/planState';
+import { type PlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   SURPLUS_ABSORB_MIN_DWELL_MS,
   SURPLUS_ABSORB_RESERVE_KW,

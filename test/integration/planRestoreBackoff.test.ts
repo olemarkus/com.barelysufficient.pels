@@ -17,7 +17,7 @@ import { RESTORE_ADMISSION_FLOOR_KW, SWAP_TIMEOUT_MS } from '../../lib/plan/plan
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
 import { planRestoreForSteppedDevice } from '../../lib/plan/restore/helpers';
 import { applyShedTemperatureHold } from '../../lib/plan/planReasons';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { applyRestorePlan } from '../../lib/plan/restore';
 import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';

@@ -25,6 +25,7 @@ import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/sched
 import { initialPlanRebuildThrottleMemory, PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import { powerSampleRebuildCadence } from '../../setup/planRebuildIntentPolicy';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
+import { OvershootIncident } from '../../lib/plan/overshootIncident';
 
 const T0 = Date.parse('2026-07-27T10:00:00Z');
 
@@ -70,7 +71,7 @@ const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePi
         pendingRestores: new Set<string>(),
         pendingTargetCommands: {},
         pendingBinaryCommands: {},
-        wasOvershoot: false,
+        overshoot: new OvershootIncident(),
       },
       clearStartupRestoreStabilization: vi.fn(),
     } as unknown as PlanEngine),

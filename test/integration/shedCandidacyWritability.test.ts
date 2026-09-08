@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildSheddingPlan } from '../../lib/plan/shedding';
 import { withFixtureResidualKw } from '../utils/planTestUtils';

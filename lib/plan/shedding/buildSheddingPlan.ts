@@ -175,8 +175,8 @@ function planShedding(
         );
       }
       return emptySheddingResult({
-        lastOvershootEscalationMs: nowTs,
-        lastOvershootMitigationMs: nowTs,
+        overshootEscalatedAtMs: nowTs,
+        overshootMitigatedAtMs: nowTs,
       }, overshootStats);
     }
     return emptySheddingResult({}, overshootStats);
@@ -194,8 +194,8 @@ function planShedding(
         lastShedPlanNeededKw: needed,
       }
       : {}),
-    lastOvershootMitigationMs: nowTs,
-    ...(measurementDecision.escalatedSameSample ? { lastOvershootEscalationMs: nowTs } : {}),
+    overshootMitigatedAtMs: nowTs,
+    ...(measurementDecision.escalatedSameSample ? { overshootEscalatedAtMs: nowTs } : {}),
   };
   return {
     ...result,

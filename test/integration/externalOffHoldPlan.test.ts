@@ -37,7 +37,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { withBinaryDiscriminant, type DevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildPlanDevice, buildPlanInputDevice } from '../utils/planTestUtils';
 import { buildInitialPlanDevices, type PlanDevicesDeps } from '../../lib/plan/planDevices';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { PlanContext } from '../../lib/plan/planContext';
 import { PriceLevel } from '../../lib/price/priceLevels';
@@ -216,8 +216,7 @@ const offHeaterSnapshot: TargetDeviceSnapshot = {
 } as unknown as TargetDeviceSnapshot;
 
 const buildExecutorCtx = (held: boolean) => {
-  const state = createPlanEngineState();
-  state.isExternalOffHeld = (deviceId: string) => held && deviceId === HEATER;
+  const state = createPlanEngineState(Date.now(), (deviceId: string) => held && deviceId === HEATER);
   const setCapabilityCalls: { capabilityId: string; value: boolean }[] = [];
   const observation = {
     getSnapshot: () => [offHeaterSnapshot],

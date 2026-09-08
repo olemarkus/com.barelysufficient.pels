@@ -1,6 +1,7 @@
 import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
+import { OvershootIncident } from './overshootIncident';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,
@@ -113,6 +114,24 @@ export const resolveSurplusCeilingStepId = (
 ): string | undefined => {
   const decision = state.surplusTrackingByDevice[deviceId];
   return decision?.kind === 'rung' ? decision.stepId : undefined;
+};
+
+/**
+ * What a shedding pass reports back for the planner state to commit: the
+ * clocks and the unchanged-reading latch it stamped this cycle, plus the
+ * overshoot incident's mitigation/escalation stamps. Each field is present
+ * only when the pass stamped it (`applySheddingUpdates`).
+ */
+export type SheddingUpdates = {
+  lastInstabilityMs?: number;
+  lastRecoveryMs?: number;
+  lastShedPlanMeasurementTs?: number;
+  lastShedPlanPowerW?: number;
+  lastShedPlanShedIds?: Set<string>;
+  lastShedPlanAtMs?: number;
+  lastShedPlanNeededKw?: number;
+  overshootEscalatedAtMs?: number;
+  overshootMitigatedAtMs?: number;
 };
 
 export type HeadroomCardState = {
@@ -232,10 +251,9 @@ export class PlanEngineState {
    * `surplusOnlyShedByDevice`: a cold, stale, or absent plan must not resume a
    * device the user turned off. Unlike that stamp this one is backed by
    * persistence, so the guard also holds across a restart. Assigned by the
-   * wiring for main and by each sub-home bundle; absent ⇒ never held ⇒ today's
-   * behaviour.
+   * wiring for main and by each sub-home bundle.
    */
-  isExternalOffHeld?: (deviceId: string) => boolean;
+  readonly isExternalOffHeld: (deviceId: string) => boolean;
 
 
   /**
@@ -309,9 +327,9 @@ export class PlanEngineState {
 
   /**
    * When that shed was decided — the hold window's own anchor. Deliberately NOT
-   * `lastOvershootMitigationMs`: `PlanBuilder` runs the shedding pass BEFORE
-   * `OvershootTracker.updateOvershootState`, whose overshoot-ENTRY branch nulls
-   * that field, so the very first shed of an incident would lose its anchor in
+   * the incident's mitigation clock (`OvershootIncident`): `PlanBuilder` runs
+   * the shedding pass BEFORE `OvershootTracker.updateOvershootState`, whose
+   * entry resets that clock, so the very first shed of an incident would lose its anchor in
    * the same build and the hold would never engage on the cycle that needs it
    * most. Cleared only when the overshoot ends (`clearShedPlanLatch`).
    */
@@ -337,6 +355,29 @@ export class PlanEngineState {
     this.lastShedPlanShedIds = new Set<string>();
     this.lastShedPlanAtMs = null;
     this.lastShedPlanNeededKw = null;
+  }
+
+  /**
+   * Commit what a shedding pass reports back. The pass returns these rather
+   * than writing them so it stays a pure function of one cycle; this is the
+   * one place they land.
+   */
+  applySheddingUpdates(updates: SheddingUpdates): void {
+    if (updates.lastInstabilityMs !== undefined) this.lastInstabilityMs = updates.lastInstabilityMs;
+    if (updates.lastRecoveryMs !== undefined) this.lastRecoveryMs = updates.lastRecoveryMs;
+    if (updates.lastShedPlanMeasurementTs !== undefined) {
+      this.lastShedPlanMeasurementTs = updates.lastShedPlanMeasurementTs;
+    }
+    if (updates.lastShedPlanPowerW !== undefined) this.lastShedPlanPowerW = updates.lastShedPlanPowerW;
+    if (updates.lastShedPlanShedIds !== undefined) this.lastShedPlanShedIds = updates.lastShedPlanShedIds;
+    if (updates.lastShedPlanAtMs !== undefined) this.lastShedPlanAtMs = updates.lastShedPlanAtMs;
+    if (updates.lastShedPlanNeededKw !== undefined) this.lastShedPlanNeededKw = updates.lastShedPlanNeededKw;
+    if (updates.overshootEscalatedAtMs !== undefined) {
+      this.overshoot.noteEscalation(updates.overshootEscalatedAtMs);
+    }
+    if (updates.overshootMitigatedAtMs !== undefined) {
+      this.overshoot.noteMitigation(updates.overshootMitigatedAtMs);
+    }
   }
 
   swapByDevice: Record<string, SwapEntry> = {};
@@ -376,12 +417,6 @@ export class PlanEngineState {
    */
   hourlyBudgetExhausted: boolean = false;
 
-  wasOvershoot: boolean = false;
-
-  overshootLogged: boolean = false;
-
-  softOvershootPendingSinceMs: number | null = null;
-
   /**
    * Remaining hourly capacity budget (kWh) as of the last soft-limit
    * computation. Always resolved — the hour's budget is a fact about the hour,
@@ -392,17 +427,8 @@ export class PlanEngineState {
    */
   hourlyRemainingKWh: number = 0;
 
-  overshootStartedMs: number | null = null;
-
-  lastOvershootEscalationMs: number | null = null;
-
-  lastOvershootMitigationMs: number | null = null;
-
-  lastPlanTotalKw: number | null = null;
-
-  lastPlanBuiltAtMs: number | null = null;
-
-  lastPlanDevicesById: Record<string, OvershootTrackedPlanDevice> = {};
+  /** The overshoot incident in progress, if any — see `OvershootIncident`. */
+  readonly overshoot = new OvershootIncident();
 
   // Per-device: last cycle's boost decision, kept only so the transition can be
   // logged once when it flips. One map for one boost truth — the per-kind pair
@@ -426,8 +452,6 @@ export class PlanEngineState {
   // with the decision itself.
   surplusTrackingRaisedMs: Record<string, number> = {};
 
-  lastOvershootSummarySignature: string | null = null;
-
   steppedRestoreRejectedByDevice: Record<string, {
     requestedStepId: string;
     lowestNonZeroStepId: string;
@@ -442,8 +466,8 @@ export class PlanEngineState {
   restoreDecisionLogByKey: Record<string, string> = {};
 
   constructor(
-    nowTs = Date.now(),
-    isExternalOffHeld?: (deviceId: string) => boolean,
+    nowTs: number,
+    isExternalOffHeld: (deviceId: string) => boolean,
   ) {
     this.appStartedAtMs = nowTs;
     this.isExternalOffHeld = isExternalOffHeld;
@@ -543,8 +567,8 @@ export class PlanEngineState {
 }
 
 export function createPlanEngineState(
-  nowTs = Date.now(),
-  isExternalOffHeld?: (deviceId: string) => boolean,
+  nowTs: number,
+  isExternalOffHeld: (deviceId: string) => boolean,
 ): PlanEngineState {
   return new PlanEngineState(nowTs, isExternalOffHeld);
 }

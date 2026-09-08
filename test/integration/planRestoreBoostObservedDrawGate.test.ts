@@ -22,7 +22,7 @@ import {
   buildPlanDevice,
   steppedPlanDevice,
 } from '../utils/planTestUtils';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({

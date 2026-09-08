@@ -1,6 +1,6 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { buildSheddingCandidates } from '../../lib/plan/shedding/candidates';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { ShedCandidateParams } from '../../lib/plan/shedding/types';
 import type { PowerTrackerState } from '../../lib/power/tracker';

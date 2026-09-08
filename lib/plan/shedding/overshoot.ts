@@ -8,8 +8,6 @@ import {
 } from '../planConstants';
 import type { OvershootStats } from './types';
 
-const OVERSHOOT_ESCALATION_INTERVAL_MS = 30 * 1000;
-
 /**
  * How long an UNCHANGED whole-home reading is refused as evidence that the last
  * shed achieved nothing. Whole-home power lags the switch: the meter aggregate
@@ -52,7 +50,7 @@ export function resolveSameMeasurementSheddingDecision(
   if (!allowEscalation) {
     return { skip: true, escalatedSameSample: false, heldOnUnchangedReading: false };
   }
-  const escalatedSameSample = shouldEscalateOvershoot(state, nowTs);
+  const escalatedSameSample = state.overshoot.shouldEscalate(nowTs);
   return {
     skip: !escalatedSameSample,
     escalatedSameSample,
@@ -66,9 +64,9 @@ export function resolveSameMeasurementSheddingDecision(
  * byte-identical, while a live meter moves by at least a watt between reads, so
  * any real movement — in either direction — is treated as fresh evidence and
  * shedding proceeds at today's speed. The window is measured from
- * `lastShedPlanAtMs`, the shed's own stamp, NOT `lastOvershootMitigationMs`:
+ * `lastShedPlanAtMs`, the shed's own stamp, NOT the incident's mitigation clock:
  * `PlanBuilder` runs shedding before `OvershootTracker.updateOvershootState`,
- * whose entry branch nulls the mitigation clock, which would strip the anchor
+ * whose entry resets that clock, which would strip the anchor
  * off the first shed of every incident — the exact cycle this hold exists for.
  */
 function isUnchangedReadingHeld(
@@ -184,13 +182,4 @@ export function buildOvershootStats(params: OvershootStatsInputs): OvershootStat
     skippedCandidateCount,
     skippedCandidateReasons,
   };
-}
-
-function shouldEscalateOvershoot(state: PlanEngineState, nowTs: number): boolean {
-  if (typeof state.overshootStartedMs !== 'number') return false;
-  if (nowTs - state.overshootStartedMs < OVERSHOOT_ESCALATION_INTERVAL_MS) return false;
-  const lastAttemptMs = state.lastOvershootMitigationMs
-    ?? state.lastOvershootEscalationMs
-    ?? state.overshootStartedMs;
-  return nowTs - lastAttemptMs >= OVERSHOOT_ESCALATION_INTERVAL_MS;
 }

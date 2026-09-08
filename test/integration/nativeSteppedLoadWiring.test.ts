@@ -946,7 +946,7 @@ describe('native stepped-load wiring', () => {
     const ctx = {
       steppedCommandClaim: createSteppedCommandClaim(),
       steppedCommandOwner: 'ordinary',
-      state: {},
+      state: { isExternalOffHeld: () => false },
       debugStructured: vi.fn(),
       error: vi.fn(),
       structuredLog,
@@ -1014,7 +1014,7 @@ describe('native stepped-load wiring', () => {
     const ctx = {
       steppedCommandClaim: createSteppedCommandClaim(),
       steppedCommandOwner: 'ordinary',
-      state: {},
+      state: { isExternalOffHeld: () => false },
       buildBinaryControlTransport: () => ({}),
       markSteppedLoadDesiredStepIssued,
       recordShedActuation,
@@ -1080,7 +1080,7 @@ describe('native stepped-load wiring', () => {
     const ctx = {
       steppedCommandClaim: createSteppedCommandClaim(),
       steppedCommandOwner: 'ordinary',
-      state: {},
+      state: { isExternalOffHeld: () => false },
       buildBinaryControlTransport: () => ({}),
       markSteppedLoadDesiredStepIssued,
       recordShedActuation: vi.fn(),
@@ -1128,7 +1128,7 @@ describe('native stepped-load wiring', () => {
     const ctx = {
       steppedCommandClaim: createSteppedCommandClaim(),
       steppedCommandOwner: 'ordinary',
-      state: {},
+      state: { isExternalOffHeld: () => false },
       buildBinaryControlTransport: () => ({}),
       markSteppedLoadDesiredStepIssued,
       recordShedActuation: vi.fn(),
@@ -1179,7 +1179,7 @@ describe('native stepped-load wiring', () => {
     const ctx = {
       steppedCommandClaim: createSteppedCommandClaim(),
       steppedCommandOwner: 'ordinary',
-      state: {},
+      state: { isExternalOffHeld: () => false },
       buildBinaryControlTransport: () => ({}),
       markSteppedLoadDesiredStepIssued,
       recordShedActuation: vi.fn(),
@@ -1225,7 +1225,7 @@ describe('native stepped-load wiring', () => {
     const ctx = {
       steppedCommandClaim: createSteppedCommandClaim(),
       steppedCommandOwner: 'ordinary',
-      state: {},
+      state: { isExternalOffHeld: () => false },
       buildBinaryControlTransport: () => ({}),
       markSteppedLoadDesiredStepIssued,
       recordShedActuation: vi.fn(),
@@ -1313,7 +1313,7 @@ describe('native stepped-load wiring', () => {
     const ctx = {
       steppedCommandClaim: createSteppedCommandClaim(),
       steppedCommandOwner: 'ordinary',
-      state: {},
+      state: { isExternalOffHeld: () => false },
       debugStructured: vi.fn(),
       error: vi.fn(),
       structuredLog,
@@ -1396,7 +1396,7 @@ describe('native stepped-load wiring', () => {
     const ctx = {
       steppedCommandClaim: createSteppedCommandClaim(),
       steppedCommandOwner: 'ordinary',
-      state: {},
+      state: { isExternalOffHeld: () => false },
       debugStructured: vi.fn(),
       error: vi.fn(),
       structuredLog,

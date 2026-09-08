@@ -1,4 +1,4 @@
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   prunePendingTargetCommandsForPlan,
   syncPendingTargetCommands,

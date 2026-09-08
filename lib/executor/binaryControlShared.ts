@@ -94,7 +94,7 @@ export const skipRestoreForExternalOffHold = (
   deviceId: string,
   name: string,
 ): boolean => {
-  if (ctx.state.isExternalOffHeld?.(deviceId) !== true) return false;
+  if (!ctx.state.isExternalOffHeld(deviceId)) return false;
   sharedLogger.debug({
     event: 'restore_command_skipped',
     reasonCode: PLAN_REASON_CODES.externalOffHold,

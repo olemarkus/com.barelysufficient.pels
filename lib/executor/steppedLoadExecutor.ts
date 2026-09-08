@@ -112,7 +112,7 @@ export const applySteppedLoadCommand = async (
   // A plan built before an outside OFF can still carry a step-up command. Step
   // commands are real actuation too: suppress every one while the durable hold
   // is active, just as the binary restore funnels do.
-  if (ctx.state.isExternalOffHeld?.(action.id) === true) {
+  if (ctx.state.isExternalOffHeld(action.id)) {
     logger.debug({
       event: 'stepped_load_command_skipped',
       deviceId: action.id,

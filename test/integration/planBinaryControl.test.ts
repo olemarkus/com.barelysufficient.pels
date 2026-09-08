@@ -4,7 +4,7 @@ import {
   createPendingBinaryCommandStore,
   syncPendingBinaryCommands,
 } from '../../lib/observer/pendingBinaryCommands';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
 let logs: LoggerCapture;

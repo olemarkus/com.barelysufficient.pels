@@ -1150,7 +1150,7 @@ describe('MyApp initialization', () => {
 
     const nowMs = app['getPlanRebuildNowMs']();
     rememberLastRebuild(app.planRebuildThrottle, nowMs, 5000);
-    app.planEngine.state.wasOvershoot = true;
+    app.planEngine.state.overshoot.enter(Date.now());
 
     await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
 
@@ -1162,7 +1162,7 @@ describe('MyApp initialization', () => {
   // could not fix (nothing actionable left in the plan) kept convergence true and
   // rebuilt ~1.6s of plan on every jittering power sample until Homey's CPU
   // watchdog killed the app. An unactionable plan must fall back to the throttled
-  // max-interval cadence even while `wasOvershoot` is set.
+  // max-interval cadence even while the overshoot incident is open.
   it('does not schedule convergence rebuilds for an overshoot the plan cannot act on', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
@@ -1179,7 +1179,7 @@ describe('MyApp initialization', () => {
 
     const nowMs = app['getPlanRebuildNowMs']();
     rememberLastRebuild(app.planRebuildThrottle, nowMs, 5000);
-    app.planEngine.state.wasOvershoot = true;
+    app.planEngine.state.overshoot.enter(Date.now());
 
     // ≥100 W jitter per sample — meaningful deltas that used to force a rebuild each time.
     await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });

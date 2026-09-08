@@ -1,6 +1,6 @@
 import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import { type HeadroomCardDeviceLike, withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
   ACTIVATION_INACTIVE_MIN_ELAPSED_MS,

@@ -7,7 +7,7 @@
  * the last thing still filing this behaviour under the planner.
  */
 import { describe, expect, it } from 'vitest';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   getPendingTargetCommandDecision,
   recordFailedPendingTargetCommandAttempt,

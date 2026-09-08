@@ -21,7 +21,7 @@ import {
   type UpdateObjectiveProfiles,
 } from '../../lib/power/sampleIngest';
 import { isPlanActivelyConverging } from '../../lib/plan/planStateHelpers';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   PowerCalibrationStore,
   createCalibrationSnapshotMutationHook,
@@ -1481,7 +1481,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
 
   // Regression: the 2026-07-06 cpuwarn crash. A persistent unwinnable overshoot
   // (daily allowance clamped to 0, all managed devices shed, remaining draw
-  // unmanaged) kept `wasOvershoot` true, which made the pipeline pass
+  // unmanaged) kept the overshoot incident open, which made the pipeline pass
   // `planConvergenceActive: true` and defeated the unrecoverable-shortfall skip —
   // a ~1.6s rebuild fired on every jittering power sample until Homey killed the
   // app. Composes the pipeline wiring: convergence derived from the plan state
@@ -1507,7 +1507,7 @@ describe('PlanRebuildThrottle — sample-level gates', () => {
       memory: throttleMemoryFixture({ lastRebuild: { atMs: Date.now() - 2500, powerW: 5267, hardCapBreach: { breached: false, deficitKw: 0 } } }),
     });
     const planState = createPlanEngineState();
-    planState.wasOvershoot = true;
+    planState.overshoot.enter(Date.now());
     const planUnactionable = true; // summary: nothing actionable, nothing reducible
 
     // ≥100 W jitter per sample — "meaningful" deltas that used to force a rebuild each time.

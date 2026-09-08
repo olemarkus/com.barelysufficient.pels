@@ -16,7 +16,8 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
-import { createPlanEngineState, type PlanEngineState } from '../../lib/plan/planState';
+import { type PlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   type BinaryControlDiscriminantProbe,
   type DevicePlan,

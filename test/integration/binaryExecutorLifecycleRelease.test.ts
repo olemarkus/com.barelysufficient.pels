@@ -3,7 +3,7 @@ import {
   applyDeferredBinaryCommand,
   type PlanExecutorBinaryContext,
 } from '../../lib/executor/binaryExecutor';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import type { DeviceObservation } from '../../lib/device/deviceObservation';

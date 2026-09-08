@@ -22,7 +22,7 @@ import { buildSheddingCandidates } from '../../lib/plan/shedding/candidates';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
 import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnostics';
-import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { RestorePlanResult } from '../../lib/plan/restore';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
