@@ -197,8 +197,8 @@ describe('Airtreatment device integration', () => {
     expect(reportedTargets['flexit-2']).toBe(16);
 
     setCapSpy.mockClear();
-    app.planEngine.state.lastInstabilityMs = Date.now() - 180000;
-    app.planEngine.state.lastRecoveryMs = Date.now() - 180000;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now() - 180000;
+    app.planEngine.state.restoreBackoff.lastRecoveryMs = Date.now() - 180000;
     app.planRebuildThrottle['restore'](initialPlanRebuildThrottleMemory());
     app.computeDynamicSoftLimit = () => 10;
     app.computeDynamicSoftLimit = () => 10;
@@ -227,7 +227,7 @@ describe('Airtreatment device integration', () => {
     expect(restoreCallsAfterCooldownWindow).toHaveLength(1);
 
     app.planEngine.state.actuation.lastRestoreMs = Date.now() - 180000;
-    app.planEngine.state.lastInstabilityMs = Date.now() - 180000;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now() - 180000;
 
     await app.refreshTargetDevicesSnapshot();
     await runCycle();

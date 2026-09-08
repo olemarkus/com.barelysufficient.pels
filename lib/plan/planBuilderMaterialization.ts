@@ -317,8 +317,7 @@ export class PlanMaterializationStages {
       },
     });
     this.state.swapByDevice = restoreResult.stateUpdates.swapByDevice;
-    this.state.restoreCooldownMs = restoreResult.timing.restoreCooldownMs;
-    this.state.lastRestoreCooldownBumpMs = restoreResult.timing.lastRestoreCooldownBumpMs;
+    this.state.restoreBackoff.commitCooldown(restoreResult.timing);
     return restoreResult;
   }
 }

@@ -261,7 +261,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     app.powerTracker.lastPowerW = 400;
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
     app.planEngine.state.sheddingActive = false;
-    app.planEngine.state.lastRecoveryMs = currentTimeMs - 61_000;
+    app.planEngine.state.restoreBackoff.lastRecoveryMs = currentTimeMs - 61_000;
     plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     evPlan = getPlanEntry(plan, charger.idValue);
 

@@ -239,13 +239,11 @@ export class ComposedPlanEngine implements PlanEngine {
     return this.executor.applySheddingToDevice(deviceId, deviceName, reason);
   }
 
-  public beginStartupRestoreStabilization(durationMs = 60_000, nowTs = Date.now()): void {
-    this.state.startupRestoreBlockedUntilMs = nowTs + Math.max(0, durationMs);
+  public beginStartupRestoreStabilization(nowMs: number): void {
+    this.state.restoreBackoff.beginStartupBlock(nowMs);
   }
 
-  public clearStartupRestoreStabilization(nowTs = Date.now()): boolean {
-    if (this.state.startupRestoreBlockedUntilMs === null) return false;
-    this.state.startupRestoreBlockedUntilMs = nowTs - 1;
-    return true;
+  public clearStartupRestoreStabilization(nowTs: number): boolean {
+    return this.state.restoreBackoff.clearStartupBlock(nowTs);
   }
 }

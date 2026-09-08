@@ -297,7 +297,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     // a measured shed would, so the first measured cycle after the meter
     // returns re-decides before any restore lane runs.
     expect(state.sheddingActive).toBe(true);
-    expect(state.lastInstabilityMs).toBe(Date.now());
+    expect(state.restoreBackoff.lastInstabilityMs).toBe(Date.now());
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'plan_silent_meter_pass',
       shedDeviceCount: 3,

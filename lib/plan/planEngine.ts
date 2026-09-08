@@ -74,6 +74,6 @@ export type PlanEngine = {
   syncHeadroomCardState: (devices: HeadroomCardDeviceLike[]) => boolean;
   syncHeadroomUsageObservation: (deviceId: string, usageKw: number) => boolean;
   applySheddingToDevice: (deviceId: string, deviceName: string, reason?: string) => Promise<boolean>;
-  beginStartupRestoreStabilization: (durationMs?: number, nowTs?: number) => void;
-  clearStartupRestoreStabilization: (nowTs?: number) => boolean;
+  beginStartupRestoreStabilization: (nowMs: number) => void;
+  clearStartupRestoreStabilization: (nowTs: number) => boolean;
 };

@@ -72,7 +72,7 @@ export function createApp(options: CreateAppOptions = {}): MyApp {
     const originalInitPlanEngine = app['initPlanEngine'].bind(app);
     app['initPlanEngine'] = () => {
       originalInitPlanEngine();
-      app.planEngine?.clearStartupRestoreStabilization();
+      app.planEngine?.clearStartupRestoreStabilization(Date.now());
     };
   }
   if (!options.withoutPowerMeasurement) {

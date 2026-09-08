@@ -116,7 +116,7 @@ describe('restore cooldown backoff', () => {
       now += advanceMs;
       vi.setSystemTime(now);
       state.actuation.lastRestoreMs = now - 2 * 60 * 1000;
-      state.lastInstabilityMs = now - 1000;
+      state.restoreBackoff.lastInstabilityMs = now - 1000;
 
       const result = applyRestorePlan({
         planDevices: [],
@@ -126,8 +126,7 @@ describe('restore cooldown backoff', () => {
         deps,
       });
 
-      state.restoreCooldownMs = result.timing.restoreCooldownMs;
-      state.lastRestoreCooldownBumpMs = result.timing.lastRestoreCooldownBumpMs;
+      state.restoreBackoff.commitCooldown(result.timing);
       return result.timing.restoreCooldownMs;
     };
 
@@ -151,7 +150,7 @@ describe('restore cooldown backoff', () => {
 
     const triggerInstability = (): void => {
       state.actuation.lastRestoreMs = now - 2 * 60 * 1000;
-      state.lastInstabilityMs = now - 1000;
+      state.restoreBackoff.lastInstabilityMs = now - 1000;
     };
 
     triggerInstability();
@@ -164,12 +163,11 @@ describe('restore cooldown backoff', () => {
       deps,
     });
 
-    state.restoreCooldownMs = result.timing.restoreCooldownMs;
-    state.lastRestoreCooldownBumpMs = result.timing.lastRestoreCooldownBumpMs;
+    state.restoreBackoff.commitCooldown(result.timing);
     expect(result.timing.restoreCooldownMs).toBe(120000);
 
     now += 6 * 60 * 1000;
-    state.lastInstabilityMs = now - 6 * 60 * 1000;
+    state.restoreBackoff.lastInstabilityMs = now - 6 * 60 * 1000;
     vi.setSystemTime(now);
     result = applyRestorePlan({
       planDevices: [],
@@ -989,7 +987,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRecoveryMs = now - 5_000;
+    state.restoreBackoff.lastRecoveryMs = now - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1035,7 +1033,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRecoveryMs = now - 5_000;
+    state.restoreBackoff.lastRecoveryMs = now - 5_000;
     state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
@@ -1786,7 +1784,7 @@ describe('restore cooldown backoff', () => {
     vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.actuation.lastRestoreMs = now - 60_000;
-    state.restoreCooldownMs = 120_000;
+    state.restoreBackoff.restoreCooldownMs = 120_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1999,7 +1997,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.startupRestoreBlockedUntilMs = now + 60_000;
+    state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -2034,7 +2032,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.startupRestoreBlockedUntilMs = now + 60_000;
+    state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
     state.actuation.lastDeviceControlledMs['dev-off'] = now - (10 * 60_000);
 
     const result = applyRestorePlan({
@@ -2070,7 +2068,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.startupRestoreBlockedUntilMs = now + 60_000;
+    state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -2106,7 +2104,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.startupRestoreBlockedUntilMs = now + 60_000;
+    state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
     state.actuation.lastDeviceControlledMs['dev-step'] = now - (10 * 60_000);
 
     const result = applyRestorePlan({
@@ -2143,7 +2141,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.startupRestoreBlockedUntilMs = now + 60_000;
+    state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -2180,7 +2178,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.startupRestoreBlockedUntilMs = now + 60_000;
+    state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
     state.actuation.lastDeviceControlledMs['dev-step-off'] = now - (10 * 60_000);
 
     const result = applyRestorePlan({
@@ -2218,8 +2216,8 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.startupRestoreBlockedUntilMs = now + 60_000;
-    state.lastInstabilityMs = now - 5_000;
+    state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
+    state.restoreBackoff.lastInstabilityMs = now - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -2256,7 +2254,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.startupRestoreBlockedUntilMs = now + 60_000;
+    state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -2293,7 +2291,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.startupRestoreBlockedUntilMs = now + 60_000;
+    state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
 
     const result = applyRestorePlan({
       planDevices: [

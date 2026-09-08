@@ -90,8 +90,8 @@ describe('isPlanActivelyConverging', () => {
 
   it('returns false for recent instability, recovery, and restore timestamps alone', () => {
     const state = createPlanEngineState();
-    state.lastInstabilityMs = Date.now() - 1_000;
-    state.lastRecoveryMs = Date.now() - 1_000;
+    state.restoreBackoff.lastInstabilityMs = Date.now() - 1_000;
+    state.restoreBackoff.lastRecoveryMs = Date.now() - 1_000;
     state.actuation.lastRestoreMs = Date.now() - 1_000;
 
     expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(false);

@@ -77,7 +77,7 @@ describe('Mixed Type Restoration Throttling', () => {
         await app.onInit();
 
         // Reset timers
-        app.planEngine.state.lastInstabilityMs = 0;
+        app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
         app.planEngine.state.actuation.lastRestoreMs = 0;
         app.planEngine.state.actuation.lastDeviceShedMs = {};
     });
@@ -117,7 +117,7 @@ describe('Mixed Type Restoration Throttling', () => {
         app.computeDynamicSoftLimit = () => 10.0;
         // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
         app.planEngine.state.sheddingActive = false;
-        app.planEngine.state.lastRecoveryMs = currentTime - 61000;
+        app.planEngine.state.restoreBackoff.lastRecoveryMs = currentTime - 61000;
         // Headroom = 10 - 5 = 5kW. Needs 2kW.
 
         // Record sample to trigger restore plan

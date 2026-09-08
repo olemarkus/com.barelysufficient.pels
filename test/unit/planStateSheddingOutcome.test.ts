@@ -20,7 +20,7 @@ describe('PlanEngineState.applySheddingOutcome', () => {
 
     expect(state.overshoot.shouldEscalate(T + 10_000)).toBe(false);
     expect(state.overshoot.shouldEscalate(T + 30_000)).toBe(true);
-    expect(state.lastInstabilityMs).toBeNull();
+    expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
     expect(state.shedPlanLatch).toBeNull();
   });
 
@@ -31,7 +31,7 @@ describe('PlanEngineState.applySheddingOutcome', () => {
       null,
     );
 
-    expect(state.lastInstabilityMs).toBe(T);
+    expect(state.restoreBackoff.lastInstabilityMs).toBe(T);
     expect(state.lastShedPlanMeasurementTs).toBe(T - 500);
     expect(state.shedPlanLatch).toBe(latch);
     expect(state.overshoot.shouldEscalate(T + 10_000)).toBe(false);
@@ -56,7 +56,7 @@ describe('PlanEngineState.applySheddingOutcome', () => {
     const state = stateInIncident();
     state.applySheddingOutcome(NO_SHEDDING_OUTCOME, null);
 
-    expect(state.lastInstabilityMs).toBeNull();
+    expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
     expect(state.lastShedPlanMeasurementTs).toBeNull();
     expect(state.shedPlanLatch).toBeNull();
     // Only the incident's own start gates escalation: 60 s in, it is due.
@@ -66,10 +66,10 @@ describe('PlanEngineState.applySheddingOutcome', () => {
   it('records a recovery independently of what the pass did', () => {
     const state = stateInIncident();
     state.applySheddingOutcome(NO_SHEDDING_OUTCOME, T);
-    expect(state.lastRecoveryMs).toBe(T);
+    expect(state.restoreBackoff.lastRecoveryMs).toBe(T);
 
     state.applySheddingOutcome({ kind: 'escalation_blocked', atMs: T + 1 }, T + 2);
-    expect(state.lastRecoveryMs).toBe(T + 2);
+    expect(state.restoreBackoff.lastRecoveryMs).toBe(T + 2);
   });
 
   it('shares one immutable quiet outcome', () => {

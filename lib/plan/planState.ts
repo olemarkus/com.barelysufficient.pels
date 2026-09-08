@@ -1,8 +1,8 @@
 import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
-import { RESTORE_COOLDOWN_MS } from './planConstants';
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
 import { OvershootIncident } from './overshootIncident';
 import { ActuationRecord } from './actuationRecord';
+import { RestoreBackoff } from './restoreBackoff';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,
@@ -216,6 +216,9 @@ export class PlanEngineState {
   /** What the executor did to which device and when — see `ActuationRecord`. */
   readonly actuation = new ActuationRecord();
 
+  /** How long restores wait after instability, and when it last was — see `RestoreBackoff`. */
+  readonly restoreBackoff = new RestoreBackoff();
+
   /**
    * Decision-time clock: the timestamp the planner decided a device should be
    * held in capacity-shed posture. Owned by the planner — edge-set at plan
@@ -287,10 +290,6 @@ export class PlanEngineState {
 
   pendingTargetCommands: Record<string, PendingTargetCommandState> = {};
 
-  lastInstabilityMs: number | null = null;
-
-  lastRecoveryMs: number | null = null;
-
   lastPlannedShedIds: Set<string> = new Set<string>();
 
   lastShedPlanMeasurementTs: number | null = null;
@@ -329,14 +328,14 @@ export class PlanEngineState {
    * cycle; this is the one place they land.
    */
   applySheddingOutcome(outcome: SheddingOutcome, recoveredAtMs: number | null): void {
-    if (recoveredAtMs !== null) this.lastRecoveryMs = recoveredAtMs;
+    if (recoveredAtMs !== null) this.restoreBackoff.noteRecovery(recoveredAtMs);
     if (outcome.kind === 'none') return;
     this.overshoot.noteMitigation(outcome.atMs);
     if (outcome.kind === 'escalation_blocked') {
       this.overshoot.noteEscalation(outcome.atMs);
       return;
     }
-    this.lastInstabilityMs = outcome.atMs;
+    this.restoreBackoff.noteInstability(outcome.atMs);
     if (outcome.measurementTs !== null) this.lastShedPlanMeasurementTs = outcome.measurementTs;
     if (outcome.latch !== null) this.shedPlanLatch = outcome.latch;
     if (outcome.escalatedSameSample) this.overshoot.noteEscalation(outcome.atMs);
@@ -359,12 +358,6 @@ export class PlanEngineState {
    * the guard to discover what its own request had done.
    */
   sheddingActive: boolean = false;
-
-  restoreCooldownMs: number = RESTORE_COOLDOWN_MS;
-
-  lastRestoreCooldownBumpMs: number | null = null;
-
-  startupRestoreBlockedUntilMs: number | null = null;
 
   currentRebuildTrigger: PlanRebuildTrigger | null = null;
 

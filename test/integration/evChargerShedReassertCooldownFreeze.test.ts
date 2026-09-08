@@ -283,7 +283,7 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     const offWritesAfterCycle1 = setCapability.mock.calls
       .filter((call) => call[1] === 'evcharger_charging' && call[2] === false).length;
     expect(offWritesAfterCycle1).toBe(1);
-    expect(state.lastInstabilityMs).toBeNull();
+    expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
     expect(state.actuation.lastDeviceShedMs[DEVICE_ID]).toBeUndefined();
 
     // The charger echoed the write: observed switch false, 0 kW, trusted-off
@@ -309,7 +309,7 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
       source: 'snapshot_refresh',
       onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
     });
-    const stampAfterRealShed = state.lastInstabilityMs;
+    const stampAfterRealShed = state.restoreBackoff.lastInstabilityMs;
     const deviceStampAfterRealShed = state.actuation.lastDeviceShedMs[DEVICE_ID];
     expect(stampAfterRealShed).toBe(Date.now());
     expect(deviceStampAfterRealShed).toBe(Date.now());
@@ -337,7 +337,7 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     // CORRECT behaviour 2: the cooldown stamps still carry the cycle-1 value —
     // a re-assert over an observed-off device is bookkeeping, not a load
     // change. On the unfixed base both advance every cycle.
-    expect(state.lastInstabilityMs).toBe(stampAfterRealShed);
+    expect(state.restoreBackoff.lastInstabilityMs).toBe(stampAfterRealShed);
     expect(state.actuation.lastDeviceShedMs[DEVICE_ID]).toBe(deviceStampAfterRealShed);
 
     // CORRECT behaviour 3: the house-wide restore gate reopened 60 s after the

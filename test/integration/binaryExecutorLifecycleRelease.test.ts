@@ -24,7 +24,7 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
 
   // Mirror PlanExecutor.recordShedActuation: a capacity shed stamps both markers.
   const recordShedActuation = vi.fn((deviceId: string, _name: string, now: number) => {
-    state.lastInstabilityMs = now;
+    state.restoreBackoff.lastInstabilityMs = now;
     state.actuation.lastDeviceShedMs[deviceId] = now;
   });
   // Mirror PlanExecutor.recordReleaseShedActuation: diagnostic-only, no marker stamp.
@@ -93,7 +93,7 @@ describe('binary lifecycle-disable marker routing (direct paths)', () => {
     expect(h.recordReleaseShedActuation).not.toHaveBeenCalled();
     expect(h.recordShedActuation).not.toHaveBeenCalled();
     expect(h.state.pendingBinaryCommands['dev-1']).toMatchObject({ desired: false, lifecycleRelease: true });
-    expect(h.state.lastInstabilityMs).toBeNull();
+    expect(h.state.restoreBackoff.lastInstabilityMs).toBeNull();
     expect(h.state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
   });
 
@@ -120,7 +120,7 @@ describe('binary lifecycle-disable marker routing (direct paths)', () => {
     expect(h.recordReleaseShedActuation).not.toHaveBeenCalled();
     expect(h.recordShedActuation).not.toHaveBeenCalled();
     expect(h.state.pendingBinaryCommands['ev-1']).toMatchObject({ desired: false, lifecycleRelease: true });
-    expect(h.state.lastInstabilityMs).toBeNull();
+    expect(h.state.restoreBackoff.lastInstabilityMs).toBeNull();
     expect(h.state.actuation.lastDeviceShedMs['ev-1']).toBeUndefined();
   });
 

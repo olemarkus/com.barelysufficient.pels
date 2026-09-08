@@ -1,4 +1,11 @@
 export const SHED_COOLDOWN_MS = 60000; // Wait 60s after shedding before considering restores
+/**
+ * How long restores are held after an engine comes up. The wiring says WHEN an
+ * engine came up (main home at boot, a sub-home when its bundle is created);
+ * how long the hold lasts is the planner's.
+ */
+export const STARTUP_RESTORE_BLOCK_MS = 60 * 1000;
+
 export const RESTORE_COOLDOWN_MS = 60000; // Base cooldown after restore for power to stabilize
 
 /**

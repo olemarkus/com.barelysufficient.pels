@@ -81,9 +81,7 @@ const isWithinReconciliationWindow = (
 );
 
 const getStartupReconciliationWindowEndMs = (state: PlanEngineState): number => (
-  isFiniteNumber(state.startupRestoreBlockedUntilMs)
-    ? state.startupRestoreBlockedUntilMs
-    : state.appStartedAtMs + TRACKED_TRANSITION_RECONCILIATION_WINDOW_MS
+  state.restoreBackoff.startupWindowEndMs(state.appStartedAtMs + TRACKED_TRANSITION_RECONCILIATION_WINDOW_MS)
 );
 
 export const ensureHeadroomEntry = (

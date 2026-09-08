@@ -203,7 +203,7 @@ export class PlanExecutor {
   }
 
   private recordShedActuation(deviceId: string, name: string, now: number): void {
-    this.state.lastInstabilityMs = now;
+    this.state.restoreBackoff.noteInstability(now);
     this.state.actuation.markShed(deviceId, now);
     this.recordReleaseShedActuation(deviceId, name, now);
   }

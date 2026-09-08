@@ -101,10 +101,6 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 const SUB_HOME_CAPACITY_DEFAULTS: CapacityScalarSettings = { limitKw: 10, marginKw: 0.2, dryRun: true };
 
 // Mirrors `STARTUP_RESTORE_STABILIZATION_MS` in `setup/appServiceWiring.ts`:
-// a freshly (re)created bundle holds restores until its meter proves live
-// (the first fresh sample clears the window via the pipeline).
-const BUNDLE_RESTORE_STABILIZATION_MS = 60 * 1000;
-
 export type HomeCapacityBundleDeps = {
   ctx: AppContext;
   home: SubHomeConfig;
@@ -499,7 +495,9 @@ function createBundlePlanningRuntime(params: {
     homeScopedSettingsKey(DEVICE_LAST_CONTROLLED_MS, params.homeId),
   ) as unknown;
   planEngine.state.actuation.loadLastControlled(storedLastControlled);
-  planEngine.beginStartupRestoreStabilization(BUNDLE_RESTORE_STABILIZATION_MS);
+  // A freshly (re)created bundle holds restores until its meter proves live;
+  // the first fresh sample clears the window via the pipeline.
+  planEngine.beginStartupRestoreStabilization(Date.now());
   const planService = createPlanService(params.ctx, scope, planEngine);
   const { pipeline, scheduler: planRebuildScheduler, throttle: planRebuildThrottle } = createBundleSamplePipeline({
     ctx: params.ctx,

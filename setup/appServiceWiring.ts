@@ -68,7 +68,6 @@ import type { ObservedControlStateChangedEvent } from '../lib/observer/observedS
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import { installMainFreshnessEscalation } from './appMainFreshnessEscalation';
 
-const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 // Bound the warmup wait so a failed/slow Homey Manager fetch can never deadlock
 // startup: if `refreshSnapshot()` does not resolve in this window the gate
 // releases with reason `timeout` and the planner proceeds (next snapshot will
@@ -428,7 +427,7 @@ export class AppServiceWiring {
     ctx.planEngine = planEngine;
     ctx.lifecycleFallback = lifecycleFallbackPort;
     this.hydratePlanEngineControlState();
-    planEngine.beginStartupRestoreStabilization(STARTUP_RESTORE_STABILIZATION_MS);
+    planEngine.beginStartupRestoreStabilization(Date.now());
     // Create the warmup gate before `initPlanService` reads it via `ctx`.
     // The gate holds the first `rebuildPlanFromCache` (any source) until the
     // bootstrap's first `refreshSnapshot()` resolves, so the planner never

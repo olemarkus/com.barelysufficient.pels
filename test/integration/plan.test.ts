@@ -378,7 +378,7 @@ describe('Device plan snapshot', () => {
       startedMs: pendingStartedMs,
     };
     app.planEngine.state.actuation.lastDeviceShedMs['dev-cooldown'] = Date.now();
-    app.planEngine.state.lastInstabilityMs = Date.now();
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
 
     await app['powerSamplePipeline'].recordPowerSample(3000);
     structuredEvents.length = 0;
@@ -882,7 +882,7 @@ describe('Device plan snapshot', () => {
 
     // Force cooldown window for device by keeping lastDeviceShedMs recent.
     app.planEngine.state.actuation.lastDeviceShedMs['dev-1'] = Date.now();
-    app.planEngine.state.lastInstabilityMs = Date.now();
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
 
     // Now plan with ample headroom but still within cooldown.
     app.computeDynamicSoftLimit = () => 5;
@@ -957,7 +957,7 @@ describe('Device plan snapshot', () => {
     await app['powerSamplePipeline'].recordPowerSample(1200);
 
     // Force cooldown window and rebuild plan with available headroom.
-    app.planEngine.state.lastInstabilityMs = Date.now();
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
     app.computeDynamicSoftLimit = () => 5;
     app.computeDynamicSoftLimit = () => 5;
 
@@ -1007,7 +1007,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    app.planEngine.state.lastInstabilityMs = Date.now();
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
     app.planEngine.state.lastPlannedShedIds = new Set(['dev-1']);
 
     await app.planService.rebuildPlanFromCache('unknown');
@@ -1173,8 +1173,8 @@ describe('Device plan snapshot', () => {
     await app['powerSamplePipeline'].recordPowerSample(1200);
 
     // Move past cooldown and provide ample headroom so device should restore.
-    app.planEngine.state.lastInstabilityMs = Date.now() - 180000; // cooldown expired
-    app.planEngine.state.lastRecoveryMs = Date.now() - 180000;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now() - 180000; // cooldown expired
+    app.planEngine.state.restoreBackoff.lastRecoveryMs = Date.now() - 180000;
     app.computeDynamicSoftLimit = () => 5;
     app.computeDynamicSoftLimit = () => 5;
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
@@ -1246,7 +1246,7 @@ describe('Device plan snapshot', () => {
     // Plenty of headroom but still in cooldown due to a recent shed
     app.computeDynamicSoftLimit = () => 5;
     app.computeDynamicSoftLimit = () => 5;
-    app.planEngine.state.lastInstabilityMs = Date.now(); // force cooldown window
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now(); // force cooldown window
     app.planEngine.state.actuation.lastDeviceShedMs['dev-1'] = Date.now();
 
     await app['powerSamplePipeline'].recordPowerSample(1000);
@@ -1280,7 +1280,7 @@ describe('Device plan snapshot', () => {
 
     await app['powerSamplePipeline'].recordPowerSample(600); // 0.6 kW total, overshoot of 0.1 kW
 
-    expect(app.planEngine.state.lastInstabilityMs).toBeNull();
+    expect(app.planEngine.state.restoreBackoff.lastInstabilityMs).toBeNull();
   });
 
   it('executes shedding action when plan says shed and dry run is off', async () => {
@@ -1480,7 +1480,7 @@ describe('Device plan snapshot', () => {
     await app.refreshTargetDevicesSnapshot();
 
     // Clear shedding-related cooldowns but NOT restore margin consideration
-    app.planEngine.state.lastInstabilityMs = 0;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     if (app.capacityGuard) {
       app.planEngine.state.sheddingActive = false;
     }
@@ -1498,7 +1498,7 @@ describe('Device plan snapshot', () => {
 
     // Step 3: Large headroom - device should restore
     // Clear all cooldowns to allow restoration
-    app.planEngine.state.lastInstabilityMs = 0;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = 0;
 
     // Set soft limit high enough for restoration:
@@ -2196,7 +2196,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Simulate recent shedding/overshoot.
-    app.planEngine.state.lastInstabilityMs = Date.now();
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
     if (app.capacityGuard) {
       app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
     }
@@ -2244,7 +2244,7 @@ describe('Device plan snapshot', () => {
 
     // Simulate being in shortfall state with positive headroom (waiting for 60s sustain)
     // This happens when power drops but we haven't sustained positive headroom long enough
-    app.planEngine.state.lastInstabilityMs = Date.now() - 120000; // shedding was 2 minutes ago (past cooldown)
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now() - 120000; // shedding was 2 minutes ago (past cooldown)
     if (app.capacityGuard) {
       app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
       app.capacityGuard.isInShortfall = () => true; // still in shortfall, waiting for sustained period
@@ -2438,7 +2438,7 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 4.5;
 
     // Clear any shedding/overshoot timestamps to avoid cooldown
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
     if (app.capacityGuard) {
@@ -2486,7 +2486,7 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 3;
     app.computeDynamicSoftLimit = () => 3;
 
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
 
     await app['powerSamplePipeline'].recordPowerSample(2500);
 
@@ -2530,7 +2530,7 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 3.5;
     app.computeDynamicSoftLimit = () => 3.5;
 
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
 
     await app['powerSamplePipeline'].recordPowerSample(3000);
@@ -2581,7 +2581,7 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 4.8;
     app.computeDynamicSoftLimit = () => 4.8;
 
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
 
@@ -2643,7 +2643,7 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 2;
     app.computeDynamicSoftLimit = () => 2;
 
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
 
     // Simulate that a swap was initiated: swap target is in pendingSwapTargets
@@ -2697,7 +2697,7 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 1.4;
     app.computeDynamicSoftLimit = () => 1.4;
 
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.swapByDevice['dev-pending-low'] = { pendingTarget: true };
 
@@ -2745,7 +2745,7 @@ describe('Device plan snapshot', () => {
     app.computeDynamicSoftLimit = () => 3;
     app.computeDynamicSoftLimit = () => 3;
 
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
 
     // Simulate swap state: dev-swapped was shed for dev-target, but dev-target can't restore
@@ -2846,7 +2846,7 @@ describe('Device plan snapshot', () => {
     // Set up conditions for swap
     app.computeDynamicSoftLimit = () => 4.8;
     app.computeDynamicSoftLimit = () => 4.8;
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
     if (app.capacityGuard) {
@@ -2905,7 +2905,7 @@ describe('Device plan snapshot', () => {
     // Set up conditions for swap
     app.computeDynamicSoftLimit = () => 4.5;
     app.computeDynamicSoftLimit = () => 4.5;
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
     if (app.capacityGuard) {
@@ -2972,7 +2972,7 @@ describe('Device plan snapshot', () => {
 
     app.computeDynamicSoftLimit = () => 4.5;
     app.computeDynamicSoftLimit = () => 4.5;
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
     if (app.capacityGuard) {
@@ -3029,7 +3029,7 @@ describe('Device plan snapshot', () => {
 
     app.computeDynamicSoftLimit = () => 4.8;
     app.computeDynamicSoftLimit = () => 4.8;
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
     if (app.capacityGuard) {
@@ -3441,7 +3441,7 @@ describe('Dry run mode', () => {
     app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
     app.computeDynamicSoftLimit = () => 3;
     app.computeDynamicSoftLimit = () => 3;
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
     app.planEngine.state.lastPlannedShedIds = new Set();
@@ -3665,7 +3665,7 @@ describe('Dry run mode', () => {
       app.planEngine.state.sheddingActive = false;
     }
     app.planEngine.state.inShortfall = false;
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
 
     // Report 4.3 kW power - gives 2.2 kW headroom (6.5 - 4.3 = 2.2)
@@ -3716,7 +3716,7 @@ describe('Dry run mode', () => {
     app.computeDynamicSoftLimit = () => 2.8;
     app.computeDynamicSoftLimit = () => 2.8;
 
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
@@ -3953,8 +3953,8 @@ describe('Dry run mode', () => {
       vi.setSystemTime(new Date('2023-01-01T12:05:00Z'));
 
       // Explicitly clear cooldowns to avoid test flakiness with Date mocking
-      app.planEngine.state.lastInstabilityMs = 0;
-      app.planEngine.state.lastRecoveryMs = 0;
+      app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
+      app.planEngine.state.restoreBackoff.lastRecoveryMs = 0;
       app.planEngine.state.actuation.lastDeviceShedMs = {};
       // Deactivate the guard so the next cycle doesn't trigger a fresh recovery transition.
       app.planEngine.state.sheddingActive = false;
@@ -4286,7 +4286,7 @@ describe('Dry run mode', () => {
     app.computeDynamicSoftLimit = () => 0.7; // 0.7kW limit
     app.computeDynamicSoftLimit = () => 0.7;
 
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
 
     app.deviceManager.setSnapshotForTests([
@@ -4364,7 +4364,7 @@ describe('Dry run mode', () => {
     app.computeDynamicSoftLimit = () => 0.7;
     app.computeDynamicSoftLimit = () => 0.7;
 
-    app.planEngine.state.lastInstabilityMs = null;
+    app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
 
     app.deviceManager.setSnapshotForTests([

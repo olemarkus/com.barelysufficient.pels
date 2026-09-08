@@ -221,7 +221,7 @@ describe('budget-exempt restore lane during budget-driven shedding', () => {
 
   it('holds exempt candidates during the shed cooldown', () => {
     const state = createPlanEngineState();
-    Object.assign(state, { lastInstabilityMs: Date.now() - 20 * 1000 });
+    state.restoreBackoff.noteInstability(Date.now() - 20 * 1000);
     const result = runLane({ devices: [offExemptHeater(), offThermostat()], state });
     const heater = result.planDevices.find((d) => d.id === 'exempt-heater');
     expect(heater?.plannedState).toBe('shed');

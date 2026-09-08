@@ -1090,7 +1090,7 @@ describe('activation backoff', () => {
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    state.startupRestoreBlockedUntilMs = start + 30_000;
+    state.restoreBackoff.startupRestoreBlockedUntilMs = start + 30_000;
 
     syncHeadroomCardState(state, [buildTrackedDevice()], start, undefined);
 
@@ -1113,11 +1113,11 @@ describe('activation backoff', () => {
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    state.startupRestoreBlockedUntilMs = start + 60_000;
+    state.restoreBackoff.startupRestoreBlockedUntilMs = start + 60_000;
 
     syncHeadroomCardState(state, [buildTrackedDevice()], start, undefined);
 
-    state.startupRestoreBlockedUntilMs = start + 4_999;
+    state.restoreBackoff.startupRestoreBlockedUntilMs = start + 4_999;
 
     expect(syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + 5_000, diagnostics)).toBe(false);
 

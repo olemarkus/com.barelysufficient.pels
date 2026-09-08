@@ -69,7 +69,9 @@ const suppressRecentSteppedBinaryRestore = (
   if (
     effectiveCurrentOn !== false
     || !isBinaryObservedOff(snapshot)
-    || !ctx.state.actuation.hasRecentSteppedBinaryRestoreAttempt(action.id, Date.now(), ctx.state.restoreCooldownMs)
+    || !ctx.state.actuation.hasRecentSteppedBinaryRestoreAttempt(
+      action.id, Date.now(), ctx.state.restoreBackoff.restoreCooldownMs,
+    )
   ) return false;
   logSteppedLoadRestoreSkip(ctx, {
     action,

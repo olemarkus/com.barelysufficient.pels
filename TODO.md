@@ -1436,6 +1436,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Architecture and tooling debt
 
+- [ ] **P2 — the owned sub-states of `PlanEngineState` keep their fields public, so their
+      invariants hold by convention.** `ActuationRecord`, `RestoreBackoff` and `OvershootIncident`
+      (`lib/plan/*.ts`) each expose public mutable fields beside the mutators that are the only
+      runtime writers; `functional/immutable-data` is off in `lib/plan`, so nothing stops a direct
+      write, and an invariant like the restore back-off's "one instability bumps the cooldown once"
+      (`commitCooldown` being the sole writer) is unenforced. `ActuationRecord`'s in-flight sets are
+      already private and show the shape. Change: make each record's fields private with getters,
+      leaving the mutators as the write path. Done when the three records expose no assignable
+      field and the ~70 spec sites that assign one go through a mutator — note the startup block
+      needs a test-reachable way to set an arbitrary deadline, since `beginStartupBlock` fixes the
+      window at `STARTUP_RESTORE_BLOCK_MS`. Source: layering review of the restore-back-off state
+      layer, 2026-09-08.
+
 - [ ] **P2 — the shedding pass's `shed` outcome carries two nullables no production build can
       produce.** `SheddingOutcome` (`lib/plan/planState.ts`) declares `measurementTs: number | null`
       and `latch: ShedPlanLatch | null`, and `applySheddingOutcome` sniffs both before writing. The

@@ -480,7 +480,7 @@ describe('PlanExecutor declined actuator requests', () => {
     expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
     expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
     expect(state.actuation.lastDeviceControlledMs['dev-1']).toBeUndefined();
-    expect(state.lastInstabilityMs).toBeNull();
+    expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
     expect(persistLastControlledMs).not.toHaveBeenCalled();
     expect(logCapture.findEvent('binary_command_succeeded')).toBeUndefined();
     expect(logCapture.findEvent('binary_command_applied')).toBeUndefined();
@@ -4677,7 +4677,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(chargerShedPlan());
 
       expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
-      expect(state.lastInstabilityMs).toBeNull();
+      expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
       expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
     });
 
@@ -4691,7 +4691,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(chargerShedPlan());
 
       expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
-      expect(state.lastInstabilityMs).toBeNull();
+      expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
       expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
     });
 
@@ -4717,7 +4717,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         source: 'device_update',
         onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
       });
-      expect(typeof state.lastInstabilityMs).toBe('number');
+      expect(typeof state.restoreBackoff.lastInstabilityMs).toBe('number');
       expect(typeof state.actuation.lastDeviceShedMs['dev-1']).toBe('number');
     });
 
@@ -4733,7 +4733,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(chargerShedPlan());
 
       expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
-      expect(state.lastInstabilityMs).toBeNull();
+      expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
       expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
     });
   });

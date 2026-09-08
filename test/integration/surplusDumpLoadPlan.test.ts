@@ -200,7 +200,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     // wrongly counting it as capacity pressure in the stepped-restore-block.
     const h = makeHarness({ totalKw: 0.5 });
     // Seed a recent shed so `inCooldown` is active this build.
-    h.state.lastInstabilityMs = Date.now();
+    h.state.restoreBackoff.lastInstabilityMs = Date.now();
     const plan = await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);
     const pump = deviceOf(plan, PUMP);
     expect(pump?.plannedState).toBe('shed');

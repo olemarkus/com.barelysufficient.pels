@@ -1,4 +1,5 @@
 import type { PlanEngineState } from '../planState';
+import type { RestoreBackoff, RestoreCooldownState } from '../restoreBackoff';
 import type { SoftLimitSource } from '../planContext';
 import type { PowerTrackerState } from '../../power/tracker';
 import {
@@ -9,7 +10,7 @@ import {
   SHED_COOLDOWN_MS,
 } from '../planConstants';
 
-export type RestoreTiming = {
+export type RestoreTiming = RestoreCooldownState & {
   inCooldown: boolean;
   inRestoreCooldown: boolean;
   inStartupStabilization: boolean;
@@ -25,13 +26,6 @@ export type RestoreTiming = {
   inShedWindow: boolean;
   measurementTs: number | null;
   nowTs: number;
-  restoreCooldownMs: number;
-  lastRestoreCooldownBumpMs: number | null;
-};
-
-type RestoreCooldownState = {
-  restoreCooldownMs: number;
-  lastRestoreCooldownBumpMs: number | null;
 };
 
 const ceilSecondsOrNull = (ms: number | null): number | null =>
@@ -46,18 +40,11 @@ export const buildRestoreTiming = (
   const measurementTs = powerTracker.lastTimestamp ?? null;
   const cooldownState = resolveRestoreCooldown(state, nowTs);
   const sinceRestore = state.actuation.lastRestoreMs ? nowTs - state.actuation.lastRestoreMs : null;
-  const cooldown = getShedCooldownState({
-    lastInstabilityMs: state.lastInstabilityMs,
-    lastRecoveryMs: state.lastRecoveryMs,
-    nowTs,
-    cooldownMs: SHED_COOLDOWN_MS,
-  });
+  const cooldown = getShedCooldownState(state.restoreBackoff, nowTs, SHED_COOLDOWN_MS);
   const cooldownRemainingMs = cooldown.cooldownRemainingMs;
   const inCooldown = cooldown.inCooldown;
   const inRestoreCooldown = sinceRestore !== null && sinceRestore < cooldownState.restoreCooldownMs;
-  const startupBlockRemainingMs = typeof state.startupRestoreBlockedUntilMs === 'number'
-    ? Math.max(0, state.startupRestoreBlockedUntilMs - nowTs)
-    : null;
+  const startupBlockRemainingMs = state.restoreBackoff.startupBlockRemainingMs(nowTs);
   const inStartupStabilization = startupBlockRemainingMs !== null && startupBlockRemainingMs > 0;
   const activeOvershoot = headroomRaw < 0;
   const restoreCooldownSeconds = sinceRestore !== null
@@ -151,11 +138,12 @@ const resolveRestoreCooldown = (
   nowTs: number,
 ): RestoreCooldownState => {
   const lastRestoreMs = state.actuation.lastRestoreMs;
-  const lastInstabilityMs = typeof state.lastInstabilityMs === 'number' ? state.lastInstabilityMs : 0;
-  const instabilityAgeMs = getInstabilityAgeMs(lastInstabilityMs, nowTs);
-
-  let restoreCooldownMs = state.restoreCooldownMs ?? RESTORE_COOLDOWN_MS;
-  let lastRestoreCooldownBumpMs = state.lastRestoreCooldownBumpMs ?? null;
+  const lastInstabilityMs = state.restoreBackoff.lastInstabilityMs;
+  let { restoreCooldownMs, lastRestoreCooldownBumpMs } = state.restoreBackoff;
+  // Nothing has destabilised this run, so nothing can reset or bump the
+  // cooldown: carry the pair forward untouched.
+  if (lastInstabilityMs === null) return { restoreCooldownMs, lastRestoreCooldownBumpMs };
+  const instabilityAgeMs = nowTs - lastInstabilityMs;
 
   if (shouldResetRestoreCooldown(restoreCooldownMs, instabilityAgeMs)) {
     restoreCooldownMs = RESTORE_COOLDOWN_MS;
@@ -178,24 +166,21 @@ const resolveRestoreCooldown = (
   return { restoreCooldownMs, lastRestoreCooldownBumpMs };
 };
 
-const getInstabilityAgeMs = (lastInstabilityMs: number, nowTs: number): number | null => {
-  if (lastInstabilityMs <= 0) return null;
-  return nowTs - lastInstabilityMs;
-};
-
 const shouldResetRestoreCooldown = (
   restoreCooldownMs: number,
-  instabilityAgeMs: number | null,
-): boolean => {
-  if (instabilityAgeMs === null) return false;
-  if (restoreCooldownMs === RESTORE_COOLDOWN_MS) return false;
-  return instabilityAgeMs >= RESTORE_STABLE_RESET_MS;
-};
+  instabilityAgeMs: number,
+): boolean => (
+  restoreCooldownMs !== RESTORE_COOLDOWN_MS && instabilityAgeMs >= RESTORE_STABLE_RESET_MS
+);
 
+/**
+ * A restore that this instability followed, still inside the stable-reset
+ * window, that this cooldown has not already been bumped for.
+ */
 const shouldBumpRestoreCooldown = (params: {
   lastRestoreMs: number | null;
   lastInstabilityMs: number;
-  instabilityAgeMs: number | null;
+  instabilityAgeMs: number;
   lastRestoreCooldownBumpMs: number | null;
 }): boolean => {
   const {
@@ -204,33 +189,32 @@ const shouldBumpRestoreCooldown = (params: {
     instabilityAgeMs,
     lastRestoreCooldownBumpMs,
   } = params;
-  if (lastRestoreMs === null || lastInstabilityMs <= 0) return false;
-  if (lastInstabilityMs <= lastRestoreMs) return false;
-  if (instabilityAgeMs === null || instabilityAgeMs >= RESTORE_STABLE_RESET_MS) return false;
-  if (lastRestoreCooldownBumpMs !== null && lastRestoreCooldownBumpMs >= lastInstabilityMs) return false;
-  return true;
+  if (lastRestoreMs === null || lastInstabilityMs <= lastRestoreMs) return false;
+  if (instabilityAgeMs >= RESTORE_STABLE_RESET_MS) return false;
+  return lastRestoreCooldownBumpMs === null || lastRestoreCooldownBumpMs < lastInstabilityMs;
 };
 
-export function getShedCooldownState(params: {
-  lastInstabilityMs?: number | null;
-  lastRecoveryMs?: number | null;
-  nowTs?: number;
-  cooldownMs?: number;
-}): {
+/**
+ * The shed cooldown running off whichever of the back-off's two clocks fired
+ * most recently, or no cooldown when neither has fired yet.
+ */
+export function getShedCooldownState(
+  backoff: RestoreBackoff,
+  nowTs: number,
+  cooldownMs: number,
+): {
   cooldownRemainingMs: number | null;
   cooldownStartedAtMs: number | null;
   cooldownTotalMs: number | null;
   inCooldown: boolean;
 } {
-  const nowTs = params.nowTs ?? Date.now();
-  const cooldownMs = params.cooldownMs ?? SHED_COOLDOWN_MS;
   const candidates = [
-    typeof params.lastInstabilityMs === 'number'
-      ? { startedAtMs: params.lastInstabilityMs, elapsedMs: nowTs - params.lastInstabilityMs }
-      : null,
-    typeof params.lastRecoveryMs === 'number'
-      ? { startedAtMs: params.lastRecoveryMs, elapsedMs: nowTs - params.lastRecoveryMs }
-      : null,
+    backoff.lastInstabilityMs === null
+      ? null
+      : { startedAtMs: backoff.lastInstabilityMs, elapsedMs: nowTs - backoff.lastInstabilityMs },
+    backoff.lastRecoveryMs === null
+      ? null
+      : { startedAtMs: backoff.lastRecoveryMs, elapsedMs: nowTs - backoff.lastRecoveryMs },
   ].filter((value) => value !== null);
   let activeCandidate: { startedAtMs: number; elapsedMs: number } | undefined;
   for (const candidate of candidates) {
