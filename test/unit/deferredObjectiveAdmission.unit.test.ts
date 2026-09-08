@@ -68,6 +68,7 @@ const buildHorizonPlan = (overrides: Partial<DeferredObjectiveHorizonPlan> = {})
   },
   plannedBuckets: [],
   usesDeadlineReserve: false,
+  budgetContributedToShortfall: false,
   priceDeferralEligible: false,
   // Self-consistent with the booked current bucket above. Cases that mean "the task
   // booked nothing here" override the bucket and the claim together — the producer

@@ -64,6 +64,10 @@ export const buildDeferredObjectiveDebugPayload = (
   // the UI hero copy resolver see the same producer-resolved verdict — see
   // `floorShortfallCause.ts` for the mapping table.
   floorShortfallCause: resolveFloorShortfallCause(diagnostic.reasonCode),
+  // Companion to the cause: true when lifting the per-bucket daily-budget cap
+  // would have planned strictly more energy, INCLUDING the case the cause above
+  // reports as `time_capacity` because uncapping helps without closing the gap.
+  budgetContributedToShortfall: diagnostic.horizonPlan?.budgetContributedToShortfall === true,
   targetPercent: diagnostic.targetPercent,
   currentPercent: diagnostic.currentPercent,
   targetTemperatureC: diagnostic.objectiveKind === 'temperature' ? diagnostic.targetTemperatureC : null,

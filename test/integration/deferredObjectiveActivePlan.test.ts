@@ -76,6 +76,7 @@ const makeHorizon = (
     currentBucket: null,
     plannedBuckets: buckets,
     usesDeadlineReserve: false,
+    budgetContributedToShortfall: false,
     // `currentBucket: null` above, but these fixtures drive the RECORDER, which
     // never reads the claim; keep the plan internally valid and let the specs that
     // exercise admission own the claim semantics.

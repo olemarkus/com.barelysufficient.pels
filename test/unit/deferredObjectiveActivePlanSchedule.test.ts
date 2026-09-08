@@ -2,6 +2,8 @@ import {
   mergeHoursPreservingCommitment,
   shouldFireNotification,
 } from '../../lib/objectives/deferredObjectives/activePlanSchedule';
+import { partialDouble } from '../helpers/partialDouble';
+import { hasMetadataDriftedWithinSchedule } from '../../lib/objectives/deferredObjectives/activePlanRevisionBuild';
 
 const HOUR_MS = 60 * 60 * 1000;
 // Anchor the hour constants on real hour boundaries so the partition keys
@@ -311,5 +313,49 @@ describe('shouldFireNotification', () => {
   it('suppresses an empty collapse when the target is already met', () => {
     expect(shouldFireNotification(3, 0, 'satisfied')).toBe(false);
     expect(shouldFireNotification(3, 0, 'on_track')).toBe(false);
+  });
+});
+
+// The steady-state case the budget-contributing signal exists for: a floor
+// pinned to its lowest rung persists byte-identical hours while the per-bucket
+// cap drifts across the climbed band, so `planStatus` and `floorShortfallCause`
+// both hold and ONLY this flag moves. Omit it from the drift comparison and the
+// recorder writes nothing, so the surface never learns.
+type Params = Parameters<typeof hasMetadataDriftedWithinSchedule>[0];
+
+describe('hasMetadataDriftedWithinSchedule — budget contribution', () => {
+  const revision = (budgetContributedToShortfall?: true) => partialDouble<Params['latest']>({
+    planStatus: 'cannot_meet',
+    floorShortfallCause: 'time_capacity',
+    ...(budgetContributedToShortfall ? { budgetContributedToShortfall } : {}),
+  });
+  const plan = (budgetContributedToShortfall: boolean) => partialDouble<Params['horizonPlan']>({
+    status: 'cannot_meet',
+    budgetContributedToShortfall,
+  });
+  // `reportedPlanStatus` prefers a resolved trajectory over the plan's status, so
+  // it is pinned to the same value the plan carries — leaving the metadata
+  // comparison as the only thing that can move.
+  const diag = partialDouble<Params['diag']>({
+    reasonCode: 'target_cannot_be_met',
+    trajectory: { kind: 'resolved', status: 'cannot_meet' },
+  });
+
+  const drifted = (
+    latest: ReturnType<typeof revision>,
+    horizonPlan: ReturnType<typeof plan>,
+  ): boolean => hasMetadataDriftedWithinSchedule({ latest, horizonPlan, diag });
+
+  it('drifts when the budget starts contributing on an otherwise unchanged plan', () => {
+    expect(drifted(revision(), plan(true))).toBe(true);
+  });
+
+  it('drifts when the budget stops contributing, so a stale true cannot latch', () => {
+    expect(drifted(revision(true), plan(false))).toBe(true);
+  });
+
+  it('does not drift when the contribution is unchanged', () => {
+    expect(drifted(revision(true), plan(true))).toBe(false);
+    expect(drifted(revision(), plan(false))).toBe(false);
   });
 });

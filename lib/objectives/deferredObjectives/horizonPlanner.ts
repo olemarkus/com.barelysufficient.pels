@@ -130,7 +130,7 @@ export const planDeferredObjectiveHorizon = (
     energyNeededKWh,
     epsilonKWh,
   });
-  const { feasibleOnClimbedBand, budgetBound } = resolveFloorFeasibility({
+  const { feasibleOnClimbedBand, budgetRole } = resolveFloorFeasibility({
     activeSteps,
     buckets,
     committed,
@@ -162,15 +162,15 @@ export const planDeferredObjectiveHorizon = (
     allocation,
     epsilonKWh,
     feasibleOnClimbedBand,
-    budgetBound,
+    budgetRole,
     priceDeferralEligible,
     coldStartReleaseEligible,
   });
 };
 
 // Resolve both floor-feasibility signals together: whether the target fits by
-// climbing to a higher step (`feasibleOnClimbedBand`) and whether the only
-// binding constraint is the soft daily budget (`budgetBound`). `budgetBound`
+// climbing to a higher step (`feasibleOnClimbedBand`) and how far the soft
+// daily budget accounts for what remains (`budgetRole`). The role probe
 // consumes `feasibleOnClimbedBand`, so they are resolved here in one pass to keep
 // `planDeferredObjectiveHorizon` lean.
 const resolveFloorFeasibility = (params: {
@@ -182,19 +182,10 @@ const resolveFloorFeasibility = (params: {
   epsilonKWh: number;
   floorUnplannedKWh: number;
   stepForBucket: StepForBucket;
-}): { feasibleOnClimbedBand: boolean; budgetBound: boolean } => {
-  const feasibleOnClimbedBand = resolveClimbedBandFeasibility(params);
-  const budgetBound = resolveBudgetBoundFeasibility({
-    activeSteps: params.activeSteps,
-    buckets: params.buckets,
-    committed: params.committed,
-    committedHours: params.committedHours,
-    energyNeededKWh: params.energyNeededKWh,
-    epsilonKWh: params.epsilonKWh,
-    floorUnplannedKWh: params.floorUnplannedKWh,
-    feasibleOnClimbedBand,
-  });
-  return { feasibleOnClimbedBand, budgetBound };
+}): { feasibleOnClimbedBand: boolean; budgetRole: BudgetShortfallRole } => {
+  const climbedBand = resolveClimbedBandFeasibility(params);
+  const budgetRole = resolveBudgetBoundFeasibility({ ...params, climbedBand });
+  return { feasibleOnClimbedBand: climbedBand.feasible, budgetRole };
 };
 
 // Backward-compatible resolution of the committed flag. New callers pass an
@@ -268,6 +259,13 @@ const resolveAllocation = (params: {
 // the probe must not silently recover by re-running the fresh optimizer.
 // Single-step devices (e.g. EV chargers) cannot climb, so they skip the probe
 // and keep the floor verdict.
+// What the climbed-band pass found: whether climbing alone closes the gap, and
+// how much it still left unplanned. The second figure is what makes the budget
+// probe honest — it compares an UNCAPPED climbed allocation against a CAPPED
+// climbed one, so the difference is the budget cap and nothing else. Against the
+// floor pass it would credit the budget for every kWh climbing unlocked.
+type ClimbedBandProbe = { feasible: boolean; cappedUnplannedKWh: number };
+
 const resolveClimbedBandFeasibility = (params: {
   activeSteps: NonEmptyObjectiveSteps;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
@@ -282,8 +280,10 @@ const resolveClimbedBandFeasibility = (params: {
   // the feasibility upper bound the executor could actually reach there. The
   // probe is skipped when no bucket would gain capacity by climbing.
   stepForBucket: StepForBucket;
-}): boolean => {
-  if (params.floorUnplannedKWh <= params.epsilonKWh) return false;
+}): ClimbedBandProbe => {
+  // Climbing gains nothing here, so the floor pass IS the capped-climbed result.
+  const climbChangesNothing = { feasible: false, cappedUnplannedKWh: params.floorUnplannedKWh };
+  if (params.floorUnplannedKWh <= params.epsilonKWh) return climbChangesNothing;
   const topStep = topObjectiveStep(params.activeSteps);
   // Highest rung each bucket's own headroom admits; the top rung when it has no
   // forecast. `resolveBucketStepCapacityKWh` ZEROES a bucket whose step draws more
@@ -299,7 +299,7 @@ const resolveClimbedBandFeasibility = (params: {
   const climbAddsCapacity = params.buckets.some(
     (bucket) => climbStepFor(bucket).usefulPowerKw > params.stepForBucket(bucket).usefulPowerKw,
   );
-  if (!climbAddsCapacity) return false;
+  if (!climbAddsCapacity) return climbChangesNothing;
   const climbed = resolveAllocation({
     stepForBucket: climbStepFor,
     buckets: params.buckets,
@@ -308,7 +308,8 @@ const resolveClimbedBandFeasibility = (params: {
     energyNeededKWh: params.energyNeededKWh,
     epsilonKWh: params.epsilonKWh,
   });
-  return climbed.unplannedUsefulEnergyKWh <= params.epsilonKWh;
+  const cappedUnplannedKWh = climbed.unplannedUsefulEnergyKWh;
+  return { feasible: cappedUnplannedKWh <= params.epsilonKWh, cappedUnplannedKWh };
 };
 
 // Per-bucket floor step selection for fully-reserved smart tasks. By default
@@ -369,6 +370,14 @@ const resolveStepForBucket = (
 // mode keeps it conservative: a committed, already-budget-shaped schedule stays
 // `cannot_meet` (the committed caps bind in the probe too), while the common
 // fresh-plan case reclassifies correctly.
+// How far the soft daily budget accounts for a floor shortfall. `sole` is the
+// long-standing "lift the per-bucket cap and it fits" test, and the ONLY value
+// that moves the primary status — a shortfall the budget fully explains is
+// recoverable, not physical. `contributing` means uncapping plans strictly more
+// yet the target still misses: the status stays honest about reachability while
+// the surface gains the one fact it was missing.
+type BudgetShortfallRole = 'none' | 'contributing' | 'sole';
+
 const resolveBudgetBoundFeasibility = (params: {
   activeSteps: NonEmptyObjectiveSteps;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
@@ -377,12 +386,15 @@ const resolveBudgetBoundFeasibility = (params: {
   energyNeededKWh: number;
   epsilonKWh: number;
   floorUnplannedKWh: number;
-  feasibleOnClimbedBand: boolean;
-}): boolean => {
+  // Declared so the caller can hand over the shape it already holds rather than
+  // restating it property by property; this probe runs its own climb policy.
+  stepForBucket: StepForBucket;
+  climbedBand: ClimbedBandProbe;
+}): BudgetShortfallRole => {
   // No shortfall, or climbing within the budget already fits — neither is a
   // budget-bound classification.
-  if (params.floorUnplannedKWh <= params.epsilonKWh || params.feasibleOnClimbedBand) {
-    return false;
+  if (params.floorUnplannedKWh <= params.epsilonKWh || params.climbedBand.feasible) {
+    return 'none';
   }
   const uncappedBuckets = params.buckets.map((bucket) => ({
     ...bucket,
@@ -400,7 +412,13 @@ const resolveBudgetBoundFeasibility = (params: {
     energyNeededKWh: params.energyNeededKWh,
     epsilonKWh: params.epsilonKWh,
   });
-  return uncapped.unplannedUsefulEnergyKWh <= params.epsilonKWh;
+  if (uncapped.unplannedUsefulEnergyKWh <= params.epsilonKWh) return 'sole';
+  // Uncapping planned strictly more and STILL missed: the budget is not the whole
+  // story, but it is part of it. Compared against the CAPPED CLIMBED residue so
+  // the only difference between the two allocations is the per-bucket cap.
+  const uncappingHelped = uncapped.unplannedUsefulEnergyKWh + params.epsilonKWh
+    < params.climbedBand.cappedUnplannedKWh;
+  return uncappingHelped ? 'contributing' : 'none';
 };
 
 // Price-deferral release probe (mid-execution price deferral). Eligible when
@@ -454,7 +472,7 @@ const buildPlanFromAllocation = (params: {
   allocation: BucketAllocationResult;
   epsilonKWh: number;
   feasibleOnClimbedBand: boolean;
-  budgetBound: boolean;
+  budgetRole: BudgetShortfallRole;
   varianceMarginKWh: number;
   priceDeferralEligible: boolean;
   coldStartReleaseEligible: boolean;
@@ -467,7 +485,7 @@ const buildPlanFromAllocation = (params: {
     allocation,
     epsilonKWh,
     feasibleOnClimbedBand,
-    budgetBound,
+    budgetRole,
     varianceMarginKWh,
     priceDeferralEligible,
     coldStartReleaseEligible,
@@ -476,7 +494,7 @@ const buildPlanFromAllocation = (params: {
     allocation,
     epsilonKWh,
     feasibleOnClimbedBand,
-    budgetBound,
+    budgetRole,
     varianceMarginKWh,
   });
   const currentBucket = resolveCurrentBucketPlan({
@@ -498,6 +516,7 @@ const buildPlanFromAllocation = (params: {
     energyNeededKWh,
     plannedUsefulEnergyKWh: allocation.plannedUsefulEnergyKWh,
     unplannedUsefulEnergyKWh: allocation.unplannedUsefulEnergyKWh,
+    budgetContributedToShortfall: budgetRole !== 'none',
     expectedStepId: currentBucket?.expectedStepId ?? null,
     currentBucket,
     plannedBuckets: allocation.plannedBuckets,
@@ -545,14 +564,14 @@ const resolveStatus = (params: {
   allocation: BucketAllocationResult;
   epsilonKWh: number;
   feasibleOnClimbedBand: boolean;
-  budgetBound: boolean;
+  budgetRole: BudgetShortfallRole;
   varianceMarginKWh: number;
 }): { status: DeferredObjectiveHorizonStatus; statusDetail: DeferredObjectiveHorizonStatusDetail } => {
   const {
     allocation,
     epsilonKWh,
     feasibleOnClimbedBand,
-    budgetBound,
+    budgetRole,
     varianceMarginKWh,
   } = params;
   if (allocation.unplannedUsefulEnergyKWh > epsilonKWh) {
@@ -566,7 +585,7 @@ const resolveStatus = (params: {
     // soft daily budget is the binding constraint, not physical capacity/time.
     // Surface it as recoverable `at_risk` (the user can lower the daily budget
     // or exempt the task) rather than a physical `cannot_meet`.
-    if (budgetBound) {
+    if (budgetRole === 'sole') {
       return { status: 'at_risk', statusDetail: 'limited_by_daily_budget' };
     }
     // The shortfall fits within the producer's variance margin (the integrated
@@ -612,6 +631,7 @@ const buildEmptyPlan = (params: {
     enforcement: input.objective.enforcement,
     status,
     statusDetail,
+    budgetContributedToShortfall: false,
     horizonStartMs: input.nowMs,
     horizonEndMs: input.objective.deadlineAtMs,
     planningEndMs: resolvePlanningEndMs(input.nowMs, input.objective.deadlineAtMs, deadlineMarginMs),

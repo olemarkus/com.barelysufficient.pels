@@ -374,6 +374,14 @@ export const buildRevision = (params: {
     ...(source !== null ? { speedMode: resolveSpeedMode(source) } : {}),
     ...(rateMean !== null ? { rateMean } : {}),
     ...(floorShortfallCause !== 'none' ? { floorShortfallCause } : {}),
+    // Stamped only when it ADDS something: a plan the budget never touched stays
+    // byte-stable, and the `sole` case already says it through
+    // `floorShortfallCause: 'budget'`. What is left is exactly the case this
+    // exists for — a shortfall the budget had a hand in that reports
+    // `time_capacity` — so one field carries one fact.
+    ...(horizonPlan.budgetContributedToShortfall && floorShortfallCause !== 'budget'
+      ? { budgetContributedToShortfall: true as const }
+      : {}),
     ...(typeof planningSpeedKw === 'number' && planningSpeedKw > 0 ? { planningSpeedKw } : {}),
     ...(estimatedDurationText !== null ? { estimatedDurationText } : {}),
     ...(params.diag.allocationContextSignature
@@ -422,6 +430,13 @@ const isProvenanceConfidence = (
 //     repro: `at_risk` stays put while cause flips from `feasible_above_floor`
 //     to `limited_by_daily_budget` as background load shifts the per-bucket
 //     cap binding; without re-persisting, the recourse would stay device-side.
+//   - `budgetContributedToShortfall`       → the same hazard, and worse, because
+//     this one moves on a schedule that does not. A floor pinned to its lowest
+//     rung persists byte-identical hours while the per-bucket cap drifts across
+//     the climbed band, so `planStatus` and `floorShortfallCause` both hold
+//     steady and only this flag flips — exactly the steady-state `cannot_meet`
+//     plan the signal exists for. Omit it and the copy is unreachable there,
+//     and a stale `true` latches once the budget stops binding.
 // Legacy fields absent on `latest` resolve to `none`/`0` so unchanged revisions
 // don't thrash on the first cycle after upgrade. Per-cycle drift in
 // `plannedKWh` / `energyNeededKWh` is intentionally NOT a persist trigger —
@@ -432,8 +447,15 @@ export const hasMetadataDriftedWithinSchedule = (params: {
   diag: DeferredObjectiveDiagnostic;
 }): boolean => {
   const { latest, horizonPlan, diag } = params;
+  const floorShortfallCause = resolveFloorShortfallCause(diag.reasonCode);
   return latest.planStatus !== reportedPlanStatus(diag, horizonPlan)
-    || (latest.floorShortfallCause ?? 'none') !== resolveFloorShortfallCause(diag.reasonCode);
+    || (latest.floorShortfallCause ?? 'none') !== floorShortfallCause
+    // Compared as it would be PERSISTED, not as the plan carries it: the recorder
+    // suppresses the flag on the `sole` case (the cause already says it), so
+    // comparing the raw plan value would re-persist a budget-bound plan on every
+    // single cycle.
+    || (latest.budgetContributedToShortfall === true)
+      !== (horizonPlan.budgetContributedToShortfall && floorShortfallCause !== 'budget');
 };
 
 export const resolveSourceTransition = (params: {

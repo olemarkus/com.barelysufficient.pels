@@ -690,6 +690,7 @@
       // `cannotMeetDailyBudgetExhausted` branch above.
       cannotMeetShortfall: () => "Not enough time for this target. Lower the target or move the deadline.",
       cannotMeetDailyBudgetExhausted: "Today's daily budget is fully booked. Lower it so future days reserve power earlier, or move the deadline.",
+      cannotMeetDailyBudgetContributed: "Today\u2019s daily budget is holding part of this back, but there is not enough time to finish even without it. Edit the task and turn on \u201CMay go over daily budget\u201D under Extra permissions to help; it will not be enough on its own.",
       cannotMeetRecourse: CANNOT_MEET_RECOURSE,
       resolveQueuedHeadlineReason,
       completedHero: {
@@ -771,6 +772,7 @@
       // recourse. The meta line continues to carry the energy/duration magnitude.
       cannotMeetShortfall: () => "Not enough time or charging power for this target. Lower the target or move the deadline.",
       cannotMeetDailyBudgetExhausted: "Today's daily budget is fully booked. Lower it so future days reserve power earlier, or move the deadline.",
+      cannotMeetDailyBudgetContributed: "Today\u2019s daily budget is holding part of this back, but there is not enough time to finish even without it. Edit the task and turn on \u201CMay go over daily budget\u201D under Extra permissions to help; it will not be enough on its own.",
       cannotMeetRecourse: CANNOT_MEET_RECOURSE,
       resolveQueuedHeadlineReason,
       completedHero: {

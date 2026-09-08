@@ -4722,7 +4722,7 @@ describe('resolveCannotMeetRecourse', () => {
     expect(resolveCannotMeetRecourse({
       labels,
       cannotMeet: false,
-      dailyBudgetExhausted: false,
+      budgetRole: 'none' as const,
       deviceLeftOff: false,
       deviceId: 'heater',
     })).toBeNull();
@@ -4733,7 +4733,7 @@ describe('resolveCannotMeetRecourse', () => {
     const out = resolveCannotMeetRecourse({
       labels,
       cannotMeet: true,
-      dailyBudgetExhausted: true,
+      budgetRole: 'sole' as const,
       deviceLeftOff: false,
       deviceId: 'heater',
     });
@@ -4749,7 +4749,7 @@ describe('resolveCannotMeetRecourse', () => {
     const out = resolveCannotMeetRecourse({
       labels,
       cannotMeet: true,
-      dailyBudgetExhausted: false,
+      budgetRole: 'none' as const,
       deviceLeftOff: false,
       deviceId: 'heater',
     });
@@ -4760,6 +4760,35 @@ describe('resolveCannotMeetRecourse', () => {
     expect(out?.deviceId).toBe('heater');
   });
 
+  // No recourse for the contributing case: the sentence names a toggle rendered
+  // in THIS panel, and the button would close the panel and open the device
+  // overlay, whose only budget control is the different standing per-device
+  // exemption. Navigating away from the named control is worse than no button.
+  it('offers no recourse for a contributing budget cause — the toggle is on this panel', async () => {
+    const { resolveCannotMeetRecourse, resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveCannotMeetRecourse({
+      labels,
+      cannotMeet: true,
+      budgetRole: 'contributing' as const,
+      deviceLeftOff: false,
+      deviceId: 'heater',
+    })).toBeNull();
+
+    const meta = resolveCannotMeetMeta({
+      labels,
+      budgetRole: 'contributing' as const,
+      deviceLeftOff: false,
+    });
+    expect(meta).toBe(labels.cannotMeetDailyBudgetContributed);
+    // Distinct from the sole-cause line, which promises a fix this case lacks.
+    expect(meta).not.toBe(labels.cannotMeetDailyBudgetExhausted);
+    // Names the real toggle verbatim so the owner can find it on the panel.
+    expect(meta).toContain('May go over daily budget');
+    // Names the path, because the toggle is behind Edit → Extra permissions and
+    // is not visible from the hero.
+    expect(meta).toContain('Extra permissions');
+  });
+
   it('offers no recourse for a device the user turned off', async () => {
     // The reason sentence already names the only action ("until turned on
     // again"); neither the Budget tab nor the device settings hold the fix, and
@@ -4768,7 +4797,7 @@ describe('resolveCannotMeetRecourse', () => {
     expect(resolveCannotMeetRecourse({
       labels,
       cannotMeet: true,
-      dailyBudgetExhausted: true,
+      budgetRole: 'sole' as const,
       deviceLeftOff: true,
       deviceId: 'heater',
     })).toBeNull();
@@ -4776,12 +4805,12 @@ describe('resolveCannotMeetRecourse', () => {
 
   it('explains an at-risk hero with the device, not the target or the budget', async () => {
     const { resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveCannotMeetMeta({ labels, dailyBudgetExhausted: true, deviceLeftOff: true }))
+    expect(resolveCannotMeetMeta({ labels, budgetRole: 'sole' as const, deviceLeftOff: true }))
       .toBe('Device is staying off until turned on again.');
     // Unheld tasks keep their existing diagnosis.
-    expect(resolveCannotMeetMeta({ labels, dailyBudgetExhausted: false, deviceLeftOff: false }))
+    expect(resolveCannotMeetMeta({ labels, budgetRole: 'none' as const, deviceLeftOff: false }))
       .toContain('Not enough time');
-    expect(resolveCannotMeetMeta({ labels, dailyBudgetExhausted: true, deviceLeftOff: false }))
+    expect(resolveCannotMeetMeta({ labels, budgetRole: 'sole' as const, deviceLeftOff: false }))
       .toContain('daily budget');
   });
 
@@ -4794,7 +4823,7 @@ describe('resolveCannotMeetRecourse', () => {
     const out = resolveCannotMeetRecourse({
       labels,
       cannotMeet: true,
-      dailyBudgetExhausted: false,
+      budgetRole: 'none' as const,
       deviceLeftOff: false,
       deviceId: '',
     });

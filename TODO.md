@@ -369,6 +369,36 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Smart tasks
 
+- [ ] **The budget-contribution probe cannot tell a per-bucket budget cap from another
+      task's reservation.** `resolveBudgetBoundFeasibility` uncaps by setting
+      `usefulEnergyCapKWh: Number.POSITIVE_INFINITY`, but that field is not the raw budget
+      slice — `bucketAllocation.ts` computes `max(0, usefulEnergyCapKWh - higherPriorityReservedKWh)`,
+      so the probe compares `max(0, C-R)` against `Infinity` and cannot attribute which of the
+      two bound the hour. When the cap alone would not have bound but a higher-priority smart
+      task's reservation does, the verdict is `contributing` and the hero names the daily budget
+      for a shortfall another task caused. Pre-existing on the `sole` path, where it required
+      uncapping to close the gap outright; `contributing` fires on any strict improvement, so it
+      is now reachable on a user-facing sentence. Fix: uncap the budget component only, leaving
+      the reservation subtraction intact — the two limits need separate fields on the bucket, or
+      the probe needs the reservation total to add back. Done when a bucket bound purely by a
+      higher-priority reservation resolves `none`. Files:
+      `lib/objectives/deferredObjectives/horizonPlanner.ts`,
+      `lib/objectives/deferredObjectives/bucketAllocation.ts`. Source: adversarial review of the
+      budget-contributing-cause change, 2026-09-08. [P2]
+
+- [ ] **No coverage for the budget-contribution signal on a single-rung ladder or through
+      persistence.** Two gaps left by the same change. (a) `resolveClimbedBandFeasibility`
+      short-circuits when climbing adds no capacity and returns `floorUnplannedKWh` as the
+      capped-climbed residue; nothing exercises it, and that is the single-step EV-charger shape
+      the original entry cited as the motivating case. (b) Nothing asserts the round trip:
+      that `buildRevision` stamps `budgetContributedToShortfall`, that the parse seam accepts
+      `true`/absent/`false` and rejects a non-boolean, or that the frozen read restores it — the
+      fixture edits are `false` placeholders with no assertions. Done when a single-rung case and
+      a persist-then-restore case both fail against a reverted producer. Files:
+      `test/unit/deferredObjectiveHorizon.test.ts`,
+      `test/unit/deferredObjectiveActivePlanShape.test.ts`. Source: adversarial review of the
+      budget-contributing-cause change, 2026-09-08. [P3]
+
 - [ ] **The editor client still revokes a standing limit-only grant on any permission toggle.**
       `applyPermissionGate` (`packages/settings-ui/src/ui/smartTaskEdit.ts:342-348`) forces
       `limitLowerPriorityDevices: false` whenever `exemptFromBudget` is unchecked, on ANY
@@ -427,22 +457,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       fix: it changes planner behaviour (objectives that get an estimate today would report
       `objective_missing_capacity`), so it wants its own PR and its own SDK-boundary e2e.
       Split out 2026-08-12. [P2]
-
-- [ ] **Name the daily budget when it is a contributing cause of a smart-task miss, not only the
-      sole one.** `resolveStatus` reaches `limited_by_daily_budget` only when lifting the per-bucket
-      cap would close the gap outright (`resolveBudgetBoundFeasibility`). A plan whose floor was
-      squeezed by the soft budget but that misses for a compounding reason lands on
-      `target_cannot_be_met` → `floorShortfallCause: 'time_capacity'`, so the surface says
-      "Cannot finish" with no mention of the budget and no route to the "may go over daily budget"
-      permission that would actually help. The producer already has both numbers to resolve the
-      contributing-cause signal (the capped allocation and the uncapped probe), so this is a flat
-      boolean onto the diagnostic + persisted revision plus the copy branch — deliberately NOT a
-      change to the primary status, which stays honest about whether the target is reachable at all.
-      Note that `notes/deferred-load-objectives/budget-bound-false-cannot-meet.md` claims a P1 for
-      this is tracked here; it was not, hence this entry. Files:
-      `lib/objectives/deferredObjectives/horizonPlanner.ts`, `.../floorShortfallCause.ts`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts`. Source: 2026-08-09 investigation of an EV smart
-      task reporting `time_capacity` while every hour of its plan was budget-shaped. [P2]
 
 - [ ] **Latch `currentHourClaim` for the hour instead of recomputing it through the whole `:58`
       window.** `isPastHourSettleMark` is true from `:58:00` to `:59:59`, so the fresh allocator —

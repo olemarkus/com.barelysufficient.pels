@@ -9,6 +9,7 @@ import {
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,
+  type DeadlineBudgetRole,
   isDeviceExclusionPaused,
   resolveEffectivePlanStatus,
   SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
@@ -226,6 +227,22 @@ const prepareObjectivePayload = (
 // these, every inline `typeof … && Number.isFinite(…) && …` branch ticks the
 // complexity score even though the meaning is just "carry through when valid,
 // null otherwise."
+// Both producer fields are flat and read exactly once, here. `floorShortfallCause`
+// carries the outright case; `budgetContributedToShortfall` the partial one.
+// Absence of either is an ordinary shape (the recorder suppresses the empty
+// cases for byte-stability), never "unknown" — see the contract for both.
+const resolveBudgetRole = (latest: DeferredObjectiveActivePlanRevisionV1): DeadlineBudgetRole => {
+  if (latest.floorShortfallCause === 'budget') return 'sole';
+  // Only a genuine miss. `estimate` (short only by the estimator's confidence
+  // padding) and `step_power` (climbing fits) are at-risk shapes, and the
+  // contributing sentence asserts the task cannot finish — saying that over an
+  // at-risk chip would have the hero contradict itself.
+  if (latest.floorShortfallCause === 'time_capacity' && latest.budgetContributedToShortfall === true) {
+    return 'contributing';
+  }
+  return 'none';
+};
+
 const resolvePositiveNumber = (value: number | undefined): number | null => (
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
 );
@@ -405,7 +422,12 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   // producer field and stops. Absence is NOT "unknown": the recorder
   // suppresses the `none` case for byte-stability, so an absent cause means
   // the floor was not short at all.
-  const dailyBudgetExhausted = latest.floorShortfallCause === 'budget';
+  // Three states, not a boolean: the budget can explain the shortfall outright
+  // (`sole` — lifting the per-bucket cap closes the gap), have a hand in it
+  // without closing it (`contributing`), or be uninvolved. The middle one used
+  // to be invisible, so a plan whose every hour was budget-shaped read as purely
+  // physical. Both producer fields are flat and read once, here.
+  const budgetRole = resolveBudgetRole(latest);
   const planningSpeedKw = resolvePositiveNumber(activePlan!.initialPlanningSpeedKw ?? latest.planningSpeedKw);
   const displayRate = resolveDisplayRateAndSpeedMode({ latest, profile, objectiveKind: objective.kind });
 
@@ -433,7 +455,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       planStatus: reportedPlanStatus,
       nowMs,
       cannotMeet,
-      dailyBudgetExhausted,
+      budgetRole,
       deviceLeftOff,
       // Latest revision's `computedFromPricesUpTo` is carried verbatim so the
       // hero's headline-reason resolver can branch on "prices not through

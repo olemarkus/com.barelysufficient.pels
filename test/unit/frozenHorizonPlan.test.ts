@@ -27,6 +27,7 @@ const build = (overrides: {
   deadlineMarginMs: HOUR_MS,
   committedHours: overrides.committedHours,
   floorShortfallCause: overrides.floorShortfallCause ?? 'none',
+  budgetContributedToShortfall: false,
   planStatus: overrides.planStatus ?? 'on_track',
   energyNeededKWh: 3,
   aheadOfHourMilestone: overrides.aheadOfHourMilestone ?? false,

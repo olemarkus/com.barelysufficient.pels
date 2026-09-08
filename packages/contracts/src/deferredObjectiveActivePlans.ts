@@ -244,6 +244,17 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // build ABSENT MEANS "no shortfall" — an ordinary shape, not a legacy one.
   // Consumers must not read absence as "unknown".
   floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
+  // The soft daily budget had a hand in this shortfall: with the per-bucket cap
+  // lifted, the climbed-band allocation places strictly more energy. Measured
+  // between two CLIMBED allocations, capped against uncapped, so the ladder's own
+  // contribution is not credited to the budget; not a claim about the floor plan,
+  // which a cap above the floor rung never touches. Independent of the cause above
+  // — when the budget explains the shortfall OUTRIGHT the cause is already
+  // `budget`; this also covers the case where uncapping helps but the target
+  // still misses, which the cause alone reports as `time_capacity`. Stamped only
+  // when true, so on a current build ABSENT MEANS "the budget was not
+  // implicated". Consumers must not read absence as "unknown".
+  budgetContributedToShortfall?: true;
   // Planner's effective useful power (kW) used to estimate hours-of-work for
   // the current plan. Surfaced in the hero meta line ("Y.Y kW") so the user
   // can sanity-check estimated duration. Optional because the recorder writes

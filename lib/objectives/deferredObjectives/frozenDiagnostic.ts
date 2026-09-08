@@ -32,6 +32,11 @@ export type FrozenReadInputs = {
   // revisions an older build persisted, which resolve to `'none'` — the "task can
   // finish without this hour" reading, i.e. the pre-change release posture.
   floorShortfallCause: DeferredObjectiveActivePlanFloorShortfallCause;
+  // The settled revision's verdict on whether the soft daily budget had a hand
+  // in the shortfall. Resolved at this boundary like the cause above it:
+  // revisions an older build persisted carry no flag, which reads as `false` —
+  // "the budget was not implicated", the pre-change posture.
+  budgetContributedToShortfall: boolean;
   // The SETTLED revision's hours (`latest.hours`), NOT the schedule-floor
   // `commitment.hours`. A `:58` revision that refines kWh on the same hour set
   // (`rate_refined`, `measured_deviation`) updates `latest` but not `commitment`
@@ -97,6 +102,7 @@ const resolveFrozenReadInputs = (params: {
   return {
     planStatus: latest.planStatus,
     floorShortfallCause: toKnownFloorShortfallCause(latest.floorShortfallCause),
+    budgetContributedToShortfall: latest.budgetContributedToShortfall === true,
     // Settled revision's hours (freshest floored plan). The active-plan accessor
     // already rejected legacy/corrupt shapes without a latest revision, so the
     // frozen path never falls back to the commitment floor for control data.
@@ -162,6 +168,7 @@ export const buildFrozenDiagnostic = (params: {
     committedHours: frozenRead.hours,
     planStatus: frozenRead.planStatus,
     floorShortfallCause: frozenRead.floorShortfallCause,
+    budgetContributedToShortfall: frozenRead.budgetContributedToShortfall,
     energyNeededKWh: profileEnergy.energyNeededKWh,
     aheadOfHourMilestone,
     steps,

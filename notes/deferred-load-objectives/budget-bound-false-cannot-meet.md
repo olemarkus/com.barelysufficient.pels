@@ -11,10 +11,17 @@ Prong B2 (the `isCurrentBucketPlanned` self-disarm question) confirmed
 intentional per the field comment in `diagnosticsBridge.ts:98-101` — the rescue
 applies only "while the current bucket is a planned bucket … idle/background
 cycles stay normal," matching the `limitLowerPriorityApplied` companion. The
-background-squeeze copy-routing follow-up (thread the producer-resolved
-budget-bound signal onto the persisted active-plan revision so squeeze-case copy
-reads budget-side) is still open: the daily budget is not yet named when it is a
-contributing cause of a smart-task miss.
+background-squeeze copy-routing follow-up is resolved (2026-09-08). The planner
+resolves how far the budget accounts for a shortfall — `sole` when lifting the
+per-bucket cap closes the gap, `contributing` when uncapping plans strictly more
+and the target still misses — and carries the second case onto the diagnostic,
+the persisted revision and the log as `budgetContributedToShortfall`. Only
+`sole` moves the primary status, which stays honest about reachability;
+`contributing` changes the copy and leaves the cannot-finish recourse pointing
+at the device, where the task's own "may go over daily budget" permission lives.
+The comparison runs uncapped-climbed against capped-climbed so the difference is
+the budget cap alone — against the floor pass it would have credited the budget
+for every kWh that climbing the ladder unlocked.
 
 **Prong E (2026-08-09): the squeeze no longer stands the device down.** A second
 consequence of the same mechanism: an hour squeezed to a 0 cap was read by
@@ -25,7 +32,7 @@ finish without it — the device stays managed and competes on its own priority)
 a *released* one (booked 0 and the task can finish anyway — stand down as before).
 It keys on the very `floorShortfallCause` this note is about: `budget` and
 `time_capacity` keep the hour, `step_power` and `estimate` give it up. Only the copy
-half above remains open. Design of record:
+half above is now closed too. Design of record:
 `notes/deferred-load-objectives/README.md` § "An unbooked hour is not a stand-down".
 
 ## Symptom (prod, 2026-05-22, commit `d280c1ed`)

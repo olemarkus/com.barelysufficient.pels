@@ -642,6 +642,52 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(3);
   });
 
+  // The case that used to vanish. The status stays honestly `cannot_meet` — the
+  // target really is out of reach — but the budget still had a hand in it, and
+  // before this the surface said "Cannot finish" with no mention of the budget
+  // and no route to the permission that would free part of the shortfall.
+  it('records the budget as a contributing cause when uncapping helps but still misses', () => {
+    // 14 kWh needed across four 1-hour buckets. Uncapped the ladder tops out at
+    // 3 kW, so 12 kWh is the physical ceiling — the target misses either way.
+    // The per-bucket cap of 0.5 kWh holds it to 2 kWh, so lifting the cap would
+    // plan 10 kWh more: the budget is implicated without being the whole story.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 14,
+        deadlineAtMs: NOW_MS + (4 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'neutral', { maxUsefulEnergyKWh: 0.5 }),
+        bucket(1, 'neutral', { maxUsefulEnergyKWh: 0.5 }),
+        bucket(2, 'neutral', { maxUsefulEnergyKWh: 0.5 }),
+        bucket(3, 'neutral', { maxUsefulEnergyKWh: 0.5 }),
+      ],
+    });
+
+    // Primary status untouched: the target is genuinely unreachable.
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.statusDetail).toBe('target_cannot_be_met');
+    expect(plan.budgetContributedToShortfall).toBe(true);
+  });
+
+  it('leaves the budget unimplicated when uncapping would change nothing', () => {
+    // No per-bucket cap at all: the shortfall is purely the ladder against time.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 14,
+        deadlineAtMs: NOW_MS + (4 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [bucket(0, 'neutral'), bucket(1, 'neutral'), bucket(2, 'neutral'), bucket(3, 'neutral')],
+    });
+
+    expect(plan.statusDetail).toBe('target_cannot_be_met');
+    expect(plan.budgetContributedToShortfall).toBe(false);
+  });
+
   it('reports at_risk (limited_by_daily_budget) when the floor is short only because of the per-bucket budget cap', () => {
     // 3 kWh needed across four 1-hour buckets, each capped at 0.5 kWh by the
     // per-bucket daily-budget cap (`maxUsefulEnergyKWh`). The floor can place only
@@ -665,6 +711,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
     expect(plan.status).toBe('at_risk');
     expect(plan.statusDetail).toBe('limited_by_daily_budget');
+    expect(plan.budgetContributedToShortfall).toBe(true);
     expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
     expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(1);
   });

@@ -122,6 +122,10 @@ export const buildFrozenHorizonPlan = (params: {
   // The `:58` settle's verdict, replayed rather than recomputed — see the
   // `floorShortfallCause` doc on `resolveCurrentHourClaim`.
   floorShortfallCause: DeferredObjectiveActivePlanFloorShortfallCause;
+  // Restored from the committed revision: a frozen read reports the budget's
+  // role as the settle recorded it, rather than re-probing an allocation it is
+  // deliberately not re-running.
+  budgetContributedToShortfall: boolean;
   energyNeededKWh: number;
   aheadOfHourMilestone: boolean;
   steps: DeferredObjectiveStep[];
@@ -129,7 +133,8 @@ export const buildFrozenHorizonPlan = (params: {
 }): DeferredObjectiveHorizonPlan => {
   const {
     nowMs, objectiveId, objectiveKind, enforcement, deadlineAtMs, deadlineMarginMs,
-    committedHours, planStatus, floorShortfallCause, energyNeededKWh, aheadOfHourMilestone,
+    committedHours, planStatus, floorShortfallCause, budgetContributedToShortfall,
+    energyNeededKWh, aheadOfHourMilestone,
     steps, epsilonKWh,
   } = params;
   const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
@@ -168,6 +173,7 @@ export const buildFrozenHorizonPlan = (params: {
     enforcement,
     status,
     statusDetail: FROZEN_STATUS_DETAIL[status],
+    budgetContributedToShortfall,
     horizonStartMs: nowMs,
     horizonEndMs: deadlineAtMs,
     planningEndMs: Math.max(nowMs, deadlineAtMs - deadlineMarginMs),

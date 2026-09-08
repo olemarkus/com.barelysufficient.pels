@@ -175,6 +175,12 @@ const hasValidRevisionEnergyFields = (v: Record<string, unknown>): boolean => (
     && isPlanStatus(v.planStatus)
     && isOptionalFiniteNonNegative(v.energyExpectedKWh)
     && isOptionalFloorShortfallCause(v.floorShortfallCause)
+    // Stamped only when true, so absence is the ordinary shape. `false` is accepted
+    // as equivalent to absence rather than rejected: a rejected field drops the
+    // WHOLE plan via `.filter(isActivePlan)`, taking the revision history with it,
+    // and a future build that writes the flag explicitly must not cost a
+    // downgrading user their history. Only a non-boolean is a tampered payload.
+    && (v.budgetContributedToShortfall === undefined || typeof v.budgetContributedToShortfall === 'boolean')
 );
 
 // `kwhPerUnitSource` is optional for backward compatibility with revisions

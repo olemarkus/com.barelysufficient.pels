@@ -250,6 +250,16 @@ export type DeferredObjectiveHorizonPlan = {
   currentBucket: DeferredObjectiveCurrentBucketPlan | null;
   plannedBuckets: DeferredObjectivePlannedBucket[];
   usesDeadlineReserve: boolean;
+  // The soft daily budget had a hand in this shortfall: with the per-bucket cap
+  // lifted, the climbed-band allocation places strictly more energy. Measured
+  // between two CLIMBED allocations so the ladder's own contribution is not
+  // credited to the budget; not a claim about the floor plan. It says nothing about whether the
+  // target is reachable — when lifting the cap CLOSES the gap the status is
+  // already `limited_by_daily_budget`, and when it does not the status stays
+  // honestly `target_cannot_be_met`. This is the missing half of that second
+  // case: the shortfall is not purely physical, so the surface can name the
+  // budget and offer the permission that would actually free the device.
+  budgetContributedToShortfall: boolean;
   // Per-cycle price-deferral control signal (mid-execution price deferral). True
   // when BOTH hold for the current hour: (1) the device's measured value is
   // already at/above the committed plan's end-of-this-hour milestone in the

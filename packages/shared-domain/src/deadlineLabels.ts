@@ -185,6 +185,14 @@ const WHY_CANNOT_MEET_DEVICE = 'Not enough delivery before the deadline.';
 // "time OR budget" guess the user would otherwise have to resolve themselves.
 const WHY_AT_RISK_BUDGET = 'Today’s daily budget may run out before the deadline.';
 const WHY_AT_RISK_TIME = 'Limited time left before the deadline.';
+// The budget squeezed the schedule without being the whole reason. Deliberately
+// does NOT point at Budget settings the way the sole-cause lines do — lifting the
+// budget would not close this gap, and the honest lever is the task's own
+// permission (see `cannotMeetDailyBudgetContributed` for the hero's wording).
+const WHY_CANNOT_MEET_BUDGET_PARTIAL = 'Today’s daily budget is holding part of this back, '
+  + 'but there is not enough time either.';
+const WHY_AT_RISK_BUDGET_PARTIAL = 'Today’s daily budget may be holding part of this back, '
+  + 'and time is short too.';
 // The device is off because the user turned it off and asked PELS to leave it
 // off, so neither the budget nor the clock is the thing to act on — turning the
 // device on is. Named before the budget/time split so it is never mistaken for
@@ -198,6 +206,7 @@ export const WHY_AT_RISK_DEVICE_LEFT_OFF = 'Device is staying off until turned o
 // widget payload builder from the plan snapshot's daily-budget-exhausted count.
 export const RECOURSE_CANNOT_MEET_BUDGET = 'Budget settings show whether future days need power reserved earlier.';
 export const RECOURSE_CANNOT_MEET_DEVICE = 'Device settings show what’s holding it back.';
+export const RECOURSE_BUDGET_PARTIAL = 'Edit the task and open Extra permissions to let it go over budget.';
 const RECOURSE_INVALID_SESSION = 'Plug the EV in to resume.';
 
 // The two pending reasons the owner can act on directly. Everything else is
@@ -298,6 +307,11 @@ export type SmartTaskWidgetDetailInput = {
   // up to an hour stale.
   diagnosticReasonCode?: DeferredObjectiveActivePlanDiagnosticReason;
   floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
+  // The budget had a hand in the shortfall without explaining it outright, in
+  // which case the cause above reads `time_capacity`. Carried so this surface
+  // reaches the same verdict as the deadline-plan hero — the three surfaces
+  // share one sentence and must not disagree about who is holding the device.
+  budgetContributedToShortfall?: true;
   // Pre-formatted local time of the first planned hour (e.g. "16:00") for the
   // `queued` "Cheaper hours start at HH:MM" line. Locale formatting lives in the
   // caller so shared-domain stays free of Intl.
@@ -308,9 +322,15 @@ export type SmartTaskWidgetDetailInput = {
 // alone (per `feedback_layering_resolution_in_producer`). Absence is NOT
 // "unknown": the recorder suppresses the `none` case for byte-stability, so an
 // absent cause means the floor was not short at all.
-const isBudgetDriven = (input: SmartTaskWidgetDetailInput): boolean => (
-  input.floorShortfallCause === 'budget'
-);
+const resolveWidgetBudgetRole = (input: SmartTaskWidgetDetailInput): DeadlineBudgetRole => {
+  if (input.floorShortfallCause === 'budget') return 'sole';
+  // Same rule the hero applies: only a genuine miss, never the at-risk shapes
+  // (`estimate` padding, `step_power` climbing) where "cannot finish" is false.
+  if (input.floorShortfallCause === 'time_capacity' && input.budgetContributedToShortfall === true) {
+    return 'contributing';
+  }
+  return 'none';
+};
 
 // An explicit off action is its own cause — neither the budget nor the clock.
 const isLeftOffDriven = (input: SmartTaskWidgetDetailInput): boolean => (
@@ -321,9 +341,14 @@ const resolveAtRiskCopy = (input: SmartTaskWidgetDetailInput): SmartTaskWidgetDe
   if (isLeftOffDriven(input)) {
     return { whyLabel: WHY_AT_RISK_DEVICE_LEFT_OFF, recourseHint: null };
   }
-  return isBudgetDriven(input)
-    ? { whyLabel: WHY_AT_RISK_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET }
-    : { whyLabel: WHY_AT_RISK_TIME, recourseHint: null };
+  const budgetRole = resolveWidgetBudgetRole(input);
+  if (budgetRole === 'sole') {
+    return { whyLabel: WHY_AT_RISK_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET };
+  }
+  if (budgetRole === 'contributing') {
+    return { whyLabel: WHY_AT_RISK_BUDGET_PARTIAL, recourseHint: RECOURSE_BUDGET_PARTIAL };
+  }
+  return { whyLabel: WHY_AT_RISK_TIME, recourseHint: null };
 };
 
 export const resolveSmartTaskWidgetDetailCopy = (
@@ -337,9 +362,14 @@ export const resolveSmartTaskWidgetDetailCopy = (
     };
   }
   if (input.statusId === 'cannot_meet') {
-    return isBudgetDriven(input)
-      ? { whyLabel: WHY_CANNOT_MEET_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET }
-      : { whyLabel: WHY_CANNOT_MEET_DEVICE, recourseHint: RECOURSE_CANNOT_MEET_DEVICE };
+    const budgetRole = resolveWidgetBudgetRole(input);
+    if (budgetRole === 'sole') {
+      return { whyLabel: WHY_CANNOT_MEET_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET };
+    }
+    if (budgetRole === 'contributing') {
+      return { whyLabel: WHY_CANNOT_MEET_BUDGET_PARTIAL, recourseHint: RECOURSE_BUDGET_PARTIAL };
+    }
+    return { whyLabel: WHY_CANNOT_MEET_DEVICE, recourseHint: RECOURSE_CANNOT_MEET_DEVICE };
   }
   if (input.statusId === 'at_risk') return resolveAtRiskCopy(input);
   if (input.statusId === 'building_plan') {
@@ -1482,6 +1512,15 @@ export type DeadlineHeadlineReasonResolver = (
   params: DeadlineHeadlineReasonResolverParams,
 ) => string | null;
 
+/**
+ * How far the soft daily budget accounts for a cannot-finish shortfall, as the
+ * surface reports it. Mirrors the producer's own three states so the copy and
+ * the recourse cannot disagree: `sole` sends the owner to the Budget tab,
+ * `contributing` names the budget without promising it is the fix, and `none`
+ * says nothing about it at all.
+ */
+export type DeadlineBudgetRole = 'none' | 'contributing' | 'sole';
+
 export type DeadlineLabels = {
   kindChipLabel: string;
   activeChipLabel: string;
@@ -1524,6 +1563,16 @@ export type DeadlineLabels = {
   // suggesting the user raise their capacity hard cap; the recommended remedy
   // is a lower daily budget so future days reserve available power earlier.
   cannotMeetDailyBudgetExhausted: string;
+  // The budget squeezed the schedule but lifting it would not close the gap.
+  // Kept distinct from the line above because that one promises a fix ("lower
+  // it... or move the deadline") which is not true here - the target misses even
+  // uncapped. It names the "May go over daily budget" permission verbatim AND the
+  // path to it — the toggle lives behind Edit → Extra permissions, collapsed and
+  // off by default, so it is neither above the hero nor on screen. The
+  // cannot-finish recourse stays suppressed for this case: a button that opened
+  // the device overlay would land on the standing per-device exemption, a
+  // different control with a confusingly similar name.
+  cannotMeetDailyBudgetContributed: string;
   // Recourse-action labels for the cannot-finish hero. The producer resolves
   // which `kind` to surface based on the cause; the view renders one button
   // per call. Both labels live here so the strings stay in sync with the rest
@@ -2013,6 +2062,10 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     ),
     cannotMeetDailyBudgetExhausted: 'Today\'s daily budget is fully booked. '
       + 'Lower it so future days reserve power earlier, or move the deadline.',
+    cannotMeetDailyBudgetContributed: 'Today’s daily budget is holding part of this back, '
+      + 'but there is not enough time to finish even without it. '
+      + 'Edit the task and turn on “May go over daily budget” under Extra permissions to help; '
+      + 'it will not be enough on its own.',
     cannotMeetRecourse: CANNOT_MEET_RECOURSE,
     resolveQueuedHeadlineReason,
     completedHero: {
@@ -2099,6 +2152,10 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     ),
     cannotMeetDailyBudgetExhausted: 'Today\'s daily budget is fully booked. '
       + 'Lower it so future days reserve power earlier, or move the deadline.',
+    cannotMeetDailyBudgetContributed: 'Today’s daily budget is holding part of this back, '
+      + 'but there is not enough time to finish even without it. '
+      + 'Edit the task and turn on “May go over daily budget” under Extra permissions to help; '
+      + 'it will not be enough on its own.',
     cannotMeetRecourse: CANNOT_MEET_RECOURSE,
     resolveQueuedHeadlineReason,
     completedHero: {
