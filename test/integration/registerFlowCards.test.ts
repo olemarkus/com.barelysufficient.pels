@@ -15,6 +15,7 @@ import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSn
 import type { FlowCard } from '../../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../../setup/appDeviceControlHelpers';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
+import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 
 const steppedProfile: SteppedLoadProfile = {
   steps: [
@@ -114,7 +115,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     setExpectedOverride: vi.fn(() => false),
     storeFlowPriceData: vi.fn(),
     rebuildPlan: vi.fn(),
-    evaluateHeadroomForDevice: vi.fn(() => null),
+    evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
     loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),
     getCombinedHourlyPrices: vi.fn(() => []),

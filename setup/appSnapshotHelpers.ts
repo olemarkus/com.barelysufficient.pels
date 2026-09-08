@@ -350,11 +350,7 @@ export class AppSnapshotHelpers {
       controllable: this.deps.isCapacityControlEnabled(device.id),
     }));
     await this.deps.getPlanService()?.syncLivePlanState('snapshot_refresh');
-    this.deps.getPlanService()?.syncHeadroomCardState({
-      devices: enforcedSnapshot,
-      cleanupMissingDevices: true,
-      reconciliationContext: 'snapshot_refresh',
-    });
+    this.deps.getPlanService()?.syncHeadroomCardState(enforcedSnapshot);
     this.deps.getStructuredLogger('devices')?.debug({
       event: 'target_devices_refreshed',
       reasonCode: options.targeted === true ? 'targeted_refresh' : 'snapshot_refresh',

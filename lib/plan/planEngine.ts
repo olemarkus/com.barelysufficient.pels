@@ -11,8 +11,8 @@ import type {
 } from '../observer/pendingBinaryCommands';
 import type {
   HeadroomCardDeviceLike,
+  HeadroomCardQuery,
   HeadroomForDeviceDecision,
-  HeadroomUsageObservation,
 } from './planHeadroomDevice';
 import type { PlanEngineState } from './planState';
 import type {
@@ -69,24 +69,10 @@ export type PlanEngine = {
   hasActiveBinaryTurnOnCommand: (deviceId: string) => boolean;
   hasAttributablePendingBinaryCommand: (deviceId: string) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string, observedOnAtMs?: number) => void;
-  evaluateHeadroomForDevice: (params: {
-    devices: HeadroomCardDeviceLike[];
-    deviceId: string;
-    device?: HeadroomCardDeviceLike;
-    headroom: number;
-    requiredKw: number;
-    cleanupMissingDevices?: boolean;
-  }) => HeadroomForDeviceDecision | null;
-  syncHeadroomCardState: (params: {
-    devices: HeadroomCardDeviceLike[];
-    cleanupMissingDevices?: boolean;
-    reconciliationContext?: 'snapshot_refresh';
-  }) => boolean;
-  syncHeadroomUsageObservation: (params: {
-    deviceId: string;
-    usageObservation: HeadroomUsageObservation;
-    reconciliationContext?: 'snapshot_refresh';
-  }) => boolean;
+  evaluateHeadroomForDevice: (query: HeadroomCardQuery) => HeadroomForDeviceDecision;
+  /** The snapshot refresh's sync: every device in the refreshed snapshot, and cleanup of the ones that left. */
+  syncHeadroomCardState: (devices: HeadroomCardDeviceLike[]) => boolean;
+  syncHeadroomUsageObservation: (deviceId: string, usageKw: number) => boolean;
   applySheddingToDevice: (deviceId: string, deviceName: string, reason?: string) => Promise<boolean>;
   beginStartupRestoreStabilization: (durationMs?: number, nowTs?: number) => void;
   clearStartupRestoreStabilization: (nowTs?: number) => boolean;

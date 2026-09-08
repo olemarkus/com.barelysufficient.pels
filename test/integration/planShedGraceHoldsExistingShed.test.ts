@@ -20,6 +20,7 @@ const buildDevice = (
     targets: [],
     binaryControl: { on: true },
     controllable: true,
+    available: true,
     binaryCapabilityId: 'onoff' as const,
     ...overrides,
   };
@@ -66,12 +67,7 @@ describe('shed grace', () => {
    */
   async function buildGracedPlan(): Promise<DevicePlan> {
     const state = createPlanEngineState();
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'charger',
-      source: 'pels_restore',
-      nowTs: Date.now() - 30_000,
-    });
+    recordActivationAttemptStart(state, 'charger', 'pels_restore', Date.now() - 30_000);
     state.lastRestoreMs = Date.now() - 30_000;
 
     return buildBuilder(state).buildDevicePlanSnapshot([

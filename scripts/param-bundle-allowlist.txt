@@ -13,12 +13,12 @@
 # Regenerate with `node scripts/check-param-bundles.mjs --seed` — never by hand,
 # and never with a second script.
 #
-# Seeded 2026-09-07: 388 files, 1005 bundles.
+# Seeded 2026-09-08: 381 files, 974 bundles.
 flowCards/deviceSettingsCards.ts 3
 flowCards/expectedPower.ts 1
 flowCards/flowBackedDeviceCards.ts 4
 flowCards/headroomAndEvSocCards.ts 2
-flowCards/registerFlowCards.ts 3
+flowCards/registerFlowCards.ts 2
 flowCards/steppedLoadFlowCards.ts 1
 flowCards/steppedLoadReport.ts 5
 lib/actuator/deviceCommand.ts 1
@@ -173,7 +173,6 @@ lib/observer/generationFreshness.ts 1
 lib/observer/idleClassifier.ts 2
 lib/observer/pendingBinaryCommands.ts 7
 lib/observer/steppedReportedStep.ts 2
-lib/plan/admission/activationBackoff.ts 8
 lib/plan/admission/binaryCommandReachability.ts 2
 lib/plan/admission/headroomReserve.ts 3
 lib/plan/admission/sheddingGuard.ts 6
@@ -195,17 +194,12 @@ lib/plan/planDebugDedupe.ts 1
 lib/plan/planDevices.ts 5
 lib/plan/planDevicesBase.ts 2
 lib/plan/planDiagnostics.ts 6
-lib/plan/planEngine.ts 3
-lib/plan/planHeadroomDevice.ts 1
-lib/plan/planHeadroomState.ts 8
-lib/plan/planHeadroomSupport.ts 3
 lib/plan/planLogging.ts 1
 lib/plan/planOvershoot.ts 1
 lib/plan/planReasonShortfall.ts 1
 lib/plan/planReasonStrings.ts 1
 lib/plan/planRebuildMetrics.ts 1
 lib/plan/planRemainingSheddableLoad.ts 1
-lib/plan/planService.ts 3
 lib/plan/planServiceRebuild.ts 1
 lib/plan/planState.ts 1
 lib/plan/planStatusHelpers.ts 1
@@ -360,7 +354,6 @@ setup/appDeviceSupport.ts 5
 setup/appInit/appHomeMembershipOptions.ts 1
 setup/appInit/buildDeviceParseProviders.ts 1
 setup/appInit/calibrationViews.ts 1
-setup/appInit/composedPlanEngine.ts 3
 setup/appInit/createMainCapacityGuard.ts 1
 setup/appInit/planEngineWiring.ts 2
 setup/appInit/registerSettingsHandler.ts 1

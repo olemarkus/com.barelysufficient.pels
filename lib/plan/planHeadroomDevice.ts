@@ -1,13 +1,14 @@
 import type { PlanEngineState } from './planState';
 import {
   applyActivationPenalty,
+  resolveActivationRestoreBlock,
   syncActivationPenaltyState,
 } from './admission';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
-  emitActivationTransitions,
+  emitActivationTransition,
   resolveHeadroomCardCooldown,
-  syncHeadroomCardState,
+  syncHeadroomCardSnapshot,
 } from './planHeadroomState';
 import type {
   HeadroomCardCooldownSource,
@@ -17,12 +18,28 @@ import type {
 export type {
   HeadroomCardCooldownSource,
   HeadroomCardDeviceLike,
-  HeadroomUsageObservation,
 } from './planHeadroomSupport';
 export {
+  syncHeadroomCardSnapshot,
   syncHeadroomCardState,
   syncHeadroomUsageObservation,
 } from './planHeadroomState';
+
+/**
+ * The Flow headroom card's question: is there `requiredKw` of available power
+ * for `device`, given `headroom` and the current snapshot of every device
+ * (`devices`, which the card stamps with `withHeadroomCurrentOn` so the
+ * activation reads see each one's on/off truth). Built once by the card and
+ * carried unchanged through the app context and the plan service. `device` is
+ * also an element of `devices`: the card already found it, and carrying it
+ * beats making the engine search and answer null when it is not there.
+ */
+export type HeadroomCardQuery = {
+  devices: HeadroomCardDeviceLike[];
+  device: HeadroomCardDeviceLike;
+  headroom: number;
+  requiredKw: number;
+};
 
 /**
  * The device's current draw, for headroom-for-device math.
@@ -72,56 +89,27 @@ export type HeadroomForDeviceDecision = {
   stateChanged: boolean;
 };
 
-export const evaluateHeadroomForDevice = (params: {
-  state: PlanEngineState;
-  devices: HeadroomCardDeviceLike[];
-  deviceId: string;
-  device?: HeadroomCardDeviceLike;
-  headroom: number;
-  requiredKw: number;
-  nowTs?: number;
-  cleanupMissingDevices?: boolean;
-  diagnostics?: DeviceDiagnosticsRecorder;
-}): HeadroomForDeviceDecision | null => {
-  const {
-    state,
-    devices,
-    deviceId,
-    device: providedDevice,
-    headroom,
-    requiredKw,
-    cleanupMissingDevices = false,
-    diagnostics,
-  } = params;
-  const nowTs = params.nowTs ?? Date.now();
-  const stateChanged = syncHeadroomCardState({
-    state,
-    devices,
-    nowTs,
-    cleanupMissingDevices,
-    diagnostics,
-  });
-  const device = providedDevice ?? devices.find((entry) => entry.id === deviceId);
-  if (!device) return null;
-  const penaltyInfo = syncActivationPenaltyState({
-    state,
-    deviceId,
-    nowTs,
-    observation: device,
-  });
-  emitActivationTransitions(diagnostics, device.name, penaltyInfo.transitions);
+export const evaluateHeadroomForDevice = (
+  state: PlanEngineState,
+  query: HeadroomCardQuery,
+  nowTs: number,
+  diagnostics: DeviceDiagnosticsRecorder | undefined,
+): HeadroomForDeviceDecision => {
+  const { devices, device, headroom, requiredKw } = query;
+  const stateChanged = syncHeadroomCardSnapshot(state, devices, nowTs, undefined, diagnostics);
+  const penaltyInfo = syncActivationPenaltyState(state, device.id, nowTs, device);
+  emitActivationTransition(diagnostics, device.name, penaltyInfo.transition);
 
   const observedKw = resolveObservedHeadroomDeviceKw(device);
   const calculatedHeadroomForDeviceKw = headroom + observedKw;
-  const penalty = applyActivationPenalty({
-    baseRequiredKw: requiredKw,
-    penaltyLevel: penaltyInfo.penaltyLevel,
-  });
-  const cooldown = resolveHeadroomCardCooldown({
-    state,
-    deviceId,
-    nowTs,
-  });
+  const penalty = applyActivationPenalty(requiredKw, penaltyInfo.penaltyLevel);
+  const cooldown = resolveHeadroomCardCooldown(state, device.id, nowTs);
+  // For the card's log line only: seconds until the setback block lifts, 0 once
+  // it has while the penalty level still stands, null with no penalty at all.
+  const block = resolveActivationRestoreBlock(state, device.id, nowTs);
+  let clearRemainingSec: number | null = null;
+  if (block !== null) clearRemainingSec = Math.ceil(block.remainingMs / 1000);
+  else if (penaltyInfo.penaltyLevel > 0) clearRemainingSec = 0;
   return {
     allowed: cooldown === null && calculatedHeadroomForDeviceKw >= penalty.requiredKwWithPenalty,
     cooldownSource: cooldown?.source ?? null,
@@ -130,7 +118,7 @@ export const evaluateHeadroomForDevice = (params: {
     calculatedHeadroomForDeviceKw,
     penaltyLevel: penaltyInfo.penaltyLevel,
     requiredKwWithPenalty: penalty.requiredKwWithPenalty,
-    clearRemainingSec: penaltyInfo.clearRemainingSec,
+    clearRemainingSec,
     dropFromKw: cooldown?.dropFromKw ?? null,
     dropToKw: cooldown?.dropToKw ?? null,
     stateChanged: stateChanged || penaltyInfo.stateChanged,

@@ -98,7 +98,7 @@ export class SilentMeterPlanBuilder {
     // command, safe without a measurement); a `binary_restore` is the one
     // positive intent and needs a measured cycle, which this is not.
     planDevices = attachDeferredReleaseIntents(planDevices, decoration.deferredReleaseIntentByDeviceId, false);
-    this.stages.syncHeadroomCardState(planDevices);
+    this.stages.syncHeadroomCardState(planDevices, nowTs);
     const finalized = this.stages.finalizePlan(
       planDevices,
       resolveNormalizedShedFloors(context.devices, (deviceId) => this.deps.getShedBehavior(deviceId)),

@@ -232,7 +232,6 @@ const recordAcceptedSteppedLoadPlanActuation = (
     deviceId: action.id,
     name: action.name,
     nowTs: now,
-    source: 'pels_restore',
   });
 };
 

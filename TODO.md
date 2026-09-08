@@ -1422,6 +1422,30 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Architecture and tooling debt
 
+- [ ] **P2 — one plan build reads three clocks.** `PlanBuilder.buildPlanSnapshotWithTimings`
+      stamps `nowTs` once (`lib/plan/planBuilder.ts`) and hands it to the overshoot tracker that
+      writes `lastSetbackMs`; the restore pass mints its own in `buildRestoreTiming`
+      (`lib/plan/restore/timing.ts`) and `resolveCycleHeadroomReserves` (`lib/plan/restore/index.ts`),
+      and every setback-block, cooldown and reason read in the pass decides from that second stamp.
+      Every comparison is elapsed-monotone, so nothing diverges, but a setback stamped at the
+      builder's clock is read against the restore clock a few ms later in the same build. Change:
+      `applyRestorePlan` takes the build's `nowTs` and `buildRestoreTiming` / the reserve resolver
+      take it as a parameter instead of calling `Date.now()`. Done when `lib/plan/**` outside
+      `planBuilder.ts` contains no `Date.now()` on the plan-build path and `RestoreTiming.nowTs`
+      equals the builder's stamp in `test/integration/planRestoreBackoff.test.ts`. Source: runtime
+      review of the activation-backoff records refactor, 2026-09-08.
+
+- [ ] **P2 — `ActivationAttemptSource` has one producer, and code still forks on the other value.**
+      `'tracked_step_up'` (`lib/plan/planState.ts`) is never written: the executor's
+      `recordActivationAttemptStarted` (`lib/executor/executorSupport.ts`) opens every attempt as
+      `'pels_restore'`, so the `source !== 'pels_restore'` guard in `recordCleanWholeHomeSample`
+      (`lib/plan/admission/activationBackoff.ts`) is unreachable and the diagnostics transition
+      union carries a variant no event ever has. Change: collapse the union to the one value
+      (through `lib/diagnostics/deviceDiagnosticsServiceTypes.ts` and the two unit fixtures that
+      spell the dead one) and drop the guard. Done when the identifier `tracked_step_up` no longer
+      appears in `lib/` or `test/`. Source: adversarial review of the activation-backoff records
+      refactor, 2026-09-08.
+
 - [ ] **P2 — three `setup/` files compose peers the guard's seed banked as permanent budget.**
       `npm run setup:boundaries` seeds its ratchet from the tree it merges against, so the counts it
       now enforces (55 cross-peer, 33 SDK) include files no one has named: `setup/settingsUiHomesApi.ts`

@@ -225,7 +225,7 @@ export type AppContext = {
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   evaluateHeadroomForDevice: (
     params: Parameters<PlanService['evaluateHeadroomForDevice']>[0],
-  ) => HeadroomForDeviceDecision | null;
+  ) => HeadroomForDeviceDecision;
   getCombinedHourlyPrices: () => CombinedHourlyPrice[];
   getDailyBudgetUiPayload: () => DailyBudgetUiRead;
   getLatestPlanSnapshotForUi: () => SettingsUiPlanSnapshot | null;

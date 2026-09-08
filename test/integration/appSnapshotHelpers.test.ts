@@ -186,7 +186,7 @@ describe('appSnapshotHelpers', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('tags headroom syncs from snapshot refresh with snapshot_refresh reconciliation context', async () => {
+  it('hands the refreshed snapshot to the headroom sync as a complete snapshot', async () => {
     const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
     const syncLivePlanState = vi.fn(async () => false);
     const syncHeadroomCardState = vi.fn();
@@ -230,19 +230,17 @@ describe('appSnapshotHelpers', () => {
     await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
 
     expect(scheduleTargetPowerProbe).toHaveBeenCalledTimes(1);
-    expect(syncHeadroomCardState).toHaveBeenCalledWith({
-      devices: [{
-        ...snapshot[0],
-        managed: true,
-        controllable: true,
-        currentOn: true,
-        // Stamped by `withHeadroomCurrentOn`, the producer boundary for devices
-        // that reach the usage math straight off the transport.
-        currentDrawKw: 1.2,
-      }],
-      cleanupMissingDevices: true,
-      reconciliationContext: 'snapshot_refresh',
-    });
+    // The port takes the whole snapshot; the engine's snapshot sync owns the
+    // cleanup of departed devices and the `snapshot_refresh` reconciliation stamp.
+    expect(syncHeadroomCardState).toHaveBeenCalledWith([{
+      ...snapshot[0],
+      managed: true,
+      controllable: true,
+      currentOn: true,
+      // Stamped by `withHeadroomCurrentOn`, the producer boundary for devices
+      // that reach the usage math straight off the transport.
+      currentDrawKw: 1.2,
+    }]);
   });
 
   it('enforces unsupported-device settings before syncing plan and headroom state', async () => {
@@ -369,18 +367,14 @@ describe('appSnapshotHelpers', () => {
 
     expect(settingsSeenByLivePlan).toEqual([{ 'socket-1': false }]);
     expect(settingsSeenByHeadroom).toEqual([{ 'socket-1': false }]);
-    expect(syncHeadroomCardState).toHaveBeenCalledWith({
-      devices: [{
-        ...snapshot[0],
-        managed: false,
-        controllable: false,
-        // The producer answers for an unmetered device too. This fixture declares
-        // no load either, so there is genuinely nothing to draw against.
-        currentDrawKw: 0,
-      }],
-      cleanupMissingDevices: true,
-      reconciliationContext: 'snapshot_refresh',
-    });
+    expect(syncHeadroomCardState).toHaveBeenCalledWith([{
+      ...snapshot[0],
+      managed: false,
+      controllable: false,
+      // The producer answers for an unmetered device too. This fixture declares
+      // no load either, so there is genuinely nothing to draw against.
+      currentDrawKw: 0,
+    }]);
   });
 
   it('does not trigger a recursive snapshot refresh on fresh install when an unsupported device is present', async () => {

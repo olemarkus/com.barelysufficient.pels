@@ -36,6 +36,7 @@ import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settin
 import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
 import type { DeviceTargetPowerConfigsWithReachability } from '../../lib/device/targetPowerReachability';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 
 type MockHomey = FlowHomeyLike & {
   settings: FlowHomeyLike['settings'] & {
@@ -248,7 +249,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getShedBehavior: vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({ action: 'turn_off' })),
     computeDynamicSoftLimit: vi.fn(() => 0),
     getDynamicSoftLimitOverride: vi.fn(() => null),
-    evaluateHeadroomForDevice: vi.fn(() => null),
+    evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
     getCombinedHourlyPrices: vi.fn(() => []),
     getDailyBudgetUiPayload: vi.fn((): DailyBudgetUiRead => ({ kind: 'unavailable' })),
     getLatestPlanSnapshotForUi: vi.fn((): SettingsUiPlanSnapshot | null => null),
@@ -355,7 +356,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     } as never,
     planService: {
       rebuildPlanFromCache: vi.fn(async () => undefined),
-      evaluateHeadroomForDevice: vi.fn(() => null),
+      evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
       syncLivePlanStateInline: vi.fn(() => false),
     } as never,
     snapshotHelpers,

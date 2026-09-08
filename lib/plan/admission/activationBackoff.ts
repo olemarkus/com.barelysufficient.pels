@@ -1,13 +1,13 @@
 import type { SteppedLoadProfile } from '../../../packages/contracts/src/types';
 import type {
-  ActivationAttemptState,
+  ActivationAttempt,
   ActivationAttemptSource,
+  ActivationPenalty,
   PlanEngineState,
 } from '../planState';
 import type { DeviceDiagnosticsBackoffTransition } from '../../diagnostics/deviceDiagnosticsService';
 import { isActivelyDrawing } from '../../observer/observedPower';
 import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from '../planConstants';
-import { isFiniteNumber } from '../../utils/appTypeGuards';
 import { isSteppedDeviceAtActiveStep, isSteppedDeviceAtOffStep } from '../../utils/deviceControlProfiles';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 
@@ -44,128 +44,69 @@ export const ACTIVATION_SETBACK_RESTORE_BLOCK_MS = 5 * 60 * 1000;
 export const ACTIVATION_BACKOFF_CLEAR_WINDOW_MS = ACTIVATION_SETBACK_RESTORE_BLOCK_MS;
 export const ACTIVATION_BACKOFF_MAX_LEVEL = 4;
 
+/**
+ * What the activation in/active reads read off a device. Every device that
+ * reaches them — a plan device, a headroom-card snapshot view — carries the
+ * producer-resolved reachability and draw. The other three are the device-kind
+ * discriminants: `currentOn` is present iff binary (the on/off truth); a
+ * step-only stepper carries no `currentOn` and is read from its step axis; a
+ * device with neither is read from the producer-resolved state label.
+ */
 export type ActivationBackoffObservation = {
-  available?: boolean;
-  currentState?: string;
-  // The producer-resolved on/off truth (present iff binary). The in/active reads
-  // below narrow on its presence and read it directly. A step-only stepper carries
-  // no `currentOn`; its on/off is read from the step axis (the stepped fields).
+  available: boolean;
+  currentDrawKw: number;
   currentOn?: boolean;
+  currentState?: string;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
-  // Producer-resolved draw. Required: every shape that reaches an activation
-  // read (plan device, headroom snapshot view) carries it.
-  currentDrawKw: number;
 };
 
 export type ActivationPenaltyInfo = {
   penaltyLevel: number;
   attemptOpen: boolean;
-  clearRemainingSec: number | null;
   stateChanged: boolean;
-  source: ActivationAttemptSource | null;
-  transitions: DeviceDiagnosticsBackoffTransition[];
+  transition: DeviceDiagnosticsBackoffTransition | null;
 };
 
-const clampPenaltyLevel = (value: unknown): number => {
-  if (!isFiniteNumber(value) || value <= 0) return 0;
-  return Math.min(ACTIVATION_BACKOFF_MAX_LEVEL, Math.trunc(value));
+/** The restore block a fresh setback imposes, while it lasts. */
+export type ActivationRestoreBlock = {
+  remainingMs: number;
+  countdownStartedAtMs: number;
+  countdownTotalSec: number;
 };
 
-const getAttempt = (state: PlanEngineState, deviceId: string): ActivationAttemptState | undefined => (
+const getAttempt = (state: PlanEngineState, deviceId: string): ActivationAttempt | undefined => (
   state.activationAttemptByDevice[deviceId]
 );
 
-const ensureAttempt = (state: PlanEngineState, deviceId: string): ActivationAttemptState => {
-  const existing = getAttempt(state, deviceId);
-  if (existing) return existing;
-  const created: ActivationAttemptState = {};
-  const attempts = state.activationAttemptByDevice;
-  attempts[deviceId] = created;
-  return created;
-};
-
-const pruneAttempt = (state: PlanEngineState, deviceId: string): void => {
-  const entry = getAttempt(state, deviceId);
-  if (entry && Object.keys(entry).length === 0) {
-    const attempts = state.activationAttemptByDevice;
-    delete attempts[deviceId];
-  }
-};
-
-const getPenaltyLevel = (state: PlanEngineState, deviceId: string): number => (
-  clampPenaltyLevel(getAttempt(state, deviceId)?.penaltyLevel)
+const getPenalty = (state: PlanEngineState, deviceId: string): ActivationPenalty | undefined => (
+  state.activationPenaltyByDevice[deviceId]
 );
 
-const getAttemptStartedMs = (state: PlanEngineState, deviceId: string): number | null => {
-  const startedMs = getAttempt(state, deviceId)?.startedMs;
-  return isFiniteNumber(startedMs) ? startedMs : null;
-};
-
-const getAttemptSource = (state: PlanEngineState, deviceId: string): ActivationAttemptSource | null => {
-  const source = getAttempt(state, deviceId)?.source;
-  return source === 'pels_restore' || source === 'tracked_step_up' ? source : null;
-};
-
-const getCleanWholeHomeSampleAtMs = (state: PlanEngineState, deviceId: string): number | null => {
-  const cleanWholeHomeSampleAtMs = getAttempt(state, deviceId)?.cleanWholeHomeSampleAtMs;
-  return isFiniteNumber(cleanWholeHomeSampleAtMs) ? cleanWholeHomeSampleAtMs : null;
-};
-
-const getLastSetbackMs = (state: PlanEngineState, deviceId: string): number | null => {
-  const lastSetbackMs = getAttempt(state, deviceId)?.lastSetbackMs;
-  return isFiniteNumber(lastSetbackMs) ? lastSetbackMs : null;
-};
+const getPenaltyLevel = (state: PlanEngineState, deviceId: string): number => (
+  getPenalty(state, deviceId)?.level ?? 0
+);
 
 const closeAttempt = (state: PlanEngineState, deviceId: string): boolean => {
-  const entry = getAttempt(state, deviceId);
-  if (!entry) return false;
-
-  let changed = false;
-  if ('startedMs' in entry) {
-    delete entry.startedMs;
-    changed = true;
-  }
-  if ('source' in entry) {
-    delete entry.source;
-    changed = true;
-  }
-  if ('cleanWholeHomeSampleAtMs' in entry) {
-    delete entry.cleanWholeHomeSampleAtMs;
-    changed = true;
-  }
-
-  pruneAttempt(state, deviceId);
-  return changed;
-};
-
-const setPenaltyLevel = (
-  state: PlanEngineState,
-  deviceId: string,
-  nextPenaltyLevel: number,
-): boolean => {
-  const penaltyLevel = clampPenaltyLevel(nextPenaltyLevel);
-  const currentPenaltyLevel = getPenaltyLevel(state, deviceId);
-  if (penaltyLevel === currentPenaltyLevel) return false;
-
-  if (penaltyLevel === 0) {
-    const entry = getAttempt(state, deviceId);
-    if (!entry) return false;
-    delete entry.penaltyLevel;
-    delete entry.lastSetbackMs;
-    pruneAttempt(state, deviceId);
-    return true;
-  }
-
-  ensureAttempt(state, deviceId).penaltyLevel = penaltyLevel;
+  const attempts = state.activationAttemptByDevice;
+  if (!(deviceId in attempts)) return false;
+  delete attempts[deviceId];
   return true;
 };
 
-const updateLastSetbackMs = (state: PlanEngineState, deviceId: string, nowTs: number): boolean => {
-  const entry = ensureAttempt(state, deviceId);
-  if (entry.lastSetbackMs === nowTs) return false;
-  entry.lastSetbackMs = nowTs;
-  return true;
+const clearPenalty = (state: PlanEngineState, deviceId: string): void => {
+  const penalties = state.activationPenaltyByDevice;
+  delete penalties[deviceId];
+};
+
+const setPenalty = (state: PlanEngineState, deviceId: string, penalty: ActivationPenalty): void => {
+  const penalties = state.activationPenaltyByDevice;
+  penalties[deviceId] = penalty;
+};
+
+const openAttempt = (state: PlanEngineState, deviceId: string, attempt: ActivationAttempt): void => {
+  const attempts = state.activationAttemptByDevice;
+  attempts[deviceId] = attempt;
 };
 
 const elapsedMs = (startedMs: number, nowTs: number): number => Math.max(0, nowTs - startedMs);
@@ -181,183 +122,103 @@ const hasAttributionWindowExpired = (attemptStartedMs: number, nowTs: number): b
  * the rule is about how stale the evidence is, not about which device produced
  * it, and admission must not branch on device class.
  */
-const shouldCloseAttemptAsInactive = (params: {
-  observation?: ActivationBackoffObservation;
-  attemptStartedMs: number;
-  nowTs: number;
-}): boolean => (
-  isActivationObservationExplicitlyInactive(params.observation)
-  && elapsedMs(params.attemptStartedMs, params.nowTs) >= ACTIVATION_INACTIVE_MIN_ELAPSED_MS
-);
-
-const remainingSeconds = (remainingMs: number): number => Math.max(0, Math.ceil(remainingMs / 1000));
-
-const getCooldownMsForPenaltyLevel = (penaltyLevel: number): number => (
-  clampPenaltyLevel(penaltyLevel) > 0 ? ACTIVATION_SETBACK_RESTORE_BLOCK_MS : 0
-);
-
-const getClearRemainingSec = (
-  state: PlanEngineState,
-  deviceId: string,
+const shouldCloseAttemptAsInactive = (
+  observation: ActivationBackoffObservation,
+  attemptStartedMs: number,
   nowTs: number,
-): number | null => {
-  const penaltyLevel = getPenaltyLevel(state, deviceId);
-  if (penaltyLevel <= 0) return null;
-
-  const lastSetbackMs = getLastSetbackMs(state, deviceId);
-  if (lastSetbackMs === null) return null;
-
-  const remainingMs = getCooldownMsForPenaltyLevel(penaltyLevel) - elapsedMs(lastSetbackMs, nowTs);
-  return remainingMs > 0 ? remainingSeconds(remainingMs) : 0;
-};
+): boolean => (
+  isActivationObservationExplicitlyInactive(observation)
+  && elapsedMs(attemptStartedMs, nowTs) >= ACTIVATION_INACTIVE_MIN_ELAPSED_MS
+);
 
 export function getActivationPenaltyLevel(state: PlanEngineState, deviceId: string): number {
   return getPenaltyLevel(state, deviceId);
 }
 
 export function isActivationObservationExplicitlyInactive(
-  observation?: ActivationBackoffObservation,
+  observation: ActivationBackoffObservation,
 ): boolean {
-  if (!observation) return false;
-  if (observation.available === false) return true;
+  if (!observation.available) return true;
   // `currentOn === false` is a binary device confirmed off. A step-only stepper
   // (no binary handle, so `currentOn === undefined`) is off when parked at its off
   // step — read that from the step axis, or from the producer-resolved step label
-  // `currentState` for the restore caller that builds a label-only observation.
-  // Binary reasoning is untouched (gated on `currentOn === undefined`).
-  if (isBinaryPlanDevice(observation) && !observation.currentOn) return true;
-  if (!isBinaryPlanDevice(observation)
-    && (isSteppedDeviceAtOffStep(observation) || observation.currentState === 'off')) return true;
-  return false;
+  // `currentState` for a device that carries neither.
+  if (isBinaryPlanDevice(observation)) return !observation.currentOn;
+  return isSteppedDeviceAtOffStep(observation) || observation.currentState === 'off';
 }
 
 export function isActivationObservationActiveNow(
-  observation?: ActivationBackoffObservation,
+  observation: ActivationBackoffObservation,
 ): boolean {
-  if (!observation) return false;
-  if (observation.available === false) return false;
+  if (!observation.available) return false;
   if (isBinaryPlanDevice(observation) && observation.currentOn) return true;
   // Step-only stepper at an active step is on regardless of measurement (no binary
-  // handle to read) — from the step axis, or the `currentState` label for the
-  // label-only restore caller; binary devices keep their measured-draw fallback.
+  // handle to read) — from the step axis, or the `currentState` label for a device
+  // that carries neither; binary devices keep their measured-draw fallback.
   if (!isBinaryPlanDevice(observation)
     && (isSteppedDeviceAtActiveStep(observation) || observation.currentState === 'on')) return true;
-  return isActivelyDrawing({ currentDrawKw: observation.currentDrawKw });
+  return isActivelyDrawing(observation);
 }
 
-type CloseActivationAttemptKind = 'inactive' | 'shed' | 'quiet';
-
-const closeActivationAttempt = (params: {
-  state: PlanEngineState;
-  deviceId: string;
-  nowTs?: number;
-  kind: CloseActivationAttemptKind;
-}): {
-  stateChanged: boolean;
-  transition?: DeviceDiagnosticsBackoffTransition;
-} => {
-  const { state, deviceId, kind } = params;
-  const attemptStartedMs = getAttemptStartedMs(state, deviceId);
-  if (attemptStartedMs === null) {
-    return { stateChanged: false };
-  }
-
-  const nowTs = params.nowTs ?? Date.now();
-  const source = getAttemptSource(state, deviceId);
-  const penaltyLevel = getPenaltyLevel(state, deviceId);
-  const elapsed = elapsedMs(attemptStartedMs, nowTs);
-  const stateChanged = closeAttempt(state, deviceId);
-  if (!stateChanged || kind === 'quiet') {
-    return { stateChanged };
-  }
-
+const closeAttemptWithTransition = (
+  state: PlanEngineState,
+  deviceId: string,
+  nowTs: number,
+  kind: 'attempt_closed_inactive' | 'attempt_closed_by_shed',
+): DeviceDiagnosticsBackoffTransition | null => {
+  const attempt = getAttempt(state, deviceId);
+  if (!attempt) return null;
+  closeAttempt(state, deviceId);
   return {
-    stateChanged,
-    transition: kind === 'inactive'
-      ? {
-        kind: 'attempt_closed_inactive',
-        deviceId,
-        source,
-        penaltyLevel,
-        elapsedMs: elapsed,
-        nowTs,
-      }
-      : {
-        kind: 'attempt_closed_by_shed',
-        deviceId,
-        source,
-        penaltyLevel,
-        elapsedMs: elapsed,
-        nowTs,
-      },
+    kind,
+    deviceId,
+    source: attempt.source,
+    penaltyLevel: getPenaltyLevel(state, deviceId),
+    elapsedMs: elapsedMs(attempt.startedMs, nowTs),
+    nowTs,
   };
 };
 
+/** Close a device's open attempt without a diagnostics transition (it left the snapshot). */
 export function closeActivationAttemptForDevice(
   state: PlanEngineState,
   deviceId: string,
 ): boolean {
-  return closeActivationAttempt({ state, deviceId, kind: 'quiet' }).stateChanged;
+  return closeAttempt(state, deviceId);
 }
 
-export function closeActivationAttemptForShed(params: {
-  state: PlanEngineState;
-  deviceId: string;
-  nowTs?: number;
-}): {
-  stateChanged: boolean;
-  transition?: DeviceDiagnosticsBackoffTransition;
-} {
-  return closeActivationAttempt({
-    state: params.state,
-    deviceId: params.deviceId,
-    nowTs: params.nowTs,
-    kind: 'shed',
-  });
+/** Close a device's open attempt because PELS shed it. Null when none was open. */
+export function closeActivationAttemptForShed(
+  state: PlanEngineState,
+  deviceId: string,
+  nowTs: number,
+): DeviceDiagnosticsBackoffTransition | null {
+  return closeAttemptWithTransition(state, deviceId, nowTs, 'attempt_closed_by_shed');
 }
 
-export function syncActivationPenaltyState(params: {
-  state: PlanEngineState;
-  deviceId: string;
-  nowTs?: number;
-  observation?: ActivationBackoffObservation;
-}): ActivationPenaltyInfo {
-  const { state, deviceId, observation } = params;
-  const nowTs = params.nowTs ?? Date.now();
-  const attemptStartedMs = getAttemptStartedMs(state, deviceId);
+export function syncActivationPenaltyState(
+  state: PlanEngineState,
+  deviceId: string,
+  nowTs: number,
+  observation: ActivationBackoffObservation,
+): ActivationPenaltyInfo {
+  const attempt = getAttempt(state, deviceId);
   const penaltyLevel = getPenaltyLevel(state, deviceId);
 
-  if (attemptStartedMs === null) {
+  if (!attempt) {
+    return { penaltyLevel, attemptOpen: false, stateChanged: false, transition: null };
+  }
+
+  if (shouldCloseAttemptAsInactive(observation, attempt.startedMs, nowTs)) {
     return {
       penaltyLevel,
       attemptOpen: false,
-      clearRemainingSec: getClearRemainingSec(state, deviceId, nowTs),
-      stateChanged: false,
-      source: null,
-      transitions: [],
+      stateChanged: true,
+      transition: closeAttemptWithTransition(state, deviceId, nowTs, 'attempt_closed_inactive'),
     };
   }
 
-  const source = getAttemptSource(state, deviceId);
-
-  if (shouldCloseAttemptAsInactive({ observation, attemptStartedMs, nowTs })) {
-    const closeResult = closeActivationAttempt({
-      state,
-      deviceId,
-      nowTs,
-      kind: 'inactive',
-    });
-    return {
-      penaltyLevel,
-      attemptOpen: false,
-      clearRemainingSec: getClearRemainingSec(state, deviceId, nowTs),
-      stateChanged: closeResult.stateChanged,
-      source,
-      transitions: closeResult.transition ? [closeResult.transition] : [],
-    };
-  }
-
-  if (hasAttributionWindowExpired(attemptStartedMs, nowTs)) {
+  if (hasAttributionWindowExpired(attempt.startedMs, nowTs)) {
     // The full attribution window elapsed without an overshoot being attributed
     // back to this device. Clear the accumulated penalty iff at least one clean
     // whole-home sample arrived during the window — that's the positive
@@ -373,190 +234,112 @@ export function syncActivationPenaltyState(params: {
     // not to draw (legitimate-zero, e.g. heater at setpoint) is still a
     // successful exercise of the cautious admission as long as the household
     // stayed safe through the window.
-    const cleanSampleAtMs = getCleanWholeHomeSampleAtMs(state, deviceId);
-    const cautiousAdmissionProved = cleanSampleAtMs !== null;
-    const elapsed = elapsedMs(attemptStartedMs, nowTs);
-    const closeResult = closeActivationAttempt({
-      state,
-      deviceId,
-      nowTs,
-      kind: 'quiet',
-    });
-    let stateChanged = closeResult.stateChanged;
-    let clearedPenaltyLevel = penaltyLevel;
-    const transitions: DeviceDiagnosticsBackoffTransition[] = [];
-    if (cautiousAdmissionProved && penaltyLevel > 0) {
-      stateChanged = setPenaltyLevel(state, deviceId, 0) || stateChanged;
-      clearedPenaltyLevel = 0;
-      transitions.push({
+    closeAttempt(state, deviceId);
+    if (!attempt.cleanWholeHomeSampleSeen || penaltyLevel === 0) {
+      return { penaltyLevel, attemptOpen: false, stateChanged: true, transition: null };
+    }
+    clearPenalty(state, deviceId);
+    return {
+      penaltyLevel: 0,
+      attemptOpen: false,
+      stateChanged: true,
+      transition: {
         kind: 'attempt_closed_by_admission',
         deviceId,
-        source,
+        source: attempt.source,
         previousPenaltyLevel: penaltyLevel,
         penaltyLevel: 0,
-        elapsedMs: elapsed,
+        elapsedMs: elapsedMs(attempt.startedMs, nowTs),
         nowTs,
-      });
-    }
-    return {
-      penaltyLevel: clearedPenaltyLevel,
-      attemptOpen: false,
-      clearRemainingSec: getClearRemainingSec(state, deviceId, nowTs),
-      stateChanged,
-      source,
-      transitions,
+      },
     };
   }
 
-  return {
-    penaltyLevel,
-    attemptOpen: true,
-    clearRemainingSec: getClearRemainingSec(state, deviceId, nowTs),
-    stateChanged: false,
-    source,
-    transitions: [],
-  };
+  return { penaltyLevel, attemptOpen: true, stateChanged: false, transition: null };
 }
 
-const recordCleanWholeHomeSampleAtMs = (
+/**
+ * A clean whole-home sample — the house measured under its pace, the hour not
+ * spent — stamped at `sampleAtMs`. It counts for a restore attempt it falls
+ * inside of: the evidence `syncActivationPenaltyState`'s window-expiry branch
+ * reads to decide the cautious admission proved itself. Tracked step-ups earn
+ * no release this way. Answers whether the attempt changed.
+ */
+export function recordCleanWholeHomeSample(
   state: PlanEngineState,
   deviceId: string,
-  cleanSampleAtMs: number,
-): boolean => {
-  const entry = ensureAttempt(state, deviceId);
-  if (entry.cleanWholeHomeSampleAtMs !== undefined) return false;
-  entry.cleanWholeHomeSampleAtMs = cleanSampleAtMs;
-  return true;
-};
-
-export function syncConfirmedRestoreAttributionState(params: {
-  state: PlanEngineState;
-  deviceId: string;
-  wholeHomePowerSampleAtMs?: number | null;
-  cleanWholeHomeSample: boolean;
-}): {
-  stateChanged: boolean;
-  attemptOpen: boolean;
-} {
-  const { state, deviceId } = params;
-  const attemptStartedMs = getAttemptStartedMs(state, deviceId);
-  if (attemptStartedMs === null) return { stateChanged: false, attemptOpen: false };
-
-  const source = getAttemptSource(state, deviceId);
-  if (source !== 'pels_restore') return { stateChanged: false, attemptOpen: true };
-
-  let stateChanged = false;
-
-  // Record the first clean whole-home sample seen during the attribution
-  // window. The canonical close-and-clear path lives in
-  // `syncActivationPenaltyState`'s window-expiry branch — it consults this
-  // timestamp as the "cautious admission proved itself" evidence. Without a
-  // sample recorded for this window, "no overshoot attributed" could just
-  // mean no cycle in the window measured the household within its limits —
-  // absence of attribution is not evidence of capacity compliance.
+  sampleAtMs: number,
+): boolean {
+  const attempt = getAttempt(state, deviceId);
   if (
-    params.cleanWholeHomeSample
-    && isFiniteNumber(params.wholeHomePowerSampleAtMs)
-    && params.wholeHomePowerSampleAtMs > attemptStartedMs
-    && !hasAttributionWindowExpired(attemptStartedMs, params.wholeHomePowerSampleAtMs)
-    && getCleanWholeHomeSampleAtMs(state, deviceId) === null
-  ) {
-    stateChanged = recordCleanWholeHomeSampleAtMs(state, deviceId, params.wholeHomePowerSampleAtMs) || stateChanged;
-  }
-
-  return { stateChanged, attemptOpen: true };
+    !attempt
+    || attempt.source !== 'pels_restore'
+    || attempt.cleanWholeHomeSampleSeen
+    || sampleAtMs <= attempt.startedMs
+    || hasAttributionWindowExpired(attempt.startedMs, sampleAtMs)
+  ) return false;
+  attempt.cleanWholeHomeSampleSeen = true;
+  return true;
 }
 
-export function recordActivationAttemptStart(params: {
-  state: PlanEngineState;
-  deviceId: string;
-  source: ActivationAttemptSource;
-  nowTs?: number;
-}): {
-  stateChanged: boolean;
-  started: boolean;
-  transition?: DeviceDiagnosticsBackoffTransition;
-} {
-  const { state, deviceId, source } = params;
-  const nowTs = params.nowTs ?? Date.now();
-  if (!deviceId || !Number.isFinite(nowTs) || getAttemptStartedMs(state, deviceId) !== null) {
-    return { stateChanged: false, started: false };
-  }
-
-  const penaltyLevel = getPenaltyLevel(state, deviceId);
-  const entry = ensureAttempt(state, deviceId);
-  entry.startedMs = nowTs;
-  entry.source = source;
-
+/** Open an attempt for a device with none open. Null when one is already open. */
+export function recordActivationAttemptStart(
+  state: PlanEngineState,
+  deviceId: string,
+  source: ActivationAttemptSource,
+  nowTs: number,
+): DeviceDiagnosticsBackoffTransition | null {
+  if (getAttempt(state, deviceId)) return null;
+  openAttempt(state, deviceId, { startedMs: nowTs, source, cleanWholeHomeSampleSeen: false });
   return {
-    stateChanged: true,
-    started: true,
-    transition: {
-      kind: 'attempt_started',
-      deviceId,
-      source,
-      penaltyLevel,
-      nowTs,
-    },
+    kind: 'attempt_started',
+    deviceId,
+    source,
+    penaltyLevel: getPenaltyLevel(state, deviceId),
+    nowTs,
   };
 }
 
-export function recordActivationSetback(params: {
-  state: PlanEngineState;
-  deviceId: string;
-  nowTs?: number;
-}): {
-  stateChanged: boolean;
+export type ActivationSetbackResult = {
   bumped: boolean;
   penaltyLevel: number;
-  transition?: DeviceDiagnosticsBackoffTransition;
-} {
-  const { state, deviceId } = params;
-  const nowTs = params.nowTs ?? Date.now();
-  const attemptStartedMs = getAttemptStartedMs(state, deviceId);
+  transition: DeviceDiagnosticsBackoffTransition | null;
+};
+
+export function recordActivationSetback(
+  state: PlanEngineState,
+  deviceId: string,
+  nowTs: number,
+): ActivationSetbackResult {
+  const attempt = getAttempt(state, deviceId);
   const penaltyLevel = getPenaltyLevel(state, deviceId);
+  if (!attempt) return { bumped: false, penaltyLevel, transition: null };
 
-  if (attemptStartedMs === null) {
-    return { stateChanged: false, bumped: false, penaltyLevel };
+  closeAttempt(state, deviceId);
+  if (hasAttributionWindowExpired(attempt.startedMs, nowTs)) {
+    return { bumped: false, penaltyLevel, transition: null };
   }
-
-  const source = getAttemptSource(state, deviceId);
-  const elapsed = elapsedMs(attemptStartedMs, nowTs);
-  if (hasAttributionWindowExpired(attemptStartedMs, nowTs)) {
-    return {
-      stateChanged: closeAttempt(state, deviceId),
-      bumped: false,
-      penaltyLevel,
-    };
-  }
-  const nextPenaltyLevel = clampPenaltyLevel(penaltyLevel + 1);
-
-  let stateChanged = closeAttempt(state, deviceId);
-  stateChanged = setPenaltyLevel(state, deviceId, nextPenaltyLevel) || stateChanged;
-  stateChanged = updateLastSetbackMs(state, deviceId, nowTs) || stateChanged;
-
+  const nextPenaltyLevel = Math.min(ACTIVATION_BACKOFF_MAX_LEVEL, penaltyLevel + 1);
+  setPenalty(state, deviceId, { level: nextPenaltyLevel, lastSetbackMs: nowTs });
   return {
-    stateChanged,
     bumped: nextPenaltyLevel > penaltyLevel,
     penaltyLevel: nextPenaltyLevel,
     transition: {
       kind: 'setback_failed',
       deviceId,
-      source,
+      source: attempt.source,
       previousPenaltyLevel: penaltyLevel,
       penaltyLevel: nextPenaltyLevel,
-      elapsedMs: elapsed,
+      elapsedMs: elapsedMs(attempt.startedMs, nowTs),
       nowTs,
     },
   };
 }
 
-export function applyActivationPenalty(params: {
-  baseRequiredKw: number;
-  penaltyLevel: number;
-}): { requiredKwWithPenalty: number; penaltyExtraKw: number } {
-  const baseRequiredKw = Math.max(0, Number.isFinite(params.baseRequiredKw) ? params.baseRequiredKw : 0);
-  const penaltyLevel = clampPenaltyLevel(params.penaltyLevel);
+export function applyActivationPenalty(
+  baseRequiredKw: number,
+  penaltyLevel: number,
+): { requiredKwWithPenalty: number; penaltyExtraKw: number } {
   if (penaltyLevel === 0 || baseRequiredKw <= 0) {
     return { requiredKwWithPenalty: baseRequiredKw, penaltyExtraKw: 0 };
   }
@@ -574,38 +357,19 @@ export function applyActivationPenalty(params: {
   };
 }
 
-export function getActivationRestoreBlockRemainingMs(params: {
-  state: PlanEngineState;
-  deviceId: string;
-  nowTs?: number;
-}): number | null {
-  const { state, deviceId } = params;
-  const penaltyLevel = getPenaltyLevel(state, deviceId);
-  if (penaltyLevel <= 0) return null;
-
-  const lastSetbackMs = getLastSetbackMs(state, deviceId);
-  if (lastSetbackMs === null) return null;
-
-  const nowTs = params.nowTs ?? Date.now();
-  const remainingMs = getCooldownMsForPenaltyLevel(penaltyLevel) - elapsedMs(lastSetbackMs, nowTs);
-  return remainingMs > 0 ? remainingMs : null;
-}
-
-export function getActivationRestoreBlockCountdownTiming(params: {
-  state: PlanEngineState;
-  deviceId: string;
-}): { countdownStartedAtMs: number; countdownTotalSec: number } | undefined {
-  const { state, deviceId } = params;
-  const penaltyLevel = getPenaltyLevel(state, deviceId);
-  if (penaltyLevel <= 0) return undefined;
-
-  const lastSetbackMs = getLastSetbackMs(state, deviceId);
-  if (lastSetbackMs === null) return undefined;
-
-  const cooldownMs = getCooldownMsForPenaltyLevel(penaltyLevel);
-  if (cooldownMs <= 0) return undefined;
+/** The restore block a device's last setback still imposes at `nowTs`, or null once it lapsed. */
+export function resolveActivationRestoreBlock(
+  state: PlanEngineState,
+  deviceId: string,
+  nowTs: number,
+): ActivationRestoreBlock | null {
+  const penalty = getPenalty(state, deviceId);
+  if (!penalty) return null;
+  const remainingMs = ACTIVATION_SETBACK_RESTORE_BLOCK_MS - elapsedMs(penalty.lastSetbackMs, nowTs);
+  if (remainingMs <= 0) return null;
   return {
-    countdownStartedAtMs: lastSetbackMs,
-    countdownTotalSec: Math.ceil(cooldownMs / 1000),
+    remainingMs,
+    countdownStartedAtMs: penalty.lastSetbackMs,
+    countdownTotalSec: Math.ceil(ACTIVATION_SETBACK_RESTORE_BLOCK_MS / 1000),
   };
 }

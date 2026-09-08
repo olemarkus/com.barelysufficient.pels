@@ -93,12 +93,13 @@ export function planRestoreForDevice(
     deviceId: dev.id,
     deviceName: dev.name,
     state,
+    nowTs: timing.nowTs,
     stepped: false,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
-  const restoreNeed = getRestoreNeed(dev, state, deps.deviceDiagnostics);
+  const restoreNeed = getRestoreNeed(dev, state, timing.nowTs, deps.deviceDiagnostics);
   if (batchContinuation && !canAdmitWithinBatch(batchState, restoreNeed.needed)) {
     return rejectBinaryRestoreForMeterSettling(cycle, dev, loop, true);
   }

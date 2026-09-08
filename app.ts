@@ -430,7 +430,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     getExpectedPowerKwOverrides: () => this.expectedPowerKwOverrides,
     getLearnedPowerPeaks: () => this.lastKnownPowerKw,
     timers: this.timers,
-    syncHeadroomUsageObservation: (params) => { this.planService.syncHeadroomUsageObservation(params); },
+    syncHeadroomUsageObservation: (deviceId, kw) => { this.planService.syncHeadroomUsageObservation(deviceId, kw); },
   });
   protected readonly nativeWiring = new AppNativeWiring({
     getNativeWiringUninitializing: () => this.nativeWiringUninitializing,

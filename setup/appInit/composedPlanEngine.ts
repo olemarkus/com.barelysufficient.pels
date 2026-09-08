@@ -19,11 +19,11 @@ import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanBuilder } from '../../lib/plan/planBuilder';
 import {
   evaluateHeadroomForDevice,
-  syncHeadroomCardState,
+  syncHeadroomCardSnapshot,
   syncHeadroomUsageObservation,
   type HeadroomCardDeviceLike,
+  type HeadroomCardQuery,
   type HeadroomForDeviceDecision,
-  type HeadroomUsageObservation,
 } from '../../lib/plan/planHeadroomDevice';
 import type { PlanEngineState } from '../../lib/plan/planState';
 import {
@@ -223,43 +223,16 @@ export class ComposedPlanEngine implements PlanEngine {
     this.pendingBinaryCommandStore.clearRecentConfirmedOff(deviceId, observedOnAtMs);
   }
 
-  public evaluateHeadroomForDevice(params: {
-    devices: HeadroomCardDeviceLike[];
-    deviceId: string;
-    device?: HeadroomCardDeviceLike;
-    headroom: number;
-    requiredKw: number;
-    cleanupMissingDevices?: boolean;
-  }): HeadroomForDeviceDecision | null {
-    return evaluateHeadroomForDevice({
-      state: this.state,
-      ...params,
-      diagnostics: this.deviceDiagnostics,
-    });
+  public evaluateHeadroomForDevice(query: HeadroomCardQuery): HeadroomForDeviceDecision {
+    return evaluateHeadroomForDevice(this.state, query, Date.now(), this.deviceDiagnostics);
   }
 
-  public syncHeadroomCardState(params: {
-    devices: HeadroomCardDeviceLike[];
-    cleanupMissingDevices?: boolean;
-    reconciliationContext?: 'snapshot_refresh';
-  }): boolean {
-    return syncHeadroomCardState({
-      state: this.state,
-      ...params,
-      diagnostics: this.deviceDiagnostics,
-    });
+  public syncHeadroomCardState(devices: HeadroomCardDeviceLike[]): boolean {
+    return syncHeadroomCardSnapshot(this.state, devices, Date.now(), 'snapshot_refresh', this.deviceDiagnostics);
   }
 
-  public syncHeadroomUsageObservation(params: {
-    deviceId: string;
-    usageObservation: HeadroomUsageObservation;
-    reconciliationContext?: 'snapshot_refresh';
-  }): boolean {
-    return syncHeadroomUsageObservation({
-      state: this.state,
-      ...params,
-      diagnostics: this.deviceDiagnostics,
-    });
+  public syncHeadroomUsageObservation(deviceId: string, usageKw: number): boolean {
+    return syncHeadroomUsageObservation(this.state, deviceId, usageKw, Date.now(), this.deviceDiagnostics);
   }
 
   public async applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<boolean> {

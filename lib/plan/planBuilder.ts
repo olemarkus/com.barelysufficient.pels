@@ -52,7 +52,7 @@ import { incPerfCounter } from '../utils/perfCounters';
 import { resolveDailySoftLimitBucket } from './planDailyBudgetWindow';
 import {
   ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
-  syncConfirmedRestoreAttributionState as syncConfirmedRestoreAttributionAttempt,
+  recordCleanWholeHomeSample,
 } from './admission';
 import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
 import { OvershootTracker } from './planBuilderOvershoot';
@@ -288,7 +288,7 @@ export class PlanBuilder {
       holdResult,
     });
     planDevices = attachDeferredReleaseIntents(planDevices, decoration.deferredReleaseIntentByDeviceId, true);
-    this.stages.syncHeadroomCardState(planDevices);
+    this.stages.syncHeadroomCardState(planDevices, nowTs);
     const finalized = this.stages.finalizePlan(planDevices, normalizedShedFloorCByDevice);
     // Decision-time shed clock (edge-set) + the plan-less-safe surplus-posture
     // stamp — semantics on `PlanEngineState.recordPlannedShedDecisions`.
@@ -407,11 +407,9 @@ export class PlanBuilder {
     this.state.softOvershootPendingSinceMs = overshootDecision.pendingSinceMs;
     // A clean whole-home sample: the house is under its pace, and the hour is
     // not spent (an exhausted hour admits nothing, however the draw reads).
-    this.syncConfirmedRestoreAttributionAttempts(
-      context.devices,
-      this.powerTracker.lastTimestamp ?? null,
-      power.headroomKw >= 0 && !this.state.hourlyBudgetExhausted,
-    );
+    if (power.headroomKw >= 0 && !this.state.hourlyBudgetExhausted) {
+      this.recordCleanWholeHomeSample(context.devices, this.powerTracker.lastTimestamp);
+    }
 
     // `buildSheddingPlan` takes the WHOLE decision, not just the shed half: the
     // shedding-active latch must stay engaged through a grace window, or every
@@ -436,26 +434,17 @@ export class PlanBuilder {
    * `syncActivationPenaltyState` also uses to close a stalled attempt.
    */
   private hasOpenActivationAttempt(nowTs: number): boolean {
-    return Object.values(this.state.activationAttemptByDevice).some((attempt) => {
-      const startedMs = attempt.startedMs;
-      if (typeof startedMs !== 'number' || !Number.isFinite(startedMs)) return false;
-      const elapsed = nowTs - startedMs;
-      return elapsed >= 0 && elapsed < ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS;
-    });
+    for (const attempt of Object.values(this.state.activationAttemptByDevice)) {
+      const elapsed = nowTs - attempt.startedMs;
+      if (elapsed >= 0 && elapsed < ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS) return true;
+    }
+    return false;
   }
 
-  private syncConfirmedRestoreAttributionAttempts(
-    devices: PlanInputDevice[],
-    wholeHomePowerSampleAtMs: number | null,
-    cleanWholeHomeSample: boolean,
-  ): void {
+  private recordCleanWholeHomeSample(devices: PlanInputDevice[], sampleAtMs: number | undefined): void {
+    if (sampleAtMs === undefined) return;
     for (const device of devices) {
-      syncConfirmedRestoreAttributionAttempt({
-        state: this.state,
-        deviceId: device.id,
-        wholeHomePowerSampleAtMs,
-        cleanWholeHomeSample,
-      });
+      recordCleanWholeHomeSample(this.state, device.id, sampleAtMs);
     }
   }
 

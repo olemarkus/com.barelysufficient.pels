@@ -56,13 +56,10 @@ async function checkHeadroomForDevice(
     // Stamp the whole array, not just the target: the activation in/active reads
     // run over every element and need each one's producer-resolved `currentOn`.
     devices: snapshot.map(withHeadroomCurrentOn),
-    deviceId,
     device: withHeadroomCurrentOn(deviceSnap),
     headroom,
     requiredKw,
-    cleanupMissingDevices: true,
   });
-  if (!decision) return false;
   if (decision.stateChanged) {
     requestPlanRebuildFromFlow(deps, 'flow_headroom_cooldown');
   }

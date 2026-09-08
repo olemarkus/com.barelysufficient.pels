@@ -221,9 +221,8 @@ export class PlanMaterializationStages {
           // Same need the restore gate rejects on: it inflates a recently shed
           // device's requirement, and a card computed against the deflated
           // figure would claim the device is admissible on the very cycle the
-          // gate turned it down. `getRestoreNeed` reads its own `Date.now()`, so
-          // the two dates differ by the width of one plan cycle against a
-          // five-minute window — same answer, no shared clock needed.
+          // gate turned it down. Same `timing.nowTs` the restore gate rejected
+          // on, so card and gate agree by construction.
           lastDeviceShedMsById: this.state.lastDeviceShedMs,
           nowMs: restoreResult.timing.nowTs,
         })
@@ -252,15 +251,9 @@ export class PlanMaterializationStages {
     }));
   }
 
-  syncHeadroomCardState(planDevices: DevicePlanDevice[]): void {
+  syncHeadroomCardState(planDevices: DevicePlanDevice[], nowTs: number): void {
     return trackPlanStage('plan_headroom_cooldown_ms', () => {
-      syncHeadroomCardState({
-        state: this.state,
-        devices: planDevices,
-        nowTs: Date.now(),
-        cleanupMissingDevices: false,
-        diagnostics: this.deps.deviceDiagnostics,
-      });
+      syncHeadroomCardState(this.state, planDevices, nowTs, this.deps.deviceDiagnostics);
     });
   }
 

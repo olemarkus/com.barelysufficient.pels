@@ -8,6 +8,7 @@ import {
 import { buildPlanMeta } from './planTestUtils';
 import { driftDepsFromPlanInputs } from './driftObservationTestUtils';
 import type { DriftCommandRead } from '../../lib/executor/driftObservedDevice';
+import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 
 /**
  * Specs that exercise drift supply the fixtures the observer would have served.
@@ -93,7 +94,7 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
     },
   ),
   decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
-  evaluateHeadroomForDevice: vi.fn(() => null),
+  evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
   syncHeadroomCardState: vi.fn(() => false),
   syncHeadroomUsageObservation: vi.fn(() => false),
   beginStartupRestoreStabilization: vi.fn(),

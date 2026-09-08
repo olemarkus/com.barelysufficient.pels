@@ -105,7 +105,7 @@ export type FlowBackedDeviceStateDeps = {
   getLearnedPowerPeaks: () => LearnedPeaksByDeviceId;
   /** Owns the learned-peak trailing flush registered by `learnedPowerPeakState`. */
   timers: TimerRegistry;
-  syncHeadroomUsageObservation: (params: { deviceId: string; usageObservation: { kw: number } }) => void;
+  syncHeadroomUsageObservation: (deviceId: string, usageKw: number) => void;
 }
 
 export class FlowBackedDeviceState {
@@ -166,10 +166,7 @@ export class FlowBackedDeviceState {
     // deliberately; losing it to a restart is how it used to silently revert to
     // whatever PELS could infer.
     this.persistExpectedPowerOverrides(deviceId, overrides);
-    this.deps.syncHeadroomUsageObservation({
-      deviceId,
-      usageObservation: { kw },
-    });
+    this.deps.syncHeadroomUsageObservation(deviceId, kw);
     return true;
   }
 
@@ -257,10 +254,7 @@ export class FlowBackedDeviceState {
   reloadExpectedPowerOverrides(): void {
     void this.loadExpectedPowerOverrides({
       authority: 'persisted',
-      onOverrideChanged: (deviceId, kw) => this.deps.syncHeadroomUsageObservation({
-        deviceId,
-        usageObservation: { kw },
-      }),
+      onOverrideChanged: (deviceId, kw) => this.deps.syncHeadroomUsageObservation(deviceId, kw),
     });
   }
 

@@ -11,6 +11,7 @@ import type { AppContext, PowerSampleAdmission } from '../../lib/app/appContext'
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { Mock } from 'vitest';
+import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 
 describe('registerAppFlowCards', () => {
   const admitted = (revision = 1): PowerSampleAdmission => ({ state: 'admitted', revision });
@@ -61,7 +62,7 @@ describe('registerAppFlowCards', () => {
       setExpectedOverride: vi.fn(() => false),
       storeFlowPriceData: vi.fn(),
       requestFlowPlanRebuild: params.requestFlowPlanRebuild ?? vi.fn(),
-      evaluateHeadroomForDevice: vi.fn(() => null),
+      evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
       updateDailyBudgetState: vi.fn(),
       getCombinedHourlyPrices: vi.fn(() => []),
       getTimeZone: vi.fn(() => 'Europe/Oslo'),
@@ -102,7 +103,7 @@ describe('registerAppFlowCards', () => {
       setExpectedOverride: vi.fn(() => false),
       storeFlowPriceData: vi.fn(),
       requestFlowPlanRebuild: vi.fn(),
-      evaluateHeadroomForDevice: vi.fn(() => null),
+      evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
       updateDailyBudgetState: vi.fn(),
       getCombinedHourlyPrices: vi.fn(() => []),
       getTimeZone: vi.fn(() => 'Europe/Oslo'),
@@ -213,7 +214,7 @@ describe('registerAppFlowCards', () => {
       setExpectedOverride: vi.fn(() => false),
       storeFlowPriceData: vi.fn(),
       requestFlowPlanRebuild: vi.fn(),
-      evaluateHeadroomForDevice: vi.fn(() => null),
+      evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
       dailyBudgetService: {
         loadSettings: vi.fn(),
         updateState: dailyBudgetServiceUpdateState,

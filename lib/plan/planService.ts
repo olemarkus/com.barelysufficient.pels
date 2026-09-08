@@ -71,8 +71,8 @@ import type {
 } from './planTypes';
 import type {
   HeadroomCardDeviceLike,
+  HeadroomCardQuery,
   HeadroomForDeviceDecision,
-  HeadroomUsageObservation,
 } from './planHeadroomDevice';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 import { PlanChangeTracker } from './planChangeTracker';
@@ -332,31 +332,16 @@ export class PlanService {
     );
   }
 
-  evaluateHeadroomForDevice(params: {
-    devices: HeadroomCardDeviceLike[];
-    deviceId: string;
-    device?: HeadroomCardDeviceLike;
-    headroom: number;
-    requiredKw: number;
-    cleanupMissingDevices?: boolean;
-  }): HeadroomForDeviceDecision | null {
-    return this.deps.planEngine.evaluateHeadroomForDevice(params);
+  evaluateHeadroomForDevice(query: HeadroomCardQuery): HeadroomForDeviceDecision {
+    return this.deps.planEngine.evaluateHeadroomForDevice(query);
   }
 
-  syncHeadroomCardState(params: {
-    devices: HeadroomCardDeviceLike[];
-    cleanupMissingDevices?: boolean;
-    reconciliationContext?: 'snapshot_refresh';
-  }): boolean {
-    return this.deps.planEngine.syncHeadroomCardState(params);
+  syncHeadroomCardState(devices: HeadroomCardDeviceLike[]): boolean {
+    return this.deps.planEngine.syncHeadroomCardState(devices);
   }
 
-  syncHeadroomUsageObservation(params: {
-    deviceId: string;
-    usageObservation: HeadroomUsageObservation;
-    reconciliationContext?: 'snapshot_refresh';
-  }): boolean {
-    return this.deps.planEngine.syncHeadroomUsageObservation(params);
+  syncHeadroomUsageObservation(deviceId: string, usageKw: number): boolean {
+    return this.deps.planEngine.syncHeadroomUsageObservation(deviceId, usageKw);
   }
 
   /**

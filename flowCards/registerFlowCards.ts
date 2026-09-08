@@ -5,7 +5,7 @@ import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../setup/appDeviceControlHelpers';
 import { registerExpectedPowerCard } from './expectedPower';
 import { registerEvChargingPhaseCard } from './evChargingPhaseCard';
-import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
+import type { HeadroomCardQuery, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
 import type { FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
@@ -128,14 +128,7 @@ export type FlowCardDeps = {
   getDeferredObjectiveEndedBus?: () => DeferredObjectiveEndedBus | undefined;
   getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
   getDeferredObjectiveHoursRemainingTracker?: () => DeferredObjectiveHoursRemainingTracker | undefined;
-  evaluateHeadroomForDevice: (params: {
-    devices: HeadroomCardDeviceLike[];
-    deviceId: string;
-    device?: HeadroomCardDeviceLike;
-    headroom: number;
-    requiredKw: number;
-    cleanupMissingDevices?: boolean;
-  }) => HeadroomForDeviceDecision | null;
+  evaluateHeadroomForDevice: (query: HeadroomCardQuery) => HeadroomForDeviceDecision;
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
   getCombinedHourlyPrices: () => CombinedHourlyPrice[];

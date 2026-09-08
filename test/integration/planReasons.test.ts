@@ -652,7 +652,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       const dev = heldDevice();
       const state = createPlanEngineState();
       state.lastDeviceShedMs[dev.id] = SHORTFALL_NOW_MS - 60_000;
-      const gateNeededKw = getRestoreNeed(dev, state).needed;
+      const gateNeededKw = getRestoreNeed(dev, state, SHORTFALL_NOW_MS, undefined).needed;
       const shortfallInputs = (capacityAvailableKw: number) => buildCeilingShortfallInputs({
         ledgerAxes: { capacityAvailableKw, budgetAvailableKw: null },
         headroomReserves: [],
@@ -1027,10 +1027,7 @@ describe('applyShedTemperatureHold', () => {
     vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.lastPlannedShedIds = new Set(['dev-temp']);
-    state.activationAttemptByDevice['dev-temp'] = {
-      penaltyLevel: 1,
-      lastSetbackMs: now - 1_000,
-    };
+    state.activationPenaltyByDevice['dev-temp'] = { level: 1, lastSetbackMs: now - 1_000 };
 
     const held = applyShedTemperatureHold({
         // Scalar-only harness: flat integer floors, so the raw fallback IS the
@@ -1050,7 +1047,7 @@ describe('applyShedTemperatureHold', () => {
       }), true)],
       state,
       shedReasons: new Map(),
-      timing: restoreTimingFixture(),
+      timing: restoreTimingFixture({ nowTs: now }),
       sheddingActive: false,
       availableHeadroom: 3,
       restoredOneThisCycle: false,

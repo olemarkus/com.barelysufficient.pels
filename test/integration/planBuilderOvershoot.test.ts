@@ -22,6 +22,7 @@ const buildDevice = (
     targets: [],
     binaryControl: { on: true },
     controllable: true,
+    available: true,
     binaryCapabilityId: 'onoff' as const,
     ...overrides,
   };
@@ -515,12 +516,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const now = new Date('2026-04-15T11:04:01.000Z').getTime();
       vi.setSystemTime(now);
       state.lastDeviceRestoreMs['deadband-device'] = now - 1_000;
-      recordActivationAttemptStart({
-        state,
-        deviceId: 'deadband-device',
-        source: 'pels_restore',
-        nowTs: now - 1_000,
-      });
+      recordActivationAttemptStart(state, 'deadband-device', 'pels_restore', now - 1_000);
 
       const structuredLog = { info: vi.fn() };
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
@@ -585,12 +581,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const now = new Date('2026-04-15T11:04:01.000Z').getTime();
       vi.setSystemTime(now);
       state.lastDeviceRestoreMs['restored-device'] = now - 1_000;
-      recordActivationAttemptStart({
-        state,
-        deviceId: 'restored-device',
-        source: 'pels_restore',
-        nowTs: now - 1_000,
-      });
+      recordActivationAttemptStart(state, 'restored-device', 'pels_restore', now - 1_000);
 
       const structuredLog = { info: vi.fn() };
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
@@ -801,12 +792,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const now = new Date('2026-04-15T11:04:01.000Z').getTime();
       vi.setSystemTime(now);
       state.lastDeviceRestoreMs['restored-device'] = now - 1_000;
-      recordActivationAttemptStart({
-        state,
-        deviceId: 'restored-device',
-        source: 'pels_restore',
-        nowTs: now - 1_000,
-      });
+      recordActivationAttemptStart(state, 'restored-device', 'pels_restore', now - 1_000);
 
       const structuredLog = { info: vi.fn() };
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
@@ -962,12 +948,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const start = new Date('2026-04-15T11:04:01.000Z').getTime();
       vi.setSystemTime(start);
       state.lastDeviceRestoreMs['restored-thermostat'] = start - 1_000;
-      recordActivationAttemptStart({
-        state,
-        deviceId: 'restored-thermostat',
-        source: 'pels_restore',
-        nowTs: start - 1_000,
-      });
+      recordActivationAttemptStart(state, 'restored-thermostat', 'pels_restore', start - 1_000);
 
       const structuredLog = { info: vi.fn() };
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
@@ -1067,12 +1048,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const start = new Date('2026-04-15T11:04:01.000Z').getTime();
       vi.setSystemTime(start);
       state.lastDeviceRestoreMs['restored-thermostat'] = start - 1_000;
-      recordActivationAttemptStart({
-        state,
-        deviceId: 'restored-thermostat',
-        source: 'pels_restore',
-        nowTs: start - 1_000,
-      });
+      recordActivationAttemptStart(state, 'restored-thermostat', 'pels_restore', start - 1_000);
 
       const structuredLog = { info: vi.fn() };
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
@@ -1177,12 +1153,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       let lastTimestamp = start;
       vi.setSystemTime(start);
       state.lastDeviceRestoreMs['restored-thermostat'] = start - 1_000;
-      recordActivationAttemptStart({
-        state,
-        deviceId: 'restored-thermostat',
-        source: 'pels_restore',
-        nowTs: start - 1_000,
-      });
+      recordActivationAttemptStart(state, 'restored-thermostat', 'pels_restore', start - 1_000);
 
       const structuredLog = { info: vi.fn() };
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
@@ -1286,12 +1257,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const start = new Date('2026-04-15T11:04:01.000Z').getTime();
       vi.setSystemTime(start);
       state.lastDeviceRestoreMs['restored-thermostat'] = start - 1_000;
-      recordActivationAttemptStart({
-        state,
-        deviceId: 'restored-thermostat',
-        source: 'pels_restore',
-        nowTs: start - 1_000,
-      });
+      recordActivationAttemptStart(state, 'restored-thermostat', 'pels_restore', start - 1_000);
 
       const structuredLog = { info: vi.fn() };
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });

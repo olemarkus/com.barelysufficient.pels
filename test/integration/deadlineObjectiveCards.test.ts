@@ -31,6 +31,7 @@ import type {
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import type { FlowCardDeps } from '../../flowCards/registerFlowCards';
+import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 
 // Fixed clock for deterministic deadlineAtMs assertions. 2026-01-01 05:00 UTC.
 const MOCK_NOW_MS = Date.UTC(2026, 0, 1, 5, 0, 0);
@@ -310,7 +311,7 @@ const buildDeps = (overrides: {
     clearDeferredObjectiveForDevice: (params: Parameters<typeof clearObjectiveForDevice>[1]) => (
       clearObjectiveForDevice(buildWriteDeps('deadline_objective_card_clear'), params)
     ),
-    evaluateHeadroomForDevice: () => null,
+    evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
     loadDailyBudgetSettings: () => {},
     updateDailyBudgetState: () => {},
     getCombinedHourlyPrices: () => null,

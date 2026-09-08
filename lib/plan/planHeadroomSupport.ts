@@ -6,6 +6,7 @@ import { isFiniteNumber } from '../utils/appTypeGuards';
 import { resolveCurrentOn } from '../observer/observedState';
 import { getCurrentDrawKw } from '../observer/observedPower';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { ActivationBackoffObservation } from './admission/activationBackoff';
 
 export { isFiniteNumber };
 
@@ -42,32 +43,21 @@ export function withHeadroomCurrentOn<T extends RawHeadroomDevice>(
 }
 
 export type HeadroomCardCooldownSource = 'pels_shed' | 'pels_restore';
-export type HeadroomUsageObservation = { kw: number };
-export type HeadroomTrackedTransitionContext = Extract<
-  DeviceDiagnosticsTrackedTransitionReconciliation,
-  'snapshot_refresh'
->;
 
 const TRACKED_TRANSITION_RECONCILIATION_WINDOW_MS = Math.max(
   SHED_COOLDOWN_MS,
   RESTORE_COOLDOWN_MS,
 );
 
-export type HeadroomCardDeviceLike = {
+/**
+ * A device as the headroom card and the activation reads see it: the activation
+ * observation plus identity. Both a plan device and a stamped snapshot device
+ * (`withHeadroomCurrentOn`) are one of these.
+ */
+export type HeadroomCardDeviceLike = ActivationBackoffObservation & {
   id: string;
   name: string;
   expectedPowerKw?: number;
-  currentDrawKw: number;
-  // Producer-resolved on/off truth (present iff binary). The activation in/active
-  // reads consume this; the seams that feed raw snapshots (appSnapshotHelpers,
-  // the Flow headroom card) stamp it before the device reaches this path. A
-  // step-only stepper carries no `currentOn`; the activation reads resolve its
-  // on/off from the step axis, so the stepped fields travel with it.
-  currentOn?: boolean;
-  currentState?: string;
-  steppedLoadProfile?: SteppedLoadProfile;
-  selectedStepId?: string;
-  available?: boolean;
 };
 
 export type HeadroomCooldownCandidate = {
@@ -107,65 +97,17 @@ export const ensureHeadroomEntry = (
   return cards[deviceId];
 };
 
-export const updateHeadroomCardUsageObservation = (params: {
-  state: PlanEngineState;
-  deviceId: string;
-  usageObservation: HeadroomUsageObservation;
-  deviceName?: string;
-}): void => {
-  const {
-    state,
-    deviceId,
-    usageObservation,
-    deviceName,
-  } = params;
-  const entry = ensureHeadroomEntry(state, deviceId);
-  entry.lastUsageKw = usageObservation.kw;
-  if (deviceName) {
-    entry.deviceName = deviceName;
-  }
-};
-
-export type UsageObservationMergeOutcome = 'tie' | 'win';
-
-export type TrackedUsageMergeDecision = {
-  outcome: UsageObservationMergeOutcome;
-};
-
-// The draw alone decides. This used to compare the incoming observation's
-// timestamp against the stored one and drop an older or unstamped reading — the
-// planner second-guessing the order the observer handed it values in, which is
-// the provenance branch the root `AGENTS.md` forbids. The observer publishes the
-// trusted current value; an unchanged value is a no-op, a changed one is news.
-export const resolveUsageObservationMergeDecision = (params: {
-  entry?: Pick<HeadroomCardState, 'lastUsageKw'>;
-  usageObservation: HeadroomUsageObservation;
-}): TrackedUsageMergeDecision => {
-  const { entry, usageObservation } = params;
-  return entry?.lastUsageKw === usageObservation.kw
-    ? { outcome: 'tie' }
-    : { outcome: 'win' };
-};
-
-export const resolveHeadroomDeviceName = (params: {
-  state: PlanEngineState;
-  deviceId: string;
-  device?: Pick<HeadroomCardDeviceLike, 'name'>;
-  deviceName?: string;
-}): string | undefined => (
-  params.device?.name
-  ?? params.deviceName
-  ?? params.state.headroomCardByDevice[params.deviceId]?.deviceName
-);
-
-export const resolveTrackedTransitionReconciliation = (params: {
-  state: PlanEngineState;
-  deviceId: string;
-  nowTs: number;
-  context?: HeadroomTrackedTransitionContext;
-}): DeviceDiagnosticsTrackedTransitionReconciliation | undefined => {
-  const { state, deviceId, nowTs, context } = params;
-  if (context === 'snapshot_refresh') return context;
+/**
+ * The reconciliation a tracked usage change happened under, read off the plan
+ * state: the startup window, or the window after PELS itself actuated the
+ * device. A caller that knows a better label (the snapshot refresh) stamps it
+ * instead of asking.
+ */
+export const resolveTrackedTransitionReconciliation = (
+  state: PlanEngineState,
+  deviceId: string,
+  nowTs: number,
+): DeviceDiagnosticsTrackedTransitionReconciliation | undefined => {
   if (
     isFiniteNumber(state.appStartedAtMs)
     && nowTs >= state.appStartedAtMs

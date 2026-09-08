@@ -9,7 +9,7 @@ import {
 import {
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   getActivationPenaltyLevel,
-  getActivationRestoreBlockRemainingMs,
+  resolveActivationRestoreBlock,
   recordActivationAttemptStart,
   recordActivationSetback,
 } from '../../lib/plan/admission';
@@ -2348,25 +2348,21 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
     vi.setSystemTime(T0);
 
     // T=0: restore actuation — attempt started
-    recordActivationAttemptStart({ state, deviceId, source: 'pels_restore', nowTs: T0 });
+    recordActivationAttemptStart(state, deviceId, 'pels_restore', T0);
     state.lastDeviceRestoreMs[deviceId] = T0;
 
     // T=14s: overshoot attribution — shed before stick window
     const T14s = T0 + 14_000;
-    const setback = recordActivationSetback({ state, deviceId, nowTs: T14s });
+    const setback = recordActivationSetback(state, deviceId, T14s);
 
     expect(setback.bumped).toBe(true);
     expect(setback.penaltyLevel).toBe(1);
-    expect(state.activationAttemptByDevice[deviceId]?.lastSetbackMs).toBe(T14s);
+    expect(state.activationPenaltyByDevice[deviceId]?.lastSetbackMs).toBe(T14s);
 
     // T=60s: restore cooldown expires — device should be blocked by activation setback
     const T60s = T0 + 60_000;
     vi.setSystemTime(T60s);
-    const blockRemaining = getActivationRestoreBlockRemainingMs({
-      state,
-      deviceId,
-      nowTs: T60s,
-    });
+    const blockRemaining = resolveActivationRestoreBlock(state, deviceId, T60s)?.remainingMs;
     expect(blockRemaining).toBeGreaterThan(0);
     expect(blockRemaining).toBeLessThanOrEqual(ACTIVATION_SETBACK_RESTORE_BLOCK_MS);
 
@@ -2398,26 +2394,22 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
     const T0 = Date.UTC(2024, 0, 1, 10, 0, 0);
 
     // Pre-stick setback → L1, lastSetbackMs set at T0+5s
-    recordActivationAttemptStart({ state, deviceId, source: 'pels_restore', nowTs: T0 });
-    recordActivationSetback({ state, deviceId, nowTs: T0 + 5_000 });
+    recordActivationAttemptStart(state, deviceId, 'pels_restore', T0);
+    recordActivationSetback(state, deviceId, T0 + 5_000);
 
     // New attempt started; the attribution window expires before any explicit failure occurs.
-    recordActivationAttemptStart({ state, deviceId, source: 'pels_restore', nowTs: T0 + 65_000 });
+    recordActivationAttemptStart(state, deviceId, 'pels_restore', T0 + 65_000);
     const TPostStick = T0 + 65_000 + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 60_000;
-    const setback = recordActivationSetback({ state, deviceId, nowTs: TPostStick });
+    const setback = recordActivationSetback(state, deviceId, TPostStick);
 
     expect(setback.bumped).toBe(false);
-    expect(setback.transition).toBeUndefined();
+    expect(setback.transition).toBeNull();
 
     // lastSetbackMs should remain unchanged, so the previous block is not extended.
-    expect(state.activationAttemptByDevice[deviceId]?.lastSetbackMs).toBe(T0 + 5_000);
+    expect(state.activationPenaltyByDevice[deviceId]?.lastSetbackMs).toBe(T0 + 5_000);
 
     // The original block should still be running, but it must not be extended.
-    const blockRemaining = getActivationRestoreBlockRemainingMs({
-      state,
-      deviceId,
-      nowTs: TPostStick + 1_000,
-    });
+    const blockRemaining = resolveActivationRestoreBlock(state, deviceId, TPostStick + 1_000)?.remainingMs;
     expect(blockRemaining).toBe(ACTIVATION_SETBACK_RESTORE_BLOCK_MS - ((TPostStick + 1_000) - (T0 + 5_000)));
   });
 
@@ -2429,20 +2421,20 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
     vi.setSystemTime(T0);
 
     // Simulate: restore attempted, overshoot attributed (pre-stick)
-    recordActivationAttemptStart({ state, deviceId, source: 'pels_restore', nowTs: T0 });
+    recordActivationAttemptStart(state, deviceId, 'pels_restore', T0);
     state.lastDeviceRestoreMs[deviceId] = T0;
-    recordActivationSetback({ state, deviceId, nowTs: T0 + 14_000 }); // L0 → L1
+    recordActivationSetback(state, deviceId, T0 + 14_000); // L0 → L1
 
     expect(getActivationPenaltyLevel(state, deviceId)).toBe(1);
 
     // Block is active at T=60s
-    expect(getActivationRestoreBlockRemainingMs({ state, deviceId, nowTs: T0 + 60_000 }))
+    expect(resolveActivationRestoreBlock(state, deviceId, T0 + 60_000)?.remainingMs)
       .toBeGreaterThan(0);
 
     // Block expires 10min after lastSetbackMs (T0+14s), not T0
     const TAfterBlock = T0 + 14_000 + ACTIVATION_SETBACK_RESTORE_BLOCK_MS + 1_000;
     vi.setSystemTime(TAfterBlock);
-    expect(getActivationRestoreBlockRemainingMs({ state, deviceId, nowTs: TAfterBlock })).toBeNull();
+    expect(resolveActivationRestoreBlock(state, deviceId, TAfterBlock)).toBeNull();
 
     // Device needs penalty headroom: L1 adds ~15% extra above base
     // base: expected=2kW + buffer=0.3kW = 2.3kW; penalty L1: ~15% → ~2.65kW
@@ -2861,10 +2853,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const deviceId = 'dev';
 
     // Set penalty level 4 with a fresh lastSetbackMs (block expired)
-    state.activationAttemptByDevice[deviceId] = {
-      penaltyLevel: 4,
-      lastSetbackMs: now - ACTIVATION_BACKOFF_CLEAR_WINDOW_MS - 1_000,
-    };
+    state.activationPenaltyByDevice[deviceId] = { level: 4, lastSetbackMs: now - ACTIVATION_BACKOFF_CLEAR_WINDOW_MS - 1_000 };
 
     // base need: expected=2kW + buffer=0.3kW = 2.3kW
     // L4 penalty: max(2.3*2, 2.3+1.2) = max(4.6, 3.5) = 4.6kW
@@ -2916,10 +2905,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const deviceId = 'dev-off';
 
     // Fresh setback — block in effect
-    state.activationAttemptByDevice[deviceId] = {
-      penaltyLevel: 1,
-      lastSetbackMs: now - 1_000, // 1s ago, cooldown still active
-    };
+    state.activationPenaltyByDevice[deviceId] = { level: 1, lastSetbackMs: now - 1_000 }; // 1s ago, cooldown still active
 
     const result = applyRestorePlan({
       planDevices: [
@@ -3004,10 +2990,7 @@ describe('restore admission — headroom and penalty gates', () => {
     vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.lastPlannedShedIds = new Set(['dev-temp']);
-    state.activationAttemptByDevice['dev-temp'] = {
-      penaltyLevel: 1,
-      lastSetbackMs: now - 1_000,
-    };
+    state.activationPenaltyByDevice['dev-temp'] = { level: 1, lastSetbackMs: now - 1_000 };
 
     const result = applyShedTemperatureHold({
         // Scalar-only harness: flat integer floors — empty map keeps behaviour.
@@ -3030,7 +3013,7 @@ describe('restore admission — headroom and penalty gates', () => {
       ],
       state,
       shedReasons: new Map(),
-      timing: restoreTimingFixture(),
+      timing: restoreTimingFixture({ nowTs: now }),
       sheddingActive: false,
       availableHeadroom: 3,
       restoredOneThisCycle: false,
@@ -3059,10 +3042,7 @@ describe('restore admission — headroom and penalty gates', () => {
     vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.lastRestoreMs = now - 5_000;
-    state.activationAttemptByDevice['dev-off'] = {
-      penaltyLevel: 1,
-      lastSetbackMs: now - 1_000,
-    };
+    state.activationPenaltyByDevice['dev-off'] = { level: 1, lastSetbackMs: now - 1_000 };
 
     const result = applyRestorePlan({
       planDevices: [buildBinaryPlanDevice({

@@ -11,13 +11,12 @@ export {
   closeActivationAttemptForDevice,
   closeActivationAttemptForShed,
   getActivationPenaltyLevel,
-  getActivationRestoreBlockCountdownTiming,
-  getActivationRestoreBlockRemainingMs,
   isActivationObservationActiveNow,
   recordActivationAttemptStart,
   recordActivationSetback,
+  recordCleanWholeHomeSample,
+  resolveActivationRestoreBlock,
   syncActivationPenaltyState,
-  syncConfirmedRestoreAttributionState,
 } from './activationBackoff';
 export type { ActivationAttemptSource } from './activationBackoff';
 

@@ -92,21 +92,21 @@ describe('isPlanDeviceObservedOff / isPlanDeviceObservedOn — kind-aware on/off
 
 describe('activation backoff observation — step-only steppers', () => {
   it('detects a step-only stepper at its off step as explicitly inactive', () => {
-    expect(isActivationObservationExplicitlyInactive({ currentDrawKw: 0,
+    expect(isActivationObservationExplicitlyInactive({ available: true, currentDrawKw: 0,
       currentOn: undefined, steppedLoadProfile: profile, selectedStepId: 'off',
     })).toBe(true);
     // at an active step it is NOT inactive
-    expect(isActivationObservationExplicitlyInactive({ currentDrawKw: 0,
+    expect(isActivationObservationExplicitlyInactive({ available: true, currentDrawKw: 0,
       currentOn: undefined, steppedLoadProfile: profile, selectedStepId: 'low',
     })).toBe(false);
   });
 
   it('detects a step-only stepper at an active step as active-now without needing a measurement', () => {
-    expect(isActivationObservationActiveNow({ currentDrawKw: 0,
+    expect(isActivationObservationActiveNow({ available: true, currentDrawKw: 0,
       currentOn: undefined, steppedLoadProfile: profile, selectedStepId: 'low',
     })).toBe(true);
     // at the off step, with no measured draw, it is not active
-    expect(isActivationObservationActiveNow({ currentDrawKw: 0,
+    expect(isActivationObservationActiveNow({ available: true, currentDrawKw: 0,
       currentOn: undefined, steppedLoadProfile: profile, selectedStepId: 'off',
     })).toBe(false);
   });
@@ -114,16 +114,16 @@ describe('activation backoff observation — step-only steppers', () => {
   it('falls back to the currentState label for a label-only observation (restore caller)', () => {
     // The restore caller builds the observation with `currentState` but no step
     // fields, so a step-only stepper must still be classified from the label.
-    expect(isActivationObservationExplicitlyInactive({ currentDrawKw: 0, currentOn: undefined, currentState: 'off' })).toBe(true);
-    expect(isActivationObservationActiveNow({ currentDrawKw: 0, currentOn: undefined, currentState: 'on' })).toBe(true);
-    expect(isActivationObservationExplicitlyInactive({ currentDrawKw: 0, currentOn: undefined, currentState: 'on' })).toBe(false);
+    expect(isActivationObservationExplicitlyInactive({ available: true, currentDrawKw: 0, currentOn: undefined, currentState: 'off' })).toBe(true);
+    expect(isActivationObservationActiveNow({ available: true, currentDrawKw: 0, currentOn: undefined, currentState: 'on' })).toBe(true);
+    expect(isActivationObservationExplicitlyInactive({ available: true, currentDrawKw: 0, currentOn: undefined, currentState: 'on' })).toBe(false);
   });
 
   it('leaves binary observation reasoning unchanged', () => {
-    expect(isActivationObservationExplicitlyInactive({ currentDrawKw: 0, currentOn: false })).toBe(true);
-    expect(isActivationObservationExplicitlyInactive({ currentDrawKw: 0, currentOn: true })).toBe(false);
-    expect(isActivationObservationActiveNow({ currentDrawKw: 0, currentOn: true })).toBe(true);
-    expect(isActivationObservationActiveNow({ currentDrawKw: 0, currentOn: false })).toBe(false);
+    expect(isActivationObservationExplicitlyInactive({ available: true, currentDrawKw: 0, currentOn: false })).toBe(true);
+    expect(isActivationObservationExplicitlyInactive({ available: true, currentDrawKw: 0, currentOn: true })).toBe(false);
+    expect(isActivationObservationActiveNow({ available: true, currentDrawKw: 0, currentOn: true })).toBe(true);
+    expect(isActivationObservationActiveNow({ available: true, currentDrawKw: 0, currentOn: false })).toBe(false);
   });
 });
 

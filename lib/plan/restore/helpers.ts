@@ -17,8 +17,7 @@ import {
 import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../../utils/deviceControlProfiles';
 import {
   getActivationPenaltyLevel,
-  getActivationRestoreBlockCountdownTiming,
-  getActivationRestoreBlockRemainingMs,
+  resolveActivationRestoreBlock,
 } from '../admission';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { countShedDevices } from './coordination';
@@ -114,6 +113,7 @@ export function blockRestoreForRecentActivationSetback(params: {
   deviceId: string;
   deviceName: string | undefined;
   state: PlanEngineState;
+  nowTs: number;
   stepped: boolean;
 }): boolean {
   const {
@@ -121,14 +121,13 @@ export function blockRestoreForRecentActivationSetback(params: {
     deviceId,
     deviceName,
     state,
+    nowTs,
     stepped,
   } = params;
-  const remainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId });
-  if (remainingMs === null) return false;
-  const reason = buildActivationBackoffReason(
-    remainingMs,
-    getActivationRestoreBlockCountdownTiming({ state, deviceId }),
-  );
+  const block = resolveActivationRestoreBlock(state, deviceId, nowTs);
+  if (block === null) return false;
+  const { remainingMs } = block;
+  const reason = buildActivationBackoffReason(remainingMs, block);
   if (stepped) {
     setRestorePlanDevice(deviceMap, deviceId, { reason });
   } else {
@@ -246,7 +245,7 @@ export function planRestoreForSteppedDevice(params: {
   }
 
   if (blockRestoreForRecentActivationSetback({
-    deviceMap, deviceId: dev.id, deviceName: dev.name, state, stepped: true,
+    deviceMap, deviceId: dev.id, deviceName: dev.name, state, nowTs: timing.nowTs, stepped: true,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }

@@ -5,8 +5,7 @@ import {
 import {
   buildReservedForStartReason,
   getActivationPenaltyLevel,
-  getActivationRestoreBlockCountdownTiming,
-  getActivationRestoreBlockRemainingMs,
+  resolveActivationRestoreBlock,
   resolveReserveAdmission,
 } from './admission';
 import { resolveRestorePowerSource } from './restore/accounting';
@@ -113,15 +112,15 @@ export function resolveActivationBackoffHold(
   dev: DevicePlanDevice,
   availableHeadroom: number,
 ): HoldDecision | null {
-  const { state } = pass;
+  const { state, timing } = pass;
   const restoreDebugKey = `target:${dev.id}`;
-  const setbackRemainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId: dev.id });
-  if (setbackRemainingMs === null) return null;
+  const block = resolveActivationRestoreBlock(state, dev.id, timing.nowTs);
+  if (block === null) return null;
 
   const reason: PlanReasonDecision = {
     code: 'activation_backoff',
-    remainingMs: setbackRemainingMs,
-    countdownTiming: getActivationRestoreBlockCountdownTiming({ state, deviceId: dev.id }),
+    remainingMs: block.remainingMs,
+    countdownTiming: { countdownStartedAtMs: block.countdownStartedAtMs, countdownTotalSec: block.countdownTotalSec },
   };
   emitRestoreRejectedDebug(pass, dev, restoreDebugKey, PLAN_REASON_CODES.activationBackoff, {
       availableKw: availableHeadroom,
@@ -226,7 +225,7 @@ export function resolveRestoreDecision(
   const setbackHold = resolveActivationBackoffHold(pass, dev, availableHeadroom);
   if (setbackHold) return setbackHold;
 
-  const restoreNeed = getRestoreNeed(dev, state);
+  const restoreNeed = getRestoreNeed(dev, state, pass.timing.nowTs, undefined);
   // Admit against the power this device may actually claim: raw available power
   // minus any startup reservation held by a strictly higher-priority device that
   // (`restore/gating.ts`). Without it, a setpoint raise was the one restore that

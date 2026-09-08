@@ -1115,10 +1115,11 @@ describe('PlanExecutor restore logging', () => {
   it('closes a plan-mode shed attempt without bumping penalty and emits shed diagnostics', async () => {
     const state = createPlanEngineState();
     const now = Date.now();
+    state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: now - 60_000 };
     state.activationAttemptByDevice['dev-1'] = {
-      penaltyLevel: 2,
       startedMs: now - 5_000,
       source: 'pels_restore',
+      cleanWholeHomeSampleSeen: false,
     };
     const deviceDiagnostics = {
       recordControlEvent: vi.fn(),
@@ -1169,7 +1170,8 @@ describe('PlanExecutor restore logging', () => {
       source: 'device_update',
       onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
     });
-    expect(nextState.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({ penaltyLevel: 2 }));
+    expect(nextState.activationAttemptByDevice['dev-1']).toBeUndefined();
+    expect(nextState.activationPenaltyByDevice['dev-1']?.level).toBe(2);
     expect(deviceDiagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'pels_shed',
       deviceId: 'dev-1',

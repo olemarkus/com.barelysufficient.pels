@@ -203,7 +203,7 @@ export class OvershootTracker {
       ));
       if (!contributingRestore) continue;
       const deviceName = deviceNameById.get(deviceId);
-      const result = recordActivationSetback({ state: this.state, deviceId, nowTs });
+      const result = recordActivationSetback(this.state, deviceId, nowTs);
       if (!result.transition) continue;
 
       const logEntry: {

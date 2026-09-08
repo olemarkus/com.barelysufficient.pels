@@ -10,10 +10,10 @@ import {
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   closeActivationAttemptForShed,
   getActivationPenaltyLevel,
-  getActivationRestoreBlockRemainingMs,
   recordActivationAttemptStart,
   recordActivationSetback,
-  syncConfirmedRestoreAttributionState,
+  recordCleanWholeHomeSample,
+  resolveActivationRestoreBlock,
   syncActivationPenaltyState,
 } from '../../lib/plan/admission';
 import {
@@ -27,10 +27,11 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import { applyRestorePlan } from '../../lib/plan/restore';
 import {
   evaluateHeadroomForDevice,
+  syncHeadroomCardSnapshot,
   syncHeadroomCardState,
   syncHeadroomUsageObservation,
 } from '../../lib/plan/planHeadroomDevice';
-import { emitActivationTransitions } from '../../lib/plan/planHeadroomState';
+import { emitActivationTransition } from '../../lib/plan/planHeadroomState';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import { buildDeviceDiagnosticsRecorderStub } from '../mocks/deviceDiagnosticsRecorder';
@@ -108,15 +109,7 @@ describe('activation backoff', () => {
       available: true,
       lastFreshDataMs: start,
     });
-    const decision = evaluateHeadroomForDevice({
-      state,
-      devices: [unknownRunningDevice],
-      deviceId: 'dev-1',
-      device: unknownRunningDevice,
-      headroom: 0.5,
-      requiredKw: 1.0,
-      nowTs: start,
-    });
+    const decision = evaluateHeadroomForDevice(state, { devices: [unknownRunningDevice], device: unknownRunningDevice, headroom: 0.5, requiredKw: 1.0 }, start, undefined);
     expect(decision?.observedKw).toBe(0);
     expect(decision?.calculatedHeadroomForDeviceKw).toBe(0.5);
     expect(decision?.allowed).toBe(false);
@@ -143,15 +136,7 @@ describe('activation backoff', () => {
       measuredPowerKw: 1.2,
       expectedPowerKw: 1.2,
     });
-    const decision = evaluateHeadroomForDevice({
-      state,
-      devices: [runningNonMeteredDevice],
-      deviceId: 'dev-1',
-      device: runningNonMeteredDevice,
-      headroom: 0.3,
-      requiredKw: 1.2,
-      nowTs: start,
-    });
+    const decision = evaluateHeadroomForDevice(state, { devices: [runningNonMeteredDevice], device: runningNonMeteredDevice, headroom: 0.3, requiredKw: 1.2 }, start, undefined);
     expect(decision?.observedKw).toBe(1.2);
     expect(decision?.calculatedHeadroomForDeviceKw).toBeCloseTo(1.5);
     expect(decision?.allowed).toBe(true);
@@ -174,15 +159,7 @@ describe('activation backoff', () => {
       measuredPowerKw: 1.2,
       expectedPowerKw: 1.2,
     });
-    const decision = evaluateHeadroomForDevice({
-      state,
-      devices: [staleStableDevice],
-      deviceId: 'dev-1',
-      device: staleStableDevice,
-      headroom: 0.3,
-      requiredKw: 1.2,
-      nowTs: start,
-    });
+    const decision = evaluateHeadroomForDevice(state, { devices: [staleStableDevice], device: staleStableDevice, headroom: 0.3, requiredKw: 1.2 }, start, undefined);
     expect(decision?.observedKw).toBe(1.2);
     expect(decision?.calculatedHeadroomForDeviceKw).toBeCloseTo(1.5);
     expect(decision?.allowed).toBe(true);
@@ -207,15 +184,7 @@ describe('activation backoff', () => {
       lastFreshDataMs: start,
       expectedPowerKw: 1.5,
     });
-    const decision = evaluateHeadroomForDevice({
-      state,
-      devices: [unavailableDevice],
-      deviceId: 'dev-1',
-      device: unavailableDevice,
-      headroom: 0.3,
-      requiredKw: 1.5,
-      nowTs: start,
-    });
+    const decision = evaluateHeadroomForDevice(state, { devices: [unavailableDevice], device: unavailableDevice, headroom: 0.3, requiredKw: 1.5 }, start, undefined);
     expect(decision?.observedKw).toBe(0);
     expect(decision?.calculatedHeadroomForDeviceKw).toBeCloseTo(0.3);
     expect(decision?.allowed).toBe(false);
@@ -225,23 +194,10 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const now = Date.now();
 
-    expect(recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: now,
-    })).toMatchObject({ started: true, stateChanged: true });
+    expect(recordActivationAttemptStart(state, 'dev-1', 'pels_restore', now)).toMatchObject({ kind: 'attempt_started' });
 
-    const first = recordActivationSetback({
-      state,
-      deviceId: 'dev-1',
-      nowTs: now + 60 * 1000,
-    });
-    const second = recordActivationSetback({
-      state,
-      deviceId: 'dev-1',
-      nowTs: now + 61 * 1000,
-    });
+    const first = recordActivationSetback(state, 'dev-1', now + 60 * 1000);
+    const second = recordActivationSetback(state, 'dev-1', now + 61 * 1000);
 
     expect(first.bumped).toBe(true);
     expect(first.penaltyLevel).toBe(1);
@@ -253,77 +209,34 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start,
-    });
-    recordActivationSetback({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + 60 * 1000,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationSetback(state, 'dev-1', start + 60 * 1000);
 
     const secondAttemptStart = start + 2 * 60 * 1000;
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: secondAttemptStart,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', secondAttemptStart);
 
-    const stuckInfo = syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      nowTs: secondAttemptStart + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
-      observation: { available: true, currentDrawKw: 2 },
-    });
+    const stuckInfo = syncActivationPenaltyState(state, 'dev-1', secondAttemptStart + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS, { available: true, currentDrawKw: 2 });
     expect(stuckInfo.penaltyLevel).toBe(1);
     expect(stuckInfo.attemptOpen).toBe(false);
-    expect(stuckInfo.transitions).toEqual([]);
-    expect(getActivationRestoreBlockRemainingMs({
-      state,
-      deviceId: 'dev-1',
-      nowTs: secondAttemptStart + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
-    })).not.toBeNull();
+    expect(stuckInfo.transition).toBeNull();
+    expect(resolveActivationRestoreBlock(state, 'dev-1', secondAttemptStart + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS)).not.toBeNull();
   });
 
   it('keeps attempts open inside the attribution window and closes on explicit inactive observation', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
 
-    const firstSync = syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS - 1,
-      observation: { available: true, currentDrawKw: 1.2 },
-    });
+    const firstSync = syncActivationPenaltyState(state, 'dev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS - 1, { available: true, currentDrawKw: 1.2 });
     expect(firstSync.attemptOpen).toBe(true);
-    expect(firstSync.transitions).toEqual([]);
+    expect(firstSync.transition).toBeNull();
 
-    const secondSync = syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
-      observation: { available: true, currentDrawKw: 1.2 },
-    });
+    const secondSync = syncActivationPenaltyState(state, 'dev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS, { available: true, currentDrawKw: 1.2 });
     expect(secondSync.attemptOpen).toBe(false);
-    expect(secondSync.transitions).toEqual([]);
+    expect(secondSync.transition).toBeNull();
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000);
 
     const reopenedAt = start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000;
     // `currentOn: false` is the off-evidence the explicit-inactive check reads
@@ -338,65 +251,34 @@ describe('activation backoff', () => {
     // The post-actuation snapshot refresh lands ~5 s in, long before any device
     // could be seen drawing. That reading is older than the command, so it must
     // not close the attempt.
-    const tooEarlySync = syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      nowTs: reopenedAt + 5_000,
-      observation: inactiveObservation,
-    });
+    const tooEarlySync = syncActivationPenaltyState(state, 'dev-1', reopenedAt + 5_000, inactiveObservation);
     expect(tooEarlySync.attemptOpen).toBe(true);
-    expect(tooEarlySync.transitions).toEqual([]);
+    expect(tooEarlySync.transition).toBeNull();
 
-    const inactiveSync = syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      nowTs: reopenedAt + ACTIVATION_INACTIVE_MIN_ELAPSED_MS,
-      observation: inactiveObservation,
-    });
+    const inactiveSync = syncActivationPenaltyState(state, 'dev-1', reopenedAt + ACTIVATION_INACTIVE_MIN_ELAPSED_MS, inactiveObservation);
     expect(inactiveSync.attemptOpen).toBe(false);
-    expect(inactiveSync.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);
+    expect(inactiveSync.transition).toMatchObject({ kind: 'attempt_closed_inactive', deviceId: 'dev-1' });
   });
 
   it('closes a thermostat restore attempt at attribution-window expiry once a clean whole-home sample has been seen', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
 
-    const firstSync = syncConfirmedRestoreAttributionState({
-      state,
-      deviceId: 'dev-1',
-      wholeHomePowerSampleAtMs: start + 10_000,
-      cleanWholeHomeSample: true,
-    });
-    expect(firstSync.attemptOpen).toBe(true);
-    expect(state.activationAttemptByDevice['dev-1']).toMatchObject({
-      cleanWholeHomeSampleAtMs: start + 10_000,
-    });
+    const firstSync = recordCleanWholeHomeSample(state, 'dev-1', start + 10_000);
+    expect(firstSync).toBe(true);
+    expect(state.activationAttemptByDevice['dev-1']).toMatchObject({ cleanWholeHomeSampleSeen: true });
 
     // A second clean sample mid-window does not close the attempt — we wait
     // for the full attribution window so a delayed overshoot can still
     // re-bump penalty.
-    const midWindowSync = syncConfirmedRestoreAttributionState({
-      state,
-      deviceId: 'dev-1',
-      wholeHomePowerSampleAtMs: start + 20_000,
-      cleanWholeHomeSample: true,
-    });
-    expect(midWindowSync.attemptOpen).toBe(true);
+    const midWindowSync = recordCleanWholeHomeSample(state, 'dev-1', start + 20_000);
+    expect(midWindowSync).toBe(false);
+    expect(state.activationAttemptByDevice['dev-1']).toMatchObject({ cleanWholeHomeSampleSeen: true });
 
     // Window expiry: syncActivationPenaltyState closes the attempt.
-    const closingSync = syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { available: true, currentDrawKw: 0.25 },
-    });
+    const closingSync = syncActivationPenaltyState(state, 'dev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000, { available: true, currentDrawKw: 0.25 });
     expect(closingSync.attemptOpen).toBe(false);
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
   });
@@ -410,33 +292,15 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    state.activationAttemptByDevice['dev-1'] = {
-      penaltyLevel: 2,
-      lastSetbackMs: start - 60_000,
-    };
+    state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: start - 60_000 };
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
 
-    syncConfirmedRestoreAttributionState({
-      state,
-      deviceId: 'dev-1',
-      wholeHomePowerSampleAtMs: start + 10_000,
-      cleanWholeHomeSample: true,
-    });
+    recordCleanWholeHomeSample(state, 'dev-1', start + 10_000);
 
     expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(2);
 
-    const closingSync = syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { available: true, currentDrawKw: 0.25 },
-    });
+    const closingSync = syncActivationPenaltyState(state, 'dev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000, { available: true, currentDrawKw: 0.25 });
 
     expect(closingSync.attemptOpen).toBe(false);
     expect(closingSync.stateChanged).toBe(true);
@@ -456,33 +320,15 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    state.activationAttemptByDevice['ev-1'] = {
-      penaltyLevel: 1,
-      lastSetbackMs: start - 60_000,
-    };
+    state.activationPenaltyByDevice['ev-1'] = { level: 1, lastSetbackMs: start - 60_000 };
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'ev-1',
-      source: 'pels_restore',
-      nowTs: start,
-    });
+    recordActivationAttemptStart(state, 'ev-1', 'pels_restore', start);
 
     // Device draws zero before and after the step-up; whole-home meter is
     // clean (household stayed safe).
-    syncConfirmedRestoreAttributionState({
-      state,
-      deviceId: 'ev-1',
-      wholeHomePowerSampleAtMs: start + 10_000,
-      cleanWholeHomeSample: true,
-    });
+    recordCleanWholeHomeSample(state, 'ev-1', start + 10_000);
 
-    const closingSync = syncActivationPenaltyState({
-      state,
-      deviceId: 'ev-1',
-      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { available: true, currentDrawKw: 0 },
-    });
+    const closingSync = syncActivationPenaltyState(state, 'ev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000, { available: true, currentDrawKw: 0 });
 
     expect(closingSync.attemptOpen).toBe(false);
     expect(closingSync.penaltyLevel).toBe(0);
@@ -494,41 +340,21 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    state.activationAttemptByDevice['dev-1'] = {
-      penaltyLevel: 3,
-      lastSetbackMs: start - 60_000,
-    };
+    state.activationPenaltyByDevice['dev-1'] = { level: 3, lastSetbackMs: start - 60_000 };
 
-    recordActivationAttemptStart({
-      state,
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+
+    recordCleanWholeHomeSample(state, 'dev-1', start + 10_000);
+
+    const closingSync = syncActivationPenaltyState(state, 'dev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000, { available: true, currentDrawKw: 0.25 });
+
+    expect(closingSync.transition).toEqual(expect.objectContaining({
+      kind: 'attempt_closed_by_admission',
       deviceId: 'dev-1',
       source: 'pels_restore',
-      nowTs: start,
-    });
-
-    syncConfirmedRestoreAttributionState({
-      state,
-      deviceId: 'dev-1',
-      wholeHomePowerSampleAtMs: start + 10_000,
-      cleanWholeHomeSample: true,
-    });
-
-    const closingSync = syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { available: true, currentDrawKw: 0.25 },
-    });
-
-    expect(closingSync.transitions).toEqual([
-      expect.objectContaining({
-        kind: 'attempt_closed_by_admission',
-        deviceId: 'dev-1',
-        source: 'pels_restore',
-        previousPenaltyLevel: 3,
-        penaltyLevel: 0,
-      }),
-    ]);
+      previousPenaltyLevel: 3,
+      penaltyLevel: 0,
+    }));
   });
 
   it('ignores a clean whole-home sample that arrives after the attribution window has already expired', () => {
@@ -541,47 +367,23 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    state.activationAttemptByDevice['dev-1'] = {
-      penaltyLevel: 2,
-      lastSetbackMs: start - 60_000,
-    };
+    state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: start - 60_000 };
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
 
     // No clean sample during the window — meter stale.
-    syncConfirmedRestoreAttributionState({
-      state,
-      deviceId: 'dev-1',
-      wholeHomePowerSampleAtMs: null,
-      cleanWholeHomeSample: false,
-    });
 
     // First clean whole-home sample arrives after the 2-min window expired.
     const postWindowMs = start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 10_000;
-    syncConfirmedRestoreAttributionState({
-      state,
-      deviceId: 'dev-1',
-      wholeHomePowerSampleAtMs: postWindowMs,
-      cleanWholeHomeSample: true,
-    });
+    recordCleanWholeHomeSample(state, 'dev-1', postWindowMs);
 
     // Late sample must not be recorded as within-window evidence.
-    expect(state.activationAttemptByDevice['dev-1']).not.toHaveProperty('cleanWholeHomeSampleAtMs');
+    expect(state.activationAttemptByDevice['dev-1']).toMatchObject({ cleanWholeHomeSampleSeen: false });
 
-    const closingSync = syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      nowTs: postWindowMs + 1_000,
-      observation: { available: true, currentDrawKw: 0.2 },
-    });
+    const closingSync = syncActivationPenaltyState(state, 'dev-1', postWindowMs + 1_000, { available: true, currentDrawKw: 0.2 });
     expect(closingSync.attemptOpen).toBe(false);
     expect(closingSync.penaltyLevel).toBe(2);
-    expect(closingSync.transitions).toEqual([]);
+    expect(closingSync.transition).toBeNull();
     expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(2);
   });
 
@@ -593,34 +395,14 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    state.activationAttemptByDevice['dev-1'] = {
-      penaltyLevel: 2,
-      lastSetbackMs: start - 60_000,
-    };
+    state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: start - 60_000 };
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
 
-    syncConfirmedRestoreAttributionState({
-      state,
-      deviceId: 'dev-1',
-      wholeHomePowerSampleAtMs: null,
-      cleanWholeHomeSample: false,
-    });
-
-    const closingSync = syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { available: true, currentDrawKw: 0.25 },
-    });
+    const closingSync = syncActivationPenaltyState(state, 'dev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000, { available: true, currentDrawKw: 0.25 });
 
     expect(closingSync.attemptOpen).toBe(false);
-    expect(closingSync.transitions).toEqual([]);
+    expect(closingSync.transition).toBeNull();
     expect(closingSync.penaltyLevel).toBe(2);
     expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(2);
   });
@@ -629,66 +411,46 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    state.activationAttemptByDevice['dev-1'] = {
-      penaltyLevel: 1,
-      lastSetbackMs: start - 60_000,
-    };
+    state.activationPenaltyByDevice['dev-1'] = { level: 1, lastSetbackMs: start - 60_000 };
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
 
-    syncConfirmedRestoreAttributionState({
-      state,
-      deviceId: 'dev-1',
-      wholeHomePowerSampleAtMs: start + 10_000,
-      cleanWholeHomeSample: true,
-    });
+    recordCleanWholeHomeSample(state, 'dev-1', start + 10_000);
 
-    const inactiveSync = syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      // Past the inactive-close floor but still inside the attribution window,
-      // so this exercises the inactive branch rather than the expiry branch.
-      nowTs: start + ACTIVATION_INACTIVE_MIN_ELAPSED_MS + 20_000,
-      // `currentOn: false` is the off-evidence the explicit-inactive check reads.
-      observation: {
+    // Past the inactive-close floor but still inside the attribution window,
+    // so this exercises the inactive branch rather than the expiry branch.
+    // `currentOn: false` is the off-evidence the explicit-inactive check reads.
+    const inactiveSync = syncActivationPenaltyState(state, 'dev-1', start + ACTIVATION_INACTIVE_MIN_ELAPSED_MS + 20_000, {
         currentOn: false,
         available: true,
         currentDrawKw: 0,
-      },
-    });
+      });
     expect(inactiveSync.attemptOpen).toBe(false);
-    expect(inactiveSync.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);
+    expect(inactiveSync.transition).toMatchObject({ kind: 'attempt_closed_inactive', deviceId: 'dev-1' });
     expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(1);
   });
 
   it('preserves penalty when a tracked device disappears from snapshot cleanup', () => {
     const state = createPlanEngineState();
     const now = Date.now();
+    state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: now - 60_000 };
     state.activationAttemptByDevice['dev-1'] = {
-      penaltyLevel: 2,
       startedMs: now,
       source: 'tracked_step_up',
+      cleanWholeHomeSampleSeen: false,
     };
     state.headroomCardByDevice['dev-1'] = { lastUsageKw: 1.8 };
 
-    expect(syncHeadroomCardState({
-      state,
-      devices: [],
-      nowTs: now + 5_000,
-      cleanupMissingDevices: true,
-    })).toBe(true);
+    expect(syncHeadroomCardSnapshot(state, [], now + 5_000, 'snapshot_refresh', undefined)).toBe(true);
 
-    expect(state.activationAttemptByDevice['dev-1']).toEqual({ penaltyLevel: 2 });
+    expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
+    expect(state.activationPenaltyByDevice['dev-1']).toEqual({ level: 2, lastSetbackMs: now - 60_000 });
   });
 
   it('uses penalty level in restore decisions', () => {
     const state = createPlanEngineState();
-    state.activationAttemptByDevice['dev-1'] = { penaltyLevel: 2 };
+    // An old setback: the level stays, the restore block it imposed has lapsed.
+    state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: Date.now() - ACTIVATION_SETBACK_RESTORE_BLOCK_MS };
 
     const result = applyRestorePlan({
       planDevices: [
@@ -723,17 +485,8 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const now = Date.now();
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: now - 30_000,
-    });
-    recordActivationSetback({
-      state,
-      deviceId: 'dev-1',
-      nowTs: now - 5_000,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', now - 30_000);
+    recordActivationSetback(state, 'dev-1', now - 5_000);
 
     const result = applyRestorePlan({
       planDevices: [
@@ -767,31 +520,17 @@ describe('activation backoff', () => {
   it('does not record a setback once the attribution window has expired', () => {
     const state = createPlanEngineState();
     const now = Date.now();
-    state.activationAttemptByDevice['dev-1'] = { penaltyLevel: 1 };
+    state.activationPenaltyByDevice['dev-1'] = { level: 1, lastSetbackMs: now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS };
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: now - ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS - 30_000,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', now - ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS - 30_000);
 
-    syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      nowTs: now - 10_000,
-      observation: { available: true, currentDrawKw: 0 },
-    });
+    syncActivationPenaltyState(state, 'dev-1', now - 10_000, { available: true, currentDrawKw: 0 });
 
-    const setback = recordActivationSetback({
-      state,
-      deviceId: 'dev-1',
-      nowTs: now - 5_000,
-    });
+    const setback = recordActivationSetback(state, 'dev-1', now - 5_000);
 
     expect(setback.bumped).toBe(false);
-    expect(setback.transition).toBeUndefined();
-    expect(getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-1', nowTs: now }))
+    expect(setback.transition).toBeNull();
+    expect(resolveActivationRestoreBlock(state, 'dev-1', now))
       .toBeNull();
   });
 
@@ -799,127 +538,49 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    expect(getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-1', nowTs: start })).toBeNull();
+    expect(resolveActivationRestoreBlock(state, 'dev-1', start)).toBeNull();
     expect(ACTIVATION_SETBACK_RESTORE_BLOCK_MS).toBe(5 * 60 * 1000);
     expect(ACTIVATION_BACKOFF_CLEAR_WINDOW_MS).toBe(5 * 60 * 1000);
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start,
-    });
-    recordActivationSetback({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + 60_000,
-    });
-    expect(getActivationRestoreBlockRemainingMs({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + 60_000,
-    })).toBe(ACTIVATION_SETBACK_RESTORE_BLOCK_MS);
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationSetback(state, 'dev-1', start + 60_000);
+    expect(resolveActivationRestoreBlock(state, 'dev-1', start + 60_000)?.remainingMs).toBe(ACTIVATION_SETBACK_RESTORE_BLOCK_MS);
 
     const secondStart = start + ACTIVATION_SETBACK_RESTORE_BLOCK_MS + 61_000;
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: secondStart,
-    });
-    recordActivationSetback({
-      state,
-      deviceId: 'dev-1',
-      nowTs: secondStart + 60_000,
-    });
-    expect(getActivationRestoreBlockRemainingMs({
-      state,
-      deviceId: 'dev-1',
-      nowTs: secondStart + 60_000,
-    })).toBe(ACTIVATION_SETBACK_RESTORE_BLOCK_MS);
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', secondStart);
+    recordActivationSetback(state, 'dev-1', secondStart + 60_000);
+    expect(resolveActivationRestoreBlock(state, 'dev-1', secondStart + 60_000)?.remainingMs).toBe(ACTIVATION_SETBACK_RESTORE_BLOCK_MS);
 
     const thirdStart = secondStart + ACTIVATION_SETBACK_RESTORE_BLOCK_MS + 61_000;
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: thirdStart,
-    });
-    recordActivationSetback({
-      state,
-      deviceId: 'dev-1',
-      nowTs: thirdStart + 60_000,
-    });
-    expect(getActivationRestoreBlockRemainingMs({
-      state,
-      deviceId: 'dev-1',
-      nowTs: thirdStart + 60_000,
-    })).toBe(ACTIVATION_BACKOFF_CLEAR_WINDOW_MS);
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', thirdStart);
+    recordActivationSetback(state, 'dev-1', thirdStart + 60_000);
+    expect(resolveActivationRestoreBlock(state, 'dev-1', thirdStart + 60_000)?.remainingMs).toBe(ACTIVATION_BACKOFF_CLEAR_WINDOW_MS);
 
     const fourthStart = thirdStart + ACTIVATION_BACKOFF_CLEAR_WINDOW_MS + 61_000;
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: fourthStart,
-    });
-    const fourthSetback = recordActivationSetback({
-      state,
-      deviceId: 'dev-1',
-      nowTs: fourthStart + 60_000,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', fourthStart);
+    const fourthSetback = recordActivationSetback(state, 'dev-1', fourthStart + 60_000);
 
     expect(fourthSetback.penaltyLevel).toBe(4);
-    expect(getActivationRestoreBlockRemainingMs({
-      state,
-      deviceId: 'dev-1',
-      nowTs: fourthStart + 60_000,
-    })).toBe(ACTIVATION_BACKOFF_CLEAR_WINDOW_MS);
+    expect(resolveActivationRestoreBlock(state, 'dev-1', fourthStart + 60_000)?.remainingMs).toBe(ACTIVATION_BACKOFF_CLEAR_WINDOW_MS);
   });
 
   it('treats the exact cooldown expiry timestamp as unblocked', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start,
-    });
-    recordActivationSetback({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + 60_000,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationSetback(state, 'dev-1', start + 60_000);
 
-    expect(getActivationRestoreBlockRemainingMs({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + 60_000 + ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 1,
-    })).toBe(1);
-    expect(getActivationRestoreBlockRemainingMs({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + 60_000 + ACTIVATION_SETBACK_RESTORE_BLOCK_MS,
-    })).toBeNull();
+    expect(resolveActivationRestoreBlock(state, 'dev-1', start + 60_000 + ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 1)?.remainingMs).toBe(1);
+    expect(resolveActivationRestoreBlock(state, 'dev-1', start + 60_000 + ACTIVATION_SETBACK_RESTORE_BLOCK_MS)).toBeNull();
   });
 
   it('allows restore again once the activation setback window expires', () => {
     const state = createPlanEngineState();
     const now = Date.now();
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 60_000,
-    });
-    recordActivationSetback({
-      state,
-      deviceId: 'dev-1',
-      nowTs: now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 1_000,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 60_000);
+    recordActivationSetback(state, 'dev-1', now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 1_000);
 
     const result = applyRestorePlan({
       planDevices: [
@@ -964,15 +625,7 @@ describe('activation backoff', () => {
       currentDrawKw: 0,
     };
 
-    expect(evaluateHeadroomForDevice({
-      state,
-      devices: [offDevice],
-      deviceId: 'dev-1',
-      device: offDevice,
-      headroom: 0.5,
-      requiredKw: 0.1,
-      nowTs: start,
-    })?.penaltyLevel).toBe(0);
+    expect(evaluateHeadroomForDevice(state, { devices: [offDevice], device: offDevice, headroom: 0.5, requiredKw: 0.1 }, start, undefined)?.penaltyLevel).toBe(0);
 
     const steppedUpDevice = {
       ...offDevice,
@@ -981,15 +634,7 @@ describe('activation backoff', () => {
       expectedPowerKw: 3.2,
       currentDrawKw: 3.2,
     };
-    evaluateHeadroomForDevice({
-      state,
-      devices: [steppedUpDevice],
-      deviceId: 'dev-1',
-      device: steppedUpDevice,
-      headroom: 0.3,
-      requiredKw: 3.2,
-      nowTs: start + 60 * 1000,
-    });
+    evaluateHeadroomForDevice(state, { devices: [steppedUpDevice], device: steppedUpDevice, headroom: 0.3, requiredKw: 3.2 }, start + 60 * 1000, undefined);
 
     const steppedDownDevice = {
       ...steppedUpDevice,
@@ -997,15 +642,7 @@ describe('activation backoff', () => {
       expectedPowerKw: 1,
       currentDrawKw: 1,
     };
-    const setbackDecision = evaluateHeadroomForDevice({
-      state,
-      devices: [steppedDownDevice],
-      deviceId: 'dev-1',
-      device: steppedDownDevice,
-      headroom: 0.3,
-      requiredKw: 1.1,
-      nowTs: start + 2 * 60 * 1000,
-    });
+    const setbackDecision = evaluateHeadroomForDevice(state, { devices: [steppedDownDevice], device: steppedDownDevice, headroom: 0.3, requiredKw: 1.1 }, start + 2 * 60 * 1000, undefined);
     expect(setbackDecision?.cooldownSource).toBeNull();
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
     expect(setbackDecision?.allowed).toBe(true);
@@ -1016,15 +653,7 @@ describe('activation backoff', () => {
       expectedPowerKw: 3.2,
       currentDrawKw: 3.2,
     };
-    const recoveredDecision = evaluateHeadroomForDevice({
-      state,
-      devices: [recoveredDevice],
-      deviceId: 'dev-1',
-      device: recoveredDevice,
-      headroom: 0.2,
-      requiredKw: 3.2,
-      nowTs: start + 3 * 60 * 1000 + 1,
-    });
+    const recoveredDecision = evaluateHeadroomForDevice(state, { devices: [recoveredDevice], device: recoveredDevice, headroom: 0.2, requiredKw: 3.2 }, start + 3 * 60 * 1000 + 1, undefined);
 
     expect(recoveredDecision?.penaltyLevel).toBe(0);
     expect(recoveredDecision?.requiredKwWithPenalty).toBe(3.2);
@@ -1036,32 +665,17 @@ describe('activation backoff', () => {
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    syncHeadroomCardState({
-      state,
-      devices: [{
+    syncHeadroomCardState(state, [{
         id: 'dev-1',
         name: 'Heater',
         available: true,
         expectedPowerKw: 3.2,
         currentDrawKw: 3.2,
-      }],
-      nowTs: start,
-    });
+      }], start, undefined);
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start + 60_000,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start + 60_000);
 
-    expect(syncHeadroomUsageObservation({
-      state,
-      deviceId: 'dev-1',
-      usageObservation: { kw: 1.0 },
-      nowTs: start + 120_000,
-      diagnostics,
-    })).toBe(true);
+    expect(syncHeadroomUsageObservation(state, 'dev-1', 1.0, start + 120_000, diagnostics)).toBe(true);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith({
       kind: 'tracked_usage_drop',
@@ -1075,28 +689,25 @@ describe('activation backoff', () => {
     expect(state.activationAttemptByDevice['dev-1']).toEqual({
       startedMs: start + 60_000,
       source: 'pels_restore',
+      cleanWholeHomeSampleSeen: false,
     });
-    expect(getActivationRestoreBlockRemainingMs({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + 120_000,
-    })).toBeNull();
+    expect(resolveActivationRestoreBlock(state, 'dev-1', start + 120_000)).toBeNull();
   });
 
   it('emits activation transitions when only the stored device name is available', () => {
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    emitActivationTransitions(
+    emitActivationTransition(
       diagnostics,
       'Heater',
-      [{
+      {
         kind: 'attempt_closed_inactive',
         deviceId: 'dev-1',
         source: 'tracked_step_up',
         penaltyLevel: 1,
         elapsedMs: 5_000,
         nowTs: Date.now(),
-      }],
+      },
     );
 
     expect(diagnostics.recordActivationTransition).toHaveBeenCalledWith(
@@ -1113,25 +724,15 @@ describe('activation backoff', () => {
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    syncHeadroomCardState({
-      state,
-      devices: [{
+    syncHeadroomCardState(state, [{
         id: 'dev-1',
         name: 'Heater',
         available: true,
         expectedPowerKw: 3.2,
         currentDrawKw: 3.2,
-      }],
-      nowTs: start,
-    });
+      }], start, undefined);
 
-    expect(syncHeadroomUsageObservation({
-      state,
-      deviceId: 'dev-1',
-      usageObservation: { kw: 1.0 },
-      nowTs: start + 120_000,
-      diagnostics,
-    })).toBe(true);
+    expect(syncHeadroomUsageObservation(state, 'dev-1', 1.0, start + 120_000, diagnostics)).toBe(true);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith({
       kind: 'tracked_usage_drop',
@@ -1148,12 +749,7 @@ describe('activation backoff', () => {
   it('stores override usage when a direct usage observation sync runs', () => {
     const state = createPlanEngineState();
 
-    syncHeadroomUsageObservation({
-      state,
-      deviceId: 'dev-1',
-      usageObservation: { kw: 2.4 },
-      nowTs: Date.now(),
-    });
+    syncHeadroomUsageObservation(state, 'dev-1', 2.4, Date.now(), undefined);
 
     expect(state.headroomCardByDevice['dev-1']).toMatchObject({
       lastUsageKw: 2.4,
@@ -1165,28 +761,18 @@ describe('activation backoff', () => {
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    syncHeadroomCardState({
-      state,
-      devices: [
+    syncHeadroomCardState(state, [
         buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2 }),
         buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4 }),
         buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8 }),
-      ],
-      nowTs: start,
-    });
+      ], start, undefined);
     const before = getPerfSnapshot();
 
-    expect(syncHeadroomCardState({
-      state,
-      devices: [
+    expect(syncHeadroomCardSnapshot(state, [
         buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2 }),
         buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4 }),
         buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8 }),
-      ],
-      nowTs: start + 5_000,
-      reconciliationContext: 'snapshot_refresh',
-      diagnostics,
-    })).toBe(false);
+      ], start + 5_000, 'snapshot_refresh', diagnostics)).toBe(false);
 
     const after = getPerfSnapshot();
     expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
@@ -1203,30 +789,20 @@ describe('activation backoff', () => {
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice({
+    syncHeadroomCardState(state, [buildTrackedDevice({
         id: 'dev-1',
         name: 'Heater',
         currentDrawKw: 1.2,
         expectedPowerKw: 1.2,
-      })],
-      nowTs: start,
-    });
+      })], start, undefined);
     const before = getPerfSnapshot();
 
-    syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice({
+    syncHeadroomCardSnapshot(state, [buildTrackedDevice({
         id: 'dev-1',
         name: 'Heater',
         currentDrawKw: 0.2,
         expectedPowerKw: 0.2,
-      })],
-      nowTs: start + 6_000,
-      reconciliationContext: 'snapshot_refresh',
-      diagnostics,
-    });
+      })], start + 6_000, 'snapshot_refresh', diagnostics);
 
     const after = getPerfSnapshot();
     expect(state.headroomCardByDevice['dev-1']).toMatchObject({ lastUsageKw: 0.2 });
@@ -1239,44 +815,30 @@ describe('activation backoff', () => {
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice({
+    syncHeadroomCardState(state, [buildTrackedDevice({
         id: 'dev-1',
         name: 'Heater',
         binaryControl: { on: true },
         currentState: 'on',
         expectedPowerKw: 1.2,
         lastFreshDataMs: start + 5_000,
-      })],
-      nowTs: start,
-    });
+      })], start, undefined);
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start + 6_000,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start + 6_000);
 
-    expect(syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice({
+    expect(syncHeadroomCardSnapshot(state, [buildTrackedDevice({
         id: 'dev-1',
         name: 'Heater',
         binaryControl: { on: false },
         currentState: 'off',
         expectedPowerKw: 0,
         lastFreshDataMs: start + 1_000,
-      })],
-      nowTs: start + 7_000,
-      reconciliationContext: 'snapshot_refresh',
-      diagnostics,
-    })).toBe(false);
+      })], start + 7_000, 'snapshot_refresh', diagnostics)).toBe(false);
 
     expect(state.activationAttemptByDevice['dev-1']).toEqual({
       startedMs: start + 6_000,
       source: 'pels_restore',
+      cleanWholeHomeSampleSeen: false,
     });
     expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
     expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
@@ -1292,25 +854,13 @@ describe('activation backoff', () => {
     // an open question.
     const state = createPlanEngineState();
     const start = Date.now();
-    state.activationAttemptByDevice['dev-1'] = { penaltyLevel: 1, lastSetbackMs: start - 60_000 };
-    recordActivationAttemptStart({
-      state, deviceId: 'dev-1', source: 'pels_restore', nowTs: start,
-    });
-    syncConfirmedRestoreAttributionState({
-      state,
-      deviceId: 'dev-1',
-      wholeHomePowerSampleAtMs: start + 10_000,
-      cleanWholeHomeSample: true,
-    });
+    state.activationPenaltyByDevice['dev-1'] = { level: 1, lastSetbackMs: start - 60_000 };
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordCleanWholeHomeSample(state, 'dev-1', start + 10_000);
 
-    const atExpiry = syncActivationPenaltyState({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
-      observation: { currentOn: false, available: true, currentDrawKw: 0 },
-    });
+    const atExpiry = syncActivationPenaltyState(state, 'dev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS, { currentOn: false, available: true, currentDrawKw: 0 });
 
-    expect(atExpiry.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);
+    expect(atExpiry.transition).toMatchObject({ kind: 'attempt_closed_inactive', deviceId: 'dev-1' });
     expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(1);
   });
 
@@ -1326,25 +876,16 @@ describe('activation backoff', () => {
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice({
+    syncHeadroomCardState(state, [buildTrackedDevice({
         id: 'dev-1',
         name: 'Heater',
         binaryControl: { on: true },
         currentState: 'on',
         expectedPowerKw: 0,
         lastFreshDataMs: start + 5_000,
-      })],
-      nowTs: start,
-    });
+      })], start, undefined);
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'pels_restore',
-      nowTs: start + 6_000,
-    });
+    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start + 6_000);
 
     // Typed against the real input contract rather than cast: if
     // `HeadroomCardDeviceLike` gains or renames a field, this regression must
@@ -1362,25 +903,13 @@ describe('activation backoff', () => {
 
     // The post-actuation snapshot refresh reads zero draw ~1 s after the attempt
     // opened. It cannot have seen the command land, so the attempt must survive.
-    syncHeadroomCardState({
-      state,
-      devices: buildOffDevice(),
-      nowTs: start + 7_000,
-      reconciliationContext: 'snapshot_refresh',
-      diagnostics,
-    });
+    syncHeadroomCardSnapshot(state, buildOffDevice(), start + 7_000, 'snapshot_refresh', diagnostics);
 
     expect(state.activationAttemptByDevice['dev-1']?.startedMs).toBe(start + 6_000);
     expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
 
     const closesAt = start + 6_000 + ACTIVATION_INACTIVE_MIN_ELAPSED_MS;
-    expect(syncHeadroomCardState({
-      state,
-      devices: buildOffDevice(),
-      nowTs: closesAt,
-      reconciliationContext: 'snapshot_refresh',
-      diagnostics,
-    })).toBe(true);
+    expect(syncHeadroomCardSnapshot(state, buildOffDevice(), closesAt, 'snapshot_refresh', diagnostics)).toBe(true);
 
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
     expect(diagnostics.recordActivationTransition).toHaveBeenCalledWith(
@@ -1401,27 +930,17 @@ describe('activation backoff', () => {
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice({
+    syncHeadroomCardState(state, [buildTrackedDevice({
         id: 'dev-1',
         name: 'Heater',
         binaryControl: { on: true },
         currentState: 'on',
         currentDrawKw: 1.2,
         expectedPowerKw: 1.2,
-      })],
-      nowTs: start,
-    });
+      })], start, undefined);
     const before = getPerfSnapshot();
 
-    syncHeadroomUsageObservation({
-      state,
-      deviceId: 'dev-1',
-      usageObservation: { kw: 2.4 },
-      nowTs: start + 6_000,
-      diagnostics,
-    });
+    syncHeadroomUsageObservation(state, 'dev-1', 2.4, start + 6_000, diagnostics);
 
     const after = getPerfSnapshot();
     expect(state.headroomCardByDevice['dev-1']).toMatchObject({ lastUsageKw: 2.4 });
@@ -1434,27 +953,17 @@ describe('activation backoff', () => {
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    syncHeadroomCardState({
-      state,
-      devices: [
+    syncHeadroomCardState(state, [
         buildTrackedDevice({ id: 'dev-1', name: 'Heater A', currentDrawKw: 3.2, expectedPowerKw: 3.2}),
         buildTrackedDevice({ id: 'dev-2', name: 'Heater B', currentDrawKw: 2.4, expectedPowerKw: 2.4}),
         buildTrackedDevice({ id: 'dev-3', name: 'Heater C', currentDrawKw: 1.8, expectedPowerKw: 1.8}),
-      ],
-      nowTs: start,
-    });
+      ], start, undefined);
 
-    expect(syncHeadroomCardState({
-      state,
-      devices: [
+    expect(syncHeadroomCardSnapshot(state, [
         buildTrackedDevice({ id: 'dev-1', name: 'Heater A', currentDrawKw: 0.8, expectedPowerKw: 0.8}),
         buildTrackedDevice({ id: 'dev-2', name: 'Heater B', currentDrawKw: 0.5, expectedPowerKw: 0.5}),
         buildTrackedDevice({ id: 'dev-3', name: 'Heater C', currentDrawKw: 0.2, expectedPowerKw: 0.2}),
-      ],
-      nowTs: start + 5_000,
-      reconciliationContext: 'snapshot_refresh',
-      diagnostics,
-    })).toBe(true);
+      ], start + 5_000, 'snapshot_refresh', diagnostics)).toBe(true);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledTimes(3);
     expect(diagnostics.recordControlEvent).toHaveBeenNthCalledWith(1, expect.objectContaining({
@@ -1483,58 +992,39 @@ describe('activation backoff', () => {
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    syncHeadroomCardState({
-      state,
-      devices: [{
+    syncHeadroomCardState(state, [{
         id: 'dev-1',
         name: 'Nordic S4 REL',
         currentState: 'not_applicable',
         available: true,
         expectedPowerKw: 0,
         currentDrawKw: 0,
-      }],
-      nowTs: start,
-    });
+      }], start, undefined);
 
-    expect(syncHeadroomCardState({
-      state,
-      devices: [{
+    expect(syncHeadroomCardSnapshot(state, [{
         id: 'dev-1',
         name: 'Nordic S4 REL',
         currentState: 'not_applicable',
         available: true,
         expectedPowerKw: 1.0,
         currentDrawKw: 0,
-      }],
-      nowTs: start + 5_000,
-      reconciliationContext: 'snapshot_refresh',
-      diagnostics,
-    })).toBe(false);
+      }], start + 5_000, 'snapshot_refresh', diagnostics)).toBe(false);
 
     expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
     expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
 
-    expect(syncHeadroomCardState({
-      state,
-      devices: [{
+    expect(syncHeadroomCardState(state, [{
         id: 'dev-1',
         name: 'Nordic S4 REL',
         currentState: 'not_applicable',
         available: true,
         expectedPowerKw: 0,
         currentDrawKw: 0,
-      }],
-      nowTs: start + 24_000,
-      diagnostics,
-    })).toBe(false);
+      }], start + 24_000, diagnostics)).toBe(false);
 
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
-    expect(getActivationRestoreBlockRemainingMs({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start + 24_000,
-    })).toBeNull();
+    expect(resolveActivationRestoreBlock(state, 'dev-1', start + 24_000)).toBeNull();
   });
 
   it('tags tracked step-ups after a recent restore as post_actuation reconciliation', () => {
@@ -1545,18 +1035,9 @@ describe('activation backoff', () => {
     state.appStartedAtMs = start - (Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS) + 1);
     state.lastDeviceRestoreMs['dev-1'] = start;
 
-    syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice()],
-      nowTs: start,
-    });
+    syncHeadroomCardState(state, [buildTrackedDevice()], start, undefined);
 
-    expect(syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })],
-      nowTs: start + 5_000,
-      diagnostics,
-    })).toBe(false);
+    expect(syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + 5_000, diagnostics)).toBe(false);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'tracked_usage_rise',
@@ -1572,18 +1053,9 @@ describe('activation backoff', () => {
 
     state.appStartedAtMs = start - (Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS) + 1);
 
-    syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice()],
-      nowTs: start,
-    });
+    syncHeadroomCardState(state, [buildTrackedDevice()], start, undefined);
 
-    expect(syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })],
-      nowTs: start + (2 * 60 * 1000),
-      diagnostics,
-    })).toBe(false);
+    expect(syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + (2 * 60 * 1000), diagnostics)).toBe(false);
 
     const [event] = diagnostics.recordControlEvent.mock.calls[0];
     expect(event).toMatchObject({
@@ -1602,18 +1074,9 @@ describe('activation backoff', () => {
     const start = Date.now();
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
-    syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice()],
-      nowTs: start,
-    });
+    syncHeadroomCardState(state, [buildTrackedDevice()], start, undefined);
 
-    expect(syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })],
-      nowTs: start + Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS),
-      diagnostics,
-    })).toBe(false);
+    expect(syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS), diagnostics)).toBe(false);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'tracked_usage_rise',
@@ -1629,18 +1092,9 @@ describe('activation backoff', () => {
 
     state.startupRestoreBlockedUntilMs = start + 30_000;
 
-    syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice()],
-      nowTs: start,
-    });
+    syncHeadroomCardState(state, [buildTrackedDevice()], start, undefined);
 
-    expect(syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })],
-      nowTs: start + 45_000,
-      diagnostics,
-    })).toBe(false);
+    expect(syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + 45_000, diagnostics)).toBe(false);
 
     const [event] = diagnostics.recordControlEvent.mock.calls[0];
     expect(event).toMatchObject({
@@ -1661,20 +1115,11 @@ describe('activation backoff', () => {
 
     state.startupRestoreBlockedUntilMs = start + 60_000;
 
-    syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice()],
-      nowTs: start,
-    });
+    syncHeadroomCardState(state, [buildTrackedDevice()], start, undefined);
 
     state.startupRestoreBlockedUntilMs = start + 4_999;
 
-    expect(syncHeadroomCardState({
-      state,
-      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })],
-      nowTs: start + 5_000,
-      diagnostics,
-    })).toBe(false);
+    expect(syncHeadroomCardState(state, [buildTrackedDevice({ expectedPowerKw: 1.0, currentDrawKw: 1.0 })], start + 5_000, diagnostics)).toBe(false);
 
     const [event] = diagnostics.recordControlEvent.mock.calls[0];
     expect(event).toMatchObject({
@@ -1691,26 +1136,23 @@ describe('activation backoff', () => {
   it('closes an open attempt on shed without changing the existing penalty level', () => {
     const state = createPlanEngineState();
     const start = Date.now();
+    state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: start - 60_000 };
     state.activationAttemptByDevice['dev-1'] = {
-      penaltyLevel: 2,
       startedMs: start - 30_000,
       source: 'pels_restore',
+      cleanWholeHomeSampleSeen: false,
     };
 
-    const result = closeActivationAttemptForShed({
-      state,
-      deviceId: 'dev-1',
-      nowTs: start,
-    });
+    const result = closeActivationAttemptForShed(state, 'dev-1', start);
 
-    expect(result.stateChanged).toBe(true);
-    expect(result.transition).toMatchObject({
+    expect(result).toMatchObject({
       kind: 'attempt_closed_by_shed',
       deviceId: 'dev-1',
       penaltyLevel: 2,
       source: 'pels_restore',
     });
-    expect(state.activationAttemptByDevice['dev-1']).toEqual({ penaltyLevel: 2 });
+    expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
+    expect(state.activationPenaltyByDevice['dev-1']).toEqual({ level: 2, lastSetbackMs: start - 60_000 });
   });
 });
 
@@ -1721,7 +1163,7 @@ const attributeOvershoot = (state: ReturnType<typeof createPlanEngineState>, now
     .filter(([, restoreMs]) => nowTs - restoreMs <= OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS)
     .sort((left, right) => right[1] - left[1]);
   for (const [deviceId] of recentRestores) {
-    const result = recordActivationSetback({ state, deviceId, nowTs });
+    const result = recordActivationSetback(state, deviceId, nowTs);
     if (result.transition) return;
   }
 };
@@ -1732,15 +1174,13 @@ describe('overshoot-after-restore attribution', () => {
     const nowTs = Date.UTC(2024, 0, 1, 12, 0, 0);
 
     state.lastDeviceRestoreMs['dev-a'] = nowTs - 14_000;
-    recordActivationAttemptStart({ state, deviceId: 'dev-a', source: 'pels_restore', nowTs: nowTs - 14_000 });
+    recordActivationAttemptStart(state, 'dev-a', 'pels_restore', nowTs - 14_000);
 
     attributeOvershoot(state, nowTs);
 
-    expect(state.activationAttemptByDevice['dev-a']?.penaltyLevel).toBe(1);
-    expect(state.activationAttemptByDevice['dev-a']?.lastSetbackMs).toBe(nowTs);
-    const block = getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-a', nowTs });
-    expect(block).not.toBeNull();
-    expect(block).toBeGreaterThan(4 * 60 * 1000);
+    expect(state.activationPenaltyByDevice['dev-a']?.level).toBe(1);
+    expect(state.activationPenaltyByDevice['dev-a']?.lastSetbackMs).toBe(nowTs);
+    expect(resolveActivationRestoreBlock(state, 'dev-a', nowTs)?.remainingMs).toBeGreaterThan(4 * 60 * 1000);
   });
 
   it('does not attribute overshoot to a device restored outside the attribution window', () => {
@@ -1749,12 +1189,12 @@ describe('overshoot-after-restore attribution', () => {
 
     // Restore happened 3 minutes ago — outside the 2-minute window
     state.lastDeviceRestoreMs['dev-b'] = nowTs - 3 * 60 * 1000;
-    recordActivationAttemptStart({ state, deviceId: 'dev-b', source: 'pels_restore', nowTs: nowTs - 3 * 60 * 1000 });
+    recordActivationAttemptStart(state, 'dev-b', 'pels_restore', nowTs - 3 * 60 * 1000);
 
     attributeOvershoot(state, nowTs);
 
-    expect(state.activationAttemptByDevice['dev-b']?.penaltyLevel).toBeUndefined();
-    expect(getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-b', nowTs })).toBeNull();
+    expect(state.activationPenaltyByDevice['dev-b']).toBeUndefined();
+    expect(resolveActivationRestoreBlock(state, 'dev-b', nowTs)).toBeNull();
   });
 
   it('does not attribute overshoot to a device with no open activation attempt', () => {
@@ -1766,7 +1206,7 @@ describe('overshoot-after-restore attribution', () => {
 
     attributeOvershoot(state, nowTs);
 
-    expect(getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-c', nowTs })).toBeNull();
+    expect(resolveActivationRestoreBlock(state, 'dev-c', nowTs)).toBeNull();
   });
 
   it('only penalizes the most recently restored device when multiple are in the window', () => {
@@ -1775,18 +1215,18 @@ describe('overshoot-after-restore attribution', () => {
 
     // dev-earlier was restored 90s ago — within window, but not the marginal restore
     state.lastDeviceRestoreMs['dev-earlier'] = nowTs - 90_000;
-    recordActivationAttemptStart({ state, deviceId: 'dev-earlier', source: 'pels_restore', nowTs: nowTs - 90_000 });
+    recordActivationAttemptStart(state, 'dev-earlier', 'pels_restore', nowTs - 90_000);
 
     // dev-latest was restored 14s ago — the one that tipped headroom negative
     state.lastDeviceRestoreMs['dev-latest'] = nowTs - 14_000;
-    recordActivationAttemptStart({ state, deviceId: 'dev-latest', source: 'pels_restore', nowTs: nowTs - 14_000 });
+    recordActivationAttemptStart(state, 'dev-latest', 'pels_restore', nowTs - 14_000);
 
     attributeOvershoot(state, nowTs);
 
     // Only dev-latest gets penalized
-    expect(state.activationAttemptByDevice['dev-latest']?.penaltyLevel).toBe(1);
-    expect(state.activationAttemptByDevice['dev-earlier']?.penaltyLevel).toBeUndefined();
-    expect(getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-earlier', nowTs })).toBeNull();
+    expect(state.activationPenaltyByDevice['dev-latest']?.level).toBe(1);
+    expect(state.activationPenaltyByDevice['dev-earlier']).toBeUndefined();
+    expect(resolveActivationRestoreBlock(state, 'dev-earlier', nowTs)).toBeNull();
   });
 
   it('falls back to an earlier open restore when the latest restore was already closed by shed', () => {
@@ -1794,15 +1234,15 @@ describe('overshoot-after-restore attribution', () => {
     const nowTs = Date.UTC(2024, 0, 1, 12, 0, 0);
 
     state.lastDeviceRestoreMs['dev-earlier'] = nowTs - 90_000;
-    recordActivationAttemptStart({ state, deviceId: 'dev-earlier', source: 'pels_restore', nowTs: nowTs - 90_000 });
+    recordActivationAttemptStart(state, 'dev-earlier', 'pels_restore', nowTs - 90_000);
 
     state.lastDeviceRestoreMs['dev-latest'] = nowTs - 14_000;
-    recordActivationAttemptStart({ state, deviceId: 'dev-latest', source: 'pels_restore', nowTs: nowTs - 14_000 });
-    closeActivationAttemptForShed({ state, deviceId: 'dev-latest', nowTs: nowTs - 5_000 });
+    recordActivationAttemptStart(state, 'dev-latest', 'pels_restore', nowTs - 14_000);
+    closeActivationAttemptForShed(state, 'dev-latest', nowTs - 5_000);
 
     attributeOvershoot(state, nowTs);
 
     expect(state.activationAttemptByDevice['dev-latest']).toBeUndefined();
-    expect(state.activationAttemptByDevice['dev-earlier']?.penaltyLevel).toBe(1);
+    expect(state.activationPenaltyByDevice['dev-earlier']?.level).toBe(1);
   });
 });

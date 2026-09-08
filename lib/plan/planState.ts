@@ -24,19 +24,32 @@ export type PendingTargetCommandState = {
   lastWaitingLogAtMs?: number;
 };
 
-export type ActivationAttemptState = {
-  penaltyLevel?: number;
-  lastSetbackMs?: number;
-  startedMs?: number;
-  source?: ActivationAttemptSource;
+/**
+ * An activation PELS issued and is still attributing overshoot to. Owned by
+ * `lib/plan/admission/activationBackoff.ts`; an entry exists exactly while the
+ * attempt is open, so "no entry" is the only spelling of "no attempt".
+ */
+export type ActivationAttempt = {
+  startedMs: number;
+  source: ActivationAttemptSource;
   /**
-   * Set to the timestamp of the first clean whole-home sample seen after the
-   * attempt started. Used as evidence at window expiry that the household
-   * total was actually known and within limits during the attribution window,
-   * not just that no overshoot was attributed (which would also be true if no
-   * cycle in the window measured the household within its limits).
+   * Whether a clean whole-home sample arrived after the attempt started. The
+   * evidence at window expiry that the household total was actually known and
+   * within limits during the attribution window, not just that no overshoot
+   * was attributed (which would also be true if no cycle in the window measured
+   * the household within its limits).
    */
-  cleanWholeHomeSampleAtMs?: number;
+  cleanWholeHomeSampleSeen: boolean;
+};
+
+/**
+ * The backoff ladder a device climbed through attributed overshoots. Owned by
+ * `lib/plan/admission/activationBackoff.ts`; an entry exists exactly while the
+ * level is above zero, and every setback that raised it stamped `lastSetbackMs`.
+ */
+export type ActivationPenalty = {
+  level: number;
+  lastSetbackMs: number;
 };
 
 /**
@@ -246,7 +259,9 @@ export class PlanEngineState {
    */
   lastSteppedBinaryRestoreAttemptMs: Record<string, number> = {};
 
-  activationAttemptByDevice: Record<string, ActivationAttemptState> = {};
+  activationAttemptByDevice: Record<string, ActivationAttempt> = {};
+
+  activationPenaltyByDevice: Record<string, ActivationPenalty> = {};
 
   surplusEligibilityByDevice: Record<string, SurplusEligibilityState> = {};
 

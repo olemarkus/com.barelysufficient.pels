@@ -2,7 +2,6 @@ import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryCont
 import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from '../plan/planState';
 import {
-  type ActivationAttemptSource,
   closeActivationAttemptForShed,
   recordActivationAttemptStart,
 } from '../plan/admission';
@@ -120,16 +119,10 @@ export const recordActivationAttemptStarted = (params: {
   deviceId: string;
   name: string;
   nowTs: number;
-  source?: ActivationAttemptSource;
 }): void => {
-  const result = recordActivationAttemptStart({
-    state: params.state,
-    deviceId: params.deviceId,
-    source: params.source ?? 'pels_restore',
-    nowTs: params.nowTs,
-  });
-  if (result.transition) {
-    params.diagnostics?.recordActivationTransition(result.transition, { name: params.name });
+  const transition = recordActivationAttemptStart(params.state, params.deviceId, 'pels_restore', params.nowTs);
+  if (transition) {
+    params.diagnostics?.recordActivationTransition(transition, { name: params.name });
   }
 };
 
@@ -140,12 +133,8 @@ export const closeActivationAttemptForShedActuation = (params: {
   name: string;
   nowTs: number;
 }): void => {
-  const result = closeActivationAttemptForShed({
-    state: params.state,
-    deviceId: params.deviceId,
-    nowTs: params.nowTs,
-  });
-  if (result.transition) {
-    params.diagnostics?.recordActivationTransition(result.transition, { name: params.name });
+  const transition = closeActivationAttemptForShed(params.state, params.deviceId, params.nowTs);
+  if (transition) {
+    params.diagnostics?.recordActivationTransition(transition, { name: params.name });
   }
 };
