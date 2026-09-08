@@ -508,5 +508,8 @@
   },
   "3.0.0": {
     "en": "PELS now always reads one named whole-home meter, and the Automatic setting has been removed. If Homey lists exactly one whole-home meter, PELS names it for you shortly after starting and there is nothing to do. If you have several, or your meter reports the whole house without appearing as its own device, choose the right one under Whole-home meter in Limits & safety. Until a meter is chosen PELS has no readings to plan on and will not adjust your devices. A meter youchoose yourself does not need Homey's Tracks total home energy consumption marking.\n\nElectricity prices has a new Solar forecast setting: you can use Homey's own solar forecast, the forecast PELS learns from your production, or Automatic, which uses Homey's when it has data and the learned one otherwise. Separately, when whole-home readings stop for more than ten minutes, PELS limits your managed devices and says so in a banner at the top of the page instead of showing figures from a meter that has gone quiet; normal planning resumes as soon as readings return."
+  },
+  "3.0.1": {
+    "en": "PELS now uses less memory and stores usage, weather, smart-task and device history more efficiently. This reduces the memory pressure that could cause Homey to restart the app during long runs.\n\nSmart-task energy estimates now adapt better as a device’s behaviour changes, with older readings dropping out of the estimate and rejected measurements no longer carrying into later calculations. Smart tasks also use the available safe pace when checking what can fit before their ready-by time. Battery levels on smart-task pages and widgets now follow the current car and charging session, instead of displaying a retained reading that no longer applies."
   }
 }
