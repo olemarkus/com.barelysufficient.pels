@@ -9,7 +9,7 @@ import type {
   ExecutableSteppedLoadDevice,
   ExecutorDeviceSnapshot,
 } from './executablePlan';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import {
   executeSteppedLoadCommand,
   isSteppedLoadStepCommandRedundant,
@@ -30,6 +30,14 @@ export type { PlanExecutorSteppedContext } from './steppedLoadExecutorContext';
 import type { PlanExecutorSteppedContext } from './steppedLoadExecutorContext';
 
 const logger = getLogger('executor/stepped-load');
+/**
+ * Command decisions go to the `plan` debug topic: a skip is the executor half of
+ * the shed/restore decision the owner already enables that topic to read, so it
+ * should not need a second switch. Resolved here rather than through the module
+ * logger, whose `.debug` the `info` root discards — which is why every
+ * `*_command_skipped` event was absent from production.
+ */
+const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 /**
  * Outcome of a stepped-load restore evaluation.
@@ -115,7 +123,7 @@ export const applySteppedLoadCommand = async (
   // commands are real actuation too: suppress every one while the durable hold
   // is active, just as the binary restore funnels do.
   if (ctx.state.isExternalOffHeld(action.id)) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'stepped_load_command_skipped',
       deviceId: action.id,
       deviceName: action.name,
@@ -206,7 +214,7 @@ export const applySteppedLoadRestore = async (
     return NOT_RESTORED;
   }
   if (isBinaryObservedOff(snapshot)) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'executor_stepped_log_debug',
       msg: `Capacity: ${name} violates keep invariant: onoff=${isBinaryOnOrUnknown(snapshot)}`,
     });

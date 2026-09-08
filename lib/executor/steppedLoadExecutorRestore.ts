@@ -9,10 +9,18 @@ import type {
   ExecutableSteppedLoadDevice,
   ExecutorDeviceSnapshot,
 } from './executablePlan';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import type { PlanExecutorSteppedContext } from './steppedLoadExecutorContext';
 
 const logger = getLogger('executor/stepped-load');
+/**
+ * Command decisions go to the `plan` debug topic: a skip is the executor half of
+ * the shed/restore decision the owner already enables that topic to read, so it
+ * should not need a second switch. Resolved here rather than through the module
+ * logger, whose `.debug` the `info` root discards — which is why every
+ * `*_command_skipped` event was absent from production.
+ */
+const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export const logSteppedLoadRestoreSkip = (
   _ctx: PlanExecutorSteppedContext,
@@ -34,7 +42,7 @@ export const logSteppedLoadRestoreSkip = (
     reasonCode,
     desiredStepId,
   } = params;
-  logger.debug({
+  emitExecutorDebug({
     event: 'restore_command_skipped',
     reasonCode,
     ...(desiredStepId ? { desiredStepId } : {}),
@@ -54,7 +62,7 @@ const logSteppedLoadStepViolation = (
   const stepDetail = action.current.stepIsOffStep
     ? `${action.current.stepForShed?.stepId ?? 'unknown'} (off-step)`
     : `${action.current.stepForShed?.stepId ?? 'unknown'} -> ${desiredStepId ?? 'unknown'}`;
-  logger.debug({
+  emitExecutorDebug({
     event: 'executor_stepped_log_debug',
     msg: `Capacity: ${name} violates keep invariant: step=${stepDetail}`,
   });
@@ -213,7 +221,7 @@ export const applyKeepInvariantShedBlock = (
   if (!lowestNonZeroStep || !desiredStep || desiredStep.planningPowerW <= lowestNonZeroStep.planningPowerW) {
     return false;
   }
-  logger.debug({
+  emitExecutorDebug({
     event: 'executor_stepped_log_debug',
     msg: `Capacity: skip stepped-load restore for ${name}, shed invariant: `
       + `desiredStep=${desiredStepId} exceeds lowestNonZeroStep=${lowestNonZeroStep.id}`,
@@ -223,7 +231,7 @@ export const applyKeepInvariantShedBlock = (
     && prevBlock.desiredStepId === desiredStepId
     && prevBlock.lowestNonZeroStepId === lowestNonZeroStep.id;
   if (!unchanged) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'restore_keep_invariant_shed_blocked',
       reasonCode: 'shed_invariant',
       deviceId: action.id,

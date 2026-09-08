@@ -34,12 +34,14 @@ at, and one kind is invisible.
 | `logger[level](…)` with a computed level | The call site does not say whether the line is visible, and one live instance resolves to a dark `debug`. | spell the level out |
 | `console.*` | Bypasses the Homey destination, so it never reaches the app log at all. | any of the above |
 
-The dark case is not hypothetical. Four events listed under "Current Structured Events" below —
-`target_command_skipped`, `restore_command_skipped`, `binary_command_skipped`,
-`stepped_load_command_skipped` — are emitted through a pino module logger and appear **zero** times
-in a production log carrying tens of thousands of debug lines. They are the executor's "why was this
-device not commanded?" events, which is the first thing anyone reaches for when a device will not
-respond. Converting a working topic-gated emit onto that path DELETES the line, and that has
+The dark case is not hypothetical, and the cost is measured. Four events listed under "Current
+Structured Events" below — `target_command_skipped`, `restore_command_skipped`,
+`binary_command_skipped`, `stepped_load_command_skipped` — were emitted through a pino module logger
+and appeared **zero** times in a production log carrying tens of thousands of debug lines, while
+their neighbours on the same code paths were busy. They are the executor's "why was this device not
+commanded?" events, the first thing anyone reaches for when a device will not respond. They now
+resolve `getDebugEmitter('executor', 'plan')` and arrive with the `plan` topic the owner already
+enables to read shed and restore decisions. Converting a working topic-gated emit onto that path DELETES the line, and that has
 shipped: PR #2252 moved `fetchZoneTree` and silently lost `zone_tree_fetch_failed` /
 `zone_tree_fetched`. `lib/device/transport/managerZones.ts` keeps the injected devices-topic logger
 for exactly this reason, and says so in its own comment.
@@ -92,24 +94,20 @@ rather than budgeted, so the list can reach zero and be deleted.
 
 ## Current Structured Events
 
-Events marked **(dark)** are emitted through the module logger and therefore do **not** appear in a
-production log today. They are listed because they exist in the code and are what a reader will
-grep for; the marker is there so nobody concludes the feature is silent when it is the log that is.
-Draining them is the executor lane of the legacy-logging allowlist.
 
 - `plan_rebuild_completed`
 - `plan_rebuild_scheduler_intent_dropped`
 - `plan_rebuild_scheduler_intent_replaced`
 - `binary_command_applied`
-- `binary_command_skipped` **(dark)**
+- `binary_command_skipped`
 - `binary_command_failed`
 - `binary_command_outcome_unknown` — the write timed out, so neither `failed`
   nor `succeeded` is true. The command stays pending and telemetry settles it.
 - `target_command_applied`
-- `target_command_skipped` **(dark)**
+- `target_command_skipped`
 - `target_command_failed`
 - `stepped_load_command_requested`
-- `stepped_load_command_skipped` **(dark)**
+- `stepped_load_command_skipped`
 - `stepped_load_command_failed`
 - `stepped_load_command_outcome_unknown` — the stepped twin of
   `binary_command_outcome_unknown`: the write was abandoned (native transport
@@ -124,7 +122,7 @@ Draining them is the executor lane of the legacy-logging allowlist.
 - `stepped_load_flow_trigger_unacknowledged` — emitted by the transport for the
   Flow half of the above. Deliberately a distinct name so one occurrence is not
   counted twice; the executor owns the `outcome_unknown` line.
-- `restore_command_skipped` **(dark)**
+- `restore_command_skipped`
 - `device_snapshot_refresh_completed`
 - `periodic_status`
 - `daily_budget_periodic_status`
@@ -163,12 +161,12 @@ Draining them is the executor lane of the legacy-logging allowlist.
 
 ## Gaps Still Open
 
-- The executor **skip** paths are structured but **not observable**: they emit through a pino module
-  logger, so they are absent from production logs (see "Legacy logging is banned"). The executor
-  *failure* paths are fine — `binary_command_failed`, `target_command_failed` and
-  `stepped_load_command_failed` emit at `error`, and the two `*_outcome_unknown` at `warn`. UI
-  snapshot writes, startup step/background-task failures, and the main price/overshoot boundary
-  transitions are structured and do emit.
+- The executor lane is fully observable now: the skip paths emit on the `plan` debug topic, the
+  failure paths at `error` (`binary_command_failed`, `target_command_failed`,
+  `stepped_load_command_failed`) and the two `*_outcome_unknown` at `warn`. UI snapshot writes,
+  startup step/background-task failures, and the main price/overshoot boundary transitions are
+  structured and emit. What remains dark is the device/transport lane and a long tail — see
+  `scripts/logging-legacy-allowlist.txt`.
 - Correlation coverage is narrow. Rebuild context exists, but there are no automatic helpers yet
   for `incidentId`, `snapshotId`, `priceRefreshId`, or broader flow-scoped correlation.
 - Event payloads are still stringly typed. There is no central event schema, but the current
@@ -189,8 +187,9 @@ Draining them is the executor lane of the legacy-logging allowlist.
   `info`/`warn`/`error`, and `const emitDebug = getDebugEmitter('<component>', '<topic>')` for
   debug payloads. `logger.debug(...)` is banned — it emits nothing. Do not add `structuredLog?` /
   `debugStructured?` to deps types.
-- Drain `scripts/logging-legacy-allowlist.txt`, executor lane first: that lane is the only reason
-  the four `*_command_skipped` events cannot be read in production.
+- Drain `scripts/logging-legacy-allowlist.txt`. The executor lane is done; the device/transport
+  lane is the largest remaining, and is mostly injected-prose `.debug` that emits but carries no
+  `event` field to filter on.
 
 ## Contributor Guidance
 

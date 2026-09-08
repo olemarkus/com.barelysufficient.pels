@@ -6,6 +6,7 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
+import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/executor/commandRetrySchedule';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
@@ -1219,6 +1220,65 @@ describe('PlanExecutor restore logging', () => {
       reasonCode: 'restore_from_shed',
       operatingMode: 'Home',
     }));
+  });
+});
+
+describe('executor command decisions reach the plan debug topic', () => {
+  // These four events are the executor's answer to "why was this device not
+  // commanded?", and for a long time production never carried one: they were
+  // emitted through a pino module logger, whose `.debug` the `info` root
+  // discards. The suite could not see that, because `captureLogger` raises the
+  // ROOT to debug — so a module-logger emit shows up in a spec and nowhere else.
+  //
+  // Asserting the event is present therefore guards nothing. What pins the fix
+  // is the topic being able to switch it OFF: only a `getDebugEmitter` emit is
+  // gated that way. Under the old code these assertions fail, because a
+  // module-logger line ignores the topic set entirely.
+  let capture: LoggerCapture;
+  afterEach(() => { capture?.restore(); });
+
+  // Modelled on "backs off failed target writes": a rejected write marks the
+  // device temporarily unavailable, so the SECOND pass skips with
+  // `reasonCode: 'temporarily_unavailable'`.
+  const skipEventWithTopics = async (topics: DebugLoggingTopic[]): Promise<Record<string, unknown> | undefined> => {
+    capture = captureLogger('debug', topics);
+    const { executor, deviceManager } = buildExecutor(createPlanEngineState(), [
+      {
+        id: 'dev-1',
+        expectedPowerKw: 1,
+        name: 'Heater',
+        binaryCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        binaryControl: { on: true },
+        targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+      },
+    ]);
+    deviceManager.setCapability.mockRejectedValue(new Error('Device offline'));
+    const plan = buildTargetPlan();
+    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(plan);
+    const event = capture.findEvent('target_command_skipped');
+    capture.restore();
+    return event;
+  };
+
+  it('emits target_command_skipped when the plan topic is on', async () => {
+    expect(await skipEventWithTopics(['plan'])).toMatchObject({
+      event: 'target_command_skipped',
+      reasonCode: 'temporarily_unavailable',
+      deviceId: 'dev-1',
+      component: 'executor',
+      debugTopic: 'plan',
+    });
+  });
+
+  it('emits nothing when the plan topic is off, which the module logger could not honour', async () => {
+    expect(await skipEventWithTopics([])).toBeUndefined();
+  });
+
+  it('emits nothing when a different topic is on', async () => {
+    expect(await skipEventWithTopics(['devices'])).toBeUndefined();
   });
 });
 

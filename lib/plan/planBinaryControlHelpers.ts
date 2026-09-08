@@ -5,10 +5,17 @@ import {
   isBinaryControlled,
   resolveBinaryCommandCurrentOn,
 } from '../../packages/shared-domain/src/binaryControlState';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter } from '../logging/logger';
 import type { BinaryControlPlan } from '../device/deviceActionProjection';
 
-const logger = getLogger('plan/binary-helpers');
+/**
+ * Command decisions go to the `plan` debug topic: a skip is the executor half of
+ * the shed/restore decision the owner already enables that topic to read, so it
+ * should not need a second switch. Resolved here rather than through the module
+ * logger, whose `.debug` the `info` root discards — which is why every
+ * `*_command_skipped` event was absent from production.
+ */
+const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 /**
  * The decomposed snapshot surface the binary-control decision reads: observed
@@ -83,7 +90,7 @@ export function shouldSkipBinaryControl(params: {
   } = params;
   if (!controlPlan) {
     const hasTargets = Array.isArray(snapshot?.targets) && snapshot.targets.length > 0;
-    logger.debug({
+    emitExecutorDebug({
       event: 'binary_command_skipped',
       reasonCode: hasTargets ? 'missing_onoff_capability' : 'missing_control_targets',
       deviceId,
@@ -96,7 +103,7 @@ export function shouldSkipBinaryControl(params: {
     return true;
   }
   if (!controlPlan.canSet) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'binary_command_skipped',
       reasonCode: 'capability_not_setable',
       deviceId,
@@ -112,7 +119,7 @@ export function shouldSkipBinaryControl(params: {
     preferProvidedSnapshot,
     forceAgainstReleasedOpposing,
   })) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'binary_command_skipped',
       reasonCode: 'already_matched',
       deviceId,
@@ -124,7 +131,7 @@ export function shouldSkipBinaryControl(params: {
     return true;
   }
   if (hasPendingMatchingBinaryCommand({ pendingBinaryCommandStore, deviceId, controlPlan, desired })) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'binary_command_skipped',
       reasonCode: 'already_pending',
       deviceId,

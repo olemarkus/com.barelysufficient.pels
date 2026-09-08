@@ -1,5 +1,5 @@
 import { canTurnOnDevice } from '../plan/deviceCommandability';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import type { ExecutorDeviceSnapshot } from './executablePlan';
 import {
   type PlanExecutorBinaryContext,
@@ -9,6 +9,14 @@ import {
 } from './binaryControlShared';
 
 const logger = getLogger('executor/binary');
+/**
+ * Command decisions go to the `plan` debug topic: a skip is the executor half of
+ * the shed/restore decision the owner already enables that topic to read, so it
+ * should not need a second switch. Resolved here rather than through the module
+ * logger, whose `.debug` the `info` root discards — which is why every
+ * `*_command_skipped` event was absent from production.
+ */
+const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export const canApplyRestoreSnapshot = (
   _ctx: PlanExecutorBinaryContext,
@@ -26,7 +34,7 @@ export const canApplyRestoreSnapshot = (
     logContext,
   } = params;
   if (!snapshot) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'restore_command_skipped',
       reasonCode: 'missing_snapshot',
       deviceId,
@@ -34,7 +42,7 @@ export const canApplyRestoreSnapshot = (
       logContext,
     });
     if (logContext === 'capacity') {
-      logger.debug({
+      emitExecutorDebug({
         event: 'executor_binary_log_debug',
         msg: `Capacity: skip restoring ${name}, no snapshot available`,
       });
@@ -45,7 +53,7 @@ export const canApplyRestoreSnapshot = (
     // Same wording the owner sees on the device card: both come from
     // `resolveCommandabilityDetail` over the same observed facts.
     const suffix = ' (observer reports the control unavailable)';
-    logger.debug({
+    emitExecutorDebug({
       event: 'restore_command_skipped',
       reasonCode: 'not_setable',
       deviceId,
@@ -53,7 +61,7 @@ export const canApplyRestoreSnapshot = (
       logContext,
     });
     if (logContext === 'capacity') {
-      logger.debug({
+      emitExecutorDebug({
         event: 'executor_binary_log_debug',
         msg: `Capacity: skip restoring ${name}, cannot turn on from current snapshot${suffix}`,
       });
@@ -84,14 +92,17 @@ export const applyBinaryRestoreWithSnapshot = async (
   // same reason. See `skipRestoreForExternalOffHold`.
   if (skipRestoreForExternalOffHold(ctx, deviceId, name)) return false;
   if (ctx.state.actuation.isRestoreInFlight(deviceId)) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'restore_command_skipped',
       reasonCode: 'already_in_progress',
       deviceId,
       deviceName: name,
       logContext: 'capacity',
     });
-    logger.debug({ event: 'executor_binary_log_debug', msg: `Capacity: skip restoring ${name}, already in progress` });
+    emitExecutorDebug({
+      event: 'executor_binary_log_debug',
+      msg: `Capacity: skip restoring ${name}, already in progress`,
+    });
     return false;
   }
   ctx.state.actuation.beginRestore(deviceId);

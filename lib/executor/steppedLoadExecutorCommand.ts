@@ -14,11 +14,19 @@ import {
   PELS_TARGET_STEP_CAPABILITY_ID,
   type SteppedLoadStepRequestTransport,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import { isHomeyRequestTimeout } from '../utils/errorUtils';
 import type { PlanExecutorSteppedContext } from './steppedLoadExecutorContext';
 
 const logger = getLogger('executor/stepped-load');
+/**
+ * Command decisions go to the `plan` debug topic: a skip is the executor half of
+ * the shed/restore decision the owner already enables that topic to read, so it
+ * should not need a second switch. Resolved here rather than through the module
+ * logger, whose `.debug` the `info` root discards — which is why every
+ * `*_command_skipped` event was absent from production.
+ */
+const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export const isSteppedLoadStepCommandRedundant = (
   action: ExecutableSteppedLoadDevice,
@@ -80,7 +88,7 @@ export const logSteppedLoadCommandSkip = (
   },
 ): false => {
   const { action, reasonCode, logMessage, fields } = params;
-  logger.debug({
+  emitExecutorDebug({
     event: 'stepped_load_command_skipped',
     reasonCode,
     deviceId: action.id,
@@ -89,7 +97,7 @@ export const logSteppedLoadCommandSkip = (
     logContext: 'capacity',
     ...fields,
   });
-  logger.debug({ event: 'executor_stepped_log_debug', msg: logMessage });
+  emitExecutorDebug({ event: 'executor_stepped_log_debug', msg: logMessage });
   return false;
 };
 

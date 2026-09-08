@@ -1,8 +1,16 @@
 import type { PendingTargetObservationSource } from '../plan/planTypes';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import type { PlanExecutorTargetContext } from './targetExecutorContext';
 
 const logger = getLogger('executor/target');
+/**
+ * Command decisions go to the `plan` debug topic: a skip is the executor half of
+ * the shed/restore decision the owner already enables that topic to read, so it
+ * should not need a second switch. Resolved here rather than through the module
+ * logger, whose `.debug` the `info` root discards — which is why every
+ * `*_command_skipped` event was absent from production.
+ */
+const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 type TargetCommandPostActuationState = {
   latestObservedValueAfterActuation: unknown;
@@ -31,7 +39,7 @@ export const syncPendingTargetCommandAfterActuation = async (
     ctx.state.deletePendingTargetCommand(deviceId);
     pendingStillExists = false;
     ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');
-    logger.debug({
+    emitExecutorDebug({
       event: 'executor_target_log_debug',
       msg: `Capacity: confirmed ${target} for ${name} at ${desired}°C immediately after actuation`,
     });
@@ -77,7 +85,9 @@ export const logPendingTargetRetry = async (
   logger.info({ event: 'executor_target_log', msg: `Target mismatch still present for ${name}; observed `
     + `${formatObservedTarget(observedValue)} `
     + `via ${observedSource ?? 'unknown'}, retrying ${target} to ${desired}°C` });
-  logger.debug({ event: 'executor_target_log_debug', msg: `Capacity: retried ${target} for ${name} to ${desired}°C `
+  emitExecutorDebug({
+    event: 'executor_target_log_debug',
+    msg: `Capacity: retried ${target} for ${name} to ${desired}°C `
     + `(retry ${retryCount}, next retry in ${retryDelaySec}s)` });
   try {
     await ctx.logTargetRetryComparison?.({

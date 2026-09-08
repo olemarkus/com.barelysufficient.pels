@@ -1794,24 +1794,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Done when `grep -rn 'debugStructured?:' app.ts lib setup flowCards drivers` returns nothing,
       those predicates are gone with it, and the distinct `(component, debugTopic)` pairs in a
       production log are unchanged before and after. [P2]
-- [ ] **Four command-skip events the logging note advertises cannot be read in production.**
-      `target_command_skipped`, `restore_command_skipped`, `binary_command_skipped` and
-      `stepped_load_command_skipped` are emitted through a pino module logger, whose child inherits
-      the `info` root — so they appear **zero** times in a production log carrying tens of thousands
-      of debug lines, while their neighbours on the same paths (`binary_command_applied`,
-      `stepped_load_command_requested`, `target_command_applied`) are busy. They answer "why was
-      this device not commanded?", the first question asked when a device will not respond, so the
-      gap costs a support round trip every time. Sixteen sites across eight files:
-      `lib/executor/targetExecutor.ts` (3), `lib/executor/binaryRestoreHelpers.ts` (3),
-      `lib/executor/binaryControlShared.ts` (2), `lib/executor/steppedLoadExecutorRestore.ts` (1),
-      `lib/executor/steppedLoadExecutorCommand.ts` (1), `lib/executor/steppedLoadExecutor.ts` (1),
-      `lib/executor/binaryExecutor.ts` (1), and `lib/plan/planBinaryControlHelpers.ts` (4) — that
-      last one sits in the allowlist's plan lane, not the executor lane, so draining the executor
-      lane alone would leave `binary_command_skipped` dark. Fix: route all sixteen through
-      `getDebugEmitter('executor', <topic>)` and lower the matching budgets in
-      `scripts/logging-legacy-allowlist.txt`. Done when the four events appear in a run with the
-      topic enabled and their **(dark)** markers are gone from `notes/logging/README.md`. [P1]
-
 - [ ] **`plan_rebuild_completed` is absent from production for the case it was added to explain.**
       `planServiceRebuild.ts` emits it through a computed level,
       `(host.deps.loggers?.structuredLog ?? logger)[rebuildLogLevel](...)`, and
@@ -1826,16 +1808,17 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       level is readable at the call site. Done when an actionChanged-only rebuild produces a
       `plan_rebuild_completed` line with `debugTopic: 'plan'` and the file leaves the allowlist. [P2]
 
-- [ ] **121 runtime sites still log a way that is invisible or unfilterable.**
+- [ ] **80 runtime sites still log a way that is invisible or unfilterable.**
       `npm run logging:no-legacy` bans four shapes — any `.debug()` outside `lib/logging/` (dark on
       a pino module logger, topic-gated prose on the injected SDK `Logger`, hand-rolled on a
       `.child(..., {level:'debug'})`, and the call site cannot say which), prose via `logDebug` /
       `this.log`, a computed log level, and `console.*` — and freezes the pre-existing ones in
       `scripts/logging-legacy-allowlist.txt` with per-file budgets that may only shrink. Lanes,
-      largest first: `lib/executor` (37, the dark command-skip events above, worth doing first),
-      `lib/device` (34), entry points and wiring (20), `lib/plan` + `lib/observer` (16), and the
-      remaining domain modules (14). Most of the device lane is injected-prose `.debug` that does
-      emit but carries no `event` field. Fix per file: replace the call with a module-scope
+      largest first: `lib/device` (34), entry points and wiring (20), `lib/plan` + `lib/observer`
+      (12), and the remaining domain modules (14). Most of the device lane is injected-prose
+      `.debug` that does emit but carries no `event` field, so draining it buys filterability
+      rather than visibility — unlike the executor lane, which is done and was the one carrying
+      events production never showed at all. Fix per file: replace the call with a module-scope
       `getDebugEmitter(component, topic)`, or with `getLogger(module).info(...)` where the event
       deserves to be visible by default, and lower the budget. Done when the allowlist file is
       deleted and the guard requires its absence — `api.ts`'s pre-logger `console.error` is

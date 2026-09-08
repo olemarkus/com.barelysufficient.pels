@@ -5,7 +5,7 @@ import {
   recordPendingTargetCommandAttempt,
 } from './targetCommandRetry';
 import type { PendingTargetCommandStatus } from '../plan/planTypes';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import type { PlanExecutorTargetContext } from './targetExecutorContext';
 import {
   logPendingTargetRetry,
@@ -16,6 +16,14 @@ import {
 export type { PlanExecutorTargetContext };
 
 const logger = getLogger('executor/target');
+/**
+ * Command decisions go to the `plan` debug topic: a skip is the executor half of
+ * the shed/restore decision the owner already enables that topic to read, so it
+ * should not need a second switch. Resolved here rather than through the module
+ * logger, whose `.debug` the `info` root discards — which is why every
+ * `*_command_skipped` event was absent from production.
+ */
+const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 type PlanActionHandleResult = {
   handled: boolean;
@@ -280,7 +288,7 @@ const handleTargetCommandPreflight = (
     forceAgainstReleasedOpposing,
   } = params;
   if (forceAgainstReleasedOpposing !== true && Object.is(latestObservedValue, desired)) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'target_command_skipped',
       reasonCode: 'already_matched',
       deviceId,
@@ -290,7 +298,7 @@ const handleTargetCommandPreflight = (
       observedValue: latestObservedValue ?? null,
       skipContext,
     });
-    logger.debug({
+    emitExecutorDebug({
       event: 'executor_target_log_debug',
       msg: `Capacity: skip ${target} for ${name}, already ${desired}°C in current snapshot`,
     });
@@ -301,7 +309,7 @@ const handleTargetCommandPreflight = (
     lifecycleOwnedPending?.target === target
     && lifecycleOwnedPending.desired === desired
   ) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'target_command_skipped',
       reasonCode: 'lifecycle_owned',
       deviceId,
@@ -327,7 +335,7 @@ const handleTargetCommandPreflight = (
     return { type: 'proceed', decisionType: decision.type };
   }
   const remainingSec = Math.max(1, Math.ceil(decision.remainingMs / 1000));
-  logger.debug({
+  emitExecutorDebug({
     event: 'target_command_skipped',
     reasonCode: resolveTargetCommandSkipReasonCode(decision.pending.status),
     deviceId,
@@ -339,13 +347,13 @@ const handleTargetCommandPreflight = (
     skipContext,
   });
   if (decision.pending.status === 'temporary_unavailable') {
-    logger.debug({
+    emitExecutorDebug({
       event: 'executor_target_log_debug',
       msg: `Capacity: skip ${target} for ${name}, device temporarily unavailable `
         + `for ${remainingSec}s before retry (${skipContext})`,
     });
   } else {
-    logger.debug({
+    emitExecutorDebug({
       event: 'executor_target_log_debug',
       msg: `Capacity: skip ${target} for ${name}, waiting ${remainingSec}s `
         + `for ${desired}°C confirmation (${skipContext})`,
@@ -428,7 +436,7 @@ const executeTargetCommandDispatch = async (
         skipContext,
       });
     } else if (pendingStillExists) {
-      logger.debug({
+      emitExecutorDebug({
         event: 'executor_target_log_debug',
         msg: `Capacity: awaiting ${target} confirmation for ${name} at ${requestedValue}°C `
           + `(next retry in ${retryDelaySec}s)`,

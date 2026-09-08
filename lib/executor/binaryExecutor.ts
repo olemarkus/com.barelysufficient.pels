@@ -3,7 +3,7 @@ import {
   isBinaryObservedOff,
   isBinaryOnOrUnknown,
 } from '../../packages/shared-domain/src/binaryControlState';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import {
   shouldSkipShedding,
 } from './executorSupport';
@@ -34,6 +34,14 @@ import {
 export type { PlanExecutorBinaryContext };
 
 const logger = getLogger('executor/binary');
+/**
+ * Command decisions go to the `plan` debug topic: a skip is the executor half of
+ * the shed/restore decision the owner already enables that topic to read, so it
+ * should not need a second switch. Resolved here rather than through the module
+ * logger, whose `.debug` the `info` root discards — which is why every
+ * `*_command_skipped` event was absent from production.
+ */
+const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export const applyBinaryRestore = async (
   ctx: PlanExecutorBinaryContext,
@@ -253,7 +261,7 @@ const turnOffDevice = async (
       const now = Date.now();
       ctx.state.actuation.markShed(deviceId, now);
     }
-    logger.debug({
+    emitExecutorDebug({
       event: 'binary_command_skipped',
       reasonCode: hasTarget ? 'missing_onoff_capability' : 'missing_control_targets',
       deviceId,
@@ -263,7 +271,7 @@ const turnOffDevice = async (
       hasTargets: hasTarget,
       controlAxis: 'binary',
     });
-    logger.debug({ event: 'executor_binary_log_debug', msg: hasTarget
+    emitExecutorDebug({ event: 'executor_binary_log_debug', msg: hasTarget
       ? `Capacity: skip turn_off for ${name}, device has no onoff capability`
       : `Capacity: skip turn_off for ${name}, device has no onoff or temperature target` });
     return false;

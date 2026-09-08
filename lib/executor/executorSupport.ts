@@ -6,9 +6,16 @@ import {
   recordActivationAttemptStart,
 } from '../plan/admission';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter } from '../logging/logger';
 
-const logger = getLogger('executor/support');
+/**
+ * Command decisions go to the `plan` debug topic: a skip is the executor half of
+ * the shed/restore decision the owner already enables that topic to read, so it
+ * should not need a second switch. Resolved here rather than through the module
+ * logger, whose `.debug` the `info` root discards — which is why every
+ * `*_command_skipped` event was absent from production.
+ */
+const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export const shouldSkipUnavailable = (params: {
   // Stage 5: narrowed to the observed surface — this gate reads only the
@@ -23,7 +30,7 @@ export const shouldSkipUnavailable = (params: {
     operation,
   } = params;
   if (snapshot?.available !== false) return false;
-  logger.debug({
+  emitExecutorDebug({
     event: 'plan_executor_skip_unavailable',
     deviceName: name,
     operation,
@@ -56,7 +63,7 @@ export const shouldSkipShedding = (params: {
   const isUnavailable = snapshotState?.available === false;
   const isAlreadyOff = isBinaryObservedOff(snapshotState);
   if (isUnavailable) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'plan_shed_skipped',
       reasonCode: 'unavailable',
       deviceId,
@@ -65,7 +72,7 @@ export const shouldSkipShedding = (params: {
     return true;
   }
   if (state.actuation.isShedInFlight(deviceId)) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'plan_shed_skipped',
       reasonCode: 'already_in_progress',
       deviceId,
@@ -74,7 +81,7 @@ export const shouldSkipShedding = (params: {
     return true;
   }
   if (isAlreadyOff) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'plan_shed_skipped',
       reasonCode: 'already_off',
       deviceId,

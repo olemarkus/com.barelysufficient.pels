@@ -18,26 +18,9 @@
 # permanent exemption. When the last line goes, DELETE THIS FILE — the guard
 # then requires its absence.
 #
-# Counts were 63 files / 122 sites at the guard's introduction; 62 files / 121 sites now.
-
-# --- Executor lane (highest value: these are the events people go looking for) ---
-# Four events `notes/logging/README.md` lists as current — target_command_skipped,
-# restore_command_skipped, binary_command_skipped, stepped_load_command_skipped —
-# are emitted from here (and from lib/plan/planBinaryControlHelpers.ts, in the
-# plan lane below) through a pino module logger, and therefore appear ZERO times
-# in a production log. They answer "why was this device not commanded?", which is
-# the first question asked when a device will not respond. Drain these first.
-lib/executor/binaryControlShared.ts 2
-lib/executor/binaryExecutor.ts 2
-lib/executor/binaryRestoreHelpers.ts 6
-lib/executor/executorSupport.ts 4
-lib/executor/planExecutorDispatch.ts 2
-lib/executor/shedReleaseActuation.ts 4
-lib/executor/steppedLoadExecutor.ts 2
-lib/executor/steppedLoadExecutorCommand.ts 2
-lib/executor/steppedLoadExecutorRestore.ts 4
-lib/executor/targetExecutor.ts 7
-lib/executor/targetPendingCommand.ts 2
+# Counts were 63 files / 122 sites at the guard's introduction; 50 files / 80 sites now.
+# The executor lane is gone: its debug events were the four *_command_skipped that
+# production never showed, and they now resolve their own emitter.
 
 # --- Device / transport lane ------------------------------------------------
 # Snapshot, fetch, zone and write paths. Most of these are the INJECTED SDK
@@ -90,7 +73,6 @@ setup/settingsUiApi.ts 2
 lib/observer/pendingBinaryCommands.ts 4
 lib/plan/admission/headroomReserve.ts 1
 lib/plan/admission/surplusAbsorb.ts 1
-lib/plan/planBinaryControlHelpers.ts 4
 lib/plan/planBoost.ts 1
 lib/plan/planBuilderMaterialization.ts 1
 lib/plan/planBuilderSilentMeter.ts 1

@@ -7,12 +7,19 @@ import {
 } from './binaryControlDispatch';
 import type { PlanEngineState } from '../plan/planState';
 import type { BinaryControlDecisionSnapshot } from '../plan/planBinaryControlHelpers';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter } from '../logging/logger';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { BinaryCommandClaim, BinaryCommandClaimState } from './binaryCommandClaim';
 import type { TargetCommandOwner } from './targetCommandClaim';
 
-const sharedLogger = getLogger('executor/binary');
+/**
+ * Command decisions go to the `plan` debug topic: a skip is the executor half of
+ * the shed/restore decision the owner already enables that topic to read, so it
+ * should not need a second switch. Resolved here rather than through the module
+ * logger, whose `.debug` the `info` root discards — which is why every
+ * `*_command_skipped` event was absent from production.
+ */
+const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export type PlanExecutorBinaryContext = {
   state: PlanEngineState;
@@ -61,7 +68,7 @@ export const skipRestoreForSurplusPosture = (
   name: string,
 ): boolean => {
   if (ctx.state.surplusOnlyShedByDevice[deviceId] !== true) return false;
-  sharedLogger.debug({
+  emitExecutorDebug({
     event: 'restore_command_skipped',
     reasonCode: 'surplus_only_posture',
     deviceId,
@@ -95,7 +102,7 @@ export const skipRestoreForExternalOffHold = (
   name: string,
 ): boolean => {
   if (!ctx.state.isExternalOffHeld(deviceId)) return false;
-  sharedLogger.debug({
+  emitExecutorDebug({
     event: 'restore_command_skipped',
     reasonCode: PLAN_REASON_CODES.externalOffHold,
     deviceId,

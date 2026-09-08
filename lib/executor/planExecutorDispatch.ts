@@ -14,7 +14,7 @@ import {
   shouldSkipShedding,
   shouldSkipUnavailable,
 } from './executorSupport';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import type {
   ExecutableBinaryIntent,
   ExecutableObservedDeviceState,
@@ -65,6 +65,14 @@ import { isRequestedStepMaterialized } from './steppedLoadActuation';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 
 const logger = getLogger('executor/plan');
+/**
+ * Command decisions go to the `plan` debug topic: a skip is the executor half of
+ * the shed/restore decision the owner already enables that topic to read, so it
+ * should not need a second switch. Resolved here rather than through the module
+ * logger, whose `.debug` the `info` root discards — which is why every
+ * `*_command_skipped` event was absent from production.
+ */
+const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 type PlanActionHandleResult = {
   handled: boolean;
@@ -203,7 +211,7 @@ const applyShedTemperatureIntent = async (
   }
   if (!command) return false;
   if (Object.is(command.observedValue, command.desired)) {
-    logger.debug({ event: 'executor_plan_log_debug', msg: `Capacity: skip setting ${command.target || 'target'} `
+    emitExecutorDebug({ event: 'executor_plan_log_debug', msg: `Capacity: skip setting ${command.target || 'target'} `
       + `for ${intent.name}, already at ${intent.desired}°C` });
     return false;
   }
@@ -412,7 +420,7 @@ const logUnderspecifiedSteppedShedDevices = (
   exec: ExecutablePlan,
 ): void => {
   for (const dropped of findDroppedSteppedShedIntents(plan, exec)) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'stepped_load_shed_intent_dropped',
       reasonCode: 'underspecified_set_step',
       ...dropped,

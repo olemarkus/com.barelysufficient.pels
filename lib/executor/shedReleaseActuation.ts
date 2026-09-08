@@ -29,9 +29,16 @@ import {
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
 import { resolveSteppedStepActuationState } from './steppedLoadActuation';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter } from '../logging/logger';
 
-const logger = getLogger('executor/shed-release');
+/**
+ * Command decisions go to the `plan` debug topic: a skip is the executor half of
+ * the shed/restore decision the owner already enables that topic to read, so it
+ * should not need a second switch. Resolved here rather than through the module
+ * logger, whose `.debug` the `info` root discards — which is why every
+ * `*_command_skipped` event was absent from production.
+ */
+const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 // shed_release fires the device's configured shedBehavior exactly once for a cap-off device
 // whose smart task transitioned out of plannable status (or is in an idle bucket). The
@@ -154,7 +161,7 @@ const applyShedReleaseBinaryOff = async (params: {
     // turn_off (rare config); for set_step log a one-off so any remaining gap shows up in
     // prod traces.
     if (behavior.action === 'set_step') {
-      logger.debug({
+      emitExecutorDebug({
         event: 'shed_release_skipped',
         reasonCode: 'no_binary_handle_for_set_step',
         deviceId: intent.deviceId,
@@ -262,7 +269,7 @@ const resolveProducerShedReleaseStep = (
   const targetStepId = intent.releaseShedStepId;
   const targetStep = targetStepId ? getSteppedLoadStep(profile, targetStepId) : null;
   if (!targetStep) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'shed_release_skipped',
       reasonCode: 'no_producer_step_target',
       deviceId: intent.deviceId,
@@ -296,7 +303,7 @@ const applyShedReleaseSteppedLoad = async (params: {
   // stays a no-op until real evidence arrives.
   const observedStepId = observed?.steppedLoad?.reportedStepId;
   if (!observedStepId) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'shed_release_skipped',
       reasonCode: 'no_trusted_step_observation',
       deviceId: intent.deviceId,
@@ -313,7 +320,7 @@ const applyShedReleaseSteppedLoad = async (params: {
   // without a known current step, so refuse to act.
   const currentStep = getSteppedLoadStep(profile, currentStepId);
   if (!currentStep) {
-    logger.debug({
+    emitExecutorDebug({
       event: 'shed_release_skipped',
       reasonCode: 'unknown_current_step',
       deviceId: intent.deviceId,
