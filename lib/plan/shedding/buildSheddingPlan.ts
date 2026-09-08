@@ -1,5 +1,5 @@
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
-import type { PlanEngineState } from '../planState';
+import { NO_SHEDDING_OUTCOME, type PlanEngineState, type ShedPlanLatch, type SheddingOutcome } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
 
 import { updateGuardState } from '../admission';
@@ -15,6 +15,7 @@ import {
   emitOvershootEscalationBlocked,
   resolveSameMeasurementSheddingDecision,
   buildOvershootStats,
+  type SameMeasurementSheddingDecision,
 } from './overshoot';
 import { resolveShedReason, selectShedDevices } from './selection';
 import { buildSheddingCandidates, summarizeSheddingCandidates } from './candidates';
@@ -33,7 +34,7 @@ export async function buildSheddingPlan(
     shedSet,
     shedReasons,
     shedStepTargets,
-    updates,
+    outcome,
     overshootStats,
   } = planShedding(context, power, state, deps, overshoot.shedActionable);
   const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
@@ -65,16 +66,14 @@ export async function buildSheddingPlan(
   state.sheddingActive = guardResult.sheddingActive;
   const guardInShortfall = deps.capacityGuard.isInShortfall() ?? false;
   const recoveredFromShedding = wasSheddingActive && !guardResult.sheddingActive;
-  const mergedUpdates = recoveredFromShedding
-    ? { ...updates, lastRecoveryMs: Date.now() }
-    : updates;
   return {
     shedSet,
     shedReasons,
     shedStepTargets,
     sheddingActive: guardResult.sheddingActive,
     guardInShortfall,
-    updates: mergedUpdates,
+    outcome,
+    recoveredAtMs: recoveredFromShedding ? Date.now() : null,
     overshootStats,
   };
 }
@@ -84,14 +83,14 @@ function shouldPlanShedding(headroom: number): boolean {
 }
 
 function emptySheddingResult(
-  updates: PlanSheddingResult['updates'] = {},
-  overshootStats: PlanSheddingResult['overshootStats'] = null,
+  outcome: SheddingOutcome,
+  overshootStats: PlanSheddingResult['overshootStats'],
 ): PlanSheddingResult {
   return {
     shedSet: new Set<string>(),
     shedReasons: new Map<string, DeviceReason>(),
     shedStepTargets: new Map<string, string>(),
-    updates,
+    outcome,
     overshootStats,
   };
 }
@@ -105,7 +104,7 @@ function planShedding(
 ): PlanSheddingResult {
   const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
   if (!shouldAttemptShedding(hourlyBudgetExhausted, overshootActionable, power.headroomKw)) {
-    return emptySheddingResult();
+    return emptySheddingResult(NO_SHEDDING_OUTCOME, null);
   }
 
   const nowTs = Date.now();
@@ -128,14 +127,13 @@ function planShedding(
     state,
     deps,
   };
-  if (shouldSkipSameMeasurement(hourlyBudgetExhausted, measurementDecision.skip)) {
-    return resolveWithheldShedding(
-      candidateParams,
-      measurementPowerW,
-      measurementDecision.heldOnUnchangedReading,
-    );
+  // An exhausted hour sheds on every cycle regardless of the sample: the
+  // deficit is the whole hour's, not this reading's.
+  if (!hourlyBudgetExhausted && measurementDecision.kind !== 'proceed') {
+    return resolveWithheldShedding(candidateParams, measurementDecision);
   }
-  if (measurementDecision.escalatedSameSample) {
+  const escalatedSameSample = measurementDecision.kind === 'proceed' && measurementDecision.escalatedSameSample;
+  if (escalatedSameSample) {
     deps.debugStructured?.({ event: 'plan_shed_escalating_unchanged_measurement' });
   }
   const candidateSummary = buildSheddingCandidates(candidateParams);
@@ -165,7 +163,7 @@ function planShedding(
   );
 
   if (result.shedSet.size === 0) {
-    if (measurementDecision.escalatedSameSample) {
+    if (escalatedSameSample) {
       const controllableDeviceCount = context.devices
         .filter((device) => device.controllable)
         .length;
@@ -174,32 +172,18 @@ function planShedding(
           deps.capacityGuard, needed, candidates.length, measurementTs, nowTs, deps.structuredLog,
         );
       }
-      return emptySheddingResult({
-        overshootEscalatedAtMs: nowTs,
-        overshootMitigatedAtMs: nowTs,
-      }, overshootStats);
+      return emptySheddingResult({ kind: 'escalation_blocked', atMs: nowTs }, overshootStats);
     }
-    return emptySheddingResult({}, overshootStats);
+    return emptySheddingResult(NO_SHEDDING_OUTCOME, overshootStats);
   }
-  const updates = {
-    lastInstabilityMs: nowTs,
-    ...(measurementTs !== null ? { lastShedPlanMeasurementTs: measurementTs } : {}),
-    // The reading and the decision it produced latch as one pair; the copy is
-    // required because `shedSet` is mutated downstream when holds are merged in.
-    ...(measurementPowerW !== null
-      ? {
-        lastShedPlanPowerW: measurementPowerW,
-        lastShedPlanShedIds: new Set(result.shedSet),
-        lastShedPlanAtMs: nowTs,
-        lastShedPlanNeededKw: needed,
-      }
-      : {}),
-    overshootMitigatedAtMs: nowTs,
-    ...(measurementDecision.escalatedSameSample ? { overshootEscalatedAtMs: nowTs } : {}),
-  };
+  // The reading and the decision it produced latch as one pair; the copy is
+  // required because `shedSet` is mutated downstream when holds are merged in.
+  const latch: ShedPlanLatch | null = measurementPowerW === null
+    ? null
+    : { powerW: measurementPowerW, shedIds: new Set(result.shedSet), atMs: nowTs, neededKw: needed };
   return {
     ...result,
-    updates,
+    outcome: { kind: 'shed', atMs: nowTs, measurementTs, latch, escalatedSameSample },
     overshootStats,
   };
 }
@@ -213,25 +197,24 @@ function resolveMeasurementPowerW(powerTracker: SheddingDeps['powerTracker']): n
 }
 
 /**
- * Shedding is withheld this cycle: either the measurement is the very one the
- * last shed was planned from, or a later sample re-delivered its watts unchanged.
+ * The two withheld cycles: either the measurement is the very one the last shed
+ * was planned from, or a later sample re-delivered its watts unchanged.
  *
  * `candidateParams` is the only input the helpers below need. It already carries
  * `state` and `deps`, and — on every path that reaches here — the same `needed`
  * and `limitSource` the caller used to pass beside it. `ShedCandidateParams`
  * substitutes a severity sentinel for both (`Number.POSITIVE_INFINITY`, and
- * `'daily'`) while the hour is exhausted, but `shouldSkipSameMeasurement` is
- * `!hourlyBudgetExhausted && skip`, so this whole withheld path is unreachable
- * in that state. `deficitKw` on the same object is the measured deficit
- * regardless.
+ * `'daily'`) while the hour is exhausted, but an exhausted hour never withholds,
+ * so neither helper is reachable in that state. `deficitKw` on the same object
+ * is the measured deficit regardless.
  */
 function resolveWithheldShedding(
   candidateParams: ShedCandidateParams,
-  unchangedPowerW: number | null,
-  heldOnUnchangedReading: boolean,
+  decision: Exclude<SameMeasurementSheddingDecision, { kind: 'proceed' }>,
 ): PlanSheddingResult {
-  if (!heldOnUnchangedReading) return skipSheddingAwaitingMeasurement(candidateParams);
-  return holdSheddingAtLastDecision(candidateParams, unchangedPowerW);
+  return decision.kind === 'hold'
+    ? holdSheddingAtLastDecision(candidateParams, decision.latch)
+    : skipSheddingAwaitingMeasurement(candidateParams);
 }
 
 /**
@@ -242,7 +225,7 @@ function skipSheddingAwaitingMeasurement(candidateParams: ShedCandidateParams): 
   const { deps, deficitKw: needed } = candidateParams;
   const summary = summarizeSheddingCandidates(candidateParams);
   deps.debugStructured?.({ event: 'plan_shed_skipped_awaiting_measurement' });
-  return emptySheddingResult({}, buildOvershootStats({ needed, ...summary }));
+  return emptySheddingResult(NO_SHEDDING_OUTCOME, buildOvershootStats({ needed, ...summary }));
 }
 
 /**
@@ -251,9 +234,9 @@ function skipSheddingAwaitingMeasurement(candidateParams: ShedCandidateParams): 
  * DROP a committed decision rather than freeze it — a home still in dry-run
  * plans a shed it never actuates, so losing it from the plan loses the pending
  * command the activation path force-applies. Narrowing selection to
- * `lastShedPlanShedIds` freezes the decision instead: devices already chosen stay
+ * the latch's `shedIds` freezes the decision instead: devices already chosen stay
  * chosen, the deficit that the unchanged reading still claims buys no additional
- * device. No `updates` are returned — nothing was mitigated this cycle, so the
+ * device. The outcome is `none` — nothing was mitigated this cycle, so the
  * hold window keeps running from the real shed and expires on schedule.
  *
  * "Re-assert" is bounded by candidacy, and deliberately so: a decided device
@@ -266,15 +249,15 @@ function skipSheddingAwaitingMeasurement(candidateParams: ShedCandidateParams): 
  */
 function holdSheddingAtLastDecision(
   candidateParams: ShedCandidateParams,
-  unchangedPowerW: number | null,
+  latch: ShedPlanLatch,
 ): PlanSheddingResult {
   // `deficitKw` is the measured deficit on every path; `needed` on the same
   // object is the severity sentinel in an exhausted hour, which cannot reach
-  // here (see `resolveWithheldShedding`).
-  const { state, deps, deficitKw: needed, limitSource } = candidateParams;
+  // here (an exhausted hour never withholds).
+  const { deps, deficitKw: needed, limitSource } = candidateParams;
   const candidateSummary = buildSheddingCandidates(candidateParams);
   const alreadyDecided = candidateSummary.candidates
-    .filter((candidate) => state.lastShedPlanShedIds.has(candidate.id));
+    .filter((candidate) => latch.shedIds.has(candidate.id));
   const { shedSet, shedReasons, shedStepTargets } = selectShedDevices(
     alreadyDecided,
     needed,
@@ -287,7 +270,7 @@ function holdSheddingAtLastDecision(
   // arrive here and was refused, so log review can count this class directly.
   deps.debugStructured?.({
     event: 'plan_shed_held_unchanged_reading',
-    unchangedPowerW,
+    unchangedPowerW: latch.powerW,
     reassertedShedDevices: shedSet.size,
   });
   return {
@@ -296,7 +279,7 @@ function holdSheddingAtLastDecision(
     // Re-priced on this cycle's candidates, like the reasons beside them: the
     // hold freezes WHICH devices stay limited, not the rung each sits at.
     shedStepTargets,
-    updates: {},
+    outcome: NO_SHEDDING_OUTCOME,
     overshootStats: buildOvershootStats({
       needed,
       eligibleCandidateCount: candidateSummary.candidates.length,
@@ -315,8 +298,4 @@ function shouldAttemptShedding(
   headroom: number,
 ): boolean {
   return hourlyBudgetExhausted || (overshootActionable && shouldPlanShedding(headroom));
-}
-
-function shouldSkipSameMeasurement(hourlyBudgetExhausted: boolean, skip: boolean): boolean {
-  return !hourlyBudgetExhausted && skip;
 }

@@ -3136,7 +3136,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.sheddingActive).toBe(false);
-    expect(result.updates.lastRecoveryMs).toBeGreaterThan(0);
+    expect(result.recoveredAtMs).toBeGreaterThan(0);
   });
 
   it('does not emit lastRecoveryMs when guard stays inactive', async () => {
@@ -3169,7 +3169,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.sheddingActive).toBe(false);
-    expect(result.updates.lastRecoveryMs).toBeUndefined();
+    expect(result.recoveredAtMs).toBeNull();
   });
 
   it('steps down both stepped devices before shedding a binary device across multiple cycles', async () => {
@@ -3268,7 +3268,7 @@ describe('buildSheddingPlan', () => {
     expect(result1.shedSet.has('binary-dev')).toBe(false);
 
     // Apply state updates from cycle 1 (lastShedPlanMeasurementTs, lastInstabilityMs).
-    state.applySheddingUpdates(result1.updates);
+    state.applySheddingOutcome(result1.outcome, result1.recoveredAtMs);
 
     // Cycle 2: stepped-a now at low, stepped-b still at max (preemptive). Its
     // `max -> low` frees 0.9 kW, which covers the 0.8 kW still needed, so again
@@ -3294,7 +3294,7 @@ describe('buildSheddingPlan', () => {
     expect(result2.shedSet.has('stepped-b')).toBe(true);
     expect(result2.shedSet.has('binary-dev')).toBe(false);
 
-    state.applySheddingUpdates(result2.updates);
+    state.applySheddingOutcome(result2.outcome, result2.recoveredAtMs);
 
     // Cycle 3: both stepped devices at lowest active step. No more preemptive
     // candidates, so normal priority ordering resumes and binary device sheds.
@@ -3362,7 +3362,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('dev-escalate')).toBe(true);
-    expect(result.updates.overshootEscalatedAtMs).toBe(Date.now());
+    expect(result.outcome).toMatchObject({ kind: 'shed', atMs: Date.now(), escalatedSameSample: true });
   });
 
   it('does not same-sample escalate again immediately after a fresh-measurement shed', async () => {
@@ -3414,10 +3414,9 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(freshResult.shedSet.has('dev-fresh')).toBe(true);
-    expect(freshResult.updates.overshootMitigatedAtMs).toBe(Date.now());
-    expect(freshResult.updates.overshootEscalatedAtMs).toBeUndefined();
+    expect(freshResult.outcome).toMatchObject({ kind: 'shed', atMs: Date.now(), escalatedSameSample: false });
 
-    state.applySheddingUpdates(freshResult.updates);
+    state.applySheddingOutcome(freshResult.outcome, freshResult.recoveredAtMs);
 
     vi.setSystemTime(new Date(Date.now() + 5_000));
 
@@ -3435,7 +3434,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(sameSampleResult.shedSet.size).toBe(0);
-    expect(sameSampleResult.updates.overshootEscalatedAtMs).toBeUndefined();
+    expect(sameSampleResult.outcome).toEqual({ kind: 'none' });
     expect(sameSampleResult.overshootStats).toEqual({
       needed: 0.8,
       eligibleCandidateCount: 1,
@@ -3537,8 +3536,9 @@ describe('buildSheddingPlan', () => {
       );
       expect([...result.shedSet]).toEqual(['vvb']);
       // The pass latches its own selection alongside the reading it acted on.
-      expect([...(result.updates.lastShedPlanShedIds ?? [])]).toEqual(['vvb']);
-      state.applySheddingUpdates(result.updates);
+      if (result.outcome.kind !== 'shed') throw new Error(`expected a shed outcome, got ${result.outcome.kind}`);
+      expect([...(result.outcome.latch?.shedIds ?? [])]).toEqual(['vvb']);
+      state.applySheddingOutcome(result.outcome, result.recoveredAtMs);
       return state;
     };
 
@@ -3568,7 +3568,7 @@ describe('buildSheddingPlan', () => {
       expect(repeatResult.shedSet.has('bad-2etg')).toBe(false);
       // Nothing was mitigated, so the hold window must keep running from the
       // real shed rather than restarting on every held cycle.
-      expect(repeatResult.updates).toEqual({});
+      expect(repeatResult.outcome).toEqual({ kind: 'none' });
       expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
         event: 'plan_shed_held_unchanged_reading',
         unchangedPowerW: UNCHANGED_READING_W,
@@ -3667,7 +3667,7 @@ describe('buildSheddingPlan', () => {
           },
         );
         expect(heldResult.shedSet.size).toBe(0);
-        state.applySheddingUpdates(heldResult.updates);
+        state.applySheddingOutcome(heldResult.outcome, heldResult.recoveredAtMs);
       };
       await pollWithUnchangedReading(10_000, 2_000);
       await pollWithUnchangedReading(20_000, 3_000);
@@ -3735,7 +3735,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.size).toBe(0);
-    expect(result.updates.overshootEscalatedAtMs).toBeUndefined();
+    expect(result.outcome).toEqual({ kind: 'none' });
     expect(result.overshootStats).toEqual({
       needed: 0.8,
       eligibleCandidateCount: 1,
@@ -4379,7 +4379,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.size).toBe(0);
-    expect(result.updates.overshootEscalatedAtMs).toBe(Date.now());
+    expect(result.outcome).toEqual({ kind: 'escalation_blocked', atMs: Date.now() });
     expect(structuredLog.info).toHaveBeenCalledWith({
       event: 'capacity_overshoot_escalation_blocked',
       incidentId: 'inc-77',
@@ -4436,7 +4436,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.size).toBe(0);
-    expect(result.updates.overshootEscalatedAtMs).toBe(Date.now());
+    expect(result.outcome).toEqual({ kind: 'escalation_blocked', atMs: Date.now() });
     expect(structuredLog.info).not.toHaveBeenCalled();
   });
 
@@ -4482,7 +4482,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.size).toBe(0);
-    expect(result.updates.overshootEscalatedAtMs).toBeUndefined();
+    expect(result.outcome).toEqual({ kind: 'none' });
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
 
@@ -4528,7 +4528,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('dev-cap')).toBe(true);
-    expect(result.updates.overshootEscalatedAtMs).toBe(Date.now());
+    expect(result.outcome).toMatchObject({ kind: 'shed', atMs: Date.now(), escalatedSameSample: true });
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_escalating_unchanged_measurement' }));
   });
 
@@ -4595,7 +4595,7 @@ describe('buildSheddingPlan', () => {
 
     // 0.21 kW is short of the 0.4 kW clear threshold, so the latch survives.
     expect(result.sheddingActive).toBe(true);
-    expect(result.updates.lastRecoveryMs).toBeUndefined();
+    expect(result.recoveredAtMs).toBeNull();
     expect(state.sheddingActive).toBe(true);
   });
 

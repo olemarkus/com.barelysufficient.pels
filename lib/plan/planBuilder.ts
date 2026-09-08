@@ -419,7 +419,7 @@ export class PlanBuilder {
         context, power, this.state, buildSheddingDeps(this.deps, this.computeShortfallThreshold()), overshootDecision,
       ),
     );
-    this.applySheddingUpdates(sheddingPlan);
+    this.applySheddingOutcome(sheddingPlan);
 
     return { sheddingPlan, overshootDecision };
   }
@@ -477,8 +477,8 @@ export class PlanBuilder {
     };
   }
 
-  private applySheddingUpdates(sheddingPlan: SheddingPlan): void {
-    this.state.applySheddingUpdates(sheddingPlan.updates);
+  private applySheddingOutcome(sheddingPlan: SheddingPlan): void {
+    this.state.applySheddingOutcome(sheddingPlan.outcome, sheddingPlan.recoveredAtMs);
     if (sheddingPlan.guardInShortfall !== this.state.inShortfall) {
       // Commit the durable signal before advancing the shared planner state.
       // If settings throws, the next build must still observe the transition

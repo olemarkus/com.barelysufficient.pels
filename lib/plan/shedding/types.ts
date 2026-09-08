@@ -2,7 +2,7 @@ import type CapacityGuard from '../../power/capacityGuard';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanContext } from '../planContext';
-import type { PlanEngineState, SheddingUpdates } from '../planState';
+import type { PlanEngineState, SheddingOutcome } from '../planState';
 import type { PlanInputDevice, ShedBehavior } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import type { ShedCandidateSkipSummary } from './candidateSkipLog';
@@ -28,7 +28,9 @@ export type SheddingPlan = {
   shedStepTargets: Map<string, string>;
   sheddingActive: boolean;
   guardInShortfall: boolean;
-  updates: SheddingUpdates;
+  outcome: SheddingOutcome;
+  /** When this cycle's guard update released the shedding latch, or null when it did not. */
+  recoveredAtMs: number | null;
   overshootStats: OvershootStats | null;
 };
 
@@ -86,7 +88,7 @@ export type PlanSheddingResult = {
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
   shedStepTargets: SheddingPlan['shedStepTargets'];
-  updates: SheddingPlan['updates'];
+  outcome: SheddingOutcome;
   overshootStats: SheddingPlan['overshootStats'];
 };
 

@@ -1,6 +1,6 @@
 import type CapacityGuard from '../../power/capacityGuard';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
-import type { PlanEngineState } from '../planState';
+import type { PlanEngineState, ShedPlanLatch } from '../planState';
 import type { PlanInputDevice } from '../planTypes';
 import {
   RECENT_RESTORE_OVERSHOOT_BYPASS_KW,
@@ -31,6 +31,17 @@ const UNCHANGED_READING_SHED_HOLD_MS = 30 * 1000;
 /** 1 W — below any real shed decision, above float drift in a derived deficit. */
 const DEFICIT_GROWTH_EPSILON_KW = 0.001;
 
+/**
+ * Whether this cycle's measurement may drive a shed: it may (`proceed`,
+ * possibly as a same-sample escalation of a sustained incident), it is the
+ * very sample the last shed was planned from (`skip_same_sample`), or it
+ * re-delivers the latched reading unchanged (`hold`, re-asserting that latch).
+ */
+export type SameMeasurementSheddingDecision =
+  | { kind: 'proceed'; escalatedSameSample: boolean }
+  | { kind: 'skip_same_sample' }
+  | { kind: 'hold'; latch: ShedPlanLatch };
+
 export function resolveSameMeasurementSheddingDecision(
   state: PlanEngineState,
   measurementTs: number | null,
@@ -38,58 +49,48 @@ export function resolveSameMeasurementSheddingDecision(
   neededKw: number,
   nowTs: number,
   allowEscalation: boolean,
-): { skip: boolean; escalatedSameSample: boolean; heldOnUnchangedReading: boolean } {
+): SameMeasurementSheddingDecision {
   const alreadyShedThisSample = measurementTs !== null
     && measurementTs === state.lastShedPlanMeasurementTs;
   if (!alreadyShedThisSample) {
-    if (isUnchangedReadingHeld(state, measurementPowerW, neededKw, nowTs)) {
-      return { skip: true, escalatedSameSample: false, heldOnUnchangedReading: true };
-    }
-    return { skip: false, escalatedSameSample: false, heldOnUnchangedReading: false };
+    const held = resolveUnchangedReadingHold(state.shedPlanLatch, measurementPowerW, neededKw, nowTs);
+    return held === null ? { kind: 'proceed', escalatedSameSample: false } : { kind: 'hold', latch: held };
   }
-  if (!allowEscalation) {
-    return { skip: true, escalatedSameSample: false, heldOnUnchangedReading: false };
-  }
-  const escalatedSameSample = state.overshoot.shouldEscalate(nowTs);
-  return {
-    skip: !escalatedSameSample,
-    escalatedSameSample,
-    heldOnUnchangedReading: false,
-  };
+  if (!allowEscalation) return { kind: 'skip_same_sample' };
+  return state.overshoot.shouldEscalate(nowTs)
+    ? { kind: 'proceed', escalatedSameSample: true }
+    : { kind: 'skip_same_sample' };
 }
 
 /**
- * A NEW sample that carries the exact watts the last shed was decided on, within
- * the hold window. Equality is exact on purpose: a repeated aggregate is
- * byte-identical, while a live meter moves by at least a watt between reads, so
- * any real movement — in either direction — is treated as fresh evidence and
- * shedding proceeds at today's speed. The window is measured from
- * `lastShedPlanAtMs`, the shed's own stamp, NOT the incident's mitigation clock:
+ * The latch a NEW sample re-delivers unchanged, within the hold window — or
+ * null when the sample is fresh evidence. Equality is exact on purpose: a
+ * repeated aggregate is byte-identical, while a live meter moves by at least a
+ * watt between reads, so any real movement — in either direction — is treated
+ * as fresh evidence and shedding proceeds at today's speed. The window is
+ * measured from the latch's own stamp, NOT the incident's mitigation clock:
  * `PlanBuilder` runs shedding before `OvershootTracker.updateOvershootState`,
- * whose entry resets that clock, which would strip the anchor
- * off the first shed of every incident — the exact cycle this hold exists for.
+ * whose entry resets that clock, which would strip the anchor off the first
+ * shed of every incident — the exact cycle this hold exists for.
  */
-function isUnchangedReadingHeld(
-  state: PlanEngineState,
+function resolveUnchangedReadingHold(
+  latch: ShedPlanLatch | null,
   measurementPowerW: number | null,
   neededKw: number,
   nowTs: number,
-): boolean {
-  if (measurementPowerW === null) return false;
-  if (state.lastShedPlanPowerW === null) return false;
-  if (measurementPowerW !== state.lastShedPlanPowerW) return false;
+): ShedPlanLatch | null {
+  if (measurementPowerW === null || latch === null) return null;
+  if (measurementPowerW !== latch.powerW) return null;
   // The same watts against a TIGHTER limit is a different question, not a
   // re-delivered answer: the deficit grew for a reason the meter cannot show,
   // so the hold has nothing to say about it.
-  if (hasDeficitGrown(state.lastShedPlanNeededKw, neededKw)) return false;
-  const lastShedAtMs = state.lastShedPlanAtMs;
-  if (lastShedAtMs === null) return false;
-  const sinceShedMs = nowTs - lastShedAtMs;
+  if (hasDeficitGrown(latch.neededKw, neededKw)) return null;
+  const sinceShedMs = nowTs - latch.atMs;
   // A backwards clock correction must not read as "still inside the window" and
   // hold shedding until the reading happens to move. Negative elapsed = the
   // stamp is no longer comparable, so fall through and shed.
-  if (sinceShedMs < 0) return false;
-  return sinceShedMs < UNCHANGED_READING_SHED_HOLD_MS;
+  if (sinceShedMs < 0) return null;
+  return sinceShedMs < UNCHANGED_READING_SHED_HOLD_MS ? latch : null;
 }
 
 /**
@@ -97,8 +98,7 @@ function isUnchangedReadingHeld(
  * unchanged limit and an unchanged total can still differ in the last bits; 1 W
  * is far below anything a shed decision turns on.
  */
-function hasDeficitGrown(latchedKw: number | null, neededKw: number): boolean {
-  if (latchedKw === null) return false;
+function hasDeficitGrown(latchedKw: number, neededKw: number): boolean {
   return neededKw > latchedKw + DEFICIT_GROWTH_EPSILON_KW;
 }
 

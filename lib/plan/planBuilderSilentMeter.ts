@@ -31,7 +31,7 @@ import { attachDeferredReleaseIntents } from './planBuilderDecoration';
 import type { PlanMaterializationStages } from './planBuilderMaterialization';
 import { buildUnmeasuredPlanMeta } from './planBuilderMeta';
 import type { PlanContext } from './planContext';
-import type { PlanEngineState } from './planState';
+import { NO_SHEDDING_OUTCOME, type PlanEngineState } from './planState';
 import type { DevicePlan } from './planTypes';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveNormalizedShedFloors } from './normalizedShedFloor';
@@ -195,7 +195,8 @@ export class SilentMeterPlanBuilder {
       ...selection,
       sheddingActive: this.state.sheddingActive,
       guardInShortfall: false,
-      updates: {},
+      outcome: NO_SHEDDING_OUTCOME,
+      recoveredAtMs: null,
       overshootStats: null,
     };
   }

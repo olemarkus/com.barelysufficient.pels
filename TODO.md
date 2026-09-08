@@ -256,7 +256,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       recognising a re-delivered or lagging aggregate is a meter question and belongs in
       `lib/power`, which owns the reading; comparing the realised drop against the relief actually
       credited for the devices shed last cycle is shed bookkeeping and stays in the planner, which
-      is the only layer holding `lastShedPlanShedIds` and the credited figures. Do not push the
+      is the only layer holding `shedPlanLatch.shedIds` and the credited figures. Do not push the
       second half into `lib/power` — it cannot see them. Field case: 2026-08-01, hard cap 3.0 kW, total 4.351 kW; #4 shed at
       11:03:44 credited ≥1.81 kW but realised ~1.08 kW; the 11:03:54 repeat then took both #2 and
       the user's #1. Persona: the owner who ranked their priority list and expects #1 to survive;
@@ -265,7 +265,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 - [ ] **The unchanged-reading shed hold freezes shed membership, not shed depth, so a stepped device
       still deepens one notch per held cycle.** `holdSheddingAtLastDecision` re-asserts the decided
-      devices into `shedSet`, but `PlanEngineState` carries only their ids (`lastShedPlanShedIds`),
+      devices into `shedSet`, but `PlanEngineState` carries only their ids (`shedPlanLatch.shedIds`),
       so each held cycle re-prices the ladder from wherever the device now sits and re-chooses a
       rung against the same unchanged deficit. An EV charger on `set_step` shed behaviour at 16 A
       therefore walks 10 A → 6 A → lowest active step across a 30 s hold, on readings the module
@@ -1421,6 +1421,23 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       ever rides `keep` needs a different classification argument from one that rides `shed`. [P3]
 
 ## Architecture and tooling debt
+
+- [ ] **P2 — the shedding pass's `shed` outcome carries two nullables no production build can
+      produce.** `SheddingOutcome` (`lib/plan/planState.ts`) declares `measurementTs: number | null`
+      and `latch: ShedPlanLatch | null`, and `applySheddingOutcome` sniffs both before writing. The
+      pass reaches `buildSheddingPlan` only from a measured build, after `resolvePowerCycleReading`
+      has required a finite sample on the same tracker, so `powerTracker.lastTimestamp` and
+      `lastPowerW` are always present there; the pass still re-derives their absence
+      (`lib/plan/shedding/buildSheddingPlan.ts`, `resolveMeasurementPowerW` and the `?? null` on the
+      stamp) and `resolveUnchangedReadingHold` sniffs the watts again. Change: make both fields
+      required on the `shed` variant, read them through `requireLastSampleAtMs` and a watts-returning
+      sibling of `requireLastTotalPowerKw` (`lib/power/lastTotalPower.ts`), drop the two `!== null`
+      writes in `applySheddingOutcome`, and give the ~80 tracker fixtures in
+      `test/integration/planShedding.test.ts` (and the three other `buildSheddingPlan` specs) the
+      watts a sampled tracker carries — checking each multi-cycle case that repeats a stamp, since a
+      fixture that gains watts can newly take the unchanged-reading hold. Done when the `shed`
+      variant has no `| null` and `resolveMeasurementPowerW` is gone. Source: layering review of the
+      shed-outcome state layer, 2026-09-08.
 
 - [ ] **P2 — "held off by the owner" is defined in the wiring layer.** `resolveExternalOffHoldActive`
       and `isExternalOffHeldForDevice` (`setup/appInit/toPlanDevice.ts`) classify: no binary handle

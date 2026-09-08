@@ -1,5 +1,6 @@
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { resolveSameMeasurementSheddingDecision } from '../../lib/plan/shedding/overshoot';
+import type { ShedPlanLatch } from '../../lib/plan/planState';
 
 const NOW = 1_000_000;
 const SAMPLE_TS = NOW - 1_000;
@@ -11,9 +12,8 @@ const NEEDED_KW = 1.813;
 // escalation interval to be the only thing gating a second pass.
 const shedState = (overrides: {
   lastShedPlanMeasurementTs?: number | null;
-  lastShedPlanPowerW?: number | null;
-  lastShedPlanAtMs?: number | null;
-  lastShedPlanNeededKw?: number | null;
+  /** Partial fields override the latched shed; `null` is a state with no latch. */
+  latch?: Partial<ShedPlanLatch> | null;
   overshootMitigatedAtMs?: number | null;
   overshootStartedMs?: number | null;
 } = {}) => {
@@ -21,15 +21,9 @@ const shedState = (overrides: {
   state.lastShedPlanMeasurementTs = overrides.lastShedPlanMeasurementTs === undefined
     ? SAMPLE_TS
     : overrides.lastShedPlanMeasurementTs;
-  state.lastShedPlanPowerW = overrides.lastShedPlanPowerW === undefined
-    ? READING_W
-    : overrides.lastShedPlanPowerW;
-  state.lastShedPlanAtMs = overrides.lastShedPlanAtMs === undefined
-    ? NOW - 10_000
-    : overrides.lastShedPlanAtMs;
-  state.lastShedPlanNeededKw = overrides.lastShedPlanNeededKw === undefined
-    ? NEEDED_KW
-    : overrides.lastShedPlanNeededKw;
+  state.shedPlanLatch = overrides.latch === null
+    ? null
+    : { powerW: READING_W, shedIds: new Set<string>(), atMs: NOW - 10_000, neededKw: NEEDED_KW, ...overrides.latch };
   const startedMs = overrides.overshootStartedMs === undefined ? NOW - 120_000 : overrides.overshootStartedMs;
   const mitigatedAtMs = overrides.overshootMitigatedAtMs === undefined
     ? NOW - 10_000
@@ -52,11 +46,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
       true,
     );
 
-    expect(decision).toEqual({
-      skip: false,
-      escalatedSameSample: false,
-      heldOnUnchangedReading: false,
-    });
+    expect(decision).toEqual({ kind: 'proceed', escalatedSameSample: false });
   });
 
   it('holds a new sample that repeats the reading the last shed was decided on', () => {
@@ -70,15 +60,14 @@ describe('resolveSameMeasurementSheddingDecision', () => {
     );
 
     expect(decision).toEqual({
-      skip: true,
-      escalatedSameSample: false,
-      heldOnUnchangedReading: true,
+      kind: 'hold',
+      latch: { powerW: READING_W, shedIds: new Set<string>(), atMs: NOW - 10_000, neededKw: NEEDED_KW },
     });
   });
 
   it('releases the unchanged-reading hold once the window elapses', () => {
     const decision = resolveSameMeasurementSheddingDecision(
-      shedState({ lastShedPlanAtMs: NOW - 30_000 }),
+      shedState({ latch: { atMs: NOW - 30_000 } }),
       NOW,
       READING_W,
       NEEDED_KW,
@@ -86,8 +75,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
       true,
     );
 
-    expect(decision.skip).toBe(false);
-    expect(decision.heldOnUnchangedReading).toBe(false);
+    expect(decision.kind).toBe('proceed');
   });
 
   it('releases when the same watts now sit under a tighter limit', () => {
@@ -102,8 +90,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
       true,
     );
 
-    expect(decision.skip).toBe(false);
-    expect(decision.heldOnUnchangedReading).toBe(false);
+    expect(decision.kind).toBe('proceed');
   });
 
   it('still holds when the deficit shrinks or only drifts', () => {
@@ -116,8 +103,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
       true,
     );
 
-    expect(decision.skip).toBe(true);
-    expect(decision.heldOnUnchangedReading).toBe(true);
+    expect(decision.kind).toBe('hold');
   });
 
   it('treats a one-watt move as a real observation and does not hold', () => {
@@ -130,13 +116,12 @@ describe('resolveSameMeasurementSheddingDecision', () => {
       true,
     );
 
-    expect(decision.skip).toBe(false);
-    expect(decision.heldOnUnchangedReading).toBe(false);
+    expect(decision.kind).toBe('proceed');
   });
 
   it('does not hold when the shed stamp is in the future after a clock correction', () => {
     const decision = resolveSameMeasurementSheddingDecision(
-      shedState({ lastShedPlanAtMs: NOW + 60_000 }),
+      shedState({ latch: { atMs: NOW + 60_000 } }),
       NOW,
       READING_W,
       NEEDED_KW,
@@ -144,7 +129,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
       true,
     );
 
-    expect(decision.skip).toBe(false);
+    expect(decision.kind).toBe('proceed');
   });
 
   it('does not hold when the tracker carries no usable reading', () => {
@@ -157,28 +142,16 @@ describe('resolveSameMeasurementSheddingDecision', () => {
       true,
     );
 
-    expect(decision.skip).toBe(false);
-  });
-
-  it('does not hold before any shed has latched a reading', () => {
-    const decision = resolveSameMeasurementSheddingDecision(
-      shedState({ lastShedPlanPowerW: null }),
-      NOW,
-      READING_W,
-      NEEDED_KW,
-      NOW,
-      true,
-    );
-
-    expect(decision.skip).toBe(false);
+    expect(decision.kind).toBe('proceed');
   });
 
   it('does not hold the first shed of a fresh overshoot once the earlier latch is cleared', () => {
     // `planBuilderOvershoot` drops the whole latch when an overshoot ENDS
     // (`clearShedPlanLatch`), so a value latched in one incident cannot delay
-    // the next incident's first pass.
+    // the next incident's first pass — and before any shed has latched at all
+    // there is nothing to hold against either.
     const decision = resolveSameMeasurementSheddingDecision(
-      shedState({ lastShedPlanAtMs: null }),
+      shedState({ latch: null }),
       NOW,
       READING_W,
       NEEDED_KW,
@@ -186,7 +159,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
       true,
     );
 
-    expect(decision.skip).toBe(false);
+    expect(decision.kind).toBe('proceed');
   });
 
   describe('same-sample behaviour is unchanged', () => {
@@ -200,11 +173,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
       true,
     );
 
-      expect(decision).toEqual({
-        skip: true,
-        escalatedSameSample: false,
-        heldOnUnchangedReading: false,
-      });
+      expect(decision).toEqual({ kind: 'skip_same_sample' });
     });
 
     it('escalates on the same sample once the escalation interval has passed', () => {
@@ -217,11 +186,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
       true,
     );
 
-      expect(decision).toEqual({
-        skip: false,
-        escalatedSameSample: true,
-        heldOnUnchangedReading: false,
-      });
+      expect(decision).toEqual({ kind: 'proceed', escalatedSameSample: true });
     });
 
     it('never escalates the same sample when escalation is not allowed', () => {
@@ -234,11 +199,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
       false,
     );
 
-      expect(decision).toEqual({
-        skip: true,
-        escalatedSameSample: false,
-        heldOnUnchangedReading: false,
-      });
+      expect(decision).toEqual({ kind: 'skip_same_sample' });
     });
   });
 });
