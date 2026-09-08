@@ -198,8 +198,9 @@ export function createPlanEngineComposition(
     getPowerTracker: scope.getPowerTracker,
     getDailyBudgetSnapshot: scope.getDailyBudgetSnapshot,
     // Smart-task decoration seam, owned by the scope (`buildMainHomeScope`
-    // constructs the DeferredObjectiveDecorationController; sub-home scopes
-    // omit the member, so the builder falls back to identity decoration).
+    // constructs the DeferredObjectiveDecorationController; a sub-home bundle
+    // binds `decorateWithoutDeferredObjectives`, the identity bundle in the
+    // seam's own shape).
     decorateDeferredObjectives: scope.decorateDeferredObjectives,
     // Scope-owned: priorities are ranked per mode, and only the scope knows
     // this home's ACTIVE mode (a sub-home may pin its own; see homeScope.ts).

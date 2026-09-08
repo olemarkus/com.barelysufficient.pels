@@ -1,5 +1,6 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
@@ -97,6 +98,7 @@ const buildBuilder = (params: {
     log: vi.fn(),
     logDebug: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
+    decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   }, createPlanEngineState());
 };
 

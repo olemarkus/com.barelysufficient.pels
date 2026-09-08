@@ -1,5 +1,6 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import {
@@ -153,6 +154,7 @@ describe('PlanBuilder budget exemption handling', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, createPlanEngineState());
 
     let plan = await builder.buildDevicePlanSnapshot(devices);
@@ -226,6 +228,7 @@ describe('PlanBuilder budget exemption handling', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([]);
@@ -274,6 +277,7 @@ describe('PlanBuilder budget exemption handling', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([]);

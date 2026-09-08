@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState, type PlanEngineState } from '../../lib/plan/planState';
 import {
   type BinaryControlDiscriminantProbe,
@@ -101,6 +102,7 @@ const makeHarness = (params: {
   const guard = createTestCapacityGuard({ homeId: 'main' });
   let lastPowerW = params.totalKw * 1000;
   const state = createPlanEngineState();
+  const decorate = params.decorate;
   const builder = new PlanBuilder({
       getInferredSurplusKw: () => 0,
       getCapacityDryRun: () => false,
@@ -115,10 +117,13 @@ const makeHarness = (params: {
     getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now() - (params.powerSampleAgeMs ?? 0), lastPowerW }),
     getDailyBudgetSnapshot: () => null,
     getShedBehavior: () => ({ action: 'turn_off' }),
-    ...(params.softLimitOverride !== null
-      ? { getDynamicSoftLimitOverride: () => params.softLimitOverride ?? 10 }
-      : {}),
-    ...(params.decorate ? { decorateDeferredObjectives: ({ devices }) => params.decorate!(devices) } : {}),
+    // An explicit `null` is this harness asking for no override; `undefined` takes the 10 kW default.
+    getDynamicSoftLimitOverride: () => (
+      params.softLimitOverride === null ? null : params.softLimitOverride ?? 10
+    ),
+    decorateDeferredObjectives: decorate
+      ? (input) => decorate(input.devices)
+      : decorateWithoutDeferredObjectives,
     log: vi.fn(),
     logDebug: vi.fn(),
     pendingBinaryCommandStore: emptyPendingStore,

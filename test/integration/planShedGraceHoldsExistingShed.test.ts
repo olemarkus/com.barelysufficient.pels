@@ -1,6 +1,7 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import type { DevicePlan, PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
@@ -101,6 +102,7 @@ describe('shed grace', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
   }
 

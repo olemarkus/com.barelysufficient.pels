@@ -1,6 +1,7 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
   PLAN_REASON_CODES,
@@ -136,6 +137,8 @@ const buildBuilder = (params: {
   log: vi.fn(),
   logDebug: vi.fn(),
   pendingBinaryCommandStore: emptyPendingStore,
+  getDynamicSoftLimitOverride: () => null,
+  decorateDeferredObjectives: decorateWithoutDeferredObjectives,
 }, createPlanEngineState());
 
 // Shed in cycle 1 (device on, draw over the binding pace), then advance past the

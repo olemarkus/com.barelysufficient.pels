@@ -36,9 +36,9 @@ export type PlanBuilderDeps = {
   // pass. 0 is the whole of "nothing inferred" — see `homeScope`.
   getInferredSurplusKw: () => number;
   getPowerTracker: () => PowerTrackerState;
-  getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
+  getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   getShedBehavior: (deviceId: string) => ShedBehavior;
-  getDynamicSoftLimitOverride?: () => number | null;
+  getDynamicSoftLimitOverride: () => number | null;
   // Observer-owned pending-binary-command store. Plan-side reads consult
   // `peek(id)` (raw read) through this facade rather than touching
   // `state.pendingBinaryCommands[id]` directly, so the store stays the
@@ -50,10 +50,12 @@ export type PlanBuilderDeps = {
   // Smart-task (deferred-objective) decoration seam. The smart-task controller
   // (lib/objectives) evaluates objectives, commits active plans synchronously,
   // and applies admission / target-overrides / release-intents, returning a
-  // `DeferredDecorationBundle`. When absent (no smart tasks wired, e.g. tests),
-  // the planner uses the identity bundle and stays entirely smart-task-agnostic.
-  // This is the dependency inversion that keeps lib/plan free of lib/objectives.
-  decorateDeferredObjectives?: (input: DeferredDecorationInput) => DeferredDecorationBundle;
+  // `DeferredDecorationBundle`. This is the dependency inversion that keeps
+  // lib/plan free of lib/objectives. A home with no smart tasks binds
+  // `decorateWithoutDeferredObjectives` (the identity bundle in the seam's own
+  // shape) rather than leaving the member off: "no smart tasks here" is a thing
+  // a home says, not a hole the builder papers over with a default of its own.
+  decorateDeferredObjectives: (input: DeferredDecorationInput) => DeferredDecorationBundle;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };

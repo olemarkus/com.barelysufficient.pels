@@ -1,5 +1,6 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { HEADROOM_RESERVE_MAX_MS } from '../../lib/plan/planConstants';
 import {
@@ -84,6 +85,7 @@ const makeBuilder = (params: {
     log: vi.fn(),
     logDebug: vi.fn(),
     pendingBinaryCommandStore: emptyPendingStore,
+    decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   }, createPlanEngineState());
   return {
     builder,

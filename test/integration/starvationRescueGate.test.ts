@@ -220,6 +220,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     log: vi.fn(),
     logDebug: vi.fn(),
     pendingBinaryCommandStore: emptyPendingStore,
+    getDynamicSoftLimitOverride: () => null,
   }, createPlanEngineState());
 };
 

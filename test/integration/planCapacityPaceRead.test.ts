@@ -13,6 +13,7 @@
  * window and hand the labels a different hour than the decision saw.
  */
 import { PlanBuilder } from '../../lib/plan/planBuilder';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState, type PlanEngineState } from '../../lib/plan/planState';
 import { getHourBucketKey } from '../../lib/utils/dateUtils';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -38,8 +39,10 @@ const buildPaceBuilder = (params: {
   getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
   getPowerTracker: params.getPowerTracker,
   getDailyBudgetSnapshot: () => null,
-  getDynamicSoftLimitOverride: params.getDynamicSoftLimitOverride,
+  // No override is a value the seam carries, not a member left off.
+  getDynamicSoftLimitOverride: params.getDynamicSoftLimitOverride ?? (() => null),
   getShedBehavior: () => ({ action: 'turn_off' }),
+  decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   log: vi.fn(),
   logDebug: vi.fn(),
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),

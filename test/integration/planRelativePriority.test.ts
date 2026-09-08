@@ -57,6 +57,7 @@ describe('PlanBuilder relative priority constraint', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
+      getDynamicSoftLimitOverride: () => null,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([

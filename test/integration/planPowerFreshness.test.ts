@@ -1,6 +1,7 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { resolvePowerCycleReading } from '../../lib/power/powerCycleReading';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { resolveMeasuredPower, type MeasuredPower, type PlanLimits } from '../../lib/plan/planContext';
 import {
   POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
@@ -211,6 +212,8 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      getDynamicSoftLimitOverride: () => null,
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, params.state ?? createPlanEngineState());
   }
 
@@ -360,6 +363,8 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      getDynamicSoftLimitOverride: () => null,
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
 
     const plan = await builder.buildDevicePlanSnapshot([
@@ -397,6 +402,8 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      getDynamicSoftLimitOverride: () => null,
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
 
     const plan = await builder.buildDevicePlanSnapshot([
@@ -448,6 +455,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      getDynamicSoftLimitOverride: () => null,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([
@@ -491,6 +499,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      getDynamicSoftLimitOverride: () => null,
     }, state);
 
     const plan = await builder.buildDevicePlanSnapshot([

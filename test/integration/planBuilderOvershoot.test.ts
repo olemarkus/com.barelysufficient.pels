@@ -3,6 +3,7 @@ import { partialDouble } from '../helpers/partialDouble';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
@@ -73,6 +74,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
 
     await builder.buildDevicePlanSnapshot([
@@ -143,6 +145,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       // First sample sits just over the soft limit but within the deadband, so the
@@ -218,6 +221,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       // First build: only the anchor device is known. This records a prior plan
@@ -308,6 +312,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       // A fresh finite total enters overshoot. Because the previous total is null, the
@@ -359,6 +364,8 @@ describe('PlanBuilder overshoot diagnostics', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      getDynamicSoftLimitOverride: () => null,
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
 
     await builder.buildDevicePlanSnapshot([
@@ -420,6 +427,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
 
     const devices = [
@@ -482,6 +490,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
 
     await builder.buildDevicePlanSnapshot([
@@ -538,6 +547,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       const devices = [
@@ -604,6 +614,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       const devices = [
@@ -670,6 +681,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       // First build records a baseline with only the steady anchor; the newcomer below
@@ -742,6 +754,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       // First build records a baseline with only the steady anchor.
@@ -817,6 +830,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       lastPowerW = (0.6) * 1000;
@@ -895,6 +909,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       const buildDevices = (managedKw: number, backgroundKw: number): PlanInputDevice[] => [
@@ -976,6 +991,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       lastPowerW = (0.4) * 1000;
@@ -1080,6 +1096,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       lastPowerW = (0.4) * 1000;
@@ -1189,6 +1206,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       lastPowerW = (0.4) * 1000;
@@ -1297,6 +1315,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       lastPowerW = (0.4) * 1000;
@@ -1379,6 +1398,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         log: vi.fn(),
         logDebug: vi.fn(),
         pendingBinaryCommandStore: emptyPendingStore,
+        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       // The rank rides on the device: the producer ranks the whole planned set

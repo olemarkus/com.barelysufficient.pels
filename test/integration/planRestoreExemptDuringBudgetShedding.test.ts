@@ -22,6 +22,7 @@ import { buildPlanDevice, steppedPlanDevice, withFixtureResidualKw } from '../ut
 import { createPlanEngineState } from '../../lib/plan/planState';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -362,6 +363,8 @@ const buildBuilder = (params: {
   log: vi.fn(),
   logDebug: vi.fn(),
   pendingBinaryCommandStore: emptyPendingStore,
+  getDynamicSoftLimitOverride: () => null,
+  decorateDeferredObjectives: decorateWithoutDeferredObjectives,
 }, params.state);
 
 describe('exempt restore lane through the full plan build with the latch held', () => {

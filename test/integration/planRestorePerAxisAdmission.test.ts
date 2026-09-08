@@ -1,6 +1,7 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
@@ -157,6 +158,8 @@ const buildBuilder = (params: {
   log: vi.fn(),
   logDebug: vi.fn(),
   pendingBinaryCommandStore: emptyPendingStore,
+  getDynamicSoftLimitOverride: () => null,
+  decorateDeferredObjectives: decorateWithoutDeferredObjectives,
 }, createPlanEngineState());
 
 describe('per-axis restore admission through the full plan build', () => {

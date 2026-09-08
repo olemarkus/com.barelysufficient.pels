@@ -224,6 +224,7 @@ const buildBuilder = (
     log: vi.fn(),
     logDebug: vi.fn(),
     pendingBinaryCommandStore: emptyPendingStore,
+    getDynamicSoftLimitOverride: () => null,
   }, createPlanEngineState());
 };
 
@@ -364,6 +365,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      getDynamicSoftLimitOverride: () => null,
     }, createPlanEngineState());
 
     vi.setSystemTime(new Date(DAY_START_UTC));
@@ -619,6 +621,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       log: vi.fn(),
       logDebug: vi.fn(),
       pendingBinaryCommandStore: emptyPendingStore,
+      getDynamicSoftLimitOverride: () => null,
     }, createPlanEngineState());
 
     const snapshot = await builder.buildDevicePlanSnapshot([

@@ -286,6 +286,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     log: vi.fn(),
     logDebug: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
+    getDynamicSoftLimitOverride: () => null,
   }, createPlanEngineState());
 
   const snapshot = await builder.buildDevicePlanSnapshot([

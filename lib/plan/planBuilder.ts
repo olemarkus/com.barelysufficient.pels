@@ -57,7 +57,7 @@ import {
 import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
 import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta } from './planBuilderMeta';
-import { attachDeferredReleaseIntents, buildIdentityDecorationBundle } from './planBuilderDecoration';
+import { attachDeferredReleaseIntents } from './planBuilderDecoration';
 
 export type { PlanBuilderDeps } from './planBuilderDeps';
 const SOFT_LIMIT_EPSILON = 1e-3;
@@ -104,7 +104,7 @@ export class PlanBuilder {
   }
 
   private get dailyBudgetSnapshot(): DailyBudgetUiPayload | null {
-    return this.deps.getDailyBudgetSnapshot?.() ?? null;
+    return this.deps.getDailyBudgetSnapshot();
   }
 
   /**
@@ -156,7 +156,7 @@ export class PlanBuilder {
       capacitySettings: this.capacitySettings,
       powerTracker: this.powerTracker,
     });
-    const override = this.deps.getDynamicSoftLimitOverride?.();
+    const override = this.deps.getDynamicSoftLimitOverride();
     if (typeof override === 'number' && Number.isFinite(override)) {
       return { paceKw: override, remainingKWh: result.remainingKWh, hourlyBudgetExhausted: false };
     }
@@ -196,11 +196,11 @@ export class PlanBuilder {
     // controller evaluates objectives and applies admission / target-overrides /
     // release-intents, returning a smart-task-agnostic bundle. It only READS the
     // committed plan here; the active-plan RECORD (revisions) is written on the
-    // lifecycle clock, not on this plan cycle. When no controller is wired the
-    // planner uses the identity bundle and ignores smart tasks entirely.
+    // lifecycle clock, not on this plan cycle. A home with no smart tasks binds
+    // `decorateWithoutDeferredObjectives`, so the identity case arrives through
+    // the seam like any other answer.
     const decoration = trackPlanStage('plan_deferred_objective_observe_ms', () => (
-      this.deps.decorateDeferredObjectives?.({ devices, dailyBudgetSnapshot, nowTs })
-      ?? buildIdentityDecorationBundle(devices)
+      this.deps.decorateDeferredObjectives({ devices, dailyBudgetSnapshot, nowTs })
     ));
     const { admittedDevices } = decoration;
 

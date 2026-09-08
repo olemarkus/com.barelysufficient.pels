@@ -58,12 +58,10 @@ export type PlanEngineWiring = {
   /** Scope-owned; a capacity-only home binds the constant `null`, not an absent member. */
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   /**
-   * Scope-owned smart-task seam. Required here even though the BUILDER tolerates
-   * absence (a directly constructed builder in a unit test wires no controller):
-   * every home this factory wires has an answer, and a capacity-only one binds
-   * `decorateWithoutDeferredObjectives`.
+   * Scope-owned smart-task seam. Every home has an answer here, and a
+   * capacity-only one binds `decorateWithoutDeferredObjectives`.
    */
-  decorateDeferredObjectives: NonNullable<PlanBuilderDeps['decorateDeferredObjectives']>;
+  decorateDeferredObjectives: PlanBuilderDeps['decorateDeferredObjectives'];
   getShedBehavior: (deviceId: string) => ShedBehavior;
   /** Scope-owned; a capacity-only home binds the constant `null`, not an absent member. */
   getDynamicSoftLimitOverride: () => number | null;

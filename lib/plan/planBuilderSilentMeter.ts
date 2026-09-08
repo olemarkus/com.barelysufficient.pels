@@ -123,7 +123,7 @@ export class SilentMeterPlanBuilder {
         context,
         reading,
         planDevices: finalized.planDevices,
-        dailyBudgetSnapshot: this.deps.getDailyBudgetSnapshot?.() ?? null,
+        dailyBudgetSnapshot: this.deps.getDailyBudgetSnapshot(),
         powerTracker,
         capacityGuard: this.deps.capacityGuard,
         capacityLimitKw: capacitySettings.limitKw,
