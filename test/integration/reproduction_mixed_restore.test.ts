@@ -78,8 +78,8 @@ describe('Mixed Type Restoration Throttling', () => {
 
         // Reset timers
         app.planEngine.state.lastInstabilityMs = 0;
-        app.planEngine.state.lastRestoreMs = 0;
-        app.planEngine.state.lastDeviceShedMs = {};
+        app.planEngine.state.actuation.lastRestoreMs = 0;
+        app.planEngine.state.actuation.lastDeviceShedMs = {};
     });
 
     afterEach(async () => {
@@ -166,7 +166,7 @@ describe('Mixed Type Restoration Throttling', () => {
         //
         // This assertion required the cooldown label until 0c4cb8661, which
         // flipped it to capacity on a deliberate position: the restore cooldown
-        // is plan-global (`state.lastRestoreMs`, bumped by ANY device), so it
+        // is plan-global (`state.actuation.lastRestoreMs`, bumped by ANY device), so it
         // read as the other device's label. That position is reversed here, for
         // two reasons — root `AGENTS.md` § "Device card reason lines" admits the
         // countdowns as holds power cannot lift, and the binary peer in this very

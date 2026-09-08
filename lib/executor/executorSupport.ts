@@ -42,7 +42,7 @@ export const shouldSkipUnavailable = (params: {
  * `notes/state-management/actuation-clocks-and-settle.md`.
  */
 export const shouldSkipShedding = (params: {
-  state: Pick<PlanEngineState, 'pendingSheds'>;
+  state: PlanEngineState;
   deviceId: string;
   deviceName: string;
   snapshotState: Pick<ObservedDeviceState, 'available' | 'binaryControl'> | undefined;
@@ -64,7 +64,7 @@ export const shouldSkipShedding = (params: {
     });
     return true;
   }
-  if (state.pendingSheds.has(deviceId)) {
+  if (state.actuation.isShedInFlight(deviceId)) {
     logger.debug({
       event: 'plan_shed_skipped',
       reasonCode: 'already_in_progress',

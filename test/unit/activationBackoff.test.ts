@@ -1033,7 +1033,7 @@ describe('activation backoff', () => {
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
     state.appStartedAtMs = start - (Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS) + 1);
-    state.lastDeviceRestoreMs['dev-1'] = start;
+    state.actuation.lastDeviceRestoreMs['dev-1'] = start;
 
     syncHeadroomCardState(state, [buildTrackedDevice()], start, undefined);
 
@@ -1159,7 +1159,7 @@ describe('activation backoff', () => {
 // Mirrors attributeOvershootToRecentRestores: walks recent restores newest-first and
 // attributes overshoot to the first one that still has an open attempt.
 const attributeOvershoot = (state: ReturnType<typeof createPlanEngineState>, nowTs: number): void => {
-  const recentRestores = Object.entries(state.lastDeviceRestoreMs)
+  const recentRestores = Object.entries(state.actuation.lastDeviceRestoreMs)
     .filter(([, restoreMs]) => nowTs - restoreMs <= OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS)
     .sort((left, right) => right[1] - left[1]);
   for (const [deviceId] of recentRestores) {
@@ -1173,7 +1173,7 @@ describe('overshoot-after-restore attribution', () => {
     const state = createPlanEngineState();
     const nowTs = Date.UTC(2024, 0, 1, 12, 0, 0);
 
-    state.lastDeviceRestoreMs['dev-a'] = nowTs - 14_000;
+    state.actuation.lastDeviceRestoreMs['dev-a'] = nowTs - 14_000;
     recordActivationAttemptStart(state, 'dev-a', 'pels_restore', nowTs - 14_000);
 
     attributeOvershoot(state, nowTs);
@@ -1188,7 +1188,7 @@ describe('overshoot-after-restore attribution', () => {
     const nowTs = Date.UTC(2024, 0, 1, 12, 0, 0);
 
     // Restore happened 3 minutes ago — outside the 2-minute window
-    state.lastDeviceRestoreMs['dev-b'] = nowTs - 3 * 60 * 1000;
+    state.actuation.lastDeviceRestoreMs['dev-b'] = nowTs - 3 * 60 * 1000;
     recordActivationAttemptStart(state, 'dev-b', 'pels_restore', nowTs - 3 * 60 * 1000);
 
     attributeOvershoot(state, nowTs);
@@ -1202,7 +1202,7 @@ describe('overshoot-after-restore attribution', () => {
     const nowTs = Date.UTC(2024, 0, 1, 12, 0, 0);
 
     // Restore timestamp is recent but no activation attempt was started (e.g., manually turned on)
-    state.lastDeviceRestoreMs['dev-c'] = nowTs - 10_000;
+    state.actuation.lastDeviceRestoreMs['dev-c'] = nowTs - 10_000;
 
     attributeOvershoot(state, nowTs);
 
@@ -1214,11 +1214,11 @@ describe('overshoot-after-restore attribution', () => {
     const nowTs = Date.UTC(2024, 0, 1, 12, 0, 0);
 
     // dev-earlier was restored 90s ago — within window, but not the marginal restore
-    state.lastDeviceRestoreMs['dev-earlier'] = nowTs - 90_000;
+    state.actuation.lastDeviceRestoreMs['dev-earlier'] = nowTs - 90_000;
     recordActivationAttemptStart(state, 'dev-earlier', 'pels_restore', nowTs - 90_000);
 
     // dev-latest was restored 14s ago — the one that tipped headroom negative
-    state.lastDeviceRestoreMs['dev-latest'] = nowTs - 14_000;
+    state.actuation.lastDeviceRestoreMs['dev-latest'] = nowTs - 14_000;
     recordActivationAttemptStart(state, 'dev-latest', 'pels_restore', nowTs - 14_000);
 
     attributeOvershoot(state, nowTs);
@@ -1233,10 +1233,10 @@ describe('overshoot-after-restore attribution', () => {
     const state = createPlanEngineState();
     const nowTs = Date.UTC(2024, 0, 1, 12, 0, 0);
 
-    state.lastDeviceRestoreMs['dev-earlier'] = nowTs - 90_000;
+    state.actuation.lastDeviceRestoreMs['dev-earlier'] = nowTs - 90_000;
     recordActivationAttemptStart(state, 'dev-earlier', 'pels_restore', nowTs - 90_000);
 
-    state.lastDeviceRestoreMs['dev-latest'] = nowTs - 14_000;
+    state.actuation.lastDeviceRestoreMs['dev-latest'] = nowTs - 14_000;
     recordActivationAttemptStart(state, 'dev-latest', 'pels_restore', nowTs - 14_000);
     closeActivationAttemptForShed(state, 'dev-latest', nowTs - 5_000);
 

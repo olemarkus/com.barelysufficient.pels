@@ -25,7 +25,7 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
   // Mirror PlanExecutor.recordShedActuation: a capacity shed stamps both markers.
   const recordShedActuation = vi.fn((deviceId: string, _name: string, now: number) => {
     state.lastInstabilityMs = now;
-    state.lastDeviceShedMs[deviceId] = now;
+    state.actuation.lastDeviceShedMs[deviceId] = now;
   });
   // Mirror PlanExecutor.recordReleaseShedActuation: diagnostic-only, no marker stamp.
   const recordReleaseShedActuation = vi.fn();
@@ -94,7 +94,7 @@ describe('binary lifecycle-disable marker routing (direct paths)', () => {
     expect(h.recordShedActuation).not.toHaveBeenCalled();
     expect(h.state.pendingBinaryCommands['dev-1']).toMatchObject({ desired: false, lifecycleRelease: true });
     expect(h.state.lastInstabilityMs).toBeNull();
-    expect(h.state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    expect(h.state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
   });
 
   it('non-EV direct: a capacity shed stays pending without accounting at SDK acceptance', async () => {
@@ -107,7 +107,7 @@ describe('binary lifecycle-disable marker routing (direct paths)', () => {
     expect(applied).toBe(true);
     expect(h.recordShedActuation).not.toHaveBeenCalled();
     expect(h.recordReleaseShedActuation).not.toHaveBeenCalled();
-    expect(h.state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    expect(h.state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
     expect(h.state.pendingBinaryCommands['dev-1']).toMatchObject({ desired: false });
   });
 
@@ -121,7 +121,7 @@ describe('binary lifecycle-disable marker routing (direct paths)', () => {
     expect(h.recordShedActuation).not.toHaveBeenCalled();
     expect(h.state.pendingBinaryCommands['ev-1']).toMatchObject({ desired: false, lifecycleRelease: true });
     expect(h.state.lastInstabilityMs).toBeNull();
-    expect(h.state.lastDeviceShedMs['ev-1']).toBeUndefined();
+    expect(h.state.actuation.lastDeviceShedMs['ev-1']).toBeUndefined();
   });
 
   it('lifecycle release bypasses capacity dry-run while an ordinary capacity shed still honors it', async () => {

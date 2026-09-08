@@ -115,7 +115,7 @@ describe('restore cooldown backoff', () => {
     const step = (advanceMs: number): number => {
       now += advanceMs;
       vi.setSystemTime(now);
-      state.lastRestoreMs = now - 2 * 60 * 1000;
+      state.actuation.lastRestoreMs = now - 2 * 60 * 1000;
       state.lastInstabilityMs = now - 1000;
 
       const result = applyRestorePlan({
@@ -150,7 +150,7 @@ describe('restore cooldown backoff', () => {
     };
 
     const triggerInstability = (): void => {
-      state.lastRestoreMs = now - 2 * 60 * 1000;
+      state.actuation.lastRestoreMs = now - 2 * 60 * 1000;
       state.lastInstabilityMs = now - 1000;
     };
 
@@ -557,7 +557,7 @@ describe('restore cooldown backoff', () => {
 
   it('does not let a stale recently shed device block an unrelated stepped restore', () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs['dev-off'] = Date.now() - 30_000;
+    state.actuation.lastDeviceShedMs['dev-off'] = Date.now() - 30_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -657,8 +657,8 @@ describe('restore cooldown backoff', () => {
 
   it('blocks ordinary restore while another stepped-load restore is still awaiting confirmation', () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs['dev-step'] = Date.now() - 30_000;
-    state.lastDeviceRestoreMs['dev-step'] = Date.now() - 5_000;
+    state.actuation.lastDeviceShedMs['dev-step'] = Date.now() - 30_000;
+    state.actuation.lastDeviceRestoreMs['dev-step'] = Date.now() - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -829,7 +829,7 @@ describe('restore cooldown backoff', () => {
 
   it('does not block ordinary restore when another shed-temperature device is temporarily unavailable rather than recovering', () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs['dev-temp'] = Date.now() - 30_000;
+    state.actuation.lastDeviceShedMs['dev-temp'] = Date.now() - 30_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1036,7 +1036,7 @@ describe('restore cooldown backoff', () => {
     vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.lastRecoveryMs = now - 5_000;
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1072,7 +1072,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1119,7 +1119,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1159,7 +1159,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1177,7 +1177,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
-        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
@@ -1198,7 +1198,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
     const devices = ['first', 'second', 'third', 'fourth'].map((id, index) => buildPlanDevice({
       id,
       name: id,
@@ -1214,7 +1214,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
-        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
@@ -1233,7 +1233,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [buildPlanDevice({
@@ -1247,7 +1247,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
-        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
@@ -1261,7 +1261,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [steppedPlanDevice({
@@ -1277,7 +1277,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
-        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
@@ -1292,7 +1292,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1319,7 +1319,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
-        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
@@ -1347,7 +1347,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
     state.swapByDevice = {
       'dev-source': { swappedOutFor: 'dev-step' },
       'dev-step': { pendingTarget: true, timestamp: now },
@@ -1380,7 +1380,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
-        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
@@ -1402,7 +1402,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
     state.swapByDevice = {
       'dev-source': { swappedOutFor: 'dev-step' },
       'dev-step': { pendingTarget: true, timestamp: now },
@@ -1455,7 +1455,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
     state.swapByDevice = {
       'dev-source': { swappedOutFor: 'dev-step' },
       'dev-step': { pendingTarget: true, timestamp: now },
@@ -1488,7 +1488,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
-        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
@@ -1507,7 +1507,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1543,7 +1543,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
-        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
         normalizedShedFloorCByDevice: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
         logDebug: vi.fn(),
@@ -1564,7 +1564,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1621,7 +1621,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
     state.lastPlannedShedIds = new Set(['first-temp', 'second-temp']);
     const planDevices = ['first-temp', 'second-temp'].map((id, index) => buildPlanDevice({
       id,
@@ -1640,7 +1640,7 @@ describe('restore cooldown backoff', () => {
     }));
     const { context, power } = buildContext({ headroomRaw: 5, headroom: 5 });
     const deps = {
-      powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+      powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
       normalizedShedFloorCByDevice: new Map(),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       logDebug: vi.fn(),
@@ -1683,7 +1683,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
     state.lastPlannedShedIds.add('temp');
     const planDevices = [
       buildPlanDevice({
@@ -1735,7 +1735,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
     state.lastPlannedShedIds.add('dev-temp');
     const planDevices = [buildPlanDevice({
       id: 'dev-temp',
@@ -1752,7 +1752,7 @@ describe('restore cooldown backoff', () => {
       reason: { code: PLAN_REASON_CODES.capacity },
     })];
     const deps = {
-      powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+      powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
       normalizedShedFloorCByDevice: new Map(),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       logDebug: vi.fn(),
@@ -1785,7 +1785,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 1, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 60_000;
+    state.actuation.lastRestoreMs = now - 60_000;
     state.restoreCooldownMs = 120_000;
 
     const result = applyRestorePlan({
@@ -1820,8 +1820,8 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
-    state.lastDeviceRestoreMs['dev-step'] = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
+    state.actuation.lastDeviceRestoreMs['dev-step'] = now - 5_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1906,7 +1906,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 1, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 60_000;
+    state.actuation.lastRestoreMs = now - 60_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1963,7 +1963,7 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 1, 1);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastDeviceRestoreMs['dev-step'] = now - 61_000;
+    state.actuation.lastDeviceRestoreMs['dev-step'] = now - 61_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -2035,7 +2035,7 @@ describe('restore cooldown backoff', () => {
     vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.startupRestoreBlockedUntilMs = now + 60_000;
-    state.lastDeviceControlledMs['dev-off'] = now - (10 * 60_000);
+    state.actuation.lastDeviceControlledMs['dev-off'] = now - (10 * 60_000);
 
     const result = applyRestorePlan({
       planDevices: [
@@ -2107,7 +2107,7 @@ describe('restore cooldown backoff', () => {
     vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.startupRestoreBlockedUntilMs = now + 60_000;
-    state.lastDeviceControlledMs['dev-step'] = now - (10 * 60_000);
+    state.actuation.lastDeviceControlledMs['dev-step'] = now - (10 * 60_000);
 
     const result = applyRestorePlan({
       planDevices: [
@@ -2181,7 +2181,7 @@ describe('restore cooldown backoff', () => {
     vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.startupRestoreBlockedUntilMs = now + 60_000;
-    state.lastDeviceControlledMs['dev-step-off'] = now - (10 * 60_000);
+    state.actuation.lastDeviceControlledMs['dev-step-off'] = now - (10 * 60_000);
 
     const result = applyRestorePlan({
       planDevices: [
@@ -2349,7 +2349,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
 
     // T=0: restore actuation — attempt started
     recordActivationAttemptStart(state, deviceId, 'pels_restore', T0);
-    state.lastDeviceRestoreMs[deviceId] = T0;
+    state.actuation.lastDeviceRestoreMs[deviceId] = T0;
 
     // T=14s: overshoot attribution — shed before stick window
     const T14s = T0 + 14_000;
@@ -2422,7 +2422,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
 
     // Simulate: restore attempted, overshoot attributed (pre-stick)
     recordActivationAttemptStart(state, deviceId, 'pels_restore', T0);
-    state.lastDeviceRestoreMs[deviceId] = T0;
+    state.actuation.lastDeviceRestoreMs[deviceId] = T0;
     recordActivationSetback(state, deviceId, T0 + 14_000); // L0 → L1
 
     expect(getActivationPenaltyLevel(state, deviceId)).toBe(1);
@@ -2820,7 +2820,7 @@ describe('restore admission — headroom and penalty gates', () => {
     vi.setSystemTime(now);
     const state = createPlanEngineState();
     // Shed 20s ago — within the recent-shed backoff window
-    state.lastDeviceShedMs['dev'] = now - 20_000;
+    state.actuation.lastDeviceShedMs['dev'] = now - 20_000;
 
     // Without recent-shed penalty: expected=2kW + buffer=0.3kW = 2.3kW needed
     // With recent-shed multiplier (1.5×): 2.3 * 1.5 = 3.45kW
@@ -3041,7 +3041,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const now = Date.UTC(2024, 0, 1, 10, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 5_000;
+    state.actuation.lastRestoreMs = now - 5_000;
     state.activationPenaltyByDevice['dev-off'] = { level: 1, lastSetbackMs: now - 1_000 };
 
     const result = applyRestorePlan({
@@ -3479,7 +3479,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     // leaving desiredStepId above selectedStepId with no visible blocking reason in the plan.
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     const state = createPlanEngineState();
-    state.lastDeviceRestoreMs['dev-step'] = now - 10_000; // stepped up 10s ago, settling 50s left
+    state.actuation.lastDeviceRestoreMs['dev-step'] = now - 10_000; // stepped up 10s ago, settling 50s left
     const deviceMap = new Map([
       ['dev-step', buildBinarySteppedPlanDevice({
         id: 'dev-step',
@@ -3951,7 +3951,7 @@ describe('stepped-load shed invariant', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.lastRestoreMs = now - 10_000;
+    state.actuation.lastRestoreMs = now - 10_000;
     const steppedDev = buildBinarySteppedPlanDevice({
       id: 'dev-step',
       name: 'Tank',
@@ -4035,7 +4035,7 @@ describe('stepped-load shed invariant', () => {
 
   it('restores a higher-priority off stepped load before lower-priority binary devices', () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs['binary-low-priority'] = 123;
+    state.actuation.lastDeviceShedMs['binary-low-priority'] = 123;
     const result = applyRestorePlan({
       planDevices: [
         buildPlanDevice({

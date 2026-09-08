@@ -108,7 +108,7 @@ function resolveHoldReason(
   const timedReason = resolveOffDeviceReason(
     timing,
     renderPlanReasonDecision(CAPACITY_FALLBACK_REASON),
-    state.lastDeviceControlledMs[dev.id],
+    state.actuation.lastDeviceControlledMs[dev.id],
   );
   // `null` = startup window on a device PELS has never controlled. The binary
   // lane answers that with the no-actuation neutral hold; here the fallback
@@ -386,7 +386,7 @@ function getPendingRestoreDelay(
     if (dev.currentTarget !== floorC) continue;
     if (dev.plannedTarget <= floorC) continue;
 
-    const lastRestoreMs = state.lastDeviceRestoreMs[dev.id];
+    const lastRestoreMs = state.actuation.lastDeviceRestoreMs[dev.id];
     if (!lastRestoreMs) continue;
 
     const elapsedMs = nowMs - lastRestoreMs;

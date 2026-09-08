@@ -120,12 +120,12 @@ export function applyRestorePlan(params: {
       deviceMap,
       timing: effectiveTiming,
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
-      getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
+      getLastControlledMs: (deviceId) => state.actuation.lastDeviceControlledMs[deviceId],
     });
     markSteppedDevicesStayAtCurrentLevel({
       deviceMap,
       timing: effectiveTiming,
-      getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
+      getLastControlledMs: (deviceId) => state.actuation.lastDeviceControlledMs[deviceId],
     });
   } else if (effectiveTiming.inRestoreCooldown) {
     applyRestorePlanInCooldown(cycle);
@@ -213,13 +213,13 @@ function applyRestorePlanInCooldown(cycle: RestoreCycle): void {
   const { deviceMap, swapState, state, timing } = cycle;
   const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
     timing,
-    lastRestoreTs: state.lastRestoreMs,
+    lastRestoreTs: state.actuation.lastRestoreMs,
   });
   const holdReason = meterSettlingRemainingSec === null
     ? resolveCapacityRestoreBlockReason({ timing })
     : buildMeterSettlingReason(
       meterSettlingRemainingSec,
-      resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs: state.lastRestoreMs }),
+      resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs: state.actuation.lastRestoreMs }),
     );
   if (holdReason === null) return;
   markRestoreCandidatesHeld(deviceMap, swapState, holdReason);

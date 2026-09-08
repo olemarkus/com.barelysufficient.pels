@@ -1104,8 +1104,8 @@ describe('MyApp initialization', () => {
 
     const nowMs = app['getPlanRebuildNowMs']();
     rememberLastRebuild(app.planRebuildThrottle, nowMs, 5000);
-    app.planEngine.state.lastRestoreMs = nowMs - 1_000;
-    app.planEngine.state.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
+    app.planEngine.state.actuation.lastRestoreMs = nowMs - 1_000;
+    app.planEngine.state.actuation.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
 
     await app['powerSamplePipeline']['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
 
@@ -1229,7 +1229,7 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    expect(app.planEngine.state.lastDeviceControlledMs).toEqual({ 'dev-1': controlledAt });
+    expect(app.planEngine.state.actuation.lastDeviceControlledMs).toEqual({ 'dev-1': controlledAt });
   });
 
   it('coalesces multiple power sample triggers into a single rerun', async () => {

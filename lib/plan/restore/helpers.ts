@@ -267,7 +267,7 @@ export function planRestoreForSteppedDevice(params: {
     dev,
     nextStepId: nextStep.id,
     nextStepPowerKw: nextStep.planningPowerW / 1000,
-    lastRestoreMs: state.lastDeviceRestoreMs[dev.id],
+    lastRestoreMs: state.actuation.lastDeviceRestoreMs[dev.id],
     measurementTs: typeof timing.measurementTs === 'number' ? timing.measurementTs : null,
     phase,
     state,

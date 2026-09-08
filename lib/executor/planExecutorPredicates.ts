@@ -57,7 +57,7 @@ export function resolveRestoreLogSource(
 ): 'shed_state' | 'current_plan' {
   const shedDecidedMs = state.shedDecidedMs[deviceId];
   if (!shedDecidedMs) return 'current_plan';
-  const lastRestoreMs = state.lastDeviceRestoreMs[deviceId];
+  const lastRestoreMs = state.actuation.lastDeviceRestoreMs[deviceId];
   return !lastRestoreMs || lastRestoreMs < shedDecidedMs ? 'shed_state' : 'current_plan';
 }
 

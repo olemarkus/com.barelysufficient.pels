@@ -32,7 +32,7 @@ export function getRestoreNeed(
   const { power: devPower, needed: baseNeeded } = computeBaseRestoreNeed(dev);
   const recentShedNeeded = applyRecentShedInflation({
     baseNeededKw: baseNeeded,
-    lastDeviceShedMs: state.lastDeviceShedMs[dev.id],
+    lastDeviceShedMs: state.actuation.lastDeviceShedMs[dev.id],
     nowMs: nowTs,
   });
   const penaltyInfo = syncActivationPenaltyState(state, dev.id, nowTs, dev);

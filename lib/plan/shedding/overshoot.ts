@@ -128,7 +128,7 @@ export function resolveRecentRestoreState(
   needed: number,
   debugStructured?: StructuredDebugEmitter,
 ): boolean {
-  const lastRestore = state.lastDeviceRestoreMs[device.id];
+  const lastRestore = state.actuation.lastDeviceRestoreMs[device.id];
   if (!lastRestore) return false;
   const sinceRestoreMs = nowTs - lastRestore;
   const recentlyRestored = sinceRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;

@@ -282,7 +282,7 @@ const buildHomeCapacityBundleReads = (params: {
     capacityScalars: { ...getScalars() },
     dryRunEffective: readEffectiveDryRun(),
     lastMeterPowerKw: resolveLastTotalPowerKw(tracker.getState()),
-    lastDeviceControlledMs: { ...planEngine.state.lastDeviceControlledMs },
+    lastDeviceControlledMs: { ...planEngine.state.actuation.lastDeviceControlledMs },
   });
   return {
     getDiagnostics: readDiagnostics,

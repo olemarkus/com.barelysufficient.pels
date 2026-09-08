@@ -57,8 +57,8 @@ export function applySteppedDeviceGates(params: {
     requestedStepId,
   } = params;
   const lastRestoreTs = deviceIsActive
-    ? (state.lastDeviceRestoreMs[dev.id] ?? null)
-    : state.lastRestoreMs;
+    ? (state.actuation.lastDeviceRestoreMs[dev.id] ?? null)
+    : state.actuation.lastRestoreMs;
   const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
     timing, lastRestoreTs, restoredOneThisCycle,
   });

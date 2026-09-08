@@ -65,7 +65,7 @@ export function planRestoreForDevice(
   });
   const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
     timing,
-    lastRestoreTs: state.lastRestoreMs,
+    lastRestoreTs: state.actuation.lastRestoreMs,
     restoredOneThisCycle: shouldBlockForInCycleRestore,
   });
   if (meterSettlingRemainingSec !== null) {
@@ -198,7 +198,7 @@ function rejectBinaryRestoreForMeterSettling(
 ): RestoreLoopState {
   const { state, deviceMap, timing, phase } = cycle;
   const { availableHeadroom } = loop;
-  const lastRestoreTs = state.lastRestoreMs;
+  const lastRestoreTs = state.actuation.lastRestoreMs;
   const restoredOneThisCycle = gateRestoredOne;
   const restoreDebugKey = `binary:${dev.id}`;
   const remainingSec = resolveMeterSettlingRemainingSec({ timing, lastRestoreTs, restoredOneThisCycle }) ?? 0;

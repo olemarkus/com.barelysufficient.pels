@@ -60,8 +60,7 @@ const buildPipeline = (
     getCapacitySettings: () => ({ limitKw: 12, marginKw: 0.5 }),
     getPlanEngine: () => ({
       state: {
-        pendingSheds: new Set<string>(),
-        pendingRestores: new Set<string>(),
+        actuation: { hasInFlight: () => false },
         pendingTargetCommands: {},
         pendingBinaryCommands: {},
         overshoot: new OvershootIncident(),

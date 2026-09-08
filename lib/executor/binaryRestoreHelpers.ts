@@ -83,7 +83,7 @@ export const applyBinaryRestoreWithSnapshot = async (
   // `skipRestoreForSurplusPosture` in the capacity-control-off helper for the
   // same reason. See `skipRestoreForExternalOffHold`.
   if (skipRestoreForExternalOffHold(ctx, deviceId, name)) return false;
-  if (ctx.state.pendingRestores.has(deviceId)) {
+  if (ctx.state.actuation.isRestoreInFlight(deviceId)) {
     logger.debug({
       event: 'restore_command_skipped',
       reasonCode: 'already_in_progress',
@@ -94,7 +94,7 @@ export const applyBinaryRestoreWithSnapshot = async (
     logger.debug({ event: 'executor_binary_log_debug', msg: `Capacity: skip restoring ${name}, already in progress` });
     return false;
   }
-  ctx.state.pendingRestores.add(deviceId);
+  ctx.state.actuation.beginRestore(deviceId);
   try {
     try {
       const outcome = await runBinaryControl({
@@ -117,7 +117,7 @@ export const applyBinaryRestoreWithSnapshot = async (
       return false;
     }
   } finally {
-    ctx.state.pendingRestores.delete(deviceId);
+    ctx.state.actuation.endRestore(deviceId);
   }
 };
 

@@ -7,7 +7,6 @@ import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { PlanService } from '../lib/plan/planService';
 import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
-import { isNumberMap } from '../lib/utils/appTypeGuards';
 import { DEVICE_LAST_CONTROLLED_MS } from '../lib/utils/settingsKeys';
 import {
   createRootLogger,
@@ -445,7 +444,7 @@ export class AppServiceWiring {
     const { ctx } = this.deps;
     if (!ctx.planEngine) return;
     const stored = ctx.homey.settings.get(DEVICE_LAST_CONTROLLED_MS) as unknown;
-    ctx.planEngine.state.lastDeviceControlledMs = isNumberMap(stored) ? { ...stored } : {};
+    ctx.planEngine.state.actuation.loadLastControlled(stored);
   }
 
   initDeviceDiagnosticsService(): void {

@@ -54,13 +54,13 @@ export function applyBudgetExemptRestorePass(
     deviceMap,
     timing,
     setDevice: (id, updates) => setDevice(deviceMap, id, updates),
-    getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
+    getLastControlledMs: (deviceId) => state.actuation.lastDeviceControlledMs[deviceId],
     deviceFilter: (dev) => !isBudgetExempt(dev),
   });
   markSteppedDevicesStayAtCurrentLevel({
     deviceMap,
     timing,
-    getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
+    getLastControlledMs: (deviceId) => state.actuation.lastDeviceControlledMs[deviceId],
     deviceFilter: (dev) => !isBudgetExempt(dev),
   });
 

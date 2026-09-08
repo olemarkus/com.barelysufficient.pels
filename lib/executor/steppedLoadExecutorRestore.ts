@@ -121,7 +121,7 @@ export const maybeSkipSteppedLoadRestoreBinary = (
     });
   }
   const snapshotOn = isBinaryOnOrUnknown(snapshot);
-  if (ctx.state.pendingRestores.has(action.id)) {
+  if (ctx.state.actuation.isRestoreInFlight(action.id)) {
     return logSteppedLoadRestoreSkip(ctx, {
       action,
       reasonCode: 'already_in_progress',
@@ -178,7 +178,7 @@ export const executeSteppedLoadRestoreBinary = async (
     snapshot,
     name,
   } = params;
-  ctx.state.pendingRestores.add(action.id);
+  ctx.state.actuation.beginRestore(action.id);
   try {
     const applied = await dispatchSteppedLoadRestoreBinaryCommand(ctx, {
       action,
@@ -186,7 +186,7 @@ export const executeSteppedLoadRestoreBinary = async (
       name,
     });
     if (!applied) return false;
-    ctx.state.markSteppedBinaryRestoreAttempt(action.id, Date.now());
+    ctx.state.actuation.markSteppedBinaryRestoreAttempt(action.id, Date.now());
     return true;
   } catch (error) {
     logger.error({
@@ -196,7 +196,7 @@ export const executeSteppedLoadRestoreBinary = async (
     });
     return false;
   } finally {
-    ctx.state.pendingRestores.delete(action.id);
+    ctx.state.actuation.endRestore(action.id);
   }
 };
 

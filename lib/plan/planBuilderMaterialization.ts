@@ -223,7 +223,7 @@ export class PlanMaterializationStages {
           // figure would claim the device is admissible on the very cycle the
           // gate turned it down. Same `timing.nowTs` the restore gate rejected
           // on, so card and gate agree by construction.
-          lastDeviceShedMsById: this.state.lastDeviceShedMs,
+          lastDeviceShedMsById: this.state.actuation.lastDeviceShedMs,
           nowMs: restoreResult.timing.nowTs,
         })
         : null,

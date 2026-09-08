@@ -254,7 +254,7 @@ describe('EV charger integration', { retry: 2 }, () => {
       }),
     );
     expect(app.planEngine.state.pendingBinaryCommands[charger.idValue]).toBeUndefined();
-    expect(app.planEngine.state.lastDeviceShedMs[charger.idValue]).toEqual(expect.any(Number));
+    expect(app.planEngine.state.actuation.lastDeviceShedMs[charger.idValue]).toEqual(expect.any(Number));
 
     currentTimeMs += 61_000;
     app.computeDynamicSoftLimit = () => 10.0;

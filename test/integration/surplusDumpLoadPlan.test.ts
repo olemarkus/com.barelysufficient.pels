@@ -502,7 +502,7 @@ describe('executor carve-outs: capacity-control-off can never force-turn-ON a du
     // cold-plan shape — the stamp on PlanEngineState is the source of truth.
     const h = buildExecutorCtx(offPumpSnapshot);
     h.state.shedDecidedMs[PUMP] = 1000;
-    h.state.lastDeviceShedMs[PUMP] = 1000;
+    h.state.actuation.lastDeviceShedMs[PUMP] = 1000;
     h.state.surplusOnlyShedByDevice[PUMP] = true;
 
     const applied = await applyUncontrolledBinaryRestore(h.ctx, uncontrolledRestoreIntent, undefined);
@@ -510,7 +510,7 @@ describe('executor carve-outs: capacity-control-off can never force-turn-ON a du
     expect(h.setCapabilityCalls).toEqual([]);
     // Shed bookkeeping is still cleared: PELS releases its claim on the device.
     expect(h.state.shedDecidedMs[PUMP]).toBeUndefined();
-    expect(h.state.lastDeviceShedMs[PUMP]).toBeUndefined();
+    expect(h.state.actuation.lastDeviceShedMs[PUMP]).toBeUndefined();
     expect(h.state.surplusOnlyShedByDevice[PUMP]).toBeUndefined();
   });
 

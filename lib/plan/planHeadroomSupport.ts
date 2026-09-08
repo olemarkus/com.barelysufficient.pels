@@ -117,12 +117,12 @@ export const resolveTrackedTransitionReconciliation = (
   }
   if (
     isWithinReconciliationWindow(
-      state.lastDeviceShedMs[deviceId],
+      state.actuation.lastDeviceShedMs[deviceId],
       nowTs,
       TRACKED_TRANSITION_RECONCILIATION_WINDOW_MS,
     )
     || isWithinReconciliationWindow(
-      state.lastDeviceRestoreMs[deviceId],
+      state.actuation.lastDeviceRestoreMs[deviceId],
       nowTs,
       TRACKED_TRANSITION_RECONCILIATION_WINDOW_MS,
     )

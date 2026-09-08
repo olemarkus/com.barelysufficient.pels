@@ -379,7 +379,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       });
       // `shouldSkipShedding` only asks whether the device is reachable and
       // whether one of THIS executor's writes is still in flight
-      // (`state.pendingSheds`), and pendingSheds is cleared in the first call's
+      // (the record's in-flight shed set), and pendingSheds is cleared in the first call's
       // finally block. So the gate that actually fires is one level down: the
       // first call recorded a pending binary command, and `shouldSkipBinaryControl`
       // skips a matching desired state as `already_pending`.

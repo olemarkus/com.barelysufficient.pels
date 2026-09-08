@@ -35,19 +35,19 @@ describe('isPlanActivelyConverging', () => {
 
   it('returns true for pending work even when the last plan proved nothing is actionable', () => {
     const state = createPlanEngineState();
-    state.pendingSheds.add('shed-dev');
+    state.actuation.beginShed('shed-dev');
 
     expect(isPlanActivelyConverging(state, { unactionable: true })).toBe(true);
   });
 
   it('returns true for pending shed and restore work', () => {
     const state = createPlanEngineState();
-    state.pendingSheds.add('shed-dev');
+    state.actuation.beginShed('shed-dev');
 
     expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(true);
 
-    state.pendingSheds.clear();
-    state.pendingRestores.add('restore-dev');
+    state.actuation.endShed('shed-dev');
+    state.actuation.beginRestore('restore-dev');
 
     expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(true);
   });
@@ -82,8 +82,8 @@ describe('isPlanActivelyConverging', () => {
 
   it('returns false for recent device shed and restore timestamps alone', () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs = { shedDev: Date.now() - 1_000 };
-    state.lastDeviceRestoreMs = { restoreDev: Date.now() - 1_000 };
+    state.actuation.lastDeviceShedMs = { shedDev: Date.now() - 1_000 };
+    state.actuation.lastDeviceRestoreMs = { restoreDev: Date.now() - 1_000 };
 
     expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(false);
   });
@@ -92,7 +92,7 @@ describe('isPlanActivelyConverging', () => {
     const state = createPlanEngineState();
     state.lastInstabilityMs = Date.now() - 1_000;
     state.lastRecoveryMs = Date.now() - 1_000;
-    state.lastRestoreMs = Date.now() - 1_000;
+    state.actuation.lastRestoreMs = Date.now() - 1_000;
 
     expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(false);
   });

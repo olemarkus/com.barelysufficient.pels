@@ -13,7 +13,7 @@ import { isSteppedLoadDevice } from './planSteppedLoad';
  */
 export function isNonSteppedDeviceRecovering(
   candidate: PlanInputDevice,
-  state: Pick<PlanEngineState, 'shedDecidedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>,
+  state: PlanEngineState,
 ): boolean {
   // "Observed off" is meaningful only for binary devices; a non-binary or
   // binary-but-on candidate is not recovering. (Stepped devices are excluded
@@ -27,6 +27,6 @@ export function isNonSteppedDeviceRecovering(
   }
   const shedDecidedMs = state.shedDecidedMs[candidate.id];
   if (shedDecidedMs == null) return false;
-  const lastRestoreMs = state.lastDeviceRestoreMs[candidate.id];
+  const lastRestoreMs = state.actuation.lastDeviceRestoreMs[candidate.id];
   return lastRestoreMs == null || lastRestoreMs < shedDecidedMs;
 }

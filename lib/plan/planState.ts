@@ -2,6 +2,7 @@ import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
 import { OvershootIncident } from './overshootIncident';
+import { ActuationRecord } from './actuationRecord';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,
@@ -212,20 +213,8 @@ export type OvershootTrackedPlanDevice = Pick<
 export class PlanEngineState {
   appStartedAtMs: number;
 
-  lastDeviceControlledMs: Record<string, number> = {};
-
-  /**
-   * Actuation-time clock: the timestamp the executor last actually turned a
-   * device off for capacity. Written by the executor — `recordShedActuation`
-   * on a real turn-off, plus the degenerate no-onoff shed path in
-   * `binaryExecutor`. Drives the actuation-recency readers —
-   * the 5s shed throttle, the cooldown countdown card, the reconcile window,
-   * and the recent-shed restore backoff. Do NOT use it to answer "is this
-   * device in shed posture?": a device the plan decided to shed but that was
-   * already off (write skipped) has no entry here. That decision-time
-   * question is `shedDecidedMs`.
-   */
-  lastDeviceShedMs: Record<string, number> = {};
+  /** What the executor did to which device and when — see `ActuationRecord`. */
+  readonly actuation = new ActuationRecord();
 
   /**
    * Decision-time clock: the timestamp the planner decided a device should be
@@ -286,17 +275,6 @@ export class PlanEngineState {
    */
   headroomReserveArmedMs: Record<string, number> = {};
 
-  lastDeviceRestoreMs: Record<string, number> = {};
-
-  /**
-   * Executor-owned binary activation attempts for dual-control stepped loads.
-   *
-   * Separate from `lastDeviceRestoreMs`, which step adjustments also stamp.
-   * This cursor prevents an activation-time OFF/reset echo from immediately
-   * reissuing a toggle-style binary ON before the post-activation step lands.
-   */
-  lastSteppedBinaryRestoreAttemptMs: Record<string, number> = {};
-
   activationAttemptByDevice: Record<string, ActivationAttempt> = {};
 
   activationPenaltyByDevice: Record<string, ActivationPenalty> = {};
@@ -305,10 +283,6 @@ export class PlanEngineState {
 
   headroomCardByDevice: Record<string, HeadroomCardState> = {};
 
-  pendingSheds: Set<string> = new Set<string>();
-
-  pendingRestores: Set<string> = new Set<string>();
-
   pendingBinaryCommands: Record<string, PendingBinaryCommand> = {};
 
   pendingTargetCommands: Record<string, PendingTargetCommandState> = {};
@@ -316,8 +290,6 @@ export class PlanEngineState {
   lastInstabilityMs: number | null = null;
 
   lastRecoveryMs: number | null = null;
-
-  lastRestoreMs: number | null = null;
 
   lastPlannedShedIds: Set<string> = new Set<string>();
 
@@ -491,16 +463,6 @@ export class PlanEngineState {
     this.lastPlannedShedIds = params.shedIds;
   }
 
-  /** Stamp the actuation-time shed clock for a device (executor turn-off). */
-  markDeviceShed(deviceId: string, nowMs: number): void {
-    this.lastDeviceShedMs[deviceId] = nowMs;
-  }
-
-  /** Clear the actuation-time shed clock for a device. */
-  clearDeviceShed(deviceId: string): void {
-    delete this.lastDeviceShedMs[deviceId];
-  }
-
   /**
    * Clear the decision-time shed clock for a device, together with its
    * surplus-posture stamp (the stamp qualifies the decision, so they live and
@@ -522,18 +484,6 @@ export class PlanEngineState {
   /** Clear a stepped-load keep-invariant shed block for a device. */
   clearKeepInvariantShedBlock(deviceId: string): void {
     delete this.keepInvariantShedBlockedByDevice[deviceId];
-  }
-
-  /** Record a dual-control stepped load's binary activation attempt. */
-  markSteppedBinaryRestoreAttempt(deviceId: string, nowMs: number): void {
-    this.lastSteppedBinaryRestoreAttemptMs[deviceId] = nowMs;
-  }
-
-  /** Whether a dual-control stepped load was recently sent binary ON. */
-  hasRecentSteppedBinaryRestoreAttempt(deviceId: string, nowMs: number): boolean {
-    const attemptedAtMs = this.lastSteppedBinaryRestoreAttemptMs[deviceId];
-    return typeof attemptedAtMs === 'number'
-      && nowMs - attemptedAtMs < this.restoreCooldownMs;
   }
 
   /** Drop the pending target-command record for a device (confirmed/settled). */

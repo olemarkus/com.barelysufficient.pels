@@ -68,7 +68,7 @@ export const skipRestoreForSurplusPosture = (
     deviceName: name,
     logContext: 'capacity_control_off',
   });
-  ctx.state.clearDeviceShed(deviceId);
+  ctx.state.actuation.clearShed(deviceId);
   ctx.state.clearShedDecision(deviceId); // clears shedDecidedMs + the surplus stamp
   return true;
 };

@@ -651,7 +651,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     it('flips from gap to no_gap at the need the gate rejects on', () => {
       const dev = heldDevice();
       const state = createPlanEngineState();
-      state.lastDeviceShedMs[dev.id] = SHORTFALL_NOW_MS - 60_000;
+      state.actuation.lastDeviceShedMs[dev.id] = SHORTFALL_NOW_MS - 60_000;
       const gateNeededKw = getRestoreNeed(dev, state, SHORTFALL_NOW_MS, undefined).needed;
       const shortfallInputs = (capacityAvailableKw: number) => buildCeilingShortfallInputs({
         ledgerAxes: { capacityAvailableKw, budgetAvailableKw: null },
@@ -659,7 +659,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
         onDevices: [],
         swappedOutFor: new Map(),
         restoredThisCycle: new Set(),
-        lastDeviceShedMsById: state.lastDeviceShedMs,
+        lastDeviceShedMsById: state.actuation.lastDeviceShedMs,
         nowMs: SHORTFALL_NOW_MS,
       });
 
@@ -1097,7 +1097,7 @@ describe('applyShedTemperatureHold', () => {
       const state = createPlanEngineState();
       state.lastPlannedShedIds.add('dev-temp');
       if (params.lastControlledMs !== undefined) {
-        state.lastDeviceControlledMs['dev-temp'] = params.lastControlledMs;
+        state.actuation.lastDeviceControlledMs['dev-temp'] = params.lastControlledMs;
       }
       return applyShedTemperatureHold({
         // Scalar-only harness: flat integer floors, so the raw fallback IS the

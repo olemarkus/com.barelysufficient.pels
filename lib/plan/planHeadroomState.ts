@@ -253,8 +253,8 @@ export const resolveHeadroomCardCooldown = (
   deviceId: string,
   nowTs: number,
 ): HeadroomCooldownCandidate | null => {
-  const rawLastShedMs = state.lastDeviceShedMs[deviceId];
-  const rawLastRestoreMs = state.lastDeviceRestoreMs[deviceId];
+  const rawLastShedMs = state.actuation.lastDeviceShedMs[deviceId];
+  const rawLastRestoreMs = state.actuation.lastDeviceRestoreMs[deviceId];
   const lastShedMs = isFiniteNumber(rawLastShedMs) ? rawLastShedMs : null;
   const lastRestoreMs = isFiniteNumber(rawLastRestoreMs) ? rawLastRestoreMs : null;
   const shedExpiresAtMs = lastShedMs === null ? null : lastShedMs + SHED_COOLDOWN_MS;

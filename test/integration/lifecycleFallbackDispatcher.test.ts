@@ -1808,7 +1808,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('retains settled binary authority until explicit abandon releases an ordinary restore', async () => {
     const state = createPlanEngineState();
-    state.markDeviceShed('charger-1', Date.now());
+    state.actuation.markShed('charger-1', Date.now());
     const snapshot = {
       ...buildLifecycleSnapshot({
         id: 'charger-1',

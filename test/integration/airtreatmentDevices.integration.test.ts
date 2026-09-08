@@ -226,7 +226,7 @@ describe('Airtreatment device integration', () => {
     );
     expect(restoreCallsAfterCooldownWindow).toHaveLength(1);
 
-    app.planEngine.state.lastRestoreMs = Date.now() - 180000;
+    app.planEngine.state.actuation.lastRestoreMs = Date.now() - 180000;
     app.planEngine.state.lastInstabilityMs = Date.now() - 180000;
 
     await app.refreshTargetDevicesSnapshot();

@@ -478,8 +478,8 @@ describe('PlanExecutor declined actuator requests', () => {
       deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, writtenDeviceIds: [],
     });
     expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
-    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
-    expect(state.lastDeviceControlledMs['dev-1']).toBeUndefined();
+    expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
+    expect(state.actuation.lastDeviceControlledMs['dev-1']).toBeUndefined();
     expect(state.lastInstabilityMs).toBeNull();
     expect(persistLastControlledMs).not.toHaveBeenCalled();
     expect(logCapture.findEvent('binary_command_succeeded')).toBeUndefined();
@@ -520,9 +520,9 @@ describe('PlanExecutor declined actuator requests', () => {
       deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, writtenDeviceIds: [],
     });
     expect(state.pendingTargetCommands['dev-1']).toBeUndefined();
-    expect(state.lastDeviceRestoreMs['dev-1']).toBeUndefined();
-    expect(state.lastDeviceControlledMs['dev-1']).toBeUndefined();
-    expect(state.lastRestoreMs).toBeNull();
+    expect(state.actuation.lastDeviceRestoreMs['dev-1']).toBeUndefined();
+    expect(state.actuation.lastDeviceControlledMs['dev-1']).toBeUndefined();
+    expect(state.actuation.lastRestoreMs).toBeNull();
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
     expect(persistLastControlledMs).not.toHaveBeenCalled();
     expect(logCapture.findEvent('target_command_applied')).toBeUndefined();
@@ -788,7 +788,7 @@ describe('PlanExecutor restore logging', () => {
 
   it('does not emit EV restore evaluation logs for uncontrolled EVs already observed on', async () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
+    state.actuation.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
     const { executor, deviceManager } = buildExecutor(state, [{
       id: 'dev-1',
       name: 'EV Charger',
@@ -920,7 +920,7 @@ describe('PlanExecutor restore logging', () => {
       event: 'binary_command_applied',
       deviceId: 'dev-1',
     }));
-    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
     expect(state.pendingBinaryCommands['dev-1']).toMatchObject({
       desired: false,
     });
@@ -993,8 +993,8 @@ describe('PlanExecutor restore logging', () => {
       desired: true,
       reasonCode: 'shed_state',
     }));
-    expect(state.lastDeviceRestoreMs['dev-1']).toEqual(expect.any(Number));
-    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.actuation.lastDeviceRestoreMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.actuation.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
     expect(state.activationAttemptByDevice['dev-1']).toMatchObject({
       startedMs: expect.any(Number),
       source: 'pels_restore',
@@ -1041,7 +1041,7 @@ describe('PlanExecutor restore logging', () => {
       })],
     });
 
-    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
     const pending = state.pendingBinaryCommands['dev-1'];
     expect(pending).toMatchObject({ desired: false });
 
@@ -1055,14 +1055,14 @@ describe('PlanExecutor restore logging', () => {
       desired: false,
       reasonCode: 'shedding',
     }));
-    expect(state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
-    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.actuation.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.actuation.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
   });
 
   it('reports restoreSource=current_plan when matching the current plan after a later external off', async () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs['dev-1'] = Date.now() - 20_000;
-    state.lastDeviceRestoreMs['dev-1'] = Date.now() - 5_000;
+    state.actuation.lastDeviceShedMs['dev-1'] = Date.now() - 20_000;
+    state.actuation.lastDeviceRestoreMs['dev-1'] = Date.now() - 5_000;
     const { executor, deviceManager } = buildExecutor(state);
 
     await executor.applyPlanActions(buildPlan());
@@ -1083,10 +1083,10 @@ describe('PlanExecutor restore logging', () => {
   // inc_26449fb9. There is one actuation path now, and it always stamps.
   it('starts a restore cycle whenever it turns a device back on', async () => {
     const state = createPlanEngineState();
-    state.lastRestoreMs = Date.now() - 30_000;
-    state.lastDeviceRestoreMs['dev-1'] = state.lastRestoreMs;
-    const previousLastRestoreMs = state.lastRestoreMs;
-    const previousDeviceRestoreMs = state.lastDeviceRestoreMs['dev-1'];
+    state.actuation.lastRestoreMs = Date.now() - 30_000;
+    state.actuation.lastDeviceRestoreMs['dev-1'] = state.actuation.lastRestoreMs;
+    const previousLastRestoreMs = state.actuation.lastRestoreMs;
+    const previousDeviceRestoreMs = state.actuation.lastDeviceRestoreMs['dev-1'];
     const { executor, deviceManager, state: nextState } = buildExecutor(state);
 
     await executor.applyPlanActions(buildPlan());
@@ -1105,8 +1105,8 @@ describe('PlanExecutor restore logging', () => {
       source: 'device_update',
       onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
     });
-    expect(nextState.lastRestoreMs).toBeGreaterThan(previousLastRestoreMs);
-    expect(nextState.lastDeviceRestoreMs['dev-1']).toBeGreaterThan(previousDeviceRestoreMs);
+    expect(nextState.actuation.lastRestoreMs).toBeGreaterThan(previousLastRestoreMs);
+    expect(nextState.actuation.lastDeviceRestoreMs['dev-1']).toBeGreaterThan(previousDeviceRestoreMs);
     expect(nextState.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({
       startedMs: expect.any(Number),
     }));
@@ -1346,7 +1346,7 @@ describe('PlanExecutor pending target commands', () => {
 
   it('logs restore skips when the target snapshot is missing', async () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
+    state.actuation.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
     const { executor, deviceManager } = buildExecutor(state, []);
 
     await executor.applyPlanActions(buildPlan());
@@ -1421,7 +1421,7 @@ describe('PlanExecutor pending target commands', () => {
     // young is the executor overriding a decision it was handed — and it does so at
     // the moment capacity pressure is highest.
     const state = createPlanEngineState();
-    state.markDeviceShed('dev-1', Date.now() - 2000);
+    state.actuation.markShed('dev-1', Date.now() - 2000);
     const { executor, deviceManager } = buildExecutor(state, [
       {
         id: 'dev-1',
@@ -1803,7 +1803,7 @@ describe('PlanExecutor stepped loads', () => {
       commandPurpose: 'step_initialization',
       plannedDesiredStepId: 'max',
     }));
-    expect(state.lastRestoreMs).toBeNull();
+    expect(state.actuation.lastRestoreMs).toBeNull();
   });
 
   it('does not initialize when a real level report arrives after planning', async () => {
@@ -2313,7 +2313,7 @@ describe('PlanExecutor stepped loads', () => {
     // repeat attempts comes from the reason allow-set instead — see the
     // `cooldown_restore` case above.
     const { executor, state } = buildExecutor();
-    state.lastDeviceRestoreMs['dev-1'] = Date.now() - 1_000;
+    state.actuation.lastDeviceRestoreMs['dev-1'] = Date.now() - 1_000;
 
     expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan())).toBe(true);
   });
@@ -2415,7 +2415,7 @@ describe('PlanExecutor stepped loads', () => {
       previousStepId: 'low',
       issuedAtMs: expect.any(Number),
     });
-    expect(state.lastRestoreMs).toEqual(expect.any(Number));
+    expect(state.actuation.lastRestoreMs).toEqual(expect.any(Number));
   });
 
   it('does not re-trigger a stepped-load command while the same desired step is pending', async () => {
@@ -3119,8 +3119,8 @@ describe('PlanExecutor stepped loads', () => {
     }));
     expect(state.pendingBinaryCommands['dev-1']).toMatchObject({ desired: false });
     expect(logCapture.findEvent('binary_command_applied')).toBeUndefined();
-    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
-    expect(state.lastDeviceControlledMs['dev-1']).toBeUndefined();
+    expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
+    expect(state.actuation.lastDeviceControlledMs['dev-1']).toBeUndefined();
     expect((deps.homey.settings.set as ReturnType<typeof vi.fn>)).not.toHaveBeenCalledWith(
       DEVICE_LAST_CONTROLLED_MS,
       expect.objectContaining({ 'dev-1': expect.any(Number) }),
@@ -3205,8 +3205,8 @@ describe('PlanExecutor stepped loads', () => {
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
-    expect(state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
-    expect(state.lastDeviceRestoreMs['dev-1']).toBeUndefined();
+    expect(state.actuation.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.actuation.lastDeviceRestoreMs['dev-1']).toBeUndefined();
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_requested',
       effectiveTransition: 'step_down_while_on',
@@ -3240,8 +3240,8 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'max',
     }));
 
-    expect(state.lastDeviceRestoreMs['dev-1']).toEqual(expect.any(Number));
-    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.actuation.lastDeviceRestoreMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.actuation.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
     expect((deps.homey.settings.set as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
       DEVICE_LAST_CONTROLLED_MS,
       expect.objectContaining({ 'dev-1': expect.any(Number) }),
@@ -4678,7 +4678,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
       expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
       expect(state.lastInstabilityMs).toBeNull();
-      expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+      expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
     });
 
     it('skips off for a paused charger when the binary command axis is already off', async () => {
@@ -4692,7 +4692,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
       expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
       expect(state.lastInstabilityMs).toBeNull();
-      expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+      expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
     });
 
     it('stamps the shed cooldown for a real shed of a charging charger', async () => {
@@ -4718,7 +4718,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
       });
       expect(typeof state.lastInstabilityMs).toBe('number');
-      expect(typeof state.lastDeviceShedMs['dev-1']).toBe('number');
+      expect(typeof state.actuation.lastDeviceShedMs['dev-1']).toBe('number');
     });
 
     it('skips off from the resolved binary state even without observation metadata', async () => {
@@ -4734,7 +4734,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
       expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
       expect(state.lastInstabilityMs).toBeNull();
-      expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+      expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
     });
   });
 });

@@ -154,7 +154,7 @@ export const applyBinarySheddingToDevice = async (
       forceAgainstReleasedOpposing,
     });
   }
-  ctx.state.pendingSheds.add(deviceId);
+  ctx.state.actuation.beginShed(deviceId);
   try {
     return await turnOffDevice(ctx, {
       deviceId,
@@ -165,7 +165,7 @@ export const applyBinarySheddingToDevice = async (
       forceAgainstReleasedOpposing,
     });
   } finally {
-    ctx.state.pendingSheds.delete(deviceId);
+    ctx.state.actuation.endShed(deviceId);
   }
 };
 
@@ -251,7 +251,7 @@ const turnOffDevice = async (
     const hasTarget = Array.isArray(snapshotEntry?.targets) && snapshotEntry.targets.length > 0;
     if (shedActuationStampsCapacityMarkers(lifecycleRelease)) {
       const now = Date.now();
-      ctx.state.markDeviceShed(deviceId, now);
+      ctx.state.actuation.markShed(deviceId, now);
     }
     logger.debug({
       event: 'binary_command_skipped',

@@ -48,7 +48,7 @@ Before this arc, each layer implemented the other's question.
   called the planner's whole restore-attempt composition a crossing; that was too broad. The
   planner composing ITS reservation with command state it was handed is its own business.
 - **Cooldown was stamped, and enforced, by the executor.** `recordRestoreActuation` writes
-  `state.lastRestoreMs` / `lastDeviceRestoreMs` (PR 3) — and `shouldSkipShedding` ran a 5 s
+  `state.actuation.lastRestoreMs` / `lastDeviceRestoreMs` (PR 3) — and `shouldSkipShedding` ran a 5 s
   per-device throttle **inside the write path**, vetoing a shed the planner had already
   decided (PR 1).
 

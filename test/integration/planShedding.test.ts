@@ -309,7 +309,7 @@ describe('buildSheddingPlan', () => {
 
   it('deprioritizes recently restored devices when same-priority alternatives exist', async () => {
     const state = createPlanEngineState();
-    state.lastDeviceRestoreMs['dev-recent'] = Date.now() - 60 * 1000;
+    state.actuation.lastDeviceRestoreMs['dev-recent'] = Date.now() - 60 * 1000;
 
     const devices = [
       buildDevice({
@@ -385,7 +385,7 @@ describe('buildSheddingPlan', () => {
 
   it('allows shedding recently restored devices when they are lower priority', async () => {
     const state = createPlanEngineState();
-    state.lastDeviceRestoreMs['dev-low'] = Date.now() - 60 * 1000;
+    state.actuation.lastDeviceRestoreMs['dev-low'] = Date.now() - 60 * 1000;
 
     const devices = [
       buildDevice({
@@ -439,7 +439,7 @@ describe('buildSheddingPlan', () => {
 
   it('allows recently restored devices when overshoot is severe', async () => {
     const state = createPlanEngineState();
-    state.lastDeviceRestoreMs['dev-restore'] = Date.now() - 60 * 1000;
+    state.actuation.lastDeviceRestoreMs['dev-restore'] = Date.now() - 60 * 1000;
 
     const devices = [
       buildDevice({
@@ -1260,7 +1260,7 @@ describe('buildSheddingPlan', () => {
 
   it('keeps a stepped device at its lowest active step while another device is already shed', async () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs.gang = Date.now() - 60_000;
+    state.actuation.lastDeviceShedMs.gang = Date.now() - 60_000;
 
     const devices = [
       buildDevice({
@@ -1325,8 +1325,8 @@ describe('buildSheddingPlan', () => {
 
   it('does not force a stepped device to lowest active step for stale historical shed state', async () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs.gang = Date.now() - 120_000;
-    state.lastDeviceRestoreMs.gang = Date.now() - 30_000;
+    state.actuation.lastDeviceShedMs.gang = Date.now() - 120_000;
+    state.actuation.lastDeviceRestoreMs.gang = Date.now() - 30_000;
 
     const devices = [
       buildDevice({
@@ -2658,7 +2658,7 @@ describe('buildSheddingPlan', () => {
 
   it('counts stepped lowest non-zero load as blocked-or-minimum, not reducible, when cooldown blocks further shedding', async () => {
     const state = createPlanEngineState();
-    state.lastDeviceRestoreMs.stepper = Date.now() - 30_000;
+    state.actuation.lastDeviceRestoreMs.stepper = Date.now() - 30_000;
 
     const capacityGuard = {
       checkShortfall: vi.fn().mockResolvedValue(undefined),

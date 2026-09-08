@@ -284,7 +284,7 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
       .filter((call) => call[1] === 'evcharger_charging' && call[2] === false).length;
     expect(offWritesAfterCycle1).toBe(1);
     expect(state.lastInstabilityMs).toBeNull();
-    expect(state.lastDeviceShedMs[DEVICE_ID]).toBeUndefined();
+    expect(state.actuation.lastDeviceShedMs[DEVICE_ID]).toBeUndefined();
 
     // The charger echoed the write: observed switch false, 0 kW, trusted-off
     // binary observation — the exact prod consolidation ("values_match").
@@ -310,7 +310,7 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
       onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
     });
     const stampAfterRealShed = state.lastInstabilityMs;
-    const deviceStampAfterRealShed = state.lastDeviceShedMs[DEVICE_ID];
+    const deviceStampAfterRealShed = state.actuation.lastDeviceShedMs[DEVICE_ID];
     expect(stampAfterRealShed).toBe(Date.now());
     expect(deviceStampAfterRealShed).toBe(Date.now());
 
@@ -338,7 +338,7 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     // a re-assert over an observed-off device is bookkeeping, not a load
     // change. On the unfixed base both advance every cycle.
     expect(state.lastInstabilityMs).toBe(stampAfterRealShed);
-    expect(state.lastDeviceShedMs[DEVICE_ID]).toBe(deviceStampAfterRealShed);
+    expect(state.actuation.lastDeviceShedMs[DEVICE_ID]).toBe(deviceStampAfterRealShed);
 
     // CORRECT behaviour 3: the house-wide restore gate reopened 60 s after the
     // real shed (we are now minutes past it), so held devices can resume. On

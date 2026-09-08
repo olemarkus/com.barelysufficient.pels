@@ -495,7 +495,7 @@ export const applySheddingToDeviceImpl = async (
     const shedTemp = shedBehavior.action === 'set_temperature' ? shedBehavior.temperature : null;
     const canSetShedTemp = Boolean(target && shedTemp !== null);
     // Mark as pending before async operation
-    core.state.pendingSheds.add(deviceId);
+    core.state.actuation.beginShed(deviceId);
     try {
       const shedTemperatureResult = await dispatchTrySetShedTemperature(core, {
         deviceId,
@@ -515,7 +515,7 @@ export const applySheddingToDeviceImpl = async (
       }
       return shedTemperatureResult.wrote;
     } finally {
-      core.state.pendingSheds.delete(deviceId);
+      core.state.actuation.endShed(deviceId);
     }
   } finally {
     core.flushLastControlledPersistence();

@@ -204,7 +204,7 @@ export class PlanExecutor {
 
   private recordShedActuation(deviceId: string, name: string, now: number): void {
     this.state.lastInstabilityMs = now;
-    this.state.lastDeviceShedMs[deviceId] = now;
+    this.state.actuation.markShed(deviceId, now);
     this.recordReleaseShedActuation(deviceId, name, now);
   }
 
@@ -229,9 +229,8 @@ export class PlanExecutor {
   };
 
   private recordRestoreActuation(deviceId: string, name: string, now: number): void {
-    this.state.lastRestoreMs = now;
+    this.state.actuation.markRestore(deviceId, now);
     this.recordControlTimestamp(deviceId, now);
-    this.state.lastDeviceRestoreMs[deviceId] = now;
     recordDiagnosticsRestore({
       diagnostics: this.deps.deviceDiagnostics,
       deviceId,
@@ -257,7 +256,7 @@ export class PlanExecutor {
   }
 
   private recordControlTimestamp(deviceId: string, now: number): void {
-    this.state.lastDeviceControlledMs[deviceId] = now;
+    this.state.actuation.markControlled(deviceId, now);
     this.lastControlledPersistenceDirty = true;
   }
 
@@ -282,7 +281,7 @@ export class PlanExecutor {
       if (pending.logContext === 'capacity_control_off') {
         // Route through the narrow mutators so the surplus-posture stamp
         // (`surplusOnlyShedByDevice`) is cleared in lockstep with the decision clock.
-        this.state.clearDeviceShed(deviceId);
+        this.state.actuation.clearShed(deviceId);
         this.state.clearShedDecision(deviceId);
       } else {
         this.recordRestoreActuation(deviceId, liveDevice.name, now);
@@ -316,7 +315,7 @@ export class PlanExecutor {
     if (this.controlPersistenceBatchDepth > 0) return;
     if (!this.lastControlledPersistenceDirty) return;
     try {
-      this.deps.persistLastControlledMs(this.state.lastDeviceControlledMs);
+      this.deps.persistLastControlledMs(this.state.actuation.lastDeviceControlledMs);
       this.lastControlledPersistenceDirty = false;
     } catch (error) {
       logger.error({

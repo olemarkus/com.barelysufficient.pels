@@ -466,7 +466,7 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
 function resolveSteppedShedTargetStep(params: {
   device: PlanInputDevice;
   devices: PlanInputDevice[];
-  state: Pick<PlanEngineState, 'shedDecidedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>;
+  state: PlanEngineState;
   shedBehaviorAction: ShedAction;
   effectiveCurrentStepId?: string;
 }): SteppedLoadStep | null {

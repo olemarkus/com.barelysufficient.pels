@@ -61,11 +61,11 @@ export function resolveMeterSettlingHold(
 ): HoldDecision | null {
   const { timing, state } = pass;
   if (!restorePassTookCooldownLane(pass) || !wasShedLastPlan || !observedAtShedFloor) return null;
-  const remainingSec = resolveMeterSettlingRemainingSec({ timing, lastRestoreTs: state.lastRestoreMs });
+  const remainingSec = resolveMeterSettlingRemainingSec({ timing, lastRestoreTs: state.actuation.lastRestoreMs });
   if (remainingSec === null) return null;
   const reason = buildMeterSettlingReason(
     remainingSec,
-    resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs: state.lastRestoreMs }),
+    resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs: state.actuation.lastRestoreMs }),
   );
   return { type: 'hold', reason: { code: 'existing', reason } };
 }

@@ -179,7 +179,7 @@ export class OvershootTracker {
     ) {
       return;
     }
-    const recentRestores = Object.entries(this.state.lastDeviceRestoreMs)
+    const recentRestores = Object.entries(this.state.actuation.lastDeviceRestoreMs)
       .filter(([, restoreMs]) => nowTs - restoreMs <= OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS)
       .sort((left, right) => right[1] - left[1]);
     for (const [deviceId, restoreMs] of recentRestores) {

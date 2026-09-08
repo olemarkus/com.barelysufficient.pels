@@ -145,7 +145,7 @@ export function buildInitialPlanDevices(params: {
     const base = buildBasePlanDevice({
       dev,
       priority,
-      recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
+      recentlyRestored: isRecentlyRestored(state.actuation.lastDeviceRestoreMs[dev.id]),
       binaryCommandPending: deps.pendingBinaryCommandStore.hasActiveTurnOn(dev.id),
       currentState,
       plannedTarget,

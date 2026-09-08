@@ -45,7 +45,7 @@ export const buildRestoreTiming = (
   const nowTs = Date.now();
   const measurementTs = powerTracker.lastTimestamp ?? null;
   const cooldownState = resolveRestoreCooldown(state, nowTs);
-  const sinceRestore = state.lastRestoreMs ? nowTs - state.lastRestoreMs : null;
+  const sinceRestore = state.actuation.lastRestoreMs ? nowTs - state.actuation.lastRestoreMs : null;
   const cooldown = getShedCooldownState({
     lastInstabilityMs: state.lastInstabilityMs,
     lastRecoveryMs: state.lastRecoveryMs,
@@ -70,7 +70,7 @@ export const buildRestoreTiming = (
     ? Math.max(0, cooldownState.restoreCooldownMs - sinceRestore)
     : null;
   const restoreCooldownRemainingSec = ceilSecondsOrNull(restoreCooldownRemainingMs);
-  const restoreCooldownStartedAtMs = typeof state.lastRestoreMs === 'number' ? state.lastRestoreMs : null;
+  const restoreCooldownStartedAtMs = state.actuation.lastRestoreMs;
   const restoreCooldownTotalSec = Math.ceil(cooldownState.restoreCooldownMs / 1000);
   const startupStabilizationRemainingSec = ceilSecondsOrNull(startupBlockRemainingMs);
   const inShedWindow = inCooldown || activeOvershoot || inRestoreCooldown || inStartupStabilization;
@@ -150,7 +150,7 @@ const resolveRestoreCooldown = (
   state: PlanEngineState,
   nowTs: number,
 ): RestoreCooldownState => {
-  const lastRestoreMs = state.lastRestoreMs;
+  const lastRestoreMs = state.actuation.lastRestoreMs;
   const lastInstabilityMs = typeof state.lastInstabilityMs === 'number' ? state.lastInstabilityMs : 0;
   const instabilityAgeMs = getInstabilityAgeMs(lastInstabilityMs, nowTs);
 

@@ -1,15 +1,19 @@
 import { isNonSteppedDeviceRecovering } from '../../lib/plan/planShedRecovery';
 import type { PlanEngineState } from '../../lib/plan/planState';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';
 
-type RecoveryState = Pick<PlanEngineState, 'shedDecidedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>;
-
-const buildState = (overrides: Partial<RecoveryState> = {}): RecoveryState => ({
-  shedDecidedMs: {},
-  lastDeviceRestoreMs: {},
-  swapByDevice: {},
-  ...overrides,
-});
+const buildState = (overrides: {
+  shedDecidedMs?: Record<string, number>;
+  lastDeviceRestoreMs?: Record<string, number>;
+  swapByDevice?: PlanEngineState['swapByDevice'];
+} = {}): PlanEngineState => {
+  const state = createPlanEngineState();
+  Object.assign(state.shedDecidedMs, overrides.shedDecidedMs);
+  Object.assign(state.actuation.lastDeviceRestoreMs, overrides.lastDeviceRestoreMs);
+  Object.assign(state.swapByDevice, overrides.swapByDevice);
+  return state;
+};
 
 describe('isNonSteppedDeviceRecovering', () => {
   it('is false for an uncontrollable device', () => {

@@ -47,7 +47,7 @@ describe('resolvePlanRebuildPosture', () => {
     // the throttle's anti-storm gates on a plan that cannot change anything.
     const posture = resolvePlanRebuildPosture(
       summaryWith({ remainingActionableControlledLoad: false, remainingReducibleControlledLoad: false }),
-      { pendingSheds: new Set(), pendingRestores: new Set(), pendingTargetCommands: {}, pendingBinaryCommands: {}, overshoot: activeIncident() },
+      { actuation: { hasInFlight: () => false }, pendingTargetCommands: {}, pendingBinaryCommands: {}, overshoot: activeIncident() },
     );
     expect(posture.unactionable).toBe(true);
     expect(posture.planConvergenceActive).toBe(false);

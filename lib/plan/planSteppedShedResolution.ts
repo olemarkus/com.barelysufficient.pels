@@ -113,7 +113,7 @@ export function resolveSteppedShedCurrentDesiredStepId(dev: PlanInputDevice): st
 function shouldForceLowestActiveStep(params: {
   dev: PlanInputDevice;
   devices: PlanInputDevice[];
-  state: Pick<PlanEngineState, 'shedDecidedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>;
+  state: PlanEngineState;
   shedBehaviorAction: ShedAction;
 }): boolean {
   const { dev, devices, state, shedBehaviorAction } = params;

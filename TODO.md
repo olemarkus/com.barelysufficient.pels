@@ -107,8 +107,8 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       § "The rule this leaves behind"). Any evidence-based release must read the DEVICE, never the
       main meter.
 
-      *The stamp.* `recordRestoreActuation` (`lib/executor/planExecutor.ts` ~210) sets both the
-      per-device `lastDeviceRestoreMs[id]` and the global `state.lastRestoreMs`, and
+      *The stamp.* `recordRestoreActuation` (`lib/executor/planExecutor.ts`) sets both the
+      per-device `lastDeviceRestoreMs[id]` and the global `state.actuation.lastRestoreMs`, and
       `restore/timing.ts` ~47 derives `inRestoreCooldown` from the global one. So any device's
       restore attempt pushes out the restore gate for every device that is observed OFF (an
       active-step device reads its own per-device stamp instead —
@@ -969,6 +969,20 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       MET UI-cleanup scope decision, 2026-06-14. [P3]
 
 ## Device observation and transport
+
+- [ ] **P2 — the one persisted actuation clock sits outside the abandon-grace regime.**
+      `DEVICE_LAST_CONTROLLED_MS` is hydrated by `setup/appServiceWiring.ts` and
+      `setup/homeRuntime/createHomeCapacityBundle.ts` as `isNumberMap(stored) ? { ...stored } : {}` and
+      written back bare by `setup/homeRuntime/homeSignalWriters.ts`, so one transient SDK miss at
+      boot lands as `{}` and the first shed or restore afterwards persists a one-device map over the
+      stored history. The map gates the startup-window hold (`planReasonsHoldDecisions.ts`
+      distinguishes "never controlled" from "controlled before") and the restore stabilization reads.
+      Change: route the key through the written-before-marker/grace wrapper
+      `notes/persisted-settings-state.md` prescribes for persisted history, with the hydration
+      landing on `ActuationRecord.loadLastControlled`. Done when a spec whose boot `settings.get`
+      answers `undefined` once with the marker set, followed by a shed, asserts the persisted map
+      still holds the prior devices. Source: runtime review of the actuation-record state layer,
+      2026-09-08.
 
 - [ ] **`TemperatureObservation` carries no timestamp, so the objectives seam reaches for the
       device-level one.** `TemperatureObservation` (`packages/contracts/src/types.ts`) is

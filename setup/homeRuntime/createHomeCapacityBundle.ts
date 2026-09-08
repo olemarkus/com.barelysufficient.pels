@@ -54,7 +54,6 @@ import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler'
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import { createHomePlanRebuildThrottle } from '../planRebuildIntentPolicy';
 import {
-  isNumberMap,
 } from '../../lib/utils/appTypeGuards';
 import {
   DEVICE_LAST_CONTROLLED_MS,
@@ -499,8 +498,7 @@ function createBundlePlanningRuntime(params: {
   const storedLastControlled = params.ctx.homey.settings.get(
     homeScopedSettingsKey(DEVICE_LAST_CONTROLLED_MS, params.homeId),
   ) as unknown;
-  // eslint-disable-next-line functional/immutable-data -- same engine-state hydration write as the main-home wiring
-  planEngine.state.lastDeviceControlledMs = isNumberMap(storedLastControlled) ? { ...storedLastControlled } : {};
+  planEngine.state.actuation.loadLastControlled(storedLastControlled);
   planEngine.beginStartupRestoreStabilization(BUNDLE_RESTORE_STABILIZATION_MS);
   const planService = createPlanService(params.ctx, scope, planEngine);
   const { pipeline, scheduler: planRebuildScheduler, throttle: planRebuildThrottle } = createBundleSamplePipeline({

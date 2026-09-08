@@ -1,13 +1,11 @@
 import type { PlanEngineState } from './planState';
 import type { OvershootIncidentRead } from './overshootIncident';
+import type { ActuationPendingRead } from './actuationRecord';
 
-export type PlanConvergenceState = { overshoot: OvershootIncidentRead } & Pick<
-  PlanEngineState,
-  | 'pendingSheds'
-  | 'pendingRestores'
-  | 'pendingTargetCommands'
-  | 'pendingBinaryCommands'
->;
+export type PlanConvergenceState = {
+  overshoot: OvershootIncidentRead;
+  actuation: ActuationPendingRead;
+} & Pick<PlanEngineState, 'pendingTargetCommands' | 'pendingBinaryCommands'>;
 
 export type PlanConvergenceOptions = {
   /**
@@ -20,8 +18,7 @@ export type PlanConvergenceOptions = {
 };
 
 const hasPendingPlanWork = (planState: PlanConvergenceState): boolean => (
-  planState.pendingSheds.size > 0
-  || planState.pendingRestores.size > 0
+  planState.actuation.hasInFlight()
   || Object.keys(planState.pendingTargetCommands).length > 0
   || Object.keys(planState.pendingBinaryCommands).length > 0
 );

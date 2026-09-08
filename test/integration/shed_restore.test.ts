@@ -131,7 +131,7 @@ describe('Shed vs Restore Logic', () => {
         app.capacityGuard = mockGuard;
         // Mock timing so cooldowns don't block
         app.planEngine.state.lastInstabilityMs = 0;
-        app.planEngine.state.lastRestoreMs = 0;
+        app.planEngine.state.actuation.lastRestoreMs = 0;
 
         const devices = targetDevices;
         // Mock desired state (e.g. thermostat set to 22) to imply it "wants" to be ON
