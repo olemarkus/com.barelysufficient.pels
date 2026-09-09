@@ -55,6 +55,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import {
   buildPlanMeta,
+  fixtureControlPosture,
   fixtureResidualKw,
   resolveFixtureCurrentOn,
   withFixtureResidualKw,
@@ -98,6 +99,11 @@ const pd = (
       plannedTarget?: number;
       evChargingState?: string;
       binaryCapabilityId?: string;
+      // Fixture shorthands for the control posture, resolved by the shared
+      // resolver exactly as the producer does.
+      controllable?: boolean;
+      managed?: boolean;
+      commandAuthority?: boolean;
     },
 ): DevicePlanDevice => withTemperatureDiscriminant(
   // `withMaterializedEvPlugState` regroups the way the producer does: it strips the
@@ -107,6 +113,7 @@ const pd = (
   // EV path looked covered while `hasStableBinaryReleaseActuation` was dead.
   withSteppedDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
     ...withMaterializedEvPlugState(loose),
+    control: fixtureControlPosture(loose),
     currentOn: resolveFixtureCurrentOn(loose),
     // Mirrors production's ONE stamp site (`finalizePlanDevices`): the plan's
     // shed END STATE, which is what the executor projection reads instead of
@@ -144,7 +151,7 @@ const buildPlan = (): DevicePlan => ({
       currentTarget: 21,
       currentTemperature: 21,
       plannedTarget: 21,
-      controllable: true,
+      control: fixtureControlPosture({ controllable: true }),
       available: true,
       currentOn: false,
       reason: KEEP_REASON,
@@ -177,7 +184,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       currentTarget,
       currentTemperature: currentTarget,
       plannedTarget,
-      controllable: true,
+      control: fixtureControlPosture({ controllable: true }),
       available: true,
       currentOn: true,
       reason: KEEP_REASON,
@@ -1804,6 +1811,7 @@ describe('PlanExecutor stepped loads', () => {
         withTemperatureDiscriminant(withSteppedDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
           recordRestoreOnTargetApply: false,
           ...merged,
+          control: fixtureControlPosture(merged),
           currentState: (merged as { currentState?: string }).currentState ?? 'on',
           currentOn: resolveFixtureCurrentOn(merged),
           // Mirrors production's ONE stamp site (`finalizePlanDevices`): the
@@ -4233,7 +4241,8 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const shedDevice = withFixtureResidualKw({
       recordRestoreOnTargetApply: false,
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
-      controllable: true, available: true, reason: CAPACITY_REASON, boostActive: false,
+      control: fixtureControlPosture({ controllable: true }),
+      available: true, reason: CAPACITY_REASON, boostActive: false,
       hasStandingDemand: true,
       surplusTracking: false,
       confirmedNotDrawing: false,
@@ -4243,7 +4252,8 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const steppedDevice = (desiredStepId: string) => (withFixtureResidualKw({
       recordRestoreOnTargetApply: false,
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
-      controllable: true, available: true, reason: KEEP_REASON, commandableNow: true,
+      control: fixtureControlPosture({ controllable: true }),
+      available: true, reason: KEEP_REASON, commandableNow: true,
       boostActive: false, hasStandingDemand: true,
       currentDrawKw: 0, expectedPowerKw: 1, expectedPowerSource: 'default' as const,
       controlModel: 'stepped_load' as const,

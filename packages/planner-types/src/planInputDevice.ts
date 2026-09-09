@@ -256,10 +256,10 @@ export type PlanInputDeviceBase = {
    * - `boostRequested`: the device's own policy asks for boost this cycle.
    *   Implies `boostSupported`.
    *
-   * Neither includes the runnable gate (`controllable` / `managed` /
-   * `available`): `controllable` can still be flipped by deferred-objective
-   * admission after this producer has run, so `resolveBoostActive`
-   * (`lib/plan/planBoost.ts`) applies those flags at plan time.
+   * Neither includes the runnable gate (`control` / `available`):
+   * `commandAuthority` gains the deferred-objective term after this producer has
+   * run, so `resolveBoostActive` (`lib/plan/planBoost.ts`) applies the posture at
+   * plan time.
    */
   boostSupported: boolean;
   boostRequested: boolean;
@@ -409,9 +409,17 @@ export type PlanInputDeviceBase = {
    * planned hours the field is absent and the override drops out.
    */
   deadlineFloorTargetC?: number;
-  /** Producer-resolved control eligibility; absence is not a planner state. */
-  controllable: boolean;
-  managed?: boolean;
+  /**
+   * What PELS is permitted to do with this device — see {@link DeviceControlPosture}.
+   *
+   * One object rather than loose booleans, and required rather than optional:
+   * the producer answers all three for every device, so an absent value would
+   * mean a producer that forgot rather than a device without an answer. Read the
+   * member that matches your question — `managed` for whether PELS may touch it,
+   * `commandAuthority` for whether it may command it this cycle — and do not
+   * re-derive one from the other.
+   */
+  control: DeviceControlPosture;
   /**
    * Producer-resolved "Run on solar surplus" dump-load posture (PR-7). `true`
    * when the device opted in via `surplusWilling` in the per-device price-opt
@@ -504,4 +512,54 @@ export type PlanInputDeviceBase = {
    * `resolveConfirmedNotDrawing` (`setup/appInit/calibrationViews.ts`).
    */
   confirmedNotDrawing: boolean;
+};
+
+/**
+ * What PELS is permitted to do with a device, as one thing.
+ *
+ * These travel together because they are one concept, and because the
+ * alternative has already cost the app three separate defects. As loose
+ * booleans copied into every contract the plan device touches, `controllable`
+ * reached 174 references across 69 files, was re-declared as a per-callee shape
+ * in eight places, and went optional in four of them — so `undefined` meant
+ * "managed" in the headroom sum. Add a control fact here and it travels
+ * everywhere by construction; add another boolean and it must be threaded by
+ * hand, which is how the last one drifted.
+ *
+ * The distinction between the first two is the one the app got wrong. They are
+ * two separate owner settings, and folding them into a single boolean made a
+ * managed device with power limiting off indistinguishable from a device PELS
+ * was told to ignore entirely — which is why an unplanned 6.8 kW charge landed
+ * in background usage with no lever and nothing naming the cause.
+ */
+export type DeviceControlPosture = {
+  /**
+   * **Managed by PELS.** May PELS touch this device at all? `false` means it is
+   * observed and never commanded, and no posture, task or rescue overrides that.
+   */
+  managed: boolean;
+  /**
+   * Derived: may PELS command this device THIS CYCLE?
+   *
+   * The OR of every reason PELS currently has authority, inside `managed`.
+   * Power limiting is the standing reason; a smart task driving a deadline is
+   * another, contributed by the decorator that owns it.
+   *
+   * The owner's **Power-limit control** toggle is an INPUT to this, not a
+   * sibling of it. It is read once by the producer and does not travel: the
+   * planner asks whether it may act, never which of the terms said yes. (Owner
+   * ruling, 2026-09-09.) A carried copy would be a second answer to a question
+   * nobody asks, kept in step by nothing.
+   *
+   * Deriving it replaced a mutation: the deferred-objective admission used to
+   * write `controllable: true` onto a rescued device, so a user setting changed
+   * mid-cycle and every reader had to know whether it ran before or after
+   * (`lib/device/deviceActionProjection.ts` documents ordering around exactly
+   * that). An OR'd field has no such ordering.
+   *
+   * NOT `commandableNow`, which asks whether the device can be REACHED right now
+   * — availability, plug state, command back-off. A device can be authorized and
+   * unreachable, or reachable and unauthorized.
+   */
+  commandAuthority: boolean;
 };

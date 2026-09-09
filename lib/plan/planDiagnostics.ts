@@ -211,9 +211,10 @@ const resolveEligibleForStarvation = (params: {
   // `notes/ui-terminology.md` § "Held back" accurate: there is still no
   // "manual"/"external" starvation cause.
   if (device.externalOffHoldActive === true) return false;
-  return inputDevice.managed === true
-    && inputDevice.controllable
-    && device.controllable
+  // One read, not two: `DevicePlanDevice.control` is carried through from the
+  // plan input unchanged, so asking both shapes was a dead second read.
+  return inputDevice.control.managed
+    && inputDevice.control.commandAuthority
     && inputDevice.available
     && device.available;
 };
@@ -264,7 +265,7 @@ const resolveStarvationSuppression = (params: {
   budgetReleasableHeadroomHold: boolean;
 }): StarvationSuppressionNormalization => {
   const { device, inputDevice, hasStandingDemand, budgetReleasableHeadroomHold } = params;
-  if (!hasStandingDemand || !inputDevice || !device.controllable || !inputDevice.controllable) {
+  if (!hasStandingDemand || !inputDevice || !device.control.commandAuthority || !inputDevice.control.commandAuthority) {
     return noStarvationSuppression();
   }
   const reason = device.reason;
@@ -336,7 +337,7 @@ const buildDiagnosticsObservation = (params: {
   // (`hasStandingDemand`). A charger with no car is not starved, and neither
   // this file nor its callers need to know that is what makes it different.
   const { hasStandingDemand } = device;
-  const includeDemandMetrics = hasStandingDemand && device.controllable && device.available;
+  const includeDemandMetrics = hasStandingDemand && device.control.commandAuthority && device.available;
   const desiredTarget = resolveDesiredTemperatureTarget({
     modeTargetCFor,
     inputDevice,

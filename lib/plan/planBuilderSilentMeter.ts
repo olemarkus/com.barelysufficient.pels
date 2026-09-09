@@ -110,7 +110,7 @@ export class SilentMeterPlanBuilder {
     this.deps.structuredLog?.info({
       event: 'plan_silent_meter_pass',
       shedDeviceCount: sheddingPlan.shedSet.size,
-      candidateDeviceCount: context.devices.filter((dev) => dev.controllable).length,
+      candidateDeviceCount: context.devices.filter((dev) => dev.control.commandAuthority).length,
       lastPowerUpdateMs: reading.lastPowerUpdateMs,
     });
 
@@ -178,7 +178,7 @@ export class SilentMeterPlanBuilder {
     // write the executor would issue (a turn-on, the mode setpoint back up).
     // Without a measurement nothing admits that, so the directive names them.
     for (const dev of context.devices) {
-      if (!dev.controllable || selection.shedSet.has(dev.id)) continue;
+      if (!dev.control.commandAuthority || selection.shedSet.has(dev.id)) continue;
       selection.shedSet.add(dev.id);
       selection.shedReasons.set(dev.id, this.directiveReason());
     }

@@ -28,8 +28,7 @@ const candidateParams = (overrides: Partial<Parameters<typeof resolveSurplusTrac
   surplusWilling: true,
   targets: undefined,
   steppedLoadProfile: steppedProfile,
-  controllable: true,
-  managed: true,
+  control: { managed: true, commandAuthority: true },
   surplusPoolReachable: true,
   ...overrides,
 });
@@ -109,8 +108,8 @@ describe('resolveSurplusTrackingPosture — candidacy', () => {
     ['opt-in absent', { surplusWilling: undefined }],
     ['pool can never open', { surplusPoolReachable: false }],
     ['no step ladder', { steppedLoadProfile: undefined }],
-    ['not controllable', { controllable: false }],
-    ['not managed', { managed: false }],
+    ['not controllable', { control: { managed: true, commandAuthority: false } }],
+    ['not managed', { control: { managed: false, commandAuthority: false } }],
   ])('rejects when %s', (_label, overrides) => {
     expect(resolveSurplusTrackingPosture(candidateParams(overrides))).toBe(false);
   });

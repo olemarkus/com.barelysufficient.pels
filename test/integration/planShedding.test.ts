@@ -17,6 +17,7 @@ import { buildSheddingPlan } from '../../lib/plan/shedding';
 import type { SheddingDeps } from '../../lib/plan/shedding/types';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import {
+  fixtureControlPosture,
   fixtureCurrentDrawKw,
   fixtureResidualKw,
   type FixtureShedBehavior,
@@ -31,7 +32,12 @@ const emptyPendingStore = createPendingBinaryCommandStore({});
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe
     & TemperatureDiscriminantProbe
-    & { binaryCapabilityId?: string; shedBehavior?: FixtureShedBehavior } = {},
+    & {
+      binaryCapabilityId?: string; shedBehavior?: FixtureShedBehavior;
+      // Fixture shorthands for the control posture, resolved by the shared
+      // resolver exactly as `toPlanDevice` does.
+      controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
+    } = {},
 ): PlanInputDevice => {
   const merged = {
     id: 'dev',
@@ -55,6 +61,7 @@ const buildDevice = (
     // configured behaviour. A fixture whose shed is a setpoint move it is
     // ALREADY at frees nothing, and the producer is the one that says so.
     residualKw: merged.residualKw ?? fixtureResidualKw(merged),
+    control: fixtureControlPosture(merged),
     currentOn: resolveFixtureCurrentOn(merged),
   }) as PlanInputDevice;
 };

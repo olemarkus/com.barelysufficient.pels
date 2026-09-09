@@ -52,6 +52,21 @@ export type DeviceOverviewLogRecord = SettingsUiDeviceLogEntry;
  */
 export type OverviewLogDevice = DevicePlanDevice & {
   steppedLoad?: DeviceOverviewSteppedLoad;
+  /**
+   * The overview contract is a WIRE shape and stays flat, so the posture is
+   * flattened once at the boundary (`planOverviewEmit`) rather than travelling
+   * as an object into the settings UI and the widgets.
+   *
+   * This intersection deliberately does NOT `Omit<…, 'control'>`. Two reasons.
+   * `DevicePlanDevice` is a UNION, and `Omit` over a union keys off the common
+   * members, so it silently erased the whole stepped cluster and collapsed the
+   * discriminant the docblock above exists to protect. And the omission was
+   * fiction anyway: the emit seam spreads the plan device, so `control` is on
+   * the object at runtime either way. Every consumer here builds an explicit
+   * field list, so nothing nested reaches the wire — read `controllable`, which
+   * carries `control.commandAuthority`, and leave `control` alone.
+   */
+  controllable: boolean;
 };
 
 // The overview-transition signature: a change in this value is the boundary

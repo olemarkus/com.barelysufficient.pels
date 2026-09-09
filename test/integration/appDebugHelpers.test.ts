@@ -11,6 +11,7 @@ import { resetRestClient, setRestClient } from '../../lib/device/transport/manag
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
+import { fixtureControlPosture } from '../utils/planTestUtils';
 
 const buildDeviceManager = (params: {
   devices?: HomeyDeviceLike[];
@@ -430,7 +431,7 @@ describe('appDebugHelpers', () => {
               currentTarget: 18,
               currentTemperature: 18,
               plannedTarget: 21,
-              controllable: true,
+              control: fixtureControlPosture({ controllable: true }),
               stepPowerCalibration: {
                 low: 1.2,
               },
@@ -607,7 +608,7 @@ describe('appDebugHelpers', () => {
             currentTarget: 20.5,
             currentTemperature: 20.5,
             plannedTarget: 23,
-            controllable: true,
+            control: fixtureControlPosture({ controllable: true }),
             reason: { code: 'keep', detail: null },
           }],
         }),

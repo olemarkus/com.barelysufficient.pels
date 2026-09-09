@@ -93,7 +93,7 @@ describe('planExecutablePlan', () => {
     expect(executablePlan.devices[0]).toMatchObject({
       id: 'step-1',
       name: steppedDevice.name,
-      controllable: true,
+      commandAuthority: true,
       steppedLoad: {
         id: 'step-1',
         desired: {

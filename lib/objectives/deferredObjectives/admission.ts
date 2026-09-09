@@ -1,3 +1,4 @@
+import type { DeviceControlPosture } from '../../../packages/planner-types/src/planInputDevice';
 import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
 import type { DeferredReleaseIntent } from '../../../packages/planner-types/src/deferredDecoration';
@@ -105,7 +106,7 @@ const resolveDecision = (
     if (releasesViaBinary) {
       return { kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' };
     }
-    if (device?.controllable === false) {
+    if (device?.control.commandAuthority === false) {
       return { kind: 'idle', budgetExempt: false, releaseIntent: 'shed_release' };
     }
     return { kind: 'idle', budgetExempt: false };
@@ -147,12 +148,26 @@ const rescueBlockedByExternalOffHold = (device: PlanInputDevice): boolean => (
   device.externalOffHoldActive === true
 );
 
-// Soft deferred objectives only override the cap-off (controllable=false) fallback. When the
-// user keeps capacity-based control on for the device, normal PELS behavior already runs and
-// the deferred plan should not bypass restore admission, cooldowns, or daily-budget logic.
-const requiresOverride = (decision: DeferredAdmissionDecision, device: PlanInputDevice): boolean => (
+/**
+ * Does this task need to CONTRIBUTE authority for the device this cycle?
+ *
+ * Only when PELS has no standing authority over the device. With authority,
+ * normal behaviour runs — the deferred plan must not bypass
+ * restore admission, cooldowns, or daily-budget logic.
+ *
+ * This used to write `controllable: true` onto the device, i.e. runtime code
+ * overwriting an owner setting mid-cycle, which forced every downstream reader
+ * to know whether it ran before or after admission
+ * (`lib/device/deviceActionProjection.ts` documents ordering around exactly
+ * that). It now contributes a term to the derived `commandAuthority` instead, so
+ * the settings stay the owner's and the ordering constraint is gone.
+ */
+const contributesCommandAuthority = (
+  decision: DeferredAdmissionDecision,
+  device: PlanInputDevice,
+): boolean => (
   decision.kind !== 'inactive'
-  && device.controllable === false
+  && device.control.commandAuthority === false
   && !rescueBlockedByExternalOffHold(device)
 );
 
@@ -173,13 +188,18 @@ const resolveBoostFields = (engageBoost: boolean): { forceBoostActive?: true } =
 // cyclomatic complexity stays within budget; each flag is only ever added when set.
 const buildAdmissionDecoration = (params: {
   override: boolean;
+  // The device's current posture, so the authority term is OR'd onto it rather
+  // than a fresh object being invented here.
+  control: DeviceControlPosture;
   budgetExempt: boolean;
   engageBoost: boolean;
   reservesStartupPower: boolean;
   // Absent when this device has no deadline floor this cycle.
   deadlineFloorTargetC: number | undefined;
 }): Partial<PlanInputDevice> => ({
-  ...(params.override ? { controllable: true } : {}),
+  // OR'd on, never assigned: the owner's two settings are untouched and only
+  // the derived per-cycle authority moves.
+  ...(params.override ? { control: { ...params.control, commandAuthority: true } } : {}),
   ...(params.budgetExempt ? { budgetExempt: true } : {}),
   ...resolveBoostFields(params.engageBoost),
   ...(params.reservesStartupPower ? { reservesStartupPower: true } : {}),
@@ -209,7 +229,7 @@ export const applyDeferredAdmissionToInput = (
     // Every claim below is made ON BEHALF of this device; a held device cannot
     // use any of them. See `rescueBlockedByExternalOffHold`.
     const heldOff = rescueBlockedByExternalOffHold(device);
-    const override = requiresOverride(decision, device);
+    const override = contributesCommandAuthority(decision, device);
     if (override && decision.kind === 'idle') forceShedSet.add(device.id);
     // Engage the device's boost while a limit-lower-priority task is in its planned hours.
     // This reuses the existing boost machinery (EV chargers via evBoost, stepped thermal
@@ -230,6 +250,7 @@ export const applyDeferredAdmissionToInput = (
       ...device,
       ...buildAdmissionDecoration({
         override,
+        control: device.control,
         budgetExempt,
         engageBoost,
         reservesStartupPower,

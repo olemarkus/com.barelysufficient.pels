@@ -59,7 +59,7 @@ import {
 import { DeviceMeasuredPowerResolver } from '../../lib/device/measuredPowerResolver';
 import { buildRestoreTiming, shouldPlanRestores } from '../../lib/plan/restore/timing';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
-import { buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import {
@@ -180,7 +180,7 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
     // What `finalizePlanDevices` stamps for this pair in production, and what
     // the executor projection actually reads.
     plannedShedTargetKind: 'binary_off' as const,
-    controllable: true,
+    control: fixtureControlPosture({ controllable: true }),
     available: true,
     steppedLoadProfile: snapshot.steppedLoadProfile,
     binaryCapabilityId: 'evcharger_charging' as const,

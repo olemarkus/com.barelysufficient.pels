@@ -33,7 +33,8 @@ export type DeferredDecorationInput = {
  * consumes this bundle and stays smart-task-agnostic:
  *
  * - `admittedDevices`: the device list with deferred-objective admission applied
- *   (cap-off devices flipped `controllable` for the cycle, budget exemptions,
+ *   (devices PELS has no standing authority over gain `commandAuthority` for the
+ *   cycle, budget exemptions,
  *   forced boost, deadline thermostat floors stamped on as flat fields).
  * - `forceShedSet`: device ids the shedding lane must seed into its shed-set
  *   (idle-hour holds).

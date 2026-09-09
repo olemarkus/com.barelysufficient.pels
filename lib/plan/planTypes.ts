@@ -1,3 +1,4 @@
+import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
@@ -506,16 +507,17 @@ type DevicePlanDeviceBase = {
   reason: DeviceReason;
   zone?: string;
   /**
-   * Producer-resolved: whether PELS manages this device this cycle. REQUIRED —
-   * `toPlanDevice` resolves the owner's setting before the planner receives the
-   * device, and the deferred-objective rescue lane's override lands before
-   * materialization. Optional
-   * bought nothing here: absence never reached this type, and typing it as if
-   * it might left `undefined` meaning "managed" — a third state for a two-state
-   * fact. Consumers read the required boolean directly; absence is not a plan
-   * state on either the input or output contract.
+   * What PELS is permitted to do with this device — see
+   * {@link DeviceControlPosture}. Carried through from the plan input unchanged,
+   * so the planner's decision and the executor's actuation read one answer.
+   *
+   * Read the member that matches the question: `managed` for whether PELS may
+   * touch the device at all, `commandAuthority` for whether it may command it
+   * this cycle. They were a single `controllable` boolean until the split, which
+   * is why "managed but not power-limited" was indistinguishable from "ignore
+   * this device".
    */
-  controllable: boolean;
+  control: DeviceControlPosture;
   budgetExempt?: boolean;
   /**
    * The device's boost decision this cycle, and the planner's whole boost

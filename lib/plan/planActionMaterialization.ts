@@ -22,13 +22,12 @@ import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
  *   - `shouldShed` is the planner's per-cycle decision (the shedSet membership
  *     for this device) and has no producer equivalent.
  *
- * `controllable` is producer-resolvable (and resolved) — `resolveShedIntent`
- * collapses cap-off devices to their binary fallback intent so the
- * `set_temperature` branch here only fires for already-cap-on devices.
- * The deferred-objective rescue lane re-resolves the intent in
+ * The control posture is producer-resolved — `resolveShedIntent` collapses
+ * devices PELS has no authority over to their binary fallback intent, so the
+ * `set_temperature` branch here only fires for devices it may command. The
+ * deferred-objective rescue lane re-resolves the intent in
  * `lib/plan/planDevices.ts:resolveShedAction` with the post-admission
- * `controllable` before calling the materialiser, so the rescue-lane flip is
- * honoured.
+ * `commandAuthority`, so a task's granted authority is honoured.
  *
  * The materialisation is intentionally narrow: it does not consult device
  * shape, settings, or capabilities directly — only the typed intent and the

@@ -203,6 +203,8 @@ export function buildSettingsOverviewDeviceReadModel(
   // and temperature overlays applied.
   const overviewShape = {
     ...device,
+    // Wire shape: flat, flattened once here. See `DeviceControlPosture`.
+    controllable: device.control.commandAuthority,
     ...temperatureFields,
     steppedLoad,
   };
@@ -210,7 +212,7 @@ export function buildSettingsOverviewDeviceReadModel(
     id: device.id,
     name: device.name,
     deviceClass: device.deviceClass,
-    controllable: device.controllable,
+    controllable: device.control.commandAuthority,
     available: device.available,
     currentState: device.currentState,
     plannedState: device.plannedState,

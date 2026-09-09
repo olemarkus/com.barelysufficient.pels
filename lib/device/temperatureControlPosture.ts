@@ -4,17 +4,50 @@ import type {
   DecoratedDeviceSnapshot, TemperatureObservedProbe, TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
+import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
+import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 
-/** Resolve remaining power-control authority before handing a device to planning. */
+/**
+ * The device's control posture, resolved once, here.
+ *
+ * The only place `commandAuthority` is SEEDED. Pure: the caller reads the
+ * settings and passes them, so nothing above this layer classifies anything.
+ * Power limiting is authority's standing term; decorators that know about other
+ * authorities OR theirs on afterwards (`applyDeferredAdmissionToInput` for a
+ * smart task), which is what replaced admission writing a user setting
+ * mid-cycle.
+ *
+ * `capacityControlEnabled` is passed rather than rebuilt from `managed` and the
+ * owner's Power-limit toggle, and that is load-bearing. It leads with
+ * `!isObserveOnlyRoleDevice(id)` — the transport's ID-SET role membership —
+ * while `resolveManagedState` returns `true` for exactly those devices. Deriving
+ * the conjunction here would turn the id-set veto into a term that can SUPPLY
+ * `managed: true`, so a device the id set still holds as a battery whose current
+ * parse yields an ordinary class key could be granted authority off a stale
+ * `controllable_devices` entry. The two vetoes are independent on purpose
+ * (`managerParseDeviceFields.ts`: "no window where a present battery/solar
+ * device ... enters the planner controllable/actuated") and both are kept.
+ */
 export function resolveDeviceControlPosture(
   device: DecoratedDeviceSnapshot,
   managed: boolean,
-  controllable: boolean,
-): { managed: boolean; controllable: boolean } {
-  if (device.deviceClass === 'battery' || device.deviceClass === 'solarpanel') {
-    return { managed: device.managed !== false, controllable: device.controllable === true };
+  capacityControlEnabled: boolean,
+): DeviceControlPosture {
+  if (isObserveOnlyRoleClassKey(device.deviceClass)) {
+    // The structural veto, keyed on the parse-time class key. A battery or panel
+    // is tracked and never commanded, whatever the settings say. `managed` reads
+    // the snapshot's own stamp because the managed FILTER must keep observing it.
+    return { managed: device.managed !== false, commandAuthority: false };
   }
-  return { managed, controllable: controllable && hasTemperaturePolicyPowerControl(device) };
+  return {
+    managed,
+    // The second term is the device's own axis: a thermostat whose temperature
+    // control the owner switched off, with no binary or stepped handle left, has
+    // nothing PELS could command. This whole expression is the old merged
+    // `controllable`, which is why every site that asked the old question reads
+    // this member and behaviour is unchanged.
+    commandAuthority: capacityControlEnabled && hasTemperaturePolicyPowerControl(device),
+  };
 }
 
 export function hasTemperaturePolicyPowerControl(device: DecoratedDeviceSnapshot): boolean {

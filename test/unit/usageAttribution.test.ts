@@ -9,31 +9,25 @@ import {
 // observed-on ladders are gone with the ladders — a plan device can no longer
 // arrive without a reading, so there is no branch left for them to pin.
 describe('sumControlledUsageKw', () => {
-  it('returns 0 when no controllable devices are present', () => {
+  it('returns 0 when PELS may command none of the devices', () => {
     const devices = [
-      { expectedPowerKw: 1, controllable: false, currentDrawKw: 1 },
-      { expectedPowerKw: 1, currentDrawKw: 3, controllable: false },
+      { expectedPowerKw: 1, countsAsManagedUsage: false, currentDrawKw: 1 },
+      { expectedPowerKw: 1, currentDrawKw: 3, countsAsManagedUsage: false },
     ];
     const result = sumControlledUsageKw(devices);
 
     expect(result).toBe(0);
   });
 
-  it('sums the resolved draw of every controllable device', () => {
+  it('sums the resolved draw of every device PELS may command', () => {
     const devices = [
-      { expectedPowerKw: 1, controllable: true, currentDrawKw: 1.2 },
-      { expectedPowerKw: 1, currentDrawKw: 0.8, controllable: true },
-      { expectedPowerKw: 1, controllable: false, currentDrawKw: 10 },
+      { expectedPowerKw: 1, countsAsManagedUsage: true, currentDrawKw: 1.2 },
+      { expectedPowerKw: 1, currentDrawKw: 0.8, countsAsManagedUsage: true },
+      { expectedPowerKw: 1, countsAsManagedUsage: false, currentDrawKw: 10 },
     ];
     const result = sumControlledUsageKw(devices);
 
     expect(result).toBeCloseTo(2.0, 6);
-  });
-
-  it('treats an undefined `controllable` as controllable, matching the planner filter', () => {
-    const devices = [{ expectedPowerKw: 1, currentDrawKw: 0.4, controllable: undefined }];
-    expect(sumControlledUsageKw(devices))
-      .toBeCloseTo(0.4, 6);
   });
 
   it('books a device measuring zero at zero, whatever its plan state or nameplate', () => {
@@ -42,7 +36,7 @@ describe('sumControlledUsageKw', () => {
     // `sampleIngest` then wrote into the persisted managed/background split.
     const devices = [
       {
-        controllable: true,
+        countsAsManagedUsage: true,
         plannedState: 'keep',
         currentOn: false,
         currentDrawKw: 0,
@@ -57,8 +51,8 @@ describe('sumControlledUsageKw', () => {
 
   it('keeps counting a shed device that is still drawing', () => {
     const devices = [
-      { controllable: true, plannedState: 'shed', currentDrawKw: 0.4, expectedPowerKw: 1.2 },
-      { expectedPowerKw: 1, controllable: true, currentDrawKw: 0.6 },
+      { countsAsManagedUsage: true, plannedState: 'shed', currentDrawKw: 0.4, expectedPowerKw: 1.2 },
+      { expectedPowerKw: 1, countsAsManagedUsage: true, currentDrawKw: 0.6 },
     ];
     const result = sumControlledUsageKw(devices);
 
@@ -67,8 +61,8 @@ describe('sumControlledUsageKw', () => {
 
   it('caps controlled usage at totalKw when splitting controlled and uncontrolled usage', () => {
     const devices = [
-      { expectedPowerKw: 1, controllable: true, currentDrawKw: 0.7 },
-      { expectedPowerKw: 1, currentDrawKw: 0.8, controllable: true },
+      { expectedPowerKw: 1, countsAsManagedUsage: true, currentDrawKw: 0.7 },
+      { expectedPowerKw: 1, currentDrawKw: 0.8, countsAsManagedUsage: true },
     ];
     expect(splitControlledUsageKw({
       totalKw: 1,
@@ -81,8 +75,8 @@ describe('sumControlledUsageKw', () => {
 
   it('does not produce negative controlled usage when the total is negative', () => {
     const devices = [
-      { expectedPowerKw: 1, controllable: true, currentDrawKw: 0.7 },
-      { expectedPowerKw: 1, currentDrawKw: 0.8, controllable: true },
+      { expectedPowerKw: 1, countsAsManagedUsage: true, currentDrawKw: 0.7 },
+      { expectedPowerKw: 1, currentDrawKw: 0.8, countsAsManagedUsage: true },
     ];
     expect(splitControlledUsageKw({
       totalKw: -1,
@@ -98,9 +92,9 @@ describe('sumControlledUsageKw', () => {
 describe('splitControlledUsageKw', () => {
   it('splits controlled and uncontrolled usage from the same helper', () => {
     const devices = [
-      { expectedPowerKw: 1, currentState: 'on', currentDrawKw: 1.5, controllable: true },
-      { currentDrawKw: 0.5, currentState: 'on', expectedPowerKw: 0.5, controllable: true },
-      { expectedPowerKw: 1, currentState: 'on', currentDrawKw: 2, controllable: false },
+      { expectedPowerKw: 1, currentState: 'on', currentDrawKw: 1.5, countsAsManagedUsage: true },
+      { currentDrawKw: 0.5, currentState: 'on', expectedPowerKw: 0.5, countsAsManagedUsage: true },
+      { expectedPowerKw: 1, currentState: 'on', currentDrawKw: 2, countsAsManagedUsage: false },
     ];
     expect(splitControlledUsageKw({
       totalKw: 4,
@@ -113,8 +107,8 @@ describe('splitControlledUsageKw', () => {
 
   it('does not treat configured fallback power as live controlled usage', () => {
     const devices = [
-      { expectedPowerKw: 1, currentState: 'on', currentDrawKw: 1.5, controllable: true },
-      { currentDrawKw: 0, currentState: 'on', expectedPowerKw: 1, controllable: true },
+      { expectedPowerKw: 1, currentState: 'on', currentDrawKw: 1.5, countsAsManagedUsage: true },
+      { currentDrawKw: 0, currentState: 'on', expectedPowerKw: 1, countsAsManagedUsage: true },
     ];
     expect(splitControlledUsageKw({
       totalKw: 4,
@@ -134,7 +128,7 @@ describe('splitControlledUsageKw', () => {
         currentDrawKw: 1.25,
         currentState: 'not_applicable',
         expectedPowerKw: 4,
-        controllable: true,
+        countsAsManagedUsage: true,
       },
     ];
     expect(splitControlledUsageKw({
@@ -153,7 +147,7 @@ describe('splitControlledUsageKw', () => {
     // demand is reserved for restore admission, not live usage padding.
     const devices = [
       {
-        controllable: true,
+        countsAsManagedUsage: true,
         plannedState: 'keep',
         currentDrawKw: 0,
         expectedPowerKw: 2,
@@ -169,13 +163,13 @@ describe('splitControlledUsageKw', () => {
 });
 
 describe('sumBudgetExemptMeasuredUsageKw', () => {
-  it('counts only resolved draw of budget-exempt controllable devices', () => {
+  it('counts only resolved draw of budget-exempt devices PELS may command', () => {
     const devices = [
-      { budgetExempt: true, controllable: true, currentDrawKw: 1.2 },
-      { budgetExempt: true, currentDrawKw: 0.3 },
-      { budgetExempt: true, controllable: false, currentDrawKw: 4 },
-      { budgetExempt: false, controllable: true, currentDrawKw: 5 },
-      { controllable: true, currentDrawKw: 6 },
+      { budgetExempt: true, countsAsManagedUsage: true, currentDrawKw: 1.2 },
+      { budgetExempt: true, countsAsManagedUsage: true, currentDrawKw: 0.3 },
+      { budgetExempt: true, countsAsManagedUsage: false, currentDrawKw: 4 },
+      { budgetExempt: false, countsAsManagedUsage: true, currentDrawKw: 5 },
+      { countsAsManagedUsage: true, currentDrawKw: 6 },
     ] as const;
     expect(sumBudgetExemptMeasuredUsageKw(devices)).toBeCloseTo(1.5, 6);
   });
@@ -183,6 +177,7 @@ describe('sumBudgetExemptMeasuredUsageKw', () => {
   it('does not reserve expected demand for an observed-off exempt device', () => {
     const devices = [{
       budgetExempt: true,
+      countsAsManagedUsage: true,
       currentDrawKw: 0,
       currentOn: false,
       expectedPowerKw: 2,

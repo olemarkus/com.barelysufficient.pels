@@ -12,7 +12,7 @@ import {
 } from '../../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { fixtureControlPosture, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 // Drives the REAL PlanBuilder to prove the startup reservation: a device flagged
@@ -31,8 +31,7 @@ const buildInputDevice = (
     targets: [] as PlanInputDevice['targets'],
     binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: true },
-    controllable: true,
-    managed: true,
+    control: fixtureControlPosture({ controllable: true, managed: true }),
     commandableNow: true,
     // The producer's default ordering for this fixture set, stamped on the
     // device: the planner reads the rank off the device now, because the whole

@@ -19,6 +19,10 @@ type RawHeadroomDevice = {
   currentOn?: boolean;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
+  // The settings-decorated capacity flag as the transport carries it. Optional
+  // HERE because that is the raw shape; it is resolved to a required
+  // `countsAsManagedUsage` below, which is the whole job of this boundary.
+  controllable?: boolean;
 };
 
 /**
@@ -31,15 +35,26 @@ type RawHeadroomDevice = {
  */
 export function withHeadroomCurrentOn<T extends RawHeadroomDevice>(
   device: T,
-): T & { currentOn?: boolean; currentDrawKw: number } {
+): T & { currentOn?: boolean; currentDrawKw: number; countsAsManagedUsage: boolean } {
   // The sample path's producer boundary — the twin of `toPlanDevice` for devices
   // that reach the usage math straight off the transport. Resolve the draw here
   // so nothing below has to look at the raw reading.
   //
   const currentDrawKw = getCurrentDrawKw(device);
+  // Resolved to a required answer, and to the SAME answer the optional used to
+  // give: the usage sum skipped on `controllable === false`, so an absent flag
+  // counted as managed. That default is arguably wrong — an unpopulated device's
+  // whole draw inflates what shedding looks able to free — but every production
+  // parse path supplies the flag, so it is unreachable, and flipping it here
+  // would be a behaviour change smuggled into a rename.
+  //
+  // NOT the plan's `commandAuthority`: the parse stamp carries neither the
+  // temperature-axis term nor a smart task's grant, so this answers only the
+  // narrower usage-attribution question.
+  const countsAsManagedUsage = device.controllable !== false;
   return hasBinaryControlCapability(device)
-    ? { ...device, currentDrawKw, currentOn: resolveCurrentOn(device) }
-    : { ...device, currentDrawKw };
+    ? { ...device, currentDrawKw, countsAsManagedUsage, currentOn: resolveCurrentOn(device) }
+    : { ...device, currentDrawKw, countsAsManagedUsage };
 }
 
 export type HeadroomCardCooldownSource = 'pels_shed' | 'pels_restore';

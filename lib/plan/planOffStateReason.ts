@@ -21,7 +21,7 @@ export function resolveShortfallOffState(guardInShortfall: boolean, headroomKw: 
 }
 
 export function applyOffStateReason(planDevice: DevicePlanDevice, shortfall: ShortfallOffState): DevicePlanDevice {
-  if (!planDevice.controllable) return planDevice;
+  if (!planDevice.control.commandAuthority) return planDevice;
   if (planDevice.currentState !== 'off') return planDevice;
   const inactiveReason = getInactiveReason(planDevice);
   if (inactiveReason) {

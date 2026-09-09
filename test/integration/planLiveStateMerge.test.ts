@@ -115,9 +115,13 @@ describe('planLiveStateMerge', () => {
         controllable: true,
       })];
 
+      // Asserted on `commandAuthority`, the member every decision reads. Both
+      // members are checked so a merge that carried one and dropped the other
+      // cannot pass: an earlier draft of this refactor wrote a flat key that
+      // landed on nothing, and `objectContaining` found it anyway.
       expect(buildLiveStatePlan(plan, liveDevices).devices[0]).toEqual(expect.objectContaining({
         available: true,
-        controllable: true,
+        control: expect.objectContaining({ commandAuthority: true }),
       }));
     });
 
@@ -135,7 +139,7 @@ describe('planLiveStateMerge', () => {
 
       expect(buildLiveStatePlan(plan, liveDevices).devices[0]).toEqual(expect.objectContaining({
         available: false,
-        controllable: false,
+        control: expect.objectContaining({ commandAuthority: false }),
       }));
     });
 

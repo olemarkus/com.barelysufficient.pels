@@ -131,7 +131,6 @@ export function buildInitialPlanDevices(params: {
         && decision.funded;
     }
     const currentState = resolveCurrentState(dev);
-    const controllable = dev.controllable;
     const shedBehavior: ShedBehavior = (
       isSteppedLoadDevice(dev) || isTemperaturePlanDevice(dev)
     )
@@ -149,7 +148,7 @@ export function buildInitialPlanDevices(params: {
       binaryCommandPending: deps.pendingBinaryCommandStore.hasActiveTurnOn(dev.id),
       currentState,
       plannedTarget,
-      controllable,
+      control: dev.control,
       shedBehavior,
       shedSet,
       shedStepTargets,

@@ -13,7 +13,7 @@ import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
+import { fixtureControlPosture, withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
@@ -33,7 +33,11 @@ const readingFor = (
 });
 
 const buildDevice = (
-  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
+  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & {
+    // Fixture shorthands for the control posture, resolved by the shared
+    // resolver exactly as `toPlanDevice` does.
+    controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
+  } = {},
 ): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
   id: 'dev',
   name: 'Device',
@@ -43,10 +47,10 @@ const buildDevice = (
   binaryCapabilityId: 'onoff',
   binaryControl: { on: true },
   currentOn: true,
-  controllable: true,
   available: true,
   expectedPowerKw: 1.2,
   ...overrides,
+  control: fixtureControlPosture(overrides),
 })) as PlanInputDevice;
 
 describe('power sample freshness policy', () => {

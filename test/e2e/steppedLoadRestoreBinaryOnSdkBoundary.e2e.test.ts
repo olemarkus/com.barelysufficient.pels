@@ -43,7 +43,7 @@ import {
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
-import { buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const DEVICE_ID = 'hoiax-1';
@@ -249,7 +249,7 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     currentState: 'off',
     plannedState: 'keep' as const,
     boostActive: false,
-    controllable: true,
+    control: fixtureControlPosture({ controllable: true }),
     available: true,
     steppedLoadProfile: CONNECTED_200_STEPPED_LOAD_PROFILE,
     binaryCapabilityId: 'onoff' as const,

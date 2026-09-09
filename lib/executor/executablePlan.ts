@@ -79,7 +79,7 @@ export type ExecutorDeviceSnapshot = ObservedDeviceState
 export type ExecutableDeviceIntent = {
   id: string;
   name: string;
-  controllable: boolean;
+  commandAuthority: boolean;
   /** Set only by the projection's failure path; the device carries no commands. */
   projectionError?: unknown;
 };

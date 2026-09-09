@@ -5,7 +5,7 @@ import type { DevicePlan } from '../../lib/plan/planTypes';
 import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
-import { buildPlanMeta, withFixtureResidualKw, buildUnmeasuredPlanMeta, type PlanMetaOverrides } from '../utils/planTestUtils';
+import { fixtureControlPosture, buildPlanMeta, withFixtureResidualKw, buildUnmeasuredPlanMeta, type PlanMetaOverrides } from '../utils/planTestUtils';
 
 describe('pels status limit reason', () => {
   const baseDevice = {
@@ -23,7 +23,7 @@ describe('pels status limit reason', () => {
     currentTarget: 21,
     currentTemperature: 21,
     plannedTarget: 15,
-    controllable: true,
+    control: fixtureControlPosture({ controllable: true }),
     available: true,
     shedAction: 'set_temperature',
     shedTemperature: 15,
@@ -149,7 +149,7 @@ describe('pels status limit reason', () => {
           currentState: 'off',
           plannedState: 'inactive' as const,
           boostActive: false,
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           available: true,
           reason: fixtureDeviceReason('inactive (charger is unplugged)')!,
         })),

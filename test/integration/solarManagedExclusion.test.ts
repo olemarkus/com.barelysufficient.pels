@@ -142,7 +142,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
     const solar = planDevices.find((d) => d.id === SOLAR_ID);
     expect(solar).toBeDefined();
     expect(solar?.plannedState).toBe('keep');
-    expect(solar?.controllable).toBe(false);
+    expect(solar?.control.commandAuthority).toBe(false);
     expect(isTemperaturePlanDevice(solar!)).toBe(false);
   });
 
@@ -185,8 +185,8 @@ describe('solar device as managed observe-only — control-path exclusion lock',
   it('its POSITIVE production is excluded from controlled AND background/uncontrolled load accounting', () => {
     const devices = [
       // Solar producing +3.0 kW. controllable:false → never controlled usage.
-      { id: SOLAR_ID, controllable: false, plannedState: 'keep' as const, currentDrawKw: 3.0, expectedPowerKw: 1 },
-      { id: HEATER_ID, controllable: true, plannedState: 'keep' as const, currentDrawKw: 1.5, expectedPowerKw: 1 },
+      { id: SOLAR_ID, countsAsManagedUsage: false, plannedState: 'keep' as const, currentDrawKw: 3.0, expectedPowerKw: 1 },
+      { id: HEATER_ID, countsAsManagedUsage: true, plannedState: 'keep' as const, currentDrawKw: 1.5, expectedPowerKw: 1 },
     ];
     // Only the heater's 1.5 kW is controlled usage; the solar's +3.0 kW is NOT.
     const controlledKw = sumControlledUsageKw(devices as Parameters<typeof sumControlledUsageKw>[0]);

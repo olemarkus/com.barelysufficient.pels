@@ -399,7 +399,7 @@ const applyDeviceIntent = async (
     return ZERO_DELTA;
   }
   const ctx: ResolvedDeviceIntent = { ...args, ...commands, steppedAction };
-  if (intent.controllable === false) return applyUncontrolledDeviceIntent(core, ctx);
+  if (intent.commandAuthority === false) return applyUncontrolledDeviceIntent(core, ctx);
   if (isSteppedLoadRestoreFromOff(commands.steppedCommand, steppedAction)) {
     return applySteppedRestoreFromOffIntent(core, ctx);
   }

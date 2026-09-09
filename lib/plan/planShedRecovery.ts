@@ -18,7 +18,7 @@ export function isNonSteppedDeviceRecovering(
   // "Observed off" is meaningful only for binary devices; a non-binary or
   // binary-but-on candidate is not recovering. (Stepped devices are excluded
   // above, so the remaining binary devices read `currentOn` directly.)
-  if (candidate.controllable === false || isSteppedLoadDevice(candidate)
+  if (candidate.control.commandAuthority === false || isSteppedLoadDevice(candidate)
     || !isBinaryPlanDevice(candidate) || candidate.currentOn) {
     return false;
   }

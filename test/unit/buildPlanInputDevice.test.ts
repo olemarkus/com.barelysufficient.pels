@@ -3,6 +3,7 @@ import type {
   PlanInputDevice,
 } from '../../lib/plan/planTypes';
 import type { ObservedDeviceState } from '../../packages/contracts/src/types';
+import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 
 describe('buildPlanInputDevice', () => {
@@ -10,7 +11,7 @@ describe('buildPlanInputDevice', () => {
     expectTypeOf<ObservedDeviceState>().toMatchTypeOf<{ available: boolean }>();
     expectTypeOf<PlanInputDevice>().toMatchTypeOf<{
       available: boolean;
-      controllable: boolean;
+      control: DeviceControlPosture;
     }>();
   });
 
@@ -24,7 +25,9 @@ describe('buildPlanInputDevice', () => {
     // undefined` is the first gate in starvation detection and surplus absorb,
     // so no device that builder produced could ever be seen as starved.
     expect(device).toEqual({
-      controllable: true,
+      // The whole posture, as the producer resolves it for an undescribed
+      // device: power-limited and managed, so authority follows.
+      control: { managed: true, commandAuthority: true },
       available: true,
       id: 'dev-1',
       name: 'Device',
@@ -98,7 +101,7 @@ describe('buildPlanInputDevice', () => {
     });
 
     expect(device.available).toBe(false);
-    expect(device.controllable).toBe(false);
+    expect(device.control.commandAuthority).toBe(false);
   });
 
   it('passes through optional fields unchanged and leaves unspecified ones undefined', () => {

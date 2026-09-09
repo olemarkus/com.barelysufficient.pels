@@ -74,7 +74,7 @@ export function buildPlanCapacityStateSummary(
 
   const summary = buildEmptyCapacityStateSummary();
   for (const device of plan.devices) {
-    if (device.controllable === false) continue;
+    if (device.control.commandAuthority === false) continue;
     summary.controlledDevices += 1;
     const plannedShedCounts = buildPlannedShedCounts({
       plannedShed: device.plannedState === 'shed',
@@ -133,7 +133,7 @@ export function buildPlanInputCapacityStateSummary(
 ): PlanCapacityStateSummary {
   const summary = buildEmptyCapacityStateSummary();
   for (const device of devices) {
-    if (device.controllable === false) continue;
+    if (device.control.commandAuthority === false) continue;
     summary.controlledDevices += 1;
     // Resolved once: the reader reaches the command store, and asking it twice
     // per device was the shape this summary had before the store owned the
@@ -249,7 +249,7 @@ function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unkn
     desiredStepId: device.desiredStepId,
     shedAction: device.shedAction,
     deferredReleaseIntent: device.deferredReleaseIntent,
-    controllable: device.controllable,
+    commandAuthority: device.control.commandAuthority,
   };
 }
 
@@ -280,7 +280,7 @@ function isZeroDrawInputDevice(device: PlanInputDevice): boolean {
 }
 
 function isActionableShortfallCandidate(device: DevicePlanDevice): boolean {
-  if (device.controllable === false) return false;
+  if (device.control.commandAuthority === false) return false;
   if (isBinaryPlanDevice(device) && !device.currentOn) return false;
   if (device.plannedState === 'shed') return false;
   if (isBlockedByCooldown(device) || isBlockedByPenalty(device)) {
@@ -345,7 +345,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       currentState: d.currentState,
       reason: buildComparableDeviceReason(d.reason),
       shedAction: d.shedAction,
-      controllable: d.controllable,
+      commandAuthority: d.control.commandAuthority,
       stepCommandPending: d.stepCommandPending ?? null,
       stepCommandStatus: d.stepCommandStatus ?? null,
       pendingTargetDesired: d.pendingTargetCommand?.desired ?? null,
@@ -434,7 +434,7 @@ function categorizePlanDebugDevices(devices: DevicePlanDevice[]): {
       inactiveDevices.push(device);
       continue;
     }
-    if (device.plannedState === 'shed' && device.currentState === 'off' && device.controllable) {
+    if (device.plannedState === 'shed' && device.currentState === 'off' && device.control.commandAuthority) {
       restoreBlockedDevices.push(device);
     }
   }

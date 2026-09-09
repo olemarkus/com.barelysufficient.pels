@@ -145,10 +145,11 @@ fallback actuation stays on the independent lifecycle clock:
   otherwise. `satisfied`, `unknown`, and `invalid` resolve to `inactive` so the device returns to
   its normal behavior once the goal is met or the objective cannot be trusted.
 - Capacity-based control on/off is treated purely as device visibility for the planner: cap-on
-  devices are always managed; cap-off devices are normally invisible to PELS (an externally
-  toggled cap-off device runs undisturbed). When a cap-off device has a non-inactive deferred
-  decision the planner makes it visible for that cycle by setting `controllable=true` on the
-  input device. For idle decisions the planner also seeds the device into the shedding shed-set
+  devices are always managed; a device the owner has not opted into power limiting is
+  normally invisible to PELS (an externally toggled one runs undisturbed). When such a
+  device has a non-inactive deferred decision the planner makes it visible for that cycle
+  by contributing a term to the device's derived `commandAuthority` — the owner's two
+  settings are never written. For idle decisions the planner also seeds the device into the shedding shed-set
   so the shedding lane keeps it off.
 - Once a device is admitted, the shedding and restore lanes act on it with their normal logic
   and produce their normal reasons (cooldowns, restore-pending, capacity, etc.). The deferred

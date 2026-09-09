@@ -13,7 +13,7 @@ import {
 } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
@@ -106,7 +106,7 @@ const buildDevice = (on: boolean): PlanInputDevice => withBinaryDiscriminant(wit
   hasStandingDemand: true,
   surplusTracking: false,
   confirmedNotDrawing: false,
-  controllable: true,
+  control: fixtureControlPosture({ controllable: true }),
   binaryCapabilityId: 'onoff',
   binaryControl: { on },
   currentOn: on,

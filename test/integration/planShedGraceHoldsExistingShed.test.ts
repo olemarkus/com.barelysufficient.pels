@@ -5,7 +5,9 @@ import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDec
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import type { DevicePlan, PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import {
+  fixtureControlPosture, fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn,
+} from '../utils/planTestUtils';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
@@ -19,7 +21,7 @@ const buildDevice = (
     name: 'Device',
     targets: [],
     binaryControl: { on: true },
-    controllable: true,
+    control: fixtureControlPosture({ controllable: true }),
     available: true,
     binaryCapabilityId: 'onoff' as const,
     ...overrides,

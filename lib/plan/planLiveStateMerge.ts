@@ -198,7 +198,14 @@ export function buildLiveStatePlan(
         binaryCommandPending: hasPendingBinaryTurnOn(device.id) || undefined,
         available: live.available,
         zone: live.zone ?? device.zone,
-        controllable: live.controllable,
+        // The whole posture, live-sourced — the same source the flat
+        // `controllable` took before the split.
+        //
+        // Note this is the PRE-admission posture: the callers pass raw
+        // `getPlanDevices()`, so a smart task's grant does not survive into the
+        // live-state plan. That was equally true of the flat field; the object
+        // just makes it legible.
+        control: live.control,
         stepCommandPending: live.stepCommandPending ?? device.stepCommandPending,
         stepCommandStatus: live.stepCommandStatus ?? device.stepCommandStatus,
         // Re-fold the on/off truth against the merged step/profile, using the

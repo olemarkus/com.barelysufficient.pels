@@ -1454,6 +1454,23 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Architecture and tooling debt
 
+- [ ] **P2 — the usage sums copy every plan device to attach one boolean.** `toUsageDevice`
+      (`lib/plan/planUsage.ts`) spreads a whole `DevicePlanDevice` to add `countsAsManagedUsage`,
+      and four call sites map it over the full device set on every build:
+      `lib/plan/planContext.ts`, `lib/plan/planBuilder.ts`, `lib/plan/planBuilderMeta.ts` and
+      `lib/plan/admission/sheddingGuard.ts`. That is three to four full copies of every device per
+      build, every 10 s per home, on an app whose RSS ceiling is 160 MB. `eslint.config.mjs` bans
+      `SpreadElement` inside loop statements in `lib/plan` for this reason; a `.map()` callback
+      evades the selector but not the intent. **What changes:** give the four sums in
+      `lib/power/usageAttribution.ts` and `sumBudgetExemptProjectedUsageKw` an explicit
+      `countsAsManaged` predicate parameter instead of a stamped field, so each caller answers the
+      question at its own seam and nothing is copied. The obstacle to doing it in the posture PR
+      was `setup/powerSamplePipeline.ts:191`, which would then have to supply
+      `(d) => d.controllable !== false` — a classification in the wiring layer, which
+      `setup/AGENTS.md` forbids; that call site needs a `lib/`-owned predicate to pass instead.
+      **Done when:** `toUsageDevice` is gone, no `.map()` runs on the plan-build path to feed a
+      usage sum, and `setup/powerSamplePipeline.ts` names no predicate of its own.
+
 - [ ] **P2 — the owned sub-states of `PlanEngineState` keep their fields public, so their
       invariants hold by convention.** `ActuationRecord`, `RestoreBackoff` and `OvershootIncident`
       (`lib/plan/*.ts`) each expose public mutable fields beside the mutators that are the only

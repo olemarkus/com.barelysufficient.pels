@@ -1,3 +1,4 @@
+import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { isBinaryPlanDevice } from './planBinaryDevice';
@@ -46,7 +47,7 @@ type RemainingSheddableResidualFields = {
  */
 export type RemainingSheddableDevice = RemainingSheddableResidualFields & {
   id: string;
-  controllable: boolean;
+  control: DeviceControlPosture;
   // Producer-resolved on/off truth, present iff binary; read via `isBinaryPlanDevice`.
   currentOn?: boolean;
   budgetExempt: boolean;
@@ -61,7 +62,7 @@ export type RemainingSheddableLoadParams = {
 
 type RemainingSheddableSourceDevice = RemainingSheddableResidualFields & {
   id: string;
-  controllable: boolean;
+  control: DeviceControlPosture;
   currentOn?: boolean;
   // Optional here and required on the view: the producer's own `budgetExempt` is
   // optional, and this projection is where absence becomes the explicit `false`.
@@ -154,7 +155,7 @@ export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadPa
     capacityBreached,
   } = params;
 
-  if (device.controllable === false) return 0;
+  if (device.control.commandAuthority === false) return 0;
   if (isBinaryPlanDevice(device) && !device.currentOn) return 0;
   if (alreadyShed) return 0;
   if (limitSource === 'daily' && !capacityBreached && device.budgetExempt) return 0;
@@ -191,7 +192,7 @@ export function sumRemainingSheddableLoadKw(params: {
 function toRemainingSheddableDevice(device: RemainingSheddableSourceDevice): RemainingSheddableDevice {
   return {
     id: device.id,
-    controllable: device.controllable,
+    control: device.control,
     // Written unconditionally: `isBinaryPlanDevice` is a key-presence test, so
     // dropping the key for a non-binary device would change the narrowing.
     currentOn: device.currentOn,

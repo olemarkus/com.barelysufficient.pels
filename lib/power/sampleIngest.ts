@@ -214,9 +214,15 @@ export async function recordPowerSampleForApp(params: {
   // Resolve raw readings once before the power-owned attribution. This is the
   // same normalization as the observer's getCurrentDrawKw; power must not import
   // the observer merely to resolve this transport-to-attribution boundary.
+  // The attribution answer is resolved here for the same reason the draw is:
+  // this seam holds raw transport snapshots, so it answers from the parse stamp
+  // rather than fabricating a control posture it does not hold. `!== false` is
+  // the old optional's `=== false` skip under a required name — an unpopulated
+  // flag counted as managed then and counts as managed now.
   const usageDevices = snapshot.map((device) => ({
     ...device,
     currentDrawKw: normalizeMeasuredPowerKw(device.measuredPowerKw) ?? 0,
+    countsAsManagedUsage: device.controllable !== false,
   }));
   // Authoritative whole-home actual consumption = net grid import + gross
   // generation. With no generation signal this is exactly `currentPowerW`, so

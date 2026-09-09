@@ -103,9 +103,10 @@ the problem, not the safety net.
 
 - **Seed candidacy is the planned set, not the opted-in set.** Narrowing it to
   `managed === true` excluded every implicitly-managed device; narrowing it to
-  `controllable === true` additionally excluded price-only thermostats, which
-  silently disabled price optimization for them (a price delta modulates a
-  configured mode target and nothing else).
+  `controllable === true` — the merged flag now spelled
+  `control.commandAuthority` on a plan device — additionally excluded price-only
+  thermostats, which silently disabled price optimization for them (a price
+  delta modulates a configured mode target and nothing else).
 - **A reviewer report shaped "the owner changed the setpoint mid-shed, so PELS
   later restores a stale value" depends on the selected policy.** Under the
   default it is drift. Under Update mode target, an admitted external adjustment

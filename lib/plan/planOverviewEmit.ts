@@ -62,6 +62,10 @@ function recordOverviewChange(
   );
   const overviewDevice = {
     ...device,
+    // The overview contract is a WIRE shape and stays flat: the posture is
+    // flattened once, here, rather than travelling as an object into the
+    // settings UI and the widgets.
+    controllable: device.control.commandAuthority,
     steppedLoad: buildOverviewSteppedLoad(device),
     ...(temperature.kind === 'present' ? { temperature: temperature.value } : {}),
     // The draw needs no adapter: the display/log helpers read `currentDrawKw`,

@@ -233,7 +233,7 @@ export const compactPelsPlanDevice = (
     currentTarget: isTemperaturePlanDevice(device) ? device.currentTarget : null,
     plannedTarget: isTemperaturePlanDevice(device) ? device.plannedTarget : undefined,
     reason: formatDeviceReason(device.reason),
-    controllable: device.controllable,
+    controllable: device.control.commandAuthority,
     stepPowerCalibration: device.stepPowerCalibration,
     pendingTargetCommand: device.pendingTargetCommand,
   };

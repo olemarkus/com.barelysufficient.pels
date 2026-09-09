@@ -71,13 +71,26 @@ export function isManagedFilterActive(managedDevices: BooleanMap): boolean {
 // filter is inactive (no device explicitly opted-in) yet be dropped by the
 // planner — it would be offered/persisted but never planned or controlled.
 //
+// TWO SHAPES, ONE RULE. A raw snapshot carries an optional `managed`; a plan
+// device carries the producer-resolved `control.managed`. Both ask the same
+// question, so both go through `plannedFromManagedFlag` below rather than
+// spelling the comparison twice — the header above demands the consumers stay in
+// step, and two expressions of one rule is how that stops being true.
+//
 // Encoded as `managed !== false` (not `managed === true`): an implicitly-managed
 // device whose `managed` flag is `undefined`/absent (e.g. the managed-filter is
 // inactive and the device was never explicitly toggled) IS planned, matching
 // the planner's own filter. Only an explicit opt-out (`managed === false`) is
 // excluded.
+const plannedFromManagedFlag = (managed: boolean | undefined): boolean => managed !== false;
+
 export function isRuntimePlannedDevice(device: { managed?: boolean }): boolean {
-  return device.managed !== false;
+  return plannedFromManagedFlag(device.managed);
+}
+
+/** Plan-device form of {@link isRuntimePlannedDevice}; same rule, resolved shape. */
+export function isRuntimePlannedPlanDevice(device: { control: { managed: boolean } }): boolean {
+  return plannedFromManagedFlag(device.control.managed);
 }
 
 function parsePriceSettings(value: unknown): PriceSettings | null {

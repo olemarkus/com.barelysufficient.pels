@@ -51,7 +51,7 @@ import {
   type PlanInputDevice,
 } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 // Deliberately non-binding: a rate no plan in these cases can reach, so the
 // reserved-headroom forecast never selects a lower rung than the case intends.
 // (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
@@ -206,7 +206,7 @@ describe('device-scoped write op: sub-home gate', () => {
 
 // ─── Diagnostics honesty for an existing task on a relocated device ──────────
 
-const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ controllable: true, available: true, currentDrawKw: 0,
+const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
   id: 'heater-sub',
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Cabin heater',
@@ -578,7 +578,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
           surplusTracking: false,
           confirmedNotDrawing: false,
           available: true,
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           controlCapabilityId: 'onoff',
           binaryControl: { on: deviceOn },
           targets: [],

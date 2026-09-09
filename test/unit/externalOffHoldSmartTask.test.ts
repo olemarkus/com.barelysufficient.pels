@@ -10,7 +10,7 @@ import {
 import { withBinaryDiscriminant, type PlanInputDevice } from '../../lib/plan/planTypes';
 import type { DeferredAdmissionDecision } from '../../lib/objectives/deferredObjectives/admission';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 
 // An explicit off action beats a smart task, but the deadline consequence has to
 // stay visible: the task reports risk with a reason naming the device, rather
@@ -157,8 +157,7 @@ describe('external-off hold — no rescue claims for a device that will not star
       targets: [],
       binaryCapabilityId: 'onoff',
       binaryControl: { on: false },
-      controllable: false,
-      managed: true,
+      control: fixtureControlPosture({ controllable: false, managed: true }),
       ...overrides,
     })) as PlanInputDevice
   );
@@ -182,7 +181,7 @@ describe('external-off hold — no rescue claims for a device that will not star
     expect(device.reservesStartupPower).toBeUndefined();
     expect(device.forceBoostActive).toBeUndefined();
     expect(device.budgetExempt).toBeUndefined();
-    expect(device.controllable).toBe(false);
+    expect(device.control.commandAuthority).toBe(false);
   });
 
   it('control case: the same task still claims what it needs when nothing is held', () => {
@@ -190,6 +189,6 @@ describe('external-off hold — no rescue claims for a device that will not star
     expect(device.reservesStartupPower).toBe(true);
     expect(device.forceBoostActive).toBe(true);
     expect(device.budgetExempt).toBe(true);
-    expect(device.controllable).toBe(true);
+    expect(device.control.commandAuthority).toBe(true);
   });
 });

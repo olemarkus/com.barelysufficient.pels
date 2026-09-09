@@ -5,6 +5,7 @@ describe('plan usage budget exemption helpers', () => {
     expect(sumBudgetExemptProjectedUsageKw([
       {
         budgetExempt: true,
+        countsAsManagedUsage: true,
         currentDrawKw: 1.2,
         expectedPowerKw: 2,
       },
@@ -12,6 +13,7 @@ describe('plan usage budget exemption helpers', () => {
         // Drawing nothing and not observed off: the meter is the answer.
         currentDrawKw: 0,
         budgetExempt: true,
+        countsAsManagedUsage: true,
         expectedPowerKw: 0.8,
       },
     ])).toBeCloseTo(1.2, 6);
@@ -26,17 +28,20 @@ describe('plan usage budget exemption helpers', () => {
       {
         currentDrawKw: 0,
         budgetExempt: true,
+        countsAsManagedUsage: true,
         currentOn: false,
         expectedPowerKw: 1.5,
       },
       {
         budgetExempt: true,
+        countsAsManagedUsage: true,
         currentDrawKw: 0.5,
         expectedPowerKw: 2,
       },
       {
         currentDrawKw: 0,
         budgetExempt: false,
+        countsAsManagedUsage: true,
         expectedPowerKw: 10,
       },
     ])).toBeCloseTo(2, 6);
@@ -46,12 +51,12 @@ describe('plan usage budget exemption helpers', () => {
     expect(sumBudgetExemptProjectedUsageKw([
       { expectedPowerKw: 1,
         budgetExempt: true,
-        controllable: false,
+        countsAsManagedUsage: false,
         currentDrawKw: 5,
       },
       { expectedPowerKw: 1,
         budgetExempt: true,
-        controllable: true,
+        countsAsManagedUsage: true,
         currentDrawKw: 1.5,
       },
     ])).toBeCloseTo(1.5, 6);

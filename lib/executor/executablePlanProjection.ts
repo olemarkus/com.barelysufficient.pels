@@ -60,7 +60,7 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
   return {
     id: planDevice.id,
     name: planDevice.name,
-    controllable: planDevice.controllable,
+    commandAuthority: planDevice.control.commandAuthority,
     ...(target ? { target } : {}),
     ...(binary ? { binary } : {}),
     ...(release ? { release } : {}),
@@ -75,7 +75,7 @@ function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: Plan
     return {
       id: planDevice.id,
       name: planDevice.name,
-      controllable: planDevice.controllable,
+      commandAuthority: planDevice.control.commandAuthority,
       projectionError: error,
     };
   }
@@ -119,7 +119,7 @@ const resolveConvergenceDesiredBinaryState = (
   // (external-off and the other inactive holds) also carries no shed target, and
   // demanding `on` for one would leave convergence waiting on a restore the
   // executor never intends to issue.
-  return dev.controllable && dev.plannedState === 'keep' && isBinaryPlanDevice(dev) ? 'on' : null;
+  return dev.control.commandAuthority && dev.plannedState === 'keep' && isBinaryPlanDevice(dev) ? 'on' : null;
 };
 
 // A setpoint is wanted whenever the device has a temperature axis, unless this
@@ -319,7 +319,7 @@ const buildObservedSteppedLoadState = (
 const buildExecutableBinaryIntent = (dev: PlanDevice): ExecutableBinaryIntent | undefined => {
   if (isSteppedLoadDevice(dev)) return undefined;
   if (!isBinaryPlanDevice(dev)) return undefined;
-  if (dev.controllable === false) {
+  if (dev.control.commandAuthority === false) {
     return dev.plannedState === 'keep'
       ? { deviceId: dev.id, name: dev.name, desiredOn: true, source: 'uncontrolled' }
       : undefined;

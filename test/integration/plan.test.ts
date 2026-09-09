@@ -455,7 +455,7 @@ describe('Device plan snapshot', () => {
       expect.objectContaining({
         deviceId: 'dev-ctrl',
         deltaKw: 1.6,
-        controllable: true,
+        commandAuthority: true,
         expectedByPreviousPlan: true,
         newPowerSource: 'measured',
       }),
@@ -473,7 +473,7 @@ describe('Device plan snapshot', () => {
       expect.objectContaining({
         deviceId: 'dev-uncontrolled',
         deltaKw: 1.3,
-        controllable: false,
+        commandAuthority: false,
         expectedByPreviousPlan: null,
       }),
     ]);

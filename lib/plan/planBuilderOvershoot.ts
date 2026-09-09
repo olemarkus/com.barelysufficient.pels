@@ -185,7 +185,7 @@ export class OvershootTracker {
     for (const [deviceId, restoreMs] of recentRestores) {
       const contributingRestore = overshootDiagnostics.contributors.find((contributor) => (
         contributor.deviceId === deviceId
-        && contributor.controllable
+        && contributor.commandAuthority
         && contributor.deltaKw > 0
       ));
       if (!contributingRestore) continue;
@@ -236,7 +236,7 @@ type OvershootEntryContributor = {
   deltaKw: number;
   previousPowerSource: ResolvedPowerSource;
   newPowerSource: ResolvedPowerSource;
-  controllable: boolean;
+  commandAuthority: boolean;
   expectedByPreviousPlan: boolean | null;
   changedDuringPendingWindow: boolean;
   changedDuringCooldownWindow: boolean;
@@ -308,10 +308,10 @@ function buildOvershootEntryDiagnostics(params: {
     .filter((contributor): contributor is OvershootEntryContributor => contributor !== null)
     .sort((left, right) => right.deltaKw - left.deltaKw);
   const controlled = contributors
-    .filter((contributor) => contributor.controllable)
+    .filter((contributor) => contributor.commandAuthority)
     .slice(0, OVERSHOOT_TOP_CONTRIBUTOR_LIMIT);
   const uncontrolled = contributors
-    .filter((contributor) => !contributor.controllable)
+    .filter((contributor) => !contributor.commandAuthority)
     .slice(0, OVERSHOOT_TOP_CONTRIBUTOR_LIMIT);
   const totalDeltaKw = previous === null ? null : roundOvershootKw(drawKw - previous.totalKw);
   const attributedDeltaKw = roundOvershootKw(contributors.reduce((sum, contributor) => sum + contributor.deltaKw, 0));
@@ -437,7 +437,7 @@ function buildOvershootContributor(
   const expectedPowerKw = resolveFiniteNumber(device.expectedPowerKw);
   const currentDrawKw = device.currentDrawKw;
   let expectedByPreviousPlan: boolean | null = null;
-  if (previous && previous.controllable) {
+  if (previous && previous.control.commandAuthority) {
     expectedByPreviousPlan = previous.plannedState !== 'shed' && previous.plannedState !== 'inactive';
   }
 
@@ -447,7 +447,7 @@ function buildOvershootContributor(
     deltaKw: roundOvershootKw(deltaKw),
     previousPowerSource: previousPower.source,
     newPowerSource: nextPower.source,
-    controllable: device.controllable,
+    commandAuthority: device.control.commandAuthority,
     expectedByPreviousPlan,
     changedDuringPendingWindow: hasPendingWindow(previous) || hasPendingWindow(device),
     changedDuringCooldownWindow: isCooldownBlocked(previous) || isCooldownBlocked(device),
@@ -468,7 +468,7 @@ function trackPlanDeviceForOvershoot(
   return {
     id: device.id,
     name: device.name,
-    controllable: device.controllable,
+    control: device.control,
     plannedState: device.plannedState,
     currentState: device.currentState,
     // Source the binary on/off truth only when the device is binary this cycle (a

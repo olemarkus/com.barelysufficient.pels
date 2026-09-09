@@ -253,7 +253,7 @@ function resolveHoldDecision(
 ): HoldDecision {
   const { shedReasons, normalizedShedFloorCByDevice } = pass;
 
-  if (dev.controllable === false) {
+  if (dev.control.commandAuthority === false) {
     return { type: 'skip' };
   }
 

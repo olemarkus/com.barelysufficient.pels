@@ -18,7 +18,7 @@ import {
   type DeferredObjectiveRescuePermissions,
 } from '../../lib/objectives/deferredObjectives';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 // The tracker is the single power latch; tests drive the whole-home total here.
@@ -155,7 +155,7 @@ const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscrimin
   hasStandingDemand: true,
   surplusTracking: false,
   confirmedNotDrawing: false,
-  controllable: true, // capacity-based control is ON — the budget-starvation scenario
+  control: fixtureControlPosture({ controllable: true }), // capacity-based control is ON — the budget-starvation scenario
   controlModel: 'stepped_load',
   binaryCapabilityId: 'onoff',
   steppedLoadProfile: {

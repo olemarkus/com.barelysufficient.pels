@@ -115,7 +115,14 @@ describe('external temperature changes reach the mode through observation', () =
     await mockHomeyInstance.flow._actionCardListeners.report_power_usage({ power: 15_000 });
     await vi.advanceTimersByTimeAsync(2000);
     const device = app.planService!.getLatestPlanSnapshot()?.devices.find((candidate) => candidate.id === deviceId);
-    expect(device).toMatchObject({ controllable: false, plannedState: 'keep', plannedTarget: 23.5 });
+    // A device whose only axis is temperature, with temperature control off,
+    // has nothing PELS could command — `hasTemperaturePolicyPowerControl` is
+    // the last term of `commandAuthority`.
+    expect(device).toMatchObject({
+      control: expect.objectContaining({ commandAuthority: false }),
+      plannedState: 'keep',
+      plannedTarget: 23.5,
+    });
   });
 
   it('resolves a retained Main mode alias before saving an external adjustment', async () => {

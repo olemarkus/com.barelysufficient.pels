@@ -1,4 +1,5 @@
 import { resolveSurplusCeilingStepId, type PlanEngineState } from './planState';
+import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { PlanInputDevice } from './planTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type {
@@ -121,8 +122,7 @@ export function resolveSurplusOnlyPosture(params: {
   // non-binary control model. Resolved at the producer so this planner helper
   // carries no target-power / control-model branch.
   plainBinaryControlModel: boolean;
-  controllable: boolean;
-  managed: boolean;
+  control: DeviceControlPosture;
   // Producer-resolved: can this home's surplus pool ever be non-zero? False
   // means no surplus can arrive, so stamping the posture would hold the device
   // off indefinitely rather than merely leaving it idle.
@@ -135,8 +135,8 @@ export function resolveSurplusOnlyPosture(params: {
     && !isSteppedLoadSnapshot(params)
     && params.plainBinaryControlModel
     && params.targets?.some((target) => target.id === 'target_temperature') !== true
-    && params.controllable
-    && params.managed !== false;
+    && params.control.commandAuthority
+    && params.control.managed;
 }
 
 /**
@@ -171,8 +171,7 @@ export function resolveSurplusTrackingPosture(params: {
   surplusWilling: boolean | undefined;
   targets: readonly TargetCapabilitySnapshot[] | undefined;
   steppedLoadProfile: SteppedLoadProfile | undefined;
-  controllable: boolean;
-  managed: boolean;
+  control: DeviceControlPosture;
   // Same producer-resolved question as the binary posture: can this home's
   // surplus pool ever be non-zero? False means stamping the posture would clamp
   // the device to its floor forever rather than merely leaving it unmodulated.
@@ -182,8 +181,8 @@ export function resolveSurplusTrackingPosture(params: {
     && params.surplusPoolReachable
     && isSteppedLoadSnapshot(params)
     && params.targets?.some((target) => target.id === 'target_temperature') !== true
-    && params.controllable
-    && params.managed !== false;
+    && params.control.commandAuthority
+    && params.control.managed;
 }
 
 // Hard-off: the release condition is unambiguous — the whole-home signal is

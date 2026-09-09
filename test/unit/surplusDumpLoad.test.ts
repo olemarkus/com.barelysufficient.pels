@@ -42,8 +42,7 @@ const candidateParams = (overrides: Partial<Parameters<typeof resolveSurplusOnly
   targets: [],
   steppedLoadProfile: undefined,
   plainBinaryControlModel: true,
-  controllable: true,
-  managed: true,
+  control: { managed: true, commandAuthority: true },
   surplusPoolReachable: true,
   ...overrides,
 });
@@ -68,8 +67,8 @@ describe('resolveSurplusOnlyPosture (dump-load candidacy)', () => {
     // test); the settings-UI gate (`resolveDeviceDetailControlMode !== 'default'`)
     // classifies the same devices out.
     ['not a plain binary control model', { plainBinaryControlModel: false }],
-    ['power-limit control off', { controllable: false }],
-    ['unmanaged', { managed: false }],
+    ['power-limit control off', { control: { managed: true, commandAuthority: false } }],
+    ['unmanaged', { control: { managed: false, commandAuthority: false } }],
     // Restored guard. This row was deleted when the `meteredPowerSource` gate
     // came out, and the trap it had been holding shut re-opened immediately: a
     // device stamped `surplusOnly` in a home whose pool can never open is held

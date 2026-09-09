@@ -12,6 +12,7 @@ import {
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import {
   buildPlanMeta,
+  fixtureControlPosture,
   fixtureResidualKw,
   resolveFixtureCurrentOn,
   withMaterializedEvPlugState,
@@ -21,7 +22,17 @@ import type { BinaryControlObservation } from '../../packages/contracts/src/type
 export type LooseOutputDevice = Partial<DevicePlan['devices'][number]>
   & TemperatureDiscriminantProbe
   & BinaryControlDiscriminantProbe
-  & { binaryCapabilityId?: string; evChargingState?: string };
+  & {
+    binaryCapabilityId?: string; evChargingState?: string;
+    /**
+     * Fixture shorthands for the control posture, resolved exactly as on the
+     * input side: a spec that only cares whether the device is power-limited
+     * says so, and `fixtureControlPosture` resolves the rest.
+     */
+    controllable?: boolean;
+    managed?: boolean;
+    commandAuthority?: boolean;
+  };
 
 // Regroup a loose output-device override bag (temperature fields flat on the
 // base) onto the discriminated `DevicePlanDevice` shape.
@@ -42,6 +53,7 @@ export const asOutputDevice = (
   } = materialized;
   return withBinaryDiscriminant(withTemperatureDiscriminant({
     ...semantic,
+    control: fixtureControlPosture(loose),
     // Resolved from the UN-stripped bag: `binaryCapabilityId` and
     // `binaryControl` are destructured out above, and the producer's residual
     // question is exactly whether the device has a binary axis — asking it of
@@ -72,6 +84,16 @@ export const asOutputDevice = (
 export type LooseInputDevice = Partial<PlanInputDevice>
   & BinaryControlDiscriminantProbe
   & {
+    /**
+     * Fixture shorthands for the control posture. Production resolves all three
+     * in `toPlanDevice`; a spec that only cares whether the device is
+     * power-limited says so, and the builder resolves the rest the way the
+     * producer does — `commandAuthority` follows `controllable` unless the spec
+     * states it, which is exactly the standing rule.
+     */
+    controllable?: boolean;
+    managed?: boolean;
+    commandAuthority?: boolean;
     evChargingState?: string;
     binaryCapabilityId?: string;
     // `binaryControlObservation` is a transport/observer snapshot field, not a
@@ -98,7 +120,7 @@ export const inputDevice = (
   return {
     ...materialized,
     residualKw: fixtureResidualKw(materialized),
-    controllable: materialized.controllable ?? true,
+    control: fixtureControlPosture(materialized),
     available: materialized.available ?? true,
     ...(materialized.binaryCapabilityId !== undefined
       ? { currentOn: materialized.currentOn ?? resolveFixtureCurrentOn(materialized) }

@@ -7,14 +7,18 @@ import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDec
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { fixtureControlPosture, fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDevice = (
-  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
+  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & {
+    // Fixture shorthands for the control posture, resolved by the shared
+    // resolver exactly as `toPlanDevice` does.
+    controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
+  } = {},
 ): PlanInputDevice => {
   const merged = {
     id: 'dev',
@@ -31,6 +35,7 @@ const buildDevice = (
     currentDrawKw: fixtureCurrentDrawKw(merged),
     // Resolved by the producer itself; a declared residual is taken verbatim.
     residualKw: merged.residualKw ?? fixtureResidualKw(merged),
+    control: fixtureControlPosture(merged),
     currentOn: resolveFixtureCurrentOn(merged),
   }) as PlanInputDevice;
 };
@@ -858,7 +863,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
           expect.objectContaining({
             deviceId: 'background',
             deviceName: 'Background Load',
-            controllable: false,
+            commandAuthority: false,
             deltaKw: 1.2,
           }),
         ],

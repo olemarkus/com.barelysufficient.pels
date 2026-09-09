@@ -90,7 +90,7 @@ function collectSheddingCandidates(
   let blockedReducibleControlledKw = 0;
 
   for (const device of devices) {
-    if (device.controllable === false) continue;
+    if (device.control.commandAuthority === false) continue;
     if (!isEligibleForShedding(device)) {
       recorder.record({ device, reasonCode: 'binary_confirmed_off' });
       continue;

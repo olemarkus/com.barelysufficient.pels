@@ -47,7 +47,7 @@ import {
   resolveResidualKwRestore,
 } from '../../lib/device/deviceResidualKw';
 import { getHighestKnownPowerKw } from '../../lib/observer/observedPower';
-import { steppedProfile, buildPlanDevice } from '../utils/planTestUtils';
+import { fixtureControlPosture, steppedProfile, buildPlanDevice } from '../utils/planTestUtils';
 
 // Local fixture shape: the discriminated output device plus the orthogonal
 // binary-control cluster and the producer-only `controlModel` setting — both
@@ -285,7 +285,9 @@ describe('restore accounting parity — as built vs recomputed from the plan dev
     // so the residual itself is not where the cap-off behaviour lives. This
     // test pins that the kW we'd compute is still consistent — the producer
     // doesn't accidentally branch on `controllable`.
-    const capped = { ...deviceB, controllable: false } satisfies DevicePlanDevice;
+    const capped = {
+      ...deviceB, control: fixtureControlPosture({ controllable: false }),
+    } satisfies DevicePlanDevice;
     expect(estimateRestorePower(withProducerResolvedRestore(capped)))
       .toBeCloseTo(estimateRestorePower(capped), 9);
   });

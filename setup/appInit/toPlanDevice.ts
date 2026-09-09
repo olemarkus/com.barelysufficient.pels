@@ -30,6 +30,7 @@ import type {
   TemperatureBoostConfig,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
+import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { AppContext } from '../../lib/app/appContext';
 import type { TransportControlBindingProbe } from '../../lib/device/transportDeviceSnapshot';
 import type { BinaryCommandabilityProjection } from '../../lib/plan/admission/binaryCommandReachability';
@@ -189,15 +190,16 @@ function resolveSurplusPostureForDevice(params: {
   device: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe;
   opts: ToPlanDeviceOptions | undefined;
   plainBinaryControlModel: boolean;
-  controllable: boolean;
-  managed: boolean;
+  // The whole posture, not the one boolean each resolver happens to want: when
+  // you hold the domain object, pass the object.
+  control: DeviceControlPosture;
   // Passed in, not re-derived: `toPlanDevice` decides standing demand once and
   // both readers take that answer. Two spellings of the one question this
   // refactor exists to centralise is exactly the fork it removed elsewhere.
   hasStandingDemand: boolean;
 }): { surplusOnly: boolean; surplusTracking: boolean } {
   const {
-    ctx, device, opts, plainBinaryControlModel, controllable, managed, hasStandingDemand,
+    ctx, device, opts, plainBinaryControlModel, control, hasStandingDemand,
   } = params;
   const none = { surplusOnly: false, surplusTracking: false };
   if (device.temperatureControlDisabled === true) return none;
@@ -223,16 +225,14 @@ function resolveSurplusPostureForDevice(params: {
       targets: device.targets,
       steppedLoadProfile: device.steppedLoadProfile,
       plainBinaryControlModel,
-      controllable,
-      managed,
+      control,
       surplusPoolReachable,
     }),
     surplusTracking: resolveSurplusTrackingPosture({
       surplusWilling,
       targets: device.targets,
       steppedLoadProfile: device.steppedLoadProfile,
-      controllable,
-      managed,
+      control,
       surplusPoolReachable,
     }),
   };
@@ -525,17 +525,18 @@ export function toPlanDevice(
   const shedBehavior = resolveEffectiveShedBehavior(ctx, device);
   const temperatureBoost = resolveEffectiveTemperatureBoost(ctx, device);
   const evBoost = ctx.getEvBoostConfig?.(device.id);
-  // A home battery or solar device is managed observe-only. Read its
-  // `managed`/`controllable` from the STRUCTURAL snapshot stamp
-  // (`resolveParsedDeviceSettings` set them from the device object at parse, on every
-  // parse path) rather than re-resolving via the settings-derived `ctx` functions —
-  // those depend on the transport's async-populated id sets, which the realtime
-  // `device.update` path does not refresh, so re-resolving could briefly read
-  // `controllable: true` for a device whose settings say so. The structural stamp closes
-  // that window: a present observe-only device is NEVER controllable here. Other-device
-  // resolution is unchanged (the stamp equals the re-resolved value).
-  const { controllable, managed } = resolveDeviceControlPosture(
-    device, ctx.resolveManagedState(device.id), ctx.isCapacityControlEnabled(device.id),
+  // The two owner settings, read here and resolved in `lib/device`. The
+  // observe-only discriminant deliberately stays STRUCTURAL inside the resolver
+  // (the snapshot's own `deviceClass`, stamped at parse on every path) rather
+  // than `ctx`'s settings-derived `isObserveOnlyRoleDevice`, which depends on
+  // the transport's async-populated id sets that the realtime `device.update`
+  // path does not refresh — re-resolving there could briefly grant authority to
+  // a battery whose settings say so. The structural key closes that window: a
+  // present observe-only device is NEVER commandable.
+  const control = resolveDeviceControlPosture(
+    device,
+    ctx.resolveManagedState(device.id),
+    ctx.isCapacityControlEnabled(device.id),
   );
   // The continuous / target-power / non-binary classification is resolved HERE
   // (the producer may read the `controlModel` setting + target-power config) so
@@ -558,8 +559,7 @@ export function toPlanDevice(
     device,
     opts,
     plainBinaryControlModel,
-    controllable,
-    managed,
+    control,
     hasStandingDemand,
   });
   const residualKw = buildResidualKwForPlanDevice({
@@ -654,8 +654,7 @@ export function toPlanDevice(
     ...(device.binaryControl !== undefined ? { currentOn: resolveCurrentOn(device) } : {}),
     // Observe-only role (battery/solar): structural stamp (always managed observe-only);
     // else re-resolve.
-    managed,
-    controllable,
+    control,
     available: device.available,
     ...(surplusOnly ? { surplusOnly: true as const } : {}),
     surplusTracking,

@@ -30,7 +30,7 @@ import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dail
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 // Deliberately non-binding: a rate no plan in these cases can reach, so the
 // reserved-headroom forecast never selects a lower rung than the case intends.
 // (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
@@ -80,7 +80,7 @@ const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinar
   // the device binary so the regrouper retains the on-state.
   binaryCapabilityId: 'onoff' as const,
   binaryControl: { on: false },
-  controllable: false, // cap-off: the deferred objective is the only reason PELS drives it
+  control: fixtureControlPosture({ controllable: false }), // cap-off: the deferred objective is the only reason PELS drives it
   deviceType: 'temperature',
   controlModel: 'stepped_load',
   currentTemperature: tempC,

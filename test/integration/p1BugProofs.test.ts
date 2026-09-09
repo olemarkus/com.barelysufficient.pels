@@ -12,7 +12,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { updateGuardState } from '../../lib/plan/admission';
-import { sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
+import { sumBudgetExemptProjectedUsageKw, toUsageDevice } from '../../lib/plan/planUsage';
 import { sumControlledUsageKw } from '../../lib/power/usageAttribution';
 import {
   buildPlanDevice,
@@ -20,6 +20,7 @@ import {
   steppedInputDevice,
   steppedPlanDevice,
   withFixtureResidualKw,
+  fixtureControlPosture,
 } from '../utils/planTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
@@ -122,7 +123,7 @@ describe('P1 bug proofs', () => {
 
     const highestKnown = getHighestKnownPowerKw(device)?.kw ?? 0;
     expect(estimateRestorePower(device)).toBe(highestKnown);
-    expect(sumControlledUsageKw([device])).toBe(0);
+    expect(sumControlledUsageKw([toUsageDevice(device)])).toBe(0);
   });
 
   it('keeps shedding active after a single sample just above the restore margin', async () => {
@@ -190,7 +191,7 @@ describe('P1 bug proofs', () => {
           targets: [],
           binaryControl: { on: true },
           currentOn: true,
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           binaryCapabilityId: 'onoff',
           currentDrawKw: 0,
         })) as PlanInputDevice,
@@ -210,7 +211,7 @@ describe('P1 bug proofs', () => {
           targets: [],
           binaryControl: { on: true },
           currentOn: true,
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           binaryCapabilityId: 'onoff',
         })) as PlanInputDevice,
       ],
@@ -303,7 +304,7 @@ describe('P1 bug proofs', () => {
       },
     });
 
-    const plannerControlledKw = sumControlledUsageKw([planDevice]);
+    const plannerControlledKw = sumControlledUsageKw([toUsageDevice(planDevice)]);
     await recordPowerSampleForApp({
       currentPowerW: 1250,
       nowMs: Date.UTC(2025, 0, 1, 0, 0, 0),

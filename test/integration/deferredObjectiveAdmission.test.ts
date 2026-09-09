@@ -13,7 +13,7 @@ import {
 } from '../../lib/objectives/deferredObjectives';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
@@ -145,7 +145,8 @@ const buildDevice = (params: {
   hasStandingDemand: true,
   surplusTracking: false,
   confirmedNotDrawing: false,
-  controllable: false, // capacity-based control toggle is OFF for this scenario
+  // capacity-based control toggle is OFF for this scenario
+  control: fixtureControlPosture({ controllable: false }),
   controlModel: 'stepped_load',
   binaryCapabilityId: 'onoff',
   steppedLoadProfile: {
@@ -251,7 +252,7 @@ const buildContender = (params: {
   hasStandingDemand: true,
   surplusTracking: false,
   confirmedNotDrawing: false,
-  controllable: params.controllable ?? true,
+  control: fixtureControlPosture(params),
   binaryCapabilityId: 'onoff',
   binaryControl: { on: params.currentOn },
   currentOn: params.currentOn,
@@ -574,8 +575,9 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     expect(device.plannedState).toBe('keep');
     // Off-current + planned-keep should target the lowest active step so the executor turns it on.
     expect(device.desiredStepId).toBe('low');
-    // controllable should now reflect the deferred objective override so restore can drive it.
-    expect(device.controllable).toBe(true);
+    // The deferred objective contributes the authority term the cap-off setting
+    // withheld, so restore can drive it.
+    expect(device.control.commandAuthority).toBe(true);
   });
 
   it('falls back to capacity-control-off behavior when the deferred objective is disabled', async () => {
@@ -630,6 +632,6 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     const device = findDevice(snapshot.devices);
     expect(device.plannedState).toBe('keep');
     expect(device.reason.code).toBe('capacity_control_off');
-    expect(device.controllable).toBe(false);
+    expect(device.control.commandAuthority).toBe(false);
   });
 });

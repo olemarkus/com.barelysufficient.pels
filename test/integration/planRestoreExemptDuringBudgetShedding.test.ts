@@ -18,7 +18,7 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { applyRestorePlan } from '../../lib/plan/restore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import { buildPlanDevice, steppedPlanDevice, withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, buildPlanDevice, steppedPlanDevice, withFixtureResidualKw } from '../utils/planTestUtils';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
@@ -64,7 +64,7 @@ const offExemptHeater = (overrides: Parameters<typeof buildPlanDevice>[0] = {}) 
   currentState: 'off',
   plannedState: 'keep',
   boostActive: false,
-  controllable: true,
+  control: fixtureControlPosture({ controllable: true }),
   expectedPowerKw: 1,
   budgetExempt: true,
   ...overrides,
@@ -78,7 +78,7 @@ const offThermostat = () => buildPlanDevice({
   plannedState: 'shed',
   boostActive: false,
   reason: { code: PLAN_REASON_CODES.dailyBudget },
-  controllable: true,
+  control: fixtureControlPosture({ controllable: true }),
   expectedPowerKw: 1,
 });
 
@@ -311,7 +311,7 @@ const buildHeaterInput = (params: { on: boolean; exempt: boolean }): PlanInputDe
   hasStandingDemand: true,
   surplusTracking: false,
   confirmedNotDrawing: false,
-  controllable: true,
+  control: fixtureControlPosture({ controllable: true }),
   binaryCapabilityId: 'onoff',
   binaryControl: { on: params.on },
   currentOn: params.on,
@@ -333,7 +333,7 @@ const buildThermostatInput = (on: boolean): PlanInputDevice => withBinaryDiscrim
   hasStandingDemand: true,
   surplusTracking: false,
   confirmedNotDrawing: false,
-  controllable: true,
+  control: fixtureControlPosture({ controllable: true }),
   binaryCapabilityId: 'onoff',
   binaryControl: { on },
   currentOn: on,

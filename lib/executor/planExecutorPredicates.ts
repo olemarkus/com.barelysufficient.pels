@@ -38,7 +38,7 @@ export function hasStableUncontrolledRestoreActuation(
   dev: DevicePlan['devices'][number],
   state: PlanEngineState,
 ): boolean {
-  return dev.controllable === false
+  return dev.control.commandAuthority === false
     && dev.plannedState === 'keep'
     && isPlanDeviceObservedOff(dev)
     && Boolean(state.shedDecisions.decidedMs[dev.id]);

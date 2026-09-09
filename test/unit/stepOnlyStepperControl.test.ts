@@ -180,7 +180,7 @@ describe('sumControlledUsageKw — step-only steppers', () => {
   it('counts a shed step-only stepper parked at its off step as 0, not unknown', () => {
     const devices = [{ expectedPowerKw: 1,
       currentDrawKw: 0,
-      controllable: true,
+      countsAsManagedUsage: true,
       plannedState: 'shed',
       steppedLoadProfile: profile,
       selectedStepId: 'off',
@@ -195,7 +195,7 @@ describe('sumControlledUsageKw — step-only steppers', () => {
     // meter reads 0.9 kW books 0.9 kW.
     const devices = [{
       currentDrawKw: 0.9,
-      controllable: true,
+      countsAsManagedUsage: true,
       plannedState: 'keep',
       steppedLoadProfile: profile,
       selectedStepId: 'low',

@@ -31,7 +31,7 @@ import type {
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 // Deliberately non-binding: a rate no plan in these cases can reach, so the
 // reserved-headroom forecast never selects a lower rung than the case intends.
 // (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
@@ -156,7 +156,7 @@ const diagnosticFor = (plan: DeferredObjectiveHorizonPlan, energyNeededKWh: numb
   horizonPlan: plan,
 });
 
-const device: PlanInputDevice = withFixtureResidualKw({ id: DEVICE_ID, controllable: false }) as PlanInputDevice;
+const device: PlanInputDevice = withFixtureResidualKw({ id: DEVICE_ID, control: fixtureControlPosture({ controllable: false }) }) as PlanInputDevice;
 
 type BuildTimeResult = {
   // Booked energy summed by the price the hour carries.

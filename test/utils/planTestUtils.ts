@@ -1,3 +1,4 @@
+import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type {
   DevicePlan,
   DevicePlanDevice,
@@ -629,8 +630,14 @@ export const fixtureResidualKw = (
  */
 export const withFixtureResidualKw = <T extends object>(
   fields: T,
-): T & { residualKw: FixtureResidualKw; priority: number } => {
+): T & { residualKw: FixtureResidualKw; priority: number; control: DeviceControlPosture } => {
   const priority = (fields as { priority?: number }).priority ?? 1;
+  // Defaulted here for the same reason `priority` is: several local spec helpers
+  // build a device literal and pass it straight through this wrapper, so a
+  // posture defaulted only in the top-level builders would leave those devices
+  // with no `control` at runtime — typechecking fine behind their casts and
+  // throwing on first read.
+  const control = fixtureControlPosture(fields as Parameters<typeof fixtureControlPosture>[0]);
   const declared = (fields as { residualKw?: Partial<FixtureResidualKw> }).residualKw;
   // A fully declared residual is taken verbatim and nothing is resolved. That is
   // the only way to express the one shape the producer cannot be handed at all:
@@ -638,12 +645,15 @@ export const withFixtureResidualKw = <T extends object>(
   // projection failure. Asking the producer to read it would throw, and
   // production resolves the residual long before such a ladder reaches a plan.
   if (declared?.shed !== undefined && declared.restore !== undefined) {
-    return { ...fields, priority, residualKw: { shed: declared.shed, restore: declared.restore } };
+    return {
+      ...fields, priority, control, residualKw: { shed: declared.shed, restore: declared.restore },
+    };
   }
   const resolved = fixtureResidualKw(fields as Parameters<typeof fixtureResidualKw>[0]);
   return {
     ...fields,
     priority,
+    control,
     residualKw: {
       shed: declared?.shed ?? resolved.shed,
       restore: declared?.restore ?? resolved.restore,
@@ -665,6 +675,15 @@ export const buildPlanDevice = (
     binaryControllable?: boolean;
     binaryCapabilityId?: string;
     deviceRole?: 'ev_charger';
+    /**
+     * Fixture shorthands for the control posture, resolved exactly as on the
+     * input builder: a spec that only cares whether the device is power-limited
+     * says so, and `fixtureControlPosture` resolves the rest the way the
+     * producer does.
+     */
+    controllable?: boolean;
+    managed?: boolean;
+    commandAuthority?: boolean;
     // An observation, not plan state: it reaches the fixture through the snapshot
     // spread in `toPlanDevice`, and the settings UI reads the real thing via
     // `getObservedStateOfCharge`. There is no EV cluster on the plan types.
@@ -744,7 +763,7 @@ DevicePlanDevice => {
     // device because the producer resolves them for every device. A fixture
     // that says nothing represents the ordinary managed, reachable case, while
     // an explicit `false` still lands.
-    controllable: overrides.controllable ?? true,
+    control: fixtureControlPosture(overrides),
     available: overrides.available ?? true,
     // The plan device's one boost truth, REQUIRED for the same reason: the
     // planner resolves it for every device, so a fixture that omits it would let
@@ -829,12 +848,46 @@ const fixtureBoostInput = (overrides: FixtureBoostFields & {
   currentTemperature: overrides.currentTemperature,
 });
 
+/**
+ * Mirrors `resolveDeviceControlPosture` in `toPlanDevice`: the two owner
+ * settings are taken as given, and `commandAuthority` follows power limiting
+ * unless the spec states otherwise — which is how a fixture expresses a smart
+ * task contributing its own authority term.
+ */
+export const fixtureControlPosture = (loose: {
+  control?: DeviceControlPosture;
+  controllable?: boolean;
+  managed?: boolean;
+  commandAuthority?: boolean;
+}): DeviceControlPosture => {
+  if (loose.control) return loose.control;
+  const ownerPowerLimitOn = loose.controllable ?? true;
+  const managed = loose.managed ?? true;
+  return {
+    managed,
+    // The CONJUNCTION, mirroring `resolveDeviceControlPosture`: production
+    // derives authority from `isCapacityControlEnabled`, so a fixture declaring
+    // `{ controllable: true, managed: false }` must not come out authorised here
+    // when `toPlanDevice` would say otherwise.
+    commandAuthority: loose.commandAuthority ?? (ownerPowerLimitOn && managed),
+  };
+};
+
 export const buildPlanInputDevice = (
   // `currentOn`/`binaryControl` live on the orthogonal `BinaryPlanInputKind` cluster
   // (not on the `Partial<PlanInputDevice>` base), so accept them here: the builder
   // resolves the producer-owned `currentOn`/`currentState` from whichever the
   // fixture supplies (mirroring `toPlanDevice`).
   overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe & FixtureBoostFields & {
+    /**
+     * Fixture shorthands for the control posture. Production resolves all three
+     * in `toPlanDevice`; a spec that only cares whether the device is
+     * power-limited says so, and the builder resolves the rest the way the
+     * producer does.
+     */
+    controllable?: boolean;
+    managed?: boolean;
+    commandAuthority?: boolean;
     evChargingState?: string;
     deviceType?: 'temperature' | 'onoff';
     currentOn?: boolean;
@@ -854,7 +907,9 @@ export const buildPlanInputDevice = (
   } = {},
 ): PlanInputDevice => {
   const {
-    available, controllable, currentTarget, currentTemperature,
+    // `controllable` is no longer destructured: it is a fixture shorthand now,
+    // consumed by `fixtureControlPosture(overrides)` rather than stamped flat.
+    available, currentTarget, currentTemperature,
     binaryControllable: _binaryControllable,
     binaryCapabilityId: _binaryCapabilityId,
     shedBehavior: _shedBehavior,
@@ -923,7 +978,7 @@ export const buildPlanInputDevice = (
     // `'default'` is what the producer emits for a device nothing is known
     // about — which is exactly the fixture `fixtureExpectedPowerKw` resolves.
     expectedPowerSource: overrides.expectedPowerSource ?? 'default',
-    controllable: controllable ?? true,
+    control: fixtureControlPosture(overrides),
     available: available ?? true,
     // The two producer-resolved boost bits, materialized from the fixture's own
     // config and readings by the SAME resolvers `toPlanDevice` calls, so a
@@ -943,7 +998,12 @@ export const buildPlanInputDevice = (
 
 export const steppedPlanDevice = (
   overrides: Partial<DevicePlanDevice> & SteppedDiscriminantProbe
-    & { binaryControl?: { on: boolean }; currentOn?: boolean; binaryCapabilityId?: string } = {},
+    & {
+      binaryControl?: { on: boolean }; currentOn?: boolean; binaryCapabilityId?: string;
+      // Fixture shorthands for the control posture, forwarded to the base
+      // builder which resolves them the way `toPlanDevice` does.
+      controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
+    } = {},
 ): SteppedPlanDevice => {
   const profile = overrides.steppedLoadProfile ?? steppedProfile;
   const selectedStepId = overrides.selectedStepId ?? 'max';
@@ -967,6 +1027,9 @@ export const steppedInputDevice = (
       binaryControl?: { on: boolean };
       currentOn?: boolean;
       binaryCapabilityId?: string;
+      // Fixture shorthands for the control posture, forwarded to the base
+      // builder which resolves them the way `toPlanDevice` does.
+      controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
     } = {},
 ): PlanInputDevice => {
   const profile = overrides.steppedLoadProfile ?? steppedProfile;

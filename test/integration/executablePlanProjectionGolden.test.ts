@@ -43,7 +43,7 @@ describe('executable plan projection (characterization)', () => {
             "name": "Heater",
             "source": "controlled",
           },
-          "controllable": true,
+          "commandAuthority": true,
           "id": "dev-2",
           "name": "Heater",
         },
@@ -62,7 +62,7 @@ describe('executable plan projection (characterization)', () => {
             "name": "Heater",
             "source": "controlled",
           },
-          "controllable": true,
+          "commandAuthority": true,
           "id": "dev-2",
           "name": "Heater",
         },
@@ -109,7 +109,7 @@ describe('executable plan projection (characterization)', () => {
             "name": "Heater",
             "source": "controlled",
           },
-          "controllable": true,
+          "commandAuthority": true,
           "id": "dev-2",
           "name": "Heater",
           "target": {
@@ -135,7 +135,7 @@ describe('executable plan projection (characterization)', () => {
     expect(buildExecutablePlan(plan)).toEqual({
       "devices": [
         {
-          "controllable": true,
+          "commandAuthority": true,
           "id": "dev-2",
           "name": "Heater",
           "target": {
@@ -154,7 +154,7 @@ describe('executable plan projection (characterization)', () => {
     expect(buildExecutablePlan(buildPlan([buildSteppedDevice()]))).toEqual({
       "devices": [
         {
-          "controllable": true,
+          "commandAuthority": true,
           "id": "dev-1",
           "name": "Tank",
           "steppedLoad": {
@@ -213,7 +213,7 @@ describe('executable plan projection (characterization)', () => {
     expect(buildExecutablePlan(plan)).toEqual({
       "devices": [
         {
-          "controllable": true,
+          "commandAuthority": true,
           "id": "dev-1",
           "name": "Tank",
           "steppedLoad": {
@@ -274,7 +274,7 @@ describe('executable plan projection (characterization)', () => {
     expect(buildExecutablePlan(plan)).toEqual({
       "devices": [
         {
-          "controllable": true,
+          "commandAuthority": true,
           "id": "dev-1",
           "name": "Tank",
           "steppedLoad": {
@@ -337,7 +337,7 @@ describe('executable plan projection (characterization)', () => {
             "name": "Heater",
             "source": "controlled",
           },
-          "controllable": true,
+          "commandAuthority": true,
           "id": "dev-2",
           "name": "Heater",
           "release": {

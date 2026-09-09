@@ -6,6 +6,7 @@ import {
 } from '../../lib/plan/planLogging';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { fixtureDeviceReason, insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
+import { fixtureControlPosture } from '../utils/planTestUtils';
 
 const r = fixtureDeviceReason;
 const KEEP_REASON = r('keep')!;
@@ -23,6 +24,7 @@ describe('plan logging helpers', () => {
           plannedState: 'keep',
           currentState: 'on',
           reason: KEEP_REASON,
+          control: fixtureControlPosture({ controllable: true }),
         },
       ],
     } as unknown as DevicePlan;
@@ -46,7 +48,7 @@ describe('plan logging helpers', () => {
           currentState: 'on',
           currentDrawKw: 0,
           binaryCommandPending: true,
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           reason: CAPACITY_REASON,
         },
         {
@@ -58,7 +60,7 @@ describe('plan logging helpers', () => {
           binaryCapabilityId: 'onoff',
           currentOn: true,
           currentState: 'unknown',
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           reason: KEEP_REASON,
         },
         {
@@ -71,7 +73,7 @@ describe('plan logging helpers', () => {
           currentOn: true,
           currentState: 'on',
           reason: r('meter settling (10s remaining)'),
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
         },
         {
           id: 'penalty',
@@ -83,7 +85,7 @@ describe('plan logging helpers', () => {
           currentOn: true,
           currentState: 'on',
           reason: r('activation backoff (30s remaining)'),
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
         },
         {
           id: 'invariant',
@@ -95,7 +97,7 @@ describe('plan logging helpers', () => {
           currentOn: true,
           currentState: 'on',
           reason: r('shed invariant: low -> max blocked (1 device(s) shed, max step: low)'),
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
         },
         {
           id: 'manual',
@@ -106,7 +108,7 @@ describe('plan logging helpers', () => {
           binaryCapabilityId: 'onoff',
           currentOn: true,
           currentState: 'on',
-          controllable: false,
+          control: fixtureControlPosture({ controllable: false }),
           reason: KEEP_REASON,
         },
       ],
@@ -148,7 +150,7 @@ describe('plan logging helpers', () => {
           plannedState: 'keep',
           binaryControl: { on: true },
           currentState: 'on',
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           reason: r('meter settling (10s remaining)'),
         },
         {
@@ -158,7 +160,7 @@ describe('plan logging helpers', () => {
           plannedState: 'keep',
           binaryControl: { on: true },
           currentState: 'on',
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           reason: r('activation backoff (30s remaining)'),
         },
       ],
@@ -183,7 +185,7 @@ describe('plan logging helpers', () => {
           plannedState: 'keep',
           binaryControl: { on: true },
           currentState: 'on',
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           reason: r('shed invariant: low -> max blocked (1 device(s) shed, max step: low)'),
         },
       ],
@@ -216,7 +218,7 @@ describe('plan logging helpers', () => {
           binaryCapabilityId: 'onoff',
           currentOn: true,
           currentState: 'on',
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           controlModel: 'stepped_load',
           steppedLoadProfile: {
             steps: [
@@ -263,7 +265,7 @@ describe('plan logging helpers', () => {
           binaryControl: { on: true },
           currentOn: true,
           currentState: 'on',
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           budgetExempt: false,
           controlModel: 'stepped_load',
           steppedLoadProfile: {
@@ -315,7 +317,7 @@ describe('plan logging helpers', () => {
           currentTarget: 15,
           currentTemperature: 15,
           plannedTarget: 15,
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           expectedPowerKw: 0.8,
           shedAction: 'set_temperature',
           shedTemperature: 15,
@@ -375,7 +377,7 @@ describe('plan logging helpers', () => {
           currentState: 'off',
           currentDrawKw: 0,
           plannedState: 'shed',
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           reason: insufficientHeadroomFixtureReason({ needKw: 0.98, availableKw: -0.97 }),
         },
         {
@@ -385,7 +387,7 @@ describe('plan logging helpers', () => {
           currentState: 'off',
           currentDrawKw: 0,
           plannedState: 'shed',
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           reason: insufficientHeadroomFixtureReason({ needKw: 1.1, availableKw: -0.97 }),
         },
         {
@@ -395,7 +397,7 @@ describe('plan logging helpers', () => {
           currentState: 'off',
           currentDrawKw: 0,
           plannedState: 'inactive',
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           reason: r('inactive (charger is unplugged)'),
         },
       ],
@@ -437,7 +439,7 @@ describe('plan logging helpers', () => {
           currentState: 'off',
           currentDrawKw: 0,
           plannedState: 'shed',
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           reason: r('cooldown (restore, 45s remaining)'),
         },
         {
@@ -447,7 +449,7 @@ describe('plan logging helpers', () => {
           currentState: 'off',
           currentDrawKw: 0,
           plannedState: 'shed',
-          controllable: true,
+          control: fixtureControlPosture({ controllable: true }),
           reason: r('cooldown (restore, 12s remaining)'),
         },
       ],

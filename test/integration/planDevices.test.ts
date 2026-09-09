@@ -43,6 +43,11 @@ const inputDevice = (
       evChargingState?: string;
       binaryCapabilityId?: string;
       deviceType?: 'temperature' | 'onoff';
+      // Fixture shorthands for the control posture; the shared builder resolves
+      // them the way `toPlanDevice` does.
+      controllable?: boolean;
+      managed?: boolean;
+      commandAuthority?: boolean;
     } = {},
 ): PlanInputDevice => buildPlanInputDevice(o as Parameters<typeof buildPlanInputDevice>[0]);
 
@@ -55,6 +60,11 @@ const steppedInput = (
       evChargingState?: string;
       binaryCapabilityId?: string;
       deviceType?: 'temperature' | 'onoff';
+      // Fixture shorthands for the control posture; the shared builder resolves
+      // them the way `toPlanDevice` does.
+      controllable?: boolean;
+      managed?: boolean;
+      commandAuthority?: boolean;
     } = {},
 ): PlanInputDevice => steppedInputDevice(o as Parameters<typeof steppedInputDevice>[0]);
 
@@ -1272,7 +1282,10 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         & BinaryControlDiscriminantProbe
         & TemperatureDiscriminantProbe
         & FixtureBoostFields
-        & { evChargingState?: string; deviceType?: 'temperature' | 'onoff' } = {},
+        & {
+          evChargingState?: string; deviceType?: 'temperature' | 'onoff';
+          controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
+        } = {},
     ) => inputDevice({
       id: 'tank',
       name: 'Water tank',
@@ -1428,7 +1441,10 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         & BinaryControlDiscriminantProbe
         & TemperatureDiscriminantProbe
         & FixtureBoostFields
-        & { evChargingState?: string; deviceType?: 'temperature' | 'onoff' } = {},
+        & {
+          evChargingState?: string; deviceType?: 'temperature' | 'onoff';
+          controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
+        } = {},
     ) => inputDevice({
       id: 'tank',
       name: 'Water tank',

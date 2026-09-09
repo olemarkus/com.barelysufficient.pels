@@ -9,7 +9,7 @@ import {
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { resolveFixtureCurrentOn, withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
+import { fixtureControlPosture, resolveFixtureCurrentOn, withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
@@ -113,7 +113,7 @@ describe('PlanBuilder budget exemption handling', () => {
         name: 'Budget Exempt Heater',
         targets: [],
         binaryControl: { on: true },
-        controllable: true,
+        control: fixtureControlPosture({ controllable: true }),
         budgetExempt: true,
         currentDrawKw: 2,
       }),
@@ -122,7 +122,7 @@ describe('PlanBuilder budget exemption handling', () => {
         name: 'Regular Heater',
         targets: [],
         binaryControl: { on: true },
-        controllable: true,
+        control: fixtureControlPosture({ controllable: true }),
         currentDrawKw: 1,
       }),
     ];

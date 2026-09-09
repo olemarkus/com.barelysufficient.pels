@@ -7,7 +7,7 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanInputDevice, DevicePlanDevice } from '../../lib/plan/planTypes';
 import { getRestoreCandidates, getOffDevices } from '../../lib/plan/restore/devices';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 
 // Two managed devices that were never assigned a stored priority, drawing the
 // SAME effective power. Without a deterministic final tiebreak their relative
@@ -26,7 +26,7 @@ const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant(
   surplusTracking: false,
   confirmedNotDrawing: false,
   targets: [],
-  controllable: true,
+  control: fixtureControlPosture({ controllable: true }),
   // Real parse output resolves a binary control capability for a sheddable
   // device; shed candidacy gates on writability (`isCanSetControl`).
   binaryCapabilityId: 'onoff',
@@ -72,7 +72,7 @@ const buildRestoreDevice = (id: string): DevicePlanDevice => (withFixtureResidua
   expectedPowerKw: 1.5,
   expectedPowerSource: 'default',
   reason: { code: 'keep', detail: null },
-  controllable: true,
+  control: fixtureControlPosture({ controllable: true }),
   available: true,
   // priority intentionally omitted → default bucket.
 }) as DevicePlanDevice);

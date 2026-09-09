@@ -1246,3 +1246,26 @@ describe('overshoot-after-restore attribution', () => {
     expect(state.activationPenaltyByDevice['dev-earlier']?.level).toBe(1);
   });
 });
+
+describe('withHeadroomCurrentOn — the managed-usage default', () => {
+  /**
+   * The raw-snapshot seam resolves an ABSENT `controllable` to "counts as
+   * managed", which is what the optional's `=== false` skip did before it became
+   * required. Every production parse path supplies the flag, so this arm is
+   * unreachable today — but it is the arm that decides how much load shedding
+   * looks able to free, so it is pinned rather than assumed.
+   *
+   * It is deliberately NOT the plan's `commandAuthority`: the parse stamp
+   * carries neither the temperature-axis term nor a smart task's grant.
+   */
+  it('counts a device with no capacity flag as managed usage', () => {
+    expect(withHeadroomCurrentOn({ measuredPowerKw: 1.2 }).countsAsManagedUsage).toBe(true);
+  });
+
+  it('honours an explicit false, and only an explicit false', () => {
+    expect(withHeadroomCurrentOn({ measuredPowerKw: 1.2, controllable: false }).countsAsManagedUsage)
+      .toBe(false);
+    expect(withHeadroomCurrentOn({ measuredPowerKw: 1.2, controllable: true }).countsAsManagedUsage)
+      .toBe(true);
+  });
+});

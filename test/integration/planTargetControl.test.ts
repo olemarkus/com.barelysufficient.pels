@@ -7,7 +7,7 @@ import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { TARGET_WAITING_LOG_REPEAT_MS } from '../../lib/plan/planConstants';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
-import { buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
 
 const buildLiveDevice = (deviceId: string, name: string, target: number): PlanInputDevice =>
   // `planTargetControl` reads only `targets`; the device has no control
@@ -19,7 +19,7 @@ const buildLiveDevice = (deviceId: string, name: string, target: number): PlanIn
     expectedPowerSource: 'default' as const,
     currentDrawKw: 0,
     commandableNow: true,
-    controllable: true,
+    control: fixtureControlPosture({ controllable: true }),
     available: true,
     name,
     deviceType: 'temperature' as const,
@@ -42,7 +42,7 @@ const buildPlanDevice = (
   currentTarget,
   currentTemperature: currentTarget,
   plannedTarget,
-  controllable: true,
+  control: fixtureControlPosture({ controllable: true }),
   available: true,
   reason: fixtureDeviceReason('keep')!,
 })) as DevicePlan['devices'][number];

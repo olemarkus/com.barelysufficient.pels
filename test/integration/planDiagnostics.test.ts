@@ -77,7 +77,12 @@ const buildRestoreResult = ({ timing, ...overrides }: RestoreResultOverrides = {
 type InputDeviceFixture = Partial<PlanInputDevice>
   & BinaryControlDiscriminantProbe
   & TemperatureDiscriminantProbe
-  & { evChargingState?: string; binaryCapabilityId?: string; deviceType?: 'temperature' | 'onoff' };
+  & {
+    evChargingState?: string; binaryCapabilityId?: string; deviceType?: 'temperature' | 'onoff';
+    // Fixture shorthands for the control posture; `buildPlanInputDevice`
+    // resolves them the way `toPlanDevice` does.
+    controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
+  };
 type PlanDeviceFixture = Partial<DevicePlanDevice>
   & TemperatureDiscriminantProbe
   & {
@@ -85,6 +90,8 @@ type PlanDeviceFixture = Partial<DevicePlanDevice>
     evChargingState?: string;
     binaryCapabilityId?: string;
     deviceType?: 'temperature' | 'onoff';
+    // Same shorthands on the plan-output side; `buildPlanDevice` resolves them.
+    controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
   };
 
 const buildObservation = (params: {

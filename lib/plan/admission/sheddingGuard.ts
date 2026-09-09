@@ -14,6 +14,7 @@ import {
   toInputRemainingSheddableDevice,
 } from '../planRemainingSheddableLoad';
 import { sumControlledUsageKw } from '../../power/usageAttribution';
+import { toUsageDevice } from '../planUsage';
 
 function handleShortfallCheck(
   params: {
@@ -79,7 +80,7 @@ function buildShortfallCapacityStateSummary(params: {
     summarySource: 'plan_input',
     summarySourceAtMs: Date.now(),
   });
-  const controlledKw = sumControlledUsageKw(devices);
+  const controlledKw = sumControlledUsageKw(devices.map(toUsageDevice));
   const controlledPowerW = roundPowerW(controlledKw);
   const totalPowerW = roundPowerW(drawKw);
   const remainingReducibleControlledLoadW = roundPowerW(sumRemainingReducibleControlledLoadKw({
@@ -159,7 +160,7 @@ export function countRemainingCandidates(params: {
   const { devices, shedSet, headroom, limitSource, capacityBreached } = params;
   if (headroom >= 0) return 0;
   return devices
-    .filter((d) => d.controllable && !shedSet.has(d.id))
+    .filter((d) => d.control.commandAuthority && !shedSet.has(d.id))
     // On/off is a binary-only question: a binary device is still a remaining
     // candidate only while on; non-binary (setpoint/step) devices stay eligible
     // regardless. `currentOn` is read only after narrowing to the binary kind.

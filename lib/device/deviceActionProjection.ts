@@ -68,11 +68,16 @@ type SteppedLoadIdentity = {
  * availability). It is passed in rather than re-derived so the boost gate and
  * the commandability the rest of the plan reads cannot give two answers.
  *
- * The remaining runnable flags (`controllable` / `managed`) are deliberately NOT
- * here. They are the planner's own gating vocabulary, and they are read AFTER
- * deferred-objective admission may have flipped `controllable` for a rescued
- * device, while this producer runs before that. See `resolveBoostActive`
- * (`lib/plan/planBoost.ts`), which applies them.
+ * The device's control posture (`control`) is deliberately NOT here. It is the
+ * planner's own gating vocabulary, applied by `resolveBoostActive`
+ * (`lib/plan/planBoost.ts`).
+ *
+ * This used to carry an ORDERING caveat as well — the flags were read after the
+ * deferred-objective admission "may have flipped `controllable`" for a rescued
+ * device, while this producer runs before that. That mutation is gone: admission
+ * now contributes a term to the derived `commandAuthority` instead of writing an
+ * owner setting mid-cycle, so nothing here depends on running before or after
+ * it.
  */
 export type BoostResolveInput = SteppedLoadIdentity & {
   commandableNow: boolean;
@@ -366,7 +371,8 @@ export type ShedIntentBehaviorInput =
 
 export type ShedIntentResolveInput = {
   shedBehavior: ShedIntentBehaviorInput;
-  controllable: boolean;
+  /** The plan's `control.commandAuthority` for this cycle — see `DeviceControlPosture`. */
+  commandAuthority: boolean;
   hasBinaryControl: boolean;
   steppedLoadProfile?: SteppedLoadProfile;
   primaryTarget?: TargetCapabilitySnapshot | null;
@@ -394,13 +400,13 @@ const resolveSetStepTargetStepId = (input: ShedIntentResolveInput): string | nul
 };
 
 export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionIntent => {
-  const { shedBehavior, controllable, hasBinaryControl, primaryTarget } = input;
+  const { shedBehavior, commandAuthority, hasBinaryControl, primaryTarget } = input;
   // set_temperature requires both a primary target capability (so the executor has a write
-  // surface and a normalised setpoint) AND `controllable === true` for this cycle. Cap-off
-  // devices configured for set_temperature collapse to the binary fallback below; the planner
-  // and executor never see a set_temperature intent for a non-controllable device.
+  // surface and a normalised setpoint) AND command authority for this cycle. Cap-off devices
+  // configured for set_temperature collapse to the binary fallback below; the planner and
+  // executor never see a set_temperature intent for a device PELS may not command.
   if (
-    controllable
+    commandAuthority
     && shedBehavior.action === 'set_temperature'
     && primaryTarget
   ) {
@@ -413,7 +419,7 @@ export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionInte
   // legacy `resolveSteppedShedAction` and the post-fold materialisation fall back to
   // 'set_step' in that case regardless of the configured behaviour action or controllability.
   if (isSteppedLoadDeviceShape(input)) {
-    if (controllable && shedBehavior.action === 'set_step') {
+    if (commandAuthority && shedBehavior.action === 'set_step') {
       return { kind: 'set_step', targetStepId: resolveSetStepTargetStepId(input) };
     }
     if (!hasBinaryControl) {

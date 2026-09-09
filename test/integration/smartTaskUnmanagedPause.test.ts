@@ -31,7 +31,7 @@ import type { ResolveObjectiveDeviceExclusion } from '../../lib/objectives/defer
 import { resolveSmartTaskDeviceExclusion } from '../../setup/appInit/smartTaskHomeScope';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferredObjectives/settings';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import {
   withBinaryDiscriminant,
   withTemperatureDiscriminant,
@@ -56,7 +56,7 @@ const heaterEntry: DeferredObjectiveSettingsEntry = {
 
 const buildHeaterDevice = (id: string): PlanInputDevice => withTemperatureDiscriminant(
   withBinaryDiscriminant(withFixtureResidualKw({
-    controllable: true,
+    control: fixtureControlPosture({ controllable: true }),
     available: true,
     currentDrawKw: 0,
     id,

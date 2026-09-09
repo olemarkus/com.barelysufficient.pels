@@ -78,7 +78,7 @@ export function countShedDevices(
   let count = 0;
   for (const device of deviceMap.values()) {
     if (device.id === excludeId) continue;
-    if (device.controllable === false) continue;
+    if (device.control.commandAuthority === false) continue;
     if (device.plannedState === 'shed') count += 1;
   }
   return count;

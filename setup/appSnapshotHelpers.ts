@@ -342,13 +342,22 @@ export class AppSnapshotHelpers {
     const snapshot = this.deps.getLatestTargetSnapshot();
     this.deps.disableUnsupportedDevices(snapshot);
     this.deps.persistFilledModeTargets(snapshot);
-    const enforcedSnapshot = snapshot.map((device) => ({
-      // `withHeadroomCurrentOn` stamps the on/off truth the headroom/activation
-      // path now reads (a raw snapshot carries no `currentOn`).
-      ...withHeadroomCurrentOn(device),
-      managed: this.deps.resolveManagedState(device.id),
-      controllable: this.deps.isCapacityControlEnabled(device.id),
-    }));
+    const enforcedSnapshot = snapshot.map((device) => {
+      // Enforced FIRST, then stamped: `withHeadroomCurrentOn` resolves its
+      // answer from the device's parse-time `controllable`, and the whole point
+      // of the two stamps below is that the parse-time value can be stale. Doing
+      // it the other way round hands the plan layer a fresh `controllable`
+      // alongside an authority resolved from the stale one — two answers to one
+      // question in a single object.
+      const controllable = this.deps.isCapacityControlEnabled(device.id);
+      return {
+        // `withHeadroomCurrentOn` stamps the on/off truth the headroom/activation
+        // path now reads (a raw snapshot carries no `currentOn`).
+        ...withHeadroomCurrentOn({ ...device, controllable }),
+        managed: this.deps.resolveManagedState(device.id),
+        controllable,
+      };
+    });
     await this.deps.getPlanService()?.syncLivePlanState('snapshot_refresh');
     this.deps.getPlanService()?.syncHeadroomCardState(enforcedSnapshot);
     this.deps.getStructuredLogger('devices')?.debug({

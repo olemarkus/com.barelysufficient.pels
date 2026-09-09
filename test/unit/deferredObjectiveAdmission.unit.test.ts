@@ -10,10 +10,15 @@ import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredO
 import type { DeferredObjectiveHorizonPlan } from '../../lib/objectives/deferredObjectives';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 
 const buildEvDevice = (
-  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & { id: string },
+  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & {
+    id: string;
+    // Fixture shorthands for the control posture, resolved by the shared
+    // resolver exactly as `toPlanDevice` does.
+    controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
+  },
 ): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
   name: overrides.id,
   targets: [],
@@ -21,7 +26,7 @@ const buildEvDevice = (
   binaryCapabilityId: 'evcharger_charging',
   binaryControl: { on: true },
   ...overrides,
-  controllable: overrides.controllable ?? true,
+  control: fixtureControlPosture(overrides),
   available: overrides.available ?? true,
 })) as PlanInputDevice;
 
@@ -179,7 +184,8 @@ describe('applyDeferredObjectiveAdmission', () => {
     const evCharger = buildEvDevice({ id: 'dev', controllable: false, controlModel: 'stepped_load' });
     const waterHeater: PlanInputDevice = withFixtureResidualKw({
       available: true,
-      id: 'dev', name: 'dev', targets: [], controllable: false, controlModel: 'stepped_load',
+      id: 'dev', name: 'dev', targets: [],
+      control: fixtureControlPosture({ controllable: false }), controlModel: 'stepped_load',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       commandableNow: true, objectiveSessionInactive: false,
       currentDrawKw: 0,
@@ -264,8 +270,9 @@ describe('applyDeferredObjectiveAdmission', () => {
     const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
     const applied = applyDeferredAdmissionToInput([device], decisions);
-    // Managed, so it competes on its own priority in the normal shed/restore lane.
-    expect(applied.devices[0]?.controllable).toBe(true);
+    // Managed, so it competes on its own priority in the normal shed/restore lane:
+    // the task contributes the authority term the cap-off setting withheld.
+    expect(applied.devices[0]?.control.commandAuthority).toBe(true);
     // Not force-shed, and none of the claims a planned hour would carry.
     expect(applied.forceShedSet.has('ev1')).toBe(false);
     expect(applied.devices[0]).not.toHaveProperty('forceBoostActive');

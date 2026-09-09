@@ -33,7 +33,7 @@ import {
 } from '../../lib/plan/planTypes';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
-import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -191,7 +191,7 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
     surplusTracking: false,
     // Drawing at its current step, so the boost is not released.
     confirmedNotDrawing: false,
-    controllable: true,
+    control: fixtureControlPosture({ controllable: true }),
     binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: true },
     currentOn: true,
@@ -218,7 +218,7 @@ const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryD
   hasStandingDemand: true,
   surplusTracking: false,
   confirmedNotDrawing: false,
-    controllable: true,
+    control: fixtureControlPosture({ controllable: true }),
     binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: false },
     currentOn: false,

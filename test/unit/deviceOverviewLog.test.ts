@@ -3,7 +3,9 @@ import {
   DEVICE_OVERVIEW_LOG_MAX_DEVICES,
   DEVICE_OVERVIEW_LOG_MAX_ENTRIES_PER_DEVICE,
   buildOverviewEventForDevice,
+  type OverviewLogDevice,
 } from '../../lib/plan/deviceOverviewLog';
+import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildOverviewSteppedLoad } from '../../lib/plan/planOverviewSteppedState';
 import type { SettingsUiDeviceLogEntry } from '../../packages/contracts/src/settingsUiApi';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
@@ -12,9 +14,17 @@ import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 // fields the plan does not own. `planOverviewEmit` builds `steppedLoad` per
 // device before calling in; these tests are about the reason line, so a
 // non-stepped device (no cluster) stands in.
+// The overview log takes the WIRE shape, so it carries the flat `controllable`
+// alongside the plan device — flattened here from the posture exactly as
+// `planOverviewEmit` does at the production seam.
+const asOverviewLogDevice = (device: DevicePlanDevice): OverviewLogDevice => ({
+  ...device,
+  controllable: device.control.commandAuthority,
+});
+
 const overviewLogDevice = (
   overrides: Parameters<typeof buildPlanDevice>[0] = {},
-): ReturnType<typeof buildPlanDevice> => buildPlanDevice(overrides);
+): OverviewLogDevice => asOverviewLogDevice(buildPlanDevice(overrides));
 
 const entry = (atMs: number, overrides: Partial<SettingsUiDeviceLogEntry> = {}): SettingsUiDeviceLogEntry => ({
   atMs,
@@ -154,14 +164,14 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
       'Waiting to increase — other devices are ahead',
     ],
   ])('logs the action-specific line for an active stepped device in the %s', (_label, reason, copy) => {
-    const event = buildOverviewEventForDevice(steppedPlanDevice({
+    const event = buildOverviewEventForDevice(asOverviewLogDevice(steppedPlanDevice({
       id: 'charger',
       currentState: 'on',
       plannedState: 'keep',
       reportedStepId: 'low',
       selectedStepId: 'medium',
       reason,
-    }), overview);
+    })), overview);
 
     expect(event['reasonText']).toBe(copy);
     expect(event['cardReasonText']).toBe(copy);

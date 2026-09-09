@@ -1,3 +1,4 @@
+import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type {
   DevicePlanDevice, PlanInputDevice, ShedAction, ShedBehavior, SteppedClusterFields, TemperatureClusterFields,
 } from './planTypes';
@@ -128,7 +129,9 @@ export function buildBasePlanDevice(params: {
   binaryCommandPending: boolean;
   currentState: string;
   plannedTarget: number | undefined;
-  controllable: boolean;
+  // The whole posture: this builder asks BOTH questions of it, and they have
+  // different answers for a managed device with power limiting off.
+  control: DeviceControlPosture;
   shedBehavior: ShedBehavior;
   shedSet: Set<string>;
   /** Per device, the rung the shedding planner priced this cycle's shed at. */
@@ -151,7 +154,7 @@ export function buildBasePlanDevice(params: {
     binaryCommandPending,
     currentState,
     plannedTarget,
-    controllable,
+    control,
     shedBehavior,
     shedSet,
     shedStepTargets,
@@ -173,16 +176,23 @@ export function buildBasePlanDevice(params: {
   const isSteppedShed = isSteppedLoadDevice(dev)
     && shedDesiredStepId !== undefined
     && shedDesiredStepId !== dev.selectedStepId;
-  const plannedState = resolvePlannedState(controllable, shedSet.has(dev.id) || isSteppedShed);
+  const plannedState = resolvePlannedState(control, shedSet.has(dev.id) || isSteppedShed);
   const effectiveDesiredStepId = resolveSteppedKeepDesiredStepIdFor(
     dev, plannedState, desiredStepId, params.anyOtherDeviceLimited, boostActive, surplusCeilingStepId,
   );
-  const baseReason: DeviceReason = controllable
+  // Keyed on AUTHORITY, not on power limiting. `capacityControlOff` says "PELS is
+  // not controlling this device" — false the moment a smart task has contributed
+  // its authority term, and the old code agreed because the task used to write
+  // `controllable: true` and this line read that same flag. Reading
+  // the owner's raw toggle here instead made an impossible pair reachable: a device the
+  // task authorised could be planned `shed` while still carrying
+  // `capacity_control_off`, which `validatePlanReasonPair` rejects outright.
+  const baseReason: DeviceReason = control.commandAuthority
     ? shedReasons.get(dev.id) ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
     : { code: PLAN_REASON_CODES.capacityControlOff };
   const { shedAction, shedTemperature, releaseShedStepId } = resolveShedAction({
     dev,
-    controllable,
+    control,
     shouldShed: shedSet.has(dev.id),
     shedBehavior,
   });
@@ -224,7 +234,7 @@ export function buildBasePlanDevice(params: {
     ...producerResolvedDecisionFields(dev),
     reason: baseReason,
     zone: dev.zone || 'Unknown',
-    controllable,
+    control,
     budgetExempt: dev.budgetExempt,
     available: dev.available,
     boostActive,
@@ -277,24 +287,32 @@ function pickPropagatedPlanFields(
   };
 }
 
-function resolvePlannedState(controllable: boolean, shouldShed: boolean): 'shed' | 'keep' {
-  if (!controllable) return 'keep';
+/**
+ * May PELS put this device somewhere other than where it is?
+ *
+ * Gated on `commandAuthority`, not on power limiting. Those were the same
+ * boolean until the split, which is why a managed device with power limiting
+ * off could not be planned off for ANY reason — the planner could not tell it
+ * from a device it had been told to ignore.
+ */
+function resolvePlannedState(control: DeviceControlPosture, shouldShed: boolean): 'shed' | 'keep' {
+  if (!control.commandAuthority) return 'keep';
   return shouldShed ? 'shed' : 'keep';
 }
 function resolveShedAction(params: {
   dev: PlanInputDevice;
-  controllable: boolean;
+  control: DeviceControlPosture;
   shouldShed: boolean;
   shedBehavior: ShedBehavior;
 }): { shedAction: ShedAction; shedTemperature: number | null; releaseShedStepId: string | null } {
-  const { dev, controllable, shouldShed, shedBehavior } = params;
+  const { dev, control, shouldShed, shedBehavior } = params;
   // Single resolution site for the shed-action intent. Called once here with
-  // the post-admission `controllable` so the deferred-objective rescue lane
+  // the post-admission authority so the deferred-objective rescue lane
   // (`applyDeferredAdmissionToInput`) is honoured. The materialiser then only
   // gates on the per-cycle `shouldShed` decision (no producer equivalent).
   const intent = resolveShedIntent({
     shedBehavior,
-    controllable,
+    commandAuthority: control.commandAuthority,
     hasBinaryControl: isBinaryPlanDevice(dev),
     steppedLoadProfile: isSteppedLoadDevice(dev) ? dev.steppedLoadProfile : undefined,
     primaryTarget: getPrimaryTargetCapability(dev.targets),

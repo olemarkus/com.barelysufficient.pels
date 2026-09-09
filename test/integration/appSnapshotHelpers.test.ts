@@ -236,6 +236,7 @@ describe('appSnapshotHelpers', () => {
       ...snapshot[0],
       managed: true,
       controllable: true,
+      countsAsManagedUsage: true,
       currentOn: true,
       // Stamped by `withHeadroomCurrentOn`, the producer boundary for devices
       // that reach the usage math straight off the transport.
@@ -371,6 +372,9 @@ describe('appSnapshotHelpers', () => {
       ...snapshot[0],
       managed: false,
       controllable: false,
+      // Resolved from the ENFORCED setting, not the parse-time one: enforcement
+      // is the whole point of this cycle, so authority has to follow it.
+      countsAsManagedUsage: false,
       // The producer answers for an unmetered device too. This fixture declares
       // no load either, so there is genuinely nothing to draw against.
       currentDrawKw: 0,

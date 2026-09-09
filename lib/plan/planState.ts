@@ -175,7 +175,7 @@ export type OvershootTrackedPlanDevice = Pick<
   DevicePlanDevice,
   | 'id'
   | 'name'
-  | 'controllable'
+  | 'control'
   | 'plannedState'
   | 'currentState'
   | 'currentDrawKw'

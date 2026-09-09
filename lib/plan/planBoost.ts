@@ -8,10 +8,10 @@ import { getLogger } from '../logging/logger';
  * drive a boost on this device and whether its own policy wants one right now;
  * the planner adds the three things only it knows.
  *
- * 1. The runnable gate. `controllable` in particular is not the producer's
- *    answer to keep: deferred-objective admission can flip it to `true` for a
- *    rescued cap-off device AFTER `toPlanDevice` ran, and that device must be
- *    able to boost.
+ * 1. The runnable gate. `control.commandAuthority` in particular is not the
+ *    producer's answer to keep: deferred-objective admission ORs it to `true`
+ *    for a rescued cap-off device AFTER `toPlanDevice` ran, and that device must
+ *    be able to boost.
  * 2. The release. A boost is a claim on other devices' power — it escalates a
  *    ladder past the fairness invariant and lets a swap pause a running
  *    lower-priority device. A device that is confidently drawing nothing cannot
@@ -32,7 +32,7 @@ import { getLogger } from '../logging/logger';
  * margin above a threshold, and it holds whatever the device measures itself in.
  */
 export function resolveBoostActive(dev: PlanInputDevice): boolean {
-  if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
+  if (dev.control.commandAuthority === false || dev.control.managed === false || dev.available === false) return false;
   if (dev.confirmedNotDrawing) return false;
   if (dev.boostRequested) return true;
   return dev.forceBoostActive === true && dev.boostSupported;

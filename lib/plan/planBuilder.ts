@@ -42,7 +42,7 @@ import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import { buildSheddingDeps, SilentMeterPlanBuilder } from './planBuilderSilentMeter';
 import { resolveShortfallOffState } from './planOffStateReason';
 import { runSurplusPass, type PriceOptDeviceConfig } from './planBuilderSurplus';
-import { sumBudgetExemptProjectedUsageKw } from './planUsage';
+import { sumBudgetExemptProjectedUsageKw, toUsageDevice } from './planUsage';
 import { PlanMaterializationStages } from './planBuilderMaterialization';
 import { resolveNormalizedShedFloors } from './normalizedShedFloor';
 import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
@@ -186,8 +186,9 @@ export class PlanBuilder {
   private async buildPlanSnapshotWithTimings(devices: PlanInputDevice[]): Promise<DevicePlan> {
     const nowTs = Date.now();
     // Evaluate deferred objectives at the planner boundary and translate active objectives
-    // into a plain managed-device shape: cap-off devices become controllable=true for the
-    // cycle (so they participate in shed/restore), and idle hours seed the shedding shed-set.
+    // into a plain managed-device shape: a device PELS has no standing authority over
+    // gains `commandAuthority` for the cycle (so it participates in shed/restore) without
+    // its owner settings being touched, and idle hours seed the shedding shed-set.
     // Cap on/off only decides whether the planner cares about the device this cycle; once
     // admitted, the shedding and restore lanes act on the device with their normal logic and
     // produce their normal reasons.
@@ -459,7 +460,7 @@ export class PlanBuilder {
     // daily threshold by the exempt draw — non-exempt devices were shed for a
     // missing reading rather than for real budget pressure. Every plan device now
     // carries a resolved draw, so the unresolved state is gone.
-    const projectedExemptKw = Math.max(0, sumBudgetExemptProjectedUsageKw(devices));
+    const projectedExemptKw = Math.max(0, sumBudgetExemptProjectedUsageKw(devices.map(toUsageDevice)));
     const budgetPaceKw = computeDailyUsageSoftLimit({
       ...bucket,
     });

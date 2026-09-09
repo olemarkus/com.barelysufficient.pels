@@ -34,7 +34,7 @@ import {
   withBinaryDiscriminant,
   withTemperatureDiscriminant,
 } from '../../lib/plan/planTypes';
-import { type FixtureBoostFields, withFixtureResidualKw, withMaterializedEvPlugState } from '../utils/planTestUtils';
+import { fixtureControlPosture, type FixtureBoostFields, withFixtureResidualKw, withMaterializedEvPlugState } from '../utils/planTestUtils';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanHistoryV5 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives/activePlanSignature';
@@ -70,7 +70,12 @@ const expectClaimMatchesReportedCause = (diag: DeferredObjectiveDiagnostic | und
 };
 
 const buildDevice = (
-  overrides: Partial<PlanInputDevice> & FixtureBoostFields & { evChargingState?: string } = {},
+  overrides: Partial<PlanInputDevice> & FixtureBoostFields & {
+    evChargingState?: string;
+    // Fixture shorthands for the control posture, resolved by the shared
+    // resolver exactly as `toPlanDevice` does.
+    controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
+  } = {},
 ): PlanInputDevice => withMaterializedEvPlugState(withFixtureResidualKw({
   id: 'ev-1',
   expectedPowerKw: 1,
@@ -89,12 +94,16 @@ const buildDevice = (
     ],
   },
   ...overrides,
-  controllable: overrides.controllable ?? true,
+  control: fixtureControlPosture(overrides),
   available: overrides.available ?? true,
 })) as PlanInputDevice;
 
 const buildTemperatureDevice = (
-  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe = {},
+  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe & {
+    // Fixture shorthands for the control posture, resolved by the shared
+    // resolver exactly as `toPlanDevice` does.
+    controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
+  } = {},
 ): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
   id: 'heater-1',
   expectedPowerKw: 1,
@@ -112,7 +121,7 @@ const buildTemperatureDevice = (
     ],
   },
   ...overrides,
-  controllable: overrides.controllable ?? true,
+  control: fixtureControlPosture(overrides),
   available: overrides.available ?? true,
 }))) as PlanInputDevice;
 
@@ -2896,7 +2905,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // thermal fallback (measured → expected → power), the planner builds a
     // horizon plan from the live draw and the smart task can progress.
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
-      controllable: true, available: true,
+      control: fixtureControlPosture({ controllable: true }), available: true,
       id: 'heater-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Mill v2 Panel Heater',
@@ -2989,7 +2998,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 0 kW step. The producer must walk down the candidate list to
     // `expectedPowerKw` (load-setting / Homey Energy approximation) so the
     // horizon plan still builds.
-    const heater = withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ controllable: true, available: true, currentDrawKw: 0,
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
+      control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
       id: 'heater-1',
       name: 'Idle Panel Heater',
       commandableNow: true,
@@ -3063,7 +3073,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   // halves are asserted below; the SDK-boundary regression for the 2026-08-01
   // incident lives in `test/e2e/deferredObjectiveStepGapRestartSdkE2E.test.ts`.
   it('plans a thermostat with no declared power instead of reporting missing_charge_rate', () => {
-    const heater = withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ controllable: true, available: true, currentDrawKw: 0,
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
+      control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
       id: 'heater-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Powerless Thermostat',
@@ -3129,7 +3140,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // positive number; the tag was a producer-side fact this layer reconstructed.
     // `controlModel` is deliberately ABSENT from this fixture so the case fails if
     // the consumer ever goes back to inferring the gap from it.
-    const tank = withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({ controllable: true, available: true, currentDrawKw: 0,
+    const tank = withTemperatureDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
+      control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
       id: 'heater-1',
       expectedPowerKw: 1, expectedPowerSource: 'default',
       name: 'Water heater with no live ladder',
@@ -3367,7 +3379,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           { id: 'top', planningPowerW: 3000 },
         ],
       },
-      controllable: true,
+      control: fixtureControlPosture({ controllable: true }),
       available: true,
     })) as PlanInputDevice;
 
