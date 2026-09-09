@@ -2,7 +2,7 @@ import { resolveUsableCapacityKw } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
 import type { MeasuredPowerReading } from '../power/powerCycleReading';
 import { getCurrentHourContext } from './planHourContext';
-import { sumBudgetExemptMeasuredUsageKw } from './planUsage';
+import { sumBudgetExemptMeasuredUsageKw } from '../power/usageAttribution';
 import { isCapacityBreached } from './planRemainingSheddableLoad';
 import type { PlanInputDevice } from './planTypes';
 import type { PriceLevel } from '../price/priceLevels';

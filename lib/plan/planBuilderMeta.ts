@@ -15,7 +15,7 @@ import type {
 } from './planTypes';
 import type { MeasuredPower, PlanContext } from './planContext';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
-import { splitControlledUsageKw } from './planUsage';
+import { splitControlledUsageKw } from '../power/usageAttribution';
 import {
   extractDailyBudgetHourKWh as extractPlanDailyBudgetHourKWh,
   getHourUsageSplit,

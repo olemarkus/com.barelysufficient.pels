@@ -18,30 +18,6 @@ type UsageDevice = {
   planningPowerKw?: number;
 };
 
-/**
- * Managed usage: the sum of what the managed devices are drawing.
- *
- * The per-device rule is now just the producer's `currentDrawKw`. Three
- * plan-state-dependent ladders used to live here (shed / observed-off /
- * observed-on), each deciding for itself what an absent reading meant. The
- * observed-off arm answered with `getHighestKnownPowerKw`, i.e. RATED power, so
- * a device measuring a true 0 W was credited its nameplate — and this sum is
- * what `sampleIngest` persists into `controlledBuckets`. `0` is an answer, not a
- * gap: a device drawing nothing contributes nothing.
- *
- * No longer `number | null`. The null meant "a controllable device has no usable
- * reading, so the managed total cannot be attributed" — a state that no longer
- * exists, because the producer always has an answer for every planned device.
- */
-export const sumControlledUsageKw = (devices: UsageDevice[]): number => {
-  let totalKw = 0;
-  for (const dev of devices) {
-    if (dev.controllable === false) continue;
-    totalKw += dev.currentDrawKw;
-  }
-  return totalKw;
-};
-
 export const sumBudgetExemptProjectedUsageKw = (devices: UsageDevice[]): number => {
   let totalKw = 0;
   for (const dev of devices) {
@@ -50,36 +26,6 @@ export const sumBudgetExemptProjectedUsageKw = (devices: UsageDevice[]): number 
   }
   return totalKw;
 };
-
-// Measured-only sibling of `sumBudgetExemptProjectedUsageKw`. The live sum PROJECTS an
-// observed-off exempt device's draw (via `getHighestKnownPowerKw`) — correct for
-// the daily-pace add-back, where the reservation must exist while the device is
-// off. This sum counts only actually-measured draw and is the budget-axis input
-// for restore admission (`notes/safe-pace-two-constraints.md` § "It needs to land
-// twice"): a non-exempt restore candidate must not spend headroom that exists
-// only as an off exempt device's projection. Missing/unknown measurements count
-// as 0 — an off exempt device reserves nothing on this axis.
-export const sumBudgetExemptMeasuredUsageKw = (devices: UsageDevice[]): number => {
-  let totalKw = 0;
-  for (const dev of devices) {
-    if (dev.budgetExempt !== true || dev.controllable === false) continue;
-    totalKw += dev.currentDrawKw;
-  }
-  return totalKw;
-};
-
-export function splitControlledUsageKw(params: {
-  devices: UsageDevice[];
-  totalKw: number;
-}): { controlledKw: number; uncontrolledKw: number } {
-  const { devices, totalKw } = params;
-  const controlledKw = sumControlledUsageKw(devices);
-  const boundedControlledKw = Math.max(0, Math.min(totalKw, controlledKw));
-  return {
-    controlledKw: boundedControlledKw,
-    uncontrolledKw: Math.max(0, totalKw - boundedControlledKw),
-  };
-}
 
 /**
  * The exempt device's claim on the daily budget, which is NOT the same question
@@ -95,7 +41,8 @@ export function splitControlledUsageKw(params: {
  * 0 W was booked at nameplate into the persisted managed/background split. Here
  * the projection is the answer to a different question, it is gated on the
  * device being observed OFF, and its measured sibling
- * (`sumBudgetExemptMeasuredUsageKw`) is what restore admission spends.
+ * (`sumBudgetExemptMeasuredUsageKw` in `lib/power/usageAttribution.ts`) is what
+ * restore admission spends.
  */
 const resolveBudgetExemptProjectedKw = (dev: UsageDevice): number => {
   // Kept from the pre-refactor ladder, and currently INERT: both callers sum

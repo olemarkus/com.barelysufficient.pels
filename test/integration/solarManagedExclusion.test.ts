@@ -17,7 +17,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
 import { resolveSurplusEligibility } from '../../lib/plan/planSurplusAbsorb';
-import { sumControlledUsageKw, splitControlledUsageKw, sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
+import { sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
+import { sumControlledUsageKw, splitControlledUsageKw } from '../../lib/power/usageAttribution';
 import { buildSheddingCandidates } from '../../lib/plan/shedding/candidates';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
@@ -29,7 +30,7 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice, restoreTimingFixture } from '../utils/planTestUtils';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
-import type { SplitControlledUsage, SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
+import type { SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
@@ -38,11 +39,7 @@ const FIXTURE_TOTAL_KW = 3;
 
 // Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
 // snapshots go through `withHeadroomCurrentOn` — the producer boundary that
-// resolves `currentDrawKw` — before the usage math sees them.
-const splitControlledUsage: SplitControlledUsage = (params) => splitControlledUsageKw({
-  ...params,
-  devices: params.devices.map(withHeadroomCurrentOn),
-});
+// resolves `currentDrawKw` and `currentOn` for the projected exemption seam.
 const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
   sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
 );
@@ -260,8 +257,6 @@ describe('solar device as managed observe-only — control-path exclusion lock',
         // The harness type expects a no-arg getter; close over the per-call nowMs.
         getLatestTargetSnapshot: () => getLatestTargetSnapshot(nowMs) as never,
         powerTracker: tracker,
-      sumControlledUsage: () => 0,
-        splitControlledUsage,
         sumBudgetExemptUsage,
         updateObjectiveProfiles: ({ state }) => state,
         schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),

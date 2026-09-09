@@ -3,8 +3,12 @@ import type { StructuredDebugEmitter } from '../logging/logger';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
 import { resolveUsableCapacityKw } from './capacityModel';
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
+import {
+  hasObservedMeasuredPower,
+  normalizeMeasuredPowerKw,
+} from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
+import { splitControlledUsageKw, sumControlledUsageKw, type UsageDevice } from './usageAttribution';
 
 /**
  * Whole-home power sample ingest pipeline.
@@ -14,8 +18,8 @@ import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
  * uncontrolled / exempt split → objective profile update → tracker
  * record → capacity guard notify).
  *
- * Cross-peer concerns (objective-profile update, controlled/uncontrolled
- * split, daily-budget cap recording) are reached via injected callbacks
+ * Cross-peer concerns (objective-profile update, projected budget exemption,
+ * daily-budget cap recording) are reached via injected callbacks
  * so this file does not import from `lib/objectives/`, `lib/plan/`, or
  * `lib/dailyBudget/` (per the no-power-to-peer rule in dep-cruiser).
  */
@@ -128,7 +132,7 @@ const buildMeasuredDevicePowerWById = (params: {
  * demonstrably drawing.
  *
  * So on a negative net with no production term, floor at the split's OWN
- * unbounded controlled sum (`sumControlledUsage`, the split's own attribution
+ * unbounded controlled sum (`sumControlledUsageKw`, the split's own attribution
  * before the bounding step). The floor and the attribution are then the same
  * quantity by construction — every watt of the floor is a watt the split
  * assigns to a controllable device, and background stays 0 because it is
@@ -147,10 +151,9 @@ const buildMeasuredDevicePowerWById = (params: {
 const resolveGrossConsumptionW = (params: {
   currentPowerW: number;
   generationW?: number;
-  devices: TargetDeviceSnapshot[];
-  sumControlledUsage: SumControlledUsage;
+  devices: readonly UsageDevice[];
 }): number => {
-  const { currentPowerW, generationW, devices, sumControlledUsage } = params;
+  const { currentPowerW, generationW, devices } = params;
   const grossFromReadings = currentPowerW + Math.max(0, generationW ?? 0);
   // Gate the fallback on the RESOLVED value, not on whether a generation term
   // was supplied. A solar home now carries generation on every sample including
@@ -161,21 +164,8 @@ const resolveGrossConsumptionW = (params: {
   // discharging to grid after dark, a second inverter Homey cannot see).
   if (grossFromReadings > 0 || currentPowerW >= 0) return Math.max(0, grossFromReadings);
   if (devices.length === 0) return 0;
-  return Math.max(0, sumControlledUsage(devices) * 1000);
+  return Math.max(0, sumControlledUsageKw(devices) * 1000);
 };
-
-export type SplitControlledUsage = (params: {
-  devices: TargetDeviceSnapshot[];
-  totalKw: number;
-}) => { controlledKw: number; uncontrolledKw: number };
-
-/**
- * The UNBOUNDED controlled sum — the split's own attribution before the
- * whole-home bounding step. Its one consumer is the export-floor fallback in
- * `resolveGrossConsumptionW`; it used to be expressed as the split called
- * with `totalKw: null`, a flag argument smuggled through a nullable.
- */
-export type SumControlledUsage = (devices: TargetDeviceSnapshot[]) => number;
 
 export type SumBudgetExemptUsage = (devices: TargetDeviceSnapshot[]) => number | null;
 
@@ -203,8 +193,6 @@ export async function recordPowerSampleForApp(params: {
   powerTracker: PowerTrackerState;
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
-  splitControlledUsage: SplitControlledUsage;
-  sumControlledUsage: SumControlledUsage;
   sumBudgetExemptUsage: SumBudgetExemptUsage;
   updateObjectiveProfiles: UpdateObjectiveProfiles;
 }): Promise<void> {
@@ -218,13 +206,18 @@ export async function recordPowerSampleForApp(params: {
     powerTracker,
     schedulePlanRebuild,
     saveState,
-    splitControlledUsage,
-    sumControlledUsage,
     sumBudgetExemptUsage,
     updateObjectiveProfiles,
   } = params;
   const hourBudgetKWh = resolveUsableCapacityKw(capacitySettings);
-  const snapshot = getLatestTargetSnapshot();
+  const snapshot: (TargetDeviceSnapshot & MeasuredPowerObservedProbe)[] = getLatestTargetSnapshot();
+  // Resolve raw readings once before the power-owned attribution. This is the
+  // same normalization as the observer's getCurrentDrawKw; power must not import
+  // the observer merely to resolve this transport-to-attribution boundary.
+  const usageDevices = snapshot.map((device) => ({
+    ...device,
+    currentDrawKw: normalizeMeasuredPowerKw(device.measuredPowerKw) ?? 0,
+  }));
   // Authoritative whole-home actual consumption = net grid import + gross
   // generation. With no generation signal this is exactly `currentPowerW`, so
   // non-solar homes are byte-for-byte unchanged. The split below measures
@@ -235,12 +228,11 @@ export async function recordPowerSampleForApp(params: {
   const grossConsumptionW = resolveGrossConsumptionW({
     currentPowerW,
     generationW,
-    devices: snapshot,
-    sumControlledUsage,
+    devices: usageDevices,
   });
   const { controlledKw } = snapshot.length
-    ? splitControlledUsage({
-      devices: snapshot,
+    ? splitControlledUsageKw({
+      devices: usageDevices,
       totalKw: grossConsumptionW / 1000,
     })
     : { controlledKw: null };

@@ -22,7 +22,7 @@ code, one owner of the data point.** Everything below is written in these terms.
 | The same value as the steady rate that spends it | `sustainableRateKw` | import | capacity settings | per home |
 | Dynamic hourly threshold derived from the allowance and the time left | `capacityPaceKw` | import | `lib/plan/planBudget.ts` | per home |
 | Exempt draw including projected power for observed-off devices | `projectedExemptKw` | import | `lib/plan/planUsage.ts` | per home |
-| Exempt draw from measured readings only | `measuredExemptKw` | import | `lib/plan/planUsage.ts` | per home |
+| Exempt draw from measured readings only | `measuredExemptKw` | import | `lib/power/usageAttribution.ts` | per home |
 | Daily-budget threshold on the load that counts toward the budget | `budgetPaceKw` | **non-exempt** | `lib/plan/planBudget.ts` | **main only** |
 | `budgetPaceKw` re-expressed on the import axis by adding exempt draw | `budgetPaceImportKw` | import | `lib/plan/planBuilder.ts` | **main only** |
 | `min(capacityPaceKw, budgetPaceImportKw)`: the threshold the planner acts on | `bindingPaceKw` | import | `lib/plan/planBuilder.ts` | per home |

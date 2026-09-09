@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
 import { resolveSurplusEligibility } from '../../lib/plan/planSurplusAbsorb';
-import { sumControlledUsageKw, splitControlledUsageKw } from '../../lib/plan/planUsage';
+import { sumControlledUsageKw, splitControlledUsageKw } from '../../lib/power/usageAttribution';
 import { buildSheddingCandidates } from '../../lib/plan/shedding/candidates';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnostics';

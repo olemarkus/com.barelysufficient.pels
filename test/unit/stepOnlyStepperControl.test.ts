@@ -12,7 +12,7 @@ import {
   isActivationObservationActiveNow,
   isActivationObservationExplicitlyInactive,
 } from '../../lib/plan/admission/activationBackoff';
-import { sumControlledUsageKw } from '../../lib/plan/planUsage';
+import { sumControlledUsageKw } from '../../lib/power/usageAttribution';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 
 // A step-only stepper: a `target_power`-style load with a stepped profile but NO
@@ -178,13 +178,14 @@ describe('raw-snapshot currentOn stamping (powerSample / headroom seams)', () =>
 
 describe('sumControlledUsageKw — step-only steppers', () => {
   it('counts a shed step-only stepper parked at its off step as 0, not unknown', () => {
-    const total = sumControlledUsageKw([{ expectedPowerKw: 1,
+    const devices = [{ expectedPowerKw: 1,
       currentDrawKw: 0,
       controllable: true,
       plannedState: 'shed',
       steppedLoadProfile: profile,
       selectedStepId: 'off',
-    }]);
+    }];
+    const total = sumControlledUsageKw(devices);
     expect(total).toBe(0);
   });
 
@@ -192,14 +193,15 @@ describe('sumControlledUsageKw — step-only steppers', () => {
     // The step axis says which rung it is on; it does not say what it is pulling.
     // Attribution reads the producer's draw, so a configured 1.25 kW step whose
     // meter reads 0.9 kW books 0.9 kW.
-    const total = sumControlledUsageKw([{
+    const devices = [{
       currentDrawKw: 0.9,
       controllable: true,
       plannedState: 'keep',
       steppedLoadProfile: profile,
       selectedStepId: 'low',
       expectedPowerKw: 1.25,
-    }]);
+    }];
+    const total = sumControlledUsageKw(devices);
     expect(total).toBe(0.9);
   });
 });

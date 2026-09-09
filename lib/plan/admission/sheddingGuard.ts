@@ -13,7 +13,7 @@ import {
   sumRemainingSheddableLoadKw,
   toInputRemainingSheddableDevice,
 } from '../planRemainingSheddableLoad';
-import { sumControlledUsageKw } from '../planUsage';
+import { sumControlledUsageKw } from '../../power/usageAttribution';
 
 function handleShortfallCheck(
   params: {

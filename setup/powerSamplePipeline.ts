@@ -4,15 +4,13 @@ import type { PlanEngine } from '../lib/plan/planEngine';
 import type { PlanService } from '../lib/plan/planService';
 import {
   recordPowerSampleForApp,
-  type SplitControlledUsage,
   type SumBudgetExemptUsage,
-  type SumControlledUsage,
   type UpdateObjectiveProfiles,
 } from '../lib/power/sampleIngest';
 import type { PlanRebuildThrottle } from '../lib/plan/rebuildScheduler/throttle';
 import { requireLastTotalPowerKw } from '../lib/power/lastTotalPower';
 import { computeShortfallThreshold } from '../lib/plan/planBudget';
-import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../lib/plan/planUsage';
+import { sumBudgetExemptProjectedUsageKw } from '../lib/plan/planUsage';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { resolveObjectiveObservedQuantity } from '../packages/shared-domain/src/objectiveObservedQuantity';
@@ -187,36 +185,13 @@ export class PowerSamplePipeline {
    */
   private readonly queue: SampleIngestQueue<PowerSampleRequest>;
 
-  /**
-   * The three snapshot seams `recordPowerSampleForApp` reaches back through,
-   * bound ONCE rather than rebuilt on every sample. Each is a pure wrapper: it
-   * takes everything sample-specific as an argument, and the two getters inside
-   * the profiling one are still called per invocation — resolving the debug
-   * emitter at boot would freeze whether that topic is enabled, and debug
-   * logging is live in production.
-   *
-   * All three exist because `lib/power` sits UNDER the modules that own the
-   * arithmetic: `lib/plan` reads power, so power may not read plan. They are the
-   * points where an ordering `lib/power` owns has to reach outside it.
-   */
-  private readonly splitControlledUsage: SplitControlledUsage = (params) => splitControlledUsageKw({
-    ...params,
-    // Stamp the producer-resolved `currentOn` onto the raw snapshots before the
-    // plan-layer usage math: these devices come straight from the transport and
-    // carry `binaryControl` but no `currentOn`, so the usage on/off reads would
-    // otherwise treat an idle-but-on binary device as off and charge expected kW.
-    devices: params.devices.map(withHeadroomCurrentOn),
-  });
-
-  private readonly sumControlledUsage: SumControlledUsage = (devices) => (
-    sumControlledUsageKw(devices.map(withHeadroomCurrentOn))
-  );
-
+  // The planner owns projected exemption: its reservation survives an off
+  // device's duty cycle. Measured attribution is owned and called by power.
   private readonly sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
     sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
   );
 
-  // Same producer boundary as the two usage seams above, for the same reason:
+  // Same producer boundary as the projected usage seam above:
   // rate learning reads the device's DRAW, and the raw `measuredPowerKw` does
   // not travel past the producer. Resolving here means `lib/objectives` never
   // sees a raw reading — and because `ObjectiveSampleDevice.currentDrawKw` is
@@ -337,8 +312,6 @@ export class PowerSamplePipeline {
         capacitySettings,
         getLatestTargetSnapshot: () => this.deps.getLatestTargetSnapshot(),
         powerTracker,
-        splitControlledUsage: this.splitControlledUsage,
-        sumControlledUsage: this.sumControlledUsage,
         sumBudgetExemptUsage: this.sumBudgetExemptUsage,
         updateObjectiveProfiles: this.updateObjectiveProfiles,
         schedulePlanRebuild: async () => {

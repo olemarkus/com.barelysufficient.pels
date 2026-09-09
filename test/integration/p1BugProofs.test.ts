@@ -12,7 +12,8 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { updateGuardState } from '../../lib/plan/admission';
-import { splitControlledUsageKw, sumBudgetExemptProjectedUsageKw, sumControlledUsageKw } from '../../lib/plan/planUsage';
+import { sumBudgetExemptProjectedUsageKw } from '../../lib/plan/planUsage';
+import { sumControlledUsageKw } from '../../lib/power/usageAttribution';
 import {
   buildPlanDevice,
   buildPlanMeta,
@@ -23,20 +24,13 @@ import {
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
-import type { SplitControlledUsage, SumBudgetExemptUsage, SumControlledUsage } from '../../lib/power/sampleIngest';
+import type { SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
 import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 // Mirror the production wiring in `setup/powerSamplePipeline.ts`: raw transport
 // snapshots go through `withHeadroomCurrentOn` — the producer boundary that
-// resolves `currentDrawKw` — before the usage math sees them.
-const splitControlledUsage: SplitControlledUsage = (params) => splitControlledUsageKw({
-  ...params,
-  devices: params.devices.map(withHeadroomCurrentOn),
-});
-const sumControlledUsage: SumControlledUsage = (devices) => (
-  sumControlledUsageKw(devices.map(withHeadroomCurrentOn))
-);
+// resolves `currentDrawKw` and `currentOn` for the projected exemption seam.
 const sumBudgetExemptUsage: SumBudgetExemptUsage = (devices) => (
   sumBudgetExemptProjectedUsageKw(devices.map(withHeadroomCurrentOn))
 );
@@ -316,8 +310,6 @@ describe('P1 bug proofs', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot: () => [rawDevice],
       powerTracker: tracker,
-      splitControlledUsage,
-      sumControlledUsage,
       sumBudgetExemptUsage,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
