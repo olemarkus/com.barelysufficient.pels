@@ -341,6 +341,13 @@ function applyHoldToDevice(
     return { device: dev, availableHeadroom, restoredOneThisCycle };
   }
 
+  // The restore pass already admitted this device and debited its power. Its
+  // setpoint is part of that same restoration: admitting it again would either
+  // charge it twice or replace its own turn-on admission with a throttle hold.
+  if (pass.restoredThisCycle.has(dev.id)) {
+    return { device: dev, availableHeadroom, restoredOneThisCycle };
+  }
+
   const decision = resolveHoldDecision(pass, dev, loop);
 
   if (decision.type === 'restore') {

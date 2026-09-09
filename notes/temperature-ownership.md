@@ -111,3 +111,10 @@ the problem, not the safety net.
   default it is drift. Under Update mode target, an admitted external adjustment
   must update the saved mode target before the next plan. The next plan may limit
   power using another control axis, but never changes the temperature for limiting.
+- **Restoring one device is one admission across its control axes.** A thermostat
+  switched back to Use mode target while off may need both turn-on and a raised
+  setpoint. When the restore pass has already admitted that device, the subsequent
+  setpoint hold pass preserves its target and the already-debited power allowance.
+  Re-admitting it there can block the device on its own restore throttle forever.
+  Other devices still pass through the ordinary timing and power gates. The
+  SDK-boundary regression is in `test/e2e/heatpumpShedControl.e2e.test.ts`.

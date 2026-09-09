@@ -1,4 +1,5 @@
 import { buildPlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
+import { partialDouble } from '../helpers/partialDouble';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { MeasuredPower, PlanContext } from '../../lib/plan/planContext';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -1613,6 +1614,70 @@ describe('restore cooldown backoff', () => {
     expect(sourceDevice?.reason).not.toMatchObject({ code: PLAN_REASON_CODES.swappedOut });
     expect(result.stateUpdates.swapByDevice['lower-priority']?.swappedOutFor).toBeUndefined();
     expect(result.restoredOneThisCycle).toBe(false);
+  });
+
+  it.each([2, 8])('keeps an admitted thermostat restore and charges it once with %s kW available', (headroom) => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedShedIds = new Set(['off-heater', 'peer']);
+    const planDevices = ['off-heater', 'peer'].map((id, index) => buildBinaryPlanDevice({
+      id,
+      priority: index + 1,
+      currentState: index === 0 ? 'off' : 'on',
+      binaryControl: { on: index !== 0 },
+      plannedState: 'keep',
+      currentTarget: 16,
+      currentTemperature: 18,
+      plannedTarget: 24,
+      currentDrawKw: 0,
+      measuredPowerKw: 0,
+      expectedPowerKw: 1.2,
+      reason: { code: PLAN_REASON_CODES.keep, detail: null },
+    }));
+    const deps = {
+      powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: now }),
+      normalizedShedFloorCByDevice: new Map([['off-heater', 16], ['peer', 16]]),
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
+      logDebug: vi.fn(),
+    };
+    const restore = applyRestorePlan({
+      planDevices,
+      ...buildContext({ headroom }),
+      state,
+      sheddingActive: false,
+      deps,
+    });
+    expect(restore.restoredThisCycle).toEqual(new Set(['off-heater']));
+    expect(restore.availableHeadroom).toBeLessThan(headroom);
+
+    const held = applyShedTemperatureHold({
+      planDevices: restore.planDevices,
+      state,
+      shedReasons: new Map(),
+      timing: restore.timing,
+      sheddingActive: false,
+      guardInShortfall: false,
+      ledger: buildRestoreHeadroomLedger({
+        capacityAvailableKw: restore.capacityAvailableKw,
+        budgetAvailableKw: restore.budgetAvailableKw,
+      }),
+      headroomReserves: restore.headroomReserves,
+      restoredOneThisCycle: restore.restoredOneThisCycle,
+      restoredThisCycle: restore.restoredThisCycle,
+      getShedBehavior: deps.getShedBehavior,
+      normalizedShedFloorCByDevice: deps.normalizedShedFloorCByDevice,
+    });
+
+    const heater = held.planDevices.find((device) => device.id === 'off-heater');
+    const peer = held.planDevices.find((device) => device.id === 'peer');
+    expect(heater).toMatchObject({ plannedState: 'keep', plannedTarget: 24 });
+    expect(peer).toMatchObject({ plannedState: 'shed', plannedTarget: 16 });
+    expect(held.availableHeadroom).toBe(restore.availableHeadroom);
+    expect(held.ledgerAxes).toEqual({
+      capacityAvailableKw: restore.capacityAvailableKw,
+      budgetAvailableKw: restore.budgetAvailableKw,
+    });
   });
 
   it('holds every set-temperature candidate on the restore cooldown; the finished plan ranks who is next', () => {

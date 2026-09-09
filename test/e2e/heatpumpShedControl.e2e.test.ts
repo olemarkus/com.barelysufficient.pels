@@ -177,4 +177,40 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     )).toBe(false);
     await expect(device.getCapabilityValue('target_temperature')).resolves.toBe(20);
   });
+
+  it('restores an off heater after switching from manual saving to fixed-temperature control', async () => {
+    const device = await buildHeatpumpDevice(24, 2000);
+    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+    enableCapacity(1);
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('temperature_control_modes', { 'heatpump-a': 'update_mode' });
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'heatpump-a': 24 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'heatpump-a': { action: 'set_temperature', temperature: 16 },
+    });
+    const setHomePower = reportHomePower(5000);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'onoff'), { value: false });
+    await device.setCapabilityValue('measure_power', 0);
+
+    // Re-enable the saved temperature floor while the heater is already off.
+    mockHomeyInstance.settings.set('temperature_control_modes', { 'heatpump-a': 'mode' });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 16 });
+    await expect(device.getCapabilityValue('onoff')).resolves.toBe(false);
+    putSpy.mockClear();
+
+    setHomePower(100);
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
+    await vi.advanceTimersByTimeAsync(90_000);
+
+    expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'onoff'), { value: true });
+    expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 24 });
+    await expect(device.getCapabilityValue('onoff')).resolves.toBe(true);
+    await expect(device.getCapabilityValue('target_temperature')).resolves.toBe(24);
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({ Home: { 'heatpump-a': 24 } });
+  });
 });
