@@ -15,7 +15,7 @@
  * actually reports — a post-restart off-step-floor device classified as "not
  * at its floor" could restore straight through startup stabilization.
  */
-import type { PlanInputDevice, TemperatureShedBehavior, ShedBehavior } from './planTypes';
+import type { PlanInputDevice, ShedBehavior } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 
@@ -44,17 +44,13 @@ export function resolveNormalizedShedFloors(
 }
 
 /**
- * The one accessor comparisons go through. The raw-config fallback is the
- * map-absent identity for scalar-only direct callers (test harnesses that
- * pass flat integer floors with an empty map) — production always resolves an
- * entry for a temperature device with a `set_temperature` behaviour, so raw
- * config is never compared against an observation there.
+ * Read a floor after narrowing to a temperature device with `set_temperature`
+ * behavior. `resolveNormalizedShedFloors` guarantees an entry for that device;
+ * consumers trust the resolved map instead of re-deriving from raw settings.
  */
 export function shedFloorCFor(
   floors: ReadonlyMap<string, number>,
   deviceId: string,
-  behavior: TemperatureShedBehavior,
 ): number {
-  const normalized = floors.get(deviceId);
-  return normalized === undefined ? behavior.temperature : normalized;
+  return floors.get(deviceId)!;
 }

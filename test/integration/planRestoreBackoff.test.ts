@@ -639,7 +639,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        normalizedShedFloorCByDevice: new Map(),
+        normalizedShedFloorCByDevice: new Map([['dev-temp', 16]]),
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
         logDebug: vi.fn(),
       },
@@ -1639,7 +1639,7 @@ describe('restore cooldown backoff', () => {
     const { context, power } = buildContext({ headroomRaw: 5, headroom: 5 });
     const deps = {
       powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-      normalizedShedFloorCByDevice: new Map(),
+      normalizedShedFloorCByDevice: new Map([['first-temp', 16], ['second-temp', 16]]),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       logDebug: vi.fn(),
     };
@@ -1653,14 +1653,13 @@ describe('restore cooldown backoff', () => {
       deps,
     });
     const held = applyShedTemperatureHold({
-        // Scalar-only harness: flat integer floors — empty map keeps behaviour.
-        normalizedShedFloorCByDevice: new Map(),
+      normalizedShedFloorCByDevice: deps.normalizedShedFloorCByDevice,
       planDevices: restore.planDevices,
       state,
       shedReasons: new Map(),
       timing: restore.timing,
       sheddingActive: false,
-      availableHeadroom: restore.availableHeadroom,
+      guardInShortfall: false,
       ledger: buildRestoreHeadroomLedger({
         capacityAvailableKw: restore.capacityAvailableKw,
         budgetAvailableKw: restore.budgetAvailableKw,
@@ -1705,20 +1704,24 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: now - 10_000 } as PowerTrackerState,
-        normalizedShedFloorCByDevice: new Map(),
+        normalizedShedFloorCByDevice: new Map([['temp', 16]]),
         getShedBehavior,
         logDebug: vi.fn(),
       },
     });
     const held = applyShedTemperatureHold({
-        // Scalar-only harness: flat integer floors — empty map keeps behaviour.
-        normalizedShedFloorCByDevice: new Map(),
+      normalizedShedFloorCByDevice: new Map([['temp', 16]]),
       planDevices: restore.planDevices,
       state,
       shedReasons: new Map(),
       timing: restore.timing,
       sheddingActive: false,
-      availableHeadroom: restore.availableHeadroom,
+      guardInShortfall: false,
+      ledger: buildRestoreHeadroomLedger({
+        capacityAvailableKw: restore.capacityAvailableKw,
+        budgetAvailableKw: restore.budgetAvailableKw,
+      }),
+      headroomReserves: restore.headroomReserves,
       restoredOneThisCycle: restore.restoredOneThisCycle,
       restoredThisCycle: restore.restoredThisCycle,
       getShedBehavior,
@@ -1751,7 +1754,7 @@ describe('restore cooldown backoff', () => {
     })];
     const deps = {
       powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-      normalizedShedFloorCByDevice: new Map(),
+      normalizedShedFloorCByDevice: new Map([['dev-temp', 16]]),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
       logDebug: vi.fn(),
     };
@@ -1763,14 +1766,18 @@ describe('restore cooldown backoff', () => {
       deps,
     });
     const held = applyShedTemperatureHold({
-        // Scalar-only harness: flat integer floors — empty map keeps behaviour.
-        normalizedShedFloorCByDevice: new Map(),
+      normalizedShedFloorCByDevice: deps.normalizedShedFloorCByDevice,
       planDevices: restore.planDevices,
       state,
       shedReasons: new Map(),
       timing: restore.timing,
       sheddingActive: false,
-      availableHeadroom: restore.availableHeadroom,
+      guardInShortfall: false,
+      ledger: buildRestoreHeadroomLedger({
+        capacityAvailableKw: restore.capacityAvailableKw,
+        budgetAvailableKw: restore.budgetAvailableKw,
+      }),
+      headroomReserves: restore.headroomReserves,
       restoredOneThisCycle: restore.restoredOneThisCycle,
       restoredThisCycle: restore.restoredThisCycle,
       getShedBehavior: deps.getShedBehavior,
@@ -2949,8 +2956,7 @@ describe('restore admission — headroom and penalty gates', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
 
     const result = applyShedTemperatureHold({
-        // Scalar-only harness: flat integer floors — empty map keeps behaviour.
-        normalizedShedFloorCByDevice: new Map(),
+      normalizedShedFloorCByDevice: new Map([['dev-temp', 18]]),
       planDevices: [
         buildBinaryPlanDevice({
           id: 'dev-temp',
@@ -2971,7 +2977,9 @@ describe('restore admission — headroom and penalty gates', () => {
       shedReasons: new Map(),
       timing: restoreTimingFixture(),
       sheddingActive: false,
-      availableHeadroom: 0.25,
+      guardInShortfall: false,
+      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 0.25, budgetAvailableKw: null }),
+      headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18 }),
@@ -2991,8 +2999,7 @@ describe('restore admission — headroom and penalty gates', () => {
     state.activationPenaltyByDevice['dev-temp'] = { level: 1, lastSetbackMs: now - 1_000 };
 
     const result = applyShedTemperatureHold({
-        // Scalar-only harness: flat integer floors — empty map keeps behaviour.
-        normalizedShedFloorCByDevice: new Map(),
+      normalizedShedFloorCByDevice: new Map([['dev-temp', 18]]),
       planDevices: [
         buildBinaryPlanDevice({
           id: 'dev-temp',
@@ -3013,7 +3020,9 @@ describe('restore admission — headroom and penalty gates', () => {
       shedReasons: new Map(),
       timing: restoreTimingFixture({ nowTs: now }),
       sheddingActive: false,
-      availableHeadroom: 3,
+      guardInShortfall: false,
+      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 3, budgetAvailableKw: null }),
+      headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18 }),
@@ -3195,8 +3204,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
     // This exercises the target-restore headroom path via applyShedTemperatureHold
     const result = applyShedTemperatureHold({
-        // Scalar-only harness: flat integer floors — empty map keeps behaviour.
-        normalizedShedFloorCByDevice: new Map(),
+      normalizedShedFloorCByDevice: new Map([['dev-temp', 16]]),
       planDevices: [buildBinaryPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
@@ -3215,7 +3223,9 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
       shedReasons: new Map(),
       timing: restoreTimingFixture(),
       sheddingActive: false,
-      availableHeadroom: 1.699,
+      guardInShortfall: false,
+      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 1.699, budgetAvailableKw: null }),
+      headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),

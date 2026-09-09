@@ -76,9 +76,6 @@ export type ShedBehavior =
   | { action: 'set_temperature'; temperature: number }
   | { action: 'set_step' };
 
-/** The one member that carries a setpoint, for helpers reached past the narrow. */
-export type TemperatureShedBehavior = Extract<ShedBehavior, { action: 'set_temperature' }>;
-
 /**
  * Control-kind discriminant slices of the discriminated-types refactor.
  *

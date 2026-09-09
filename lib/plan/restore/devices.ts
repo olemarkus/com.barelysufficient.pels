@@ -222,7 +222,7 @@ function canSwapOutDevice(
   // Normalized floor, never raw config: the device reports the normalized
   // value, so an off-step configured floor compared raw would classify an
   // at-floor thermostat as still swappable (`normalizedShedFloor.ts`).
-  return dev.currentTarget > shedFloorCFor(normalizedShedFloorCByDevice, dev.id, behavior);
+  return dev.currentTarget > shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
 }
 
 /**

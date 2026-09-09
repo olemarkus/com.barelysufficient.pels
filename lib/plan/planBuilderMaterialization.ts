@@ -66,7 +66,7 @@ type HoldPlanResult = {
   planDevices: DevicePlanDevice[];
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
-  ledgerAxes: { capacityAvailableKw: number; budgetAvailableKw: number | null } | null;
+  ledgerAxes: { capacityAvailableKw: number; budgetAvailableKw: number | null };
 };
 
 type FinalizedPlanResult = {
@@ -149,7 +149,6 @@ export class PlanMaterializationStages {
       // was fed (startup fields zeroed unless capacity is the binding source) —
       // so both lanes name the same cause for the same cycle.
       timing: restoreResult.timing,
-      availableHeadroom: restoreResult.availableHeadroom,
       restoredOneThisCycle: restoreResult.restoredOneThisCycle,
       restoredThisCycle: restoreResult.restoredThisCycle,
       guardInShortfall: sheddingPlan.guardInShortfall,
@@ -195,38 +194,33 @@ export class PlanMaterializationStages {
       // PELS could not observe.
       capacityBreached: power.capacityBreached,
       budgetReleasableHeadroomHold: power.budgetReleasableHeadroomHold,
-      // The hold lane's post-pass axes — `applyHoldPlan` always supplies a
-      // ledger on this path, so `ledgerAxes` is only null for scalar-only
-      // direct callers (tests), which simply get no per-cycle shortfall rather
-      // than a silently different availability basis.
-      admissionInputs: holdResult.ledgerAxes
-        ? buildCeilingShortfallInputs({
-          ledgerAxes: holdResult.ledgerAxes,
-          headroomReserves: restoreResult.headroomReserves,
-          // The SAME victim filter the swap lane uses (`getOnDevices`), not
-          // raw plan devices — the raw list would fold "relief" from devices
-          // a swap can never actually shed (stepped `set_step` behavior,
-          // thermostats already at their shed floor, uncommandable devices),
-          // understating the displayed gap.
-          onDevices: getOnDevices(
-            planDevices,
-            (deviceId) => this.deps.getShedBehavior(deviceId),
-            normalizedShedFloorCByDevice,
-          ),
-          // `state.swapByDevice` was refreshed from this cycle's restore pass
-          // in `applyRestorePlanAndUpdateState`, so the swap surface the
-          // shortfall folds in is the same one the next swap decision reads.
-          swappedOutFor: buildSwapState(this.state).swappedOutFor,
-          restoredThisCycle: restoreResult.restoredThisCycle,
-          // Same need the restore gate rejects on: it inflates a recently shed
-          // device's requirement, and a card computed against the deflated
-          // figure would claim the device is admissible on the very cycle the
-          // gate turned it down. Same `timing.nowTs` the restore gate rejected
-          // on, so card and gate agree by construction.
-          lastDeviceShedMsById: this.state.actuation.lastDeviceShedMs,
-          nowMs: restoreResult.timing.nowTs,
-        })
-        : null,
+      // Use the availability left after temperature restores in this cycle.
+      admissionInputs: buildCeilingShortfallInputs({
+        ledgerAxes: holdResult.ledgerAxes,
+        headroomReserves: restoreResult.headroomReserves,
+        // The SAME victim filter the swap lane uses (`getOnDevices`), not
+        // raw plan devices — the raw list would fold "relief" from devices
+        // a swap can never actually shed (stepped `set_step` behavior,
+        // thermostats already at their shed floor, uncommandable devices),
+        // understating the displayed gap.
+        onDevices: getOnDevices(
+          planDevices,
+          (deviceId) => this.deps.getShedBehavior(deviceId),
+          normalizedShedFloorCByDevice,
+        ),
+        // `state.swapByDevice` was refreshed from this cycle's restore pass
+        // in `applyRestorePlanAndUpdateState`, so the swap surface the
+        // shortfall folds in is the same one the next swap decision reads.
+        swappedOutFor: buildSwapState(this.state).swappedOutFor,
+        restoredThisCycle: restoreResult.restoredThisCycle,
+        // Same need the restore gate rejects on: it inflates a recently shed
+        // device's requirement, and a card computed against the deflated
+        // figure would claim the device is admissible on the very cycle the
+        // gate turned it down. Same `timing.nowTs` the restore gate rejected
+        // on, so card and gate agree by construction.
+        lastDeviceShedMsById: this.state.actuation.lastDeviceShedMs,
+        nowMs: restoreResult.timing.nowTs,
+      }),
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
     })));
   }

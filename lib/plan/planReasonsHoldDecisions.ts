@@ -1,5 +1,5 @@
 import type {
-  DevicePlanDevice, ShedBehavior, TemperatureKind, TemperatureShedBehavior,
+  DevicePlanDevice, ShedBehavior, TemperatureKind,
 } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { shedFloorCFor } from './normalizedShedFloor';
@@ -130,20 +130,18 @@ export type ShedHoldParams = {
    * param-bundle guard's header cites by this type's name.
    */
   timing: RestoreTiming;
-  availableHeadroom: number;
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
   // Per-axis ledger carried over from the restore pass: a budget-exempt
   // setpoint-shed device admits its raise against the CAPACITY axis, exactly
-  // like the binary/stepped lanes. Optional so scalar-only callers/tests keep
-  // the single-track behavior.
-  ledger?: RestoreHeadroomLedger;
+  // like the binary/stepped lanes.
+  ledger: RestoreHeadroomLedger;
   // This cycle's startup reservations, resolved once by the restore pass. A
   // setpoint-shed restore admits against them exactly like the binary/stepped
   // lanes (`restore/gating.ts`) — a raise into a reserved block is PELS giving
-  // the promised power away. Optional so scalar-only callers/tests opt out.
-  headroomReserves?: readonly HeadroomReserve[];
-  guardInShortfall?: boolean;
+  // the promised power away.
+  headroomReserves: readonly HeadroomReserve[];
+  guardInShortfall: boolean;
   /**
    * The capacity guard's shedding latch this cycle (`SheddingPlan.sheddingActive`).
    * Required: the restore pass forks on it ahead of its cooldown lane, and the
@@ -172,27 +170,24 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
   // Post-pass per-axis availability, for the reason-normalization stage to
   // compute per-device shortfalls against the SAME axes this lane debited —
   // rebuilding from the restore-pass axes there would miss the temperature
-  // restores admitted here and over-report availability. `null` when the
-  // caller ran scalar-only (no ledger supplied).
-  ledgerAxes: { capacityAvailableKw: number; budgetAvailableKw: number | null } | null;
+  // restores admitted here and over-report availability.
+  ledgerAxes: { capacityAvailableKw: number; budgetAvailableKw: number | null };
 } {
   const {
     planDevices,
     state,
     shedReasons,
     timing,
-    availableHeadroom,
     restoredOneThisCycle,
     restoredThisCycle,
     ledger,
     headroomReserves,
-    guardInShortfall = false,
+    guardInShortfall,
     sheddingActive,
     getShedBehavior,
     normalizedShedFloorCByDevice,
   } = params;
 
-  let headroom = availableHeadroom;
   let restoredOne = restoredOneThisCycle;
   const nextDevices: DevicePlanDevice[] = [];
   const pendingRestoreDelay = getPendingRestoreDelay(
@@ -203,7 +198,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     shedReasons,
     timing,
     pendingRestoreDelay,
-    headroomReserves: headroomReserves ?? [],
+    headroomReserves,
     guardInShortfall,
     sheddingActive,
     normalizedShedFloorCByDevice,
@@ -212,26 +207,21 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
 
   for (const dev of planDevices) {
     const behavior = getShedBehavior(dev.id);
-    const availableForDevice = ledger ? ledger.availableFor(dev) : headroom;
+    const availableForDevice = ledger.availableFor(dev);
     const result = applyHoldToDevice(pass, dev, behavior, {
       availableHeadroom: availableForDevice,
       restoredOneThisCycle: restoredOne,
     });
-    if (ledger) {
-      ledger.commit(dev, availableForDevice - result.availableHeadroom);
-      headroom = ledger.summaryAvailableKw();
-    } else {
-      headroom = result.availableHeadroom;
-    }
+    ledger.commit(dev, availableForDevice - result.availableHeadroom);
     restoredOne = result.restoredOneThisCycle;
     nextDevices.push(result.device);
   }
 
   return {
     planDevices: nextDevices,
-    availableHeadroom: headroom,
+    availableHeadroom: ledger.summaryAvailableKw(),
     restoredOneThisCycle: restoredOne,
-    ledgerAxes: ledger ? ledger.axes() : null,
+    ledgerAxes: ledger.axes(),
   };
 }
 
@@ -259,7 +249,6 @@ function resolveHoldGating(
 function resolveHoldDecision(
   pass: HoldPass,
   dev: DevicePlanDevice,
-  behavior: TemperatureShedBehavior,
   loop: HoldLoopState,
 ): HoldDecision {
   const { shedReasons, normalizedShedFloorCByDevice } = pass;
@@ -270,7 +259,7 @@ function resolveHoldDecision(
 
   // ONE floor per device per build: every comparison below reads the
   // capability-normalized floor (`normalizedShedFloor.ts`), never raw config.
-  const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id, behavior);
+  const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
   const { shouldAbortRestoreForShortfall, shouldHold, wasShedLastPlan } = resolveHoldGating(pass, dev, floorC);
 
   const observedAtShedFloor = isObservedAtShedFloor(dev, floorC);
@@ -352,7 +341,7 @@ function applyHoldToDevice(
     return { device: dev, availableHeadroom, restoredOneThisCycle };
   }
 
-  const decision = resolveHoldDecision(pass, dev, behavior, loop);
+  const decision = resolveHoldDecision(pass, dev, loop);
 
   if (decision.type === 'restore') {
     return {
@@ -363,7 +352,7 @@ function applyHoldToDevice(
   }
   if (decision.type === 'hold') {
     return applyHoldUpdate(
-      pass, dev, behavior, renderPlanReasonDecision(decision.reason), loop,
+      pass, dev, renderPlanReasonDecision(decision.reason), loop,
     );
   }
   return { device: dev, availableHeadroom, restoredOneThisCycle };
@@ -382,7 +371,7 @@ function getPendingRestoreDelay(
     const behavior = getShedBehavior(dev.id);
     if (behavior.action !== 'set_temperature') continue;
     if (!isTemperaturePlanDevice(dev)) continue;
-    const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id, behavior);
+    const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
     if (dev.currentTarget !== floorC) continue;
     if (dev.plannedTarget <= floorC) continue;
 
@@ -407,7 +396,6 @@ function getPendingRestoreDelay(
 function applyHoldUpdate(
   pass: HoldPass,
   dev: DevicePlanDevice & TemperatureKind,
-  behavior: TemperatureShedBehavior,
   reason: DeviceReason,
   loop: HoldLoopState,
 ): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
@@ -420,10 +408,8 @@ function applyHoldUpdate(
   //
   // The floor VALUE comes from the per-build normalized map (semantics on
   // `ShedHoldParams.normalizedShedFloorCByDevice`) so every stage stamps the
-  // SAME capability-normalized floor a fresh shed would. The raw fallback is
-  // the map-absent case only — a caller that resolved no capability floor for
-  // this device (scalar-only test harnesses) — never the ordinary held build.
-  const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id, behavior);
+  // SAME capability-normalized floor a fresh shed would.
+  const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
   const device: DevicePlanDevice & TemperatureKind = {
     ...dev,
     plannedState: 'shed',
