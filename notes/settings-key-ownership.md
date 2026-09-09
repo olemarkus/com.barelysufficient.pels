@@ -10,10 +10,15 @@ layer never reads a key itself. That module owns the read policy (how a malforme
 interpreted) and the write policy (what may be persisted at all). Callers own
 their transport and nothing else.
 
-Owners live in `packages/shared-domain/src/settings/`, because a key is almost
-never read by only one side: the runtime reads through `homey.settings`, and the
-settings UI reads the same bytes over the Homey API bridge. Shared-domain is the
-lowest layer both may import, and it is browser-safe.
+Owners of keys read by both sides live in `packages/shared-domain/src/settings/`:
+the Node runtime reads through `homey.settings`, and the browser settings UI
+reads the same bytes over the Homey API bridge. The shared interpretation must
+execute in both environments. Browser compatibility or reuse by several backend
+modules alone does not qualify code for shared-domain, nor does a possible future
+UI reader. A runtime-only key stays with its owning `lib/` module; a UI-only key
+stays with its browser consumer. This placement is an ownership review decision,
+not something the dependency checks establish (see `docs/architecture.md`
+§ "Shared-domain ownership").
 
 ## What the owner does and does not hold
 

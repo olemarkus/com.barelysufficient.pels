@@ -113,5 +113,5 @@
 
 ## What does not belong here
 
-- **Domain logic.** See § "No domain logic" above — the rule, the reason, the allowed shapes, and where each disallowed shape goes. UI strings are covered by it too: they are domain vocabulary and belong in `packages/shared-domain/**`.
+- **Domain logic.** See § "No domain logic" above — the rule, the reason, the allowed shapes, and where each disallowed shape goes. Vocabulary used in both the browser and Node belongs in `packages/shared-domain/**`; UI-only strings stay with their browser consumer, and runtime-only vocabulary stays with its owning `lib/` module.
 - **State.** See § "No state" above — the rule, the reason, and what is allowed instead.

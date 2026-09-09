@@ -140,8 +140,21 @@ Runtime code conventions (TypeScript, structured logging, Homey SDK mocking) liv
 | Package | Purpose |
 |---------|---------|
 | `packages/contracts/src/` | Type contracts shared between runtime and settings UI |
-| `packages/shared-domain/src/` | Browser-safe shared logic (price math, daily budget, utilities) |
+| `packages/shared-domain/src/` | Logic that must run in both the browser and the Node runtime |
 | `packages/settings-ui/src/` | Settings UI source — compiled to the generated `settings/` bundle via esbuild (`npm run build:settings`) |
+
+**Shared-domain requires a real browser and Node use.** Browser compatibility alone,
+reuse across backend modules, or a possible future UI consumer does not justify placement
+there. Name the browser and Node consumers when adding or moving code into the package.
+Backend-only logic belongs in its owning `lib/` module; browser-only logic belongs with
+its browser consumer. For example, consumption attribution used by power and planner
+belongs in `lib/power/`, which the planner may import. A forbidden peer import is a reason
+to revisit ownership, not to move backend code into shared-domain to bypass the boundary.
+This is an ownership rule enforced by review: dependency and browser-compatibility checks
+do not establish that code needs to run in both environments.
+Existing single-environment modules in shared-domain are placement debt, not exceptions.
+Older notes or comments citing hypothetical consumers do not authorize new or expanded
+use of that placement; correct those justifications when encountered.
 
 For settings-only work, start from `packages/settings-ui` and stay out of `app.ts`, `drivers/`, `flowCards/`, and `lib/` unless a missing contract blocks the task. For Settings UI Material Design work, use `@material/web` components when a matching component exists and fits the semantics. If Material Web is not a fit, reuse or create a shared PELS primitive built on the existing design tokens; do not add page-local custom chips, cards, buttons, or segmented controls.
 

@@ -5,7 +5,7 @@ description: Dependency boundaries that keep PELS runtime code, settings UI, and
 
 # PELS Architecture Contract
 
-PELS is layered. Modules in a higher layer may depend on modules in lower layers, never the other way round. The contract here is mechanical — `dependency-cruiser` enforces it on every CI run (`npm run arch:check`) — and the configuration in [`.dependency-cruiser.cjs`](https://github.com/olemarkus/com.barelysufficient.pels/blob/main/.dependency-cruiser.cjs) is the source of truth. If this page disagrees with the cruiser config, the cruiser wins.
+PELS is layered. Modules in a higher layer may depend on modules in lower layers, never the other way round. `dependency-cruiser` enforces the import boundaries on every CI run (`npm run arch:check`), with [`.dependency-cruiser.cjs`](https://github.com/olemarkus/com.barelysufficient.pels/blob/main/.dependency-cruiser.cjs) as the source of truth for those checks. Ownership rules also require review: an allowed import does not establish that code belongs in a package.
 
 This page is the public contributor reference. Use it when you are deciding where new code goes, or why a refactor is being asked to move modules around.
 
@@ -38,7 +38,7 @@ This page is the public contributor reference. Use it when you are deciding wher
 | **Entry points** | Boot the runtime or render the settings UI. Wire dependencies but contain no domain logic. | `app.ts` (Homey app entry), `drivers/pels_insights/` (virtual device), `script.ts` (settings UI bootstrap) |
 | **App wiring** | Hand the domain modules the Homey SDK handles and Flow cards they work through, holding nothing and deciding nothing. This is where dependency injection happens. Wiring lives in `setup/` and `flowCards/`; none is left in `lib/app/`. | `setup/settingsRepository.ts`, `setup/backgroundTasksController.ts`, `flowCards/registerFlowCards.ts` |
 | **Domain** | Pure planning, capacity, price, budget, and observation logic. No Homey SDK **imports or types** — a domain module reads through a structural port (`lib/ports/homeyRuntime.ts`) handed to it by `setup/`, so the call reaches the SDK at runtime without the module depending on it. `lib/device`'s transport is the one declared SDK leaf. No UI imports. | `lib/plan/planEngine.ts`, `lib/device/deviceTransport.ts`, `lib/power/tracker.ts`, `lib/objectives/profiles.ts`, `lib/observer/idleClassifier.ts` |
-| **Shared utilities** | Pure helpers usable from anywhere — including the browser-side settings UI. Must remain Homey-SDK-free. `lib/store/**` is the one Node-only member: the app's SQLite file under `/userdata`, importable by any runtime module and by nothing browser-side. | `lib/utils/*`, `packages/shared-domain/src/deadlineLabels.ts` |
+| **Shared utilities** | Backend utilities live under `lib/`. `packages/shared-domain/**` holds logic that must run in both the browser and Node, and must remain browser-safe and Homey-SDK-free. `lib/store/**` owns the app's SQLite file under `/userdata` and is runtime-only. | `lib/utils/*`, `packages/shared-domain/src/deadlineLabels.ts` |
 | **Test code** | Specs and mocks. Runtime cannot import it. | `test/`, `packages/settings-ui/test/` |
 
 ## Hard rules (CI-enforced)
@@ -83,12 +83,30 @@ State in the wiring layer is state with no owner: it sits *above* the boundaries
 | A new Flow card | A topical file under `flowCards/` (the directory is flat by purpose, not by trigger/condition/action), with the card JSON under `.homeycompose/flow/<triggers\|conditions\|actions>/` |
 | A new planner rule | `lib/plan/` — but the rule must be pure and unit-testable without a Homey instance |
 | New UI on the settings page | `packages/settings-ui/src/ui/` — read state from contracts; emit changes through the API surface |
+| Logic that must execute in both the browser and Node | `packages/shared-domain/src/` — identify the real consumers in both environments |
 | A user-facing string also written to logs | `packages/shared-domain/src/` — both the UI and the runtime logger must import it from there |
 | A type used on both sides | `packages/contracts/src/` |
 | App-wiring code (factory, observer, registrar that constructs/connects services) | `setup/` — one purpose per file, exposes a class or single `register*`/`init*` function, and holds neither state nor domain logic. See [App wiring lives in `setup/`](#app-wiring-lives-in-setup). |
 | Logic that needs two or more domain peers at once | **Not `setup/`.** Name the concept: a domain service goes in the `lib/` module owning it, beside its port; a projection between two peers' shapes goes in a neutral contract module like `lib/planContract/`. See `setup/AGENTS.md` § "No domain logic". |
 | Something that must be remembered between calls (a cache, latch, counter, ledger, in-flight marker) | The `lib/` module that owns the concept, as a component `setup/` constructs. Never a field in `setup/` — see [App wiring lives in `setup/`](#app-wiring-lives-in-setup). |
 | A Homey-SDK adapter | The `lib/` module that owns the concept, taking a narrow structural port from `lib/ports/homeyRuntime.ts`. `setup/` wires the port in; it does not read the SDK itself. The port's remembered state and the classification of what it reads both live with the port. The existing `setup/*Adapter.ts` files predate this and are migrating out — see `setup/AGENTS.md` § "Adapter naming". |
+
+### Shared-domain ownership
+
+`packages/shared-domain/` is for code that must run in both the browser and the
+Node runtime. Being browser-safe is necessary but does not establish that need.
+Neither reuse by several backend modules nor a possible future UI consumer
+justifies moving code there. Backend-only logic belongs in its owning `lib/`
+module; browser-only logic belongs with its browser consumer.
+
+For example, consumption attribution shared by power and planner belongs in
+`lib/power/`, which the planner may import. Moving it into shared-domain merely
+to avoid a forbidden peer import would obscure its owner.
+
+Reviewers must identify the browser and Node consumers, including indirect use
+through shared entry points. Import-boundary and browser-compatibility checks
+cannot establish this ownership requirement; passing them is not evidence of
+appropriate placement.
 
 ## When duplication is the right call
 
