@@ -560,16 +560,4 @@ describe('starvation rescue widget browser', () => {
 registerHiddenGuardSuite({
   name: 'starvation rescue widget hidden-element CSS',
   cssRelativePath: 'widgets/starvation_rescue/public/index.css',
-  // Every element the renderer toggles `.hidden` on (render.ts), keyed by the
-  // class CSS targets it with. Each must end up `display:none` while hidden.
-  hiddenToggledSelectors: [
-    '.list-view', '.confirm-view', '.done-view', // views
-    '.rescue-btn', // per-row rescue button (the missed element this PR fixes)
-    '.rows', // device list (hidden when the payload is empty)
-    '.list-title', // header (hidden in the calm empty state)
-    '.list-more', '.empty', // list affordances
-    '.consequence', '.preview-line', '.done-msg', '.row__note', // toggled text lines
-    '.preview-chart', // shared price chart (hidden when nothing chartable)
-    '.extra-perms-summary', // read-only permissions summary
-  ],
 });

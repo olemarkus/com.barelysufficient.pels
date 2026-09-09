@@ -44,27 +44,6 @@ export const targetsSelector = (selectors: string, sel: string): boolean => (
 );
 
 /**
- * True when a rule block sets `display` on a hidden-toggled selector without a
- * `:not([hidden])` self-guard — i.e. it would still render while hidden.
- */
-export const isUnguardedDisplayRule = (
-  block: CssRuleBlock,
-  hiddenToggledSelectors: readonly string[],
-): boolean => {
-  if (!setsDisplay(block.body)) return false;
-  // Split a grouped selector list (`.a:not([hidden]), .b`) and check each member
-  // on its own: a `.includes()` test on the whole string would let a guarded
-  // sibling (`.a:not([hidden])`) mask an unguarded one (`.b`). Matchers stay
-  // aligned to the only forms the renderers emit — `.x` and `.x:not([hidden])` —
-  // rather than broadening for selector shapes the codebase never generates.
-  const members = block.selectors.split(',').map((member) => member.trim());
-  return hiddenToggledSelectors.some((sel) => {
-    const guarded = `${sel}:not([hidden])`;
-    return members.some((member) => targetsSelector(member, sel) && member !== guarded);
-  });
-};
-
-/**
  * Find the first rule block whose selector list contains `sel` as a complete
  * class token (so `.summary` matches `.summary` and `.summary:empty` but not a
  * `.summary-foo` neighbour). Returns `undefined` when no block targets it.
@@ -88,23 +67,16 @@ export type HiddenGuardSuiteOptions = {
   name: string;
   /** Path to the widget stylesheet, relative to the vitest cwd (repo root). */
   cssRelativePath: string;
-  /**
-   * Every element the renderer toggles `hidden` on, keyed by the class CSS
-   * targets it with. Each must end up `display:none` while hidden.
-   */
-  hiddenToggledSelectors: readonly string[];
 };
 
 /**
  * Register the shared `[hidden]`-guard suite for one widget stylesheet.
  *
- * Asserts (1) a blanket `[hidden] { display: none !important }` reset exists,
- * and (2) — as belt-and-suspenders should that reset ever be removed — that no
- * unguarded `display` rule targets a hidden-toggled selector without a
- * `:not([hidden])` self-guard.
+ * Requires the blanket `[hidden] { display: none !important }` reset that
+ * protects every hidden element, regardless of its class.
  */
 export const registerHiddenGuardSuite = (options: HiddenGuardSuiteOptions): void => {
-  const { name, cssRelativePath, hiddenToggledSelectors } = options;
+  const { name, cssRelativePath } = options;
 
   describe(name, () => {
     // Resolve from the repo root (vitest cwd); import.meta.url is an http URL
@@ -121,19 +93,6 @@ export const registerHiddenGuardSuite = (options: HiddenGuardSuiteOptions): void
       // rules it must override.
       expect(blanketReset).toBeDefined();
       expect(blanketReset!.body).toMatch(/display\s*:\s*none\s*!important/);
-    });
-
-    test('every hidden-toggled element is kept inert while hidden', () => {
-      // Belt-and-suspenders: even if the blanket reset above were ever removed,
-      // any `display` rule on a hidden-toggled selector must self-guard with
-      // `:not([hidden])`. With the blanket reset present, this passes trivially
-      // (the reset covers everything); without it, an unguarded `display` rule
-      // on a hidden-toggled selector fails.
-      if (blanketReset) return; // covered by the reset; nothing more to prove
-      const unguarded = ruleBlocks.filter(
-        (b) => isUnguardedDisplayRule(b, hiddenToggledSelectors),
-      );
-      expect(unguarded).toEqual([]);
     });
   });
 };

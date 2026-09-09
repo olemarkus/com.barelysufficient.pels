@@ -15,16 +15,6 @@ import { registerHiddenGuardSuite } from '../cssTestUtils';
 registerHiddenGuardSuite({
   name: 'smart tasks widget hidden-element CSS',
   cssRelativePath: 'widgets/smart_tasks/public/index.css',
-  // Every element the renderer toggles `.hidden` on (render.ts), keyed by the
-  // class CSS targets it with. Each must end up `display:none` while hidden.
-  hiddenToggledSelectors: [
-    '.list-view', '.detail-view', // views
-    '.rows', // row list (hidden when the payload is empty)
-    '.empty', '.empty-hint', '.overflow', // list affordances
-    '.ended', // recently-ended section (hidden when nothing ended recently)
-    '.detail-line', // toggled detail text lines
-    '.detail-chart', // trajectory chart container (hidden when nothing chartable)
-  ],
 });
 
 // Mirrors the production index.html markup the renderer queries against, so the

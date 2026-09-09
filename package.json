@@ -77,8 +77,7 @@
   "lint-staged": {
     "**/*.{ts,mts}": [
       "eslint --max-warnings=0 --no-warn-ignored",
-      "node scripts/pre-commit-typecheck.mjs",
-      "node scripts/with-validation-lock.mjs pre-commit:test -- node scripts/pre-commit-tests.mjs"
+      "node scripts/pre-commit-typecheck.mjs"
     ],
     "**/*.{js,mjs,cjs}": [
       "eslint --max-warnings=0 --no-warn-ignored"

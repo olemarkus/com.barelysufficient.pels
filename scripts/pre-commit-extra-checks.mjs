@@ -41,14 +41,6 @@ if (hasStagedFile(stagedFiles, ['.husky/pre-commit', 'scripts/pre-commit-extra-c
   commands.push(['node', ['scripts/pre-commit-typecheck.mjs', 'test/integration/prePushChecks.test.ts']]);
 }
 
-if (hasStagedFile(stagedFiles, ['.husky/pre-commit', 'scripts/pre-commit-extra-checks.mjs', 'scripts/pre-commit-tests.mjs'])) {
-  commands.push(withTestLock(
-    'pre-commit:test:selection',
-    'node',
-    ['scripts/pre-commit-tests.mjs', 'test/integration/prePushChecks.test.ts'],
-  ));
-}
-
 if (commands.length === 0) {
   console.log('pre-commit-extra: no hook or test-routing changes detected');
 }

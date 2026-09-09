@@ -14,6 +14,5 @@ export type ChangeImpact = {
 };
 
 export function matchesAnyPath(files: readonly string[], patterns: readonly string[]): boolean;
-export function normalizeRepositoryFiles(files: readonly string[], cwd?: string): string[];
 export function selectMatchingPaths(files: readonly string[], patterns: readonly string[]): string[];
 export function classifyChangeImpact(files: readonly string[]): ChangeImpact;

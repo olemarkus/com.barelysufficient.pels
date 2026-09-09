@@ -171,7 +171,8 @@ options and aliases live in `vitest.shared.mts`.
 The three tier commands partition the runtime suite cleanly; the coverage lane globs
 `test/**/*.test.ts` so the 80% gate sees every tier at once. PR CI runs that instrumented
 coverage pass once plus the timezone lane; the legacy tier check names mirror the consolidated
-result until branch protection is migrated. Local hooks use `vitest related` across all tiers.
+result until branch protection is migrated. The push hook uses `vitest related` across all
+tiers; ordinary commits run lint and typechecks without repeating the test pass.
 
 **jsdom widget specs.** A handful of widget-render specs need a DOM. They are unit-tier and
 self-declare their environment with a `// @vitest-environment jsdom` pragma on line 1, so they

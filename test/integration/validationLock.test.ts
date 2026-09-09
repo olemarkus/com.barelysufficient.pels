@@ -49,10 +49,8 @@ describe('machine-wide validation lock', () => {
       }
 
       for (const commands of Object.values(packageJson['lint-staged'] ?? {})) {
-        const testCommands = commands.filter((command) => command.includes('pre-commit-tests.mjs'));
-        for (const command of testCommands) {
-          expect(command).toContain('with-validation-lock.mjs');
-        }
+        // Related tests run at push, so ordinary commits never take the test lock.
+        expect(commands.join('\n')).not.toMatch(/vitest|pre-commit-tests|with-validation-lock/u);
       }
     }
 

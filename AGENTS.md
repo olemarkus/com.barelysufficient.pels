@@ -243,6 +243,11 @@ interrupted run remains unverified, never green.
 
 **Coverage threshold:** 80% across branches, functions, lines, statements, enforced by the `coverage` CI job (`npm run test:coverage`). Collected from `app.ts`, `api.ts`, `lib/**`, `setup/**`, `flowCards/**`, and `drivers/**`.
 
+**Local hook split:** Ordinary commits run staged-file linting and affected-project
+typechecks. Related tests run at push, once for the pushed changes, rather than again
+on every commit. Hook-routing changes retain their focused pre-commit regression
+check. CI owns the full coverage and browser suites.
+
 **Testing rules:**
 - **Run targeted tests while developing; let the hooks run the suites.** While working on a change, run the specific specs for the code under development (e.g. `npm run test:unit -- test/unit/foo.test.ts`). Never run partial or full suites as a pre-commit/pre-push verification step — the pre-push hook (`scripts/pre-push-checks.mjs`) already runs change-aware runtime, timezone, and settings-UI lanes on every push, and CI runs the full set. A manual suite run right before push duplicates that work and contends for the shared per-user test `flock`.
 - Unit tests must have a narrow, specific purpose — avoid adding broad checks already covered by integration or regression tests.

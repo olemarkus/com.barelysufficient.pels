@@ -56,8 +56,9 @@ npm run test:coverage        # all tiers in one pass + 80% coverage gate
 
 The npm entrypoints acquire the cross-worktree validation lock and cap Vitest
 at two forks on Linux. Non-Linux hosts retain the worker cap without the
-cross-worktree lock. Never invoke raw Vitest in a multi-agent session. Git
-hooks use a single related-test lane across all runtime tiers; the separate
+cross-worktree lock. Never invoke raw Vitest in a multi-agent session.
+The push hook uses a single related-test lane across all runtime tiers; ordinary
+commits run lint and typechecks without repeating tests. The separate
 commands above remain available for focused development.
 
 Every spec is classified into a tier folder; there are no flat `test/*.test.ts` specs left. A

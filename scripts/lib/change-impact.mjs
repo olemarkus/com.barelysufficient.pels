@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 export const RUNTIME_PATHS = Object.freeze([
   'app.ts',
   'api.ts',
@@ -118,10 +116,6 @@ const DOCS_INFRA_PATHS = Object.freeze([
 export const matchesAnyPath = (files, patterns) => files.some((file) => (
   patterns.some((pattern) => file === pattern || file.startsWith(pattern))
 ));
-
-export const normalizeRepositoryFiles = (files, cwd = process.cwd()) => [...new Set(
-  files.map((file) => path.relative(cwd, path.resolve(cwd, file)).replaceAll(path.sep, '/')),
-)];
 
 export const selectMatchingPaths = (files, patterns) => (
   files.filter((file) => matchesAnyPath([file], patterns))

@@ -780,14 +780,4 @@ describe('create smart task widget browser', () => {
 registerHiddenGuardSuite({
   name: 'create smart task widget hidden-element CSS',
   cssRelativePath: 'widgets/create_smart_task/public/index.css',
-  // Every element the renderer toggles `.hidden` on (render.ts), keyed by the
-  // class CSS targets it with. Each must end up `display:none` while hidden.
-  hiddenToggledSelectors: [
-    '.picker-view', '.compose-view', '.preview-view', '.created-view', // step views
-    '.rows', // device list (hidden when there are no devices)
-    '.empty', '.empty-hint', '.retry-btn', // picker affordances (retry shown only on load error)
-    '.goal-context', '.ready-by-echo', // compose context lines
-    '.perm-toggle', '.perm-toggle__note', // limit-lower-priority toggle + its gated note
-    '.preview-line', // toggled preview text lines
-  ],
 });
