@@ -369,6 +369,28 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Smart tasks
 
+- [ ] **A smart-task miss the daily budget only CONTRIBUTED to feeds nothing.**
+      `budgetContributedToShortfall` names the case where uncapping the budget places strictly
+      more energy but the run was short of time or capacity too. It reaches the settings UI and
+      the widget, and stops there: it is not persisted onto
+      `DeferredObjectivePlanHistoryRevisionSnapshot`, so the weather day rollup cannot see it and
+      such a day decays the budget-pressure term exactly like an undamaged one. Deliberate, not an
+      oversight — all three obvious treatments are wrong. Growing the integral winds up toward a
+      budget that cannot meet the deadline. Holding it stops the leak, and the leak is
+      load-bearing (`NEGLIGIBLE_KWH`'s snap to zero is what lets auto-apply ever lower a budget
+      again), so a home with a recurring contributing miss would freeze the term forever. Reaching
+      `dayWasBudgetDamaged` raises the suggestion for `DRIFT_RECENT_DAYS = 14` days through the
+      quantile swap — too strong for a signal that today cannot tell a budget cap from another
+      task's reservation (see the entry below, which must land first). Done when a contributing
+      miss moves the suggestion by a bounded amount that decays, and a home with one every day can
+      still have its budget lowered. Files:
+      `packages/contracts/src/deferredObjectivePlanHistory.ts`,
+      `lib/weather/deadlineMissBudgetDay.ts`,
+      `packages/shared-domain/src/energySignature/budgetPressure.ts`. Persona: an owner whose
+      morning heating task is chronically both late-started and budget-squeezed; hypothesis: their
+      budget never rises because no single miss is ever purely the budget's fault. Source:
+      adversarial review of the deadline-miss pressure change, 2026-09-09. [P2]
+
 - [ ] **The budget-contribution probe cannot tell a per-bucket budget cap from another
       task's reservation.** `resolveBudgetBoundFeasibility` uncaps by setting
       `usefulEnergyCapKWh: Number.POSITIVE_INFINITY`, but that field is not the raw budget

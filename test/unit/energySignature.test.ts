@@ -214,6 +214,26 @@ describe('fitEnergySignature — suppression awareness', () => {
     expect(fitEnergySignature(control, NOW_MS)?.recentSuppressionSuspected).toBe(false);
   });
 
+  it('flags recentSuppressionSuspected for a budget-caused deadline miss, and NOT for an unpriced one', () => {
+    // `dayWasBudgetDamaged` has two consumers: the pressure integral and this
+    // lean, which swaps the residual quantile q80 → q90 for 14 days. A priceable
+    // miss SHOULD arm it — the budget damaged the home outright, which is what
+    // the lean is evidence for. A miss PELS could not price must not, or an
+    // unpriceable day would raise the suggestion by a route the loop refuses.
+    const withMiss = (deadlineMissDeniedKwh: number): WeatherDailyRecord[] => heatingDays(60).map(
+      (record, index) => (index === 59
+        ? {
+          ...record,
+          tempMeanC: 0,
+          kwhTotal: 50,
+          suppression: { budgetDeniedKwh: 0, deadlineMissDeniedKwh },
+        }
+        : record),
+    );
+    expect(fitEnergySignature(withMiss(2.4), NOW_MS)?.recentSuppressionSuspected).toBe(true);
+    expect(fitEnergySignature(withMiss(0), NOW_MS)?.recentSuppressionSuspected).toBe(false);
+  });
+
   it('flags a WARM recent day the budget limited — detection is not temperature-gated', () => {
     // Regression: detection used to require the day to be below the balance
     // point, so a home throttled through a mild week produced no lean at all.

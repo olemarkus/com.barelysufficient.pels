@@ -141,6 +141,19 @@ describe('rollupDay', () => {
     expect(state.records[0].suppression).toEqual({ budgetDeniedKwh: 0, budgetDeniedMs: 0 });
   });
 
+  it('drops a zero deadline-miss denial — it is a magnitude, not a witness flag', () => {
+    // Unlike the day-close verdict pair, a 0 here would assert the budget denied
+    // nothing rather than that PELS could not price what it denied.
+    const state = rollupDay(baseState(), {
+      dateKey: '2026-01-10',
+      dayLengthHours: 24,
+      kwhTotal: 42.5,
+      unreliablePower: false,
+      suppression: { deadlineMissedToBudget: true, deadlineMissDeniedKwh: 0 },
+    });
+    expect(state.records[0].suppression).toEqual({ deadlineMissedToBudget: true });
+  });
+
   it('omits an all-empty suppression object so absent stays "unknown"', () => {
     const state = rollupDay(baseState(), {
       dateKey: '2026-01-10', dayLengthHours: 24, kwhTotal: 42.5, unreliablePower: false, suppression: {},

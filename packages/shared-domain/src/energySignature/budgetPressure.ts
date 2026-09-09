@@ -81,6 +81,12 @@ const isFinitePositive = (value: number | undefined): value is number => (
   typeof value === 'number' && Number.isFinite(value) && value > 0
 );
 
+/** Energy the budget denied deadline-bound tasks that then missed, 0 when absent or junk. */
+const deadlineMissDeniedKwhOf = (record: WeatherDailyRecord): number => {
+  const value = record.suppression?.deadlineMissDeniedKwh;
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+};
+
 /**
  * Did the daily budget DAMAGE the home on this day?
  *
@@ -103,6 +109,20 @@ const isFinitePositive = (value: number | undefined): value is number => (
 export function dayWasBudgetDamaged(record: WeatherDailyRecord): boolean {
   const suppression = record.suppression;
   if (!suppression) return false;
+  // A deadline that went by with a smart task still wanting energy the budget
+  // held back is damage on its own terms, and the midnight sweep cannot answer
+  // for it either way: a missed run's objective is finalized at its deadline, so
+  // by midnight there is nothing left to latch and the day reports an honest
+  // `budgetDeniedKwh: 0`. Asked FIRST for exactly that reason — otherwise such a
+  // day reads as quiet and DECAYS the term, which is how a day of deadlines the
+  // budget caused PELS to miss came to argue for lowering that same budget.
+  //
+  // BOTH consumers of this verdict see it: the pressure loop below and the
+  // raise-lean's `recentSuppressionSuspected`, which widens the residual
+  // quantile q80 → q90 for 14 days. That is intended — a day the budget damaged
+  // outright is exactly what the lean is evidence for — but it is why this stays
+  // gated on PRICEABLE denial and not on mere presence of a miss.
+  if (deadlineMissDeniedKwhOf(record) > 0) return true;
   if (typeof suppression.budgetDeniedKwh === 'number' && Number.isFinite(suppression.budgetDeniedKwh)) {
     return suppression.budgetDeniedKwh > 0;
   }
@@ -175,17 +195,28 @@ export function foldBudgetPressureDay(
   };
   if (!dayWasBudgetDamaged(record)) return decay();
   const overshootKwh = measuredBudgetOvershootKwh(record);
-  const deniedKwh = deniedKwhOf(record);
+  // The LARGER of the two denials, not their sum. They usually describe
+  // different holds — the midnight sweep prices what devices were still being
+  // refused at day close, this prices what a task never got before its deadline
+  // — but they can describe one hold twice: a temperature device with a smart
+  // task on it can miss at 22:00 and still be budget-held at midnight, and
+  // nothing in either producer excludes the other. Summing would then price one
+  // unmet need twice, on a term that writes a real setting. Taking the larger
+  // under-counts two genuinely separate denials instead, and an integrator
+  // recovers from under-counting on the next day; over-correction it must decay
+  // back out of.
+  const deniedKwh = Math.max(deniedKwhOf(record), deadlineMissDeniedKwhOf(record));
   if (deniedKwh > 0) {
-    // Verdict-bearing damage: grow by the energy the budget was still denying at
-    // day close, plus however far the day measurably ran past its budget. The
+    // Verdict-bearing damage: grow by the energy the budget denied — to devices
+    // still held at day close, or to a task whose deadline went by — plus however
+    // far the day measurably ran past its budget. The
     // denied energy is the failure measure in its own right — a day the budget
     // held everything in check WHILE denying a device shows no overshoot at all,
     // precisely because the denial worked — so an unmeasurable or zero overshoot
     // does not hold or shrink the step; it is simply absent from it. (The
     // overshoot side stays meter-gated via `measuredBudgetOvershootKwh`; the
-    // denied side comes from diagnostics, not the meter, so an unreliable-power
-    // day still grows by the denial it proved.)
+    // denied side comes from diagnostics and the smart-task history, not the
+    // meter, so an unreliable-power day still grows by the denial it proved.)
     return {
       kwh: Math.min(carried + clamp(deniedKwh + Math.max(0, overshootKwh ?? 0), 0, MAX_STEP_KWH), ceilingKwh),
       throughDateKey: record.dateKey,

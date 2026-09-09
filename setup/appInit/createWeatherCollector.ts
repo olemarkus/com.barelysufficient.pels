@@ -1,13 +1,11 @@
 import type { AppContext } from '../../lib/app/appContext';
-import type { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives/planHistory';
 import { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
 import { resolveDailyKwh } from '../../lib/weather/dailyKwhResolve';
 import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureService';
 import { fetchMetForecast, type MetForecastFetchResult } from '../../lib/weather/metForecast';
 import { getRawDevice, getRawFromHomeyApi } from '../../lib/device/transport/managerHomeyApi';
-import { snapshotShowsBudgetExhausted } from '../../packages/shared-domain/src/deferredPlanHistoryShared';
-import { getDateKeyInTimeZone } from '../../lib/utils/dateUtils';
+import { resolveDeadlineMissSuppression } from '../../lib/weather/deadlineMissBudgetDay';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import { getLogger } from '../../lib/logging/logger';
 import { readMainMeterSelection } from '../mainMeterSettings';
@@ -32,45 +30,6 @@ export function buildMetUserAgent(manifest: unknown): string {
   const homepage = typeof blob.homepage === 'string' && blob.homepage.length > 0 ? blob.homepage : undefined;
   const support = typeof blob.support === 'string' && blob.support.length > 0 ? blob.support : undefined;
   return `${id}/${version} (${homepage ?? support ?? FALLBACK_CONTACT_URL})`;
-}
-
-/**
- * Did a deadline-bound smart task miss on this local day BECAUSE the daily
- * budget ran out? This is the unambiguous censoring signal the fit excludes:
- * the device demonstrably wanted energy it could not get. Attributed to the
- * deadline's local day (a rare event; the day before is left to the
- * comfort/capacity signal that drives only the upward lean).
- *
- * The FINAL revision is the causal snapshot — take its whole plan, not a
- * per-field fallback: `dailyBudgetExhaustedBucketCount` is omitted when zero,
- * so a `finalPlan ? .count ?? originalPlan.count` mix would resurrect a stale
- * positive count from a richer original plan even when the final run hit no
- * budget exhaustion. originalPlan is used only when finalPlan is wholly absent.
- *
- * Best-effort by design: on a boot that slept past midnight, the weather
- * catch-up rollup can read the history before the deferred-objective clock has
- * finalized a just-missed deadline, so that one slept-through day may roll up
- * without this flag. Accepted for v1 — the impact is a bounded one-day
- * UNDER-exclusion (the censored day stays in the fit, the conservative
- * direction), the comfort/capacity covariate from diagnostics still records on
- * that day, and forcing a synchronous miss-finalization ahead of the weather
- * catch-up is disproportionate boot-order risk for a hidden advisory signal.
- */
-export function deadlineMissedToBudgetOnDay(
-  recorder: DeferredObjectivePlanHistoryRecorder | undefined,
-  dateKey: string,
-  timeZone: string,
-): boolean {
-  if (!recorder) return false;
-  return recorder.getHistorySnapshot().entries.some((entry) => {
-    if (entry.outcome !== 'missed') return false;
-    // Shared producer-side resolver: reads `floorShortfallCause` on entries
-    // this build finalized and the retired bucket count on older history.
-    // Reading either raw field here would silently stop censoring budget-caused
-    // misses out of the energy-signature fit.
-    if (!snapshotShowsBudgetExhausted(entry.finalPlan ?? entry.originalPlan)) return false;
-    return getDateKeyInTimeZone(new Date(entry.deadlineAtMs), timeZone) === dateKey;
-  });
 }
 
 /** Flow trigger fired when the weather insight auto-applies a daily budget. */
@@ -120,16 +79,18 @@ export function createWeatherCollector(
     // PELS-managed = the controlled set the historical split is summed from.
     isManagedDevice: (deviceId) => ctx.resolveManagedState(deviceId),
     // Composed from two planner-orthogonal sources so lib/weather sees only
-    // primitives: diagnostics (comfort/capacity deficit durations) and the
-    // smart-task history (deadline-miss-to-budget). Absent services → {}.
+    // primitives: diagnostics (device deficit durations and the day-close denial)
+    // and the smart-task history (deadline misses the budget caused). Absent
+    // services → {}. The two contribute disjoint keys by construction —
+    // `DeviceDiagnosticsDaySuppressionTotals` declares neither deadline field —
+    // so the spread order below cannot silently drop one producer's evidence,
+    // and an overlap introduced later fails to typecheck rather than merging.
     getDaySuppression: (dateKey) => {
       const totals = ctx.deviceDiagnosticsService?.getDaySuppressionTotals(dateKey);
-      const deadlineMissedToBudget = deadlineMissedToBudgetOnDay(
-        ctx.deferredObjectivePlanHistoryRecorder, dateKey, ctx.getTimeZone(),
-      );
+      const entries = ctx.deferredObjectivePlanHistoryRecorder?.getHistorySnapshot().entries ?? [];
       return {
         ...(totals !== undefined ? totals : {}),
-        ...(deadlineMissedToBudget ? { deadlineMissedToBudget: true } : {}),
+        ...resolveDeadlineMissSuppression(entries, dateKey, ctx.getTimeZone()),
       };
     },
     // The tracker also records sub-hour gaps that merely cross an hour

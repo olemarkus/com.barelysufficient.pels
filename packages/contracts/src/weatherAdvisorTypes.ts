@@ -71,8 +71,31 @@ export type WeatherDaySuppression = {
   targetDeficitMs?: number;
   /** Σ ms a device could not run because capacity was saturated. */
   blockedByHeadroomMs?: number;
-  /** A deadline-bound smart task missed AND its plan saw the daily budget exhausted. */
+  /**
+   * A deadline-bound smart task missed AND its plan saw the daily budget
+   * exhausted. Drives the energy-signature FIT's day exclusion, and only that:
+   * kept narrow to misses the budget caused outright, because excluding a day
+   * from the fit flattens the slope and the days a home is held back on are its
+   * high-demand days.
+   */
   deadlineMissedToBudget?: boolean;
+  /**
+   * Energy deadline-bound smart tasks never got: what the misses on this day
+   * committed to needing, less what their runs actually delivered, summed over
+   * the misses the daily budget caused OUTRIGHT. The smart-task counterpart of
+   * `budgetDeniedKwh` above — that one prices what the budget was still denying
+   * devices at midnight, this one what it denied a task at a deadline that has
+   * already gone by.
+   *
+   * A magnitude, not a flag: ABSENT means there is no measured denial to add,
+   * whether because no such miss closed on this day or because none of them
+   * could be priced (a run whose profile never resolved, or whose delivery total
+   * the entry does not carry). `deadlineMissedToBudget` above records that a
+   * miss happened; this records only how much it cost, and stays silent rather
+   * than guessing. Never 0 — the loop reads it as evidence to grow on, and a
+   * zero would be an assertion the budget denied nothing.
+   */
+  deadlineMissDeniedKwh?: number;
 };
 
 /**

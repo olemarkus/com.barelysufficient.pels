@@ -97,7 +97,8 @@ change to this lane that breaks one is a regression, not a tuning choice**:
    floor or the cap set the number). `lib/weather/weatherAutoApply.ts`.
 2. **Opt-in gated.** Nothing is written unless the owner enabled
    `autoApplyDailyBudget`. With it off the loop is display-only.
-3. **Fed by the day-close damage verdict.** The evidence is `budgetDeniedKwh`:
+3. **Fed by the day-close damage verdict.** The evidence is `budgetDeniedKwh`
+   plus `deadlineMissDeniedKwh` (below):
    energy the daily budget was still DENYING latched episodes when the local day
    ended, priced at each device's expected draw and joined from LIVE episode
    state minutes after midnight (a latched episode cannot clear inside the
@@ -158,7 +159,9 @@ The path:
 ```
 live episode state at 00:05  (budgetDeniedKwh; legacy aggregates alongside)
   → DeviceDiagnosticsService.getDaySuppressionTotals
-  → setup/appInit/createWeatherCollector.ts  getDaySuppression
+                                            ⎫
+finalized smart-task history (the misses)   ⎬→ setup/appInit/createWeatherCollector.ts
+  → resolveDeadlineMissSuppression          ⎭      getDaySuppression
   → WeatherDailyRecord.suppression            (lib/weather/weatherCollector.ts)
   → packages/shared-domain/src/energySignature/  fit + suggestion
   → lib/weather/weatherAutoApply.ts → DailyBudgetService.applyAutoSuggestedBudget
@@ -182,7 +185,76 @@ Two consumers of the evidence:
   overshoot.
 
 Both consumers read the same verdict (`dayWasBudgetDamaged`), so they cannot
-disagree about whether a day was damaged.
+disagree about whether a day was damaged. **Adding evidence to that verdict adds
+it to BOTH.** The lean is not a passive reader: `recentSuppressionSuspected`
+holds for `DRIFT_RECENT_DAYS = 14` days and raises the written budget through the
+quantile swap, so a day that reaches the verdict raises the setting even on a
+path the integral itself refuses. Anything gated here must be evidence you would
+be willing to raise the budget on for a fortnight.
+
+### The second denial: a deadline the budget let go by
+
+The midnight sweep can only price holds still latched when the day ends, and a
+missed smart task is not one of them — its objective is finalized at its own
+deadline, hours earlier, so by midnight there is nothing left to latch. A day
+whose only damage was a missed deadline therefore reports an honest
+`budgetDeniedKwh: 0`, reads as a quiet day, and DECAYS the term. That is not a
+neutral omission: it means a day of deadlines the budget caused PELS to miss
+argues for lowering that same budget.
+
+`deadlineMissDeniedKwh` closes it — the same damage model asked at the other
+terminal moment. `resolveDeadlineMissSuppression`
+(`lib/weather/deadlineMissBudgetDay.ts`) folds the day's finalized misses; a miss
+counts when `snapshotShowsBudgetExhausted` holds on the plan snapshot, i.e. the
+budget was the whole reason the floor fell short. It lives in `lib/weather`
+because that is the module that owns the evidence it produces — shared-domain
+requires a real browser consumer, and moving backend code there to shed a setup
+peer import is the bypass the ownership rule names.
+
+Three rulings worth keeping:
+
+**It is priced from the run's anchored figures, not from a revision snapshot.**
+`max(0, initialEnergyExpectedKWh − deliveredKWh)`, both entry-level. A revision's
+`energyExpectedKWh` shrinks as the run delivers and is frozen at the last
+revision written (at most hourly, only on drift), so reading it would price a
+nearly-complete run at almost its whole requirement — on a term that writes a
+real setting. EITHER figure being absent makes the answer unknowable, and
+unknowable is not zero: an absent commitment means the profile never resolved, an
+absent delivery means the feed was unavailable or the entry predates the field,
+and reading that as "delivered nothing" would charge a nearly-complete run its
+whole commitment. Decline the comparison, never substitute a stand-in.
+
+**It is a magnitude, and silence is the answer when there is none.** A miss PELS
+could not price stamps `deadlineMissedToBudget` (so the fit still excludes the
+day) and no kWh at all — never a 0, which would assert the budget denied nothing.
+Such a day therefore DECAYS the term, and that is the same ruling this module
+already makes for `budgetDeniedUnwitnessed`: unprovable is not damage. The
+alternative, holding, is worse than it looks — the leak is what lets the term
+reach zero, and only a zero term lets auto-apply lower a budget again, so a home
+whose deadlines are always shorter than its learning window would hold forever
+and never be lowered.
+
+**The two denials are combined with `max`, not `+`.** They usually describe
+different holds, but they can describe one hold twice: a temperature device
+carrying a smart task can miss at 22:00 and still be budget-held at midnight, and
+neither producer excludes the other. Summing would price one unmet need twice.
+Under-counting two genuinely separate denials is the safer error — an integrator
+recovers from under-counting on the next day, while over-correction has to be
+decayed back out of the owner's budget.
+
+**A miss the budget only CONTRIBUTED to is not counted at all.** The planner can
+name that case (`budgetContributedToShortfall`: uncapping the budget places
+strictly more energy, but the run was short of time or capacity too), and it is
+tempting to let such a day hold the term rather than decay it. Both available
+treatments are wrong. Growing integrates toward a budget that cannot meet the
+deadline — windup against an unreachable setpoint. Holding stops the integrator
+leaking, and the leak is load-bearing: `NEGLIGIBLE_KWH`'s snap to zero exists so
+the term can reach 0, because a non-zero term keeps auto-apply's lowering guard
+armed. A home with a recurring contributing miss would hold forever and could
+never have its budget lowered again. Reaching the shared verdict instead would
+raise the budget for 14 days on the strength of a signal that today cannot tell a
+budget cap from another task's reservation. Left out until it has a treatment
+that is none of those three.
 
 There is no exception to that list. There used to be one: the smart-task
 `pause lower-priority devices` permission was implemented as a proactive shed lane

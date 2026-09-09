@@ -142,6 +142,10 @@ export function normalizeMetForecast(raw: unknown): WeatherMetForecastCache | un
  * aggregate exists for any shed/activation, so a no-deficit day would otherwise
  * persist an all-zero object on essentially every record.
  *
+ * `deadlineMissDeniedKwh` drops a zero, unlike the pair below: it is a magnitude
+ * the pressure loop grows on, never a witness flag, so a 0 would assert the
+ * budget denied nothing rather than that PELS could not measure what it denied.
+ *
  * `budgetDeniedKwh`/`budgetDeniedMs` deliberately KEEP a zero: for the day-close
  * damage verdict, presence means the day's midnight was witnessed — a real
  * "watched to the close, nothing denied" — while absence routes
@@ -157,6 +161,8 @@ export function normalizeSuppression(raw: unknown): WeatherDaySuppression | unde
     ...(isPositiveFinite(raw.targetDeficitMs) ? { targetDeficitMs: raw.targetDeficitMs } : {}),
     ...(isPositiveFinite(raw.blockedByHeadroomMs) ? { blockedByHeadroomMs: raw.blockedByHeadroomMs } : {}),
     ...(raw.deadlineMissedToBudget === true ? { deadlineMissedToBudget: true } : {}),
+    ...(isPositiveFinite(raw.deadlineMissDeniedKwh)
+      ? { deadlineMissDeniedKwh: raw.deadlineMissDeniedKwh } : {}),
   };
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }

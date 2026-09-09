@@ -704,11 +704,28 @@ export class WeatherCollector {
       kwhTotal: record?.kwhTotal,
       quality: record?.quality,
       appliedBudgetKwh: record?.appliedBudgetKwh ?? null,
-      // The day-close damage verdict: null = no witness (restart/gap across
-      // midnight), 0 = watched to the close and nothing denied.
-      budgetDeniedKwh: record?.suppression?.budgetDeniedKwh ?? null,
+      ...damageVerdictLogFields(record),
       budgetPressureKwh: this.state.budgetPressure?.kwh ?? 0,
       recordCount: this.state.records.length,
     });
   }
 }
+
+/**
+ * The two halves of the day-close damage verdict, as the rollup log reports
+ * them. Both distinguish "no verdict" from "watched, nothing denied", so both
+ * resolve absence to `null` rather than 0 — the loop reads those two states
+ * differently and a log that conflated them could not explain a term that moved.
+ *
+ * Split out of `rollup` to keep that method under the complexity cap.
+ */
+const damageVerdictLogFields = (
+  record: WeatherDailyRecord | undefined,
+): { budgetDeniedKwh: number | null; deadlineMissDeniedKwh: number | null } => ({
+  // Devices still being refused when the local day ended: null = no witness
+  // (restart/gap across midnight), 0 = watched to the close and nothing denied.
+  budgetDeniedKwh: record?.suppression?.budgetDeniedKwh ?? null,
+  // The same question asked of smart tasks: null = no budget-bound deadline miss
+  // closed on this day, 0 = one did but PELS could not price what it never got.
+  deadlineMissDeniedKwh: record?.suppression?.deadlineMissDeniedKwh ?? null,
+});

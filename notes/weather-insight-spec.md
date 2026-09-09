@@ -102,9 +102,11 @@ card → `Choose temperature device` → Settings, Weather insight section.
   - **raise-lean** — recent suppression widens the headroom q80→q90. Not gated on
     a cold forecast (it used to be, which made the correction wait for the weather
     to cross the heating knee instead of acting on the evidence).
-  - **budget pressure** — a leaky integral term that grows by the measured
-    overshoot on days that were budget-suppressed *and* ran past their budget,
-    and leaks on days that did not. Bounded to half the prediction, and named in
+  - **budget pressure** — a leaky integral term that grows on days the budget
+    DAMAGED the home by the energy it denied — energy still withheld from devices
+    at midnight, or energy a deadline-bound smart task never got before its
+    deadline went by, whichever is larger — plus any measured overshoot, and
+    leaks on days that ended in no denial. Bounded to half the prediction, and named in
     the reason line when it is ≥ 1 kWh so the owner can see how big the
     correction is. Design of record: `notes/starvation/README.md`.
     It accumulates whether or not auto-apply is on, so an owner who opts in after

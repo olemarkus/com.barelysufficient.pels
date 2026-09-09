@@ -284,3 +284,89 @@ describe('foldBudgetPressureDay — day-close verdict', () => {
     expect(folded.kwh).toBe(10);
   });
 });
+
+describe('budget-caused deadline misses', () => {
+  /**
+   * The shape this exists for: the daily budget bound the day, a deadline-bound
+   * smart task missed because of it, and by midnight nothing was still latched —
+   * so the device sweep recorded an honest `budgetDeniedKwh: 0`. Before the miss
+   * was wired in, that day argued for LOWERING the very budget that caused it.
+   */
+  const missDay = (
+    dateKey: string,
+    deadlineMissDeniedKwh: number,
+    over: Partial<WeatherDailyRecord> = {},
+  ) => day({
+    dateKey,
+    kwhTotal: 44,
+    appliedBudgetKwh: 50,
+    suppression: { budgetDeniedKwh: 0, deadlineMissDeniedKwh },
+    ...over,
+  });
+
+  it('counts a budget-caused deadline miss as damage though nothing was latched at midnight', () => {
+    expect(dayWasBudgetDamaged(missDay('2026-09-07', 2.4))).toBe(true);
+  });
+
+  it('grows the term by the energy the missed task never got', () => {
+    // The day stayed UNDER its budget (44 of 50), so there is no overshoot to
+    // find and the device verdict is a truthful zero. The miss is the only
+    // evidence, and it is enough.
+    expect(foldBudgetPressureDay(undefined, missDay('2026-09-07', 2.4)).kwh).toBeCloseTo(2.4, 5);
+  });
+
+  it('would have DECAYED the same day before the miss was wired in', () => {
+    // Pins the regression: strip only the miss and the day reads as quiet.
+    const carried = { kwh: 8, throughDateKey: '2026-09-06' };
+    const withoutMiss = day({
+      dateKey: '2026-09-07', kwhTotal: 44, appliedBudgetKwh: 50, suppression: { budgetDeniedKwh: 0 },
+    });
+    expect(foldBudgetPressureDay(carried, withoutMiss).kwh).toBeCloseTo(6, 5);
+    expect(foldBudgetPressureDay(carried, missDay('2026-09-07', 2.4)).kwh).toBeCloseTo(10.4, 5);
+  });
+
+  it('takes the LARGER of the two denials, never their sum', () => {
+    // A temperature device carrying a smart task can miss at 22:00 and still be
+    // budget-held at midnight, so the two figures can price one unmet need
+    // twice. Under-counting two separate denials is the safer error for a term
+    // that writes a real setting: an integrator recovers from it next day.
+    const folded = foldBudgetPressureDay(undefined, day({
+      dateKey: '2026-09-07',
+      kwhTotal: 44,
+      appliedBudgetKwh: 50,
+      suppression: { budgetDeniedKwh: 1.5, deadlineMissDeniedKwh: 2 },
+    }));
+    expect(folded.kwh).toBeCloseTo(2, 5);
+  });
+
+  it('decays on a day whose miss could not be priced, keeping the integrator leaky', () => {
+    // The producer stamps no magnitude for a miss it cannot measure, so the day
+    // reaches the loop carrying only the device verdict. It must NOT freeze the
+    // term: a term that stops decaying keeps auto-apply's lowering guard armed
+    // forever, and this home would never have its budget lowered again.
+    const carried = { kwh: 8, throughDateKey: '2026-09-06' };
+    const unpriceable = day({
+      dateKey: '2026-09-07',
+      kwhTotal: 44,
+      appliedBudgetKwh: 50,
+      suppression: { budgetDeniedKwh: 0, deadlineMissedToBudget: true },
+    });
+    expect(foldBudgetPressureDay(carried, unpriceable).kwh).toBeCloseTo(6, 5);
+  });
+
+  it('still caps a miss-driven day at the single-day step', () => {
+    expect(foldBudgetPressureDay(undefined, missDay('2026-09-07', 30)).kwh).toBe(10);
+  });
+
+  it('ignores a junk denied figure rather than treating it as damage', () => {
+    const folded = foldBudgetPressureDay({ kwh: 8, throughDateKey: '2026-09-06' }, day({
+      dateKey: '2026-09-07',
+      kwhTotal: 44,
+      appliedBudgetKwh: 50,
+      // Defensive: the normalizer drops this before it lands, but the loop must
+      // not treat a tampered persisted value as damage either.
+      suppression: { budgetDeniedKwh: 0, deadlineMissDeniedKwh: Number.NaN },
+    }));
+    expect(folded.kwh).toBeCloseTo(6, 5);
+  });
+});
