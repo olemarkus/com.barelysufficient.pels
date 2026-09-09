@@ -18,6 +18,7 @@ export type SmartTaskDeviceLike = {
   deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
   temperatureControlDisabled?: true;
+  temperatureAdjustmentsDisabled?: true;
   temperature?: {
     currentTemperature: number;
     target: { value: number; min?: number; max?: number; step?: number };
@@ -44,7 +45,7 @@ export const resolveSmartTaskDeviceKind = (
   device: SmartTaskDeviceLike,
 ): DeferredObjectiveSettingsKind | null => {
   if (isEvCharger(device)) return 'ev_soc';
-  if (device.temperatureControlDisabled === true) return null;
+  if (device.temperatureControlDisabled === true || device.temperatureAdjustmentsDisabled === true) return null;
   if (supportsTemperatureGoal(device)) return 'temperature';
   return null;
 };

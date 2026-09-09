@@ -1,3 +1,4 @@
+import { readTemperatureControlDisabledDevicesSetting } from '../lib/device/temperatureControlSettings';
 import type Homey from 'homey';
 import type { ShedBehavior } from '../lib/plan/planTypes';
 import type {
@@ -55,7 +56,6 @@ import {
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
   parseHomeScopedSettingsKey,
-  TEMPERATURE_CONTROL_DISABLED_DEVICES,
   TEMPERATURE_BOOST_SETTINGS,
 } from '../lib/utils/settingsKeys';
 import type { PriceCoordinator } from '../lib/price/priceCoordinator';
@@ -87,62 +87,7 @@ export type CapacitySettingsSnapshot = {
   shedBehaviors: Record<string, ShedBehavior>;
 };
 
-/**
- * The two reads this classification needs, typed as the untrusted boundary they
- * are. `ManagerSettings` is assignable; so is a plain object double, so specs
- * pin the branches without an `as unknown as` cast that would let a
- * structurally wrong double throw into the `catch` and assert nothing.
- */
-type TemperatureControlSettingsPort = {
-  get(key: string): unknown;
-  getKeys(): unknown;
-};
-
-/**
- * Resolve the persisted temperature-command policy at the settings boundary.
- * A malformed transient read retains the last-good in-memory policy.
- *
- * `ManagerSettings.get` answers an unset key with `null`, not `undefined`, so
- * absence must be classified on BOTH — gating only on `undefined` left the
- * key-list cross-check unreachable on a real Homey and pinned the policy at
- * `unavailable`, which fails closed over every temperature device (an install
- * that never touched the toggle lost all setpoint control). The cross-check
- * still separates a genuinely absent key from a transient miss: a listed key
- * that reads empty, an empty key list, a malformed value, or a throw all stay
- * `unavailable`. `undefined` stays in the disjunction for object doubles and
- * any runtime that answers that way; the SDK itself only produces `null`.
- */
-export function readTemperatureControlDisabledDevicesSetting(params: {
-  settings: TemperatureControlSettingsPort;
-  current: {
-    devices: Record<string, boolean>;
-    state: 'unavailable' | 'resolved';
-  };
-}): {
-  devices: Record<string, boolean>;
-  state: 'unavailable' | 'resolved';
-} {
-  try {
-    const raw = params.settings.get(TEMPERATURE_CONTROL_DISABLED_DEVICES);
-    if (isBooleanMap(raw)) return { devices: raw, state: 'resolved' };
-    if (raw === undefined || raw === null) {
-      const keys = params.settings.getKeys();
-      if (
-        Array.isArray(keys)
-        && keys.length > 0
-        && keys.every((key): key is string => typeof key === 'string')
-        && !keys.includes(TEMPERATURE_CONTROL_DISABLED_DEVICES)
-      ) {
-        return { devices: {}, state: 'resolved' };
-      }
-    }
-  } catch {
-    // The semantic unavailable state below retains a previously resolved value.
-  }
-  return params.current.state === 'resolved'
-    ? params.current
-    : { devices: {}, state: 'unavailable' };
-}
+export { readTemperatureControlDisabledDevicesSetting } from '../lib/device/temperatureControlSettings';
 
 export function loadTemperatureControlPolicySettingsForApp(ctx: AppContext): void {
   const policy = readTemperatureControlDisabledDevicesSetting({
@@ -447,6 +392,7 @@ export function initSettingsHandlerForApp(
     onMainMeterSelectionObserved?: () => void;
     /** Close the shared homes/pins ownership generation synchronously. */
     onHomeOwnershipConfigurationObserved?: () => void;
+    consumeObservedModeTargetChange?: (key: string) => boolean;
     /** Apply the current generation after the serialized semantic recompute. */
     onHomeOwnershipConfigurationRecomputed?: () => void;
   },
@@ -506,6 +452,7 @@ export function initSettingsHandlerForApp(
     reloadExpectedPowerOverrides: () => ctx.reloadExpectedPowerOverrides(),
   });
   const onSettingsSet = async (key: string) => {
+    if (options.consumeObservedModeTargetChange?.(key)) return;
     await settingsHandler?.(key);
     if (key === OPERATING_MODE_SETTING) {
       ctx.notifyOperatingModeChanged(ctx.operatingMode);

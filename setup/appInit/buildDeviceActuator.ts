@@ -57,6 +57,7 @@ const shouldFenceTemperatureCommand = (ctx: AppContext, command: DeviceCommand):
   // identifies it as temperature control even if the device has disappeared
   // from the current snapshot.
   || ctx.temperatureControlPolicyState === 'unavailable'
+  || (command.kind === 'target' && !ctx.observedTemperatureModeUpdates.allowsTarget(command.deviceId, command.value))
 );
 
 // Compose the device actuator from app wiring: the device-manager writes plus a

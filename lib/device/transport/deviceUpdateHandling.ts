@@ -21,6 +21,7 @@ import {
 import {
   handleRealtimeDeviceUpdate as runRealtimeDeviceUpdate,
   type ObservedDeviceStateEvent,
+  type PlanRealtimeUpdateEvent,
 } from './managerRealtimeHandlers';
 import { buildNativeEvObservationDevice } from '../nativeEvWiring';
 import { MIN_SIGNIFICANT_POWER_W } from './transportTypes';
@@ -157,6 +158,7 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     // (Codex P2 on PR-4a). Collect now, dispatch once the committed snapshot
     // (incl. binary-settle evidence) is in place.
     const deferredObservedStateEvents: ObservedDeviceStateEvent[] = [];
+    const deferredControlEvents: PlanRealtimeUpdateEvent[] = [];
     const result = runRealtimeDeviceUpdate({
         device: observedDevice,
         latestSnapshot: ctx.latestSnapshot,
@@ -178,7 +180,7 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
           emit(event);
         },
         createObservationCursor: (nextDeviceId) => ctx.nextObservationCursor(nextDeviceId),
-        emitObservedControlStateChanged: (event) => ctx.emitObservedControlStateChangedEvent(event),
+        emitObservedControlStateChanged: (event) => deferredControlEvents.push(event),
         emitObservedState: (event: ObservedDeviceStateEvent) => deferredObservedStateEvents.push(event),
     });
     const currentSnapshot = deviceId
@@ -220,6 +222,7 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     for (const event of deferredObservedStateEvents) {
         ctx.dispatchObservedStateChanged(event);
     }
+    for (const event of deferredControlEvents) ctx.emitObservedControlStateChangedEvent(event);
     // Class `car` devices reach us only here and on the device fetch: the live
     // feed pushes `device.update` for EVERY device, while parse drops unsupported
     // classes. Passed every update, not just cars — a charger's own update is what

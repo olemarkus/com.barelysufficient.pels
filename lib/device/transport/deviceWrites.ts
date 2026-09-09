@@ -81,6 +81,9 @@ export async function setCapability(
         value: normalizedValue,
     });
 
+    if (capabilityId === 'target_temperature' && typeof normalizedValue === 'number') {
+        ctx.temperatureAdjustments.recordCommand(deviceId, normalizedValue, Date.now());
+    }
     incPerfCounter('device_action_total');
     incPerfCounter(`device_action.capability.${capabilityId}`);
     recordLocalCapabilityWrite({

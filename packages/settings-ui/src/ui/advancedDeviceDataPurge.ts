@@ -1,3 +1,4 @@
+import { readTemperatureControlModes } from '../../../shared-domain/src/settings/temperatureControl.ts';
 import { getSetting, getSettingFresh, setSetting } from './homey.ts';
 import { state } from './state.ts';
 import { createSerializedAsyncRunner } from './deviceDetail/settingsWrite.ts';
@@ -13,6 +14,7 @@ import {
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
+  TEMPERATURE_CONTROL_MODES,
   homeScopedSettingsKey,
 } from '../../../contracts/src/settingsKeys.ts';
 import { getHomeScope } from './homeScope.ts';
@@ -79,6 +81,7 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
     ...Object.values(state.evCarAssociations).flatMap((entry) => entry.carIds),
     ...Object.keys(state.priceOptimizationSettings),
     ...Object.keys(state.temperatureControlDisabledMap),
+    ...Object.keys(state.temperatureControlModes),
   ];
 
   const modeMapIds = (modeMap: Record<string, Record<string, number>>) => (
@@ -162,6 +165,7 @@ const buildPurgedState = (deviceIds: Set<string>) => ({
   evBoostSettings: removeDeviceIdsFromRecord(state.evBoostSettings, deviceIds),
   evCarAssociations: purgeEvCarAssociations(state.evCarAssociations, deviceIds),
   priceOptimizationSettings: removeDeviceIdsFromRecord(state.priceOptimizationSettings, deviceIds),
+  temperatureControlModes: removeDeviceIdsFromRecord(state.temperatureControlModes, deviceIds),
   temperatureControlDisabledMap: removeDeviceIdsFromRecord(state.temperatureControlDisabledMap, deviceIds),
   capacityPriorities: removeDeviceIdsFromModeMap(state.capacityPriorities, deviceIds),
   modeTargets: removeDeviceIdsFromModeMap(state.modeTargets, deviceIds),
@@ -178,6 +182,7 @@ const applyPurgedState = (next: ReturnType<typeof buildPurgedState>): void => {
   state.evBoostSettings = next.evBoostSettings;
   state.evCarAssociations = next.evCarAssociations;
   state.priceOptimizationSettings = next.priceOptimizationSettings;
+  state.temperatureControlModes = next.temperatureControlModes;
   state.temperatureControlDisabledMap = next.temperatureControlDisabledMap;
   state.capacityPriorities = next.capacityPriorities;
   state.modeTargets = next.modeTargets;
@@ -275,6 +280,13 @@ const reconcilePurgeState = async (homeIds: readonly string[]): Promise<void> =>
       apply: (value) => { state.priceOptimizationSettings = readRecordSetting(value); },
     },
     {
+      key: TEMPERATURE_CONTROL_MODES,
+      fallback: state.temperatureControlModes,
+      apply: (value) => {
+        state.temperatureControlModes = readTemperatureControlModes(value) ?? state.temperatureControlModes;
+      },
+    },
+    {
       key: TEMPERATURE_CONTROL_DISABLED_DEVICES,
       fallback: state.temperatureControlDisabledMap,
       apply: (value) => { state.temperatureControlDisabledMap = readRecordSetting(value); },
@@ -330,6 +342,7 @@ const performClearMultipleDeviceSettings = async (deviceIds: string[]) => {
     setSetting(EV_BOOST_SETTINGS, next.evBoostSettings),
     setSetting(EV_CAR_ASSOCIATIONS, next.evCarAssociations),
     setSetting('price_optimization_settings', next.priceOptimizationSettings),
+    setSetting(TEMPERATURE_CONTROL_MODES, next.temperatureControlModes),
     setSetting(TEMPERATURE_CONTROL_DISABLED_DEVICES, next.temperatureControlDisabledMap),
     purgeModeCatalogDeviceIds(ids, homeIds),
   ]);

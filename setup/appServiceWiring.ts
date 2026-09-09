@@ -1,3 +1,4 @@
+import { createObservedTemperatureModeUpdates } from './appInit/createObservedTemperatureModeUpdates';
 import type { TeardownRegistry } from '../lib/utils/teardownRegistry';
 import type Homey from 'homey';
 import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
@@ -204,6 +205,12 @@ export class AppServiceWiring {
     this.mainHomeScope = buildMainHomeScope(deps.ctx, deps.isMainActuationStopped);
     ctx.rebuildOwningHomePlanForDevice = (deviceId, trigger) => (
       this.rebuildOwningHomePlanForDevice(deviceId, trigger)
+    );
+  }
+
+  createObservedTemperatureModeUpdates() {
+    return createObservedTemperatureModeUpdates(
+      this.deps.ctx, () => this.deps.getHomeRuntimeRegistry()?.getLiveBundles() ?? [],
     );
   }
 
@@ -525,6 +532,9 @@ export class AppServiceWiring {
   // `initDeviceManager`: these listeners reach the plan service, so they may not
   // be live before `initPlanService`.
   subscribePlanObservedState(): void {
+    this.deps.getObservedStateEmitter().onExternalTemperatureAdjusted(
+      this.deps.ctx.observedTemperatureModeUpdates.accept.bind(this.deps.ctx.observedTemperatureModeUpdates),
+    );
     subscribePlanObservedState({
       ...this.deps,
       syncExternalOffHold: (event) => this.syncExternalOffHold(event),

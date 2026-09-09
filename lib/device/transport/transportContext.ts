@@ -1,3 +1,4 @@
+import type { TemperatureAdjustmentObserver } from '../temperatureAdjustmentObserver';
 /**
  * Shared runtime context handed to the homey-free transport collaborator
  * modules (`realtimeCapabilityHandling`, `binarySettleEvidence`, `deviceWrites`,
@@ -105,6 +106,7 @@ export type TransportContext = {
   readonly latestSnapshotById: Map<string, TransportDeviceSnapshot>;
   readonly latestBinarySettleEvidenceByDeviceId: Map<string, BinaryControlObservation>;
   readonly observationState: DeviceTransportObservationState;
+  readonly temperatureAdjustments: TemperatureAdjustmentObserver;
   readonly recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
   readonly recentRealtimeCapabilityEventLogByKey: Map<string, number>;
 

@@ -401,58 +401,103 @@ test.describe('Device detail panel', () => {
     expect(consoleErrors).toEqual([]);
   });
 
-  test('Disable temperature control preserves configuration and denies only the temperature axis', async ({ page }) => {
-    await openDeviceDetail(page, 'dev_heatpump');
-    await page.locator('#device-detail-setup-section summary').click();
+  for (const policy of [
+    { value: 'external', label: 'Leave temperature to you', appliesTargets: false },
+    { value: 'update_mode', label: 'Update mode target', appliesTargets: true },
+  ]) {
+    test(`${policy.label} confirms affected controls and preserves configuration`, async ({ page }) => {
+      await openDeviceDetail(page, 'dev_heatpump');
+      await page.locator('#device-detail-setup-section summary').click();
 
-    const row = page.locator('#device-detail-temperature-control-disabled-row');
-    const toggleSelector = '#device-detail-temperature-control-disabled';
-    await expect(row).toBeVisible();
-    await expect(row).toContainText('Disable temperature control');
-    await expect(row).toContainText('won’t change the target');
+      const row = page.locator('#device-detail-temperature-control-disabled-row');
+      const selectSelector = '#device-detail-temperature-control-disabled';
+      const select = page.locator(selectSelector);
+      const choosePolicy = async (value: string) => {
+        await select.click();
+        await Promise.all([
+          select.evaluate((element) => new Promise<void>((resolve) => {
+            element.addEventListener('closed', () => resolve(), { once: true });
+          })),
+          select.locator(`md-select-option[value="${value}"]`).click(),
+        ]);
+      };
+      const dialog = page.locator('#temperature-control-confirm-dialog');
+      await expect(row).toBeVisible();
+      await expect(row).toContainText('Temperature control');
+      await expect.poll(() => readMdValue(page, selectSelector)).toBe('mode');
 
-    const before = await readHomeySetting<Record<string, unknown>>(page, 'price_optimization_settings');
-    const modeTargetsBefore = await readHomeySetting<Record<string, unknown>>(page, 'mode_device_targets');
-    const shedBefore = await readHomeySetting<Record<string, unknown>>(page, 'overshoot_behaviors');
+      const before = await readHomeySetting<Record<string, unknown>>(page, 'price_optimization_settings');
+      const modeTargetsBefore = await readHomeySetting<Record<string, unknown>>(page, 'mode_device_targets');
+      const shedBefore = await readHomeySetting<Record<string, unknown>>(page, 'overshoot_behaviors');
 
-    await setMdSwitch(page, toggleSelector, true);
-    await expect.poll(async () => {
-      const map = await readHomeySetting<Record<string, boolean>>(
+      await choosePolicy(policy.value);
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toContainText('Living Room Heat Pump');
+      await expect(dialog).toContainText('Price-based temperature adjustments will stop.');
+      await expect.poll(() => readMdValue(page, selectSelector)).toBe('mode');
+      await dialog.locator('md-text-button[value="cancel"]').click();
+      await expect(dialog).toBeHidden();
+      await expect.poll(() => readMdValue(page, selectSelector)).toBe('mode');
+      expect((await readHomeySetting<Record<string, string> | null>(page, 'temperature_control_modes'))
+        ?.dev_heatpump).not.toBe(policy.value);
+
+      await choosePolicy(policy.value);
+      await expect(dialog).toBeVisible();
+      await dialog.locator('md-text-button[value="confirm"]').click();
+      await expect(dialog).toBeHidden();
+      await expect.poll(async () => {
+        const map = await readHomeySetting<Record<string, string>>(
+          page,
+          'temperature_control_modes',
+        );
+        return map?.dev_heatpump;
+      }, { timeout: 3000 }).toBe(policy.value);
+
+      await expect.poll(() => readMaterialDisabled(page, '#device-detail-price-opt')).toBe(true);
+      // The control model is not the temperature axis: choosing whether this device
+      // is stepped or binary never writes `target_temperature`, so the flag must not
+      // disable it. Disabling it also stopped the owner configuring a ladder at all.
+      await expect.poll(() => readMaterialDisabled(page, '#device-detail-control-model')).toBe(false);
+      await expect(page.locator('#device-detail-modes-section')).toBeVisible();
+      await expect.poll(() => readMaterialDisabled(
         page,
-        'temperature_control_disabled_devices',
+        '#device-detail-modes-section .detail-mode-temp',
+      )).toBe(!policy.appliesTargets);
+      await expect(page.locator('#device-detail-modes-help')).toContainText(
+        policy.appliesTargets ? 'PELS will set this' : 'won’t apply them',
       );
-      return map?.dev_heatpump;
-    }, { timeout: 3000 }).toBe(true);
+      await expect.poll(() => readMdSwitchSelected(page, '#device-detail-price-opt')).toBe(false);
+      await expect(page.locator('#device-detail-overshoot-segmented .segmented__option', {
+        hasText: 'Set temperature',
+      })).toBeHidden();
+      expect(await readHomeySetting(page, 'price_optimization_settings')).toEqual(before);
+      expect(await readHomeySetting(page, 'mode_device_targets')).toEqual(modeTargetsBefore);
+      expect(await readHomeySetting(page, 'overshoot_behaviors')).toEqual(shedBefore);
 
-    await expect.poll(() => readMaterialDisabled(page, '#device-detail-price-opt')).toBe(true);
-    // The control model is not the temperature axis: choosing whether this device
-    // is stepped or binary never writes `target_temperature`, so the flag must not
-    // disable it. Disabling it also stopped the owner configuring a ladder at all.
-    await expect.poll(() => readMaterialDisabled(page, '#device-detail-control-model')).toBe(false);
-    await expect(page.locator('#device-detail-modes-section')).toBeVisible();
-    await expect.poll(() => readMaterialDisabled(
-      page,
-      '#device-detail-modes-section .detail-mode-temp',
-    )).toBe(true);
-    await expect(page.locator('#device-detail-modes-help')).toContainText('won’t apply them');
-    await expect.poll(() => readMdSwitchSelected(page, '#device-detail-price-opt')).toBe(true);
-    await expect(page.locator('#device-detail-overshoot-segmented .segmented__option', {
-      hasText: 'Set temperature',
-    })).toBeHidden();
-    expect(await readHomeySetting(page, 'price_optimization_settings')).toEqual(before);
-    expect(await readHomeySetting(page, 'mode_device_targets')).toEqual(modeTargetsBefore);
-    expect(await readHomeySetting(page, 'overshoot_behaviors')).toEqual(shedBefore);
+      await choosePolicy('mode');
+      await expect.poll(() => readMaterialDisabled(page, '#device-detail-price-opt')).toBe(false);
+      await expect.poll(() => readMdSwitchSelected(page, '#device-detail-price-opt')).toBe(true);
+      await expect.poll(() => readMaterialDisabled(page, '#device-detail-control-model')).toBe(false);
+      await expect(page.locator('#device-detail-modes-section')).toBeVisible();
+      await expect.poll(() => readMaterialDisabled(
+        page,
+        '#device-detail-modes-section .detail-mode-temp',
+      )).toBe(false);
+      await expect(page.locator('#device-detail-modes-help')).toContainText('PELS will set this');
+      await expect(dialog).toBeHidden();
 
-    await setMdSwitch(page, toggleSelector, false);
-    await expect.poll(() => readMaterialDisabled(page, '#device-detail-price-opt')).toBe(false);
-    await expect.poll(() => readMaterialDisabled(page, '#device-detail-control-model')).toBe(false);
-    await expect(page.locator('#device-detail-modes-section')).toBeVisible();
-    await expect.poll(() => readMaterialDisabled(
-      page,
-      '#device-detail-modes-section .detail-mode-temp',
-    )).toBe(false);
-    await expect(page.locator('#device-detail-modes-help')).toContainText('PELS will set this');
-  });
+      // A dismissed second confirmation must not reuse the earlier accepted result,
+      // and Escape must leave the device panel underneath it open.
+      await choosePolicy(policy.value);
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+      await expect(page.locator('#device-detail-overlay')).toBeVisible();
+      await expect.poll(() => readMdValue(page, selectSelector)).toBe('mode');
+      expect((await readHomeySetting<Record<string, string>>(page, 'temperature_control_modes'))
+        .dev_heatpump).toBe('mode');
+    });
+  }
 
   test('Switch row label is clickable to toggle the switch', async ({ page }) => {
     await openDeviceDetail(page, 'dev_heatpump');

@@ -1,3 +1,4 @@
+import type { ExternalTemperatureAdjustment } from '../../../packages/contracts/src/temperatureAdjustment';
 /**
  * Public type contracts + pure helpers for the `DeviceTransport` leaf and its
  * homey-free collaborator modules. Extracted from `deviceTransport.ts` so the
@@ -80,6 +81,7 @@ export type TransportObservedStateDispatcher = {
     observedStateChanged: (event: ObservedDeviceStateEvent) => void;
     observedStateRefresh: (event: ObservedDeviceStateRefreshEvent) => void;
     observedControlStateChanged: (event: PlanRealtimeUpdateEvent) => void;
+    externalTemperatureAdjusted?: (adjustment: ExternalTemperatureAdjustment) => void;
     /**
      * Push the gross PV generation (W) resolved from the same energy report into
      * observer's holder, or `null` when absent, stamped with its read time. Used

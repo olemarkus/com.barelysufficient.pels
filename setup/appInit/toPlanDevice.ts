@@ -1,3 +1,4 @@
+import { resolveDeviceControlPosture } from '../../lib/device/temperatureControlPosture';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import {
@@ -449,23 +450,6 @@ function resolvePlanObjective(
   };
 }
 
-function resolveManagedControlPosture(
-  ctx: AppContext,
-  device: DecoratedDeviceSnapshot,
-): { controllable: boolean; managed: boolean } {
-  const observeOnly = device.deviceClass === 'battery' || device.deviceClass === 'solarpanel';
-  if (observeOnly) {
-    return {
-      controllable: device.controllable === true,
-      managed: device.managed !== false,
-    };
-  }
-  return {
-    controllable: ctx.isCapacityControlEnabled(device.id),
-    managed: ctx.resolveManagedState(device.id),
-  };
-}
-
 // The device param widens with `EvObservedProbe`: this producer is the one
 // sanctioned reader of the raw observed `evChargingState` on the plan path —
 // it resolves the flat EV sub-fields below and strips the raw field off the
@@ -550,7 +534,9 @@ export function toPlanDevice(
   // `controllable: true` for a device whose settings say so. The structural stamp closes
   // that window: a present observe-only device is NEVER controllable here. Other-device
   // resolution is unchanged (the stamp equals the re-resolved value).
-  const { controllable, managed } = resolveManagedControlPosture(ctx, device);
+  const { controllable, managed } = resolveDeviceControlPosture(
+    device, ctx.resolveManagedState(device.id), ctx.isCapacityControlEnabled(device.id),
+  );
   // The continuous / target-power / non-binary classification is resolved HERE
   // (the producer may read the `controlModel` setting + target-power config) so
   // the planner helper carries no such branch (control-model vocab rule).
@@ -595,6 +581,7 @@ export function toPlanDevice(
     binaryObservationCapabilityId: _binaryObservationCapabilityId,
     flowBackedCapabilityIds: _flowBackedCapabilityIds,
     temperatureControlDisabled: _temperatureControlDisabled,
+    temperatureAdjustmentsDisabled: _temperatureAdjustmentsDisabled,
     steppedLoadProfile: _confirmedSteppedLoadProfile,
     targetPowerConfig: _targetPowerConfig,
     // Strip the RAW reading too. It is absent from the plan contract by type, but

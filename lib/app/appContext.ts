@@ -1,3 +1,4 @@
+import type { ObservedTemperatureModeUpdates } from '../home/observedTemperatureModeUpdates';
 import type { TrackerStore } from '../power/trackerStore';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import type {
@@ -251,6 +252,7 @@ export type AppContext = {
   set managedDevices(value: Record<string, boolean>);
   get budgetExemptDevices(): Record<string, boolean>;
   set budgetExemptDevices(value: Record<string, boolean>);
+  readonly observedTemperatureModeUpdates: ObservedTemperatureModeUpdates;
   get temperatureControlDisabledDevices(): Record<string, boolean>;
   set temperatureControlDisabledDevices(value: Record<string, boolean>);
   get temperatureControlPolicyState(): 'unavailable' | 'resolved';

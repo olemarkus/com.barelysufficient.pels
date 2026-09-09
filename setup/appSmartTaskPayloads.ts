@@ -57,6 +57,7 @@ export class AppSmartTaskPayloads {
         const objectiveKind = resolveSmartTaskDeviceKind({
           ...device,
           temperatureControlDisabled: undefined,
+          temperatureAdjustmentsDisabled: undefined,
         });
         if (objectiveKind === null) continue;
         // Resolve kind-split °C/% pairs to unit-agnostic numbers at this producer boundary.

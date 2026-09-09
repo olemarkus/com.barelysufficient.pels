@@ -308,6 +308,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             powerState: t.powerState,
             measuredPowerResolver: t.measuredPowerResolver,
             observedStateDispatcher: t.observedStateDispatcher,
+            temperatureAdjustments: t.observationProducers.temperature,
             targetedMissByDeviceId: t.targetedMissByDeviceId,
             getEmptySnapshotGrace: () => refreshScalars.emptySnapshotGrace,
             setEmptySnapshotGrace: (value) => { refreshScalars.emptySnapshotGrace = value; },
@@ -690,6 +691,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         // One timestamp for the whole batch: every entry in a single refresh
         // shares the same observedAtMs so the projection's defensive
         // timestamp-fallback ordering can't reorder devices within one commit.
+        this.observationProducers.temperature.retainDevices(new Set(snapshot.map((device) => device.id)));
         const nowMs = Date.now();
         const event: ObservedDeviceStateRefreshEvent = {
             entries: snapshot.map((device) => {
@@ -714,6 +716,12 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
      * contract; same fallback shape for `OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT`.
      */
     private dispatchObservedControlStateChanged(event: PlanRealtimeUpdateEvent): void {
+        const adjustment = this.observationProducers.temperature.observeControlChange(
+            this.latestSnapshotById.get(event.deviceId), event,
+        );
+        if (adjustment) {
+            this.observedStateDispatcher?.externalTemperatureAdjusted?.(adjustment);
+        }
         if (this.observedStateDispatcher) {
             this.observedStateDispatcher.observedControlStateChanged(event);
             return;

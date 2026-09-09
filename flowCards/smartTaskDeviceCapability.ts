@@ -4,6 +4,7 @@ import type { DecoratedDeviceSnapshot } from '../packages/contracts/src/types';
 // settable target (thermostats, water heaters, etc.).
 export const supportsTemperatureObjective = (device: DecoratedDeviceSnapshot): boolean => (
   device.temperatureControlDisabled !== true
+  && device.temperatureAdjustmentsDisabled !== true
   && (device.deviceType === 'temperature' || device.targets.length > 0)
 );
 

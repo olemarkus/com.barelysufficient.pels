@@ -1,3 +1,4 @@
+import { supportsTemperatureAdjustments, temperatureAdjustmentGateHint } from './temperaturePolicy.ts';
 import {
   deviceDetailDumpLoadDisabledHint,
   deviceDetailDumpLoadOpt,
@@ -9,7 +10,6 @@ import {
   deviceDetailSurplusSection,
 } from '../dom.ts';
 import {
-  supportsTemperatureControlDevice,
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
@@ -69,11 +69,12 @@ export const surplusControlVisibleFor = (deviceId: string): boolean => (
 // (no temperature target, or no surplus pool to opt into) hide the section.
 const resolveSurplusGateHint = (params: {
   canControlTemperature: boolean;
+  disabledHint: string;
   isManaged: boolean;
   selected: boolean;
 }): string | null => {
   if (!params.canControlTemperature) {
-    return 'Temperature control is off for this device — this value is kept but not applied.';
+    return params.disabledHint;
   }
   if (!params.isManaged) return 'Turn on Managed by PELS in Setup to use solar surplus.';
   if (!params.selected) {
@@ -101,7 +102,8 @@ export const updateSurplusSectionVisibility = (params: {
     return;
   }
   const gateHint = resolveSurplusGateHint({
-    canControlTemperature: supportsTemperatureControlDevice(device),
+    canControlTemperature: supportsTemperatureAdjustments(device),
+    disabledHint: temperatureAdjustmentGateHint(device),
     isManaged,
     selected: deviceDetailSurplusOpt.selected,
   });
@@ -121,7 +123,7 @@ export const initDeviceDetailSurplusOptHandlers = (params: {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;
     const device = params.getDeviceById(deviceId);
-    if (!supportsTemperatureControlDevice(device)) return;
+    if (!supportsTemperatureAdjustments(device)) return;
 
     const { surplusWilling, surplusDelta } = readSurplusInputs();
     // Snapshot only this device's surplus fields before the optimistic mutation so

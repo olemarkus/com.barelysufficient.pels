@@ -1,3 +1,4 @@
+import { resolveTemperaturePolicyShedBehavior } from '../lib/device/temperatureControlPosture';
 import type Homey from 'homey';
 import type { AppContext } from '../lib/app/appContext';
 import type { DeviceTransport } from '../lib/device/deviceTransport';
@@ -227,7 +228,10 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public isBudgetExempt = (deviceId: string): boolean => this.context.budgetExemptDevices[deviceId] === true;
   public getTemperatureBoostConfig = (deviceId: string) => this.context.temperatureBoostSettings[deviceId];
   public getEvBoostConfig = (deviceId: string) => this.context.evBoostSettings[deviceId];
-  public getShedBehavior = (deviceId: string) => getShedBehaviorHelper(deviceId, this.context.shedBehaviors);
+  public getShedBehavior = (deviceId: string) => resolveTemperaturePolicyShedBehavior(
+    getShedBehaviorHelper(deviceId, this.context.shedBehaviors), this.context.latestTargetSnapshot, deviceId,
+    this.context.observedTemperatureModeUpdates.allowsAutomaticAdjustments(deviceId),
+  );
   public computeDynamicSoftLimit = (): number => this.requirePlanService().computeDynamicSoftLimit();
   protected computeShortfallThreshold = (): number => this.requirePlanService().computeShortfallThreshold();
 

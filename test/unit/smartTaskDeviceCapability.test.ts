@@ -25,6 +25,10 @@ describe('smart-task Flow device capability', () => {
     expect(supportsSmartTaskObjective(device)).toBe(false);
   });
 
+  it('rejects temperature tasks while following manual targets', () => {
+    expect(supportsTemperatureObjective(buildDevice({ temperatureAdjustmentsDisabled: true }))).toBe(false);
+  });
+
   it('keeps EV objectives eligible independently of temperature control', () => {
     const device = buildDevice({
       deviceClass: 'evcharger',

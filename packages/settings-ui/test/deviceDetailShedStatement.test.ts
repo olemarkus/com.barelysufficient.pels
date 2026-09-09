@@ -189,6 +189,7 @@ describe('limiting card statement vs radiogroup', () => {
     const device = buildDevice({
       deviceClass: 'thermostat',
       deviceType: 'temperature',
+      binaryControllable: true,
       targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
     });
     state.managedMap = { [device.id]: true };

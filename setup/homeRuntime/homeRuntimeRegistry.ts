@@ -124,7 +124,7 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     this.handledRuntimeActive = deps.isRuntimeActive();
   }
 
-  private getLiveBundles(): HomeCapacityBundle[] {
+  getLiveBundles(): HomeCapacityBundle[] {
     return [...this.bundles.values()].filter((bundle) => !bundle.isTornDown());
   }
 

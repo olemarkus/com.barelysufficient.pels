@@ -1,3 +1,4 @@
+import { temperaturePolicyPriceSettings } from '../packages/shared-domain/src/settings/temperatureControl';
 import { emitPowerTrackerPersistedForApp, emitSettingsUiDevicesUpdatedForApp } from './settingsUiAppRuntime';
 import { openAppUserdataDatabase, type UserdataDatabase } from '../lib/store/userdataDatabase';
 import { retireLegacyPlanStatusKeys } from '../lib/plan/planStatusRegistry';
@@ -284,7 +285,11 @@ abstract class AppRuntimeApi extends Base {
     return this.requirePriceCoordinator().getPriceOptimizationEnabled();
   }
   public get priceOptimizationSettings() {
-    return this.requirePriceCoordinator().getPriceOptimizationSettings();
+    return temperaturePolicyPriceSettings(
+      this.requirePriceCoordinator().getPriceOptimizationSettings(),
+      this.context.observedTemperatureModeUpdates.allowsAutomaticAdjustments
+        .bind(this.context.observedTemperatureModeUpdates),
+    );
   }
   /**
    * The enabled debug topics, delegating to the process-wide set rather than

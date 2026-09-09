@@ -297,6 +297,7 @@ describe('initSettingsHandlerForApp', () => {
 describe('buildCapacitySettingsSnapshot', () => {
   it('loads the temperature-control disabled device map', () => {
     const settings = {
+      getKeys: () => [TEMPERATURE_CONTROL_DISABLED_DEVICES],
       get: vi.fn((key: string) => (
         key === TEMPERATURE_CONTROL_DISABLED_DEVICES
           ? { thermostat: true, heater: false }

@@ -1,3 +1,4 @@
+import { readMainOperatingMode } from '../../lib/home/mainOperatingModeRead';
 /**
  * The stateless, owner-aware device-support operating-mode reader.
  *
@@ -120,8 +121,7 @@ const isDeviceOwnershipUnavailable = (
 /**
  * The active mode governing ONE DEVICE, for device-keyed readers outside the
  * bundles (today: the overshoot default seed in `setup/appDeviceSupport.ts`).
- * Main-home devices keep that reader's historical classification byte-for-byte
- * (the RAW unsuffixed setting, un-aliased, non-blank or `null`); a sub-home
+ * Main-home devices resolve the unsuffixed setting through retained aliases; a sub-home
  * device resolves through the same chain its bundle plans with. Stateless on
  * purpose — no transition latch, no logging: a snapshot-refresh pass must not
  * emit mode-transition events.
@@ -144,18 +144,7 @@ export const resolveOperatingModeForDevice = (
   }
   const homeId = membership?.getHomeIdForDevice(deviceId) ?? MAIN_HOME_ID;
   if (homeId === MAIN_HOME_ID) {
-    let raw: unknown;
-    try {
-      raw = ctx.homey.settings.get(OPERATING_MODE_SETTING) as unknown;
-    } catch {
-      return { state: 'unavailable' };
-    }
-    return {
-      state: 'resolved',
-      mode: typeof raw === 'string' && raw.trim() ? raw : null,
-      homeId,
-      catalogHomeId: homeId,
-    };
+    return readMainOperatingMode(ctx.homey.settings, ctx.resolveModeName);
   }
   const catalog = readPersistedHomeModeCatalog(ctx, homeId);
   if (catalog.state === 'unavailable') return { state: 'unavailable' };

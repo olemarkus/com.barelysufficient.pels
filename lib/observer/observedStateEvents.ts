@@ -1,3 +1,4 @@
+import type { ExternalTemperatureAdjustment } from '../../packages/contracts/src/temperatureAdjustment';
 import { EventEmitter } from 'events';
 import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
@@ -108,6 +109,7 @@ export type ObservedStateEmitterDispatcher = {
     observedStateChanged: (event: ObservedStateChangedEvent) => void;
     observedStateRefresh: (event: ObservedStateRefreshEvent) => void;
     observedControlStateChanged: (event: ObservedControlStateChangedEvent) => void;
+    externalTemperatureAdjusted: (adjustment: ExternalTemperatureAdjustment) => void;
     /**
      * Push the gross PV generation reading (watts) into observer's
      * `ObservedHomePower` holder, or `null` when absent, stamped with its read
@@ -127,6 +129,10 @@ export type ObservedStateEmitterDispatcher = {
  */
 export class ObservedStateEmitter {
     private readonly emitter = new EventEmitter();
+
+    onExternalTemperatureAdjusted(listener: (adjustment: ExternalTemperatureAdjustment) => void): void {
+        this.emitter.on('external_temperature_adjusted', listener);
+    }
 
     emitObservedStateChanged(event: ObservedStateChangedEvent): void {
         this.emitter.emit(OBSERVED_STATE_CHANGED_EVENT, event);
@@ -168,6 +174,9 @@ export class ObservedStateEmitter {
      */
     asDispatcher(homePower: ObservedHomePower): ObservedStateEmitterDispatcher {
         return {
+            externalTemperatureAdjusted: (adjustment) => {
+                this.emitter.emit('external_temperature_adjusted', adjustment);
+            },
             observedStateChanged: (event) => this.emitObservedStateChanged(event),
             observedStateRefresh: (event) => this.emitObservedStateRefresh(event),
             observedControlStateChanged: (event) => this.emitObservedControlStateChanged(event),

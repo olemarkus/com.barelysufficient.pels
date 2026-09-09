@@ -1,3 +1,4 @@
+import { withTemperatureControlPolicy } from '../lib/device/temperatureControlPosture';
 import {
   getSteppedLoadLowestActiveStep, getSteppedLoadStep,
   hasUsableSteppedLoadLadder,
@@ -141,10 +142,11 @@ export const decorateSnapshotWithDeviceControl = (params: {
   store: SteppedCommandStore;
   reportedStore: SteppedReportedStepStore;
   temperatureControlDisabled?: boolean;
+  temperatureAdjustmentsDisabled?: boolean;
   nowMs?: number;
 }): DecoratedDeviceSnapshot => {
   const {
-    snapshot, profiles, store, reportedStore, temperatureControlDisabled = false, nowMs = Date.now(),
+    snapshot: rawSnapshot, profiles, store, reportedStore, temperatureControlDisabled = false, nowMs = Date.now(),
   } = params;
   // The denial is a stamp, not a demotion. The step cluster below is resolved
   // exactly as it is for any other device — the flag says nothing about a
@@ -157,9 +159,9 @@ export const decorateSnapshotWithDeviceControl = (params: {
   // (`lib/executor/syncSteppedCommands.ts`) — a command must not confirm
   // because the planner asked for its input devices, and a read of the plan
   // input must not have side effects.
-  const temperatureDenial = temperatureControlDisabled
-    ? { temperatureControlDisabled: true as const }
-    : {};
+  const snapshot = withTemperatureControlPolicy(
+    rawSnapshot, temperatureControlDisabled, params.temperatureAdjustmentsDisabled === true,
+  );
   const nativeProfile = resolveNativeSteppedLoadProfile(snapshot);
   const profile = resolveEffectiveSteppedLoadProfile({
     snapshot,
@@ -170,7 +172,6 @@ export const decorateSnapshotWithDeviceControl = (params: {
     const defaultControlModel = resolveDefaultControlModel(snapshot);
     return {
       ...snapshot,
-      ...temperatureDenial,
       controlModel: temperatureControlDisabled
         ? resolveTemperatureDeniedControlModel(defaultControlModel)
         : defaultControlModel,
@@ -205,7 +206,6 @@ export const decorateSnapshotWithDeviceControl = (params: {
 
   return {
     ...snapshot,
-    ...temperatureDenial,
     controlModel: 'stepped_load',
     steppedLoadProfile: profile,
     reportedStepId: stepFields.reportedStepId,
@@ -254,6 +254,7 @@ export class AppDeviceControlHelpers {
       observedAtMs: number;
     }) => boolean;
     isTemperatureControlDisabled?: (deviceId: string) => boolean;
+    allowsTemperatureAdjustments?: (deviceId: string) => boolean;
     getDeviceSnapshots: () => Array<TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe>;
     getLatestPlanSnapshot?: () => DevicePlan | null;
     getStructuredLogger: (component: string) => PinoLogger | undefined;
@@ -342,6 +343,7 @@ export class AppDeviceControlHelpers {
       store: this.deps.store,
       reportedStore: this.deps.reportedStore,
       temperatureControlDisabled: this.deps.isTemperatureControlDisabled?.(device.id) === true,
+      temperatureAdjustmentsDisabled: this.deps.allowsTemperatureAdjustments?.(device.id) === false,
       nowMs,
     }));
   }

@@ -811,6 +811,8 @@ export type SteppedLoadDecoration = {
      * commands only while this marker is present.
      */
     temperatureControlDisabled?: true;
+    /** Saved mode targets remain writable; automatic temperature adjustments do not. */
+    temperatureAdjustmentsDisabled?: true;
     selectedStepId?: string;
     planningPowerKw?: number;
     targetStepId?: string;

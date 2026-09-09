@@ -1,4 +1,8 @@
 import {
+  readTemperatureControlModes, temperatureControlDisabledDevices,
+} from '../../../shared-domain/src/settings/temperatureControl.ts';
+import { state } from './state.ts';
+import {
   BUDGET_EXEMPT_DEVICES,
   CAPACITY_PRIORITIES,
   MODE_ALIASES,
@@ -7,6 +11,7 @@ import {
   OPERATING_MODE_SETTING,
   RESPECT_EXTERNAL_OFF_DEVICES,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
+  TEMPERATURE_CONTROL_MODES,
   homeScopedSettingsKey,
 } from '../../../contracts/src/settingsKeys.ts';
 import { getSetting } from './homey.ts';
@@ -20,6 +25,7 @@ export type ModeSettingsRead = {
   budgetExempt: unknown;
   respectExternalOff: unknown;
   temperatureControlDisabled: unknown;
+  temperatureControlModes: unknown;
   nativeWiring: unknown;
   aliases: unknown;
 };
@@ -60,15 +66,25 @@ export const readModeSettings = async (homeId: string): Promise<ModeSettingsRead
     getSetting(BUDGET_EXEMPT_DEVICES),
     getSetting(RESPECT_EXTERNAL_OFF_DEVICES),
     getSetting(TEMPERATURE_CONTROL_DISABLED_DEVICES),
+    getSetting(TEMPERATURE_CONTROL_MODES),
     getSetting(NATIVE_EV_WIRING_DEVICES),
     getSetting(homeScopedSettingsKey(MODE_ALIASES, homeId)),
   ]);
   const [
     mode, priorities, targets, controllables, managed,
-    budgetExempt, respectExternalOff, temperatureControlDisabled, nativeWiring, aliases,
+    budgetExempt, respectExternalOff, temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases,
   ] = values;
   return {
     mode, priorities, targets, controllables, managed,
-    budgetExempt, respectExternalOff, temperatureControlDisabled, nativeWiring, aliases,
+    budgetExempt, respectExternalOff, temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases,
   };
 };
+
+export function applyTemperatureControlSettings(read: ModeSettingsRead): void {
+  state.temperatureControlModes = readTemperatureControlModes(read.temperatureControlModes)
+    ?? state.temperatureControlModes;
+  state.temperatureControlDisabledMap = temperatureControlDisabledDevices(
+    state.temperatureControlModes,
+    readStrictBooleanSettingMap(read.temperatureControlDisabled) ?? state.temperatureControlDisabledMap,
+  );
+}

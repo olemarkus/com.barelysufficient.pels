@@ -1557,3 +1557,27 @@ name a cause PELS cannot observe.** A plugged-in idle charger says `Waiting for
 car` when the charger itself is switched on — with or without an associated car,
 and whether or not PELS is the one controlling it. Commanded off it is
 `Not charging` and nothing more.
+
+### Temperature control
+
+The per-device selector uses **Use mode target** (default), **Leave temperature
+to you** (the former Disable temperature control toggle), and **Update mode target**.
+The last option includes changes from the device, Homey, another app or Flow; do
+not imply the physical remote is distinguishable. The saved mode target is the
+literal temperature to apply. Automatic offsets and temperature-based limiting
+are unavailable under this choice.
+
+For **Update mode target**, keep per-mode target inputs editable. Show price and
+solar controls as unavailable with saved values retained, with the explanation
+**Not applied with Update mode target. Your saved settings are kept.** Explain
+remaining power control beside the selector: binary on/off, power levels, or
+**PELS cannot limit this device’s power without changing its temperature.**
+Temperature Smart tasks require the default control policy; existing task history
+stays visible regardless of the current choice.
+
+Leaving **Use mode target** asks for confirmation when configured temperature
+limiting or price/solar adjustments will become inactive, or a temperature-only
+device will lose power limiting. **Change temperature control?** names the device
+and lists the actual consequences. **Cancel** and dismissal leave the saved
+selection unchanged; **Change control** saves it. Returning to Use mode target
+does not ask again. A toast alone is insufficient for approving a control change.

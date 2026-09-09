@@ -1,3 +1,4 @@
+import type { TemperatureControlModes } from '../../../shared-domain/src/settings/temperatureControl.ts';
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlProfiles,
@@ -77,6 +78,7 @@ export type UiState = {
   managedMap: Record<string, boolean>;
   budgetExemptMap: Record<string, boolean>;
   respectExternalOffMap: Record<string, boolean>;
+  temperatureControlModes: TemperatureControlModes;
   temperatureControlDisabledMap: Record<string, boolean>;
   nativeWiringMap: Record<string, boolean>;
   deviceControlProfiles: DeviceControlProfiles;
@@ -164,6 +166,7 @@ export const state: UiState = {
   managedMap: {},
   budgetExemptMap: {},
   respectExternalOffMap: {},
+  temperatureControlModes: {},
   temperatureControlDisabledMap: {},
   nativeWiringMap: {},
   deviceControlProfiles: {},

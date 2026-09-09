@@ -409,6 +409,9 @@ class PelsApp extends PelsAppBase implements AppContext {
     getProfiles: () => this.deviceControlProfiles,
     ...this.targetPowerReachabilityWiring.deviceControlDeps,
     isTemperatureControlDisabled: (deviceId) => this.isTemperatureControlDisabled(deviceId),
+    allowsTemperatureAdjustments: (deviceId) => (
+      this.observedTemperatureModeUpdates.allowsAutomaticAdjustments(deviceId)
+    ),
     getDeviceSnapshots: () => this.deviceManager?.getSnapshot() ?? [],
     getLatestPlanSnapshot: () => this.planService.getLatestPlanSnapshot(),
     getStructuredLogger: (component) => this.getStructuredLogger(component),
@@ -552,6 +555,8 @@ class PelsApp extends PelsAppBase implements AppContext {
     captureDefaultDynamicSoftLimit: () => this.captureDefaultDynamicSoftLimit(),
     initSettingsHandler: () => this.initSettingsHandler(),
   });
+
+  public readonly observedTemperatureModeUpdates = this.serviceWiring.createObservedTemperatureModeUpdates();
 }
 
 export = PelsApp;

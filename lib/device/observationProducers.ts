@@ -1,16 +1,17 @@
+import { TemperatureAdjustmentObserver } from './temperatureAdjustmentObserver';
 /**
  * Construction seam for the device layer's read-only observation producers.
  *
- * All three share a shape: consulted from the successful-fetch and realtime
- * `device.update` seams, holding a small bounded state, surfacing what they see
- * as structured events, and never feeding an actuation path. Building them
+ * These producers consume committed device observations, hold bounded state,
+ * and surface facts without issuing device commands. Building them
  * together keeps the SDK leaf (`deviceTransport.ts`) free of their individual
- * construction details, and gives the three a single place to document that
+ * construction details, and gives them a single place to document that
  * shared contract.
  *
  * - `battery` — home-battery SoC + signed power (`batteryStateProducer.ts`)
  * - `solar` — PV production (`solarProductionProducer.ts`)
  * - `evCarLink` — EV car-to-charger correlation probe (`evCarLinkProducer.ts`)
+ * - `temperature` — external target changes (`temperatureAdjustmentObserver.ts`)
  */
 import { BatteryStateProducer } from './batteryStateProducer';
 import { createObservationEmitGate } from './observationEmitGate';
@@ -23,6 +24,7 @@ import {
 } from './evCarLinkWiring';
 
 export type ObservationProducers = {
+    temperature: TemperatureAdjustmentObserver;
     battery: BatteryStateProducer;
     solar: SolarProductionProducer;
     evCarLink: EvCarLinkProducer;
@@ -60,6 +62,7 @@ export const createObservationProducers = (params: {
     // contract in `observationEmitGate.ts`.
     const observationEmit = createObservationEmitGate({ emit: params.emit });
     return ({
+    temperature: new TemperatureAdjustmentObserver(),
     battery: new BatteryStateProducer((payload) => observationEmit({ ...payload })),
     solar: new SolarProductionProducer((payload) => observationEmit({ ...payload })),
     evCarLink: createEvCarLinkProducer({

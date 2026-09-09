@@ -1,23 +1,55 @@
 # PELS owns a managed thermostat's setpoint
 
-**Owner ruling, 2026-08-26.** While PELS manages a temperature device, PELS owns
-its setpoint. A setpoint someone changes by hand — the thermostat panel, the
-Homey device tile, another app or Flow — is *drift*: an ordinary input to the
-next rebuild, reconciled by the executor writing PELS's target again. It is
-never a competing statement of intent, and nothing in the planner may adopt it
-as one.
+**Default ownership, 2026-08-26; explicit opt-in extended 2026-09-08.**
+The per-device **Temperature control** choice selects one of three policies:
 
-The single exemption is the per-device **"Disable temperature control"** flag,
-and it is represented structurally rather than as a policy branch:
-`projectTemperatureDeniedDevice` (`setup/temperatureControlDenial.ts`) strips
-the target axis, so a flagged device is not a temperature device to control code
-at all. Nothing downstream checks the flag — a device with no setpoint axis has
-no setpoint to own.
+- **Use mode target** (default): external setpoint changes are observations; PELS
+  continues to apply the current mode target with its normal adjustments.
+- **Leave temperature to you** (formerly "Disable temperature control"):
+  `projectTemperatureDeniedDevice` strips the target axis. PELS makes no setpoint
+  writes, while binary and stepped control remain available.
+- **Update mode target**: an admitted external setpoint transition updates this
+  device's target in the active mode of its owning home. The selected temperature is literal: saved mode targets remain writable, including
+  when switching modes, but price/solar offsets and fixed-temperature limiting
+  are not applied. Saved adjustment preferences are preserved for switching back.
+  Binary and stepped limiting remain available; a temperature-only device has no
+  remaining limiting control. Temperature Smart tasks require full temperature
+  control and cannot be created with this policy.
+
+**Observation → mode owner → next meter-driven plan.** `TemperatureAdjustmentObserver`
+classifies command echoes in the device observation path, with no plan comparison.
+`ObservedTemperatureModeUpdates` applies the opt-in and persists the mode edit.
+The executor and drift detector never edit a mode. A live write fence accepts only
+the normalized saved target under Update mode target, so a queued price/limit
+command cannot overwrite a newly chosen temperature after the policy changes. The SDK settings
+notifications for these edits (immediate or delayed) are consumed without a rebuild; the mode caches reload
+and the next reading decides from the new target. Ordinary UI/Flow mode edits
+keep their existing settings-triggered rebuild behavior.
+
+A new `temperature_control_modes` entry overrides the legacy disable boolean for
+that device. Without an entry, the old toggle retains its meaning. The shared key
+owner is `packages/shared-domain/src/settings/temperatureControl.ts`.
+
+Only changed, already-observed, finite target values from the live observation
+path qualify. Initial snapshots and regained temperature facets are not user
+intent. The producer records normalized PELS writes before the SDK call, including
+calls whose outcome fails, since rejection does not prove a device never acted.
+The latest commanded value stays attributable; superseded values remain
+attributable for two minutes after supersession. Matching values are conservatively
+ignored, including a user deliberately choosing that same value. Homey does not
+identify the actor: other apps and Flows qualify as external changes too. A
+superseded echo arriving beyond that window cannot be distinguished from a new
+external adjustment. Command attribution is in-memory and starts afresh at boot.
+
+Ownership/catalog unavailability skips the edit rather than writing another
+home's mode or replacing a partial catalog. Each synchronous edit resolves its
+home and mode before persistence; there is no delayed edit queue that could
+silently retarget it after a mode switch.
 
 The settings UI reads the observer snapshot, where the device is still
 `deviceType: 'temperature'`. That is deliberate and is not the same question:
 `supportsTemperatureDevice` asks whether the device HAS a setpoint (which is what
-renders the toggle, and the saved targets under it), while
+renders the choice, and the saved targets under it), while
 `supportsTemperatureControlDevice` asks whether PELS may write it.
 
 ("Leave off until turned on again" honours an external OFF, but that is the
@@ -25,9 +57,9 @@ binary axis and a separate per-device opt-in. It says nothing about setpoints.)
 
 ## Why
 
-The alternative gives an owner a way to defeat a capacity decision by nudging a
-dial, and gives the planner a second baseline to arbitrate against. The
-machinery to avoid that already exists and needs no special revert path: an
+There remains one baseline: the saved mode target. Updating that baseline must
+not bypass a capacity decision or introduce another target for the planner to
+arbitrate against. Normal mode ownership needs no special revert path: an
 observed change is an ordinary input to the next rebuild, and the executor
 applies the desired target whenever observed and desired disagree. Correction is
 a normal convergence.
@@ -75,5 +107,7 @@ the problem, not the safety net.
   silently disabled price optimization for them (a price delta modulates a
   configured mode target and nothing else).
 - **A reviewer report shaped "the owner changed the setpoint mid-shed, so PELS
-  later restores a stale value" is rejected on this ruling.** It is drift, by
-  definition, and not a defect.
+  later restores a stale value" depends on the selected policy.** Under the
+  default it is drift. Under Update mode target, an admitted external adjustment
+  must update the saved mode target before the next plan. The next plan may limit
+  power using another control axis, but never changes the temperature for limiting.

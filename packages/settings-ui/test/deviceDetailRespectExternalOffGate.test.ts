@@ -18,6 +18,10 @@ const flushPromises = () => new Promise<void>((resolve) => {
 const buildDom = () => {
   document.body.innerHTML = `
     <div id="toast"></div>
+    <md-dialog id="temperature-control-confirm-dialog">
+      <p id="temperature-control-confirm-message"></p>
+      <ul id="temperature-control-confirm-consequences"></ul>
+    </md-dialog>
     <div id="device-detail-overlay" hidden>
       <div id="device-detail-panel">
         <div id="device-detail-title"></div>
@@ -30,7 +34,13 @@ const buildDom = () => {
         <md-switch id="device-detail-managed"></md-switch>
         <md-switch id="device-detail-controllable"></md-switch>
         <div class="md-switch-row" id="device-detail-temperature-control-disabled-row" hidden>
-          <md-switch id="device-detail-temperature-control-disabled"></md-switch>
+          <md-filled-select id="device-detail-temperature-control-disabled">
+            <md-select-option value="mode"></md-select-option>
+            <md-select-option value="external"></md-select-option>
+            <md-select-option value="update_mode"></md-select-option>
+          </md-filled-select>
+          <small id="device-detail-temperature-control-hint"></small>
+          <small id="device-detail-temperature-control-power-hint" hidden></small>
           <small id="device-detail-temperature-control-disabled-smart-task-hint" hidden></small>
         </div>
         <div class="md-switch-row" id="device-detail-respect-external-off-row" hidden>
@@ -81,6 +91,18 @@ const buildDom = () => {
       </div>
     </div>
   `;
+  const dialog = temperatureConfirmation();
+  Object.assign(dialog, { open: false, returnValue: '', show: () => { dialog.open = true; } });
+};
+
+const temperatureConfirmation = () => document.querySelector('#temperature-control-confirm-dialog') as HTMLElement & {
+  open: boolean; returnValue: string;
+};
+const finishTemperatureConfirmation = (value?: string) => {
+  const dialog = temperatureConfirmation();
+  if (value !== undefined) dialog.returnValue = value;
+  dialog.open = false;
+  dialog.dispatchEvent(new Event('close'));
 };
 
 const buildBinaryDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
@@ -181,7 +203,7 @@ const temperatureControlRow = () => document.querySelector(
 ) as HTMLElement | null;
 const temperatureControlToggle = () => document.querySelector(
   '#device-detail-temperature-control-disabled',
-) as MdSwitchLike | null;
+) as (HTMLElement & { value: string; disabled: boolean }) | null;
 const temperatureControlSmartTaskHint = () => document.querySelector(
   '#device-detail-temperature-control-disabled-smart-task-hint',
 ) as HTMLElement | null;
@@ -384,7 +406,7 @@ describe('device detail "Disable temperature control"', () => {
     vi.clearAllMocks();
   });
 
-  it('offers the switch only to a temperature device with binary control', async () => {
+  it('offers temperature choices even without a binary control', async () => {
     await openPanel({ device: buildTemperatureBinaryDevice() });
     expect(temperatureControlRow()?.hidden).toBe(false);
 
@@ -392,12 +414,12 @@ describe('device detail "Disable temperature control"', () => {
     buildDom();
     mockSiblings();
     await openPanel({ device: buildTemperatureBinaryDevice({ binaryControllable: false, capabilities: ['target_temperature'] }) });
-    expect(temperatureControlRow()?.hidden).toBe(true);
+    expect(temperatureControlRow()?.hidden).toBe(false);
   });
 
   it('blocks opt-in during an active Smart task but keeps opt-out reachable', async () => {
     await openPanel({ device: buildTemperatureBinaryDevice(), activeSmartTask: true });
-    expect(temperatureControlToggle()?.disabled).toBe(true);
+    expect(temperatureControlToggle()?.querySelector('[value="external"]')?.hasAttribute('disabled')).toBe(true);
     expect(temperatureControlSmartTaskHint()?.hidden).toBe(false);
 
     vi.resetModules();
@@ -409,7 +431,7 @@ describe('device detail "Disable temperature control"', () => {
       temperatureControlDisabled: true,
     });
     expect(temperatureControlRow()?.hidden).toBe(false);
-    expect(temperatureControlToggle()?.selected).toBe(true);
+    expect(temperatureControlToggle()?.value).toBe('external');
     expect(temperatureControlToggle()?.disabled).toBe(false);
   });
 
@@ -430,7 +452,7 @@ describe('device detail "Disable temperature control"', () => {
       },
     } as typeof state.deferredObjectiveSettings;
     document.dispatchEvent(new CustomEvent('deferred-objectives-updated'));
-    expect(temperatureControlToggle()?.disabled).toBe(true);
+    expect(temperatureControlToggle()?.querySelector('[value="external"]')?.hasAttribute('disabled')).toBe(true);
 
     state.deferredObjectiveSettings = { version: 1, objectivesByDeviceId: {} };
     document.dispatchEvent(new CustomEvent('deferred-objectives-updated'));
@@ -444,28 +466,123 @@ describe('device detail "Disable temperature control"', () => {
     });
     const sw = temperatureControlToggle();
     if (!sw) throw new Error('temperature-control switch missing');
-    sw.selected = true;
+    sw.value = 'external';
     sw.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
-    expect(homey.__settingsStore.temperature_control_disabled_devices).toEqual({
-      'other-1': true,
-      'heater-1': true,
-    });
+    expect(homey.__settingsStore.temperature_control_modes).toEqual({ 'heater-1': 'external' });
+    expect(homey.__settingsStore.temperature_control_disabled_devices).toEqual({ 'other-1': true, stale: false });
   });
 
-  it('rejects a persisted map with an empty device id', async () => {
+  it('saves Update mode target while keeping mode targets editable and disabling price adjustments', async () => {
+    const { state, homey } = await openPanel({ device: buildTemperatureBinaryDevice(), priceEnabled: true });
+    homey.__settingsStore.temperature_control_modes = { other: 'external' };
+    const select = temperatureControlToggle();
+    if (!select) throw new Error('temperature control missing');
+    select.value = 'update_mode';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(temperatureConfirmation().open).toBe(true);
+    expect(select.value).toBe('mode');
+    expect(homey.__settingsStore.temperature_control_modes).toEqual({ other: 'external' });
+    expect(temperatureConfirmation().textContent).toContain('Price-based temperature adjustments will stop.');
+    finishTemperatureConfirmation('confirm');
+    await flushPromises();
+    expect(homey.__settingsStore.temperature_control_modes).toEqual({ other: 'external', 'heater-1': 'update_mode' });
+    expect(state.temperatureControlDisabledMap['heater-1']).toBe(false);
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(true);
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).selected).toBe(false);
+    expect(document.querySelector('#device-detail-temperature-control-power-hint')?.textContent).toContain('off and on');
+    const modeInput = document.querySelector<MdSwitchLike>('.detail-mode-temp[data-mode="Home"]');
+    expect(modeInput).not.toBeNull();
+    expect(modeInput?.disabled).toBe(false);
+  });
+
+  it('explains that following a temperature-only device removes power limiting', async () => {
+    await openPanel({ device: buildTemperatureBinaryDevice({
+      capabilities: ['target_temperature', 'measure_temperature'], binaryControl: undefined, binaryControllable: false,
+    }) });
+    const select = temperatureControlToggle()!;
+    select.value = 'update_mode';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(temperatureConfirmation().textContent).toContain('no longer be able to limit');
+    finishTemperatureConfirmation('confirm');
+    await flushPromises();
+    expect((document.querySelector('#device-detail-controllable') as MdSwitchLike).disabled).toBe(true);
+    expect(document.querySelector('#device-detail-temperature-control-power-hint')?.textContent).toContain('cannot limit');
+  });
+
+  it('blocks Update mode target while a Smart task needs temperature control', async () => {
+    const { homey } = await openPanel({ device: buildTemperatureBinaryDevice(), activeSmartTask: true });
+    const select = temperatureControlToggle()!;
+    expect(select.querySelector('[value="update_mode"]')?.hasAttribute('disabled')).toBe(true);
+    select.value = 'update_mode';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    expect(homey.__settingsStore.temperature_control_modes).toBeUndefined();
+  });
+
+  it('warns before replacing temperature limiting and leaves everything saved on Cancel', async () => {
+    const { state, homey } = await openPanel({ device: buildTemperatureBinaryDevice() });
+    const limiting = { 'heater-1': { action: 'set_temperature' as const, temperature: 16 } };
+    state.shedBehaviors = limiting;
+    homey.__settingsStore.overshoot_behaviors = limiting;
+    const select = temperatureControlToggle()!;
+    select.value = 'update_mode';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(temperatureConfirmation().open).toBe(true);
+    expect(temperatureConfirmation().textContent).toContain('turn this device off instead');
+    expect(homey.__settingsStore.temperature_control_modes).toBeUndefined();
+    finishTemperatureConfirmation('cancel');
+    await flushPromises();
+    expect(select.value).toBe('mode');
+    expect(homey.__settingsStore.temperature_control_modes).toBeUndefined();
+    expect(homey.__settingsStore.overshoot_behaviors).toEqual(limiting);
+  });
+
+  it('never reuses confirmation when a later dialog is dismissed', async () => {
+    const { state, homey } = await openPanel({ device: buildTemperatureBinaryDevice(), priceEnabled: true });
+    state.priceOptimizationSettings['heater-1'].surplusWilling = true;
+    const select = temperatureControlToggle()!;
+    select.value = 'update_mode';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(temperatureConfirmation().textContent).toContain('Solar-surplus temperature adjustments will stop.');
+    finishTemperatureConfirmation('confirm');
+    await flushPromises();
+    select.value = 'mode';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    expect(temperatureConfirmation().open).toBe(false);
+    expect(homey.__settingsStore.temperature_control_modes).toEqual({ 'heater-1': 'mode' });
+    select.value = 'external';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(temperatureConfirmation().returnValue).toBe('');
+    finishTemperatureConfirmation();
+    await flushPromises();
+    expect(homey.__settingsStore.temperature_control_modes).toEqual({ 'heater-1': 'mode' });
+  });
+
+  it('does not save a confirmation after the device panel closes', async () => {
+    const { homey } = await openPanel({ device: buildTemperatureBinaryDevice(), priceEnabled: true });
+    const select = temperatureControlToggle()!;
+    select.value = 'update_mode';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    document.querySelector<HTMLElement>('#device-detail-close')!.click();
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    finishTemperatureConfirmation('confirm');
+    await flushPromises();
+    expect(homey.__settingsStore.temperature_control_modes).toBeUndefined();
+  });
+
+  it('writes the new policy independently of a malformed legacy map', async () => {
     const { homey } = await openPanel({
       device: buildTemperatureBinaryDevice(),
       storedTemperatureControlDisabledMap: { '': true, 'other-1': true },
     });
     const sw = temperatureControlToggle();
     if (!sw) throw new Error('temperature-control switch missing');
-    sw.selected = true;
+    sw.value = 'external';
     sw.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
-    expect(homey.__settingsStore.temperature_control_disabled_devices).toEqual({
-      'heater-1': true,
-    });
+    expect(homey.__settingsStore.temperature_control_modes).toEqual({ 'heater-1': 'external' });
   });
 
   it('makes target-changing controls unavailable without deleting their settings', async () => {
@@ -477,7 +594,7 @@ describe('device detail "Disable temperature control"', () => {
     });
 
     expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(true);
-    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).selected).toBe(true);
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).selected).toBe(false);
     expect(document.querySelector<HTMLElement>('#device-detail-modes-section')?.hidden).toBe(false);
     expect((document.querySelector('.detail-mode-temp') as MdSwitchLike | null)?.disabled).toBe(true);
     expect((document.querySelector('.detail-mode-temp') as HTMLElement & { value?: string })?.value).toBe('22');
@@ -486,20 +603,24 @@ describe('device detail "Disable temperature control"', () => {
     expect(state.priceOptimizationSettings['heater-1']?.enabled).toBe(true);
   });
 
-  it('applies pending authority immediately and rolls it back on a failed save', async () => {
+  it('keeps the saved authority until a pending change succeeds', async () => {
     const { state, homey } = await openPanel({ device: buildTemperatureBinaryDevice(), priceEnabled: true });
-    homey.set.mockImplementationOnce((_key, _value, callback) => callback?.(new Error('save failed')));
+    const callbacks: Array<(error: Error | null) => void> = [];
+    homey.set.mockImplementationOnce((_key, _value, callback) => { if (callback) callbacks.push(callback); });
     const sw = temperatureControlToggle();
     if (!sw) throw new Error('temperature-control switch missing');
-    sw.selected = true;
+    sw.value = 'external';
     sw.dispatchEvent(new Event('change', { bubbles: true }));
 
-    expect(state.temperatureControlDisabledMap['heater-1']).toBe(true);
-    expect(sw.disabled).toBe(true);
-    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(true);
+    finishTemperatureConfirmation('confirm');
     await flushPromises();
     expect(state.temperatureControlDisabledMap['heater-1']).toBeUndefined();
-    expect(temperatureControlToggle()?.selected).toBe(false);
+    expect(sw.disabled).toBe(true);
+    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(false);
+    callbacks[0]?.(new Error('save failed'));
+    await flushPromises();
+    expect(state.temperatureControlDisabledMap['heater-1']).toBeUndefined();
+    expect(temperatureControlToggle()?.value).toBe('mode');
     expect(temperatureControlToggle()?.disabled).toBe(false);
     expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(false);
     expect(document.querySelector('#device-detail-modes-help')?.textContent).toContain('PELS will set');
@@ -518,8 +639,9 @@ describe('device detail "Disable temperature control"', () => {
 
     const first = temperatureControlToggle();
     if (!first) throw new Error('temperature-control switch missing');
-    first.selected = true;
+    first.value = 'external';
     first.dispatchEvent(new Event('change', { bubbles: true }));
+    finishTemperatureConfirmation('confirm');
     await flushPromises();
 
     const secondDevice = buildTemperatureBinaryDevice({ id: 'heater-2', name: 'Second heater' });
@@ -530,16 +652,19 @@ describe('device detail "Disable temperature control"', () => {
     openDeviceDetail('heater-2');
     const second = temperatureControlToggle();
     if (!second) throw new Error('second temperature-control switch missing');
-    second.selected = true;
+    second.value = 'external';
     second.dispatchEvent(new Event('change', { bubbles: true }));
 
-    expect(state.temperatureControlDisabledMap).toMatchObject({ 'heater-1': true, 'heater-2': true });
+    finishTemperatureConfirmation('confirm');
+    await flushPromises();
+    expect(second.disabled).toBe(true);
     callbacks[0]?.(null);
     await flushPromises();
 
-    expect(state.temperatureControlDisabledMap).toMatchObject({ 'heater-1': true, 'heater-2': true });
-    expect((document.querySelector('#device-detail-price-opt') as MdSwitchLike).disabled).toBe(true);
+    expect(state.temperatureControlDisabledMap['heater-1']).toBe(true);
+    expect(second.disabled).toBe(true);
     callbacks[1]?.(null);
     await flushPromises();
+    expect(state.temperatureControlDisabledMap).toMatchObject({ 'heater-1': true, 'heater-2': true });
   });
 });

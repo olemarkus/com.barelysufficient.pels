@@ -1,3 +1,4 @@
+import { hasTemperaturePolicyPowerControl } from '../../lib/device/temperatureControlPosture';
 /**
  * Producer-side wiring for `PlanInputDevice.residualKw` (chunks 3-4 of the
  * planner-detype refactor). `toPlanDevice` in `./toPlanDevice.ts` calls
@@ -22,10 +23,7 @@ import type {
   DecoratedDeviceSnapshot,
   MeasuredPowerObservedProbe,
   RestorePowerSource,
-  TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
-import type { ShedBehavior } from '../../lib/plan/planTypes';
-import { getSteppedLoadLowestActiveStep } from '../../lib/utils/deviceControlProfiles';
 import {
   resolveResidualKwRestore,
   resolveResidualKwShed,
@@ -43,64 +41,9 @@ import {
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { getPrimaryTargetCapability } from '../../lib/utils/targetCapabilities';
 
-export type ResidualKwForPlanDeviceShedBehavior =
-  | { action: 'turn_off' }
-  | { action: 'set_temperature'; temperature: number }
-  | { action: 'set_step'; stepId: string };
-
-/**
- * Project the owner's CONFIGURED shed behaviour onto the device it applies to.
- *
- * The configured value is a floor, not a decision: `set_step` carries no rung
- * (the producer never stores one), and `set_temperature` is denied outright when
- * the owner switched temperature control off or the device has no observed
- * temperature. This is the whole of that projection, and it is pure — the ctx
- * lookup stays at the `toPlanDevice` seam, so the fixture builders can ask the
- * SAME function rather than restating the two arms. A restated mirror already
- * dropped the denial arm once.
- */
-export function resolveResidualShedBehavior(
-  configured: ShedBehavior,
-  device: DecoratedDeviceSnapshot & TemperatureObservedProbe,
-): ResidualKwForPlanDeviceShedBehavior {
-  if (configured.action === 'set_temperature') {
-    // The setpoint arm — and only it — is denied when the owner switched
-    // temperature control off. Relaxing this to "the fence will catch it" would
-    // let a stale persisted setpoint shed reach the planner: a stepped device
-    // routes its release through `shed_release`, which would issue a `target`
-    // command the fence refuses, leaving the device shed with no way back.
-    // The first disjunct cannot decide anything in production:
-    // `projectTemperatureDeniedDevice` (applied in `toPlanDevice.ts`) already blanks
-    // `targets`/`temperature` and stamps `deviceType: 'onoff'` for a
-    // temperature-disabled device before this runs. It is kept because fixture
-    // callers reach this function directly, without that projection — so the
-    // denial must hold here too rather than rely on a caller that may not exist.
-    if (device.temperatureControlDisabled === true || device.temperature === undefined) {
-      return resolveShedBehaviorWithoutTemperature(device);
-    }
-    return { action: 'set_temperature', temperature: configured.temperature };
-  }
-  if (configured.action === 'set_step') {
-    // The rung is the device's own — a configured step id used to take
-    // precedence here, but nothing ever wrote one.
-    const stepId = isSteppedLoadSnapshot(device)
-      ? getSteppedLoadLowestActiveStep(device.steppedLoadProfile)?.id
-      : undefined;
-    return stepId ? { action: 'set_step', stepId } : { action: 'turn_off' };
-  }
-  return { action: 'turn_off' };
-}
-
-function resolveShedBehaviorWithoutTemperature(
-  device: DecoratedDeviceSnapshot,
-): ResidualKwForPlanDeviceShedBehavior {
-  if (device.binaryControl !== undefined) return { action: 'turn_off' };
-  if (!isSteppedLoadSnapshot(device)) return { action: 'turn_off' };
-  const lowestActiveStep = getSteppedLoadLowestActiveStep(device.steppedLoadProfile);
-  return lowestActiveStep
-    ? { action: 'set_step', stepId: lowestActiveStep.id }
-    : { action: 'turn_off' };
-}
+export { resolveResidualShedBehavior } from '../../lib/device/temperatureControlPosture';
+export type { ResidualKwForPlanDeviceShedBehavior } from '../../lib/device/temperatureControlPosture';
+import type { ResidualKwForPlanDeviceShedBehavior } from '../../lib/device/temperatureControlPosture';
 
 export function buildResidualKwForPlanDevice(params: {
   device: DecoratedDeviceSnapshot & MeasuredPowerObservedProbe;
@@ -125,7 +68,7 @@ export function buildResidualKwForPlanDevice(params: {
     // restore ladder; the raw field never travels past this seam.
     restoreFallback: getHighestKnownPowerKw({ ...device, currentDrawKw }),
   });
-  return { shed, restore };
+  return { shed: hasTemperaturePolicyPowerControl(device) ? shed : 0, restore };
 }
 
 function toRestoreSteppedLoad(

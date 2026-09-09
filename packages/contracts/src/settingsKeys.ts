@@ -139,3 +139,5 @@ export const MAIN_HOME_ID = 'main';
 export const homeScopedSettingsKey = (baseKey: string, homeId: HomeId): string => (
   homeId === MAIN_HOME_ID ? baseKey : `${baseKey}:${homeId}`
 );
+
+export const TEMPERATURE_CONTROL_MODES = 'temperature_control_modes';

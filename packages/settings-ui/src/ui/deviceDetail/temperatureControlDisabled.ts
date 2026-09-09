@@ -1,123 +1,118 @@
-import { TEMPERATURE_CONTROL_DISABLED_DEVICES } from '../../../../contracts/src/settingsKeys.ts';
+import { manualTemperaturePowerHint } from './temperaturePolicy.ts';
+import { confirmTemperatureControlChange } from './temperatureControlConfirmation.ts';
+import { TEMPERATURE_CONTROL_MODES } from '../../../../contracts/src/settingsKeys.ts';
+import {
+  readTemperatureControlModes,
+  resolveTemperatureControlMode,
+  temperatureControlDisabledDevices,
+  type TemperatureControlMode,
+  type TemperatureControlModes,
+} from '../../../../shared-domain/src/settings/temperatureControl.ts';
 import { state, hasActiveDeadlineObjective } from '../state.ts';
 import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import type { MdFilledSelectElement } from '../dom.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 
-const q = <T extends Element>(selector: string): T | null => document.querySelector<T>(selector);
-const rowEl = q<HTMLElement>('#device-detail-temperature-control-disabled-row');
-const toggleEl = q<HTMLElement & { selected: boolean; disabled: boolean }>(
-  '#device-detail-temperature-control-disabled',
+const rowEl = document.querySelector<HTMLElement>('#device-detail-temperature-control-disabled-row');
+const selectEl = document.querySelector<MdFilledSelectElement>('#device-detail-temperature-control-disabled');
+const hintEl = document.querySelector<HTMLElement>('#device-detail-temperature-control-hint');
+const powerHintEl = document.querySelector<HTMLElement>('#device-detail-temperature-control-power-hint');
+const smartTaskHintEl = document.querySelector<HTMLElement>(
+  '#device-detail-temperature-control-disabled-smart-task-hint',
 );
-const smartTaskHintEl = q<HTMLElement>('#device-detail-temperature-control-disabled-smart-task-hint');
 const runSerializedWrite = createSerializedAsyncRunner();
-const pendingSelectionByDeviceId = new Map<string, boolean>();
+const pendingSelections = new Map<string, TemperatureControlMode>();
 
-const readStrictBooleanMap = (value: unknown): Record<string, boolean> | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const entries = Object.entries(value);
-  if (!entries.every(([deviceId, entry]) => deviceId.length > 0 && typeof entry === 'boolean')) return null;
-  return Object.fromEntries(entries.filter(([, entry]) => entry === true));
-};
-
-const withDeviceSelection = (
-  currentMap: Record<string, boolean>,
-  deviceId: string,
-  selected: boolean,
-): Record<string, boolean> => {
-  const nextMap = Object.fromEntries(
-    Object.entries(currentMap).filter(([id, value]) => value === true && id !== deviceId),
-  );
-  if (selected) nextMap[deviceId] = true;
-  return nextMap;
-};
-
-const overlayPendingSelections = (persistedMap: Record<string, boolean>): Record<string, boolean> => {
-  let nextMap = persistedMap;
-  pendingSelectionByDeviceId.forEach((selected, deviceId) => {
-    nextMap = withDeviceSelection(nextMap, deviceId, selected);
-  });
-  return nextMap;
-};
-
-const hasActiveSmartTask = (deviceId: string): boolean => hasActiveDeadlineObjective(deviceId);
-
-const canOfferTemperatureControlSwitch = (
-  device: SettingsUiDeviceDetailItem | null,
-  selected: boolean,
-): boolean => {
-  if (selected) return true;
-  if (!supportsTemperatureDevice(device)) return false;
-  return device?.capabilities?.includes('onoff') === true
-    || device?.binaryControllable === true;
+const HINTS: Record<TemperatureControlMode, string> = {
+  mode: 'PELS uses the current mode’s target and adjusts it for prices and power limits. '
+    + 'External changes are changed back.',
+  external: 'PELS never changes the temperature. Other power controls work if this device has them. '
+    + 'If PELS has lowered the target, it stays lowered until you adjust it.',
+  update_mode: 'Changes on the device, in Homey, or from another app or Flow update this device’s target '
+    + 'in the current mode. PELS uses saved targets when modes change. '
+    + 'Price and solar temperature adjustments are not applied.',
 };
 
 export const syncTemperatureControlDisabledRow = (params: {
   deviceId: string | null;
   getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
 }): void => {
-  if (!rowEl || !toggleEl) return;
-  const { deviceId } = params;
-  const device = deviceId ? params.getDeviceById(deviceId) : null;
-  const persistedSelection = deviceId !== null && state.temperatureControlDisabledMap[deviceId] === true;
-  const pendingSelection = deviceId === null ? undefined : pendingSelectionByDeviceId.get(deviceId);
-  const selected = pendingSelection ?? persistedSelection;
-  const showRow = deviceId !== null && canOfferTemperatureControlSwitch(device, selected);
-  rowEl.hidden = !showRow;
-  if (!showRow || deviceId === null) {
-    toggleEl.selected = false;
-    toggleEl.disabled = true;
-    if (smartTaskHintEl) smartTaskHintEl.hidden = true;
-    return;
+  if (!rowEl || !selectEl) return;
+  const device = params.deviceId ? params.getDeviceById(params.deviceId) : null;
+  rowEl.hidden = !supportsTemperatureDevice(device);
+  if (rowEl.hidden || !params.deviceId) return;
+  const id = params.deviceId;
+  const selected = pendingSelections.get(id)
+    ?? resolveTemperatureControlMode(state.temperatureControlModes, state.temperatureControlDisabledMap, id);
+  selectEl.value = selected;
+  selectEl.disabled = pendingSelections.has(id);
+  const hasTask = hasActiveDeadlineObjective(id);
+  for (const value of ['external', 'update_mode']) {
+    selectEl.querySelector(`[value="${value}"]`)?.toggleAttribute('disabled', hasTask && selected !== value);
   }
-  const blockedBySmartTask = !selected && hasActiveSmartTask(deviceId);
-  toggleEl.selected = selected;
-  toggleEl.disabled = pendingSelection !== undefined || blockedBySmartTask;
-  if (smartTaskHintEl) smartTaskHintEl.hidden = !blockedBySmartTask;
+  if (powerHintEl) {
+    powerHintEl.hidden = selected === 'mode';
+    powerHintEl.textContent = manualTemperaturePowerHint(device);
+  }
+  if (hintEl) hintEl.textContent = HINTS[selected];
+  if (smartTaskHintEl) smartTaskHintEl.hidden = !hasTask || selected === 'external';
 };
 
 type HandlerDeps = {
   getCurrentDetailDeviceId: () => string | null;
+  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
   refreshSharedDeviceViews: () => void;
   refreshOpenDeviceDetail: () => void;
 };
 
 export const initTemperatureControlDisabledHandler = (deps: HandlerDeps): void => {
-  toggleEl?.addEventListener('change', () => {
-    const deviceId = deps.getCurrentDetailDeviceId();
-    if (!deviceId || !toggleEl) return;
-    const nextSelected = toggleEl.selected;
-    const previousSelected = state.temperatureControlDisabledMap[deviceId] === true;
-    const persistedFallback = state.temperatureControlDisabledMap;
-    pendingSelectionByDeviceId.set(deviceId, nextSelected);
-    state.temperatureControlDisabledMap = withDeviceSelection(
-      state.temperatureControlDisabledMap,
-      deviceId,
-      nextSelected,
-    );
+  const saveSelection = (deviceId: string, next: TemperatureControlMode): void => {
+    pendingSelections.set(deviceId, next);
     deps.refreshOpenDeviceDetail();
-    void runSerializedWrite(async () => writeFreshSetting<Record<string, boolean>>({
-      key: TEMPERATURE_CONTROL_DISABLED_DEVICES,
+    void runSerializedWrite(async () => writeFreshSetting<TemperatureControlModes>({
+      key: TEMPERATURE_CONTROL_MODES,
       context: 'device detail',
-      logMessage: 'Failed to update disabled temperature control device',
-      toastMessage: 'Failed to update "Disable temperature control".',
-      fallbackValue: persistedFallback,
-      readFresh: readStrictBooleanMap,
-      mutate: (currentMap) => withDeviceSelection(currentMap, deviceId, nextSelected),
-      commit: (nextMap) => {
-        pendingSelectionByDeviceId.delete(deviceId);
-        state.temperatureControlDisabledMap = overlayPendingSelections(nextMap);
+      logMessage: 'Failed to update temperature control',
+      toastMessage: 'Failed to update temperature control.',
+      fallbackValue: state.temperatureControlModes,
+      readFresh: readTemperatureControlModes,
+      mutate: (current) => ({ ...current, [deviceId]: next }),
+      commit: (modes) => {
+        pendingSelections.delete(deviceId);
+        state.temperatureControlModes = modes;
+        state.temperatureControlDisabledMap = temperatureControlDisabledDevices(
+          modes, state.temperatureControlDisabledMap,
+        );
         deps.refreshSharedDeviceViews();
         deps.refreshOpenDeviceDetail();
       },
       rollback: () => {
-        pendingSelectionByDeviceId.delete(deviceId);
-        state.temperatureControlDisabledMap = overlayPendingSelections(withDeviceSelection(
-          state.temperatureControlDisabledMap,
-          deviceId,
-          previousSelected,
-        ));
+        pendingSelections.delete(deviceId);
         deps.refreshOpenDeviceDetail();
       },
     }));
+  };
+  selectEl?.addEventListener('change', async () => {
+    const deviceId = deps.getCurrentDetailDeviceId();
+    const next = readTemperatureControlModes({ selected: selectEl.value })?.selected;
+    if (!deviceId || !next || (next !== 'mode' && hasActiveDeadlineObjective(deviceId))) {
+      deps.refreshOpenDeviceDetail();
+      return;
+    }
+    const previous = resolveTemperatureControlMode(
+      state.temperatureControlModes, state.temperatureControlDisabledMap, deviceId,
+    );
+    if (next === previous) return;
+    // Keep the saved selection and its effective controls visible until confirmed.
+    deps.refreshOpenDeviceDetail();
+    const device = deps.getDeviceById(deviceId);
+    if (!device) return;
+    if (previous === 'mode' && next !== 'mode'
+      && !await confirmTemperatureControlChange(device, next)) return;
+    if (deps.getCurrentDetailDeviceId() !== deviceId
+      || (next !== 'mode' && hasActiveDeadlineObjective(deviceId))
+      || resolveTemperatureControlMode(state.temperatureControlModes, state.temperatureControlDisabledMap, deviceId)
+        !== previous) return;
+    saveSelection(deviceId, next);
   });
 };

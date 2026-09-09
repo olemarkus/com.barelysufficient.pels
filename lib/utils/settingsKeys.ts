@@ -243,3 +243,6 @@ export const CURTAILMENT_HOLD_STATE = 'curtailment_hold_state';
 // install from a transient settings-read miss (see `evCarLinkStore.ts`).
 export const EV_CAR_LINK_STATE = 'ev_car_link_state';
 export const EV_CAR_LINK_STATE_INITIALIZED = 'ev_car_link_state_initialized';
+
+// Runtime duplicate: contracts sources are removed from the packaged app.
+export const TEMPERATURE_CONTROL_MODES = 'temperature_control_modes';

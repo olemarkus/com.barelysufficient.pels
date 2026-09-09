@@ -205,8 +205,8 @@ const setDeviceDetailControlStates = (deviceId: string) => {
     deviceDetailManaged.disabled = !controlState.canManageDevice;
   }
   if (deviceDetailControllable) {
-    deviceDetailControllable.selected = controlState.supportsPower && state.controllableMap[deviceId] === true;
-    deviceDetailControllable.disabled = !controlState.supportsPower || !controlState.isManaged;
+    deviceDetailControllable.selected = controlState.canLimitPower && state.controllableMap[deviceId] === true;
+    deviceDetailControllable.disabled = !controlState.canLimitPower || !controlState.isManaged;
   }
   const priceConfig = state.priceOptimizationSettings[deviceId];
   // Kind-inapplicable, not gated: a device with no temperature target can never
@@ -220,7 +220,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
     // a home where the surplus engine has nothing to allocate.
     //
     deviceDetailSurplusOptRow.hidden
-      = !(surplusControlVisibleFor(deviceId) && controlState.canControlTemperature);
+      = !(surplusControlVisibleFor(deviceId) && controlState.supportsTemperature);
   }
   // Binary sibling: the "Run on solar surplus" dump-load posture row (solarSurplus.ts
   // owns the gate — managed binary device, solar present, not temperature/stepped/EV).
@@ -499,6 +499,7 @@ export const initDeviceDetailHandlers = () => {
   initRespectExternalOffHandler({ getCurrentDetailDeviceId, refreshSharedDeviceViews, refreshOpenDeviceDetail });
   initTemperatureControlDisabledHandler({
     getCurrentDetailDeviceId,
+    getDeviceById,
     refreshSharedDeviceViews,
     refreshOpenDeviceDetail,
   });

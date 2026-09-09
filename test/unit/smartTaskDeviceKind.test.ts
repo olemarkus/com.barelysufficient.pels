@@ -35,6 +35,11 @@ describe('resolveSmartTaskDeviceKind', () => {
     })).toBeNull();
   });
 
+  it('rejects temperature tasks while following manual targets', () => {
+    expect(resolveSmartTaskDeviceKind({ deviceType: 'temperature',
+      temperature: { currentTemperature: 18, target: { value: 20 } }, temperatureAdjustmentsDisabled: true })).toBeNull();
+  });
+
   it('keeps EV tasks eligible when an EV also carries the temperature marker', () => {
     expect(resolveSmartTaskDeviceKind({
       deviceClass: 'evcharger',

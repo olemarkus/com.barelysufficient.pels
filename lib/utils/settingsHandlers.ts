@@ -41,6 +41,7 @@ import {
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
+  TEMPERATURE_CONTROL_MODES,
   OPERATING_MODE_SETTING,
   HOMEY_ENERGY_METER_DEVICE_ID,
   parseHomeScopedSettingsKey,
@@ -270,7 +271,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
     // first await immediately, so rapid un-awaited POWER_SOURCE events cannot
     // collapse back to the original value before the registry observes them.
     if (key === POWER_SOURCE) deps.onHomeRuntimePowerSourceObserved?.();
-    if (key === TEMPERATURE_CONTROL_DISABLED_DEVICES) {
+    if ([TEMPERATURE_CONTROL_DISABLED_DEVICES, TEMPERATURE_CONTROL_MODES].includes(key)) {
       deps.onTemperatureControlPolicyObserved?.();
     }
     if (key === HOMEY_ENERGY_METER_DEVICE_ID) {
@@ -389,6 +390,12 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     // boundary (`lib/device/transport/carAssociation.ts`), so nothing needs
     // re-parsing or replanning — the next read resolves against the new set.
     [EV_CAR_ASSOCIATIONS]: async () => { deps.loadCapacitySettings(); },
+    [TEMPERATURE_CONTROL_MODES]: async () => {
+      deps.loadCapacitySettings();
+      await refreshSnapshotWithLog(deps, 'temperature_control_mode_change');
+      await rebuildPlanFromSettings(deps, TEMPERATURE_CONTROL_MODES);
+      deps.rebuildAllHomeRuntimePlansForDeviceControlChange?.();
+    },
     [TEMPERATURE_CONTROL_DISABLED_DEVICES]: async () => {
       // Load synchronously before the first await: every actuator reads this
       // live map at its final setup-layer fence, so an already-queued target or

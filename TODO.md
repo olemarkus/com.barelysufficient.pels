@@ -147,17 +147,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Stamp half: prod log review + adversarial review, 2026-07-25; re-confirmed while shipping
       2.17.5. [P1]
 
-- [ ] **Disabling temperature control on a currently-limited thermostat strands the shed
-      setpoint.** The command fence (`setup/appInit/buildDeviceActuator.ts`) refuses every setpoint
-      write once the toggle is on — including the restore/terminal-release write-back —
-      and `toPlanDevice` strips the target axis, so a thermostat shed to its floor (e.g. 12 °C)
-      stays there indefinitely with nothing warning the owner; the UI blocks the flip only for an
-      active smart task (`temperatureControlDisabled.ts:72-75`), not for an active setpoint shed.
-      Either write the mode target back once before fencing, or show a warning line on the toggle
-      while the device is limited via setpoint. docs/technical.md documents "does not change the
-      target", so this is a UX/safety follow-up, not a contract break. Source: 2026-08-02 release
-      review, settings-UI logic pass. [P1]
-
 - [ ] **A shed device waiting out a restore gate can carry no gate reason, so it defaults to
       `capacity` — and a reserve-blocked hold is attributed to the wrong counting cause the same
       way.**
@@ -1921,3 +1910,12 @@ commuter (`notes/personas.md`).*
 
 *Demoted from P2 (2026-06-03 scrutiny pass) — real product / future-capability work with a
 persona but no current support-cost pressure; reframed to the P3 bar.*
+
+## Post-release docs update
+
+- [ ] Update `docs/configuration.md` and `docs/technical.md` for the Temperature
+  control selector: Use mode target, Leave temperature to you, and Update mode
+  target. The observation opt-in saves the chosen temperature literally; price/solar
+  offsets and temperature limiting are unavailable, while modes still apply saved
+  targets and other power controls remain usable. Existing disable settings retain
+  their meaning. See `notes/temperature-ownership.md`.

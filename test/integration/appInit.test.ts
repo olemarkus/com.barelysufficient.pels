@@ -141,6 +141,10 @@ describe('app init plan service wiring', () => {
         getConfiguredMeterSources: () => configuredMeterSources,
       } as unknown as NonNullable<AppContext['homeMembership']>,
     });
+    // A healthy default policy leaves this test focused on the ownership fence.
+    vi.mocked(engineCtx.homey.settings.get).mockImplementation((key) => (
+      key === 'temperature_control_modes' ? {} : null
+    ));
     createPlanEngine(engineCtx, buildMainHomeScope(engineCtx, () => false), { capacityGuard: engineCtx.capacityGuard });
     const actuator = (
       capturedPlanExecutorDeps.current as unknown as { actuator: Actuator }

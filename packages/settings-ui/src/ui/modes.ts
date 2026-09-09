@@ -45,7 +45,7 @@ import {
 import { applyCurrentModeRename } from './currentModes.ts';
 import { assertWritableModeDeviceTargets, readModeCatalogPair } from './modeCatalogMaps.ts';
 import {
-  readBooleanSettingMap, readModeAliases, readModeSettings,
+  readBooleanSettingMap, readModeAliases, readModeSettings, applyTemperatureControlSettings,
   readStrictBooleanSettingMap, type ModeSettingsRead,
 } from './modeSettingsRead.ts';
 import { prepareModeHomeLoad, showModeCatalogUnavailable } from './modeLoadSurface.ts';
@@ -113,8 +113,7 @@ const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
   state.budgetExemptMap = readBooleanSettingMap(read.budgetExempt);
   state.respectExternalOffMap = readStrictBooleanSettingMap(read.respectExternalOff)
     ?? state.respectExternalOffMap;
-  state.temperatureControlDisabledMap = readStrictBooleanSettingMap(read.temperatureControlDisabled)
-    ?? state.temperatureControlDisabledMap;
+  applyTemperatureControlSettings(read);
   state.nativeWiringMap = readBooleanSettingMap(read.nativeWiring);
   state.modeAliases = readModeAliases(read.aliases);
   renderModeOptions();

@@ -1,3 +1,4 @@
+import { supportsTemperatureAdjustments, supportsPowerLimiting } from './temperaturePolicy.ts';
 import {
   deviceDetailShedAction,
   deviceDetailShedHint,
@@ -14,7 +15,6 @@ import { logSettingsError } from '../logging.ts';
 import { resolveManagedState, state } from '../state.ts';
 import {
   supportsPowerDevice,
-  supportsTemperatureControlDevice,
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
@@ -270,7 +270,7 @@ const resolveVisibleShedAction = (params: {
   }
   if (
     deviceDetailShedAction.value === 'set_temperature'
-    && supportsTemperatureControlDevice(device)
+    && supportsTemperatureAdjustments(device)
     && isShedActionOptionVisible('set_temperature')
   ) {
     return 'set_temperature';
@@ -282,7 +282,7 @@ const resolveShedControlCapabilities = (params: {
   device: SettingsUiDeviceDetailItem | null;
 }) => {
   const { device } = params;
-  const supportsTemperature = supportsTemperatureControlDevice(device);
+  const supportsTemperature = supportsTemperatureAdjustments(device);
   const supportsPower = supportsPowerDevice(device);
   const forceTurnOffOnly = hasEvTargetPowerPreset(device);
   // The step arm is its own axis: "Disable temperature control" denies the
@@ -316,6 +316,12 @@ const isPowerLimitControlOff = (
   && state.controllableMap[deviceId] !== true
 );
 
+const resolveUnavailablePowerLimitingStatement = (device: SettingsUiDeviceDetailItem | null, noun: string): string => (
+  supportsPowerDevice(device)
+    ? 'PELS cannot limit this device without changing its temperature.'
+    : `PELS does not limit this ${noun}.`
+);
+
 const resolveShedStatement = (params: {
   device: SettingsUiDeviceDetailItem | null;
   deviceId: string;
@@ -324,8 +330,8 @@ const resolveShedStatement = (params: {
   const { device, deviceId, shedControls } = params;
   const noun = resolveDeviceDetailKind(device) === 'ev_charger' ? 'charger' : 'device';
 
-  if (!supportsPowerDevice(device)) {
-    return `PELS does not limit this ${noun}.`;
+  if (!supportsPowerLimiting(device)) {
+    return resolveUnavailablePowerLimitingStatement(device, noun);
   }
   if (isPowerLimitControlOff(device, deviceId)) {
     return `Power-limit control is off — PELS will not limit this ${noun}.`;
@@ -486,7 +492,7 @@ const saveShedBehavior = async (params: {
       && deviceDetailShedAction?.value === 'set_step'
     ) {
       nextBehavior = { action: 'set_step' };
-    } else if (supportsTemperatureControlDevice(device)) {
+    } else if (supportsTemperatureAdjustments(device)) {
       const { behavior, updateTempInput } = resolveTemperatureShedBehavior({
         deviceId,
         getDeviceById: params.getDeviceById,

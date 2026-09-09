@@ -1,3 +1,4 @@
+import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
@@ -188,6 +189,9 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   const userdataDatabase = openUserdataDatabase(IN_MEMORY_DATABASE);
   const trackerStore = createTrackerStore(userdataDatabase);
   const context: AppContext = {
+    observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
+      homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
+    ),
     startupBootstrap: undefined,
     getPvForecastSourceUiStatus: () => ({ kind: 'unknown' }),
     homey,

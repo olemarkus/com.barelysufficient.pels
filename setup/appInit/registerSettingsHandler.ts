@@ -12,6 +12,8 @@ export const registerSettingsHandler = (params: {
 }): (() => void) => {
   const settingsHandler = initSettingsHandlerForApp(params.ctx, {
     ...buildHomeRuntimeSettingsHooks(params.getHomeRuntimeRegistry),
+    consumeObservedModeTargetChange:
+      params.ctx.observedTemperatureModeUpdates.consumeSettingChange.bind(params.ctx.observedTemperatureModeUpdates),
     onHomeyEnergyMeterObserved: () => params.ctx.homeyEnergyHelpers.invalidate(),
     onPvForecastSourceObserved: params.onPvForecastSourceObserved,
     onMainMeterSelectionObserved: () => params.requestMainAuthorityRecovery(),

@@ -372,6 +372,10 @@ md-text-button {
   font-weight: var(--font-weight-bold);
 }
 
+:where(md-dialog > [slot="actions"]) md-text-button {
+  --md-sys-color-primary: var(--pels-text-primary);
+}
+
 /* Multiple meters buttons: restore the M3 lead/trail padding on the host
    boxes — Homey's host stylesheet opens with a universal `* { padding: 0 }`
    reset that beats the components' own :host padding, collapsing labels to
@@ -1201,6 +1205,31 @@ md-primary-tab.tab[active] {
 .field__hint--alert {
   color: var(--color-state-warning-text);
   font-weight: var(--font-weight-medium);
+}
+
+/* Homey's reset reaches the dialog host and slotted content. Restore Material's
+   centering and spacing here; shadow-root defaults lose to host-page rules. */
+md-dialog {
+  margin: auto;
+}
+
+md-dialog > [slot="headline"] {
+  padding: var(--spacing-6) var(--spacing-6) 0;
+}
+
+md-dialog > [slot="content"] {
+  padding: var(--spacing-6);
+}
+
+md-dialog:has(> [slot="actions"]) > [slot="content"] {
+  padding-block-end: var(--spacing-2);
+}
+
+md-dialog > [slot="actions"] {
+  display: flex;
+  gap: var(--spacing-2);
+  justify-content: flex-end;
+  padding: var(--spacing-4) var(--spacing-6) var(--spacing-6);
 }
 
 /* Promoted computed-result row: the payoff number of a settings card, in

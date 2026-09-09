@@ -1,3 +1,4 @@
+import { supportsTemperatureAdjustments, temperatureAdjustmentGateHint } from './temperaturePolicy.ts';
 import {
   deviceDetailCheapDelta,
   deviceDetailDeltaGateHint,
@@ -7,7 +8,6 @@ import {
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
 import {
-  supportsTemperatureControlDevice,
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
@@ -59,11 +59,12 @@ export const setDeviceDetailDeltaValues = (deviceId: string) => {
 // temperature target at all) hide the section outright.
 const resolveDeltaGateHint = (params: {
   canControlTemperature: boolean;
+  disabledHint: string;
   isManaged: boolean;
   selected: boolean;
 }): string | null => {
   if (!params.canControlTemperature) {
-    return 'Temperature control is off for this device — these values are kept but not applied.';
+    return params.disabledHint;
   }
   if (!params.isManaged) return 'Turn on Managed by PELS in Setup to use price response.';
   if (!params.selected) {
@@ -86,7 +87,8 @@ export const updateDeltaSectionVisibility = (params: {
 
   const isManaged = params.currentDetailDeviceId ? resolveManagedState(params.currentDetailDeviceId) : false;
   const gateHint = resolveDeltaGateHint({
-    canControlTemperature: supportsTemperatureControlDevice(device),
+    canControlTemperature: supportsTemperatureAdjustments(device),
+    disabledHint: temperatureAdjustmentGateHint(device),
     isManaged,
     selected: deviceDetailPriceOpt.selected,
   });
@@ -117,7 +119,7 @@ export const initDeviceDetailPriceOptHandlers = (params: {
     if (!deviceId) return;
 
     const device = params.getDeviceById(deviceId);
-    if (!supportsTemperatureControlDevice(device)) return;
+    if (!supportsTemperatureAdjustments(device)) return;
 
     const { enabled, cheapDelta, expensiveDelta } = readPriceOptInputs();
     // Snapshot only this device's three fields before the optimistic mutation
