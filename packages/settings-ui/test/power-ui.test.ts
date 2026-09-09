@@ -179,8 +179,12 @@ describe('power page stats (buckets-only)', () => {
       },
     });
 
-    const { getPowerUsage } = await import('../src/ui/power.ts');
-    const entries = await getPowerUsage();
+    const { getPowerUsageFromRead } = await import('../src/ui/power.ts');
+    const { readUsagePower } = await import('../src/ui/usagePowerRead.ts');
+    const read = await readUsagePower();
+    expect(read.state).toBe('served');
+    if (read.state !== 'served') throw new Error('Expected served power data');
+    const entries = getPowerUsageFromRead(read);
 
     expect(entries).toHaveLength(1);
     expect(entries[0]?.kWh).toBe(0);
@@ -472,8 +476,12 @@ describe('power page stats (buckets-only)', () => {
       controlledBuckets: { [iso]: 1.1 },
     });
 
-    const { getPowerUsage } = await import('../src/ui/power.ts');
-    const entries = await getPowerUsage();
+    const { getPowerUsageFromRead } = await import('../src/ui/power.ts');
+    const { readUsagePower } = await import('../src/ui/usagePowerRead.ts');
+    const read = await readUsagePower();
+    expect(read.state).toBe('served');
+    if (read.state !== 'served') throw new Error('Expected served power data');
+    const entries = getPowerUsageFromRead(read);
 
     expect(entries.length).toBe(1);
     expect(entries[0].kWh).toBeCloseTo(2.5, 6);
@@ -488,8 +496,12 @@ describe('power page stats (buckets-only)', () => {
       hourlySampleCounts: { [iso]: 3 },
     });
 
-    const { getPowerUsage } = await import('../src/ui/power.ts');
-    const entries = await getPowerUsage();
+    const { getPowerUsageFromRead } = await import('../src/ui/power.ts');
+    const { readUsagePower } = await import('../src/ui/usagePowerRead.ts');
+    const read = await readUsagePower();
+    expect(read.state).toBe('served');
+    if (read.state !== 'served') throw new Error('Expected served power data');
+    const entries = getPowerUsageFromRead(read);
 
     expect(entries).toHaveLength(1);
     expect(entries[0].hour.toISOString()).toBe(iso);
@@ -508,8 +520,12 @@ describe('power page stats (buckets-only)', () => {
       }],
     });
 
-    const { getPowerUsage } = await import('../src/ui/power.ts');
-    const entries = await getPowerUsage();
+    const { getPowerUsageFromRead } = await import('../src/ui/power.ts');
+    const { readUsagePower } = await import('../src/ui/usagePowerRead.ts');
+    const read = await readUsagePower();
+    expect(read.state).toBe('served');
+    if (read.state !== 'served') throw new Error('Expected served power data');
+    const entries = getPowerUsageFromRead(read);
 
     expect(entries).toHaveLength(1);
     expect(entries[0].unreliable).toBe(true);
@@ -526,8 +542,12 @@ describe('power page stats (buckets-only)', () => {
       }],
     });
 
-    const { getPowerUsage } = await import('../src/ui/power.ts');
-    const entries = await getPowerUsage();
+    const { getPowerUsageFromRead } = await import('../src/ui/power.ts');
+    const { readUsagePower } = await import('../src/ui/usagePowerRead.ts');
+    const read = await readUsagePower();
+    expect(read.state).toBe('served');
+    if (read.state !== 'served') throw new Error('Expected served power data');
+    const entries = getPowerUsageFromRead(read);
 
     expect(entries).toHaveLength(1);
     expect(entries[0].unreliable).toBe(false);
@@ -544,8 +564,12 @@ describe('power page stats (buckets-only)', () => {
       }],
     });
 
-    const { getPowerUsage } = await import('../src/ui/power.ts');
-    const entries = await getPowerUsage();
+    const { getPowerUsageFromRead } = await import('../src/ui/power.ts');
+    const { readUsagePower } = await import('../src/ui/usagePowerRead.ts');
+    const read = await readUsagePower();
+    expect(read.state).toBe('served');
+    if (read.state !== 'served') throw new Error('Expected served power data');
+    const entries = getPowerUsageFromRead(read);
 
     expect(entries).toHaveLength(1);
     expect(entries[0].unreliable).toBe(true);

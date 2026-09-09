@@ -1,6 +1,5 @@
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../contracts/src/dailyBudgetTypes';
 import {
-  resolveBudgetPlannedDayKWh,
   resolveChartData,
   resolveComparisonDay,
   resolveConfidenceData,
@@ -727,15 +726,6 @@ describe('resolveHeroRecourse', () => {
     expect(resolveHeroRecourse(payload, 'today', 'tight')).toBeNull();
     expect(resolveHeroRecourse(payload, 'yesterday', 'over')).toBeNull();
     expect(resolveHeroRecourse(null, 'today', 'over')).toBeNull();
-  });
-});
-
-describe('resolveBudgetPlannedDayKWh', () => {
-  it('uses the actual planned bucket total for day plan summaries', () => {
-    const payload = {
-      buckets: { plannedKWh: [2, 1.5, 0.5] },
-    } as unknown as DailyBudgetDayPayload;
-    expect(resolveBudgetPlannedDayKWh(payload)).toBe(4);
   });
 });
 

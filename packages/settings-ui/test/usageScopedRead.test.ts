@@ -288,9 +288,9 @@ describe('Usage panel scope states', () => {
       },
     });
     await selectArea();
-    const { getPowerUsage, renderPowerStats } = await import('../src/ui/power.ts');
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
 
-    await renderPowerStats();
+    await refreshPowerData();
 
     const panel = document.getElementById('usage-panel')!;
     expect(panel.dataset.scopeRead).toBe('unavailable');
@@ -303,9 +303,9 @@ describe('Usage panel scope states', () => {
     expect(document.getElementById('usage-scope-unavailable-body')!.textContent)
       .toBe(HOME_SCOPE_USAGE_UNAVAILABLE_BODY);
     // No fabricated figures anywhere: the headline keeps its placeholder and
-    // the hourly reader surfaces nothing.
+    // the refresh does not fabricate hourly readings.
     expect(document.getElementById('usage-hero-headline')!.textContent).toBe('-- kWh today');
-    expect(await getPowerUsage()).toEqual([]);
+    expect(document.querySelector('#power-list svg')).toBeNull();
   });
 
   it('renders the honest unavailable state when the scoped read REJECTS', async () => {

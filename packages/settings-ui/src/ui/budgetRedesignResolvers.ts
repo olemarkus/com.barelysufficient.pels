@@ -58,10 +58,6 @@ const sum = (values: number[] | undefined): number => (
   (values ?? []).reduce((total, value) => total + (Number.isFinite(value) ? value : 0), 0)
 );
 
-export const resolveBudgetPlannedDayKWh = (payload: DailyBudgetDayPayload): number => (
-  sum(payload.buckets.plannedKWh)
-);
-
 export const resolveViewPayload = (
   payload: DailyBudgetUiPayload | null,
   view: BudgetDayView,

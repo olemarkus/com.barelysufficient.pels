@@ -432,11 +432,6 @@ export const getPowerUsageFromRead = (read: ServedUsagePowerRead): PowerUsageEnt
     .sort((a, b) => a.hour.getTime() - b.hour.getTime());
 };
 
-export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
-  const read = await readUsagePower();
-  return read.state === 'served' ? getPowerUsageFromRead(read) : [];
-};
-
 export { getPowerReadModel };
 
 // Drops the first-paint loading skeleton on the Usage panel by flipping

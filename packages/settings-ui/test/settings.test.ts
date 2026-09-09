@@ -238,6 +238,85 @@ const loadSettingsScript = async () => {
   ));
 };
 
+// Device/editor scenarios exercise their real feature initializers without loading
+// unrelated Budget/Usage/price views or starting the whole shell's polling loops.
+// Boot, navigation and realtime scenarios below still use loadSettingsScript.
+const loadDeviceAndModeSettings = async () => {
+  await import('../src/ui/materialWeb.ts');
+  const { setHomeyClient } = await import('../src/ui/homey.ts');
+  setHomeyClient(installedHomeyMock());
+  const { state } = await import('../src/ui/state.ts');
+  const { loadModeAndPriorities, initModeHandlers, renderPriorities } = await import('../src/ui/modes.ts');
+  const { refreshHomeScope } = await import('../src/ui/homeScope.ts');
+  const { refreshCurrentModes } = await import('../src/ui/currentModes.ts');
+  const { getTargetDevices, renderDevices } = await import('../src/ui/devices.ts');
+  const { loadDeviceControlProfiles } = await import('../src/ui/deviceControlProfiles.ts');
+  const { initDeviceDetailHandlers, loadShedBehaviors } = await import('../src/ui/deviceDetail/index.ts');
+  await refreshHomeScope();
+  await loadModeAndPriorities();
+  await Promise.all([loadDeviceControlProfiles(), loadShedBehaviors(), refreshCurrentModes()]);
+  initModeHandlers();
+  initDeviceDetailHandlers();
+  state.latestDevices = await getTargetDevices();
+  state.devicesLoaded = true;
+  state.initialLoadComplete = true;
+  renderDevices(state.latestDevices);
+  renderPriorities(state.latestDevices);
+};
+
+// Module resets do not unload the jsdom page. Remove registrations on the
+// surviving document/window and cancel real timers before replacing its body.
+let releasePageResources = () => {};
+beforeEach(() => {
+  const listeners: Array<() => void> = [];
+  const trackListeners = (target: EventTarget) => {
+    const addEventListener = target.addEventListener.bind(target);
+    return vi.spyOn(target, 'addEventListener').mockImplementation((type, listener, options) => {
+      addEventListener(type, listener, options);
+      listeners.push(() => target.removeEventListener(type, listener, options));
+    });
+  };
+  // Vitest exposes bound window methods, so a prototype spy misses them.
+  const documentListenerSpy = trackListeners(document);
+  const windowListenerSpy = trackListeners(window);
+  const requestAnimationFrame = globalThis.requestAnimationFrame;
+  const frames: number[] = [];
+  const frameSpy = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
+    const frame = requestAnimationFrame(callback);
+    frames.push(frame);
+    return frame;
+  });
+  const setTimeout = globalThis.setTimeout;
+  const timeouts: Array<ReturnType<typeof setTimeout>> = [];
+  const timeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockImplementation((...args) => {
+    const timer = setTimeout(...args);
+    timeouts.push(timer);
+    return timer;
+  });
+  const setInterval = globalThis.setInterval;
+  const intervals: Array<ReturnType<typeof setInterval>> = [];
+  const intervalSpy = vi.spyOn(globalThis, 'setInterval').mockImplementation((...args) => {
+    const timer = setInterval(...args);
+    intervals.push(timer);
+    return timer;
+  });
+  releasePageResources = () => {
+    document.body.replaceChildren();
+    listeners.forEach((remove) => remove());
+    // jsdom's RAF queue owns a Node interval. Cancel its frame handles first
+    // so clearing timers cannot strand a nonempty queue without its clock.
+    frames.forEach((frame) => cancelAnimationFrame(frame));
+    timeouts.forEach((timer) => clearTimeout(timer));
+    intervals.forEach((timer) => clearInterval(timer));
+    documentListenerSpy.mockRestore();
+    windowListenerSpy.mockRestore();
+    frameSpy.mockRestore();
+    timeoutSpy.mockRestore();
+    intervalSpy.mockRestore();
+  };
+});
+afterEach(() => releasePageResources());
+
 const DEFAULT_SETTINGS_DEVICES = [
   {
     id: 'dev-1',
@@ -311,6 +390,22 @@ describe('settings script', () => {
     buildDom();
     window.localStorage.clear();
     installSettingsHomeyMock();
+  });
+
+  it('releases old page callbacks while keeping animation frames usable for the next page', async () => {
+    const oldPageEvent = vi.fn();
+    const oldPageFrame = vi.fn();
+    window.addEventListener('pels:test-page', oldPageEvent);
+    requestAnimationFrame(oldPageFrame);
+
+    releasePageResources();
+
+    window.dispatchEvent(new Event('pels:test-page'));
+    let nextPagePainted = false;
+    requestAnimationFrame(() => { nextPagePainted = true; });
+    await waitFor(() => nextPagePainted);
+    expect(oldPageEvent).not.toHaveBeenCalled();
+    expect(oldPageFrame).not.toHaveBeenCalled();
   });
 
   it('renders devices with target temperature capabilities', async () => {
@@ -520,7 +615,7 @@ describe('settings script', () => {
         },
       ],
     });
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     (document.querySelector('#device-card-list .pels-device-card__detail-button') as HTMLElement).click();
     await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
@@ -564,7 +659,7 @@ describe('settings script', () => {
         'dev-1': { action: 'set_step', stepId: 'low' },
       },
     });
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     (document.querySelector('#device-card-list .pels-device-card__detail-button') as HTMLElement).click();
     await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
@@ -608,7 +703,7 @@ describe('settings script', () => {
         'dev-1': { action: 'set_temperature', temperature: 55 },
       },
     });
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     (document.querySelector('#device-card-list .pels-device-card__detail-button') as HTMLElement).click();
     await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
@@ -654,7 +749,7 @@ describe('settings script', () => {
         'dev-1': { action: 'set_step', stepId: 'low' },
       },
     });
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     (document.querySelector('#device-card-list .pels-device-card__detail-button') as HTMLElement).click();
     await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
@@ -715,7 +810,7 @@ describe('settings script', () => {
         'dev-1': { action: 'set_step' },
       },
     });
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     (document.querySelector('#device-card-list .pels-device-card__detail-button') as HTMLElement).click();
     await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
@@ -769,7 +864,7 @@ describe('settings script', () => {
       }
       originalSet(key, value, cb);
     });
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     (document.querySelector('#device-card-list .pels-device-card__detail-button') as HTMLElement).click();
     await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
@@ -829,7 +924,7 @@ describe('settings script', () => {
         'dev-1': { action: 'set_step' },
       },
     });
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     (document.querySelector('#device-card-list .pels-device-card__detail-button') as HTMLElement).click();
     await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
@@ -890,7 +985,7 @@ describe('settings script', () => {
         'dev-1': { action: 'set_step' },
       },
     });
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
     const { showToastError } = await import('../src/ui/toast.ts');
     vi.mocked(showToastError).mockClear();
 
@@ -991,7 +1086,7 @@ describe('settings script', () => {
       homey.__settingsStore[key] = value;
       cb?.(null);
     });
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const detailButtons = Array.from(document.querySelectorAll('#device-card-list .pels-device-card__detail-button')) as HTMLElement[];
 
@@ -1053,7 +1148,7 @@ describe('settings script', () => {
       }
       originalSet(key, value, cb);
     });
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     (document.querySelector('#device-card-list .pels-device-card__detail-button') as HTMLElement).click();
     await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
@@ -1105,7 +1200,7 @@ describe('settings script', () => {
         'dev-1': { action: 'set_step', stepId: 'low' },
       },
     });
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     (document.querySelector('#device-card-list .pels-device-card__detail-button') as HTMLElement).click();
     await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
@@ -1126,7 +1221,7 @@ describe('settings script', () => {
   it('shows empty state when no devices support target temperature', async () => {
     installSettingsHomeyMock({ target_devices_snapshot: [] });
     installedHomeyMock().set = vi.fn((key, val, cb) => cb && cb(null));
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     expect(document.querySelectorAll('#device-card-list .pels-device-card__row').length).toBe(0);
     expect(document.querySelector('#empty-state')?.hasAttribute('hidden')).toBe(false);
@@ -1149,7 +1244,7 @@ describe('settings script', () => {
     });
     installedHomeyMock().set = setSpy;
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const getToggles = () => {
       const buttons = Array.from(
@@ -1203,7 +1298,7 @@ describe('settings script', () => {
     });
     installedHomeyMock().set = setSpy;
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const getToggles = () => {
       const buttons = Array.from(
@@ -1249,7 +1344,7 @@ describe('settings script', () => {
       return cb(null, []);
     });
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const { state } = await import('../src/ui/state.ts');
     expect(state.capacityPriorities).toEqual({
@@ -1288,7 +1383,7 @@ describe('settings script', () => {
       managed_devices: { configured: true, 'z-new': true, 'a-new': true },
     });
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const { renderPriorities } = await import('../src/ui/modes.ts');
     const { state } = await import('../src/ui/state.ts');
@@ -1316,7 +1411,7 @@ describe('settings script', () => {
       ]);
     });
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const renameBtn = document.querySelector('#rename-mode-button') as HTMLButtonElement;
     const modeInput = document.querySelector('#mode-new') as HTMLInputElement;
@@ -1347,7 +1442,7 @@ describe('settings script', () => {
       return cb(null, []);
     });
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
     const { renameMode } = await import('../src/ui/modes.ts');
 
     await renameMode('Home', 'Chill');
@@ -1371,7 +1466,7 @@ describe('settings script', () => {
       return cb(null, []);
     });
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
     const { renameMode } = await import('../src/ui/modes.ts');
     await renameMode('Home', 'Chill');
 
@@ -1415,7 +1510,7 @@ describe('settings script', () => {
       ]);
     });
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const modeSelect = document.querySelector('#mode-select') as HTMLSelectElement;
     const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
@@ -1472,7 +1567,7 @@ describe('settings script', () => {
       ]);
     });
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const modeInput = document.querySelector('#mode-new') as HTMLInputElement;
     const addBtn = document.querySelector('#add-mode-button') as HTMLButtonElement;
@@ -1507,7 +1602,7 @@ describe('settings script', () => {
       ]);
     });
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const editor = document.querySelector('#mode-name-editor') as HTMLElement;
     const addBtn = document.querySelector('#add-mode-button') as HTMLButtonElement;
@@ -1538,7 +1633,7 @@ describe('settings script', () => {
       ]);
     });
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
     const activeModeHeading = document.querySelector<HTMLElement>('#settings-active-mode-summary');
@@ -1574,7 +1669,7 @@ describe('settings script', () => {
       ]);
     });
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const modeSelect = document.querySelector('#mode-select') as HTMLSelectElement;
     const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
@@ -1605,7 +1700,7 @@ describe('settings script', () => {
       ]);
     });
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const renameBtn = document.querySelector('#rename-mode-button') as HTMLButtonElement;
     const modeInput = document.querySelector('#mode-new') as HTMLInputElement;
@@ -1705,7 +1800,7 @@ describe('settings script', () => {
       },
     };
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
     (installedHomeyMock().api as ReturnType<typeof vi.fn>).mockClear();
 
     await waitFor(() => document.querySelector('[data-device-id="dev-1"] .pels-device-card__detail-button') !== null);
@@ -1745,7 +1840,7 @@ describe('settings script', () => {
       return baseApi(method, uri, bodyOrCallback, cb);
     });
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     await waitFor(() => document.querySelector('[data-device-id="dev-1"] .pels-device-card__detail-button') !== null);
     const detailButton = document.querySelector('[data-device-id="dev-1"] .pels-device-card__detail-button') as HTMLElement | null;
@@ -2254,22 +2349,6 @@ describe('Plan sorting', () => {
     expect(result.err?.message).toContain('Cannot GET /api/app/com.barelysufficient.pels/definitely_missing_route');
   });
 
-  it('savePriorities assigns priority 1 to top device', () => {
-    // Verify savePriorities logic: top item = priority 1 (most important, shed last)
-    const rows = ['dev-1', 'dev-2', 'dev-3']; // DOM order: top to bottom
-    const priorities: Record<string, number> = {};
-
-    // Fixed code: modeMap[id] = index + 1;
-    rows.forEach((id, index) => {
-      priorities[id] = index + 1;
-    });
-
-    // Top item should be priority 1 (most important, shed last)
-    expect(priorities['dev-1']).toBe(1); // TOP = most important = priority 1
-    expect(priorities['dev-2']).toBe(2);
-    expect(priorities['dev-3']).toBe(3); // BOTTOM = least important = priority 3
-  });
-
   it('uses the device target step for mode inputs and saves normalized values', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     installSettingsHomeyMock({
@@ -2288,7 +2367,7 @@ describe('Plan sorting', () => {
     });
     installedHomeyMock().set = setSpy;
 
-    await loadSettingsScript();
+    await loadDeviceAndModeSettings();
 
     const input = document.querySelector('.mode-target-input') as HTMLInputElement | null;
     expect(input).not.toBeNull();
