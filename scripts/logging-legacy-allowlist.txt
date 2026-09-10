@@ -98,4 +98,4 @@ lib/power/soleMeterAdoption.ts 2
 # a real logger, whichever copy survives.
 lib/utils/dateUtils.ts 1
 lib/utils/httpClient.ts 1
-lib/utils/settingsHandlers.ts 2
+lib/utils/settingsHandlers.ts 1

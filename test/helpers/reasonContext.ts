@@ -17,7 +17,7 @@ export const reasonContext = (overrides: Partial<ReasonContext> = {}): ReasonCon
   shedCooldownStartedAtMs: null,
   shedCooldownTotalSec: null,
   deferredObjectiveAvoidDeviceIds: new Set<string>(),
-  surplusHoldReasonById: new Map<string, DeviceReason>(),
+  postureHoldReasonById: new Map<string, DeviceReason>(),
   softLimitSource: null,
   capacityBreached: false,
   budgetReleasableHeadroomHold: false,

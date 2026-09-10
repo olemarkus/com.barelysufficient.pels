@@ -12,6 +12,7 @@ export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'device_target_power_configs',
   'budget_exempt_devices',
   'respect_external_off_devices',
+  'device_start_policies',
   'temperature_control_disabled_devices',
   'temperature_control_modes',
   'temperature_boost_settings',

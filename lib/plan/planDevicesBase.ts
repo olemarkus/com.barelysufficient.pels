@@ -7,6 +7,7 @@ import {
 } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { resolveShedIntent } from '../device/deviceActionProjection';
+import { isStartPolicyHoldShed } from './shedding/startPolicyHold';
 import { materializeShedSnapshotFields } from './planActionMaterialization';
 import { resolveSteppedLoadDirectShedStepId } from './planSteppedShedResolution';
 import {
@@ -177,6 +178,7 @@ export function buildBasePlanDevice(params: {
     && shedDesiredStepId !== undefined
     && shedDesiredStepId !== dev.selectedStepId;
   const plannedState = resolvePlannedState(control, shedSet.has(dev.id) || isSteppedShed);
+
   const effectiveDesiredStepId = resolveSteppedKeepDesiredStepIdFor(
     dev, plannedState, desiredStepId, params.anyOtherDeviceLimited, boostActive, surplusCeilingStepId,
   );
@@ -190,11 +192,13 @@ export function buildBasePlanDevice(params: {
   const baseReason: DeviceReason = control.commandAuthority
     ? shedReasons.get(dev.id) ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
     : { code: PLAN_REASON_CODES.capacityControlOff };
+  const shouldShed = shedSet.has(dev.id);
   const { shedAction, shedTemperature, releaseShedStepId } = resolveShedAction({
     dev,
     control,
-    shouldShed: shedSet.has(dev.id),
+    shouldShed,
     shedBehavior,
+    shedReasons,
   });
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
@@ -208,6 +212,9 @@ export function buildBasePlanDevice(params: {
   return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({
     id: dev.id,
     name: dev.name,
+    // Carried through unchanged; read on the output side by `getInactiveReason`
+    // and by starvation eligibility. See `DevicePlanDeviceBase.startPolicy`.
+    startPolicy: dev.startPolicy,
     deviceClass: dev.deviceClass,
     deviceRole: dev.deviceRole,
     deviceType: dev.deviceType,
@@ -299,13 +306,25 @@ function resolvePlannedState(control: DeviceControlPosture, shouldShed: boolean)
   if (!control.commandAuthority) return 'keep';
   return shouldShed ? 'shed' : 'keep';
 }
+/** The start policy's own shed intent: off, not the owner's limiting floor. */
+const TURN_OFF_SHED_BEHAVIOR: ShedBehavior = { action: 'turn_off' };
+
 function resolveShedAction(params: {
   dev: PlanInputDevice;
   control: DeviceControlPosture;
   shouldShed: boolean;
   shedBehavior: ShedBehavior;
+  shedReasons: Map<string, DeviceReason>;
 }): { shedAction: ShedAction; shedTemperature: number | null; releaseShedStepId: string | null } {
-  const { dev, control, shouldShed, shedBehavior } = params;
+  const { dev, control, shouldShed, shedReasons } = params;
+  // A start-policy hold is shed to OFF, not to the owner's power-limiting floor.
+  // That floor answers "how far down when the house is short of power"; reusing
+  // it here left a `set_step` charger parked at 6 A and a `set_temperature`
+  // thermostat pinned at its setback, both still drawing, under a switch that
+  // promises PELS turns the device off. A fresh capacity shed keeps the floor.
+  const shedBehavior = shouldShed && isStartPolicyHoldShed(dev, shedReasons)
+    ? TURN_OFF_SHED_BEHAVIOR
+    : params.shedBehavior;
   // Single resolution site for the shed-action intent. Called once here with
   // the post-admission authority so the deferred-objective rescue lane
   // (`applyDeferredAdmissionToInput`) is honoured. The materialiser then only

@@ -6,6 +6,7 @@ import type {
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
+import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 
 /**
  * The device's control posture, resolved once, here.
@@ -32,6 +33,7 @@ export function resolveDeviceControlPosture(
   device: DecoratedDeviceSnapshot,
   managed: boolean,
   capacityControlEnabled: boolean,
+  startPolicy: DeviceStartPolicy,
 ): DeviceControlPosture {
   if (isObserveOnlyRoleClassKey(device.deviceClass)) {
     // The structural veto, keyed on the parse-time class key. A battery or panel
@@ -41,12 +43,24 @@ export function resolveDeviceControlPosture(
   }
   return {
     managed,
-    // The second term is the device's own axis: a thermostat whose temperature
+    // Two standing grants, OR'd, then gated on the device having an axis at all.
+    //
+    // Power-limit control is the first: the owner opted the device into limiting
+    // and resuming on whole-home usage.
+    //
+    // `pels_only` is the second, and it is the whole point of that policy. The
+    // owner said this device runs when PELS starts it and not otherwise, which
+    // is a grant of authority in its own right — and precisely in the case where
+    // power-limit control is OFF, where PELS would otherwise hold no lever and
+    // an unplanned start is absorbed as background usage. It is ANDed with
+    // `managed` because an unmanaged device is ignored entirely, whatever else
+    // the owner configured.
+    //
+    // The last term is the device's own axis: a thermostat whose temperature
     // control the owner switched off, with no binary or stepped handle left, has
-    // nothing PELS could command. This whole expression is the old merged
-    // `controllable`, which is why every site that asked the old question reads
-    // this member and behaviour is unchanged.
-    commandAuthority: capacityControlEnabled && hasTemperaturePolicyPowerControl(device),
+    // nothing PELS could command.
+    commandAuthority: (capacityControlEnabled || (managed && startPolicy === 'pels_only'))
+      && hasTemperaturePolicyPowerControl(device),
   };
 }
 

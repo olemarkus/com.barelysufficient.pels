@@ -41,7 +41,7 @@ import {
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import { buildSheddingDeps, SilentMeterPlanBuilder } from './planBuilderSilentMeter';
 import { resolveShortfallOffState } from './planOffStateReason';
-import { runSurplusPass, type PriceOptDeviceConfig } from './planBuilderSurplus';
+import { runStandingPostureHolds, type PriceOptDeviceConfig } from './planBuilderSurplus';
 import { sumBudgetExemptProjectedUsageKw, toUsageDevice } from './planUsage';
 import { PlanMaterializationStages } from './planBuilderMaterialization';
 import { resolveNormalizedShedFloors } from './normalizedShedFloor';
@@ -233,7 +233,7 @@ export class PlanBuilder {
     // post-shedding hold merges, all in `runSurplusPass` (hoisted so eligibility
     // exists as the shed set is assembled); returns the dump-load reason map for
     // reason normalization.
-    const surplusHoldReasonById = trackPlanStage('plan_surplus_eligibility_ms', () => runSurplusPass({
+    const postureHoldReasonById = trackPlanStage('plan_surplus_eligibility_ms', () => runStandingPostureHolds({
       context,
       power,
       state: this.state,
@@ -284,7 +284,7 @@ export class PlanBuilder {
       normalizedShedFloorCByDevice,
       holds: {
         deferredObjectiveAvoidDeviceIds: decoration.deferredAvoidDeviceIds,
-        surplusHoldReasonById,
+        postureHoldReasonById,
       },
       holdResult,
     });

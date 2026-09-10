@@ -21,6 +21,7 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 import { resolveSurplusEligibility, withdrawSurplusEligibility, type PriceOptDeviceConfig } from './planSurplusAbsorb';
 import { resolveSurplusHold } from './shedding/surplusHold';
+import { resolveStartPolicyHold } from './shedding/startPolicyHold';
 
 // Re-exported so the builder's deps typing needs no extra planSurplusAbsorb import.
 export type { PriceOptDeviceConfig };
@@ -44,7 +45,7 @@ export function mergeHoldsIntoShedSet(shedSet: Set<string>, holds: ReadonlyArray
  * the stale posture bookkeeping. Returns the dump-load `reasonById` for the
  * downstream reason normalization. `shedSet` is mutated in place.
  */
-export function runSurplusPass(params: {
+export function runStandingPostureHolds(params: {
   context: PlanContext;
   power: MeasuredPower;
   state: PlanEngineState;
@@ -55,6 +56,7 @@ export function runSurplusPass(params: {
   decoration: Pick<
     DeferredDecorationBundle,
     'forceShedSet' | 'deferredAvoidDeviceIds' | 'deferredReleaseIntentByDeviceId' | 'admittedDeviceIds'
+    | 'taskDrivenDeviceIds'
   >;
   getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined;
   // Zero-export inferred curtailed-surplus term (kW, >= 0; producer:
@@ -91,15 +93,34 @@ export function runSurplusPass(params: {
     nowTs: params.nowTs,
   });
   const surplusHold = resolveSurplusHold(admittedDevices, state, excludeIds);
+  // The second standing posture. It takes the NARROW smart-task set — devices a
+  // task is actively driving — not `excludeIds`: a device its own task left idle
+  // this hour must stay held, which is the difference between "only PELS starts
+  // it" and "any governing task starts it". See `resolveStartPolicyHold`.
+  const startPolicyHold = resolveStartPolicyHold(admittedDevices, decoration.taskDrivenDeviceIds);
   applyPostSheddingHolds({
     shedSet: params.shedSet,
     shedStepTargets: params.shedStepTargets,
     forceShedSet: decoration.forceShedSet,
-    surplusHoldIds: surplusHold.holdIds,
+    surplusHoldIds: new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds]),
     admittedDevices,
     shedDecisions: state.shedDecisions,
   });
-  return surplusHold.reasonById;
+  // Merged into one map because reason normalization asks one question of it:
+  // "did a standing posture hold this device this cycle?".
+  //
+  // The two DO overlap: `isSurplusHeldDevice` covers `surplusTracking` steppers
+  // as well as `surplusOnly` dump loads, and either can also carry the start
+  // policy. When both hold the same device the start policy wins the behaviour —
+  // the device stays shed even once surplus arrives — and that is the owner's
+  // ruling (2026-09-10): "Only PELS starts this device" means a smart task and
+  // nothing else, so solar surplus is not a PELS start. The surplus reason is
+  // written second and so wins the CARD, which is the honest half of the
+  // overlap: a dump load the owner also opted into surplus reads "Waiting for
+  // solar surplus", which is true of its configuration even though the policy is
+  // what is holding it. Locking the two toggles against each other in the
+  // settings UI is the open follow-up, not a behaviour change here.
+  return new Map([...startPolicyHold.reasonById, ...surplusHold.reasonById]);
 }
 
 /**
@@ -237,11 +258,18 @@ export function releaseAbandonedSurplusPosture(params: {
   const { shedDecisions, admittedDevices, shedSet } = params;
   const stampedIds = Object.keys(shedDecisions.surplusOnlyByDevice);
   if (stampedIds.length === 0) return;
-  const surplusOnlyNow = new Set(
-    admittedDevices.filter((dev) => dev.surplusOnly === true).map((dev) => dev.id),
+  // EITHER baseline-off posture keeps the stamp alive, matching what stamps it
+  // (`ShedDecisions.recordPlannedShed`). A `pels_only` device the owner has just
+  // opted OUT of is in neither set and falls through to the clear, which is the
+  // whole point: without it the stale decision let the uncontrolled-restore lane
+  // force the device ON as PELS's last act before losing authority.
+  const baselineOffNow = new Set(
+    admittedDevices
+      .filter((dev) => dev.surplusOnly === true || dev.startPolicy === 'pels_only')
+      .map((dev) => dev.id),
   );
   for (const id of stampedIds) {
-    if (surplusOnlyNow.has(id)) continue; // still a dump-load device — keep the stamp
+    if (baselineOffNow.has(id)) continue; // still a baseline-off device — keep the stamp
     if (shedSet.has(id)) continue; // capacity still holds it off — keep its decision clock
     shedDecisions.clearFor(id); // clears the decision clock + the surplus stamp
   }

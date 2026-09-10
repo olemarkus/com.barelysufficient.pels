@@ -1,3 +1,4 @@
+import { isDeviceStartPolicyMap } from '../../../shared-domain/src/settings/deviceStartPolicy.ts';
 import {
   readTemperatureControlModes, temperatureControlDisabledDevices,
 } from '../../../shared-domain/src/settings/temperatureControl.ts';
@@ -10,6 +11,7 @@ import {
   NATIVE_EV_WIRING_DEVICES,
   OPERATING_MODE_SETTING,
   RESPECT_EXTERNAL_OFF_DEVICES,
+  DEVICE_START_POLICIES,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   TEMPERATURE_CONTROL_MODES,
   homeScopedSettingsKey,
@@ -24,6 +26,7 @@ export type ModeSettingsRead = {
   managed: unknown;
   budgetExempt: unknown;
   respectExternalOff: unknown;
+  deviceStartPolicies: unknown;
   temperatureControlDisabled: unknown;
   temperatureControlModes: unknown;
   nativeWiring: unknown;
@@ -65,6 +68,7 @@ export const readModeSettings = async (homeId: string): Promise<ModeSettingsRead
     getSetting('managed_devices'),
     getSetting(BUDGET_EXEMPT_DEVICES),
     getSetting(RESPECT_EXTERNAL_OFF_DEVICES),
+    getSetting(DEVICE_START_POLICIES),
     getSetting(TEMPERATURE_CONTROL_DISABLED_DEVICES),
     getSetting(TEMPERATURE_CONTROL_MODES),
     getSetting(NATIVE_EV_WIRING_DEVICES),
@@ -72,13 +76,30 @@ export const readModeSettings = async (homeId: string): Promise<ModeSettingsRead
   ]);
   const [
     mode, priorities, targets, controllables, managed,
-    budgetExempt, respectExternalOff, temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases,
+    budgetExempt, respectExternalOff, deviceStartPolicies,
+    temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases,
   ] = values;
   return {
     mode, priorities, targets, controllables, managed,
-    budgetExempt, respectExternalOff, temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases,
+    budgetExempt, respectExternalOff, deviceStartPolicies,
+    temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases,
   };
 };
+
+/**
+ * All-or-nothing, and a rejected read keeps the last good map — the same policy
+ * the runtime applies, from the same guard (`isDeviceStartPolicyMap`), so the
+ * two can never disagree about what a junk value means. A transient bridge miss
+ * must not look like an owner who just cleared every device's policy.
+ *
+ * Lives beside its sibling reader rather than in `modes.ts`, which sits at its
+ * 500-line ceiling.
+ */
+export function applyDeviceStartPolicySettings(read: ModeSettingsRead): void {
+  state.deviceStartPolicyMap = isDeviceStartPolicyMap(read.deviceStartPolicies)
+    ? read.deviceStartPolicies
+    : state.deviceStartPolicyMap;
+}
 
 export function applyTemperatureControlSettings(read: ModeSettingsRead): void {
   state.temperatureControlModes = readTemperatureControlModes(read.temperatureControlModes)

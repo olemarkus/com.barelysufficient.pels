@@ -27,6 +27,12 @@ export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';
 // = off). Mirror of RESPECT_EXTERNAL_OFF_DEVICES in lib/utils/settingsKeys.ts —
 // keep both in sync (the settings UI can't import lib).
 export const RESPECT_EXTERNAL_OFF_DEVICES = 'respect_external_off_devices';
+// Per-device start authority: `Record<deviceId, 'unrestricted' | 'pels_only'>`
+// (absent entry = 'unrestricted'). Read and write policy live with the key's
+// owner, `packages/shared-domain/src/settings/deviceStartPolicy.ts`. Mirror of
+// DEVICE_START_POLICIES in lib/utils/settingsKeys.ts — keep both in sync
+// (the settings UI can't import lib).
+export const DEVICE_START_POLICIES = 'device_start_policies';
 // Per-device "Disable temperature control" opt-out. Mirror of
 // TEMPERATURE_CONTROL_DISABLED_DEVICES in lib/utils/settingsKeys.ts.
 export const TEMPERATURE_CONTROL_DISABLED_DEVICES = 'temperature_control_disabled_devices';

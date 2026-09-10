@@ -1,5 +1,6 @@
 import Homey from 'homey';
 import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from './lib/device/devicePowerPeak';
+import type { DeviceStartPolicy } from './packages/shared-domain/src/settings/deviceStartPolicy';
 import type CapacityGuard from './lib/power/capacityGuard';
 import type { DeviceTransport } from './lib/device/deviceTransport';
 import { ObservedStateEmitter } from './lib/observer/observedStateEvents';
@@ -145,6 +146,7 @@ class PelsApp extends PelsAppBase implements AppContext {
   public controllableDevices: Record<string, boolean> = {};
   public managedDevices: Record<string, boolean> = {};
   public budgetExemptDevices: Record<string, boolean> = {};
+  public deviceStartPolicies: Record<string, DeviceStartPolicy> = {};
   public temperatureControlDisabledDevices: Record<string, boolean> = {};
   public temperatureControlPolicyState: 'unavailable' | 'resolved' = 'unavailable';
   public temperatureBoostSettings: import('./packages/contracts/src/types').TemperatureBoostSettings = {};

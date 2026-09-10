@@ -158,7 +158,7 @@ export function hasExecutableShedDevices(
   for (const [index, planDevice] of plan.devices.entries()) {
     if (planDevice.plannedState !== 'shed') continue;
     if (isDroppedUnderspecifiedSetStepShed(planDevice, executablePlan.devices[index])) continue;
-    if (isSurplusOnlyHoldShed(planDevice)) continue;
+    if (isPostureHoldShed(planDevice)) continue;
     return true;
   }
   return false;
@@ -171,8 +171,12 @@ export function hasExecutableShedDevices(
 // capacity. Discriminated on the `awaitingSolarSurplus` reason code (not the
 // `surplusOnly` flag): a dump load that is genuinely capacity-shed carries a
 // `capacity` reason and MUST still block. See `notes/state-management/`.
-const isSurplusOnlyHoldShed = (planDevice: PlanDevice): boolean => (
+// Both STANDING POSTURES, discriminated on their reason codes rather than on the
+// producer flags behind them: a device that is genuinely capacity-shed carries a
+// `capacity` reason and MUST still block, whatever its posture settings say.
+const isPostureHoldShed = (planDevice: PlanDevice): boolean => (
   planDevice.reason?.code === PLAN_REASON_CODES.awaitingSolarSurplus
+  || planDevice.reason?.code === PLAN_REASON_CODES.awaitingPelsStart
 );
 
 export type DroppedSteppedShedIntent = {

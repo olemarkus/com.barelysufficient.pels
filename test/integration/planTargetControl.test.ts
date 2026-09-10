@@ -45,6 +45,14 @@ const buildPlanDevice = (
   control: fixtureControlPosture({ controllable: true }),
   available: true,
   reason: fixtureDeviceReason('keep')!,
+  // Required producer-resolved bits this fixture had been getting away with
+  // omitting. The cast tolerated the gap until an unrelated field tipped the
+  // overlap check; spelling them keeps the fixture the shape `toPlanDevice`
+  // actually emits.
+  hasStandingDemand: true,
+  boostActive: false,
+  surplusTracking: false,
+  recordRestoreOnTargetApply: false,
 })) as DevicePlan['devices'][number];
 
 describe('syncPendingTargetCommands', () => {

@@ -110,6 +110,12 @@ export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';
 // packages/contracts/src/settingsKeys.ts — keep both in sync (the settings UI
 // can't import lib).
 export const RESPECT_EXTERNAL_OFF_DEVICES = 'respect_external_off_devices';
+// Per-device start authority: `Record<deviceId, 'unrestricted' | 'pels_only'>`
+// (absent entry = 'unrestricted'). Read and write policy live with the key's
+// owner, `packages/shared-domain/src/settings/deviceStartPolicy.ts`. Mirror of
+// DEVICE_START_POLICIES in packages/contracts/src/settingsKeys.ts — keep both
+// in sync (the settings UI can't import lib).
+export const DEVICE_START_POLICIES = 'device_start_policies';
 // Per-device opt-out from every non-binary PELS command. The raw device
 // snapshot remains temperature-capable for observation/UI; setup projects an
 // enabled entry as binary-only for planning and actuation.

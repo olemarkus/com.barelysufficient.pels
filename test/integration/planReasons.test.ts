@@ -469,7 +469,7 @@ describe('normalizeShedReasons', () => {
       inCooldown: true,
       activeOvershoot: false,
       shedCooldownRemainingSec: 25,
-      surplusHoldReasonById: new Map([['pool-pump', AWAITING]]),
+      postureHoldReasonById: new Map([['pool-pump', AWAITING]]),
     }));
 
     expect(device?.reason).toEqual(AWAITING);
@@ -488,7 +488,7 @@ describe('normalizeShedReasons', () => {
       inCooldown: true,
       activeOvershoot: false,
       shedCooldownRemainingSec: 25,
-      surplusHoldReasonById: new Map([['pool-pump', AWAITING]]),
+      postureHoldReasonById: new Map([['pool-pump', AWAITING]]),
     }));
 
     expect(device?.reason.code).toBe(PLAN_REASON_CODES.cooldownShedding);
@@ -509,7 +509,7 @@ describe('normalizeShedReasons', () => {
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-      surplusHoldReasonById: new Map([['pool-pump', AWAITING]]),
+      postureHoldReasonById: new Map([['pool-pump', AWAITING]]),
     }));
 
     expect(device?.reason.code).not.toBe(PLAN_REASON_CODES.awaitingSolarSurplus);

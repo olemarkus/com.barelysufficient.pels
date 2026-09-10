@@ -28,6 +28,8 @@ describe('buildPlanInputDevice', () => {
       // The whole posture, as the producer resolves it for an undescribed
       // device: power-limited and managed, so authority follows.
       control: { managed: true, commandAuthority: true },
+      // Producer-resolved: absence in the settings map is the default policy.
+      startPolicy: 'unrestricted',
       available: true,
       id: 'dev-1',
       name: 'Device',

@@ -111,7 +111,8 @@ import {
   initDeviceDetailBudgetExemptHandler,
   setDeviceDetailBudgetExemptState,
 } from './budgetExempt.ts';
-import { initRespectExternalOffHandler, syncRespectExternalOffRow } from './respectExternalOff.ts';
+import { initRespectExternalOffHandler } from './respectExternalOff.ts';
+import { initStartPolicyHandler, syncDevicePolicyRows } from './startPolicy.ts';
 import {
   initTemperatureControlDisabledHandler,
   syncTemperatureControlDisabledRow,
@@ -226,7 +227,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   // owns the gate — managed binary device, solar present, not temperature/stepped/EV).
   setDeviceDetailDumpLoadControl({ deviceId, getDeviceById });
   setDeviceDetailSurplusTrackingControl({ deviceId, getDeviceById });
-  syncRespectExternalOffRow({ deviceId, getDeviceById });
+  syncDevicePolicyRows({ deviceId, getDeviceById });
   syncTemperatureControlDisabledRow({ deviceId, getDeviceById });
 
   setDeviceDetailBudgetExemptState(device);
@@ -497,6 +498,7 @@ export const initDeviceDetailHandlers = () => {
     refreshOpenDeviceDetail,
   });
   initRespectExternalOffHandler({ getCurrentDetailDeviceId, refreshSharedDeviceViews, refreshOpenDeviceDetail });
+  initStartPolicyHandler({ getCurrentDetailDeviceId, refreshSharedDeviceViews, refreshOpenDeviceDetail });
   initTemperatureControlDisabledHandler({
     getCurrentDetailDeviceId,
     getDeviceById,
