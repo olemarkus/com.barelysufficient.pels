@@ -38,7 +38,12 @@ import {
 } from '../lib/device/targetPowerReachability';
 import { normalizeModePriorities } from '../packages/shared-domain/src/modePriorities';
 import {
+  isDeviceStartPolicyMap,
+  type DeviceStartPolicy,
+} from '../packages/shared-domain/src/settings/deviceStartPolicy';
+import {
   BUDGET_EXEMPT_DEVICES,
+  DEVICE_START_POLICIES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
@@ -75,6 +80,7 @@ export type CapacitySettingsSnapshot = {
   controllableDevices: Record<string, boolean>;
   managedDevices: Record<string, boolean>;
   budgetExemptDevices: Record<string, boolean>;
+  deviceStartPolicies: Record<string, DeviceStartPolicy>;
   temperatureControlDisabledDevices: Record<string, boolean>;
   temperatureControlPolicyState: 'unavailable' | 'resolved';
   temperatureBoostSettings: TemperatureBoostSettings;
@@ -185,6 +191,7 @@ export function buildCapacitySettingsSnapshot(params: {
     controllableDevices: deviceFlags.controllableDevices,
     managedDevices: deviceFlags.managedDevices,
     budgetExemptDevices: deviceFlags.budgetExemptDevices,
+    deviceStartPolicies: deviceFlags.deviceStartPolicies,
     temperatureControlDisabledDevices: deviceFlags.temperatureControlDisabledDevices,
     temperatureControlPolicyState: deviceFlags.temperatureControlPolicyState,
     temperatureBoostSettings: normalizeTemperatureBoostSettings(rawTemperatureBoostSettings),
@@ -206,6 +213,7 @@ function readDeviceFlagSettings(params: {
   | 'controllableDevices'
   | 'managedDevices'
   | 'budgetExemptDevices'
+  | 'deviceStartPolicies'
   | 'temperatureControlDisabledDevices'
   | 'temperatureControlPolicyState'
 > {
@@ -213,6 +221,7 @@ function readDeviceFlagSettings(params: {
   const controllables = settings.get(CONTROLLABLE_DEVICES) as unknown;
   const managed = settings.get(MANAGED_DEVICES) as unknown;
   const budgetExempt = settings.get(BUDGET_EXEMPT_DEVICES) as unknown;
+  const startPolicies = settings.get(DEVICE_START_POLICIES) as unknown;
   const temperatureControlPolicy = readTemperatureControlDisabledDevicesSetting({
     settings,
     current: {
@@ -224,6 +233,11 @@ function readDeviceFlagSettings(params: {
     controllableDevices: isBooleanMap(controllables) ? controllables : current.controllableDevices,
     managedDevices: isBooleanMap(managed) ? managed : current.managedDevices,
     budgetExemptDevices: isBooleanMap(budgetExempt) ? budgetExempt : current.budgetExemptDevices,
+    // All-or-nothing, and a rejected read keeps the last good map: a transient
+    // SDK miss must never look like an owner who just cleared every policy.
+    deviceStartPolicies: isDeviceStartPolicyMap(startPolicies)
+      ? startPolicies
+      : current.deviceStartPolicies,
     temperatureControlDisabledDevices: temperatureControlPolicy.devices,
     temperatureControlPolicyState: temperatureControlPolicy.state,
   };

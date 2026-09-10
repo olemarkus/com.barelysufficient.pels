@@ -556,6 +556,32 @@ THREE per-device surplus controls share the `surplusWilling` opt-in; the label n
 
 Sources: `packages/shared-domain/src/planTemperatureCardText.ts` (the two card reasons), `PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS` in `planStateLabels.ts`, and `packages/shared-domain/src/solarSurplusTrackingCopy.ts` (every tracking string).
 
+### Who may start a device
+
+| Concept | Label |
+|---|---|
+| Per-device start policy (toggle) | `Only PELS starts this device` |
+| Card, while the policy is holding the device off | `Off`, and no reason line |
+
+The toggle's hint says what happens: *"If this device is started in Homey, on the
+device, or by another Flow, PELS turns it off again. It runs when a Smart task
+needs it to, and not otherwise."* A second hint appears when the device has no
+smart task, because that is the case where the setting means the device never
+runs at all: *"This device has no Smart task, so nothing will start it while this
+is on."*
+
+**The card has no copy for this policy, by ruling (2026-09-10).** The device reads
+`Off` and stops there. It is not being held back from anything — off is its
+baseline, which is what its owner configured — so the reason code is deliberately
+absent from `HOLD_REASON_CODES` (`planCardGrammar.ts`), the same way
+`externalOffHold` is, and `formatDeviceReasonUserFacing` returns the empty string
+for it exactly as it does for `keep`. No new string, and no card-side branch to
+decide one.
+
+When a smart task IS governing the device, its own reason is more specific —
+waiting for a car's state of charge, waiting for cheaper hours — and wins on its
+own, with no precedence rule needed here.
+
 The tracking toggle is the one place the label varies by device kind, and it varies because *what happens* varies: a charger's level is a charging current, a generic stepped load's is a level. Both are resolved from `resolveDeviceDetailKind`, never hardcoded per screen.
 
 **A stopped tracking device can still be drawing, and the card does not yet say so.** `Waiting for solar surplus` is honest for the default `turn_off` shed action — the device really is off. For a device whose Power limiting is set to a level, the solar stop parks it on that level, so the card reads "waiting" while it draws. That is a known gap, accepted deliberately when the floor selector was removed rather than overlooked: the alternative was a second per-device setting duplicating Power limiting. The fix belongs with the stepped card's reason line, which does not render the surplus vocabulary at all yet.

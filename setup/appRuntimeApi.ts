@@ -364,6 +364,7 @@ abstract class AppRuntimeApi extends Base {
         controllableDevices: this.context.controllableDevices,
         managedDevices: this.context.managedDevices,
         budgetExemptDevices: this.context.budgetExemptDevices,
+        deviceStartPolicies: this.context.deviceStartPolicies,
         temperatureControlDisabledDevices: this.context.temperatureControlDisabledDevices,
         temperatureControlPolicyState: this.context.temperatureControlPolicyState,
         temperatureBoostSettings: this.context.temperatureBoostSettings,

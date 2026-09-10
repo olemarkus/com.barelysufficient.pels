@@ -84,6 +84,7 @@ export class DeferredObjectiveDecorationController {
       deferredAvoidDeviceIds: resolveDeferredAvoidDeviceIds(evaluations),
       deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
       admittedDeviceIds: resolveAdmittedDeviceIds(decisions),
+      taskDrivenDeviceIds: resolveTaskDrivenDeviceIds(decisions),
     };
   }
 
@@ -139,6 +140,41 @@ export class DeferredObjectiveDecorationController {
 // ordinary restore lane start it on GRID import in exactly the hour the budget
 // forecast zeroed, which is usually the dearest one — defeating the feature the
 // user turned on, and doing so silently.
+// Devices whose smart task is actively DRIVING them: a `planned` decision, which
+// means the allocator booked energy into this hour and wants the device running.
+//
+// Strictly narrower than `admittedDeviceIds`, and the difference is the whole
+// point. `idle` is governed but NOT driven — the task is on track and has nothing
+// for the device this hour — and a device whose owner set "Only PELS starts this
+// device" must stay off through exactly that. Admitting `idle` here would let the
+// ordinary restore lane start a device its own task had decided to leave alone,
+// which is the opposite of a baseline of off.
+//
+// `inactive` is excluded for a blunter reason, and it is the one the feature was
+// built for: a task whose precondition failed (an EV that will not report its
+// state of charge) resolves `inactive`, and the device must then be off rather
+// than running unplanned on a manual start nobody re-checked.
+//
+// `unclaimed` is excluded too, and that IS a ruling rather than an oversight
+// (owner, 2026-09-10). The state means the task booked nothing this hour and
+// cannot finish without it, and `resolveCurrentHourClaim` hands such a device to
+// the planner to compete on its own priority. A `pels_only` device does not get
+// that: its baseline is off, and an hour its task could not claim is not an hour
+// the task is driving it. The cost is accepted — a task that is behind because a
+// higher-priority task or the daily-budget forecast took its hours will not catch
+// up on this device until it can claim an hour — and the reason the stricter
+// reading wins is that the owner asked for a device that runs ONLY when PELS
+// starts it, and "PELS could not book this hour" is not PELS starting it.
+const resolveTaskDrivenDeviceIds = (
+  decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
+): ReadonlySet<string> => {
+  const driven = new Set<string>();
+  for (const [deviceId, decision] of decisions) {
+    if (decision.kind === 'planned') driven.add(deviceId);
+  }
+  return driven;
+};
+
 const resolveAdmittedDeviceIds = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
 ): ReadonlySet<string> => {

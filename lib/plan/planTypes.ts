@@ -1,4 +1,5 @@
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
+import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
@@ -518,6 +519,26 @@ type DevicePlanDeviceBase = {
    * this device".
    */
   control: DeviceControlPosture;
+  /**
+   * Who may start this device — carried through from the plan input unchanged.
+   *
+   * Unlike the owner's Power-limit toggle (which is an INPUT to
+   * `control.commandAuthority` and does not travel), this one has readers on the
+   * output side and therefore belongs here:
+   *
+   * - `getInactiveReason` (`lib/plan/restore/devices.ts`) flips a held device to
+   *   `inactive` once it is observed off, which is what makes its card read `Off`
+   *   rather than `Limited — Waiting to resume`.
+   * - `resolveEligibleForStarvation` (`lib/plan/planDiagnostics.ts`) excludes it,
+   *   the way it already excludes `externalOffHold`: a standing baseline-off
+   *   posture holds the device below target forever, so a latched starvation
+   *   episode could never clear.
+   *
+   * Both are questions about the device's POSTURE that only the plan output can
+   * answer, and neither can be derived from the reason code: they run before
+   * reason normalization has stamped one.
+   */
+  startPolicy: DeviceStartPolicy;
   budgetExempt?: boolean;
   /**
    * The device's boost decision this cycle, and the planner's whole boost

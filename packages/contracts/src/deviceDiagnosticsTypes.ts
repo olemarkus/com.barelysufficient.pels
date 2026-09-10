@@ -21,7 +21,7 @@ export type DeviceDiagnosticsStarvationCountingCause =
 
 // Why the starvation clock is STOPPED. Two producers: the planner classifier for the holds
 // PELS did not impose (`keep`, `inactive`, `restore`) and the two the owner asked for
-// (`deferred_objective_avoid`, `awaiting_solar_surplus`), and the episode tracker
+// (`deferred_objective_avoid`, `awaiting_solar_surplus`, `awaiting_pels_start`), and the episode tracker
 // (`lib/diagnostics/deviceDiagnosticsEpisodes.ts`) for the observation-quality ones.
 export type DeviceDiagnosticsStarvationPauseReason =
   | 'inactive'
@@ -32,6 +32,7 @@ export type DeviceDiagnosticsStarvationPauseReason =
   | 'sample_gap'
   | 'deferred_objective_avoid'
   | 'awaiting_solar_surplus'
+  | 'awaiting_pels_start'
   | 'unknown_suppression_reason';
 
 export type DeviceDiagnosticsWindowSummary = {

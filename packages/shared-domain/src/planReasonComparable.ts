@@ -107,6 +107,7 @@ const CODE_ONLY_REASONS = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.hourlyBudget,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
   PLAN_REASON_CODES.awaitingSolarSurplus,
+  PLAN_REASON_CODES.awaitingPelsStart,
 ]);
 
 type CodeOnlyReason = Extract<
@@ -127,6 +128,7 @@ type CodeOnlyReason = Extract<
   | { code: typeof PLAN_REASON_CODES.hourlyBudget }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
+  | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
 >;
 
 function isCodeOnlyReason(reason: DeviceReason): reason is CodeOnlyReason {

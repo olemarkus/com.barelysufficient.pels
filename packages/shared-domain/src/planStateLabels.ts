@@ -132,7 +132,6 @@ export const formatReservedForStartStatus = (targetName: string): string => (
 // is OFF; PELS turns it on only while the home exports enough solar to cover
 // its draw. Registered in `notes/ui-terminology.md` § "Solar surplus vocabulary".
 export const PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS = 'Waiting for solar surplus';
-
 // Device-detail diagnostics wording for a device standing down behind another device's startup
 // reservation. Kept beside its siblings (and out of the settings-UI view) so the screen and the
 // runtime logs cannot drift apart. Registered in `notes/ui-terminology.md`.

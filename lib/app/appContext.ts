@@ -1,4 +1,5 @@
 import type { ObservedTemperatureModeUpdates } from '../home/observedTemperatureModeUpdates';
+import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { TrackerStore } from '../power/trackerStore';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import type {
@@ -252,6 +253,9 @@ export type AppContext = {
   set managedDevices(value: Record<string, boolean>);
   get budgetExemptDevices(): Record<string, boolean>;
   set budgetExemptDevices(value: Record<string, boolean>);
+  /** Per-device start authority; absence reads as `'unrestricted'`. */
+  get deviceStartPolicies(): Record<string, DeviceStartPolicy>;
+  set deviceStartPolicies(value: Record<string, DeviceStartPolicy>);
   readonly observedTemperatureModeUpdates: ObservedTemperatureModeUpdates;
   get temperatureControlDisabledDevices(): Record<string, boolean>;
   set temperatureControlDisabledDevices(value: Record<string, boolean>);

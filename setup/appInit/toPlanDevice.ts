@@ -1,4 +1,5 @@
 import { resolveDeviceControlPosture } from '../../lib/device/temperatureControlPosture';
+import { resolveDeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import {
@@ -533,10 +534,12 @@ export function toPlanDevice(
   // path does not refresh — re-resolving there could briefly grant authority to
   // a battery whose settings say so. The structural key closes that window: a
   // present observe-only device is NEVER commandable.
+  const startPolicy = resolveDeviceStartPolicy(ctx.deviceStartPolicies, device.id);
   const control = resolveDeviceControlPosture(
     device,
     ctx.resolveManagedState(device.id),
     ctx.isCapacityControlEnabled(device.id),
+    startPolicy,
   );
   // The continuous / target-power / non-binary classification is resolved HERE
   // (the producer may read the `controlModel` setting + target-power config) so
@@ -655,6 +658,7 @@ export function toPlanDevice(
     // Observe-only role (battery/solar): structural stamp (always managed observe-only);
     // else re-resolve.
     control,
+    startPolicy,
     available: device.available,
     ...(surplusOnly ? { surplusOnly: true as const } : {}),
     surplusTracking,

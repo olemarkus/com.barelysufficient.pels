@@ -35,7 +35,7 @@ export { finalizePlanDevices } from './planReasonsValidation';
 // builder can thread them as one value.
 export type ShedReasonHoldInputs = {
   deferredObjectiveAvoidDeviceIds: ReadonlySet<string>;
-  surplusHoldReasonById: ReadonlyMap<string, DeviceReason>;
+  postureHoldReasonById: ReadonlyMap<string, DeviceReason>;
 };
 
 function buildBaseReason(ctx: ReasonContext, dev: DevicePlanDevice): DeviceReason {
@@ -89,7 +89,7 @@ export type ReasonContext = {
    * but never over a fresh shed decision or the richer shortfall/cooldown/swap
    * reasons.
    */
-  readonly surplusHoldReasonById: ReadonlyMap<string, DeviceReason>;
+  readonly postureHoldReasonById: ReadonlyMap<string, DeviceReason>;
   /** Plan-level binding constraint; `'daily'` re-attributes carried `capacity` reasons. */
   readonly softLimitSource: 'capacity' | 'daily' | null;
   /** Over the CAPACITY soft limit, whichever limit binds. Producer-resolved. */
@@ -370,12 +370,12 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
   // during the 60 s window — and, worse, the stepped-restore-block invariant
   // (`isSurplusOnlyHoldShed`, keyed on `reason.code === awaitingSolarSurplus`)
   // would then NOT exempt it, so it would wrongly count as capacity pressure and
-  // block unrelated stepped restores. `resolveSurplusHoldReasonAdoption` fires
-  // ONLY for a genuine surplus hold (device in `surplusHoldReasonById`, no fresh
+  // block unrelated stepped restores. `resolvePostureHoldReasonAdoption` fires
+  // ONLY for a genuine surplus hold (device in `postureHoldReasonById`, no fresh
   // `shedReasons` entry), so a device genuinely in a capacity cooldown still
   // falls through to `cooldown_shedding` below.
-  const surplusHoldReason = resolveSurplusHoldReasonAdoption(ctx, dev, currentReason);
-  if (surplusHoldReason) return { ...dev, reason: surplusHoldReason };
+  const postureHoldReason = resolvePostureHoldReasonAdoption(ctx, dev, currentReason);
+  if (postureHoldReason) return { ...dev, reason: postureHoldReason };
 
   const cooldownReason = maybeApplyCooldownReason(ctx, currentReason);
   if (cooldownReason) return { ...dev, reason: renderPlanReasonDecision(cooldownReason) };
@@ -486,30 +486,45 @@ function resolveDailyBindingReattribution(
   };
 }
 
-// Surplus dump-load framing: a device the standing "Run on solar surplus" hold
-// kept off this cycle reads "Waiting for solar surplus" instead of the misleading
-// capacity/dailyBudget default (its baseline is off by opt-in, not by pressure).
-// A device in `surplusHoldReasonById` is DEFINITIONALLY a surplus hold this cycle
-// (resolveSurplusHold selected it), so its shed IS the standing posture and the
-// surplus framing overrides the incidental transient framings — the plan-wide shed
-// cooldown (finding A on #1817), the capacity/dailyBudget carry-forward, and keep.
+// Standing-posture framing: a device that a POSTURE kept off this cycle — the
+// "Run on solar surplus" dump-load hold, or the "Only PELS starts this device"
+// start policy — reads its own reason instead of the misleading
+// capacity/dailyBudget default, because its baseline is off by the owner's own
+// choice rather than by pressure.
+// A device in `postureHoldReasonById` is DEFINITIONALLY posture-held this cycle
+// (one of the hold resolvers selected it and supplied the reason), so its shed IS
+// the standing posture and that framing overrides the incidental transient
+// framings — the plan-wide shed cooldown (finding A on #1817), the
+// capacity/dailyBudget carry-forward, and keep.
 // Two things still win:
 //   - a FRESH shed decision this cycle (`shedReasons` — a genuinely capacity/budget-
-//     shed dump load, e.g. one that was running then shed): real pressure the user
+//     shed device, e.g. one that was running then shed): real pressure the user
 //     should see, AND the discriminator the stepped-restore-block invariant relies
-//     on (`isSurplusOnlyHoldShed` keys on `reason.code === awaitingSolarSurplus`);
+//     on (`isSurplusOnlyHoldShed` / `isStartPolicyHoldShed`, each keyed on its own
+//     reason code);
 //   - a swap reason (the device is being swapped for a higher-priority load): richer
 //     user-actionable info. (Shortfall already returned in the caller before this.)
 // The adopted reason is producer-built and stable across cycles (no numbers).
-function resolveSurplusHoldReasonAdoption(
+function resolvePostureHoldReasonAdoption(
   ctx: ReasonContext,
   dev: DevicePlanDevice,
   currentReason: ClassifiedPlanReason,
 ): DeviceReason | null {
-  const reason = ctx.surplusHoldReasonById.get(dev.id);
+  const reason = ctx.postureHoldReasonById.get(dev.id);
   if (!reason) return null;
   if (ctx.shedReasons.has(dev.id)) return null;
   if (isSwapReason(currentReason)) return null;
+  // A smart task's own framing is MORE specific than either posture and wins.
+  // The device is held because its task is deferring it to a cheaper hour, or is
+  // waiting on a precondition it cannot meet — those are the facts the owner can
+  // act on, and the posture would replace them with a generic baseline-off.
+  //
+  // The ruling is the owner's: "if the copy is 'waiting for soc' and the device
+  // turns off, the case is still that it waits for soc" (2026-09-09). Without
+  // this the posture adoption ran first and discarded the task reason outright,
+  // because a deferring task does not put its device in `taskDrivenDeviceIds`
+  // (that set is the narrower `planned`-only one) and so does not lift the hold.
+  if (ctx.deferredObjectiveAvoidDeviceIds?.has(dev.id)) return null;
   return reason;
 }
 

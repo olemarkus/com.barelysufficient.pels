@@ -1,5 +1,6 @@
-/** What `recordPlannedShed` needs of a device to tell whether its shed carries the surplus posture. */
-type SurplusPostureDevice = { id: string; surplusOnly?: true };
+import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
+/** What `recordPlannedShed` needs of a device to tell whether its shed carries a baseline-off posture. */
+type BaselineOffPostureDevice = { id: string; surplusOnly?: true; startPolicy?: DeviceStartPolicy };
 
 /**
  * What the plan decided to hold shed, when, and under which posture — the
@@ -72,18 +73,26 @@ export class ShedDecisions {
    */
   recordPlannedShed(
     shedIds: ReadonlySet<string>,
-    devices: readonly SurplusPostureDevice[],
+    devices: readonly BaselineOffPostureDevice[],
     nowTs: number,
   ): void {
-    const surplusOnlyIds = new Set<string>();
+    // EITHER baseline-off posture earns the stamp. The stamp's whole job is to
+    // refuse the uncontrolled force-ON when the owner withdraws PELS's
+    // authority, and "I am off because my owner configured a baseline of off" is
+    // the same fact whether the posture is "Run on solar surplus" or "Only PELS
+    // starts this device". Without the second arm, clearing the start policy
+    // turned the device ON as PELS's last act before giving up the lever.
+    const baselineOffIds = new Set<string>();
     for (const device of devices) {
-      if (device.surplusOnly === true) surplusOnlyIds.add(device.id);
+      if (device.surplusOnly === true || device.startPolicy === 'pels_only') {
+        baselineOffIds.add(device.id);
+      }
     }
     for (const id of shedIds) {
       if (!this.lastPlannedShedIds.has(id)) {
         this.decidedMs[id] = nowTs;
       }
-      if (surplusOnlyIds.has(id)) {
+      if (baselineOffIds.has(id)) {
         this.surplusOnlyByDevice[id] = true;
       } else {
         delete this.surplusOnlyByDevice[id];

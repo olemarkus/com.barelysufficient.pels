@@ -211,6 +211,15 @@ const resolveEligibleForStarvation = (params: {
   // `notes/ui-terminology.md` § "Held back" accurate: there is still no
   // "manual"/"external" starvation cause.
   if (device.externalOffHoldActive === true) return false;
+  // Same treatment, same reason, for "Only PELS starts this device": PELS is not
+  // withholding power, it is honouring a configuration. ELIGIBILITY rather than a
+  // paused episode is load-bearing here — a standing baseline-off posture holds
+  // the device below target forever, so `clearQualified` (which requires
+  // `!pelsHoldsBelowTarget`) could never fire and an episode latched during a
+  // task-driven hour would stay latched, leaving the card permanently reading
+  // "Waiting for available power" with a "Let it run now" rescue against the
+  // owner's own setting.
+  if (device.startPolicy === 'pels_only') return false;
   // One read, not two: `DevicePlanDevice.control` is carried through from the
   // plan input unchanged, so asking both shapes was a dead second read.
   return inputDevice.control.managed

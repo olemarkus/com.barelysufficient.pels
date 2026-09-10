@@ -1,3 +1,4 @@
+import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -118,6 +119,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let controllableDevices: Record<string, boolean> = {};
   let managedDevices: Record<string, boolean> = {};
   let budgetExemptDevices: Record<string, boolean> = {};
+  let deviceStartPolicies: Record<string, DeviceStartPolicy> = {};
   let deviceDriverOverrides: Record<string, string> = {};
   let deviceControlProfiles: DeviceControlProfiles = {};
   let deviceTargetPowerConfigs: DeviceTargetPowerConfigsWithReachability = {};
@@ -284,6 +286,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set managedDevices(value) { managedDevices = value; },
     get budgetExemptDevices() { return budgetExemptDevices; },
     set budgetExemptDevices(value) { budgetExemptDevices = value; },
+    get deviceStartPolicies() { return deviceStartPolicies; },
+    set deviceStartPolicies(value) { deviceStartPolicies = value; },
     get temperatureControlDisabledDevices() { return temperatureControlDisabledDevices; },
     set temperatureControlDisabledDevices(value) { temperatureControlDisabledDevices = value; },
     get temperatureControlPolicyState() { return temperatureControlPolicyState; },

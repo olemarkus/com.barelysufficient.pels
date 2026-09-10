@@ -47,6 +47,14 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.dailyBudget },
   { code: PLAN_REASON_CODES.deferredObjectiveAvoid },
   { code: PLAN_REASON_CODES.awaitingSolarSurplus },
+  // The "Only PELS starts this device" hold. Legal for `shed` and nothing else:
+  // the posture's whole expression IS a standing shed intent, and it is
+  // PERMANENT by design — a device with no smart task carries it on every build,
+  // forever. An earlier draft of this feature shipped the hold without this
+  // line, so every affected device logged `plan_reason_pair_invalid` on every
+  // rebuild; the lesson is that a new reason is not landed until a full build
+  // has produced it (`test/integration/startPolicyPlanBuild.test.ts`).
+  { code: PLAN_REASON_CODES.awaitingPelsStart },
   { code: PLAN_REASON_CODES.neutralStartupHold },
   { code: PLAN_REASON_CODES.shortfall },
   { code: PLAN_REASON_CODES.cooldownShedding },
@@ -85,9 +93,22 @@ const REASON_REQUIRED_FLAGS = [
   flags: readonly (keyof DevicePlanDevice)[];
 }[];
 
+// `awaitingPelsStart` has no entry here on purpose. The posture it implies is
+// `startPolicy === 'pels_only'`, which lives on the plan INPUT and is not copied
+// onto the plan device — this table can only test a boolean flag on the output.
+// Adding the field to `DevicePlanDevice` to satisfy the table would put a second
+// copy of an owner setting on the wire for one assertion's sake; the reason has
+// exactly one producer (`resolveStartPolicyHold`), which is keyed on that
+// policy, so there is no second path for the pair to come apart on.
+
 const INACTIVE_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.inactive },
   { code: PLAN_REASON_CODES.externalOffHold },
+  // The start-policy hold is legal in BOTH states, and the pair is the whole
+  // lifecycle: `shed` while the device is still running (which is what actuates
+  // the turn-off), `inactive` once it is off (which is what makes the card read
+  // `Off`). See `getInactiveReason`.
+  { code: PLAN_REASON_CODES.awaitingPelsStart },
 ] as const;
 
 function getAllowedReasonRules(plannedState: string): readonly ReasonCodeRule[] {

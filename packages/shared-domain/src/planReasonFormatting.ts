@@ -50,6 +50,7 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.capacity }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
+  | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
 >;
 
 function formatSignedKw(value: number, digits: number): string {
@@ -74,6 +75,7 @@ const STATIC_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
   PLAN_REASON_CODES.awaitingSolarSurplus,
+  PLAN_REASON_CODES.awaitingPelsStart,
 ]);
 
 function isStaticReason(reason: DeviceReason): reason is StaticReason {
@@ -104,6 +106,8 @@ function formatStaticReason(reason: StaticReason): string {
       return 'waiting for cheaper hours';
     case PLAN_REASON_CODES.awaitingSolarSurplus:
       return 'waiting for solar surplus';
+    case PLAN_REASON_CODES.awaitingPelsStart:
+      return 'waiting for a smart task to start it';
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -512,6 +516,15 @@ function formatStaticReasonUserFacing(reason: StaticReason): string {
       return PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS;
     case PLAN_REASON_CODES.awaitingSolarSurplus:
       return PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS;
+    // Deliberately no card copy, and the empty string is how `keep` already says
+    // that. The device is off because its owner set it to run only when PELS
+    // starts it, so the card says `Off` and stops there: it is not being held
+    // back from anything, and a line naming the setting would restate a
+    // configuration instead of telling the owner something about the device.
+    // When a smart task IS governing it, the task's own reason is more specific
+    // and wins on its own. (Owner ruling, 2026-09-10.)
+    case PLAN_REASON_CODES.awaitingPelsStart:
+      return '';
     default: {
       const exhaustive: never = reason;
       return exhaustive;

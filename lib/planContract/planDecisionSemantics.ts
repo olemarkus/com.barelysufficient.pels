@@ -23,7 +23,8 @@ export type PlanStarvationPauseReason =
   | 'keep'
   | 'inactive'
   | 'deferred_objective_avoid'
-  | 'awaiting_solar_surplus';
+  | 'awaiting_solar_surplus'
+  | 'awaiting_pels_start';
 
 export type PlanStarvationSuppressionSemantics =
   | { state: 'none'; countingCause: null; pauseReason: null }
@@ -70,6 +71,12 @@ const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   // binary_restore must never lift it (plan-side admittedDeviceIds exclusion means
   // the two should not co-occur — this is the defense-in-depth classifier).
   PLAN_REASON_CODES.awaitingSolarSurplus,
+  // Same shape, same reason: the "Only PELS starts this device" hold is a
+  // standing baseline-off posture. The plan-side exclusion is narrower here (a
+  // task must be actively DRIVING the device, not merely governing it), so the
+  // two co-occur even less — but a task whose current hour is idle must not have
+  // its release lift the very hold that hour's idleness justifies.
+  PLAN_REASON_CODES.awaitingPelsStart,
   // "Leave off until turned on again" is an explicit user action, and the spec
   // is that it wins over a smart task: the task reports the deadline risk
   // instead of quietly overriding the off. Without this a deferred binary_restore
@@ -159,6 +166,16 @@ const PAUSE_SUPPRESSION_REASONS: Partial<Record<PlanReasonCode, PlanStarvationPa
   // falling through to the `unknown_suppression_reason` catch-all in planDiagnostics.
   [PLAN_REASON_CODES.deferredObjectiveAvoid]: 'deferred_objective_avoid',
   [PLAN_REASON_CODES.awaitingSolarSurplus]: 'awaiting_solar_surplus',
+  // `awaitingPelsStart`: the opted-in "Only PELS starts this device" posture,
+  // whose baseline IS off. It belongs in the carve-out for the same reason its
+  // solar twin does — the device is off because its owner configured it that
+  // way, so counting the hold as starvation would flag the owner's own setting
+  // as a problem and offer "Let it run now" against it. Present here rather
+  // than absent because the device stays starvation-ELIGIBLE (unlike
+  // `externalOffHold`, which is excluded upstream), so without an entry it
+  // would fall through to `unknown_suppression_reason` and device detail would
+  // read "Service reason unknown".
+  [PLAN_REASON_CODES.awaitingPelsStart]: 'awaiting_pels_start',
   // `externalOffHold` is the third member of that carve-out but is deliberately ABSENT: a
   // device the owner turned off outside PELS is excluded from starvation ELIGIBILITY
   // upstream (`resolveEligibleForStarvation`, `lib/plan/planDiagnostics.ts`), which resets

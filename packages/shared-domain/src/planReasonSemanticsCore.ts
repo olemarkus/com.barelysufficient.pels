@@ -23,6 +23,13 @@ export const PLAN_REASON_CODES = {
   // marks it eligible. Deliberately carries NO numbers/timestamps — the reason
   // must be byte-stable across plan cycles (rebuild-storm class, f1550cea).
   awaitingSolarSurplus: 'awaiting_solar_surplus',
+  // Standing "Only PELS starts this device" hold: the device's baseline is OFF
+  // and the only thing that lifts it is a smart task actively driving it. Twin
+  // of `awaitingSolarSurplus` in every structural respect — an opted-in posture
+  // rather than capacity pressure, and deliberately carrying NO
+  // numbers/timestamps so the reason is byte-stable across plan cycles
+  // (rebuild-storm class, f1550cea).
+  awaitingPelsStart: 'awaiting_pels_start',
   // "Leave off until turned on again": an opted-in device was turned off outside
   // PELS, independently of its current plan. PELS is NOT holding the device back
   // — it is respecting an explicit action — so this pairs with the display-only
@@ -205,6 +212,7 @@ export type DeviceReason =
   | ({ code: typeof PLAN_REASON_CODES.capacity } & AdmissionShortfall & ReserveHolder)
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
+  | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
   | { code: typeof PLAN_REASON_CODES.externalOffHold }
   | { code: typeof PLAN_REASON_CODES.neutralStartupHold }
   | { code: typeof PLAN_REASON_CODES.startupStabilization }

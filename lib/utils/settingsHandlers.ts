@@ -1,9 +1,9 @@
 import type { HomeyRuntime } from '../ports/homeyRuntime';
 import type { DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
-import type { SettingsUiLogEntry } from '../../packages/contracts/src/types';
 import {
   BUDGET_EXEMPT_DEVICES,
   RESPECT_EXTERNAL_OFF_DEVICES,
+  DEVICE_START_POLICIES,
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -60,6 +60,7 @@ import {
   type DebouncedSyncScheduler,
 } from './settingsHandlerDebounce';
 import { createNoopWriteSkipper } from './settingsWriteDedupe';
+import { handleSettingsUiLog } from './settingsUiLogIngest';
 
 const settingsLogger = getLogger('settings');
 export type PriceServiceLike = {
@@ -423,6 +424,17 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       // rebuild below.
       await rebuildPlanFromSettings(deps, RESPECT_EXTERNAL_OFF_DEVICES);
     },
+    [DEVICE_START_POLICIES]: async () => {
+      // Reload FIRST: the policy map reaches the planner through the capacity
+      // settings snapshot, so a rebuild before the adoption would replan against
+      // the map the owner just replaced.
+      deps.loadCapacitySettings();
+      // No snapshot refresh though: the policy changes neither which devices are
+      // fetched nor how they parse. It is read at `toPlanDevice`, so the rebuild
+      // is the whole propagation — a device just opted in gets its standing OFF
+      // intent on that build, and one just opted out loses it.
+      await rebuildPlanFromSettings(deps, DEVICE_START_POLICIES);
+    },
     [DEVICE_EXPECTED_POWER_OVERRIDES]: async () => {
       // Reload FIRST: expected power is resolved during the device parse
       // (`lib/device/devicePowerEstimate.ts`) from the in-memory override map,
@@ -574,28 +586,6 @@ function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMa
     settings_ui_log: async () => handleSettingsUiLog(deps),
   };
 }
-
-const settingsUiLogLevelMethod = (level: SettingsUiLogEntry['level']): 'error' | 'warn' | 'info' => {
-  if (level === 'error') return 'error';
-  return level === 'warn' ? 'warn' : 'info';
-};
-
-const handleSettingsUiLog = async (deps: SettingsHandlerDeps): Promise<void> => {
-  const raw = deps.homey.settings.get('settings_ui_log');
-  if (!raw || typeof raw !== 'object') return;
-  const entry = raw as SettingsUiLogEntry;
-  if (!entry.level || !entry.message) return;
-
-  settingsLogger[settingsUiLogLevelMethod(entry.level)]({
-    event: 'settings_ui_log',
-    level: entry.level,
-    message: entry.message,
-    detail: entry.detail ?? null,
-    context: entry.context ?? null,
-  });
-
-  deps.homey.settings.set('settings_ui_log', null);
-};
 
 async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void> {
   deps.loadCapacitySettings();

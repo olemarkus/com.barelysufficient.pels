@@ -18,6 +18,7 @@ import {
   normalizeTargetCapabilityValue,
 } from '../utils/targetCapabilities';
 import { applyOffStateReason, type ShortfallOffState } from './planOffStateReason';
+import { isStartPolicyHoldShed } from './shedding/startPolicyHold';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { buildBasePlanDevice } from './planDevicesBase';
 import { emitBoostStateChange, resolveBoostActive } from './planBoost';
@@ -72,13 +73,16 @@ export function buildInitialPlanDevices(params: {
   // Drop entries that must NOT count as capacity-shed posture, so the keep-invariant
   // stepped clamp (docs/technical.md:222) is symmetric with the executor's
   // hasExecutableShedDevices: the phantom set_step shed entries it also ignores, PLUS
-  // "Run on solar surplus" holds (an opt-in posture, not capacity pressure — mirrors the
-  // executor's `awaitingSolarSurplus`-reason exclusion).
+  // both STANDING POSTURES — "Run on solar surplus" and the "Only PELS starts this
+  // device" start policy. Neither is capacity pressure: the device is off because its
+  // owner opted into a baseline, not because the house is short of power. Mirrors the
+  // executor's reason-code exclusions.
   const effectiveShedSet = buildEffectiveShedPosture({
     devices: context.devices,
     shedSet,
     isExcluded: (dev) => isPhantomSetStepShed({ dev, devices: context.devices, state, deps })
-      || isSurplusOnlyHoldShed({ dev, state, shedReasons }),
+      || isSurplusOnlyHoldShed({ dev, state, shedReasons })
+      || isStartPolicyHoldShed(dev, shedReasons),
   });
   // Per-stage accumulators (split inside the per-device loop). Emitted once
   // after the loop so the perf log shows where plan_devices_ms is going

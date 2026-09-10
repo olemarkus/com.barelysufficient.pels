@@ -1241,6 +1241,41 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Settings UI surfaces and copy
 
+- [ ] **Two device-page strings go false when "Only PELS starts this device" is on.**
+      `packages/settings-ui/public/index.html` — the neighbouring "Leave off until turned on
+      again" hint ends "Turning it on again returns it to normal PELS control", which with the
+      start policy on means turning it on returns it to being switched back off. And
+      `packages/settings-ui/src/ui/deviceDetail/respectExternalOff.ts` toasts "PELS may now
+      resume this device when power is available." when the owner switches that setting OFF —
+      an affirmative claim, made at the moment of the action, that is false for a `pels_only`
+      device (PELS will not resume it; only a smart task will). **What changes:** make both
+      consult the start policy — suppress or amend the hint's third sentence, and pick the
+      toast text on `resolveDeviceStartPolicy(state.deviceStartPolicyMap, deviceId)`.
+      **Done when:** neither string asserts a resume that the start policy forbids. [P2]
+
+- [ ] **The three solar-surplus toggles stay enabled on a device the start policy holds.**
+      `packages/settings-ui/public/index.html` offers "Run on solar surplus" / "Match solar
+      surplus" / "Charge on solar surplus" for the same device population as the start-policy
+      row, and nothing disables them against each other. The runtime ruling (2026-09-10) is
+      that the start policy wins: the device stays off when surplus arrives, so the surplus
+      toggle silently does nothing. The surplus row already has the right treatment for its two
+      other blocked substates — visible, disabled, with a hint naming the real switch.
+      **What changes:** add a third substate with a hint naming the start policy.
+      **Done when:** switching the start policy on disables the surplus toggle with a hint, and
+      switching it off re-enables it. [P2]
+
+- [ ] **"Smart task" is capitalised mid-sentence in the two start-policy hints.**
+      `packages/settings-ui/public/index.html` — the dominant convention in body copy is
+      lowercase (`notes/ui-terminology.md`, and the two adjacent hints in the same panel), with
+      the capitalised form reserved for the tab and appbar titles. Two sibling hints already
+      deviate, so the drift predates this. **What changes:** lowercase it in the new hints and
+      the two siblings, or register the capitalised convention in `notes/ui-terminology.md` and
+      fix the lowercase uses. **Done when:** one convention holds across `index.html` body copy.
+      *Persona:* owner reading device detail (`notes/personas.md`). *Hypothesis:* inconsistent
+      capitalisation of a product noun reads as carelessness on the screen where the owner is
+      deciding whether to trust the feature. *Why it's needed:* it is the one vocabulary rule
+      this feature's copy breaks. [P3]
+
 - [ ] **Activity log: collapse resume/turn-off alternation bursts.**
       *Persona:* owner reading the log after a windy evening.
       *Hypothesis:* consecutive-identical entries now collapse, but an A/B/A/B resume-vs-turn-off
@@ -1475,6 +1510,25 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       ever rides `keep` needs a different classification argument from one that rides `shed`. [P3]
 
 ## Architecture and tooling debt
+
+- [ ] **No end-to-end cover for the start policy's actuation claim.** The feature's core
+      assertion is that nothing new actuates — the executor's existing convergence writes a
+      device whose observation disagrees with its plan, so an unplanned start is ordinary drift.
+      `test/integration/startPolicyPlanBuild.test.ts` stops at `plannedState`/`reason` and never
+      reaches a device write. **What changes:** an e2e driven through the Homey SDK boundary,
+      modelled on `test/e2e/externalOffHold.e2e.test.ts` (the precedent for a standing hold):
+      opt a binary device in, turn it on through the mock SDK, advance to the next meter
+      reading, assert the off write. **Done when:** the spec fails if the hold stops producing
+      an executable off intent. [P2]
+
+- [ ] **`lib/utils/settingsUiLogIngest.ts` imports its deps type back from the file it left.**
+      It takes `SettingsHandlerDeps` from `settingsHandlers.ts`, which imports
+      `handleSettingsUiLog` from it — a type-only cycle `no-circular` cannot see, because
+      `tsPreCompilationDeps` is unset. The function uses exactly `deps.homey.settings`.
+      **What changes:** take `SettingsPort`/`HomeyRuntime` instead of the 25-field wiring deps
+      type, and consider `lib/logging/` as the owner rather than `lib/utils/` (which root
+      `AGENTS.md` scopes to pure helpers; this one reads the SDK and writes to the logger).
+      **Done when:** the two files no longer import each other. [P2]
 
 - [ ] **P2 — the usage sums copy every plan device to attach one boolean.** `toUsageDevice`
       (`lib/plan/planUsage.ts`) spreads a whole `DevicePlanDevice` to add `countsAsManagedUsage`,

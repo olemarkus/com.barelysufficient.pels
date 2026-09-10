@@ -167,6 +167,18 @@ export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
     return { code: PLAN_REASON_CODES.inactive, detail: resolveCommandabilityDetail(dev) };
   }
   if (dev.externalOffHoldActive === true) return { code: PLAN_REASON_CODES.externalOffHold };
+  // "Only PELS starts this device", once the device is actually off. While it is
+  // still running the plan must say `shed`, because that is what makes the
+  // executor turn it off; once it IS off there is nothing left to do and the
+  // honest posture is `inactive` — the device is not being held back from
+  // anything, off is its baseline.
+  //
+  // This is also the whole of the card treatment. `inactive` resolves to the
+  // `Off` state word (`resolvePlanStateKind`), where `shed` resolves to
+  // `Limited` and the empty reason string falls through to "Waiting to resume" —
+  // a line that would promise the owner PELS intends to bring the device back
+  // once power frees up, when only a smart task ever will.
+  if (dev.startPolicy === 'pels_only') return { code: PLAN_REASON_CODES.awaitingPelsStart };
 
   return null;
 }

@@ -326,7 +326,7 @@ const normalizeHeld = (params: {
       inCooldown: params.inCooldown ?? false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-      surplusHoldReasonById: new Map((params.holdIds ?? ['dev']).map((id) => [id, AWAITING])),
+      postureHoldReasonById: new Map((params.holdIds ?? ['dev']).map((id) => [id, AWAITING])),
     }))[0];
 
 describe('awaitingSolarSurplus reason adoption', () => {

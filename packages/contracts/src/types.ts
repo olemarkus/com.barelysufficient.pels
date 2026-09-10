@@ -884,3 +884,15 @@ export type SettingsUiLogEntry = {
     context?: string;
     timestamp: number;
 };
+
+/**
+ * Who may start a managed device. `'unrestricted'` is the default and what every
+ * device did before the `device_start_policies` key existed; `'pels_only'` gives
+ * the device a standing OFF baseline that only PELS lifts.
+ *
+ * Declared here because the planner input and the settings UI both need the
+ * type; the read/write POLICY lives with the key's owner,
+ * `packages/shared-domain/src/settings/deviceStartPolicy.ts`, so the runtime and
+ * the settings UI can never disagree on what a junk value means.
+ */
+export type DeviceStartPolicy = 'unrestricted' | 'pels_only';

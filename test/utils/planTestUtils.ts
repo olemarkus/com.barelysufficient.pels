@@ -36,6 +36,10 @@ import type {
   SettingsUiPlanMetaSnapshotBase,
 } from '../../packages/contracts/src/settingsUiApi';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import {
+  DEFAULT_DEVICE_START_POLICY,
+  type DeviceStartPolicy,
+} from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { isEvDevice } from '../../packages/shared-domain/src/evPlugState';
 import {
   type BoostResolveInput,
@@ -292,6 +296,7 @@ export const withMaterializedEvPlugState = <T extends {
   objectiveKind?: 'ev_soc';
   objectiveSessionInactive: boolean;
   commandabilityReason?: 'charger_unplugged' | 'charger_discharging';
+  startPolicy: DeviceStartPolicy;
 } => {
   const explicitCommandableNow = (overrides as { commandableNow?: boolean }).commandableNow;
   const dev = {
@@ -328,6 +333,11 @@ export const withMaterializedEvPlugState = <T extends {
     surplusTracking: (overrides as { surplusTracking?: boolean }).surplusTracking ?? false,
     // Required two-state producer bit; `false` is "no calibration opinion".
     confirmedNotDrawing: (overrides as { confirmedNotDrawing?: boolean }).confirmedNotDrawing ?? false,
+    // Mirrors `resolveDeviceStartPolicy`: a device with no entry in the settings
+    // map has the default policy, which is an answer rather than a gap. A spec
+    // exercising the "Only PELS starts this device" hold says `'pels_only'`.
+    startPolicy: (overrides as { startPolicy?: DeviceStartPolicy }).startPolicy
+      ?? DEFAULT_DEVICE_START_POLICY,
     ...(isEv ? { objectiveKind: 'ev_soc' as const } : {}),
     // Mirrors `resolvePlanObjective`: the session question, resolved from the
     // plug-state before the producer strips it. Never `commandableNow`.
@@ -630,8 +640,16 @@ export const fixtureResidualKw = (
  */
 export const withFixtureResidualKw = <T extends object>(
   fields: T,
-): T & { residualKw: FixtureResidualKw; priority: number; control: DeviceControlPosture } => {
+): T & {
+  residualKw: FixtureResidualKw;
+  priority: number;
+  control: DeviceControlPosture;
+  startPolicy: DeviceStartPolicy;
+} => {
   const priority = (fields as { priority?: number }).priority ?? 1;
+  // Defaulted here for the same reason the posture is — see the note below.
+  const startPolicy = (fields as { startPolicy?: DeviceStartPolicy }).startPolicy
+    ?? DEFAULT_DEVICE_START_POLICY;
   // Defaulted here for the same reason `priority` is: several local spec helpers
   // build a device literal and pass it straight through this wrapper, so a
   // posture defaulted only in the top-level builders would leave those devices
@@ -646,7 +664,11 @@ export const withFixtureResidualKw = <T extends object>(
   // production resolves the residual long before such a ladder reaches a plan.
   if (declared?.shed !== undefined && declared.restore !== undefined) {
     return {
-      ...fields, priority, control, residualKw: { shed: declared.shed, restore: declared.restore },
+      ...fields,
+      priority,
+      control,
+      startPolicy,
+      residualKw: { shed: declared.shed, restore: declared.restore },
     };
   }
   const resolved = fixtureResidualKw(fields as Parameters<typeof fixtureResidualKw>[0]);
@@ -654,6 +676,7 @@ export const withFixtureResidualKw = <T extends object>(
     ...fields,
     priority,
     control,
+    startPolicy,
     residualKw: {
       shed: declared?.shed ?? resolved.shed,
       restore: declared?.restore ?? resolved.restore,

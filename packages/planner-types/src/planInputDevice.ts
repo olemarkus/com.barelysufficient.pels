@@ -1,6 +1,7 @@
 import type {
   DeviceControlAdapterSnapshot,
   DeviceControlModel,
+  DeviceStartPolicy,
   ExpectedPowerSource,
   RestorePowerSource,
   SteppedLoadCommandStatus,
@@ -512,6 +513,20 @@ export type PlanInputDeviceBase = {
    * `resolveConfirmedNotDrawing` (`setup/appInit/calibrationViews.ts`).
    */
   confirmedNotDrawing: boolean;
+  /**
+   * Who may start this device — see {@link DeviceStartPolicy}.
+   *
+   * REQUIRED and producer-resolved: absence of an entry in the settings map is
+   * `'unrestricted'`, which is an answer rather than a gap, so no consumer
+   * branches on presence. `resolveDeviceStartPolicy` owns that default.
+   *
+   * It reaches the plan as a device fact rather than as a decision because two
+   * unrelated things read it: the posture producer, which turns `'pels_only'`
+   * into standing `commandAuthority`, and the shedding lane's start-policy hold,
+   * which turns it into a standing OFF intent when no smart task is driving the
+   * device.
+   */
+  startPolicy: DeviceStartPolicy;
 };
 
 /**

@@ -138,6 +138,10 @@ const STARVATION_REASON_LABELS: Record<StarvationReason, string> = {
   sample_gap: 'Fresh observation missing',
   deferred_objective_avoid: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   awaiting_solar_surplus: PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
+  // Same words its siblings use: there is no active service block, which is
+  // exactly what "only PELS starts this, and nothing asked" means. No new
+  // string for the policy — see `planReasonFormatting.ts`.
+  awaiting_pels_start: 'No active service block',
   reserved_for_start: PLAN_STATE_RESERVED_FOR_START_STATUS,
   unknown_suppression_reason: 'Service reason unknown',
 };
