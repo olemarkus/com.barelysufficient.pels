@@ -25,11 +25,11 @@ const pendingSelections = new Map<string, TemperatureControlMode>();
 
 const HINTS: Record<TemperatureControlMode, string> = {
   mode: 'PELS uses the current mode’s target and adjusts it for prices and power limits. '
-    + 'External changes are changed back.',
-  external: 'PELS never changes the temperature. Other power controls work if this device has them. '
+    + 'If the temperature changes elsewhere, PELS returns it to this target.',
+  external: 'PELS keeps new temperature settings. Other power controls work if this device has them. '
     + 'If PELS has lowered the target, it stays lowered until you adjust it.',
-  update_mode: 'Changes on the device, in Homey, or from another app or Flow update this device’s target '
-    + 'in the current mode. PELS uses saved targets when modes change. '
+  update_mode: 'Temperature changes on the device, in Homey, or from another app or Flow '
+    + 'are saved as this device’s target in the current mode. PELS uses saved targets when modes change. '
     + 'Price and solar temperature adjustments are not applied.',
 };
 
@@ -73,7 +73,7 @@ export const initTemperatureControlDisabledHandler = (deps: HandlerDeps): void =
       key: TEMPERATURE_CONTROL_MODES,
       context: 'device detail',
       logMessage: 'Failed to update temperature control',
-      toastMessage: 'Failed to update temperature control.',
+      toastMessage: 'Failed to save how PELS handles temperature.',
       fallbackValue: state.temperatureControlModes,
       readFresh: readTemperatureControlModes,
       mutate: (current) => ({ ...current, [deviceId]: next }),

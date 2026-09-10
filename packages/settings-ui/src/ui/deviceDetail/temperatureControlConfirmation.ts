@@ -42,8 +42,8 @@ export async function confirmTemperatureControlChange(
   if (warnings.length === 0) return true;
   if (!dialog || !message || !consequences || dialog.open) return false;
 
-  const label = next === 'update_mode' ? 'Update mode target' : 'Leave temperature to you';
-  message.textContent = `${label} will change how PELS controls ${device.name}:`;
+  const label = next === 'update_mode' ? 'Save as current mode target' : 'Keep the new temperature';
+  message.textContent = `Choosing “${label}” will change how PELS manages ${device.name}:`;
   consequences.replaceChildren(...warnings.map((warning) => {
     const item = document.createElement('li');
     item.textContent = warning;

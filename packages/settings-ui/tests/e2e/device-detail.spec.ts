@@ -402,8 +402,8 @@ test.describe('Device detail panel', () => {
   });
 
   for (const policy of [
-    { value: 'external', label: 'Leave temperature to you', appliesTargets: false },
-    { value: 'update_mode', label: 'Update mode target', appliesTargets: true },
+    { value: 'external', label: 'Keep the new temperature', appliesTargets: false },
+    { value: 'update_mode', label: 'Save as current mode target', appliesTargets: true },
   ]) {
     test(`${policy.label} confirms affected controls and preserves configuration`, async ({ page }) => {
       await openDeviceDetail(page, 'dev_heatpump');
@@ -423,7 +423,8 @@ test.describe('Device detail panel', () => {
       };
       const dialog = page.locator('#temperature-control-confirm-dialog');
       await expect(row).toBeVisible();
-      await expect(row).toContainText('Temperature control');
+      await expect(row).toContainText('When the temperature changes outside PELS');
+      await expect(row).toContainText(policy.label);
       await expect.poll(() => readMdValue(page, selectSelector)).toBe('mode');
 
       const before = await readHomeySetting<Record<string, unknown>>(page, 'price_optimization_settings');
@@ -432,6 +433,7 @@ test.describe('Device detail panel', () => {
 
       await choosePolicy(policy.value);
       await expect(dialog).toBeVisible();
+      await expect(dialog).toContainText('Change how PELS handles temperature?');
       await expect(dialog).toContainText('Living Room Heat Pump');
       await expect(dialog).toContainText('Price-based temperature adjustments will stop.');
       await expect.poll(() => readMdValue(page, selectSelector)).toBe('mode');

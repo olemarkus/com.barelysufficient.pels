@@ -34,7 +34,8 @@ const modesHelpEl = document.querySelector<HTMLElement>('#device-detail-modes-he
 const MODES_HELP_ACTIVE = 'Set the target temperature for each mode. PELS will set this when the mode is active. '
   + 'Priority is this device’s place in that mode’s pecking order — higher-priority devices '
   + 'keep running longer and resume sooner; reorder it in Modes.';
-const MODES_HELP_DISABLED = 'Saved target temperatures. PELS won’t apply them while temperature control is disabled.';
+const MODES_HELP_DISABLED = 'Saved target temperatures. '
+  + 'PELS won’t apply them while Keep the new temperature is selected.';
 
 type DetailModeCatalog = {
   activeMode: string;
