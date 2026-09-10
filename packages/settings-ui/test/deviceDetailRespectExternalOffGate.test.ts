@@ -473,7 +473,7 @@ describe('device detail "Disable temperature control"', () => {
     expect(homey.__settingsStore.temperature_control_disabled_devices).toEqual({ 'other-1': true, stale: false });
   });
 
-  it('saves Update mode target while keeping mode targets editable and disabling price adjustments', async () => {
+  it('saves as current mode target while keeping mode targets editable and disabling price adjustments', async () => {
     const { state, homey } = await openPanel({ device: buildTemperatureBinaryDevice(), priceEnabled: true });
     homey.__settingsStore.temperature_control_modes = { other: 'external' };
     const select = temperatureControlToggle();
@@ -510,7 +510,7 @@ describe('device detail "Disable temperature control"', () => {
     expect(document.querySelector('#device-detail-temperature-control-power-hint')?.textContent).toContain('cannot limit');
   });
 
-  it('blocks Update mode target while a Smart task needs temperature control', async () => {
+  it('blocks saving as current mode target while a Smart task needs temperature control', async () => {
     const { homey } = await openPanel({ device: buildTemperatureBinaryDevice(), activeSmartTask: true });
     const select = temperatureControlToggle()!;
     expect(select.querySelector('[value="update_mode"]')?.hasAttribute('disabled')).toBe(true);

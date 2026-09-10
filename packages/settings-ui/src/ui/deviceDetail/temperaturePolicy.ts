@@ -22,8 +22,8 @@ export function supportsPowerLimiting(device: SettingsUiDeviceDetailItem | null)
 
 export function temperatureAdjustmentGateHint(device: SettingsUiDeviceDetailItem | null): string {
   return followsDeviceTemperature(device)
-    ? 'Not applied with Update mode target. Your saved settings are kept.'
-    : 'Temperature control is off for this device — these values are kept but not applied.';
+    ? 'Not applied while PELS saves temperature changes as the current mode target. Your saved settings are kept.'
+    : 'Not applied while PELS keeps the new temperature. Your saved settings are kept.';
 }
 
 export function manualTemperaturePowerHint(device: SettingsUiDeviceDetailItem | null): string {

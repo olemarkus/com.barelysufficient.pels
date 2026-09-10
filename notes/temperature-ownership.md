@@ -1,17 +1,19 @@
 # PELS owns a managed thermostat's setpoint
 
 **Default ownership, 2026-08-26; explicit opt-in extended 2026-09-08.**
-The per-device **Temperature control** choice selects one of three policies:
+The per-device **When the temperature changes outside PELS** choice selects one
+of three policies:
 
-- **Use mode target** (default): external setpoint changes are observations; PELS
+- **Return to mode target** (default): external setpoint changes are observations; PELS
   continues to apply the current mode target with its normal adjustments.
-- **Leave temperature to you** (formerly "Disable temperature control"):
+- **Keep the new temperature** (formerly "Disable temperature control"):
   `projectTemperatureDeniedDevice` strips the target axis. PELS makes no setpoint
   writes, while binary and stepped control remain available.
-- **Update mode target**: an admitted external setpoint transition updates this
-  device's target in the active mode of its owning home. The selected temperature is literal: saved mode targets remain writable, including
-  when switching modes, but price/solar offsets and fixed-temperature limiting
-  are not applied. Saved adjustment preferences are preserved for switching back.
+- **Save as current mode target**: an admitted external setpoint transition
+  updates this device's target in the active mode of its owning home. The selected
+  temperature is literal: saved mode targets remain writable, including when
+  switching modes, but price/solar offsets and fixed-temperature limiting are not
+  applied. Saved adjustment preferences are preserved for switching back.
   Binary and stepped limiting remain available; a temperature-only device has no
   remaining limiting control. Temperature Smart tasks require full temperature
   control and cannot be created with this policy.
@@ -20,11 +22,12 @@ The per-device **Temperature control** choice selects one of three policies:
 classifies command echoes in the device observation path, with no plan comparison.
 `ObservedTemperatureModeUpdates` applies the opt-in and persists the mode edit.
 The executor and drift detector never edit a mode. A live write fence accepts only
-the normalized saved target under Update mode target, so a queued price/limit
-command cannot overwrite a newly chosen temperature after the policy changes. The SDK settings
-notifications for these edits (immediate or delayed) are consumed without a rebuild; the mode caches reload
-and the next reading decides from the new target. Ordinary UI/Flow mode edits
-keep their existing settings-triggered rebuild behavior.
+the normalized saved target under Save as current mode target, so a queued
+price/limit command cannot overwrite a newly chosen temperature after the policy
+changes. The SDK settings notifications for these edits (immediate or delayed)
+are consumed without a rebuild; the mode caches reload and the next reading
+decides from the new target. Ordinary UI/Flow mode edits keep their existing
+settings-triggered rebuild behavior.
 
 A new `temperature_control_modes` entry overrides the legacy disable boolean for
 that device. Without an entry, the old toggle retains its meaning. The shared key
@@ -109,11 +112,12 @@ the problem, not the safety net.
   delta modulates a configured mode target and nothing else).
 - **A reviewer report shaped "the owner changed the setpoint mid-shed, so PELS
   later restores a stale value" depends on the selected policy.** Under the
-  default it is drift. Under Update mode target, an admitted external adjustment
-  must update the saved mode target before the next plan. The next plan may limit
-  power using another control axis, but never changes the temperature for limiting.
+  default it is drift. Under Save as current mode target, an admitted external
+  adjustment must update the saved mode target before the next plan. The next plan
+  may limit power using another control axis, but never changes the temperature
+  for limiting.
 - **Restoring one device is one admission across its control axes.** A thermostat
-  switched back to Use mode target while off may need both turn-on and a raised
+  switched back to Return to mode target while off may need both turn-on and a raised
   setpoint. When the restore pass has already admitted that device, the subsequent
   setpoint hold pass preserves its target and the already-debited power allowance.
   Re-admitting it there can block the device on its own restore throttle forever.

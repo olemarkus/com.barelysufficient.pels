@@ -2020,9 +2020,10 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
 
 ## Post-release docs update
 
-- [ ] Update `docs/configuration.md` and `docs/technical.md` for the Temperature
-  control selector: Use mode target, Leave temperature to you, and Update mode
-  target. The observation opt-in saves the chosen temperature literally; price/solar
-  offsets and temperature limiting are unavailable, while modes still apply saved
-  targets and other power controls remain usable. Existing disable settings retain
-  their meaning. See `notes/temperature-ownership.md`.
+- [ ] Update `docs/configuration.md` and `docs/technical.md` for the **When the
+  temperature changes outside PELS** selector: Return to mode target, Keep the new
+  temperature, and Save as current mode target. The observation opt-in saves the
+  chosen temperature literally; price/solar offsets and temperature limiting are
+  unavailable, while modes still apply saved targets and other power controls
+  remain usable. Existing disable settings retain their meaning. See
+  `notes/temperature-ownership.md`.

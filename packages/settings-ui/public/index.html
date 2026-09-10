@@ -746,15 +746,15 @@
   <!-- Device Detail Panel (slide-over side sheet) -->
   <div id="device-detail-overlay" class="overlay" hidden>
     <md-dialog id="temperature-control-confirm-dialog">
-      <div slot="headline">Change temperature control?</div>
+      <div slot="headline">Change how PELS handles temperature?</div>
       <form slot="content" id="temperature-control-confirm-form" method="dialog">
         <p class="pels-text-body" id="temperature-control-confirm-message"></p>
         <ul class="pels-text-body" id="temperature-control-confirm-consequences"></ul>
-        <p class="pels-text-body">Your saved settings are kept for switching back to Use mode target.</p>
+        <p class="pels-text-body">Your saved settings are kept if you switch back to Return to mode target.</p>
       </form>
       <div slot="actions">
         <md-text-button form="temperature-control-confirm-form" value="cancel">Cancel</md-text-button>
-        <md-text-button form="temperature-control-confirm-form" value="confirm">Change control</md-text-button>
+        <md-text-button form="temperature-control-confirm-form" value="confirm">Save choice</md-text-button>
       </div>
     </md-dialog>
     <div id="device-detail-panel" class="slide-panel">
@@ -1161,15 +1161,15 @@
                 </div>
 
                 <div class="field" id="device-detail-temperature-control-disabled-row" hidden>
-                  <label class="pels-text-settings-label" id="device-detail-temperature-control-label">Temperature control</label>
+                  <label class="pels-text-settings-label" id="device-detail-temperature-control-label">When the temperature changes outside PELS</label>
                   <md-filled-select id="device-detail-temperature-control-disabled" aria-labelledby="device-detail-temperature-control-label">
-                    <md-select-option value="mode" selected><div slot="headline">Use mode target</div></md-select-option>
-                    <md-select-option value="external"><div slot="headline">Leave temperature to you</div></md-select-option>
-                    <md-select-option value="update_mode"><div slot="headline">Update mode target</div></md-select-option>
+                    <md-select-option value="mode" selected><div slot="headline">Return to mode target</div></md-select-option>
+                    <md-select-option value="external"><div slot="headline">Keep the new temperature</div></md-select-option>
+                    <md-select-option value="update_mode"><div slot="headline">Save as current mode target</div></md-select-option>
                   </md-filled-select>
                   <small class="field__hint pels-text-body" id="device-detail-temperature-control-hint"></small>
                   <small class="field__hint pels-text-body" id="device-detail-temperature-control-power-hint" hidden></small>
-                  <small class="field__hint pels-text-body" id="device-detail-temperature-control-disabled-smart-task-hint" hidden>Clear this device&rsquo;s active Smart task before changing who controls its temperature.</small>
+                  <small class="field__hint pels-text-body" id="device-detail-temperature-control-disabled-smart-task-hint" hidden>Clear this device&rsquo;s active Smart task before changing how PELS handles its temperature.</small>
                 </div>
 
                 <div class="md-switch-row">
