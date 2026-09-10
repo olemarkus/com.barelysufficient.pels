@@ -9,14 +9,13 @@
  */
 import type Homey from 'homey';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import { readModeDeviceTarget } from '../lib/home/modeDeviceTargetsRead';
 import type { DeviceOperatingModeOutcome } from './homeRuntime/homeOperatingMode';
 import { isTemperatureControlDevice } from '../packages/shared-domain/src/temperatureDeviceKind';
 import {
-  MODE_DEVICE_TARGETS,
   MAIN_HOME_ID,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
-  homeScopedSettingsKey,
 } from '../lib/utils/settingsKeys';
 import {
   AIRTREATMENT_SHED_FLOOR_C,
@@ -27,7 +26,6 @@ import {
   normalizeShedTemperature,
 } from '../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 import { getPrimaryTargetCapability } from '../lib/utils/targetCapabilities';
-import { sanitizeModeDeviceTargets } from '../packages/shared-domain/src/settings/modeDeviceTargets';
 
 /**
  * Per-device active-mode resolution, carrying the producer's read-outcome
@@ -95,23 +93,22 @@ function readModeTarget(params: {
   if (operatingMode.state === 'unavailable') return { state: 'unavailable' };
   if (operatingMode.mode === null) return { state: 'resolved', modeTarget: null };
 
-  let modeTargetsRaw: unknown;
-  try {
-    modeTargetsRaw = params.settings.get(
-      homeScopedSettingsKey(MODE_DEVICE_TARGETS, operatingMode.catalogHomeId),
-    ) as unknown;
-  } catch {
-    return { state: 'unavailable' };
-  }
-  // Through the key's owner: this used to parse the same bytes itself and read
-  // a malformed mode as `unavailable`, where the owner reads it as an empty
-  // mode. That is the third policy for one key this PR exists to remove — it
-  // made a device skip its overshoot seed instead of treating the target as
-  // absent (`notes/settings-key-ownership.md`).
-  const modeTargets = sanitizeModeDeviceTargets(modeTargetsRaw);
-  if (modeTargets === null) return { state: 'unavailable' };
-  const value = modeTargets[operatingMode.mode]?.[params.deviceId];
-  return { state: 'resolved', modeTarget: value === undefined ? null : value };
+  // Through the key's owner (`lib/home/modeDeviceTargetsRead.ts`), which is the
+  // ONE place this catalog's absent / malformed / read-failed split is decided.
+  // A PROVEN-ABSENT catalog resolves to an empty one, so a home that configured
+  // no mode targets has no target for this device — which is exactly what
+  // `modeTarget: null` says. This function's own read used to answer `unavailable`
+  // there and skip the seed outright, so a temperature-only device on such a home
+  // got no limiting floor at all and could never be limited.
+  const read = readModeDeviceTarget(
+    params.settings,
+    operatingMode.catalogHomeId,
+    operatingMode.mode,
+    params.deviceId,
+  );
+  return read.state === 'unavailable'
+    ? { state: 'unavailable' }
+    : { state: 'resolved', modeTarget: read.targetC };
 }
 
 function resolveTemperatureWithoutOnOffOvershootUpdate(params: {

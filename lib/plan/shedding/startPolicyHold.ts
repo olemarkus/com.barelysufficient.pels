@@ -34,12 +34,22 @@ import {
  * policy, not an event or an in-memory latch, so a device held before a reboot
  * is still held after one.
  *
- * `taskDrivenIds` is the narrow smart-task set — devices whose task returned a
- * `planned` decision, i.e. booked energy into this hour and wants the device
- * running. That exclusion is not a detail: it is what makes the policy mean
- * "only PELS starts it" rather than "never runs", because a smart task is the
- * one thing in PELS that positively starts a device (the restore lane only
- * resumes what it shed, and boost only escalates a device already running).
+ * The lift is `PlanInputDevice.startPolicyHoldLifted`, stamped by deferred
+ * admission on a `planned` decision — the task has booked energy into this hour
+ * and wants the device running. That exclusion is not a detail: it is what makes
+ * the policy mean "only PELS starts it" rather than "never runs", because a
+ * smart task is the one thing in PELS that positively starts a device (the
+ * restore lane only resumes what it shed, and boost only escalates a device
+ * already running).
+ *
+ * The lift rides the DEVICE rather than an id-set handed to this resolver,
+ * because the shed set is not the only place the answer is needed: a device that
+ * is ALREADY OFF never enters the shed set at all, and `getInactiveReason`
+ * (`../restore/devices.ts`) still has to know whether the hold is what keeps it
+ * there. While the set reached only this function, that reader answered from the
+ * raw policy, so a task's planned hour could never start a held device — "it
+ * runs when a Smart task needs it to" was false for every device the hold had
+ * already taken off (release review, 2026-09-10).
  *
  * It is deliberately NARROWER than the precedence set the solar-surplus hold
  * uses (the `excludeIds` union built in `planBuilderSurplus.ts`), which also
@@ -74,12 +84,10 @@ export type StartPolicyHoldResult = {
 
 export function resolveStartPolicyHold(
   devices: readonly PlanInputDevice[],
-  taskDrivenIds: ReadonlySet<string>,
 ): StartPolicyHoldResult {
   const holdIds = new Set<string>();
   const reasonById = new Map<string, DeviceReason>();
   for (const device of devices) {
-    if (taskDrivenIds.has(device.id)) continue;
     if (!isStartPolicyHeldDevice(device)) continue;
     holdIds.add(device.id);
     reasonById.set(device.id, { code: PLAN_REASON_CODES.awaitingPelsStart });
@@ -88,25 +96,39 @@ export function resolveStartPolicyHold(
 }
 
 /**
- * Is this device held off by its start policy? THE single definition, shared by
- * {@link resolveStartPolicyHold} (which turns it into shed-set membership and a
- * reason) and by the plan-side keep-invariant predicate `isStartPolicyHoldShed`
- * in `planDevices.ts`.
+ * Is this device held off by its start policy RIGHT NOW? THE single definition,
+ * shared by {@link resolveStartPolicyHold} (which turns it into shed-set
+ * membership and a reason), by the plan-side keep-invariant predicate
+ * `isStartPolicyHoldShed` in `planDevices.ts`, and — through the flag
+ * `buildBasePlanDevice` stamps from it — by `getInactiveReason` and starvation
+ * eligibility on the output device.
  *
- * One definition rather than two hand-mirrored ones, because the surplus posture
- * proved what mirroring costs here: its two copies drifted, and a pump waiting
- * for solar clamped unrelated stepped loads to their lowest step until someone
- * noticed.
+ * One definition rather than several hand-mirrored ones, because the surplus
+ * posture proved what mirroring costs here: its two copies drifted, and a pump
+ * waiting for solar clamped unrelated stepped loads to their lowest step until
+ * someone noticed. The start policy then repeated it in a worse form — the
+ * task-driven exclusion lived in the resolver only, so the two output-side
+ * readers answered from the raw policy and a smart task could never start a
+ * device the hold had taken off.
  *
- * Deliberately does NOT consult the control posture. It does not need to: the
- * policy is itself one of the standing grants `commandAuthority` is OR'd from
- * (`resolveDeviceControlPosture`), so a `pels_only` managed device always has the
- * lever this hold assumes. Re-checking authority here would be the conjunction
- * this feature exists to avoid — the policy is most useful exactly where
- * power-limit control is OFF.
+ * Deliberately does NOT consult the control posture beyond `managed`. It does not
+ * need to: the policy is itself one of the standing grants `commandAuthority` is
+ * OR'd from (`resolveDeviceControlPosture`), so a `pels_only` managed device
+ * always has the lever this hold assumes. Re-checking authority here would be the
+ * conjunction this feature exists to avoid — the policy is most useful exactly
+ * where power-limit control is OFF.
  */
+// `'pels_only'` is compared inline here rather than through a shared predicate.
+// The two backend readers of this question — this hold and
+// `applyDeferredAdmissionToInput` — cannot import each other
+// (`no-objectives-to-peer`), and shared-domain is not the answer: that package
+// requires a real browser consumer, and a predicate placed there to bridge two
+// backend peers is the bypass root `AGENTS.md` names. The same rule prescribes
+// what to do instead — accept the duplication and record the constraint.
 export function isStartPolicyHeldDevice(device: PlanInputDevice): boolean {
-  return device.startPolicy === 'pels_only' && device.control.managed;
+  return device.startPolicy === 'pels_only'
+    && device.control.managed
+    && device.startPolicyHoldLifted !== true;
 }
 
 /**
@@ -127,7 +149,16 @@ export function isStartPolicyHeldDevice(device: PlanInputDevice): boolean {
  */
 export function isStartPolicyHoldShed(
   device: PlanInputDevice,
-  shedReasons: ReadonlyMap<string, unknown>,
+  shedReasons: ReadonlyMap<string, DeviceReason>,
 ): boolean {
-  return isStartPolicyHeldDevice(device) && !shedReasons.has(device.id);
+  if (!isStartPolicyHeldDevice(device)) return false;
+  const reason = shedReasons.get(device.id);
+  // No fresh reason, or this posture's OWN reason. The second arm is what the
+  // silent-meter pass needs: it fills one map with both the posture reasons and
+  // its fail-closed directive before the device build, where the measured pass
+  // keeps the posture reasons in a separate map until reason normalization. A
+  // shed whose reason IS this posture is trivially this posture, so reading it
+  // as capacity pressure sent the device to the owner's power-limiting floor
+  // instead of off, on the one path where nothing can measure the result.
+  return reason === undefined || reason.code === PLAN_REASON_CODES.awaitingPelsStart;
 }

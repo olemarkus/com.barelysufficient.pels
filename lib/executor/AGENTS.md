@@ -30,8 +30,18 @@
   (`applySheddingToDeviceImpl`, which decides its own end state outside any plan — and the ordinary
   plan-driven binary shed routes through it). `getShedBehavior` is a `PlanExecutorDeps` member.
 
-  Closing this is a stage of the planner/executor seam train: the planner stamps the shed end state
-  for the release path as it already does for the plan path (`plannedShedTargetKind`),
+  **PARTLY CLOSED (2026-09-10): the plan-driven binary shed no longer reads policy.**
+  `applySheddingToDeviceImpl` takes `{ planDecidedBinaryOff }`, set only by `applyBinaryShedIntent`,
+  and skips the `getShedBehavior` read entirely on that path. It had to: a binary shed intent exists
+  only when `plannedShedTargetKind` is not `target_value`, so re-reading the owner's configured
+  behaviour could only contradict the plan — and did. A thermostat with an on/off handle and a
+  `set_temperature` floor was written to its setback and left running under a plan that said off,
+  which is how the "Only PELS starts this device" hold failed to turn one off at all. The plan-less
+  callers (the smart-task lifecycle release, the runtime API) still resolve policy here, because
+  they shed a device outside any plan and nothing has stamped their end state.
+
+  Closing the rest is a stage of the planner/executor seam train: the planner stamps the shed end
+  state for the release path as it already does for the plan path (`plannedShedTargetKind`),
   `getShedBehavior` leaves `PlanExecutorDeps`, and a `check-shed-policy-seam` guard replaces the
   grep — a case-sensitive grep is not an enforcement mechanism. Do not add a sixth site meanwhile.
 

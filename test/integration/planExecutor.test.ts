@@ -1460,6 +1460,56 @@ describe('PlanExecutor pending target commands', () => {
     });
   });
 
+  it('issues the binary off the plan decided, not the configured shed temperature', async () => {
+    // "Only PELS starts this device" sheds to OFF, never to the owner's
+    // power-limiting floor, and the plan says so: `plannedShedTargetKind` is
+    // `binary_off`. The apply path used to re-read `getShedBehavior` and hand the
+    // device to the setpoint arm, which reported `handled` — so the binary write
+    // never happened and a heat pump sat at its setback, still drawing, under a
+    // switch promising PELS turns it off.
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        binaryCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        binaryControl: { on: true },
+        binaryControlObservation: onoffObservation(true),
+        targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot, {
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
+    });
+
+    await executor.applyPlanActions({
+      meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4 }),
+      devices: [
+        pd({
+          id: 'dev-1',
+          name: 'Heater',
+          deviceType: 'temperature',
+          binaryCapabilityId: 'onoff',
+          binaryControl: { on: true },
+          currentState: 'on',
+          plannedState: 'shed',
+          boostActive: false,
+          currentTarget: 22,
+          currentTemperature: 21,
+          plannedTarget: 22,
+          controllable: true,
+          // What the start-policy hold materializes: the binary axis, not the floor.
+          shedAction: 'turn_off',
+          reason: { code: PLAN_REASON_CODES.awaitingPelsStart },
+        }),
+      ],
+    });
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'target_temperature', 16);
+  });
+
   it('does not fall back to turn_off when shed temperature is already applied', async () => {
     const { executor, deviceManager } = buildExecutor(createPlanEngineState(), [
       {

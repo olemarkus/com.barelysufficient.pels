@@ -173,12 +173,19 @@ export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
   // honest posture is `inactive` — the device is not being held back from
   // anything, off is its baseline.
   //
+  // The producer-resolved flag, NOT the owner's raw policy: a device whose smart
+  // task is driving it this hour is not held, and it is precisely a HELD-OFF
+  // device the task has to be able to start. Reading the raw enum here pinned
+  // every such device `inactive`, and no start intent is ever built for an
+  // inactive device — so "it runs when a Smart task needs it to" was false for
+  // every device the hold had already taken off.
+  //
   // This is also the whole of the card treatment. `inactive` resolves to the
   // `Off` state word (`resolvePlanStateKind`), where `shed` resolves to
   // `Limited` and the empty reason string falls through to "Waiting to resume" —
   // a line that would promise the owner PELS intends to bring the device back
   // once power frees up, when only a smart task ever will.
-  if (dev.startPolicy === 'pels_only') return { code: PLAN_REASON_CODES.awaitingPelsStart };
+  if (dev.startPolicyHoldActive === true) return { code: PLAN_REASON_CODES.awaitingPelsStart };
 
   return null;
 }

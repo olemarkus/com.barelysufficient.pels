@@ -56,7 +56,6 @@ export function runStandingPostureHolds(params: {
   decoration: Pick<
     DeferredDecorationBundle,
     'forceShedSet' | 'deferredAvoidDeviceIds' | 'deferredReleaseIntentByDeviceId' | 'admittedDeviceIds'
-    | 'taskDrivenDeviceIds'
   >;
   getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined;
   // Zero-export inferred curtailed-surplus term (kW, >= 0; producer:
@@ -93,11 +92,11 @@ export function runStandingPostureHolds(params: {
     nowTs: params.nowTs,
   });
   const surplusHold = resolveSurplusHold(admittedDevices, state, excludeIds);
-  // The second standing posture. It takes the NARROW smart-task set — devices a
-  // task is actively driving — not `excludeIds`: a device its own task left idle
-  // this hour must stay held, which is the difference between "only PELS starts
-  // it" and "any governing task starts it". See `resolveStartPolicyHold`.
-  const startPolicyHold = resolveStartPolicyHold(admittedDevices, decoration.taskDrivenDeviceIds);
+  // The second standing posture. It reads each device's own `startPolicyHoldLifted`
+  // rather than `excludeIds`: a device its own task left idle this hour must stay
+  // held, which is the difference between "only PELS starts it" and "any governing
+  // task starts it". See `resolveStartPolicyHold`.
+  const startPolicyHold = resolveStartPolicyHold(admittedDevices);
   applyPostSheddingHolds({
     shedSet: params.shedSet,
     shedStepTargets: params.shedStepTargets,
@@ -111,16 +110,16 @@ export function runStandingPostureHolds(params: {
   //
   // The two DO overlap: `isSurplusHeldDevice` covers `surplusTracking` steppers
   // as well as `surplusOnly` dump loads, and either can also carry the start
-  // policy. When both hold the same device the start policy wins the behaviour —
-  // the device stays shed even once surplus arrives — and that is the owner's
-  // ruling (2026-09-10): "Only PELS starts this device" means a smart task and
-  // nothing else, so solar surplus is not a PELS start. The surplus reason is
-  // written second and so wins the CARD, which is the honest half of the
-  // overlap: a dump load the owner also opted into surplus reads "Waiting for
-  // solar surplus", which is true of its configuration even though the policy is
-  // what is holding it. Locking the two toggles against each other in the
-  // settings UI is the open follow-up, not a behaviour change here.
-  return new Map([...startPolicyHold.reasonById, ...surplusHold.reasonById]);
+  // policy. When both hold the same device the start policy wins — the device
+  // stays shed even once surplus arrives — and that is the owner's ruling
+  // (2026-09-10): "Only PELS starts this device" means a smart task and nothing
+  // else, so solar surplus is not a PELS start. The start-policy reason is
+  // therefore written SECOND, so the CARD names the posture that is actually
+  // holding the device. Writing the surplus reason last read "Waiting for solar
+  // surplus" on a device that would never start when surplus arrived, sending the
+  // owner to tune an export threshold that could not release it. Locking the two
+  // toggles against each other in the settings UI is the open follow-up.
+  return new Map([...surplusHold.reasonById, ...startPolicyHold.reasonById]);
 }
 
 /**
@@ -168,15 +167,24 @@ export function runSilentMeterSurplusHold(
   ]);
   withdrawSurplusEligibility(context.devices, state, cycle.getConfig, excludeIds, cycle.nowTs);
   const surplusHold = resolveSurplusHold(admittedDevices, state, excludeIds);
+  // BOTH standing postures, here as on the measured path. A standing posture is
+  // not capacity pressure, so a missing meter does not change what it decides —
+  // and the start policy's floor is OFF, not the owner's power-limiting floor.
+  // Without it the fail-closed directive shed a `pels_only` charger to its
+  // configured rung, and the composed gate then blocks every rebuild until a
+  // sample returns, so it kept drawing there for the whole outage.
+  const startPolicyHold = resolveStartPolicyHold(admittedDevices);
   applyPostSheddingHolds({
     shedSet,
     shedStepTargets,
     forceShedSet: decoration.forceShedSet,
-    surplusHoldIds: surplusHold.holdIds,
+    surplusHoldIds: new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds]),
     admittedDevices,
     shedDecisions: state.shedDecisions,
   });
-  return surplusHold.reasonById;
+  // Start policy written second, so it wins the card — the same precedence the
+  // measured pass applies.
+  return new Map([...surplusHold.reasonById, ...startPolicyHold.reasonById]);
 }
 
 function clearShedStepTargets(

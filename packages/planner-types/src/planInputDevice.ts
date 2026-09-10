@@ -527,6 +527,29 @@ export type PlanInputDeviceBase = {
    * device.
    */
   startPolicy: DeviceStartPolicy;
+  /**
+   * A smart task is ACTIVELY DRIVING this device this cycle, so its
+   * start-policy baseline of off does not apply — the one thing in PELS that
+   * positively starts a device has booked energy into this hour and wants it
+   * running.
+   *
+   * Stamped by `applyDeferredAdmissionToInput` on a `planned` admission
+   * decision, and only there. It is a per-cycle DERIVATION, deliberately not a
+   * rewrite of `startPolicy` above: that field is the owner's setting, and
+   * runtime code overwriting an owner setting mid-cycle is the exact shape the
+   * `controllable: true` admission write was removed for — every downstream
+   * reader then had to know whether it ran before or after admission. The two
+   * baseline-off stamps that must survive an authority withdrawal
+   * (`ShedDecisions.recordPlannedShed`, `releaseAbandonedSurplusPosture`) read
+   * the owner's setting for that reason; everything that asks "is the hold in
+   * force right now" reads it through `isStartPolicyHeldDevice`.
+   *
+   * Narrower than `admittedDeviceIds` on purpose: a device its own task left
+   * `idle`, `unclaimed` or `inactive` this hour stays held, because an hour the
+   * task did not claim is not an hour the task is driving it (owner rulings,
+   * 2026-09-10).
+   */
+  startPolicyHoldLifted?: true;
 };
 
 /**

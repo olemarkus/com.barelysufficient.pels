@@ -88,18 +88,21 @@ const REASON_REQUIRED_FLAGS = [
     code: PLAN_REASON_CODES.externalOffHold,
     flags: ['externalOffHoldActive'],
   },
+  {
+    // `awaitingPelsStart` can be paired now, and could not be before: the plan
+    // device used to carry the owner's raw `startPolicy` enum, which cannot see
+    // the smart-task lift, so a device whose task was driving it still looked
+    // held. `startPolicyHoldActive` is the derived per-cycle answer
+    // `buildBasePlanDevice` stamps from the one shared predicate, so the reason
+    // and the posture now come from the same place and this pairing keeps them
+    // there.
+    code: PLAN_REASON_CODES.awaitingPelsStart,
+    flags: ['startPolicyHoldActive'],
+  },
 ] as const satisfies readonly {
   code: PlanReasonCode;
   flags: readonly (keyof DevicePlanDevice)[];
 }[];
-
-// `awaitingPelsStart` has no entry here on purpose. The posture it implies is
-// `startPolicy === 'pels_only'`, which lives on the plan INPUT and is not copied
-// onto the plan device — this table can only test a boolean flag on the output.
-// Adding the field to `DevicePlanDevice` to satisfy the table would put a second
-// copy of an owner setting on the wire for one assertion's sake; the reason has
-// exactly one producer (`resolveStartPolicyHold`), which is keyed on that
-// policy, so there is no second path for the pair to come apart on.
 
 const INACTIVE_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.inactive },

@@ -38,12 +38,17 @@ const displayKindFor = (fields: { plannedState: string; currentState: string }) 
  *
  * The solar-surplus hold excludes every device a smart task GOVERNS
  * (`resolveSmartTaskPrecedenceIds`: planned, idle, avoided and force-shed alike).
- * This hold excludes only the devices a task is actively DRIVING. If it used the
- * broad set, a device whose own task had decided to leave it idle this hour would
- * drop out of the hold and the ordinary restore lane could start it — the exact
- * opposite of a baseline of off.
+ * This hold lifts only for the devices a task is actively DRIVING, which deferred
+ * admission stamps as `startPolicyHoldLifted` on a `planned` decision. If it used
+ * the broad set, a device whose own task had decided to leave it idle this hour
+ * would drop out of the hold and the ordinary restore lane could start it — the
+ * exact opposite of a baseline of off.
  */
-const device = (id: string, startPolicy: 'unrestricted' | 'pels_only') => inputDevice({
+const device = (
+  id: string,
+  startPolicy: 'unrestricted' | 'pels_only',
+  taskDriven = false,
+) => inputDevice({
   id,
   name: id,
   binaryCapabilityId: 'onoff',
@@ -52,24 +57,25 @@ const device = (id: string, startPolicy: 'unrestricted' | 'pels_only') => inputD
   managed: true,
   commandAuthority: startPolicy === 'pels_only',
   startPolicy,
+  ...(taskDriven ? { startPolicyHoldLifted: true as const } : {}),
 });
 
 describe('resolveStartPolicyHold', () => {
   it('holds a pels_only device no task is driving', () => {
-    const result = resolveStartPolicyHold([device('charger', 'pels_only')], new Set());
+    const result = resolveStartPolicyHold([device('charger', 'pels_only')]);
 
     expect([...result.holdIds]).toEqual(['charger']);
     expect(result.reasonById.get('charger')).toEqual({ code: PLAN_REASON_CODES.awaitingPelsStart });
   });
 
   it('never holds an unrestricted device', () => {
-    const result = resolveStartPolicyHold([device('charger', 'unrestricted')], new Set());
+    const result = resolveStartPolicyHold([device('charger', 'unrestricted')]);
 
     expect([...result.holdIds]).toEqual([]);
   });
 
   it('lifts the hold while a task is actively driving the device', () => {
-    const result = resolveStartPolicyHold([device('charger', 'pels_only')], new Set(['charger']));
+    const result = resolveStartPolicyHold([device('charger', 'pels_only', true)]);
 
     expect([...result.holdIds]).toEqual([]);
   });
@@ -89,12 +95,12 @@ describe('resolveStartPolicyHold', () => {
       startPolicy: 'pels_only',
     });
 
-    expect([...resolveStartPolicyHold([unmanaged], new Set()).holdIds]).toEqual([]);
+    expect([...resolveStartPolicyHold([unmanaged]).holdIds]).toEqual([]);
   });
 
   it('emits a reason with no numbers, so it is byte-stable across cycles', () => {
-    const first = resolveStartPolicyHold([device('charger', 'pels_only')], new Set());
-    const second = resolveStartPolicyHold([device('charger', 'pels_only')], new Set());
+    const first = resolveStartPolicyHold([device('charger', 'pels_only')]);
+    const second = resolveStartPolicyHold([device('charger', 'pels_only')]);
 
     expect(JSON.stringify([...first.reasonById]))
       .toBe(JSON.stringify([...second.reasonById]));

@@ -215,11 +215,18 @@ const resolveEligibleForStarvation = (params: {
   // withholding power, it is honouring a configuration. ELIGIBILITY rather than a
   // paused episode is load-bearing here — a standing baseline-off posture holds
   // the device below target forever, so `clearQualified` (which requires
-  // `!pelsHoldsBelowTarget`) could never fire and an episode latched during a
-  // task-driven hour would stay latched, leaving the card permanently reading
-  // "Waiting for available power" with a "Let it run now" rescue against the
-  // owner's own setting.
-  if (device.startPolicy === 'pels_only') return false;
+  // `!pelsHoldsBelowTarget`) could never fire and a latched episode would stay
+  // latched, leaving the card permanently reading "Waiting for available power"
+  // with a "Let it run now" rescue against the owner's own setting.
+  //
+  // Read the DECIDED hold, not the owner's setting: during an hour its smart task
+  // is driving the device the hold is lifted, and the device becomes eligible
+  // again — which is correct, because a task-driven device that is being denied
+  // power IS starved, and that is the hour the owner would want to know about.
+  // The episode cannot outlive the hour: `applyObservationSpan` hard-resets the
+  // accrual on the first cycle eligibility drops, which is the cycle the hold
+  // returns.
+  if (device.startPolicyHoldActive === true) return false;
   // One read, not two: `DevicePlanDevice.control` is carried through from the
   // plan input unchanged, so asking both shapes was a dead second read.
   return inputDevice.control.managed

@@ -522,8 +522,8 @@ function resolvePostureHoldReasonAdoption(
   // The ruling is the owner's: "if the copy is 'waiting for soc' and the device
   // turns off, the case is still that it waits for soc" (2026-09-09). Without
   // this the posture adoption ran first and discarded the task reason outright,
-  // because a deferring task does not put its device in `taskDrivenDeviceIds`
-  // (that set is the narrower `planned`-only one) and so does not lift the hold.
+  // because a deferring task does not lift the hold (only a `planned` decision
+  // stamps `startPolicyHoldLifted`, and a deferring task is not one).
   if (ctx.deferredObjectiveAvoidDeviceIds?.has(dev.id)) return null;
   return reason;
 }
