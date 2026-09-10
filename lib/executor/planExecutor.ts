@@ -42,6 +42,7 @@ import {
 import { selectShedActuationRecorder } from './lifecycleReleaseRecording';
 import {
   applySheddingToDeviceImpl,
+  type ShedDispatchOptions,
   dispatchPlanActions,
   type PlanExecutorCore,
 } from './planExecutorDispatch';
@@ -440,8 +441,8 @@ export class PlanExecutor {
         capacityDryRun: () => this.capacityDryRun,
         state: this.state,
         flushLastControlledPersistence: () => this.flushLastControlledPersistence(),
-        applySheddingToDevice: (deviceId, deviceName, reason) => (
-          this.applySheddingToDevice(deviceId, deviceName, reason)
+        applySheddingToDevice: (deviceId, deviceName, reason, options) => (
+          this.applySheddingToDevice(deviceId, deviceName, reason, options)
         ),
       };
     }
@@ -472,8 +473,13 @@ export class PlanExecutor {
     return this.lifecycleFallbackDispatcher;
   }
 
-  public async applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<boolean> {
-    return applySheddingToDeviceImpl(this.getDispatchCore(), deviceId, deviceName, reason);
+  public async applySheddingToDevice(
+    deviceId: string,
+    deviceName: string,
+    reason?: string,
+    options?: ShedDispatchOptions,
+  ): Promise<boolean> {
+    return applySheddingToDeviceImpl(this.getDispatchCore(), deviceId, deviceName, reason, options);
   }
 
   /**

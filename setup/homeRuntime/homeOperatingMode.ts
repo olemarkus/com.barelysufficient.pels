@@ -144,7 +144,11 @@ export const resolveOperatingModeForDevice = (
   }
   const homeId = membership?.getHomeIdForDevice(deviceId) ?? MAIN_HOME_ID;
   if (homeId === MAIN_HOME_ID) {
-    return readMainOperatingMode(ctx.homey.settings, ctx.resolveModeName);
+    // `ctx.operatingMode` is the runtime's resolved Main mode, the same value
+    // `resolveForHome` hands the sub-home path as `globalMode`. Passed, not
+    // re-read: a proven-absent key means "the default mode PELS is running in",
+    // and only the runtime holds that.
+    return readMainOperatingMode(ctx.homey.settings, ctx.resolveModeName, ctx.operatingMode);
   }
   const catalog = readPersistedHomeModeCatalog(ctx, homeId);
   if (catalog.state === 'unavailable') return { state: 'unavailable' };

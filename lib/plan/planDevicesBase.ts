@@ -7,7 +7,7 @@ import {
 } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { resolveShedIntent } from '../device/deviceActionProjection';
-import { isStartPolicyHoldShed } from './shedding/startPolicyHold';
+import { isStartPolicyHeldDevice, isStartPolicyHoldShed } from './shedding/startPolicyHold';
 import { materializeShedSnapshotFields } from './planActionMaterialization';
 import { resolveSteppedLoadDirectShedStepId } from './planSteppedShedResolution';
 import {
@@ -156,7 +156,6 @@ export function buildBasePlanDevice(params: {
     currentState,
     plannedTarget,
     control,
-    shedBehavior,
     shedSet,
     shedStepTargets,
     shedReasons,
@@ -164,12 +163,22 @@ export function buildBasePlanDevice(params: {
     surplusAbsorbActive,
     surplusCeilingStepId,
   } = params;
+  const shouldShed = shedSet.has(dev.id);
+  // ONE effective shed behaviour for this DEVICE-BUILD stage, resolved before
+  // either reader. (Other stages — the normalized-floor pass, restore candidate
+  // pricing — still answer from the configured floor; none is reachable for a
+  // held device today.) The start-policy override used to sit inside `resolveShedAction`,
+  // below the rung selection that had already priced the shed from the owner's
+  // CONFIGURED floor — so a `set_step` charger got its lowest active rung, the
+  // materializer read that active rung as the decided end state, and the device
+  // parked at 6 A under a switch promising PELS turns it off.
+  const shedBehavior = resolveEffectiveShedBehavior(dev, shouldShed, params.shedBehavior, shedReasons);
   const initialDesiredStepId = resolveSteppedLoadInitialDesiredStepId(dev);
   const runtimeDesiredStepId = dev.desiredStepId ?? initialDesiredStepId;
   const directShedStepId = resolveSteppedLoadDirectShedStepId({
     dev,
     shedBehavior,
-    shouldShed: shedSet.has(dev.id),
+    shouldShed,
     plannedShedStepId: shedStepTargets.get(dev.id),
   });
   const shedDesiredStepId = directShedStepId;
@@ -192,13 +201,11 @@ export function buildBasePlanDevice(params: {
   const baseReason: DeviceReason = control.commandAuthority
     ? shedReasons.get(dev.id) ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
     : { code: PLAN_REASON_CODES.capacityControlOff };
-  const shouldShed = shedSet.has(dev.id);
   const { shedAction, shedTemperature, releaseShedStepId } = resolveShedAction({
     dev,
     control,
     shouldShed,
     shedBehavior,
-    shedReasons,
   });
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
@@ -212,9 +219,11 @@ export function buildBasePlanDevice(params: {
   return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({
     id: dev.id,
     name: dev.name,
-    // Carried through unchanged; read on the output side by `getInactiveReason`
-    // and by starvation eligibility. See `DevicePlanDeviceBase.startPolicy`.
-    startPolicy: dev.startPolicy,
+    // The hold DECIDED once here, not the owner's setting carried through: the
+    // two output-side readers (`getInactiveReason`, starvation eligibility) ask
+    // whether the policy is holding this device, and only the shared predicate
+    // knows the smart-task lift. See `DevicePlanDeviceBase.startPolicyHoldActive`.
+    ...(isStartPolicyHeldDevice(dev) ? { startPolicyHoldActive: true as const } : {}),
     deviceClass: dev.deviceClass,
     deviceRole: dev.deviceRole,
     deviceType: dev.deviceType,
@@ -309,22 +318,42 @@ function resolvePlannedState(control: DeviceControlPosture, shouldShed: boolean)
 /** The start policy's own shed intent: off, not the owner's limiting floor. */
 const TURN_OFF_SHED_BEHAVIOR: ShedBehavior = { action: 'turn_off' };
 
+/**
+ * The shed behaviour IN FORCE for this device this cycle.
+ *
+ * A start-policy hold is shed to OFF, not to the owner's power-limiting floor.
+ * That floor answers "how far down when the house is short of power"; reusing it
+ * here left a `set_step` charger parked at 6 A and a `set_temperature` thermostat
+ * pinned at its setback, both still drawing, under a switch that promises PELS
+ * turns the device off. A fresh capacity shed keeps the floor
+ * (`isStartPolicyHoldShed` is false the moment `shedReasons` carries one).
+ *
+ * Resolved ONCE, at the top of the device build, because two stages read it and
+ * they must not disagree: the rung selection that prices a stepped shed
+ * (`resolveSteppedLoadDirectShedStepId`) and the action materialization below.
+ * While the override lived here alone, rung selection had already answered from
+ * the configured floor, and `resolvePlannedShedTargetKind` then read that active
+ * rung as the decided end state.
+ */
+function resolveEffectiveShedBehavior(
+  dev: PlanInputDevice,
+  shouldShed: boolean,
+  configured: ShedBehavior,
+  shedReasons: Map<string, DeviceReason>,
+): ShedBehavior {
+  return shouldShed && isStartPolicyHoldShed(dev, shedReasons) ? TURN_OFF_SHED_BEHAVIOR : configured;
+}
+
 function resolveShedAction(params: {
   dev: PlanInputDevice;
   control: DeviceControlPosture;
   shouldShed: boolean;
+  /** Already resolved by {@link resolveEffectiveShedBehavior} — never the raw configured floor. */
   shedBehavior: ShedBehavior;
-  shedReasons: Map<string, DeviceReason>;
 }): { shedAction: ShedAction; shedTemperature: number | null; releaseShedStepId: string | null } {
-  const { dev, control, shouldShed, shedReasons } = params;
-  // A start-policy hold is shed to OFF, not to the owner's power-limiting floor.
-  // That floor answers "how far down when the house is short of power"; reusing
-  // it here left a `set_step` charger parked at 6 A and a `set_temperature`
-  // thermostat pinned at its setback, both still drawing, under a switch that
-  // promises PELS turns the device off. A fresh capacity shed keeps the floor.
-  const shedBehavior = shouldShed && isStartPolicyHoldShed(dev, shedReasons)
-    ? TURN_OFF_SHED_BEHAVIOR
-    : params.shedBehavior;
+  const {
+    dev, control, shouldShed, shedBehavior,
+  } = params;
   // Single resolution site for the shed-action intent. Called once here with
   // the post-admission authority so the deferred-objective rescue lane
   // (`applyDeferredAdmissionToInput`) is honoured. The materialiser then only

@@ -1,6 +1,7 @@
 import type { PlanEngineState } from './planState';
 import type { PlanInputDevice, ShedAction, ShedBehavior } from './planTypes';
 import { isNonSteppedDeviceRecovering } from './planShedRecovery';
+import { isBinaryPlanDevice } from './planBinaryDevice';
 import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
@@ -55,6 +56,20 @@ export function resolveSteppedLoadDirectShedStepId(params: {
 /**
  * The deepest step the configured behaviour permits — `turn_off`'s off step,
  * `set_step`'s lowest active step. Read only when no rung was decided.
+ *
+ * The `turn_off` arm falls back to the lowest rung ONLY for a device with no
+ * binary handle, and that condition is load-bearing. A step-only ladder need not
+ * contain an off rung at all (`hasUsableSteppedLoadLadder` requires one rung that
+ * is NOT off, never one that is), and for such a device the lowest rung really is
+ * the deepest PELS can reach — its shed is routed through the step axis
+ * (`resolveShedIntent` returns `set_step` when there is no binary handle).
+ *
+ * Give the same device a binary handle and the fallback becomes a contradiction:
+ * the intent is `turn_off`, but an ACTIVE rung on `plannedShedStepId` makes
+ * `resolvePlannedShedTargetKind` answer `step`, so the executor drives the ladder
+ * to its lowest rung and the device keeps drawing under a plan that said off.
+ * Returning no rung hands the decision to the binary axis, which is the one that
+ * can honour it.
  */
 function resolveShedBehaviorFloorStepId(
   dev: PlanInputDevice,
@@ -63,7 +78,9 @@ function resolveShedBehaviorFloorStepId(
   if (!isSteppedLoadDevice(dev)) return undefined;
   const profile = dev.steppedLoadProfile;
   if (action === 'turn_off') {
-    return (getSteppedLoadOffStep(profile) ?? getSteppedLoadLowestStep(profile))?.id;
+    const offStep = getSteppedLoadOffStep(profile);
+    if (offStep) return offStep.id;
+    return isBinaryPlanDevice(dev) ? undefined : getSteppedLoadLowestStep(profile)?.id;
   }
   if (action !== 'set_step') return undefined;
   return getSteppedLoadLowestActiveStep(profile)?.id;

@@ -17,7 +17,7 @@ const update = (temperature: number) => ({
   },
 });
 
-async function start(policy: string, hasBinary = true) {
+async function start(policy: string, hasBinary = true, seedOperatingMode = true) {
   const device = new MockDevice(deviceId, 'Heat pump', hasBinary ? capabilities : capabilities.filter((id) => id !== 'onoff'), 'heater');
   if (hasBinary) await device.setCapabilityValue('onoff', true);
   await device.setCapabilityValue('measure_power', 1000);
@@ -26,7 +26,10 @@ async function start(policy: string, hasBinary = true) {
   setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
   for (const [key, value] of Object.entries({
     power_source: 'flow', capacity_limit_kw: 10, capacity_margin_kw: 0,
-    capacity_dry_run: false, operating_mode: 'Home',
+    capacity_dry_run: false,
+    // A home whose owner has never switched mode has NO `operating_mode` key:
+    // it is written only by an explicit mode change. See the fresh-install case.
+    ...(seedOperatingMode ? { operating_mode: 'Home' } : {}),
     controllable_devices: { [deviceId]: true }, managed_devices: { [deviceId]: true },
     mode_device_targets: { Home: { [deviceId]: 23.5 }, Away: { [deviceId]: 16 } },
     temperature_control_modes: { [deviceId]: policy },
@@ -139,6 +142,39 @@ describe('external temperature changes reach the mode through observation', () =
     const app = await start(policy);
     app.deviceManager!.injectDeviceUpdateForTest(update(22));
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Home: { [deviceId]: 23.5 } });
+  });
+
+  it('saves the target on a home whose owner has never switched mode', async () => {
+    // The fresh-install shape. `operating_mode` is written only by an explicit
+    // mode change, so a new home does not have the key at all — while the app has
+    // been running in the default mode since boot. Reading that proven absence as
+    // "no mode" silently disabled the whole feature: the owner chose Save as
+    // current mode target, adjusted the thermostat, and nothing was saved, with no
+    // log and no UI signal, until the first mode switch.
+    const app = await start('update_mode', true, false);
+    // Absent, and PROVEN absent: the key list is healthy and does not contain it,
+    // which is what separates a fresh install from a transient read miss.
+    expect(mockHomeyInstance.settings.get('operating_mode')).toBeNull();
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain('operating_mode');
+    expect(app.operatingMode).toBe('Home');
+
+    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({
+      Home: { [deviceId]: 22 }, Away: { [deviceId]: 16 },
+    });
+  });
+
+  it('applies the saved target on a never-switched home instead of fencing every write', async () => {
+    // The other half of the same absence: `allowsTarget` is the live write fence,
+    // and it also read the mode. With no mode it refused every setpoint command,
+    // so the target the owner had just saved could never be applied either.
+    const app = await start('update_mode', true, false);
+    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+    const actuator = buildDeviceActuator(app)!;
+
+    expect(await actuator.apply({ kind: 'target', target: 'temperature', deviceId, value: 22 }))
+      .toMatchObject({ requested: true });
   });
 
   it('never adopts a delayed echo of its own temperature write', async () => {

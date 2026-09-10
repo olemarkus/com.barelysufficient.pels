@@ -194,6 +194,7 @@ const buildAdmissionDecoration = (params: {
   budgetExempt: boolean;
   engageBoost: boolean;
   reservesStartupPower: boolean;
+  liftsStartPolicyHold: boolean;
   // Absent when this device has no deadline floor this cycle.
   deadlineFloorTargetC: number | undefined;
 }): Partial<PlanInputDevice> => ({
@@ -203,8 +204,63 @@ const buildAdmissionDecoration = (params: {
   ...(params.budgetExempt ? { budgetExempt: true } : {}),
   ...resolveBoostFields(params.engageBoost),
   ...(params.reservesStartupPower ? { reservesStartupPower: true } : {}),
+  ...(params.liftsStartPolicyHold ? { startPolicyHoldLifted: true } : {}),
   ...(typeof params.deadlineFloorTargetC === 'number' ? { deadlineFloorTargetC: params.deadlineFloorTargetC } : {}),
 });
+
+/**
+ * What this decision claims ON BEHALF of the device for this hour.
+ *
+ * All four share one gate — `rescueBlockedByExternalOffHold` — because a device
+ * its owner switched off cannot make any of them: "Leave off until turned on
+ * again" wins over a smart task, by spec. Grouped rather than inlined so the map
+ * callback stays within its complexity budget and so the shared gate cannot be
+ * forgotten by whichever claim is added next.
+ */
+type DeferredHourClaims = {
+  budgetExempt: boolean;
+  engageBoost: boolean;
+  reservesStartupPower: boolean;
+  liftsStartPolicyHold: boolean;
+};
+
+const resolveHourClaims = (
+  decision: DeferredAdmissionDecision,
+  device: PlanInputDevice,
+): DeferredHourClaims => {
+  const heldOff = rescueBlockedByExternalOffHold(device);
+  const planned = !heldOff && decision.kind === 'planned';
+  return {
+    // The rescue budget exemption applies cap-agnostically, but only during the
+    // planned current bucket. It should not turn idle/background cycles into the
+    // device's standing budget-exemption setting.
+    budgetExempt: !heldOff && decision.budgetExempt,
+    // Engage the device's boost while a limit-lower-priority task is in its planned hours.
+    // This reuses the existing boost machinery (EV chargers via evBoost, stepped thermal
+    // devices via temperatureBoost) to escalate past the shed-invariant and claim capacity
+    // from lower-priority devices — the deferred target override already commands the task's
+    // target. Physical capacity stays enforced by the capacity guard.
+    engageBoost: planned && decision.engageBoost,
+    // Boost-free startup reservation: entitle the device to hold its lowest-active-step power
+    // back from lower-priority admission until it starts. Only during planned hours (same gate
+    // as engageBoost); it never sets forceBoostActive and never sheds anyone.
+    reservesStartupPower: planned && decision.reservesStartupPower,
+    // "Only PELS starts this device" means a smart task and nothing else, so a
+    // task that has BOOKED energy into this hour is the one thing that lifts the
+    // baseline of off. Gated on `planned` alone: `idle` and `unclaimed` govern the
+    // device without driving it, and lifting there would let the ordinary restore
+    // lane start a device its own task had decided to leave alone.
+    // The literal, not a shared predicate: see the note on
+    // `isStartPolicyHeldDevice` (`lib/plan/shedding/startPolicyHold.ts`) — the
+    // boundary that separates these two readers is why the comparison is
+    // duplicated, and shared-domain is not a legal home for it.
+    liftsStartPolicyHold: planned && device.startPolicy === 'pels_only',
+  };
+};
+
+const claimsAnything = (claims: DeferredHourClaims): boolean => (
+  claims.budgetExempt || claims.engageBoost || claims.reservesStartupPower || claims.liftsStartPolicyHold
+);
 
 // Translate an active deferred objective into a temporary capacity-control-on signal for the
 // shedding/restore pipeline. The shedding and restore modules stay agnostic of objectives:
@@ -226,34 +282,16 @@ export const applyDeferredAdmissionToInput = (
     const deadlineFloorTargetC = targetOverrides[device.id];
     const hasDeadlineFloor = typeof deadlineFloorTargetC === 'number';
     if (!decision) return hasDeadlineFloor ? { ...device, deadlineFloorTargetC } : device;
-    // Every claim below is made ON BEHALF of this device; a held device cannot
-    // use any of them. See `rescueBlockedByExternalOffHold`.
-    const heldOff = rescueBlockedByExternalOffHold(device);
     const override = contributesCommandAuthority(decision, device);
     if (override && decision.kind === 'idle') forceShedSet.add(device.id);
-    // Engage the device's boost while a limit-lower-priority task is in its planned hours.
-    // This reuses the existing boost machinery (EV chargers via evBoost, stepped thermal
-    // devices via temperatureBoost) to escalate past the shed-invariant and claim capacity
-    // from lower-priority devices — the deferred target override already commands the task's
-    // target. Physical capacity stays enforced by the capacity guard.
-    const engageBoost = !heldOff && decision.kind === 'planned' && decision.engageBoost;
-    // Boost-free startup reservation: entitle the device to hold its lowest-active-step power
-    // back from lower-priority admission until it starts. Only during planned hours (same gate
-    // as engageBoost); it never sets forceBoostActive and never sheds anyone.
-    const reservesStartupPower = !heldOff && decision.kind === 'planned' && decision.reservesStartupPower;
-    // The rescue budget exemption applies cap-agnostically, but only during the
-    // planned current bucket. It should not turn idle/background cycles into the
-    // device's standing budget-exemption setting.
-    const budgetExempt = !heldOff && decision.budgetExempt;
-    if (!override && !budgetExempt && !engageBoost && !reservesStartupPower && !hasDeadlineFloor) return device;
+    const claims = resolveHourClaims(decision, device);
+    if (!override && !hasDeadlineFloor && !claimsAnything(claims)) return device;
     return {
       ...device,
       ...buildAdmissionDecoration({
         override,
         control: device.control,
-        budgetExempt,
-        engageBoost,
-        reservesStartupPower,
+        ...claims,
         deadlineFloorTargetC,
       }),
     };

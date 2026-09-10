@@ -1314,7 +1314,7 @@ describe('Device plan snapshot', () => {
     };
 
     await app['applyPlanActions'](plan);
-    expect(spy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
+    expect(spy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined, { planDecidedBinaryOff: true });
   });
 
   it('applies shed temperature via actuator when configured to avoid turning off', async () => {
@@ -1654,7 +1654,7 @@ describe('Device plan snapshot', () => {
 
     await app['powerSamplePipeline'].recordPowerSample(2000);
 
-    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
+    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined, { planDecidedBinaryOff: true });
     const plan = getLatestPlanSnapshotForTests();
     const planned = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(planned?.plannedState).toBe('shed');
@@ -1692,8 +1692,8 @@ describe('Device plan snapshot', () => {
     const plan = getLatestPlanSnapshotForTests();
     const shedIds = plan.devices.filter((d: { plannedState: string }) => d.plannedState === 'shed').map((d: { id: string }) => d.id);
     expect(shedIds).toEqual(expect.arrayContaining(['dev-1', 'dev-2']));
-    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
-    expect(shedSpy).toHaveBeenCalledWith('dev-2', 'Heater B', undefined);
+    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined, { planDecidedBinaryOff: true });
+    expect(shedSpy).toHaveBeenCalledWith('dev-2', 'Heater B', undefined, { planDecidedBinaryOff: true });
   });
 
   it('does not shed additional devices without a new power sample after an initial shed', async () => {
@@ -1963,7 +1963,7 @@ describe('Device plan snapshot', () => {
 
     await app['powerSamplePipeline'].recordPowerSample(6300);
 
-    expect(shedSpy).toHaveBeenCalledWith('dev-on', 'On Device', undefined);
+    expect(shedSpy).toHaveBeenCalledWith('dev-on', 'On Device', undefined, { planDecidedBinaryOff: true });
     expect(shedSpy).not.toHaveBeenCalledWith('dev-off', 'Off Device');
   });
 
@@ -4252,8 +4252,8 @@ describe('Dry run mode', () => {
       commandRequestCount: 0,
     }));
     expect(callback).toHaveBeenCalledTimes(2);
-    expect(callback).toHaveBeenNthCalledWith(1, 'dev-1', 'Failing device', undefined);
-    expect(callback).toHaveBeenNthCalledWith(2, 'dev-2', 'Healthy device', undefined);
+    expect(callback).toHaveBeenNthCalledWith(1, 'dev-1', 'Failing device', undefined, { planDecidedBinaryOff: true });
+    expect(callback).toHaveBeenNthCalledWith(2, 'dev-2', 'Healthy device', undefined, { planDecidedBinaryOff: true });
   });
 
   it('restores a higher-priority onoff device by swapping out a lower-priority set-temperature device', async () => {

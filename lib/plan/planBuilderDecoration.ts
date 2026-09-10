@@ -21,7 +21,6 @@ export function buildIdentityDecorationBundle(devices: PlanInputDevice[]): Defer
     deferredAvoidDeviceIds: new Set<string>(),
     deferredReleaseIntentByDeviceId: {},
     admittedDeviceIds: new Set<string>(),
-    taskDrivenDeviceIds: new Set<string>(),
   };
 }
 

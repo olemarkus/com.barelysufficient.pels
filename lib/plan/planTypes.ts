@@ -1,5 +1,4 @@
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
-import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
@@ -520,11 +519,20 @@ type DevicePlanDeviceBase = {
    */
   control: DeviceControlPosture;
   /**
-   * Who may start this device — carried through from the plan input unchanged.
+   * Is the "Only PELS starts this device" policy holding this device off THIS
+   * CYCLE — the owner opted in and no smart task is driving it. Producer-resolved
+   * by `isStartPolicyHeldDevice` and stamped once in `buildBasePlanDevice`,
+   * exactly as `externalOffHoldActive` below forwards its own standing posture.
    *
-   * Unlike the owner's Power-limit toggle (which is an INPUT to
-   * `control.commandAuthority` and does not travel), this one has readers on the
-   * output side and therefore belongs here:
+   * The DECISION travels, not the setting. The owner's raw `startPolicy` stays on
+   * the plan input, where the two baseline-off stamps that must outlive an
+   * authority withdrawal read it (`ShedDecisions.recordPlannedShed`,
+   * `releaseAbandonedSurplusPosture`). Carrying the raw enum here instead made
+   * both output-side readers re-derive the hold from half its terms — they could
+   * not see the smart-task lift, so a task's planned hour never started a device
+   * the hold had already taken off.
+   *
+   * The two readers:
    *
    * - `getInactiveReason` (`lib/plan/restore/devices.ts`) flips a held device to
    *   `inactive` once it is observed off, which is what makes its card read `Off`
@@ -538,7 +546,7 @@ type DevicePlanDeviceBase = {
    * answer, and neither can be derived from the reason code: they run before
    * reason normalization has stamped one.
    */
-  startPolicy: DeviceStartPolicy;
+  startPolicyHoldActive?: true;
   budgetExempt?: boolean;
   /**
    * The device's boost decision this cycle, and the planner's whole boost

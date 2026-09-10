@@ -582,6 +582,14 @@ When a smart task IS governing the device, its own reason is more specific —
 waiting for a car's state of charge, waiting for cheaper hours — and wins on its
 own, with no precedence rule needed here.
 
+**A device the policy holds while it is ALSO opted into solar surplus reads the
+start policy's line, not "Waiting for solar surplus" (2026-09-10)** — `Off` once
+the device is actually off, `Limited` for the cycle in between, as above. The policy
+wins the behaviour — surplus is not a PELS start, so the device stays off when the
+sun arrives — and the card names the posture that is actually holding it. Naming
+the surplus one instead promised a resume that would never come, and sent the
+owner to tune an export threshold that could not release the device.
+
 The tracking toggle is the one place the label varies by device kind, and it varies because *what happens* varies: a charger's level is a charging current, a generic stepped load's is a level. Both are resolved from `resolveDeviceDetailKind`, never hardcoded per screen.
 
 **A stopped tracking device can still be drawing, and the card does not yet say so.** `Waiting for solar surplus` is honest for the default `turn_off` shed action — the device really is off. For a device whose Power limiting is set to a level, the solar stop parks it on that level, so the card reads "waiting" while it draws. That is a known gap, accepted deliberately when the floor selector was removed rather than overlooked: the alternative was a second per-device setting duplicating Power limiting. The fix belongs with the stepped card's reason line, which does not render the surplus vocabulary at all yet.
