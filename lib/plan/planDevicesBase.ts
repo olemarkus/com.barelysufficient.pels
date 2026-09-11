@@ -1,6 +1,7 @@
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type {
-  DevicePlanDevice, PlanInputDevice, ShedAction, ShedBehavior, SteppedClusterFields, TemperatureClusterFields,
+  DevicePlanDevice, LooseDevicePlanDevice, PlanInputDevice, ShedAction, ShedBehavior,
+  SteppedLoadKind, TemperatureKind,
 } from './planTypes';
 import {
   withBinaryDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant,
@@ -68,62 +69,90 @@ function resolveSteppedExpectedPowerKw(
   }
   return null;
 }
-// The temperature cluster, taken as a unit through the guard (twin of
-// `pickSteppedPlanFields`). The input kind guarantees `currentTarget` and
-// `currentTemperature` after narrowing (the observer's atomic facet); the
-// planner's own `plannedTarget` is resolved for every temperature device
-// (`resolvePlannedTarget` is total on the temperature branch), so the trio is
-// complete by construction. `withTemperatureDiscriminant` re-ties the cluster
-// onto the temperature variant.
-function pickTemperatureClusterFields(
-  dev: PlanInputDevice,
-  resolvedPlannedTarget: number | undefined,
-): TemperatureClusterFields {
-  if (!isTemperaturePlanDevice(dev)) return {};
-  return {
-    currentTarget: dev.currentTarget,
-    currentTemperature: dev.currentTemperature,
-    // `?? dev.currentTarget` is the type-level seam for the totality invariant
-    // above, not a runtime state: "no commanded setpoint" materializes as
-    // planned === current, which the executor's no-op fence skips.
-    plannedTarget: resolvedPlannedTarget ?? dev.currentTarget,
-  };
-}
+/**
+ * What this cycle decided for one device — the pre-image of the plan device's
+ * decision fields. Not a shed record: `effectiveDesiredStepId` is the KEEP rung
+ * as capped by boost and the surplus ceiling, `baseReason` can be
+ * `capacity_control_off`, `plannedState` is `keep` for most devices, and
+ * `plannedTarget` is the mode target whenever no shed temperature applies.
+ * Resolved before the plan device is built, because the construction reads all
+ * of it.
+ */
+type PlannedDeviceDecision = {
+  plannedState: 'shed' | 'keep';
+  effectiveDesiredStepId: string | undefined;
+  shedDesiredStepId: string | undefined;
+  baseReason: DeviceReason;
+  shedAction: ShedAction;
+  shedTemperature: number | null;
+  releaseShedStepId: string | null;
+  plannedTarget: number | undefined;
+};
 
-// Source the binary on/off truth only when the input device is binary this cycle;
-// `withBinaryDiscriminant` keys the cluster on that resolved `currentOn`. The
-// value is forwarded from the input device unchanged — it is resolved once at
-// `toPlanDevice`, not recomputed.
-function resolveInputBinaryControlField(
-  dev: PlanInputDevice,
-): { currentOn?: boolean } {
-  return isBinaryPlanDevice(dev) ? { currentOn: dev.currentOn } : {};
+function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDeviceDecision {
+  const {
+    dev, recentlyRestored, control, shedSet, shedStepTargets, shedReasons,
+    boostActive, surplusCeilingStepId,
+  } = inputs;
+  const shouldShed = shedSet.has(dev.id);
+  // ONE effective shed behaviour for this DEVICE-BUILD stage, resolved before
+  // either reader. (Other stages — the normalized-floor pass, restore candidate
+  // pricing — still answer from the configured floor; none is reachable for a
+  // held device today.) The start-policy override used to sit inside `resolveShedAction`,
+  // below the rung selection that had already priced the shed from the owner's
+  // CONFIGURED floor — so a `set_step` charger got its lowest active rung, the
+  // materializer read that active rung as the decided end state, and the device
+  // parked at 6 A under a switch promising PELS turns it off.
+  const shedBehavior = resolveEffectiveShedBehavior(dev, shouldShed, inputs.shedBehavior, shedReasons);
+  const runtimeDesiredStepId = dev.desiredStepId ?? resolveSteppedLoadInitialDesiredStepId(dev);
+  const shedDesiredStepId = resolveSteppedLoadDirectShedStepId({
+    dev,
+    shedBehavior,
+    shouldShed,
+    plannedShedStepId: shedStepTargets.get(dev.id),
+  });
+  const isSteppedShed = isSteppedLoadDevice(dev)
+    && shedDesiredStepId !== undefined
+    && shedDesiredStepId !== dev.selectedStepId;
+  const plannedState = resolvePlannedState(control, shouldShed || isSteppedShed);
+  const { shedAction, shedTemperature, releaseShedStepId } = resolveShedAction({
+    dev,
+    control,
+    shouldShed,
+    shedBehavior,
+  });
+  return {
+    plannedState,
+    effectiveDesiredStepId: resolveSteppedKeepDesiredStepIdFor(
+      dev, plannedState, shedDesiredStepId ?? runtimeDesiredStepId,
+      inputs.anyOtherDeviceLimited, boostActive, surplusCeilingStepId,
+    ),
+    shedDesiredStepId,
+    // Keyed on AUTHORITY, not on power limiting. `capacityControlOff` says "PELS is
+    // not controlling this device" — false the moment a smart task has contributed
+    // its authority term, and the old code agreed because the task used to write
+    // `controllable: true` and this line read that same flag. Reading
+    // the owner's raw toggle here instead made an impossible pair reachable: a device the
+    // task authorised could be planned `shed` while still carrying
+    // `capacity_control_off`, which `validatePlanReasonPair` rejects outright.
+    baseReason: control.commandAuthority
+      ? shedReasons.get(dev.id)
+        ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
+      : { code: PLAN_REASON_CODES.capacityControlOff },
+    shedAction,
+    shedTemperature,
+    releaseShedStepId,
+    plannedTarget: shedAction === 'set_temperature' && shedTemperature !== null
+      ? shedTemperature
+      : inputs.plannedTarget,
+  };
 }
 
 /**
- * The decisions the producer (`toPlanDevice` → `resolveCommandableNow`) already
- * made, forwarded verbatim onto the output plan device.
- *
- * `commandableNow` MUST be carried. Dropping it is what forced consumers back
- * onto raw-field re-derivation against fields the plan device does not have, so
- * every plan-device `isCommandableNow` answered from absence and reported
- * "charger state unknown" for every EV charger.
+ * Everything the builder needs about one device this cycle: the producer's
+ * input device plus the per-cycle decisions the stages above it reached.
  */
-function producerResolvedDecisionFields(dev: PlanInputDevice): {
-  commandableNow: boolean;
-  commandabilityReason?: PlanInputDevice['commandabilityReason'];
-  objectiveKind?: PlanInputDevice['objectiveKind'];
-  hasStandingDemand: boolean;
-} {
-  return {
-    commandableNow: dev.commandableNow,
-    hasStandingDemand: dev.hasStandingDemand,
-    ...(dev.commandabilityReason ? { commandabilityReason: dev.commandabilityReason } : {}),
-    ...(dev.objectiveKind ? { objectiveKind: dev.objectiveKind } : {}),
-  };
-}
-
-export function buildBasePlanDevice(params: {
+export type BasePlanDeviceInputs = {
   dev: PlanInputDevice;
   priority: number;
   recentlyRestored: boolean;
@@ -147,93 +176,34 @@ export function buildBasePlanDevice(params: {
    * target — see `resolveSteppedKeepDesiredStepId`.
    */
   surplusCeilingStepId: string | undefined;
-}): DevicePlanDevice {
-  const {
-    dev,
-    priority,
-    recentlyRestored,
-    binaryCommandPending,
-    currentState,
-    plannedTarget,
-    control,
-    shedSet,
-    shedStepTargets,
-    shedReasons,
-    boostActive,
-    surplusAbsorbActive,
-    surplusCeilingStepId,
-  } = params;
-  const shouldShed = shedSet.has(dev.id);
-  // ONE effective shed behaviour for this DEVICE-BUILD stage, resolved before
-  // either reader. (Other stages — the normalized-floor pass, restore candidate
-  // pricing — still answer from the configured floor; none is reachable for a
-  // held device today.) The start-policy override used to sit inside `resolveShedAction`,
-  // below the rung selection that had already priced the shed from the owner's
-  // CONFIGURED floor — so a `set_step` charger got its lowest active rung, the
-  // materializer read that active rung as the decided end state, and the device
-  // parked at 6 A under a switch promising PELS turns it off.
-  const shedBehavior = resolveEffectiveShedBehavior(dev, shouldShed, params.shedBehavior, shedReasons);
-  const initialDesiredStepId = resolveSteppedLoadInitialDesiredStepId(dev);
-  const runtimeDesiredStepId = dev.desiredStepId ?? initialDesiredStepId;
-  const directShedStepId = resolveSteppedLoadDirectShedStepId({
-    dev,
-    shedBehavior,
-    shouldShed,
-    plannedShedStepId: shedStepTargets.get(dev.id),
-  });
-  const shedDesiredStepId = directShedStepId;
-  const desiredStepId = shedDesiredStepId ?? runtimeDesiredStepId;
-  const isSteppedShed = isSteppedLoadDevice(dev)
-    && shedDesiredStepId !== undefined
-    && shedDesiredStepId !== dev.selectedStepId;
-  const plannedState = resolvePlannedState(control, shedSet.has(dev.id) || isSteppedShed);
+};
 
-  const effectiveDesiredStepId = resolveSteppedKeepDesiredStepIdFor(
-    dev, plannedState, desiredStepId, params.anyOtherDeviceLimited, boostActive, surplusCeilingStepId,
-  );
-  // Keyed on AUTHORITY, not on power limiting. `capacityControlOff` says "PELS is
-  // not controlling this device" — false the moment a smart task has contributed
-  // its authority term, and the old code agreed because the task used to write
-  // `controllable: true` and this line read that same flag. Reading
-  // the owner's raw toggle here instead made an impossible pair reachable: a device the
-  // task authorised could be planned `shed` while still carrying
-  // `capacity_control_off`, which `validatePlanReasonPair` rejects outright.
-  const baseReason: DeviceReason = control.commandAuthority
-    ? shedReasons.get(dev.id) ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
-    : { code: PLAN_REASON_CODES.capacityControlOff };
-  const { shedAction, shedTemperature, releaseShedStepId } = resolveShedAction({
-    dev,
-    control,
-    shouldShed,
-    shedBehavior,
-  });
-  const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
-    ? shedTemperature
-    : plannedTarget;
-  // The stepped, temperature, and binary discriminants are set explicitly in
-  // the loose literal, then re-tied: `withTemperatureDiscriminant`/
-  // `withBinaryDiscriminant` regroup their orthogonal clusters (binary keyed on
-  // `binaryCapabilityId` presence) and `withSteppedDiscriminant` lands the result
-  // in one stepped union member. The temperature cluster is sourced as a unit
-  // from the input device through `pickTemperatureClusterFields`.
-  return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({
+export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDevice {
+  const {
+    dev, priority, binaryCommandPending, currentState, control, boostActive, surplusAbsorbActive,
+  } = inputs;
+  const {
+    plannedState, effectiveDesiredStepId, shedDesiredStepId, baseReason,
+    shedAction, shedTemperature, releaseShedStepId, plannedTarget: resolvedPlannedTarget,
+  } = resolvePlannedDeviceDecision(inputs);
+  // ONE object, filled in place. This used to be a literal fed by five helper
+  // objects and seven conditional spreads: fourteen allocations per device per
+  // build to produce one, and each spread re-grew the backing store on the way.
+  // The three wrappers below key on key PRESENCE, so setting a cluster field
+  // only when the device carries it says exactly what the spreads said —
+  // `withTemperatureDiscriminant`/`withBinaryDiscriminant` regroup their
+  // orthogonal clusters (binary keyed on the resolved `currentOn`) and
+  // `withSteppedDiscriminant` lands the result in one stepped union member.
+  const loose: LooseDevicePlanDevice = {
     id: dev.id,
     name: dev.name,
-    // The hold DECIDED once here, not the owner's setting carried through: the
-    // two output-side readers (`getInactiveReason`, starvation eligibility) ask
-    // whether the policy is holding this device, and only the shared predicate
-    // knows the smart-task lift. See `DevicePlanDeviceBase.startPolicyHoldActive`.
-    ...(isStartPolicyHeldDevice(dev) ? { startPolicyHoldActive: true as const } : {}),
     deviceClass: dev.deviceClass,
     deviceRole: dev.deviceRole,
     deviceType: dev.deviceType,
-    ...resolveInputBinaryControlField(dev),
     currentState,
     plannedState,
     // Finalize decides (`finalizePlanDevices`); pre-finalize always false.
     recordRestoreOnTargetApply: false,
-    ...pickTemperatureClusterFields(dev, resolvedPlannedTarget),
-    ...pickSteppedPlanFields(dev),
     reportedStepId: dev.reportedStepId,
     targetStepId: effectiveDesiredStepId,
     desiredStepId: effectiveDesiredStepId,
@@ -247,7 +217,12 @@ export function buildBasePlanDevice(params: {
     expectedPowerSource: dev.expectedPowerSource,
     currentDrawKw: dev.currentDrawKw,
     controlAdapter: dev.controlAdapter,
-    ...producerResolvedDecisionFields(dev),
+    // `commandableNow` MUST be carried. Dropping it is what forced consumers
+    // back onto raw-field re-derivation against fields the plan device does not
+    // have, so every plan-device `isCommandableNow` answered from absence and
+    // reported "charger state unknown" for every EV charger.
+    commandableNow: dev.commandableNow,
+    hasStandingDemand: dev.hasStandingDemand,
     reason: baseReason,
     zone: dev.zone || 'Unknown',
     control,
@@ -261,46 +236,63 @@ export function buildBasePlanDevice(params: {
     shedAction,
     shedTemperature,
     releaseShedStepId,
-    ...(shedDesiredStepId !== undefined ? { plannedShedStepId: shedDesiredStepId } : {}),
-    ...pickPropagatedPlanFields(dev),
-  })));
-}
-
-// The stepped cluster, taken as a unit through the guard. Extracted rather than
-// tested inline per field: `steppedLoadProfile` and `planningPowerKw` both live
-// on `SteppedLoadKind`, so one narrowing answers both, and keeping the branch
-// out of `buildBasePlanDevice` keeps that function under the complexity ceiling.
-// `withSteppedDiscriminant` re-ties the cluster into one variant.
-function pickSteppedPlanFields(
-  dev: PlanInputDevice,
-): SteppedClusterFields {
-  if (!isSteppedLoadDevice(dev)) return {};
-  return {
-    steppedLoadProfile: dev.steppedLoadProfile,
-    selectedStepId: dev.selectedStepId,
-    planningPowerKw: dev.planningPowerKw,
-  };
-}
-
-function pickPropagatedPlanFields(
-  dev: Pick<
-    PlanInputDevice,
-    'stepPowerCalibration' | 'residualKw' | 'surplusOnly' | 'surplusTracking'
-    | 'externalOffHoldActive' | 'reservesStartupPower'
-  >,
-): Partial<Pick<
-  DevicePlanDevice,
-  'stepPowerCalibration' | 'surplusOnly'
-  | 'externalOffHoldActive' | 'reservesStartupPower'
->> & Pick<DevicePlanDevice, 'residualKw' | 'surplusTracking'> {
-  return {
-    ...(dev.stepPowerCalibration ? { stepPowerCalibration: dev.stepPowerCalibration } : {}),
     residualKw: dev.residualKw,
-    ...(dev.surplusOnly === true ? { surplusOnly: true as const } : {}),
     surplusTracking: dev.surplusTracking,
-    ...(dev.externalOffHoldActive === true ? { externalOffHoldActive: true as const } : {}),
-    ...(dev.reservesStartupPower === true ? { reservesStartupPower: true as const } : {}),
   };
+  // The hold DECIDED once here, not the owner's setting carried through: the
+  // two output-side readers (`getInactiveReason`, starvation eligibility) ask
+  // whether the policy is holding this device, and only the shared predicate
+  // knows the smart-task lift. See `DevicePlanDeviceBase.startPolicyHoldActive`.
+  if (isStartPolicyHeldDevice(dev)) loose.startPolicyHoldActive = true;
+  // The binary on/off truth, only when the input device is binary this cycle.
+  // Forwarded unchanged — resolved once at `toPlanDevice`, never recomputed.
+  if (isBinaryPlanDevice(dev)) loose.currentOn = dev.currentOn;
+  // The temperature cluster as a UNIT, and the `satisfies` is the unit: the
+  // three fields are independent optionals on `LooseDevicePlanDevice`, so
+  // written one line at a time a dropped field compiles clean and the device
+  // reads `undefined` behind a required `number` — the exact hole
+  // `TemperatureClusterFields` exists to close. One literal per cluster per
+  // device is the price of keeping that a compile error; the fourteen this
+  // commit removes were per device too.
+  if (isTemperaturePlanDevice(dev)) {
+    Object.assign(loose, {
+      currentTarget: dev.currentTarget,
+      currentTemperature: dev.currentTemperature,
+      // `?? dev.currentTarget` is the type-level seam for the totality
+      // invariant, not a runtime state: "no commanded setpoint" materializes as
+      // planned === current, which the executor's no-op fence skips.
+      plannedTarget: resolvedPlannedTarget ?? dev.currentTarget,
+    } satisfies TemperatureKind);
+  }
+  // The stepped cluster as a UNIT, for the reason above: `SteppedLoadKind`
+  // requires all three, so dropping one here is a local compile error rather
+  // than a `planningPowerKw` that reads `undefined` inside the ladder pricing.
+  if (isSteppedLoadDevice(dev)) {
+    Object.assign(loose, {
+      steppedLoadProfile: dev.steppedLoadProfile,
+      selectedStepId: dev.selectedStepId,
+      planningPowerKw: dev.planningPowerKw,
+    } satisfies SteppedLoadKind);
+  }
+  // BUDGET SPENT: the eleven conditionals below and above, plus the three
+  // logical operators in the literal, put this function at exactly the
+  // `complexity` ceiling of 15 (`eslint.config.mjs`, warnings are errors). A
+  // twelfth conditional field needs a helper, not another `if` — that is what
+  // the five deleted `pick*` helpers were buying, at fourteen objects a device.
+  // Decisions the PRODUCER already made (`toPlanDevice` -> `resolveCommandableNow`),
+  // forwarded verbatim. Nothing below re-derives them: `commandableNow` and
+  // `hasStandingDemand` are in the literal above for the same reason.
+  if (dev.commandabilityReason) loose.commandabilityReason = dev.commandabilityReason;
+  if (dev.objectiveKind) loose.objectiveKind = dev.objectiveKind;
+  if (shedDesiredStepId !== undefined) loose.plannedShedStepId = shedDesiredStepId;
+  // Propagated owner/producer facts, carried only when set so the plan device
+  // says "absent" by omission the way the spread literals did.
+  if (dev.stepPowerCalibration) loose.stepPowerCalibration = dev.stepPowerCalibration;
+  if (dev.surplusOnly === true) loose.surplusOnly = true;
+  if (dev.externalOffHoldActive === true) loose.externalOffHoldActive = true;
+  if (dev.reservesStartupPower === true) loose.reservesStartupPower = true;
+
+  return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(loose)));
 }
 
 /**

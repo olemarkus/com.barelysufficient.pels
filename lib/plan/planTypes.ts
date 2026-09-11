@@ -208,6 +208,34 @@ export type BinaryControlKind = {
   currentOn: boolean;
 };
 
+/**
+ * The shape a producer builds BEFORE the three discriminant wrappers re-tie the
+ * orthogonal clusters: the base plus all three probes, every cluster field a
+ * plain optional. Named so a producer can fill one object and set the cluster
+ * fields the device actually has, rather than spreading a literal per cluster
+ * into a final one — the wrappers key on key PRESENCE, so an unset field and an
+ * omitted one are the same to them.
+ *
+ * PRODUCER-SIDE ONLY. Two rules come with it, and neither is type-enforceable:
+ *
+ * 1. Never a consumer's parameter type. Every `DevicePlanDevice` is assignable
+ *    to this, so a consumer typed on it reads `currentOn`, `plannedTarget`,
+ *    `planningPowerKw` and the rest ungated as `T | undefined` — exactly the
+ *    TS2339 the kind split exists to force.
+ * 2. The only legal exit is through all three wrappers. A value of this type is
+ *    assignable to `DevicePlanDevice`'s non-stepped member, so returning one
+ *    directly compiles and ships an un-regrouped `steppedLoadProfile` — the
+ *    stale-key survival the wrappers exist to strip.
+ *
+ * It does NOT loosen the cluster rule: a producer filling one of these still
+ * writes each cluster as a unit (`satisfies SteppedLoadKind` /
+ * `satisfies TemperatureKind`), because the optionals here prove nothing.
+ */
+export type LooseDevicePlanDevice = DevicePlanDeviceBase
+  & BinaryControlDiscriminantProbe
+  & TemperatureDiscriminantProbe
+  & SteppedDiscriminantProbe;
+
 export type SteppedPlanDevice = DevicePlanDeviceBase & SteppedLoadKind;
 export type NonSteppedPlanDevice = DevicePlanDeviceBase & NonSteppedLoadKind;
 export type DevicePlanDevice = SteppedPlanDevice | NonSteppedPlanDevice;
@@ -235,9 +263,12 @@ export type SteppedDiscriminantProbe = {
  * stayed silent. That is precisely the "compiles clean, reads `undefined`"
  * shape this whole change exists to remove.
  *
- * Producers build the pair through a conditional that returns this or `{}`, so
- * supplying a profile without its planning power is a compile error at the
- * producer, where the ladder invariant actually lives.
+ * Producers build the trio as a unit, so supplying a profile without its step
+ * or its planning power is a compile error at the producer, where the ladder
+ * invariant actually lives. Two spellings, same guarantee: a conditional that
+ * returns this type or `{}` (`toPlanDevice`, `planLiveStateMerge`), or one
+ * literal `satisfies SteppedLoadKind` written onto an already-narrowed loose
+ * device (`buildBasePlanDevice`).
  */
 export type SteppedClusterFields =
   | SteppedLoadKind
@@ -273,7 +304,7 @@ export function withSteppedDiscriminant<TBase extends object>(
   // whose non-stepped member accepts anything, so a half-cluster type-checks
   // either way, and refusing one at runtime would silently un-step a device
   // instead of failing loudly. Enforcement belongs at the producers, which build
-  // the pair through `SteppedClusterFields`.
+  // the trio as a unit — see `SteppedClusterFields`.
   if (isSteppedLoadSnapshot(loose)) {
     // The cast here is the seam's honest shape: the probe types the fields as
     // independent optionals, so nothing here PROVES they co-vary. Making the
@@ -281,8 +312,9 @@ export function withSteppedDiscriminant<TBase extends object>(
     // the call sites are unreadable (`Omit` chains over intersections resolve
     // to "two different types with this name exist"), which buys enforcement at
     // the cost of anyone being able to act on it. Enforcement lives at the
-    // producers instead: each builds the trio as a `SteppedClusterFields`
-    // value, where a partial cluster is a plain, local compile error. The
+    // producers instead: each builds the trio as a unit, through
+    // `SteppedClusterFields` or `satisfies SteppedLoadKind`, where a partial
+    // cluster is a plain, local compile error. The
     // object itself is returned as is — a stepped device keeps every field
     // (see `withBinaryDiscriminant` on why a copy here is not free).
     return loose;
@@ -317,9 +349,10 @@ export type TemperatureDiscriminantProbe = {
  * type is a union whose non-temperature member accepts anything, so without a
  * co-presence type at the producer, a half-cluster (a target with no reading,
  * or either with no planned target) would type-check and read `undefined` at
- * runtime behind a required type. Producers build the trio through a
- * conditional that returns this or `{}`, so a partial cluster is a compile
- * error at the producer, where the atomic-facet invariant actually lives.
+ * runtime behind a required type. Producers build the trio as a unit — a
+ * conditional returning this type or `{}`, or one literal
+ * `satisfies TemperatureKind` — so a partial cluster is a compile error at the
+ * producer, where the atomic-facet invariant actually lives.
  */
 export type TemperatureClusterFields =
   | TemperatureKind
@@ -343,8 +376,9 @@ export type TemperatureClusterFields =
  *
  * The cast mirrors `withSteppedDiscriminant`'s: the probe types the fields as
  * independent optionals, so nothing HERE proves the trio co-varies — that proof
- * lives at the producers, which build the cluster as a `TemperatureClusterFields`
- * value where a partial trio is a plain, local compile error.
+ * lives at the producers, which build the cluster as a unit — through
+ * `TemperatureClusterFields` or `satisfies TemperatureKind` — where a partial
+ * trio is a plain, local compile error.
  */
 export function withTemperatureDiscriminant<TBase extends object>(
   loose: TBase & TemperatureDiscriminantProbe,

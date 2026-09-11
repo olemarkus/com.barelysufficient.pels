@@ -1529,6 +1529,21 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `AGENTS.md` scopes to pure helpers; this one reads the SDK and writes to the logger).
       **Done when:** the two files no longer import each other. [P2]
 
+- [ ] **P2 — the plan-device builder re-lists three members of the `SheddingPlan` the chain
+      already holds.** `BasePlanDeviceInputs` (`lib/plan/planDevicesBase.ts`) is a 14-member
+      parameter type with exactly one construction site (`lib/plan/planDevices.ts`), and three of
+      its members — `shedSet`, `shedReasons`, `shedStepTargets` — belong to `SheddingPlan`
+      (`lib/plan/shedding/types.ts`), which `lib/plan/planBuilderMaterialization.ts` explodes into
+      loose members so the builder can re-list them one by one. That is the inverse of the
+      parameter-bag rule: taking a domain object you hold and scattering it downstream. Naming the
+      type moved the file's allowlist count 2 -> 1, but the count records a rename, not a bag
+      dissolved, and nothing now stops 14 members becoming 15. **What changes:** pass the
+      `SheddingPlan` itself through `planBuilderMaterialization` into `planDevices` and into
+      `BasePlanDeviceInputs`, replacing the three loose members. **Done when:** `shedSet`,
+      `shedReasons` and `shedStepTargets` appear in no parameter list below
+      `planBuilderMaterialization`, and `BasePlanDeviceInputs` is down to twelve members. Source:
+      layering review of the plan-device construction PR.
+
 - [ ] **P2 — the usage sums copy every plan device to attach one boolean.** `toUsageDevice`
       (`lib/plan/planUsage.ts`) spreads a whole `DevicePlanDevice` to add `countsAsManagedUsage`,
       and four call sites map it over the full device set on every build:
