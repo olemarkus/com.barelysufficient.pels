@@ -32,7 +32,7 @@ describe('detectNativeWiringConflicts', () => {
     const { logger, events } = captureLog();
     const result = await detectNativeWiringConflicts({
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),
-      getSnapshot: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
+      getDescriptors: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
       structuredLog: logger,
     });
 
@@ -43,7 +43,7 @@ describe('detectNativeWiringConflicts', () => {
   it('excludes a Hoiax device whose owned capability a Flow writes, and reports the conflict', async () => {
     const result = await detectNativeWiringConflicts({
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: advancedWrite(hoiaxId, 'max_power_3000') }),
-      getSnapshot: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
+      getDescriptors: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
     });
     expect(result).toEqual({
       status: 'ok',
@@ -58,7 +58,7 @@ describe('detectNativeWiringConflicts', () => {
         [FLOW_API_PATH]: {},
         [ADVANCED_FLOW_API_PATH]: advancedWrite(hoiaxId, 'installation_current_control'),
       }),
-      getSnapshot: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
+      getDescriptors: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
     });
     expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [hoiaxId], conflicts: [] });
   });
@@ -66,7 +66,7 @@ describe('detectNativeWiringConflicts', () => {
   it('does not auto-enable target_power steppers (already default-on, out of scope)', async () => {
     const result = await detectNativeWiringConflicts({
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),
-      getSnapshot: () => [candidateDevice(targetPowerId, ['target_power'])],
+      getDescriptors: () => [candidateDevice(targetPowerId, ['target_power'])],
     });
     expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [], conflicts: [] });
   });
@@ -77,7 +77,7 @@ describe('detectNativeWiringConflicts', () => {
     // "left off" with a switch that does not exist.
     const result = await detectNativeWiringConflicts({
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: advancedWrite(targetPowerId, 'target_power') }),
-      getSnapshot: () => [candidateDevice(targetPowerId, ['target_power'])],
+      getDescriptors: () => [candidateDevice(targetPowerId, ['target_power'])],
     });
     expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [], conflicts: [] });
   });
@@ -86,7 +86,7 @@ describe('detectNativeWiringConflicts', () => {
     const { logger, events } = captureLog();
     const result = await detectNativeWiringConflicts({
       get: async () => { throw new Error('403 Forbidden'); },
-      getSnapshot: () => [candidateDevice(hoiaxId, ['max_power_3000'])],
+      getDescriptors: () => [candidateDevice(hoiaxId, ['max_power_3000'])],
       structuredLog: logger,
     });
     expect(result).toEqual({ status: 'unknown' });
@@ -96,7 +96,7 @@ describe('detectNativeWiringConflicts', () => {
   it('returns no decisions when the snapshot has no candidates', async () => {
     const result = await detectNativeWiringConflicts({
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),
-      getSnapshot: () => [],
+      getDescriptors: () => [],
     });
     expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [], conflicts: [] });
   });

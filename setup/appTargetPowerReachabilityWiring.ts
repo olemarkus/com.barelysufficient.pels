@@ -75,7 +75,9 @@ export const createTargetPowerReachabilityAppWiring = (
         AppContext['deviceControlHelpers']['reconcileTargetPowerReachability']
       >[0], nowMs: number) => ctx.deviceControlHelpers.reconcileTargetPowerReachability(snapshot, nowMs),
       getNextTargetPowerProbe: () => {
-        const eligibleDeviceIds = new Set((ctx.deviceManager?.getSnapshot() ?? [])
+        // Descriptors: the eligibility question is managed-ness and capacity
+        // control, both keyed by device id. Nothing here asks what a device is doing.
+        const eligibleDeviceIds = new Set((ctx.getDeviceDescriptors())
           .filter((device) => ctx.resolveManagedState(device.id) && ctx.isCapacityControlEnabled(device.id))
           .map((device) => device.id));
         const dueProbes = Object.entries(ctx.deviceTargetPowerConfigs).flatMap(([deviceId, config]) => {
