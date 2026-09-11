@@ -21,6 +21,7 @@ import {
   steppedPlanDevice,
   withFixtureResidualKw,
   fixtureControlPosture,
+  sheddingPlanFixture,
 } from '../utils/planTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
@@ -288,9 +289,7 @@ describe('P1 bug proofs', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildPlanningContext([rawDevice]),
       state: planState,
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,

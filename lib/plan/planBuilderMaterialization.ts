@@ -90,9 +90,7 @@ export class PlanMaterializationStages {
     return trackPlanStage('plan_devices_ms', () => buildInitialPlanDevices({
       context,
       state: this.state,
-      shedSet: sheddingPlan.shedSet,
-      shedReasons: sheddingPlan.shedReasons,
-      shedStepTargets: sheddingPlan.shedStepTargets,
+      sheddingPlan,
       shortfall,
       deps: {
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),

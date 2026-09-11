@@ -28,7 +28,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import type { RestorePlanResult } from '../../lib/plan/restore';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
-import { buildPlanInputDevice, restoreTimingFixture } from '../utils/planTestUtils';
+import { buildPlanInputDevice, restoreTimingFixture, sheddingPlanFixture } from '../utils/planTestUtils';
 import { withHeadroomCurrentOn } from '../../lib/plan/planHeadroomSupport';
 import type { SumBudgetExemptUsage } from '../../lib/power/sampleIngest';
 
@@ -127,9 +127,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
     const planDevices = buildInitialPlanDevices({
       context: buildContext([solarInputDevice()]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
@@ -205,9 +203,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
     const planDevices = buildInitialPlanDevices({
       context,
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     });

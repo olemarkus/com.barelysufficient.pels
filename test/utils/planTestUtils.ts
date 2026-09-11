@@ -1,4 +1,7 @@
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
+import { NO_SHEDDING_OUTCOME } from '../../lib/plan/planState';
+import type { SheddingPlan } from '../../lib/plan/shedding/types';
+import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type {
   DevicePlan,
   DevicePlanDevice,
@@ -1230,3 +1233,23 @@ export const restoreTimingFixture = (overrides: Partial<RestoreTiming> = {}): Re
   };
 };
 
+
+/**
+ * A `SheddingPlan` for a spec that drives `buildInitialPlanDevices` directly.
+ *
+ * The builder takes this cycle's shedding decision WHOLE, so a spec that only
+ * cares who is shed says that and lets the rest default to "no shedding
+ * happened". Defaults are the empty decision: nobody shed, no reason, no rung
+ * priced, the guard quiet.
+ */
+export const sheddingPlanFixture = (overrides: Partial<SheddingPlan> = {}): SheddingPlan => ({
+  shedSet: new Set<string>(),
+  shedReasons: new Map<string, DeviceReason>(),
+  shedStepTargets: new Map<string, string>(),
+  sheddingActive: false,
+  guardInShortfall: false,
+  outcome: NO_SHEDDING_OUTCOME,
+  recoveredAtMs: null,
+  overshootStats: null,
+  ...overrides,
+});

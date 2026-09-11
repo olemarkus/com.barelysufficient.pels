@@ -15,6 +15,7 @@ import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import { applyOffStateReason, type ShortfallOffState } from './planOffStateReason';
 import { isStartPolicyHoldShed } from './shedding/startPolicyHold';
+import type { SheddingPlan } from './shedding/types';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { buildBasePlanDevice } from './planDevicesBase';
 import { emitBoostStateChange, resolveBoostActive } from './planBoost';
@@ -47,25 +48,25 @@ type ResolvedPlannedTarget = number | undefined;
 export function buildInitialPlanDevices(params: {
   context: PlanContext;
   state: PlanEngineState;
-  shedSet: Set<string>;
-  shedReasons: Map<string, DeviceReason>;
   /**
-   * The rung the shedding planner priced each stepped shed at. Copied onto the
-   * device, never re-derived — see `resolveSteppedLoadDirectShedStepId`.
+   * This cycle's shedding decision, WHOLE. Its `shedSet`, `shedReasons` and
+   * the rungs each stepped shed was priced at used to arrive here as three
+   * loose members, which meant the one object the stage above already holds
+   * was taken apart to be listed again. Copied onto the device, never
+   * re-derived — see `resolveSteppedLoadDirectShedStepId`.
    */
-  shedStepTargets: Map<string, string>;
+  sheddingPlan: SheddingPlan;
   shortfall: ShortfallOffState;
   deps: PlanDevicesDeps;
 }): DevicePlanDevice[] {
   const {
     context,
     state,
-    shedSet,
-    shedReasons,
-    shedStepTargets,
+    sheddingPlan,
     shortfall,
     deps,
   } = params;
+  const { shedSet, shedReasons } = sheddingPlan;
   // Drop entries that must NOT count as capacity-shed posture, so the keep-invariant
   // stepped clamp (docs/technical.md:222) is symmetric with the executor's
   // hasExecutableShedDevices: the phantom set_step shed entries it also ignores, PLUS
@@ -149,10 +150,8 @@ export function buildInitialPlanDevices(params: {
       plannedTarget,
       control: dev.control,
       shedBehavior,
-      shedSet,
-      shedStepTargets,
+      sheddingPlan,
       anyOtherDeviceLimited: isAnyOtherDeviceLimited(effectiveShedSet, dev.id),
-      shedReasons,
       boostActive,
       // Set by resolvePlannedTarget above (read after it ran for this device).
       surplusAbsorbActive: state.surplusAbsorbActiveByDevice[dev.id] === true,

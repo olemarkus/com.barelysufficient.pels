@@ -34,7 +34,7 @@ import {
 } from '../../lib/planContract/planDecisionSemantics';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withBinaryDiscriminant, type DevicePlanDevice } from '../../lib/plan/planTypes';
-import { buildPlanDevice, buildPlanInputDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, buildPlanInputDevice, sheddingPlanFixture } from '../utils/planTestUtils';
 import { buildInitialPlanDevices, type PlanDevicesDeps } from '../../lib/plan/planDevices';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -129,8 +129,9 @@ describe('external-off hold — plan contract classification', () => {
 });
 
 describe('external-off hold — plan-device propagation', () => {
-  // Without this the whole suite is blind to a dropped `pickPropagatedPlanFields`
-  // line: the e2e's "never resumes" assertion passes on the executor guard alone,
+  // Without this the whole suite is blind to a dropped `externalOffHoldActive`
+  // propagation in `buildBasePlanDevice`: the e2e's "never resumes" assertion
+  // passes on the executor guard alone,
   // and the other plan specs build fixtures with the bit already set.
   const buildContext = (devices: PlanContext['devices']): PlanCycle => buildPlanCycleObject({
     devices,
@@ -170,9 +171,7 @@ describe('external-off hold — plan-device propagation', () => {
       ...(externalOffHoldActive ? { externalOffHoldActive } : {}),
     })]),
     state: createPlanEngineState(),
-    shedSet: new Set<string>(),
-    shedReasons: new Map(),
-    shedStepTargets: new Map(),
+    sheddingPlan: sheddingPlanFixture(),
     shortfall: { inShortfall: false },
     deps,
   })[0];

@@ -25,7 +25,7 @@ import { resolveSurplusEligibility } from '../../lib/plan/planSurplusAbsorb';
 import { type PlanEngineState } from '../../lib/plan/planState';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { buildPlanInputDevice } from '../utils/planTestUtils';
+import { buildPlanInputDevice, sheddingPlanFixture } from '../utils/planTestUtils';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import {
   SURPLUS_ABSORB_MIN_DWELL_MS,
@@ -121,9 +121,7 @@ const buildDevices = (params: {
   return buildInitialPlanDevices({
     context: params.context,
     state: params.state,
-    shedSet: new Set(),
-    shedReasons: new Map(),
-    shedStepTargets: new Map(),
+    sheddingPlan: sheddingPlanFixture(),
     shortfall: { inShortfall: false },
     deps: params.deps,
   });
@@ -341,9 +339,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       const device = buildInitialPlanDevices({
         context,
         state,
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: deps(true),
       })[0];

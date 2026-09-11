@@ -17,7 +17,7 @@ import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMateriali
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
-import { steppedInputDevice, steppedPlanDevice } from '../utils/planTestUtils';
+import { steppedInputDevice, steppedPlanDevice, sheddingPlanFixture } from '../utils/planTestUtils';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 
@@ -109,9 +109,11 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
     const [planDevice] = buildInitialPlanDevices({
       context,
       state,
-      shedSet: sheddingPlan.shedSet,
-      shedReasons: sheddingPlan.shedReasons,
-      shedStepTargets: sheddingPlan.shedStepTargets,
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: sheddingPlan.shedSet,
+        shedReasons: sheddingPlan.shedReasons,
+        shedStepTargets: sheddingPlan.shedStepTargets,
+      }),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,

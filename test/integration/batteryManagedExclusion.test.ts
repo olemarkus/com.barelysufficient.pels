@@ -29,7 +29,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import type { RestorePlanResult } from '../../lib/plan/restore';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
-import { buildPlanInputDevice, restoreTimingFixture } from '../utils/planTestUtils';
+import { buildPlanInputDevice, restoreTimingFixture, sheddingPlanFixture } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
@@ -128,9 +128,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
     const planDevices = buildInitialPlanDevices({
       context: buildContext([batteryInputDevice()]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
@@ -166,9 +164,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
           },
         }),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: priceDeps,
       });
@@ -243,9 +239,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
     const planDevices = buildInitialPlanDevices({
       context,
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     });

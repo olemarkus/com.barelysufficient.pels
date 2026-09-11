@@ -19,6 +19,7 @@ import {
   buildPlanInputDevice,
   type FixtureBoostFields,
   steppedInputDevice,
+  sheddingPlanFixture,
 } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
@@ -143,9 +144,7 @@ describe('buildInitialPlanDevices', () => {
         temperatureBoost: { enabled: true, boostBelowC: 55 },
       })]),
       state,
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     })[0];
@@ -172,9 +171,7 @@ describe('buildInitialPlanDevices', () => {
         temperatureBoost: { enabled: true, boostBelowC: 55 },
       })]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
@@ -193,9 +190,7 @@ describe('buildInitialPlanDevices', () => {
         temperatureBoost: { enabled: true, boostBelowC: 55 },
       })]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
@@ -215,9 +210,7 @@ describe('buildInitialPlanDevices', () => {
         temperatureBoost: { enabled: true, boostBelowC: 55 },
       })]),
       state,
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
@@ -251,9 +244,7 @@ describe('buildInitialPlanDevices', () => {
         temperatureBoost: { enabled: true, boostBelowC: 55 },
       })]),
       state,
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
@@ -279,9 +270,7 @@ describe('buildInitialPlanDevices', () => {
         expectedPowerKw: 1.2,
       })]),
       state,
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
@@ -307,9 +296,7 @@ describe('buildInitialPlanDevices', () => {
         evBoost: { enabled: true, boostBelowPercent: 40 },
       })]),
       state,
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
@@ -336,9 +323,10 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -380,9 +368,10 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -426,9 +415,10 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -473,9 +463,10 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice, recoveringDevice]),
       state,
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -510,9 +501,10 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -556,9 +548,11 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map([['dev-1', 'mid']]),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+        shedStepTargets: new Map([['dev-1', 'mid']]),
+      }),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -598,9 +592,10 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -629,9 +624,10 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -660,9 +656,7 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state,
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -682,9 +676,7 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -710,9 +702,7 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state,
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -742,9 +732,7 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -774,9 +762,7 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context,
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: true, headroomKw: -1 }, // Shortfall!
       deps: {
         getInferredSurplusKw: () => 0,
@@ -808,9 +794,7 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -838,9 +822,10 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: true, headroomKw: -1 },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -873,9 +858,10 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -907,9 +893,7 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([charger]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -940,9 +924,7 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([charger]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -969,9 +951,7 @@ describe('buildInitialPlanDevices', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([charger]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
@@ -1013,9 +993,10 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
@@ -1035,9 +1016,10 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
@@ -1060,9 +1042,10 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
@@ -1084,9 +1067,10 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
@@ -1110,9 +1094,10 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(['dev-1']),
-      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture({
+        shedSet: new Set(['dev-1']),
+        shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+      }),
       shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
@@ -1138,9 +1123,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
@@ -1164,9 +1147,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
@@ -1191,9 +1172,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
@@ -1222,9 +1201,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
@@ -1250,9 +1227,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
       state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      shedStepTargets: new Map(),
+      sheddingPlan: sheddingPlanFixture(),
       shortfall: { inShortfall: false },
       deps: buildTurnOffDeps(),
     });
@@ -1296,9 +1271,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })], tankTargets(50)),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1310,9 +1283,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })], tankTargets(65)),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1324,9 +1295,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })], { ...tankTargets(50), ...cheapHour(2) }),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1339,9 +1308,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([tempInputDevice({ deadlineFloorTargetC: 56 })], { ...tankTargets(55), ...cheapHour(3) }),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1361,9 +1328,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
           targets: [{ id: 'target_temperature', value: 25, unit: '°C', min: 16, max: 32 }],
         })], { ...tankTargets(25), getThermalDirection: () => 'cooling' }),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1375,9 +1340,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([tempInputDevice({ deadlineFloorTargetC: 58 })]),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1389,9 +1352,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([tempInputDevice({ deadlineFloorTargetC: 95 })], tankTargets(50)),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1404,9 +1365,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([tempInputDevice()], tankTargets(50)),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1419,9 +1378,10 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([device], tankTargets(50)),
         state: createPlanEngineState(),
-        shedSet: new Set(['tank']),
-        shedReasons: shedReasonMap([['tank', 'shed due to capacity']]),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture({
+          shedSet: new Set(['tank']),
+          shedReasons: shedReasonMap([['tank', 'shed due to capacity']]),
+        }),
         shortfall: { inShortfall: false },
         deps: {
           ...defaultDeps,
@@ -1461,9 +1421,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([tempInputDevice()], { getModeDeviceTargets: () => ({ Home: { tank: 55 } }) }),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: { ...defaultDeps, debugStructured },
       });
@@ -1478,9 +1436,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([tempInputDevice({ deadlineFloorTargetC: 58 })], { getModeDeviceTargets: () => ({ Home: { tank: 50 } }) }),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1503,9 +1459,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
           getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
         }),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1535,9 +1489,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
           getThermalDirection: () => 'cooling',
         }),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1579,9 +1531,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [stepped] = buildInitialPlanDevices({
         context: buildContext([buildStepped(), buildBinary('thermostat')]),
         state: createPlanEngineState(),
-        shedSet: new Set(['thermostat']),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture({ shedSet: new Set(['thermostat']) }),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1609,9 +1559,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
             thermostat,
           ]),
           state,
-          shedSet: new Set(['thermostat']),
-          shedReasons: new Map(),
-          shedStepTargets: new Map(),
+          sheddingPlan: sheddingPlanFixture({ shedSet: new Set(['thermostat']) }),
           shortfall: { inShortfall: false },
           deps: defaultDeps,
         });
@@ -1635,9 +1583,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [stepped] = buildInitialPlanDevices({
         context: buildContext([buildStepped(), buildBinary('thermostat')]),
         state: createPlanEngineState(),
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1652,9 +1598,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [stepped] = buildInitialPlanDevices({
         context: buildContext([buildStepped(), { ...pump, surplusOnly: true } as typeof pump]),
         state: createPlanEngineState(),
-        shedSet: new Set(['pool-pump']),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture({ shedSet: new Set(['pool-pump']) }),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1677,9 +1621,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [stepped] = buildInitialPlanDevices({
         context: buildContext([buildStepped(), pump]),
         state,
-        shedSet: new Set(['pool-pump']),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture({ shedSet: new Set(['pool-pump']) }),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1696,9 +1638,10 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [stepped] = buildInitialPlanDevices({
         context: buildContext([buildStepped(), { ...pump, surplusOnly: true } as typeof pump]),
         state: createPlanEngineState(),
-        shedSet: new Set(['pool-pump']),
-        shedReasons: shedReasonMap([['pool-pump', 'shed due to capacity']]),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture({
+          shedSet: new Set(['pool-pump']),
+          shedReasons: shedReasonMap([['pool-pump', 'shed due to capacity']]),
+        }),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
@@ -1722,9 +1665,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [stepped] = buildInitialPlanDevices({
         context: buildContext([keepStepped, phantomStepped]),
         state: createPlanEngineState(),
-        shedSet: new Set(['phantom']),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture({ shedSet: new Set(['phantom']) }),
         shortfall: { inShortfall: false },
         deps: {
           ...defaultDeps,
@@ -1742,9 +1683,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       const [stepped] = buildInitialPlanDevices({
         context: buildContext([buildStepped()]),
         state: createPlanEngineState(),
-        shedSet: new Set(['heater']),
-        shedReasons: new Map(),
-        shedStepTargets: new Map(),
+        sheddingPlan: sheddingPlanFixture({ shedSet: new Set(['heater']) }),
         shortfall: { inShortfall: false },
         deps: defaultDeps,
       });
