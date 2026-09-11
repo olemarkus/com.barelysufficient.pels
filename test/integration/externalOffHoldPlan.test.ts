@@ -131,8 +131,9 @@ describe('external-off hold — plan contract classification', () => {
 });
 
 describe('external-off hold — plan-device propagation', () => {
-  // Without this the whole suite is blind to a dropped `pickPropagatedPlanFields`
-  // line: the e2e's "never resumes" assertion passes on the executor guard alone,
+  // Without this the whole suite is blind to a dropped `externalOffHoldActive`
+  // propagation in `buildBasePlanDevice`: the e2e's "never resumes" assertion
+  // passes on the executor guard alone,
   // and the other plan specs build fixtures with the bit already set.
   const buildContext = (devices: PlanContext['devices']): PlanCycle => buildPlanCycleObject({
     devices,
