@@ -1,6 +1,7 @@
 import { resolveDeviceControlPosture } from '../../lib/device/temperatureControlPosture';
 import { resolveDeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
+import { resolveThermalDirection } from '../../lib/observer/thermalDirection';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import {
   type BoostResolveInput,
@@ -32,8 +33,12 @@ import type {
   TargetPowerSteppedLoadConfig,
   TemperatureBoostConfig,
   TemperatureObservedProbe,
+  ThermostatModeObservedProbe,
 } from '../../packages/contracts/src/types';
-import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
+import type {
+  DeviceControlPosture,
+  TemperaturePlanInputKind,
+} from '../../packages/planner-types/src/planInputDevice';
 import type { AppContext } from '../../lib/app/appContext';
 import type { DeviceSurfaces } from '../../lib/device/deviceSurfaces';
 import type { BinaryCommandabilityProjection } from '../../lib/plan/admission/binaryCommandReachability';
@@ -359,13 +364,16 @@ function resolveSteppedLadderMissing(
  * the raw `targets` list for the value.
  */
 function resolveTemperatureInputFields(
-  device: TemperatureObservedProbe,
-): { deviceType: 'temperature'; currentTemperature: number; currentTarget: number } | { deviceType: 'onoff' } {
+  device: TemperatureObservedProbe & ThermostatModeObservedProbe,
+): ({ deviceType: 'temperature' } & TemperaturePlanInputKind) | { deviceType: 'onoff' } {
   if (!device.temperature) return { deviceType: 'onoff' };
   return {
     deviceType: 'temperature',
     currentTemperature: device.temperature.currentTemperature,
     currentTarget: device.temperature.target.value,
+    // The observer's resolution of the raw reported mode, asked for here the
+    // same way `resolveCurrentOn` is — never re-derived from a capability value.
+    thermalDirection: resolveThermalDirection(device),
   };
 }
 
@@ -623,6 +631,11 @@ export function toPlanDevice(
     binaryControlObservation: _binaryControlObservation,
     evChargingState: _evChargingState,
     temperature: _temperature,
+    // The RAW reported mode. Stripped for the same reason `temperature` is: the
+    // planner reads the producer-resolved value (`thermalDirection` on the
+    // temperature cluster, from `resolveThermalDirection`) and must not be able
+    // to reach the capability string the observer resolved it from.
+    thermostatMode: _thermostatMode,
     // `lastFreshDataMs` is deliberately NOT stripped, for the same reason as
     // `stateOfCharge` below: `lib/objectives` reads it off this object
     // (`ObjectiveDeviceInput`, which is structurally assignable from

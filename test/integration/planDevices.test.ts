@@ -43,6 +43,8 @@ const inputDevice = (
       evChargingState?: string;
       binaryCapabilityId?: string;
       deviceType?: 'temperature' | 'onoff';
+      /** The device's raw reported `thermostat_mode`; the observer resolves the direction from it. */
+      thermostatMode?: string;
       // Fixture shorthands for the control posture; the shared builder resolves
       // them the way `toPlanDevice` does.
       controllable?: boolean;
@@ -1444,6 +1446,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         & {
           evChargingState?: string; deviceType?: 'temperature' | 'onoff';
           controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
+          thermostatMode?: string;
         } = {},
     ) => inputDevice({
       id: 'tank',
@@ -1520,6 +1523,60 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       });
 
       expect(plannedTargetOf(planDevice)).toBe(52);
+    });
+
+    /**
+     * The stored deltas are written in heating terms — positive while cheap,
+     * negative while expensive. On a unit whose `thermostat_mode` says cooling,
+     * adding them would
+     * move load INTO the expensive hour: the cheap-hour "boost" would let the
+     * room warm and the expensive-hour "reduction" would make the compressor run
+     * flat out. The same magnitudes are applied the other way instead.
+     */
+    const pricedCoolingTarget = (priceLevel: PriceLevel) => {
+      const [planDevice] = buildInitialPlanDevices({
+        context: {
+          ...buildContext([tempInputDevice({
+            thermostatMode: 'cooling',
+            currentTemperature: 25,
+            currentTarget: 22,
+            targets: [{ id: 'target_temperature', value: 22, unit: '°C', min: 16, max: 32 }],
+          })]),
+          modeTargetCFor: (d) => (({ tank: 22 })[d.id] ?? d.currentTarget),
+          currentHourPriceLevel: priceLevel,
+        },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        shedStepTargets: new Map(),
+        shortfall: { inShortfall: false },
+        deps: {
+          ...defaultDeps,
+          getPriceOptimizationEnabled: () => true,
+          getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 3, expensiveDelta: -2 } }),
+          getOperatingMode: () => 'home',
+        },
+      });
+      return plannedTargetOf(planDevice);
+    };
+
+    it('defaults a fixture with no stated mode to heating, the way the producer does', () => {
+      // The plan input REQUIRES a direction, and the fixture builder's cast to
+      // `PlanInputDevice` is the one place that could ship it absent — which
+      // would read as heating by accident rather than by resolution, and make
+      // the cooling assertions below prove nothing.
+      const device = tempInputDevice();
+      expect(isTemperaturePlanDevice(device) && device.thermalDirection).toBe('heating');
+    });
+
+    it('cools harder in a cheap hour on a device reporting a cooling mode', () => {
+      // mode 22 - cheap delta 3 = 19.
+      expect(pricedCoolingTarget(PriceLevel.CHEAP)).toBe(19);
+    });
+
+    it('lets a cooling device coast through an expensive hour', () => {
+      // mode 22 + expensive reduction 2 = 24.
+      expect(pricedCoolingTarget(PriceLevel.EXPENSIVE)).toBe(24);
     });
 
   });

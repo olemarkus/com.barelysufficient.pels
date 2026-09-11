@@ -366,6 +366,48 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       removing a contract violation that reads worse than it is. Source: observer cleanup sweep,
       2026-09-03. [P3]
 
+- [ ] **A configured setpoint shed makes a COOLING device cool harder, so the shed adds load.**
+      `resolveResidualShedBehavior` (`lib/device/temperatureControlPosture.ts`) returns the owner's
+      stored absolute setpoint unconditionally. That number was chosen as a heating floor ("when you
+      limit this device, let it fall to 16"), and on a unit whose `thermostat_mode` reports cooling
+      the same 16 is a demand for more compressor work. A shed that raises the device's draw is the
+      one outcome a shed must never have, and unlike the two entries below it makes a control
+      decision worse rather than merely inert.
+      Change: needs a product call first, because the owner stored ONE absolute number. Either
+      reinterpret it as "the comfort limit in whichever direction sheds" (16 while heating, and the
+      owner's cooling limit while cooling — which means a second stored value, or reading the
+      capability bound), or deny the `set_temperature` arm on a cooling device so it falls back to
+      `turn_off`, exactly as a device with no observed temperature already does at
+      `temperatureControlPosture.ts` (`resolveShedBehaviorWithoutTemperature`). The second is
+      smaller and losable-comfort-free; the first keeps the device modulating instead of stopping.
+      Done when no shed of a cooling device raises its expected draw, pinned by a planner test that
+      sheds a device reporting `thermostatMode: 'cooling'` and asserts its commanded setpoint does not move
+      below its current one. Source: the price-shift direction work, 2026-09-11; `pels-layering-guardian`
+      and `pels-runtime-reality` both isolated this arm from the two below. [P1]
+
+- [ ] **The solar-surplus lift and the deadline floor still move a setpoint as if every device were
+      heating, so on a cooling device they do nothing useful and erase the price shift.** The plan
+      input now carries the device's own direction (`TemperaturePlanInputKind.thermalDirection`,
+      resolved by the observer from the reported `thermostat_mode`), and `applyPriceOptimizationDelta`
+      (`lib/plan/planPriceDelta.ts`) is the only writer that honours it. `applySurplusAbsorbDelta`
+      (`lib/plan/planSurplusAbsorb.ts`) lifts the setpoint to soak up export, which on a cooling unit
+      makes the compressor do LESS work and absorbs nothing; the deadline floor in
+      `resolvePlannedTarget` (`lib/plan/planDevices.ts`) takes
+      `Math.max(plannedTarget, deadlineFloorTargetC)`, which on a cooling unit is a ceiling and lets
+      the deadline miss. Both are `Math.max` against the priced target, so each also DISCARDS the
+      correctly-flipped shift: mode 22 with a cheap-hour delta of 3 resolves to 19, and a deadline of
+      22 or a surplus lift of 2 takes it back to 22 or up to 24. The surplus case additionally
+      mis-reports itself — `state.surplusAbsorbActiveByDevice` is set from "the lift raised the
+      target", so the planner calls surplus absorb the binding cause while it actually reduced
+      consumption.
+      Change: apply the surplus lift in `thermalDirection`, and take the deadline floor as `Math.min`
+      when the device is cooling. Until then `docs/cost-saving-functions.md` warns owners to leave
+      both off on a cooling device.
+      Done when a cooling device with each feature enabled moves its setpoint the way that increases
+      draw — pinned by planner tests mirroring the price-shift pair in
+      `test/integration/planDevices.test.ts` — and the surplus binding cause is claimed only when the
+      lift actually added draw. Source: the price-shift direction work, 2026-09-11. [P1]
+
 ## Smart tasks
 
 - [ ] **A smart-task miss the daily budget only CONTRIBUTED to feeds nothing.**

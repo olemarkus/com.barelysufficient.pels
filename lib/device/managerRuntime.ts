@@ -425,6 +425,54 @@ function resolveBinaryReconcileChange(
   };
 }
 
+/** The setpoint facet appearing or vanishing, reported as its own change. */
+function resolveTemperaturePresenceChange(
+  previous: TransportDeviceSnapshot,
+  next: TransportDeviceSnapshot,
+): RealtimeDeviceReconcileChange {
+  return {
+    capabilityId: 'target_temperature',
+    previousValue: previous.temperature
+      ? formatTargetValue(previous.temperature.target.value, previous.temperature.target.unit)
+      : 'absent',
+    nextValue: next.temperature
+      ? formatTargetValue(next.temperature.target.value, next.temperature.target.unit)
+      : 'absent',
+  };
+}
+
+/**
+ * A reversible unit switching between heating and cooling.
+ *
+ * Control-relevant in its own right: it changes which way a setpoint write moves
+ * the device's demand. It is also the ONLY thing a mode-only `device.update`
+ * carries — no measurement, no target, no availability — so without it nothing
+ * dispatches, the observer keeps the old direction (the plan reads the
+ * observer's record in preference to the snapshot, `readDeviceSurfaces`), and
+ * every meter-triggered plan until the next full refresh shifts that device the
+ * wrong way. A fact, like every other change here: it lets a suppressed rebuild
+ * run, it never asks for one.
+ *
+ * Reported on the RAW mode rather than the resolved direction: the resolution
+ * is the observer's, and two driver-specific modes that both resolve `'heating'`
+ * are still a device saying something new. Returns the zero-or-one changes
+ * rather than an optional change: "no change" is the empty list the caller
+ * already accumulates, not an absent value it has to test for.
+ */
+function resolveThermostatModeChanges(
+  previous: TransportDeviceSnapshot,
+  next: TransportDeviceSnapshot,
+): RealtimeDeviceReconcileChange[] {
+  const previousValue = previous.thermostatMode;
+  const nextValue = next.thermostatMode;
+  if (previousValue === nextValue) return [];
+  return [{
+    capabilityId: 'thermostat_mode',
+    previousValue: previousValue ?? 'absent',
+    nextValue: nextValue ?? 'absent',
+  }];
+}
+
 function getControlRelevantRealtimeChanges(
   previous: TransportDeviceSnapshot | null,
   next: TransportDeviceSnapshot,
@@ -439,17 +487,9 @@ function getControlRelevantRealtimeChanges(
   }
 
   const temperaturePresenceChanged = (previous.temperature === undefined) !== (next.temperature === undefined);
-  if (temperaturePresenceChanged) {
-    changes.push({
-      capabilityId: 'target_temperature',
-      previousValue: previous.temperature
-        ? formatTargetValue(previous.temperature.target.value, previous.temperature.target.unit)
-        : 'absent',
-      nextValue: next.temperature
-        ? formatTargetValue(next.temperature.target.value, next.temperature.target.unit)
-        : 'absent',
-    });
-  }
+  if (temperaturePresenceChanged) changes.push(resolveTemperaturePresenceChange(previous, next));
+
+  changes.push(...resolveThermostatModeChanges(previous, next));
 
   const previousTargetsById = new Map(previous.targets.map((target) => [target.id, target]));
   for (const nextTarget of next.targets) {
@@ -493,6 +533,13 @@ function getObservedCapabilityIds(
   if (hasStateOfChargeObservationChanged(previous, next)) {
     capabilityIds.add(next.stateOfCharge.capabilityId);
   }
+  // `thermostat_mode` is deliberately absent. This list bumps per-capability
+  // FRESHNESS — evidence that a control axis is alive — and a mode is not that:
+  // a device can sit in `cool` for a season without saying anything. It still
+  // reaches the observer, because a mode change is control-relevant on its own
+  // (`resolveThermostatModeChanges`), which is what dispatches the record.
+
+
 
   const previousTargetsById = new Map(previous.targets.map((target) => [target.id, target]));
   for (const nextTarget of next.targets) {

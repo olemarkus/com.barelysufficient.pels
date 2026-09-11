@@ -123,3 +123,27 @@ the problem, not the safety net.
   Re-admitting it there can block the device on its own restore throttle forever.
   Other devices still pass through the ordinary timing and power gates. The
   SDK-boundary regression is in `test/e2e/heatpumpShedControl.e2e.test.ts`.
+- **A setpoint policy has a DIRECTION, and it is the device's, not the policy's.**
+  "Raise = more load" holds for a water heater and a panel radiator and is exactly
+  backwards for a reversible unit running in cooling. The transport reports the
+  device's raw `thermostat_mode` and retains it across a partial update, exactly
+  as it does `evChargingState`; the observer owns the vocabulary that turns it
+  into a `ThermalDirection` (`resolveThermalDirection`,
+  `lib/observer/thermalDirection.ts`, `'cooling'` only on positive evidence), the
+  way it already resolves `currentOn` from the raw binary axis. `toPlanDevice`
+  asks for it and stamps it on `TemperaturePlanInputKind`; the raw mode is
+  stripped there and never reaches the planner. Any policy that moves a setpoint
+  to change how much the device draws must apply its move in that direction. The
+  price-based shift does (`lib/plan/planPriceDelta.ts`), and so does the
+  diagnostics "held below target" resolution, which otherwise accrues persisted
+  starvation time for a cooling device PELS is running flat out. The surplus
+  lift, the deadline floor and the configured `set_temperature` shed still assume
+  heating, and each is a defect for a cooling device rather than a deliberate
+  exemption.
+  **The readers assume it too, and that list is not closed.** `computeTemperatureGap`
+  (`lib/observer/idleDetector.ts`) is `target - current`, so a cooling unit above
+  its setpoint — working hardest — reads as `near_target_idle`; and the
+  temperature boost trigger (`lib/device/deviceActionProjection.ts`) fires when
+  the room is BELOW `boostBelowC`, which for a cooling unit is when it is already
+  satisfied. Treat the three writers as the known cases, not the complete set:
+  anything that compares a temperature against a target has a direction in it.

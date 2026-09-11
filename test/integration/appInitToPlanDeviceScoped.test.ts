@@ -11,6 +11,8 @@
  */
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { toPlanDevice } from '../../setup/appInit';
+import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
@@ -20,6 +22,7 @@ import type {
   MeasuredPowerObservedProbe,
   TargetDeviceSnapshot,
   TemperatureObservedProbe,
+  ThermostatModeObservedProbe,
 } from '../../packages/contracts/src/types';
 
 // A plain binary managed+controllable device that WOULD be stamped
@@ -62,6 +65,50 @@ describe('toPlanDevice — R7b per-home options', () => {
     const snapshot = { ...buildSurplusWillingSnapshot(), available: false };
 
     expect(toPlanDevice(ctx, snapshot).available).toBe(false);
+  });
+
+  describe('thermal direction', () => {
+    const heatPump = (thermostatMode?: string) => ({
+      available: true,
+      id: 'heatpump-1',
+      name: 'Living Room Heat Pump',
+      deviceClass: 'heatpump',
+      deviceType: 'temperature',
+      temperature: { currentTemperature: 25, target: { id: 'target_temperature', value: 22, unit: '°C' } },
+      targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
+      capabilities: ['target_temperature', 'measure_temperature', 'thermostat_mode'],
+      binaryControl: { on: true },
+      ...(thermostatMode !== undefined ? { thermostatMode } : {}),
+      expectedPowerKw: 1, expectedPowerSource: 'default',
+    } satisfies DecoratedDeviceSnapshot & TemperatureObservedProbe & ThermostatModeObservedProbe);
+
+    // Ranked back into a full `PlanInputDevice` so the production guard narrows
+    // to the INPUT cluster; `toPlanDevice` returns the unranked shape and the
+    // planner's ranking pass is what adds `priority`.
+    const planDeviceFor = (thermostatMode?: string): PlanInputDevice => {
+      const ctx = createAppContextMock();
+      ctx.isCapacityControlEnabled = vi.fn(() => true);
+      ctx.resolveManagedState = vi.fn(() => true);
+      return { ...toPlanDevice(ctx, heatPump(thermostatMode)), priority: 1 } as PlanInputDevice;
+    };
+
+    it.each([
+      { mode: 'cooling', direction: 'cooling' },
+      { mode: 'cool', direction: 'cooling' },
+      { mode: 'heat', direction: 'heating' },
+      { mode: 'auto', direction: 'heating' },
+      { mode: undefined, direction: 'heating' },
+    ])('resolves a reported mode of $mode to $direction', ({ mode, direction }) => {
+      // The single join between the observation and the planner. Without this
+      // the cluster is only TYPE-checked: a producer that hard-coded `'heating'`
+      // would satisfy tsc and pass every other spec in the suite.
+      const device = planDeviceFor(mode);
+      expect(isTemperaturePlanDevice(device) && device.thermalDirection).toBe(direction);
+    });
+
+    it('strips the raw mode, so no planner code can re-derive a direction from it', () => {
+      expect('thermostatMode' in planDeviceFor('cooling')).toBe(false);
+    });
   });
 
   it('keeps a disabled temperature-only device fail-closed without inventing binary control', () => {

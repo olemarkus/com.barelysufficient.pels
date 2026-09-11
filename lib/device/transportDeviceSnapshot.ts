@@ -8,6 +8,7 @@ import type {
   SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
   TemperatureObservedProbe,
+  ThermostatModeObservedProbe,
 } from '../../packages/contracts/src/types';
 
 /**
@@ -53,7 +54,7 @@ export type TransportBinaryControlObservation = BinaryControlObservation;
 export type TransportDeviceSnapshot =
   Omit<TargetDeviceSnapshot, 'binaryControlObservation'> & {
     binaryControlObservation?: TransportBinaryControlObservation;
-  } & EvObservedProbe & TemperatureObservedProbe
+  } & EvObservedProbe & TemperatureObservedProbe & ThermostatModeObservedProbe
   & StateOfChargeObservedProbe & MeasuredPowerObservedProbe
   & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
   & TransportControlBindingProbe;

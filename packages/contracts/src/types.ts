@@ -464,6 +464,12 @@ export type ObservedDeviceState = {
     evCharging?: boolean;
     /** Timestamp of the raw `evcharger_charging` boolean-axis observation. */
     evChargingObservedAtMs?: number;
+    // `thermostatMode` is deliberately NOT here, for the same reason as the five
+    // clusters above: it lives on `ThermostatModeObservedProbe`, so an
+    // un-narrowed `snapshot.thermostatMode` read on a base-typed value is a hard
+    // compile error (TS2339) and the rule "nothing re-derives a direction from a
+    // capability value" is enforced rather than asserted in a comment. Owner
+    // seams and producer-fed funnels widen with the probe instead.
     // `evChargingState` is deliberately NOT here (EV-observed slice of the
     // discriminated-types refactor): it lives on `EvObservedFields`, regrouped onto
     // the snapshot by the `isEvObserved` guard
@@ -595,6 +601,43 @@ export type EvObservedProbe = {
 export type TemperatureTargetCapabilitySnapshot = Omit<TargetCapabilitySnapshot, 'id' | 'value'> & {
     id: 'target_temperature';
     value: number;
+};
+
+/**
+ * Which way a setpoint write moves this device's demand.
+ *
+ * `'heating'` means raising the setpoint adds load; `'cooling'` means lowering
+ * it does. TOTAL, never absent: every device PELS writes a setpoint to is doing
+ * one or the other right now, and a consumer that had to handle a third
+ * "unknown" arm would have to invent a direction anyway.
+ *
+ * Not an observation — it is the observer's resolution OF one
+ * (`resolveThermalDirection`, `lib/observer/thermalDirection.ts`), the way
+ * `currentOn` is resolved from the raw binary axis. The observation it reads is
+ * `thermostatMode` below. `'cooling'` only on positive evidence, so a water
+ * heater, a panel radiator, and every device with no mode axis resolve
+ * `'heating'` — correct for them, and the behaviour that predates this type.
+ */
+export type ThermalDirection = 'heating' | 'cooling';
+
+/**
+ * The device's raw reported `thermostat_mode`, lower-cased and trimmed — absent
+ * when the device declares no mode axis, or has never reported one.
+ *
+ * Deliberately the RAW string and not a direction: this is an observation, and
+ * the vocabulary that maps `cool`/`cooling`/`heat`/`auto`/... onto a
+ * `ThermalDirection` is the observer's (`resolveThermalDirection`). The
+ * transport reports what the device said and retains it across a partial
+ * update, exactly as it does for `evChargingState`.
+ *
+ * A plain probe with no companion guard, unlike `TemperatureObservedProbe`:
+ * there is no cluster to keep whole and no narrowing to do, because absence is
+ * meaningful and the resolver is total. The probe exists for the OTHER half of
+ * the pattern — keeping the field off the base so nothing can read it without
+ * saying it wants the raw mode.
+ */
+export type ThermostatModeObservedProbe = {
+    thermostatMode?: string;
 };
 
 /** Atomic, producer-validated temperature-control observation. */
@@ -788,6 +831,7 @@ export type ReportedStepObservedProbe = {
 /** Observer-maintained value after transport has projected every observed cluster. */
 export type ProjectedObservedDeviceState = ObservedDeviceState
     & EvObservedProbe
+    & ThermostatModeObservedProbe
     & TemperatureObservedProbe
     & StateOfChargeObservedProbe
     & MeasuredPowerObservedProbe

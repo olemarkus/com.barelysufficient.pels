@@ -7,14 +7,15 @@ import type { HomeyDeviceLike } from '../../utils/types';
 
 export const TARGET_TEMPERATURE_CAPABILITY_ID = 'target_temperature';
 
-export function resolveTemperatureObservation(params: {
-  currentTemperature: number | undefined;
-  targets: TargetDeviceSnapshot['targets'];
-}): TemperatureObservation | undefined {
-  const target = params.targets.find((entry) => entry.id === TARGET_TEMPERATURE_CAPABILITY_ID);
-  if (!target || params.currentTemperature === undefined || !isFiniteNumber(target.value)) return undefined;
+/** Admit the atomic temperature facet, or refuse it. */
+export function resolveTemperatureObservation(
+  currentTemperature: number | undefined,
+  targets: TargetDeviceSnapshot['targets'],
+): TemperatureObservation | undefined {
+  const target = targets.find((entry) => entry.id === TARGET_TEMPERATURE_CAPABILITY_ID);
+  if (!target || currentTemperature === undefined || !isFiniteNumber(target.value)) return undefined;
   return {
-    currentTemperature: params.currentTemperature,
+    currentTemperature,
     target: { ...target, id: TARGET_TEMPERATURE_CAPABILITY_ID, value: target.value },
   };
 }

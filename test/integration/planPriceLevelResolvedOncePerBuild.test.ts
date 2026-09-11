@@ -42,6 +42,17 @@ const temperatureDevice = (id: string): PlanInputDevice => buildPlanInputDevice(
   measuredPowerKw: 0.4,
 });
 
+const coolingDevice = (id: string): PlanInputDevice => buildPlanInputDevice({
+  id,
+  name: `Heat pump ${id}`,
+  deviceType: 'temperature',
+  currentTemperature: 25,
+  targets: [{ id: 'target_temperature', value: 20, unit: 'C' }],
+  thermostatMode: 'cooling',
+  controllable: true,
+  measuredPowerKw: 0.4,
+});
+
 const plannedTargetOf = (device: DevicePlanDevice | undefined): number | undefined => (
   device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined
 );
@@ -153,6 +164,24 @@ describe('current-hour price level is resolved once per plan build', () => {
     expect(deviceDiagnostics.observed[0].map((o) => o.desiredStateSummary))
       .toEqual(new Array(DEVICE_COUNT).fill('22.0C'));
     expect(getCurrentHourPriceLevel).toHaveBeenCalledTimes(1);
+  });
+
+  it('flips the diagnostics desired target with the planner on a cooling device', async () => {
+    // The diagnostics projection and the planner apply the SAME shift. If only
+    // the planner flipped, the owner would read a target PELS never wrote.
+    const deviceDiagnostics = buildDiagnosticsRecorder();
+    const builder = buildBuilder({
+      priceOptimizationEnabled: true,
+      getCurrentHourPriceLevel: () => PriceLevel.CHEAP,
+      deviceIds: ['heater-0'],
+      deviceDiagnostics,
+    });
+
+    const plan = await builder.buildDevicePlanSnapshot([coolingDevice('heater-0')]);
+
+    // mode 20 - cheapDelta 2 = 18: cooling harder while power is cheap.
+    expect(plan.devices.map(plannedTargetOf)).toEqual([18]);
+    expect(deviceDiagnostics.observed[0].map((o) => o.desiredStateSummary)).toEqual(['18.0C']);
   });
 
   it('still applies the cheap-hour delta to every configured device', async () => {

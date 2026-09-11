@@ -35,10 +35,11 @@ const parsePriceDeltaInput = (value: string | undefined, fallback: number): numb
 
 const readPriceOptInputs = (): { enabled: boolean; cheapDelta: number; expensiveDelta: number } => ({
   enabled: deviceDetailPriceOpt?.selected || false,
-  cheapDelta: parsePriceDeltaInput(deviceDetailCheapDelta?.value, 5),
-  // The field shows the reduction as a positive magnitude ("lowers the target
-  // by this much"); the negative sign is applied on the way in, so a "reduction"
-  // field never displays a negative number.
+  // Both fields are magnitudes — the labels say "boost" and "reduction", and the
+  // Prices tab's editor of the same two settings cannot express a negative
+  // (`DELTA_MIN = 0`). This one could, which left one stored field with two
+  // conventions; the stored sign is normalized here so it has one.
+  cheapDelta: Math.abs(parsePriceDeltaInput(deviceDetailCheapDelta?.value, 5)),
   expensiveDelta: -Math.abs(parsePriceDeltaInput(deviceDetailExpensiveDelta?.value, 5)),
 });
 

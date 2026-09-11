@@ -76,6 +76,8 @@ type InputDeviceFixture = Partial<PlanInputDevice>
   & TemperatureDiscriminantProbe
   & {
     evChargingState?: string; binaryCapabilityId?: string; deviceType?: 'temperature' | 'onoff';
+    /** The device's raw reported mode; the observer resolves the direction from it. */
+    thermostatMode?: string;
     // Fixture shorthands for the control posture; `buildPlanInputDevice`
     // resolves them the way `toPlanDevice` does.
     controllable?: boolean; managed?: boolean; commandAuthority?: boolean;
@@ -549,6 +551,53 @@ describe('plan diagnostics observations', () => {
     expect(observation.desiredStateSummary).toBe('24.0C');
     expect(observation.intendedNormalTargetC).toBe(20);
     expect(observation.targetStepC).toBe(0.5);
+  });
+
+  it.each([
+    { hour: 'cheap', level: PriceLevel.CHEAP, plannedTarget: 19, held: false },
+    { hour: 'expensive', level: PriceLevel.EXPENSIVE, plannedTarget: 24, held: true },
+  ])('reads a cooling device being worked harder in a $hour hour on the work axis', (
+    { level, plannedTarget, held },
+  ) => {
+    // "Below target" is the device's own axis. A cooling unit commanded to 19
+    // against a mode target of 22 is being run HARDER, not held back — reading
+    // it the heating way accrues persisted starvation time exactly while PELS is
+    // running the compressor flat out, and records nothing in the expensive hour
+    // when it really is being throttled.
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'ac-1',
+        name: 'Living Room AC',
+        deviceClass: 'airconditioning',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 25,
+        thermostatMode: 'cooling',
+        binaryControl: { on: true },
+        targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'ac-1',
+        name: 'Living Room AC',
+        deviceClass: 'airconditioning',
+        currentState: 'on',
+        plannedState: 'keep',
+        currentTarget: 22,
+        plannedTarget,
+        reason: r('keep'),
+        controllable: true,
+        available: true,
+        currentTemperature: 25,
+      },
+      modeTargets: { 'ac-1': 22 },
+      priceOptimizationEnabled: true,
+      priceOptimizationSettings: { 'ac-1': { enabled: true, cheapDelta: 3, expensiveDelta: -2 } },
+      currentHourPriceLevel: level,
+    });
+
+    expect(observation.pelsHoldsBelowTarget).toBe(held);
   });
 
   it('counts starvation for a device that has been silent for hours — nothing ages an observation out', () => {

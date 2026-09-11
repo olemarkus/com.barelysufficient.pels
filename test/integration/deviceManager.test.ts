@@ -12,7 +12,7 @@ import {
     mergeFresherCapabilityObservations,
 } from '../../lib/device/transport/managerObservation';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
-import type { EvObservedProbe, MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type { EvObservedProbe, MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe, ThermostatModeObservedProbe } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
@@ -270,6 +270,31 @@ describe('DeviceTransport', () => {
                 'target_temperature',
                 'measure_power',
             ]);
+        });
+
+        it.each([
+            { mode: 'cooling', reported: 'cooling' },
+            { mode: 'Cool', reported: 'cool' },
+            { mode: '  heating ', reported: 'heating' },
+            { mode: 'auto', reported: 'auto' },
+        ])('reports a thermostat_mode of $mode as the raw observation $reported', ({ mode, reported }) => {
+            // The parse REPORTS the mode and does not interpret it: the
+            // vocabulary that turns it into a direction is the observer's
+            // (`resolveThermalDirection`). Normalized only — trimmed, lowercased.
+            const [parsed] = deviceManager.parseDeviceListForTests([{
+                id: 'heatpump-1',
+                name: 'Living Room Heat Pump',
+                class: 'heatpump',
+                capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'thermostat_mode'],
+                capabilitiesObj: {
+                    onoff: { value: true, id: 'onoff' },
+                    measure_temperature: { value: 25, id: 'measure_temperature', units: '°C' },
+                    target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
+                    thermostat_mode: { value: mode, id: 'thermostat_mode' },
+                },
+            }]);
+
+            expect(parsed.thermostatMode).toBe(reported);
         });
 
         it.each([
@@ -763,6 +788,70 @@ describe('DeviceTransport', () => {
     });
 
     describe('refreshSnapshot', () => {
+        /**
+         * The retained reported mode, driven through the seam that actually
+         * produces a partial payload.
+         *
+         * A full read answers every declared capability, so the shape this
+         * exercises — `thermostat_mode` declared but absent from
+         * `capabilitiesObj` — only ever arrives on `device.update`, which
+         * carries just the capabilities that moved. An absent entry there is
+         * silence, not a mode change: re-reading it as "no mode" would send a
+         * cooling unit's price shift the wrong way every time an unrelated
+         * capability moved.
+         */
+        describe('reported thermostat mode across a partial device.update', () => {
+            const HEAT_PUMP_CAPABILITIES = ['onoff', 'measure_temperature', 'target_temperature', 'thermostat_mode'];
+            const heatPump = (capabilitiesObj: Record<string, { value: unknown; id: string; units?: string }>) => ({
+                id: 'dev1',
+                name: 'Living Room Heat Pump',
+                class: 'heatpump',
+                // The DECLARED list stays whole on a partial update; it is
+                // `capabilitiesObj` that is trimmed to what changed.
+                capabilities: HEAT_PUMP_CAPABILITIES,
+                capabilitiesObj,
+            });
+            const fullRead = (thermostatMode: string) => heatPump({
+                onoff: { value: true, id: 'onoff' },
+                measure_temperature: { value: 25, id: 'measure_temperature', units: '°C' },
+                target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
+                thermostat_mode: { value: thermostatMode, id: 'thermostat_mode' },
+            });
+            // `getSnapshot()` is base-typed; the probe is what carries the raw mode.
+            const observedMode = (): string | undefined => (
+                (deviceManager.getSnapshot() as (TargetDeviceSnapshot & ThermostatModeObservedProbe)[])[0]?.thermostatMode
+            );
+
+            const seedCooling = async (): Promise<void> => {
+                await deviceManager.init();
+                mockApiGet.mockResolvedValue({ dev1: fullRead('cooling') });
+                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                expect(observedMode()).toBe('cooling');
+            };
+
+            it('retains it through an update that does not carry the mode', async () => {
+                await seedCooling();
+
+                deviceManager.injectDeviceUpdateForTest(heatPump({
+                    measure_temperature: { value: 26, id: 'measure_temperature', units: '°C' },
+                }));
+
+                expect(observedMode()).toBe('cooling');
+            });
+
+            it('still lets an update that DOES carry the mode replace it', async () => {
+                await seedCooling();
+
+                // Proves the retention above is silence handling rather than a
+                // stuck value.
+                deviceManager.injectDeviceUpdateForTest(heatPump({
+                    thermostat_mode: { value: 'heat', id: 'thermostat_mode' },
+                }));
+
+                expect(observedMode()).toBe('heat');
+            });
+        });
+
         it('populates snapshot with controllable devices', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({

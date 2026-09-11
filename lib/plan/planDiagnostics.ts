@@ -11,7 +11,9 @@ import type { MeasuredPower, PlanContext } from './planContext';
 import { PriceLevel } from '../price/priceLevels';
 import type { RestorePlanResult } from './restore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
+import type { ThermalDirection } from '../../packages/contracts/src/types';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
+import { applyPriceOptimizationDelta } from './planPriceDelta';
 import {
   isStarvationSupportedDeviceClass,
   isTemperatureControlDevice,
@@ -127,16 +129,27 @@ const belowTargetEpsilonC = (targetStepC: number | null): number => (
   isFiniteNumber(targetStepC) && targetStepC > 0 ? targetStepC / 2 : 0.25
 );
 
-// PELS is holding the device below its intended/mode target when the target it
-// is COMMANDING sits more than half a target step under the intended target.
-// A device PELS commands in full (commanded == intended) is never below.
+// PELS is holding the device short of its intended/mode target when the target
+// it is COMMANDING asks for more than half a target step LESS WORK than the
+// intended target. A device PELS commands in full (commanded == intended) is
+// never held back.
+//
+// "Less work" is the device's axis, not a fixed sign. A commanded 19 against an
+// intended 22 is a held-back heater and a harder-working air conditioner, and
+// reading it as the former would accrue persisted starvation time for a device
+// PELS is running flat out — while the expensive hour, when it really is being
+// throttled, would record nothing.
 const pelsCommandsBelowTarget = (
   intendedNormalTargetC: number | null,
   commandedTargetC: number | null,
   targetStepC: number | null,
+  direction: ThermalDirection,
 ): boolean => {
   if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(commandedTargetC)) return false;
-  return commandedTargetC < intendedNormalTargetC - belowTargetEpsilonC(targetStepC);
+  const epsilon = belowTargetEpsilonC(targetStepC);
+  return direction === 'cooling'
+    ? commandedTargetC > intendedNormalTargetC + epsilon
+    : commandedTargetC < intendedNormalTargetC - epsilon;
 };
 
 // PELS is holding a turn_off-shed device below its intended target when it has
@@ -152,10 +165,16 @@ const pelsHoldsOffBelowTarget = (
   intendedNormalTargetC: number | null,
   currentTemperatureC: number | null,
   targetStepC: number | null,
+  direction: ThermalDirection,
 ): boolean => {
   if (!pelsCommandsTurnOffShed) return false;
   if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(currentTemperatureC)) return false;
-  return currentTemperatureC < intendedNormalTargetC - belowTargetEpsilonC(targetStepC);
+  const epsilon = belowTargetEpsilonC(targetStepC);
+  // Same axis question as above: a room ABOVE an air conditioner's target is the
+  // unsatisfied one, and a room below it is comfortable.
+  return direction === 'cooling'
+    ? currentTemperatureC > intendedNormalTargetC + epsilon
+    : currentTemperatureC < intendedNormalTargetC - epsilon;
 };
 
 /**
@@ -173,13 +192,20 @@ const resolvePelsHoldsBelowTarget = (params: {
   currentTemperatureC: number | null;
   targetStepC: number | null;
   pelsCommandsTurnOffShed: boolean;
+  thermalDirection: ThermalDirection;
 }): boolean => (
-  pelsCommandsBelowTarget(params.intendedNormalTargetC, params.commandedTargetC, params.targetStepC)
+  pelsCommandsBelowTarget(
+    params.intendedNormalTargetC,
+    params.commandedTargetC,
+    params.targetStepC,
+    params.thermalDirection,
+  )
   || pelsHoldsOffBelowTarget(
     params.pelsCommandsTurnOffShed,
     params.intendedNormalTargetC,
     params.currentTemperatureC,
     params.targetStepC,
+    params.thermalDirection,
   )
 );
 
@@ -394,6 +420,9 @@ const buildDiagnosticsObservation = (params: {
     currentTemperatureC,
     targetStepC,
     pelsCommandsTurnOffShed,
+    thermalDirection: inputDevice && isTemperaturePlanDevice(inputDevice)
+      ? inputDevice.thermalDirection
+      : 'heating',
   });
   const unmetDemand = resolveUnmetDemand(
     desiredTarget,
@@ -454,16 +483,17 @@ const resolveDesiredTemperatureTarget = (params: {
   // matches the prior `deviceType && deviceType !== 'temperature'` truthiness).
   if (!isTemperaturePlanDevice(inputDevice)) return null;
 
-  let desiredTarget = modeTargetCFor(inputDevice);
+  const desiredTarget = modeTargetCFor(inputDevice);
   const priceOptConfig = priceOptimizationSettings[inputDevice.id];
-  if (priceOptimizationEnabled && priceOptConfig?.enabled) {
-    if (currentHourPriceLevel === PriceLevel.CHEAP && priceOptConfig.cheapDelta) {
-      desiredTarget += priceOptConfig.cheapDelta;
-    } else if (currentHourPriceLevel === PriceLevel.EXPENSIVE && priceOptConfig.expensiveDelta) {
-      desiredTarget += priceOptConfig.expensiveDelta;
-    }
-  }
-  return desiredTarget;
+  if (!priceOptimizationEnabled || !priceOptConfig?.enabled) return desiredTarget;
+  // The planner's own shift, not a restatement of it — including the flip on a
+  // cooling device, so the target the owner reads is the one PELS asks for.
+  return applyPriceOptimizationDelta(
+    desiredTarget,
+    priceOptConfig,
+    currentHourPriceLevel,
+    inputDevice.thermalDirection,
+  );
 };
 
 const resolveDiagnosticsBlockCause = (params: {

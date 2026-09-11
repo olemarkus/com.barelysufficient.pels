@@ -8,6 +8,7 @@ import type {
   SteppedLoadProfile,
   TargetCapabilitySnapshot,
   TargetPowerSteppedLoadConfig,
+  ThermalDirection,
 } from '../../contracts/src/types.js';
 
 
@@ -101,6 +102,15 @@ type NonSteppedPlanInputKind = Record<never, never>;
 export type TemperaturePlanInputKind = {
   currentTemperature: number;
   currentTarget: number;
+  /**
+   * Which way this device's setpoint moves demand — the transport's answer,
+   * stamped off the same atomic facet as the two numbers above. REQUIRED, like
+   * them, because it is total: the producer has a direction for every device,
+   * `'heating'` where the device declares no mode axis at all. The planner reads
+   * it and never re-derives it; `lib/plan` cannot see `lib/device`
+   * (`no-plan-to-device`), which is exactly why it rides here.
+   */
+  thermalDirection: ThermalDirection;
 };
 
 /**
@@ -660,4 +670,4 @@ export type PlanDeviceCarriedKey =
 export type PlanDeviceStrippedKey =
   'binaryControl' | 'binaryControlObservation' | 'evChargingState' | 'measuredPowerKw'
   | 'steppedLoadProfile' | 'targetPowerConfig' | 'temperature' | 'temperatureAdjustmentsDisabled'
-  | 'temperatureControlDisabled';
+  | 'temperatureControlDisabled' | 'thermostatMode';

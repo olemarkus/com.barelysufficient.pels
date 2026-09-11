@@ -15,7 +15,7 @@ Use this page when you are deciding whether to rely on power limiting, daily bud
 | --- | --- | --- | --- |
 | **Power limiting** | Staying below a grid tariff step (effekttrinn) | Pauses, lowers, or resumes managed devices when the home gets close to the hard cap | Hourly hard cap |
 | **Daily budget** | Spending less and using less by pacing whole-home energy across the day | Gives more room to cheap or useful hours and less room to expensive hours | Daily kWh budget plus hourly hard cap |
-| **Price-based temperature shift** | Moving heating or cooling on devices with thermal mass | Raises targets in cheap hours and lowers targets in expensive hours | Temperature comfort range |
+| **Price-based temperature shift** | Moving heating or cooling on devices with thermal mass | Works the device harder in cheap hours and lets it coast in expensive ones | Temperature comfort range |
 | **Smart tasks** | Getting a specific device ready by a time | Plans the cheapest useful hours before the ready-by time | Target, ready-by time, prices, budget, and hard cap |
 | **Flow-booked hours** | Custom "run for X cheap hours before Y" automation | Your Flow enables power-limit control only during selected hours | Your Flow logic plus hard cap |
 
@@ -55,7 +55,11 @@ This is useful when a water heater, room heating, or an EV charger may all take 
 
 ## Price-Based Temperature Shift
 
-Price-based temperature shift is per-device temperature behavior. PELS can raise the target temperature in cheap hours and lower it in expensive hours.
+Price-based temperature shift is per-device temperature behavior. PELS can work the device harder in cheap hours and let it coast in expensive ones. On a heater that means raising the target temperature while power is cheap and lowering it while it is expensive.
+
+On a unit that is cooling, the same settings move the target the other way: the cheap-hour boost lowers it and the expensive-hour reduction raises it. PELS reads the device's own heating/cooling mode to decide, so an air conditioner and a water heater can both be price-aware without separate settings. A device that reports no mode, or reports `auto`, is treated as heating — if yours runs in `auto` and cools, turn its price response off.
+
+Three other things still move the target as if every device were heating. Two of them override the price shift on a cooling unit if you switch them on: a Smart task's target, and "Run on solar surplus". The third needs no switch — when power limiting lowers a cooling unit to its limited temperature, it makes that unit work *harder* rather than easing off. Until that is fixed, a cooling device is best left out of power limiting, and its Smart tasks and solar surplus left off.
 
 Use it when:
 

@@ -35,5 +35,3 @@ const STARVATION_SUPPORTED_DEVICE_CLASSES: ReadonlySet<string> = new Set([
 export const isStarvationSupportedDeviceClass = (deviceClass: string | null | undefined): boolean => (
   STARVATION_SUPPORTED_DEVICE_CLASSES.has((deviceClass ?? '').trim().toLowerCase())
 );
-
-/** Whether a device class may add load when its setpoint is lowered. Case-insensitive. */

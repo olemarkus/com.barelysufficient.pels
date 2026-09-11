@@ -23,6 +23,7 @@ import { isSteppedLoadDevice } from './planSteppedLoad';
 import { buildBasePlanDevice } from './planDevicesBase';
 import { emitBoostStateChange, resolveBoostActive } from './planBoost';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
+import { applyPriceOptimizationDelta } from './planPriceDelta';
 import { addPerfDuration } from '../utils/perfCounters';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { TemperaturePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
@@ -239,7 +240,7 @@ type ModeSeedModulation = { plannedTarget: number; nonSurplusTarget: number };
  */
 function applyModeSeedModulation(params: {
   seedValue: number;
-  dev: PlanInputDevice;
+  dev: PlanInputDevice & TemperaturePlanInputKind;
   config: PriceOptDeviceConfig | undefined;
   currentHourPriceLevel: PriceLevel;
   state: PlanEngineState;
@@ -247,7 +248,7 @@ function applyModeSeedModulation(params: {
 }): ModeSeedModulation {
   const { seedValue, dev, config, currentHourPriceLevel, state, deps } = params;
   const pricedTarget = deps.getPriceOptimizationEnabled() && config?.enabled
-    ? applyPriceOptimizationDelta(seedValue, config, currentHourPriceLevel)
+    ? applyPriceOptimizationDelta(seedValue, config, currentHourPriceLevel, dev.thermalDirection)
     : seedValue;
   const surplusTarget = applySurplusAbsorbDelta({
     baseTarget: seedValue,
@@ -259,19 +260,6 @@ function applyModeSeedModulation(params: {
   return { plannedTarget: surplusTarget, nonSurplusTarget: pricedTarget };
 }
 
-function applyPriceOptimizationDelta(
-  target: number,
-  config: { cheapDelta: number; expensiveDelta: number },
-  priceLevel: PriceLevel,
-): number {
-  if (priceLevel === PriceLevel.CHEAP && config.cheapDelta) {
-    return target + config.cheapDelta;
-  }
-  if (priceLevel === PriceLevel.EXPENSIVE && config.expensiveDelta) {
-    return target + config.expensiveDelta;
-  }
-  return target;
-}
 function resolveCurrentState(device: PlanInputDevice): string {
   // Trust the producer-resolved label (`toPlanDevice` resolves it from the raw
   // observed state once); the raw binary axis it was folded from no longer rides

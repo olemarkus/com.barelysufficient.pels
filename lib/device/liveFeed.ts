@@ -25,8 +25,11 @@
  *   the Homey app, without waiting for device hardware confirmation. This is how
  *   homey-api's makeCapabilityInstance() worked internally.
  *
- * Note: no targeted HTTP fetch is needed — the device.update payload already contains
- * capabilitiesObj with current values and lastUpdated timestamps, equivalent to a snapshot.
+ * Note: no targeted HTTP fetch is needed — the device.update payload carries
+ * capabilitiesObj with current values and lastUpdated timestamps. It is NOT always
+ * the whole device, though: an update routinely carries only the capabilities that
+ * changed, which is why the parse retains a held value for an entry the payload
+ * omits (the EV plug-state gate, the temperature facet, the thermostat mode).
  */
 import type Homey from 'homey';
 import { io, type Manager as SocketIOManager, type Socket as SocketIOSocket } from 'socket.io-client';

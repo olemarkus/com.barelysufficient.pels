@@ -28,6 +28,7 @@ import type {
     StateOfChargeObservedProbe,
 } from '../../packages/contracts/src/types';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
+import { resolveThermalDirection } from '../../lib/observer/thermalDirection';
 
 // Stub the live feed so the transport never opens a real socket.io connection.
 // This is an OUTWARD Homey SDK seam, not a PELS internal — the merge, the
@@ -123,6 +124,20 @@ function temperatureDevice(id: string) {
     });
 }
 
+/** A reversible unit, whose `thermostat_mode` says which way its setpoint moves demand. */
+function heatPumpDevice(id: string, thermostatMode: string) {
+    return device(id, {
+        capabilities: ['measure_power', 'onoff', 'measure_temperature', 'target_temperature', 'thermostat_mode'],
+        capabilitiesObj: {
+            measure_power: { value: 1000, id: 'measure_power' },
+            onoff: { value: true, id: 'onoff' },
+            measure_temperature: { value: 25, id: 'measure_temperature', units: '°C' },
+            target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
+            thermostat_mode: { value: thermostatMode, id: 'thermostat_mode' },
+        },
+    });
+}
+
 function assertShadowEquality(harness: Harness): void {
     for (const snapshot of harness.transport.getSnapshot()) {
         expect(harness.projection.getObservedState(snapshot.id)).toEqual(
@@ -188,6 +203,8 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         expect(admitted.temperature).toEqual({
             currentTemperature: 19,
             target: expect.objectContaining({ id: 'target_temperature', value: 21 }),
+            // The fixture declares no `thermostat_mode`, so the producer resolves
+            // the direction every mode-less device has.
         });
 
         h.transport.injectCapabilityUpdateForTest('dev1', 'measure_temperature', Number.NaN);
@@ -196,6 +213,34 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         expect(demoted).toBeDefined();
         expect(demoted?.binaryControl).toEqual({ on: true });
         expect(hasObservedTemperature(demoted!)).toBe(false);
+        h.transport.destroy();
+    });
+
+    it('publishes a heating/cooling mode flip, so the plan does not read the old one', async () => {
+        // The plan reads the OBSERVER's record in preference to the transport
+        // snapshot (`readDeviceSurfaces`) and resolves the direction from the
+        // mode it finds there. A `device.update` that changes only
+        // `thermostat_mode` moves no measurement, no target and no availability —
+        // so without the mode counting as a control-relevant change nothing
+        // dispatches, and every meter-triggered plan until the next full refresh
+        // shifts that device the wrong way.
+        const h = await buildHarness();
+        mockApiGet.mockResolvedValue({ dev1: heatPumpDevice('dev1', 'cooling') });
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+
+        expect(h.projection.getObservedState('dev1')?.thermostatMode).toBe('cooling');
+        expect(resolveThermalDirection({
+            thermostatMode: h.projection.getObservedState('dev1')?.thermostatMode,
+        })).toBe('cooling');
+
+        // Only the mode moves. Every other capability reports its held value.
+        h.transport.injectDeviceUpdateForTest(heatPumpDevice('dev1', 'heat'));
+
+        expect(h.projection.getObservedState('dev1')?.thermostatMode).toBe('heat');
+        expect(resolveThermalDirection({
+            thermostatMode: h.projection.getObservedState('dev1')?.thermostatMode,
+        })).toBe('heating');
+        assertShadowEquality(h);
         h.transport.destroy();
     });
 
