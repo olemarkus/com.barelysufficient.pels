@@ -4,6 +4,7 @@ import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
 import type { DeviceTransport } from '../lib/device/deviceTransport';
 import { fetchLiveMeterItems } from '../lib/device/transport/managerFetch';
+import { isPickableMeterItem } from '../lib/device/transport/managerHelpers';
 import type { HomeyEnergyMeterEntry } from '../packages/contracts/src/settingsUiApi';
 import { DEVICES_API_PATH, getRawDevices } from '../lib/device/transport/managerHomeyApi';
 import type { DevicePlan } from '../lib/plan/planTypes';
@@ -72,15 +73,14 @@ export async function getHomeyDevicesForDebugFromApp(app: Homey.App): Promise<Ho
 }
 
 /**
- * The whole-home meter picker options, resolved from the live energy report
- * (the meters a selection can actually read) and narrowed to real meters. Every
- * `cumulative` item is the whole-home meter and always qualifies; a `device`
- * item qualifies only when its device class is `sensor` — the rest of the
- * report's `device` items are appliances (EV chargers, heat pumps, plugs), and
- * offering one as the whole-home meter would make PELS read that single load as
- * total home power. Names (and the class used for the guard) are joined from the
- * device list, which the report lacks; an id the device list can't name falls
- * back to itself. Backs the `homey_energy_meters` endpoint for both pickers.
+ * The whole-home meter picker options: the live energy report joined to the
+ * device list for names and classes, then narrowed by the device layer's own
+ * rule (`isPickableMeterItem`). The rule is not decided here — which items are
+ * meters is device-domain knowledge, and `setup/` wires rather than classifies
+ * (`setup/AGENTS.md` § "No domain logic").
+ *
+ * An id the device list cannot name falls back to itself. Backs the
+ * `homey_energy_meters` endpoint for both the main and meter-area pickers.
  */
 export async function getHomeyEnergyMetersFromApp(app: Homey.App): Promise<HomeyEnergyMeterEntry[]> {
   const items = await fetchLiveMeterItems();
@@ -90,7 +90,10 @@ export async function getHomeyEnergyMetersFromApp(app: Homey.App): Promise<Homey
   const nameById = new Map(devices.map((device) => [device.id, device.name] as const));
   const classById = new Map(devices.map((device) => [device.id, device.class] as const));
   return items
-    .filter((item) => item.type === 'cumulative' || classById.get(item.id) === 'sensor')
+    .filter((item) => isPickableMeterItem({
+      isCumulativeItem: item.type === 'cumulative',
+      deviceClass: classById.get(item.id),
+    }))
     .map((item) => ({ id: item.id, name: nameById.get(item.id) ?? item.id }));
 }
 

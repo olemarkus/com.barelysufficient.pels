@@ -760,15 +760,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       HAN meter who tries to add a rental. Source: multi-home finishing train, area-config invariants
       PR. [P2]
 
-- [ ] **Homes UI: warn when a sub-home's selected meter is also a managed+controllable device.**
-      *Persona:* multi-home owner who picks a metering smart-plug as a sub-home meter and also leaves it
-      managed. *Hypothesis:* while Homey Energy is the active power source, the runtime now carves every
-      configured meter out of every home's plan input + pipeline snapshot and rechecks the source-device set
-      at the final actuator seam, so it can never be shed/oscillated — but nothing tells the user their meter
-      won't be controlled. Add a
-      homes-settings validation warning ("this device is this home's meter; it won't be managed") mirroring
-      the observe-only carve-out messaging. Source: R7b own-meter-shed audit, 2026-07-19. [P2]
-
 - [ ] **Extend the growth-only principle from the area cap to root disjointness.** The area cap now
       bounds GROWTH, so a config already over it can still be renamed or re-metered
       (`setup/homeMeterOwnership.ts`; the rule itself is `lib/home/homeConfig.ts`). The root-overlap rule one line below it still evaluates

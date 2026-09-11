@@ -18,6 +18,40 @@ const SUPPORTED_DEVICE_CLASSES = new Set([
   'evcharger',
 ]);
 
+/**
+ * Whether a device of this RAW Homey class can be driven by PELS — i.e. whether
+ * it is in the controllable set above. Exported for the meter-picker rule,
+ * which needs the complement: a device PELS can command must never be offered
+ * as a meter, because a meter that also switches load does not work here (owner
+ * ruling 2026-09-11) and because the two sets being disjoint is what lets the
+ * actuator apply a plan without re-checking whether a device is a source.
+ */
+export const isControllableDeviceClass = (deviceClass: string | undefined): boolean => (
+  deviceClass !== undefined && SUPPORTED_DEVICE_CLASSES.has(deviceClass)
+);
+
+/**
+ * Whether a live-energy-report item may be offered as a whole-home / meter-area
+ * meter, given the raw class of the device the report names.
+ *
+ * Two ways in, and the second is not a loophole:
+ * - class `sensor` — the ordinary meter, a device that measures and cannot switch;
+ * - a `cumulative` item whose device is NOT of a controllable class. A cumulative
+ *   item is the home's total by definition, and real HAN/P1 readers report one
+ *   while registering under class `other` (a Tibber Pulse is the worked example
+ *   in `soleCumulativeMeter`'s own fixtures). Requiring `sensor` of them would
+ *   drop exactly the meters most whole-home installs depend on.
+ *
+ * What both arms refuse is a device PELS can command. That is the invariant the
+ * rule exists for; the class of a meter is only ever evidence about it.
+ */
+export const isPickableMeterItem = (
+  params: { isCumulativeItem: boolean; deviceClass: string | undefined },
+): boolean => (
+  params.deviceClass === 'sensor'
+  || (params.isCumulativeItem && !isControllableDeviceClass(params.deviceClass))
+);
+
 // The observe-only role class-key predicate is pure, browser-safe domain knowledge,
 // so its canonical home is shared-domain (`observeOnlyRole.ts`); it is re-exported here
 // for the device-layer call sites (the capability branch, the managed-filter ui_picker
