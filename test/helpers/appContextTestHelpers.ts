@@ -240,6 +240,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getObservedState: vi.fn(() => undefined),
     getObservedRecord: vi.fn(() => undefined),
     getFlowDeviceDescriptors: vi.fn(async () => []),
+    getDeviceDescriptors: vi.fn(() => []),
     // One stub per named cluster read. Each states ABSENCE explicitly rather than
     // leaning on `getObservedState` returning nothing — which is the point of the
     // split: the record no longer answers these questions.

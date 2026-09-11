@@ -99,7 +99,7 @@ export class AppNativeWiring {
       }
       return detectNativeWiringConflicts({
         get: (path) => getRawFromHomeyApi(path),
-        getSnapshot: () => snapshot,
+        getDescriptors: () => snapshot,
         // Guarded sink: the flow read can resolve after teardown, so drop the
         // outcome line once uninitializing rather than log into a closing rpc.
         structuredLog: {

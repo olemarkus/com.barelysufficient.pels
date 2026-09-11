@@ -195,6 +195,9 @@ describe('targetPowerReachabilitySettings', () => {
         charger: { ...baseConfigs.charger, reachability },
       },
       deviceManager: { getSnapshot: () => snapshots },
+      // The probe scheduler asks an identity/config question, so it reads
+      // descriptors; same devices, narrower declared surface.
+      getDeviceDescriptors: () => snapshots,
       resolveManagedState: () => managed,
       isCapacityControlEnabled: () => true,
       timers: new TimerRegistry(),

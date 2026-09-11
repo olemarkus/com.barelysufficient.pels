@@ -140,6 +140,24 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.getFlowSnapshot();
   }
 
+  /**
+   * The device DESCRIPTORS, synchronously — identity and config, no observations.
+   *
+   * Surface 2 of the observer/transport split
+   * (`notes/state-management/snapshot-decomposition.md`). Most wiring that
+   * reaches for `getSnapshot()` wants only this: a device's id, its zone, what it
+   * can natively write, what class it is. Same value, narrower declared surface,
+   * so a caller typed to it cannot read an observation — the property stage 7
+   * needs before `getSnapshot()` can be sealed inside transport.
+   *
+   * Lives here rather than on `DeviceTransport` for a dull reason worth writing
+   * down: that class sits at exactly its 500-line cap, so it cannot take another
+   * method without something else leaving first.
+   */
+  public getDeviceDescriptors(): DeviceDescriptorRead[] {
+    return this.context.deviceManager?.getSnapshot() ?? [];
+  }
+
   public get latestTargetSnapshot(): DecoratedDeviceSnapshot[] {
     const snapshot = this.context.deviceManager?.getSnapshot() ?? [];
     return this.context.deviceControlHelpers.decorateTargetSnapshotList(snapshot);

@@ -20,7 +20,7 @@
 import { readFlowCapabilityWrites, type FlowApiGet } from '../lib/flowApi/readUserFlows';
 import { classifyFlowConflicts } from '../lib/flowApi/flowConflict';
 import { NATIVE_STEPPED_LOAD_CAPABILITY_IDS } from '../lib/device/nativeSteppedLoadWiring';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 
 // Minimal sink for the probe's outcome line. Narrower than a full pino logger
 // (the probe only emits `.info`), which lets the caller hand in a guarded sink
@@ -49,9 +49,11 @@ export type NativeWiringConflictDetection =
  * included regardless of activation state.
  */
 function resolveStepCandidates(
-  snapshot: readonly TargetDeviceSnapshot[],
+  // Descriptors: the probe asks what a device natively WRITES, which is config,
+  // not what it is currently doing.
+  descriptors: readonly DeviceDescriptorRead[],
 ): Array<{ deviceId: string; ownedCapabilities: readonly string[] }> {
-  return snapshot.flatMap((device) => {
+  return descriptors.flatMap((device) => {
     const ownedCapabilities = device.nativeWriteCapabilities ?? [];
     if (ownedCapabilities.length === 0) return [];
     return [{ deviceId: device.id, ownedCapabilities }];
@@ -67,7 +69,7 @@ function isHoiaxAutoEnableCandidate(ownedCapabilities: readonly string[]): boole
 
 export async function detectNativeWiringConflicts(deps: {
   get: FlowApiGet;
-  getSnapshot: () => readonly TargetDeviceSnapshot[];
+  getDescriptors: () => readonly DeviceDescriptorRead[];
   structuredLog?: FlowConflictLog;
 }): Promise<NativeWiringConflictDetection> {
   const result = await readFlowCapabilityWrites({ get: deps.get });
@@ -81,7 +83,7 @@ export async function detectNativeWiringConflicts(deps: {
     return { status: 'unknown' };
   }
 
-  const candidates = resolveStepCandidates(deps.getSnapshot());
+  const candidates = resolveStepCandidates(deps.getDescriptors());
   // Scope conflicts AND auto-enable to the Hoiax/max_power_* population the
   // gate governs. target_power steppers are always default-on with their
   // toggle hidden, so surfacing a conflict for them would render a banner

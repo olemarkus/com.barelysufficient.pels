@@ -518,6 +518,11 @@ export const wireHomeMembership = (
     // stepped-load command state, while a membership recompute must be a pure
     // read. The join needs only `id` + `zoneId`, both
     // stamped on the raw snapshot at parse (R3).
+    // Deliberately NOT `ctx.getDeviceDescriptors()`: membership reads the transport
+    // directly, and `homeMembershipService.test.ts` pins that with a ctx stub
+    // exposing only the members this may touch. Routing the recompute through ctx
+    // is what that test exists to forbid — the decorated getter there MUTATES
+    // stepped-load runtime state, so a membership read through it side-effects.
     getDevices: () => (ctx.deviceManager?.getSnapshot() ?? []).map((device) => ({
       deviceId: device.id,
       zoneId: device.zoneId ?? null,

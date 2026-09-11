@@ -294,6 +294,11 @@ export type AppContext = {
    * narrower declared type is the point.
    */
   getFlowDeviceDescriptors(): Promise<DeviceDescriptorRead[]>;
+  /**
+   * The same descriptors, synchronously, for wiring that reads them off the
+   * committed snapshot rather than through the Flow-card lazy refresh.
+   */
+  getDeviceDescriptors(): DeviceDescriptorRead[];
   getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead;
   get priceOptimizationEnabled(): boolean;
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;
