@@ -233,10 +233,21 @@ export type PlanInputDeviceBase = {
    * (see the note on `isEvSessionInactive`), and this is the second.
    */
   objectiveSessionInactive: boolean;
-  // No `evBoost` / `stateOfCharge` / `temperatureBoost`: a boost threshold is
-  // configuration and a battery level is an observation. The producer reads both
-  // at their own seams and hands the planner `boostSupported`/`boostRequested`
-  // above; the settings UI reads them from those same seams for display.
+  // No `evBoost` / `temperatureBoost`: a boost threshold is configuration. The
+  // producer reads it at its own seam and hands the planner
+  // `boostSupported`/`boostRequested` above; the settings UI reads it from that
+  // same seam for display.
+  //
+  // `stateOfCharge` USED to be listed here as absent too, and it was not: the
+  // producer's rest-spread carries it onto every plan device, and the objectives
+  // layer reads it straight off this object (`ObjectiveDeviceInput`). Removing it
+  // on this comment's word turned every EV smart task's progress into
+  // `objective_progress_stale` (2026-08-16, reverted). Nothing in `lib/plan` may
+  // read it — the planner holds no battery level — but saying it is not here was
+  // false, and a comment that a rest-spread silently contradicts is worse than no
+  // comment. What carries it is now declared at the producer
+  // (`PlanDeviceCarriedKey`, `setup/appInit/toPlanDevice.ts`), where a compile
+  // error fires if the set changes.
   /**
    * Producer-resolved boost facts, kind-free by construction. The producer
    * (`resolveBoostSupported` / `resolveBoostRequested` in
@@ -601,3 +612,47 @@ export type DeviceControlPosture = {
    */
   commandAuthority: boolean;
 };
+
+/**
+ * What rides onto the plan device on the `...deviceFields` rest-spread, DECLARED.
+ *
+ * The spread is an exclusion list: it carries everything the destructure below
+ * does not strip, so a field added to the device snapshot reaches the planner
+ * without anyone choosing that. It is how `stateOfCharge` and `deviceRole` came to
+ * ride here undeclared — the contract said a plan device carries neither, the
+ * runtime carried both, and only a test run said which was right. Stripping
+ * `stateOfCharge` on the contract's word turned every EV smart task's progress
+ * into `objective_progress_stale` (2026-08-16, reverted).
+ *
+ * Listing the carried set makes the next such addition a compile error here — a
+ * decision to strip it or to declare it — instead of a silent passenger. It does
+ * not change what is carried: the assertion is an equality, so this is exactly the
+ * spread's current contents.
+ *
+ * Two entries are worth reading twice. `stateOfCharge` is the field the contract
+ * still says a plan device does not carry; it is stated here rather than in the
+ * contract because the objectives layer reads it off this object and removing it
+ * regressed production. And `measuredPowerObservedAtMs` rides while its own pair
+ * member `measuredPowerKw` is stripped — the contract says the two travel
+ * together, and here they do not.
+ */
+export type PlanDeviceCarriedKey =
+  'associatedCar' | 'available' | 'binaryControllable' | 'budgetExempt'
+  | 'canSetControl' | 'capabilities' | 'controlAdapter' | 'controlModel'
+  | 'controllable' | 'desiredStepId' | 'deviceClass' | 'deviceRole'
+  | 'deviceType' | 'evCharging' | 'evChargingObservedAtMs' | 'evChargingStateObservedAtMs'
+  | 'expectedPowerKw' | 'expectedPowerSource' | 'flowBacked' | 'flowConflict'
+  | 'id' | 'lastFreshDataMs' | 'lastLocalWriteMs' | 'lastStepCommandIssuedAt'
+  | 'lastUpdated' | 'managed' | 'measuredPowerObservedAtMs' | 'name'
+  | 'nativeWriteCapabilities' | 'nextStepCommandRetryAtMs' | 'planningPowerKw' | 'powerCapable'
+  | 'previousStepId' | 'priority' | 'reportedStepId' | 'reportedStepObservedAtMs'
+  | 'reportedStepPowerW' | 'selectedStepId' | 'stateOfCharge' | 'stepCommandPending'
+  | 'stepCommandRetryCount' | 'stepCommandStatus' | 'suggestedSteppedLoadProfile' | 'targetStepId'
+  | 'targets' | 'zone' | 'zoneId';
+
+/** Stripped before planning: raw transport bindings and observations. */
+export type PlanDeviceStrippedKey =
+  'binaryCapabilityId' | 'binaryControl' | 'binaryControlObservation' | 'binaryObservationCapabilityId'
+  | 'binaryWriteCapabilityId' | 'evChargingState' | 'flowBackedCapabilityIds' | 'measuredPowerKw'
+  | 'steppedLoadProfile' | 'targetPowerConfig' | 'temperature' | 'temperatureAdjustmentsDisabled'
+  | 'temperatureControlDisabled';

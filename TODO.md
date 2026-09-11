@@ -83,7 +83,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 - **Daily budget and weather** — 2: weather budget-correction sentence contradicts its card;
   exempt-draw projection reaches a persisted bucket
 - **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
-- **Architecture and tooling debt** — 1: `stateOfCharge` rides the plan device undeclared
 - **Docs** — 1: safe pace defined as "hard cap minus safety margin"
 
 ## Shed and restore control
@@ -1665,29 +1664,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       is regenerable by ruling. No migration code: the store shipped unreleased, so the only rows
       the change would re-learn are the owner's. Done when a profile persist touches one row and
       `meta` names the layout. Found in the store design audit, 2026-09-07. [P2]
-
-- [ ] **`stateOfCharge` rides the plan device undeclared, and the objectives layer depends on it.**
-      `PlanInputDeviceBase` states "No `evBoost` / `stateOfCharge` / `temperatureBoost`"
-      (`packages/planner-types/src/planInputDevice.ts`), and `toPlanDevice` does not declare the
-      field — but it reaches every plan device anyway on the `...deviceFields` spread, invisible
-      to tsc because `withSteppedDiscriminant<TBase extends object>` infers from the literal. That
-      is not dead weight: `ObjectiveDeviceInput` reads `device.stateOfCharge?.level`
-      (`lib/objectives/deferredObjectives/diagnosticProgress.ts`), and its own docblock describes
-      the plan device as the carrier. Stripping it — attempted 2026-08-16 on the review's advice
-      that it had no live consumer — turned every EV smart task's progress into
-      `objective_progress_stale` and broke four `evDevices.integration` cases plus the deferred
-      release intent. Reverted. The contract and the runtime disagree, and today only a test run
-      says which is right. Fix: declare the field on the type the objectives layer actually
-      consumes and correct the base-type comment, so the dependency is stated rather than
-      accidental. Same shape of hole as `evChargingState` — and THAT half is closed (2026-08-22):
-      the documented-as-forwarded plug-state was not merely undeclared, it was stripped, so the two
-      `lib/objectives` reads guarded by it were dead code. In production an unplugged charger was
-      reported as `objective_progress_stale` (a reading problem) for whole task windows, and
-      `objective_invalid_session` had never been emitted once. The field and its false comment are
-      gone; the layer reads the producer-resolved `objectiveSessionInactive` (REQUIRED on
-      `PlanInputDevice`), NOT `commandableNow` — see the "Pick the producer bit that answers YOUR
-      question" rule in `lib/objectives/AGENTS.md`. That raises the severity of the half still open here:
-      it is not tidiness, it is the same silent-strip failure mode with a live consumer. [P1]
 
 - [ ] **Seven setup files still hold runtime state, above the boundaries `arch:check` enforces.**
       `setup/` constructs and connects and holds nothing (`setup/AGENTS.md` § "No state"), enforced

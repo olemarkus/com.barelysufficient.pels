@@ -468,10 +468,23 @@ function resolvePlanObjective(
  */
 export type UnrankedPlanInputDevice = Omit<PlanInputDevice, 'priority'>;
 
+/**
+ * The input `toPlanDevice` takes, and the type the carried-key assertion is
+ * computed from (`PlanDeviceCarriedKey`, `packages/planner-types`). It is the
+ * PARAMETER's own type, not a restatement beside it: declared separately the two
+ * drift, and the assertion goes on passing while a new field rides the spread.
+ */
+export type ToPlanDeviceInput = DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe
+  & TemperatureObservedProbe & StateOfChargeObservedProbe & TransportControlBindingProbe;
+
 export function toPlanDevice(
   ctx: AppContext,
-  rawDevice: DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe
-    & TemperatureObservedProbe & StateOfChargeObservedProbe,
+  // `ToPlanDeviceInput`, not a restatement of it: the key-set assertion below is
+  // computed from THIS type, so declaring the parameter separately would let the
+  // two drift — add a probe to the parameter, `keyof` the alias does not move, the
+  // assertion still passes, and the new field rides the rest-spread anyway. Which
+  // is the case the assertion exists to catch.
+  rawDevice: ToPlanDeviceInput,
   opts?: ToPlanDeviceOptions,
 ): UnrankedPlanInputDevice {
   // Both reads reproduce the pre-R7b wiring EXACTLY when `opts` is absent (the
@@ -621,7 +634,7 @@ export function toPlanDevice(
     // The contract and the runtime disagree about this field; until the two are
     // reconciled, this producer follows the runtime.
     ...deviceFields
-  } = device as typeof device & TransportControlBindingProbe & EvObservedProbe & TemperatureObservedProbe;
+  } = device;
   return withSteppedDiscriminant({
     ...deviceFields,
     ...steppedCluster,
