@@ -85,7 +85,7 @@ describe('appDebugHelpers', () => {
     expect(app.log).not.toHaveBeenCalled();
   });
 
-  it('keeps the cumulative meter and sensor-class device meters, dropping appliances', async () => {
+  it('keeps sensor-class meters of either item type, dropping appliances', async () => {
     setRestClient({
       get: vi.fn().mockResolvedValue({
         items: [
@@ -112,9 +112,29 @@ describe('appDebugHelpers', () => {
     ]);
   });
 
-  it('keeps a cumulative meter regardless of class (even when the device list cannot name it)', async () => {
-    // The whole-home meter is authoritative by being the cumulative item; it
-    // must survive even a device list that lacks it or its class.
+  it('keeps a cumulative meter whose device class is not controllable (a HAN reader)', async () => {
+    // A Tibber Pulse and its kind report the home total while registering under
+    // class 'other' — `soleCumulativeMeter`'s own fixtures carry exactly this
+    // shape. Requiring `sensor` of cumulative items would drop the meters most
+    // whole-home installs read from.
+    setRestClient({
+      get: vi.fn().mockResolvedValue({ items: [{ type: 'cumulative', id: 'pulse', values: { W: 400 } }] }),
+      put: vi.fn(),
+    });
+    const app = {
+      deviceManager: buildDeviceManager({
+        devices: [{ id: 'pulse', name: 'Pulse', class: 'other' } as HomeyDeviceLike],
+      }),
+      error: vi.fn(),
+    };
+    await expect(getHomeyEnergyMetersFromApp(app as never)).resolves.toEqual([
+      { id: 'pulse', name: 'Pulse' },
+    ]);
+  });
+
+  it('keeps a cumulative meter the device list cannot place', async () => {
+    // An unplaceable device is not one PELS can command, and a cumulative item
+    // is the home total by definition, so it stays offerable under its own id.
     setRestClient({
       get: vi.fn().mockResolvedValue({ items: [{ type: 'cumulative', id: 'ghost', values: { W: 400 } }] }),
       put: vi.fn(),
@@ -123,6 +143,25 @@ describe('appDebugHelpers', () => {
     await expect(getHomeyEnergyMetersFromApp(app as never)).resolves.toEqual([
       { id: 'ghost', name: 'ghost' },
     ]);
+  });
+
+  it('drops a cumulative meter whose device is a controllable class', async () => {
+    // The case the rule exists for, and the ONLY thing the cumulative arm
+    // refuses: a device that both reports the home total and switches load.
+    // Keeping it out is what makes the meter set and the controllable set
+    // disjoint, which is what lets the actuator apply a plan without asking
+    // whether a device is a source.
+    setRestClient({
+      get: vi.fn().mockResolvedValue({ items: [{ type: 'cumulative', id: 'plug', values: { W: 400 } }] }),
+      put: vi.fn(),
+    });
+    const app = {
+      deviceManager: buildDeviceManager({
+        devices: [{ id: 'plug', name: 'Metering plug', class: 'socket' } as HomeyDeviceLike],
+      }),
+      error: vi.fn(),
+    };
+    await expect(getHomeyEnergyMetersFromApp(app as never)).resolves.toEqual([]);
   });
 
   it('drops a device-type meter whose class is unknown (not confirmed a sensor)', async () => {
