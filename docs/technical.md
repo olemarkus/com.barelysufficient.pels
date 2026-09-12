@@ -213,7 +213,7 @@ For limiting decisions, devices reporting `measure_power = 0` are treated as non
 
 For stepped-load devices, limiting relief is computed conservatively from **live measured power**, while resume/step-up budgeting uses the configured **planning power** of the target step. While any other managed device is still limited, stepped devices are capped at their **lowest non-zero step** — resuming from off to that step is allowed, but climbing higher is blocked until all limited devices have recovered.
 
-For `meter_power`, PELS computes an average kW from the change in kWh over time and updates the peak. If the counter decreases (reset/rollover), the delta is ignored and the baseline is reset.
+For `meter_power`, PELS computes an average kW from the change in kWh between two readings, divided by the time between those same two readings as the device itself reported them — not by how often PELS happened to look. Devices publish a cumulative meter on their own schedule (a cloud-backed device may update only every few minutes), so pairing their energy with PELS's own refresh interval would overstate the rate by the ratio between the two. Until the device reports a new value there is no new information, so PELS records no reading for that device rather than treating the unchanged counter as a measured 0 kW. If the counter decreases (reset/rollover), the delta is ignored and the baseline is reset.
 
 ---
 

@@ -1,12 +1,15 @@
 import { shouldEmitOnChange } from '../logging/logDedupe';
 import type { Logger } from '../utils/types';
-import type { DeviceMeasuredPowerObservation } from './measuredPowerReader';
+import type { DeviceMeasuredPowerObservation, MeterEnergyReading } from './measuredPowerReader';
 import { getLogger } from '../logging/logger';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
 
 const moduleLogger = getLogger('device/measured-power');
 
-const MIN_METER_DELTA_HOURS = 1 / 3600; // Require at least 1 second between readings
+// Require at least 1 second of OBSERVED time between the two readings a rate is
+// derived from, so a pair stamped inside the same second cannot divide by a
+// denominator too small to mean anything.
+const MIN_METER_DELTA_HOURS = 1 / 3600;
 
 type MeasuredPowerSource = 'measure_power' | 'meter_power' | 'homey_energy';
 type DeviceMeasuredPowerResolution = {
@@ -14,8 +17,22 @@ type DeviceMeasuredPowerResolution = {
   observedAtMs?: number;
 };
 
+/**
+ * The reading the resolver chose to answer from, carrying the typed value it
+ * will use. Selecting a SOURCE and then re-checking the value in the branch that
+ * handles it was two places answering one question; the union keeps the
+ * precedence order and the value together, so the branches take what they are
+ * given.
+ */
+type SelectedReading =
+  | { source: 'measure_power' | 'homey_energy'; watts: number; observedAtMs?: number }
+  | { source: 'meter_power'; reading: MeterEnergyReading };
+
 export class DeviceMeasuredPowerResolver {
-  private readonly lastMeterEnergyKwh: Record<string, { kwh: number; ts: number }> = {};
+  // The anchor a rate is measured FROM: one dated cumulative reading per device.
+  // Dated in OBSERVATION time (the capability's own `lastUpdated`), never in
+  // resolve time — see `resolveMeterDelta`.
+  private readonly lastMeterEnergy: Record<string, MeterEnergyReading> = {};
   private readonly lastResolvedSourceByDevice = new Map<string, { signature: string; emittedAt: number }>();
 
   constructor(private readonly deps: {
@@ -35,87 +52,39 @@ export class DeviceMeasuredPowerResolver {
       observation,
     } = params;
     const now = this.deps.getNow?.() ?? Date.now();
-    const selectedSource = this.selectSource(observation);
+    const selected = selectReading(observation);
 
-    this.logSourceChange({
-      deviceId,
-      deviceLabel,
-      source: selectedSource,
-      now,
-    });
+    this.logSourceChange(deviceId, deviceLabel, selected?.source ?? null, now);
 
-    if (selectedSource === 'measure_power') {
-      return this.resolveDirectWatts({
-        deviceId,
-        watts: observation.measurePowerW,
-        observedAtMs: observation.measurePowerObservedAtMs,
-        now,
-      });
+    if (!selected) return {};
+    if (selected.source === 'meter_power') {
+      return this.resolveMeterDelta(deviceId, deviceLabel, selected.reading, now);
     }
-    if (selectedSource === 'meter_power') {
-      return this.resolveMeterDelta({
-        deviceId,
-        deviceLabel,
-        meterPowerKwh: observation.meterPowerKwh,
-        observedAtMs: observation.meterPowerObservedAtMs,
-        now,
-      });
-    }
-    if (selectedSource === 'homey_energy') {
-      return this.resolveDirectWatts({
-        deviceId,
-        watts: observation.homeyEnergyLiveW,
-        observedAtMs: observation.homeyEnergyObservedAtMs,
-        now,
-      });
-    }
-    return {};
+    return this.resolveDirectWatts(deviceId, selected.watts, selected.observedAtMs, now);
   }
 
-  private selectSource(observation: DeviceMeasuredPowerObservation): MeasuredPowerSource | null {
-    if (typeof observation.measurePowerW === 'number' && Number.isFinite(observation.measurePowerW)) {
-      return 'measure_power';
-    }
-    if (typeof observation.meterPowerKwh === 'number' && Number.isFinite(observation.meterPowerKwh)) {
-      return 'meter_power';
-    }
-    if (typeof observation.homeyEnergyLiveW === 'number' && Number.isFinite(observation.homeyEnergyLiveW)) {
-      return 'homey_energy';
-    }
-    return null;
-  }
-
-  private resolveDirectWatts(params: {
-    deviceId: string;
-    watts: number | undefined;
-    observedAtMs?: number;
-    now: number;
-  }): DeviceMeasuredPowerResolution {
-    const {
-      deviceId,
-      watts,
-      observedAtMs,
-      now,
-    } = params;
-    // `normalizeMeasuredPowerKw` is the shared rule every write seam applies:
-    // finite and non-negative. A rejected reading is ABSENT, never 0 — "no
-    // reading" and "drawing nothing" are different facts, and conflating them is
-    // what let a device measuring a true 0 W be credited its nameplate.
-    //
-    // A negative is dropped for every device, including a home battery or solar
-    // panel that is exporting, and that loses nothing: PV/battery production has
-    // its own producer, `extractSolarProductionState` (`managerEnergy.ts`) feeding
-    // `SolarProductionProducer`, which reads the raw `measure_power` capability
-    // and owns the sign. This resolver answers a narrower question — what is this
-    // device pulling FROM the house right now — and for an exporting device the
-    // honest answer is "no draw reading".
-    //
-    // The `observedAtMs`-only return distinguishes "the capability reported, but
-    // not a usable draw" from "nothing reported at all" (`{}`), which the
-    // freshness bookkeeping downstream relies on.
-    if (typeof watts !== 'number' || !Number.isFinite(watts)) {
-      return {};
-    }
+  // `normalizeMeasuredPowerKw` is the shared rule every write seam applies:
+  // finite and non-negative. A rejected reading is ABSENT, never 0 — "no
+  // reading" and "drawing nothing" are different facts, and conflating them is
+  // what let a device measuring a true 0 W be credited its nameplate.
+  //
+  // A negative is dropped for every device, including a home battery or solar
+  // panel that is exporting, and that loses nothing: PV/battery production has
+  // its own producer, `extractSolarProductionState` (`managerEnergy.ts`) feeding
+  // `SolarProductionProducer`, which reads the raw `measure_power` capability
+  // and owns the sign. This resolver answers a narrower question — what is this
+  // device pulling FROM the house right now — and for an exporting device the
+  // honest answer is "no draw reading".
+  //
+  // The `observedAtMs`-only return distinguishes "the capability reported, but
+  // not a usable draw" from "nothing reported at all" (`{}`), which the
+  // freshness bookkeeping downstream relies on.
+  private resolveDirectWatts(
+    deviceId: string,
+    watts: number,
+    observedAtMs: number | undefined,
+    now: number,
+  ): DeviceMeasuredPowerResolution {
     const normalized = normalizeMeasuredPowerKw(watts / 1000);
     if (normalized === null) {
       return { observedAtMs };
@@ -133,50 +102,72 @@ export class DeviceMeasuredPowerResolver {
     return { measuredPowerKw, observedAtMs };
   }
 
-  private resolveMeterDelta(params: {
-    deviceId: string;
-    deviceLabel: string;
-    meterPowerKwh: number | undefined;
-    observedAtMs?: number;
-    now: number;
-  }): DeviceMeasuredPowerResolution {
-    const {
-      deviceId,
-      deviceLabel,
-      meterPowerKwh,
-      observedAtMs,
-      now,
-    } = params;
-    if (typeof meterPowerKwh !== 'number' || !Number.isFinite(meterPowerKwh)) {
-      return {};
-    }
-
-    const previous = this.lastMeterEnergyKwh[deviceId];
-    this.lastMeterEnergyKwh[deviceId] = { kwh: meterPowerKwh, ts: now };
+  /**
+   * Power from a cumulative energy meter: the energy that accrued between two
+   * OBSERVATIONS, over the time between those same two observations.
+   *
+   * BOTH TERMS COME FROM THE SAME CLOCK. The denominator is observation time
+   * (the capability's own `lastUpdated`), never the wall-clock moment this
+   * resolver happened to run. Those are different clocks with different
+   * cadences: an owning app publishes `meter_power` on its own schedule — a
+   * cloud poll can be minutes apart — while this resolver runs on the snapshot
+   * refresh, seconds apart. Dividing a poll interval's energy by a refresh
+   * interval overstates the rate by the ratio of the two, which is how a ~3.8 kW
+   * air conditioner came to report 226 kW in production. `nextLearnedPeak` has
+   * no ceiling and holds that figure for thirty days, so it also becomes the
+   * expected power the restore axis sizes against and the `≈ … kW when active`
+   * the owner reads.
+   *
+   * THE SAME MISMATCH HAD A QUIETER HALF. Between two pushes the cumulative
+   * value has not moved, so the delta was zero over real elapsed time and the
+   * device was credited a measured `0 kW` while running — a positive claim that
+   * it draws nothing, for most of every poll interval. On one clock that pair
+   * spans no window at all, so it resolves to ABSENCE: no reading, last good
+   * value carries forward, which is what a gap in a feed is owed. A device whose
+   * app re-publishes an unchanged meter still resolves a true `0` there, because
+   * its observation time moves while its energy does not.
+   *
+   * THE ANCHOR ADVANCES ONLY WHEN A PAIR IS CONSUMED (or on a meter reset).
+   * Advancing it on a skipped pair would discard that interval's energy for
+   * good; leaving it puts that energy into the next window, where it belongs.
+   * An observation that carries no meter reading at all never reaches here, so
+   * it cannot disturb the anchor either — a later dated reading pairs with the
+   * standing one, across the whole span between them.
+   */
+  private resolveMeterDelta(
+    deviceId: string,
+    deviceLabel: string,
+    reading: MeterEnergyReading,
+    now: number,
+  ): DeviceMeasuredPowerResolution {
+    const { kwh, observedAtMs } = reading;
+    const previous = this.lastMeterEnergy[deviceId];
     if (!previous) {
+      this.lastMeterEnergy[deviceId] = reading;
       return { observedAtMs };
     }
-    if (meterPowerKwh < previous.kwh) {
+    if (kwh < previous.kwh) {
       this.deps.logger.debug({
         event: 'power_estimate_meter_reset',
         deviceId,
         deviceLabel,
         previousKwh: previous.kwh,
-        meterPowerKwh,
+        meterPowerKwh: kwh,
       });
+      this.lastMeterEnergy[deviceId] = reading;
       return { observedAtMs };
     }
 
-    const deltaHours = (now - previous.ts) / (1000 * 60 * 60);
-    if (!Number.isFinite(deltaHours) || deltaHours < MIN_METER_DELTA_HOURS) {
+    // A non-advancing (or backwards) observation clock yields no window, so the
+    // guard below catches the re-read of an unchanged capability as well as a
+    // pair stamped inside the same second.
+    const deltaHours = (observedAtMs - previous.observedAtMs) / (1000 * 60 * 60);
+    if (deltaHours < MIN_METER_DELTA_HOURS) {
       return { observedAtMs };
     }
 
-    const deltaKwh = meterPowerKwh - previous.kwh;
-    const measuredPowerKw = deltaKwh / deltaHours;
-    if (!Number.isFinite(measuredPowerKw)) {
-      return { observedAtMs };
-    }
+    this.lastMeterEnergy[deviceId] = reading;
+    const measuredPowerKw = (kwh - previous.kwh) / deltaHours;
     if (measuredPowerKw <= 0) {
       return { measuredPowerKw: 0, observedAtMs };
     }
@@ -188,13 +179,12 @@ export class DeviceMeasuredPowerResolver {
     return { measuredPowerKw, observedAtMs };
   }
 
-  private logSourceChange(params: {
-    deviceId: string;
-    deviceLabel: string;
-    source: MeasuredPowerSource | null;
-    now: number;
-  }): void {
-    const { deviceId, deviceLabel, source, now } = params;
+  private logSourceChange(
+    deviceId: string,
+    deviceLabel: string,
+    source: MeasuredPowerSource | null,
+    now: number,
+  ): void {
     const signature = JSON.stringify({ source });
     if (!shouldEmitOnChange({
       state: this.lastResolvedSourceByDevice,
@@ -212,4 +202,28 @@ export class DeviceMeasuredPowerResolver {
       source: source ?? undefined,
     });
   }
+}
+
+// Precedence: a direct watt reading, then the meter, then Homey's live report.
+// The reader has already resolved every field to a finite value or absence, so
+// presence is the whole test here.
+function selectReading(observation: DeviceMeasuredPowerObservation): SelectedReading | null {
+  if (observation.measurePowerW !== undefined) {
+    return {
+      source: 'measure_power',
+      watts: observation.measurePowerW,
+      observedAtMs: observation.measurePowerObservedAtMs,
+    };
+  }
+  if (observation.meterEnergy !== undefined) {
+    return { source: 'meter_power', reading: observation.meterEnergy };
+  }
+  if (observation.homeyEnergyLiveW !== undefined) {
+    return {
+      source: 'homey_energy',
+      watts: observation.homeyEnergyLiveW,
+      observedAtMs: observation.homeyEnergyObservedAtMs,
+    };
+  }
+  return null;
 }
