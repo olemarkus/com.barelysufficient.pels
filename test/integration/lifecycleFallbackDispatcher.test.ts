@@ -23,7 +23,6 @@ import type { ExecutableSteppedLoadDevice } from '../../lib/executor/executableP
 import type { DesiredBinaryKind } from '../../lib/executor/executableDesiredState';
 import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import type { DeviceObservation } from '../../lib/device/deviceObservation';
 import { dispatchTargetCommand } from '../../lib/executor/targetExecutor';
 import type { PlanExecutorTargetContext } from '../../lib/executor/targetExecutorContext';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/executor/commandRetrySchedule';
@@ -198,7 +197,7 @@ const createTestActuator = (
  * `buildPlanInputDevice` emits what `toPlanDevice` emits — the producer-resolved
  * `currentOn`, with the RAW `binaryControl` stripped, because that axis stays
  * observer-internal on a plan device. Every seam in this suite
- * (`buildExecutableObservedDeviceState`, `observation.getSnapshotByDeviceId`)
+ * (`buildExecutableObservedDeviceState`, `readDevice`)
  * reads a snapshot, and a snapshot DOES carry the raw axis — so re-attach the one
  * the producer resolved rather than letting the fixture ship a plan device where a
  * snapshot belongs.
@@ -424,7 +423,6 @@ describe('LifecycleFallbackDispatcher', () => {
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({
         state,
-        observation: {} as DeviceObservation,
         buildBinaryControlTransport: () => ({} as never),
         requestSteppedLoadStep,
         markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -698,7 +696,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const observation = {
       getSnapshot: () => [device],
       getSnapshotByDeviceId: () => device,
-    } as unknown as DeviceObservation;
+    };
     const dispatcher = new LifecycleFallbackDispatcher({
       getDevice: () => device,
       getObservedState: () => observedFromDevice(device),
@@ -717,10 +715,10 @@ describe('LifecycleFallbackDispatcher', () => {
       }),
       buildBinaryExecutorContext: () => ({
         state,
-        observation,
+        readDevice: observation.getSnapshotByDeviceId,
         capacityDryRun: false,
         buildBinaryControlTransport: () => ({
-          observation,
+          getObservedBinaryControl: observation.getSnapshotByDeviceId,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
           actuator,
         }),
@@ -761,7 +759,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const observation = {
       getSnapshot: () => [device],
       getSnapshotByDeviceId: () => device,
-    } as unknown as DeviceObservation;
+    };
     const dispatcher = new LifecycleFallbackDispatcher({
       getDevice: () => device,
       getObservedState: () => ({
@@ -773,10 +771,10 @@ describe('LifecycleFallbackDispatcher', () => {
       buildTargetExecutorContext: () => ({} as never),
       buildBinaryExecutorContext: () => ({
         state,
-        observation,
+        readDevice: observation.getSnapshotByDeviceId,
         capacityDryRun: false,
         buildBinaryControlTransport: () => ({
-          observation,
+          getObservedBinaryControl: observation.getSnapshotByDeviceId,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
           actuator,
         }),
@@ -864,7 +862,6 @@ describe('LifecycleFallbackDispatcher', () => {
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({
         state,
-        observation: {} as DeviceObservation,
         buildBinaryControlTransport: () => ({} as never),
         requestSteppedLoadStep,
         markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -927,7 +924,6 @@ describe('LifecycleFallbackDispatcher', () => {
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({
         state,
-        observation: {} as DeviceObservation,
         buildBinaryControlTransport: () => ({} as never),
         requestSteppedLoadStep,
         markSteppedLoadDesiredStepIssued: () => { commandPending = true; },
@@ -1004,7 +1000,6 @@ describe('LifecycleFallbackDispatcher', () => {
         steppedCommandOwner: 'ordinary',
         binaryCommandClaim: createBinaryCommandClaim(),
         binaryCommandOwner: 'ordinary',
-        observation: {} as DeviceObservation,
         buildBinaryControlTransport: () => ({} as never),
         requestSteppedLoadStep,
         markSteppedLoadDesiredStepIssued: marked,
@@ -1076,7 +1071,6 @@ describe('LifecycleFallbackDispatcher', () => {
       steppedCommandOwner: owner,
       binaryCommandClaim: createBinaryCommandClaim(),
       binaryCommandOwner: owner,
-      observation: {} as DeviceObservation,
       buildBinaryControlTransport: () => ({} as never),
       requestSteppedLoadStep,
       markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -1128,7 +1122,6 @@ describe('LifecycleFallbackDispatcher', () => {
       buildBinaryExecutorContext: () => ({} as PlanExecutorBinaryContext),
       buildSteppedExecutorContext: () => ({
         state,
-        observation: {} as DeviceObservation,
         buildBinaryControlTransport: () => ({} as never),
         requestSteppedLoadStep,
         markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -1146,7 +1139,6 @@ describe('LifecycleFallbackDispatcher', () => {
       binaryCommandClaim: createBinaryCommandClaim(),
       binaryCommandOwner: 'ordinary',
       isLifecycleFallbackActive: (deviceId) => dispatcher.isActive(deviceId),
-      observation: {} as DeviceObservation,
       buildBinaryControlTransport: () => ({} as never),
       requestSteppedLoadStep,
       markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -1826,7 +1818,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const observation = {
       getSnapshot: () => [snapshot],
       getSnapshotByDeviceId: () => snapshot,
-    } as unknown as DeviceObservation;
+    };
     const actuator = createTestActuator();
     const binaryCommandClaim = createBinaryCommandClaim();
     const dispatcher = new ExecutorLifecycleFallbackDispatcher({
@@ -1840,10 +1832,10 @@ describe('LifecycleFallbackDispatcher', () => {
     function buildBinaryContext(): PlanExecutorBinaryContext {
       return {
       state,
-      observation,
+      readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
       buildBinaryControlTransport: () => ({
-        observation,
+        getObservedBinaryControl: observation.getSnapshotByDeviceId,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         actuator,
       }),
@@ -1889,7 +1881,7 @@ describe('LifecycleFallbackDispatcher', () => {
     };
     const observation = {
       getSnapshot: () => [snapshot], getSnapshotByDeviceId: () => snapshot,
-    } as unknown as DeviceObservation;
+    };
     let resolveWrite: ((value: { requested: true }) => void) | undefined;
     const actuator = createTestActuator(
       () => new Promise<{ requested: true }>((resolve) => { resolveWrite = resolve; }),
@@ -1897,10 +1889,10 @@ describe('LifecycleFallbackDispatcher', () => {
     const binaryCommandClaim = createBinaryCommandClaim();
     const buildContext = (owner: 'lifecycle' | 'ordinary'): PlanExecutorBinaryContext => ({
       state,
-      observation,
+      readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
       buildBinaryControlTransport: () => ({
-        observation,
+        getObservedBinaryControl: observation.getSnapshotByDeviceId,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         actuator,
       }),
@@ -1938,7 +1930,7 @@ describe('LifecycleFallbackDispatcher', () => {
     };
     const observation = {
       getSnapshot: () => [snapshot], getSnapshotByDeviceId: () => snapshot,
-    } as unknown as DeviceObservation;
+    };
     const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
     store.record(snapshot.id, {
       desired: true, startedMs: Date.now(),
@@ -1946,9 +1938,9 @@ describe('LifecycleFallbackDispatcher', () => {
     const actuator = createTestActuator();
     const ctx: PlanExecutorBinaryContext = {
       state,
-      observation,
+      readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
-      buildBinaryControlTransport: () => ({ observation, pendingBinaryCommandStore: store, actuator }),
+      buildBinaryControlTransport: () => ({ getObservedBinaryControl: observation.getSnapshotByDeviceId, pendingBinaryCommandStore: store, actuator }),
       getRestoreLogSource: () => 'current_plan',
       recordShedActuation: vi.fn(),
       recordReleaseShedActuation: vi.fn(),
@@ -1975,7 +1967,7 @@ describe('LifecycleFallbackDispatcher', () => {
     };
     const observation = {
       getSnapshot: () => [snapshot], getSnapshotByDeviceId: () => snapshot,
-    } as unknown as DeviceObservation;
+    };
     const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
     let current = true;
     let resolveWrite: ((value: { requested: true }) => void) | undefined;
@@ -1984,9 +1976,9 @@ describe('LifecycleFallbackDispatcher', () => {
     );
     const ctx: PlanExecutorBinaryContext = {
       state,
-      observation,
+      readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
-      buildBinaryControlTransport: () => ({ observation, pendingBinaryCommandStore: store, actuator }),
+      buildBinaryControlTransport: () => ({ getObservedBinaryControl: observation.getSnapshotByDeviceId, pendingBinaryCommandStore: store, actuator }),
       getRestoreLogSource: () => 'current_plan',
       recordShedActuation: vi.fn(), recordReleaseShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
       binaryCommandClaim: createBinaryCommandClaim(), binaryCommandOwner: 'lifecycle',
@@ -2020,7 +2012,7 @@ describe('LifecycleFallbackDispatcher', () => {
     };
     const observation = {
       getSnapshot: () => [snapshot], getSnapshotByDeviceId: () => snapshot,
-    } as unknown as DeviceObservation;
+    };
     const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
     let current = true;
     let rejectWrite: ((reason: unknown) => void) | undefined;
@@ -2029,9 +2021,9 @@ describe('LifecycleFallbackDispatcher', () => {
     );
     const ctx: PlanExecutorBinaryContext = {
       state,
-      observation,
+      readDevice: observation.getSnapshotByDeviceId,
       capacityDryRun: false,
-      buildBinaryControlTransport: () => ({ observation, pendingBinaryCommandStore: store, actuator }),
+      buildBinaryControlTransport: () => ({ getObservedBinaryControl: observation.getSnapshotByDeviceId, pendingBinaryCommandStore: store, actuator }),
       getRestoreLogSource: () => 'current_plan',
       recordShedActuation: vi.fn(), recordReleaseShedActuation: vi.fn(), recordRestoreActuation: vi.fn(),
       binaryCommandClaim: createBinaryCommandClaim(), binaryCommandOwner: 'lifecycle',
@@ -2059,7 +2051,7 @@ describe('LifecycleFallbackDispatcher', () => {
       const snapshot = buildSnapshot();
       const observation = {
         getSnapshot: () => [buildSnapshot()], getSnapshotByDeviceId: () => buildSnapshot(),
-      } as unknown as DeviceObservation;
+      };
       let resolveOrdinary: ((value: { requested: true }) => void) | undefined;
       const actuatorImplementation = vi.fn()
         .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveOrdinary = resolve; }))
@@ -2069,10 +2061,10 @@ describe('LifecycleFallbackDispatcher', () => {
       let lastRefreshedObserved: ReturnType<typeof buildExecutableObservedDeviceState> | undefined;
       const buildBinaryContext = (): PlanExecutorBinaryContext => ({
         state,
-        observation,
+        readDevice: observation.getSnapshotByDeviceId,
         capacityDryRun: false,
         buildBinaryControlTransport: () => ({
-          observation,
+          getObservedBinaryControl: observation.getSnapshotByDeviceId,
           pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
           actuator,
         }),
@@ -2144,7 +2136,7 @@ describe('LifecycleFallbackDispatcher', () => {
     });
     const observation = {
       getSnapshot: () => [buildSnapshot()], getSnapshotByDeviceId: () => buildSnapshot(),
-    } as unknown as DeviceObservation;
+    };
     let resolveOrdinary: ((value: { requested: true }) => void) | undefined;
     const actuatorImplementation = vi.fn()
       .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveOrdinary = resolve; }))
@@ -2152,9 +2144,9 @@ describe('LifecycleFallbackDispatcher', () => {
     const actuator = createTestActuator(actuatorImplementation);
     const binaryCommandClaim = createBinaryCommandClaim();
     const binaryContext: PlanExecutorBinaryContext = {
-      state, observation, capacityDryRun: false,
+      state, readDevice: observation.getSnapshotByDeviceId, capacityDryRun: false,
       buildBinaryControlTransport: () => ({
-        observation,
+        getObservedBinaryControl: observation.getSnapshotByDeviceId,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         actuator,
       }),
@@ -2163,7 +2155,7 @@ describe('LifecycleFallbackDispatcher', () => {
       binaryCommandClaim, binaryCommandOwner: 'ordinary',
     };
     const steppedContext: PlanExecutorSteppedContext = {
-      state, observation, binaryCommandClaim, binaryCommandOwner: 'ordinary',
+      state, binaryCommandClaim, binaryCommandOwner: 'ordinary',
       steppedCommandClaim: createSteppedCommandClaim(), steppedCommandOwner: 'ordinary',
       buildBinaryControlTransport: binaryContext.buildBinaryControlTransport,
       requestSteppedLoadStep: vi.fn(), markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -2215,7 +2207,7 @@ describe('LifecycleFallbackDispatcher', () => {
     });
     const observation = {
       getSnapshot: () => [buildSnapshot()], getSnapshotByDeviceId: () => buildSnapshot(),
-    } as unknown as DeviceObservation;
+    };
     let resolveLifecycle: ((value: { requested: true }) => void) | undefined;
     const actuatorImplementation = vi.fn()
       .mockImplementationOnce(() => new Promise<{ requested: true }>((resolve) => { resolveLifecycle = resolve; }))
@@ -2223,7 +2215,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const actuator = createTestActuator(actuatorImplementation);
     const binaryCommandClaim = createBinaryCommandClaim();
     const transport = () => ({
-      observation,
+      getObservedBinaryControl: observation.getSnapshotByDeviceId,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       actuator,
     });
@@ -2243,7 +2235,7 @@ describe('LifecycleFallbackDispatcher', () => {
       stepCommandRetryCount: 0,
     };
     const steppedContext: PlanExecutorSteppedContext = {
-      state, observation, binaryCommandClaim, binaryCommandOwner: 'ordinary',
+      state, binaryCommandClaim, binaryCommandOwner: 'ordinary',
       steppedCommandClaim: createSteppedCommandClaim(), steppedCommandOwner: 'ordinary',
       buildBinaryControlTransport: transport,
       requestSteppedLoadStep: vi.fn(), markSteppedLoadDesiredStepIssued: vi.fn(),
@@ -2370,7 +2362,6 @@ describe('LifecycleFallbackDispatcher', () => {
       steppedCommandOwner: 'ordinary',
       binaryCommandClaim: createBinaryCommandClaim(),
       binaryCommandOwner: 'ordinary',
-      observation: {} as DeviceObservation,
       buildBinaryControlTransport: () => ({} as never),
       requestSteppedLoadStep,
       markSteppedLoadDesiredStepIssued: vi.fn(),

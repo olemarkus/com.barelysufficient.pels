@@ -35,7 +35,6 @@ import {
   createPendingBinaryCommandStore,
   type PendingBinaryCommandStore,
 } from '../../lib/observer/pendingBinaryCommands';
-import type { DeviceObservation } from '../../lib/device/deviceObservation';
 import type {
   ExecutableObservedDeviceState,
   ExecutableReleaseIntent,
@@ -120,9 +119,14 @@ const buildThermostatSnapshot = (): TargetDeviceSnapshot => ({
 // post-actuation state, exactly as production does after a successful write.
 // ---------------------------------------------------------------------------
 
+type ObservationDouble = {
+  getSnapshot: () => TargetDeviceSnapshot[];
+  getSnapshotByDeviceId: (id: string) => TargetDeviceSnapshot | undefined;
+};
+
 const buildHarness = (devices: TargetDeviceSnapshot[]): {
   state: ReturnType<typeof createPlanEngineState>;
-  observation: DeviceObservation;
+  observation: ObservationDouble;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>;
   setCapabilityCalls: SetCapabilityCall[];
@@ -130,9 +134,9 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
   targetCtx: PlanExecutorTargetContext;
 } => {
   const snapshots = new Map(devices.map((d) => [d.id, d] as const));
-  const observation: DeviceObservation = {
+  const observation = {
     getSnapshot: () => Array.from(snapshots.values()),
-    getSnapshotByDeviceId: (id) => snapshots.get(id),
+    getSnapshotByDeviceId: (id: string) => snapshots.get(id),
   };
   const state = createPlanEngineState(1_730_000_000_000);
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);
@@ -158,10 +162,10 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
 
   const binaryCtx: PlanExecutorBinaryContext = {
     state,
-    observation,
+    readDevice: observation.getSnapshotByDeviceId,
     capacityDryRun: false,
     buildBinaryControlTransport: () => ({
-      observation,
+      getObservedBinaryControl: observation.getSnapshotByDeviceId,
       pendingBinaryCommandStore,
       // Binary writes route through the actuator over the same harness
       // `setCapability`, so `setCapabilityCalls` still observes onoff writes.
@@ -205,9 +209,9 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
 // writing a capability and the device confirming it back.
 const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): ReturnType<typeof buildHarness> => {
   const snapshots = new Map(devices.map((d) => [d.id, d] as const));
-  const observation: DeviceObservation = {
+  const observation = {
     getSnapshot: () => Array.from(snapshots.values()),
-    getSnapshotByDeviceId: (id) => snapshots.get(id),
+    getSnapshotByDeviceId: (id: string) => snapshots.get(id),
   };
   const state = createPlanEngineState(1_730_000_000_000);
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);
@@ -220,10 +224,10 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
 
   const binaryCtx: PlanExecutorBinaryContext = {
     state,
-    observation,
+    readDevice: observation.getSnapshotByDeviceId,
     capacityDryRun: false,
     buildBinaryControlTransport: () => ({
-      observation,
+      getObservedBinaryControl: observation.getSnapshotByDeviceId,
       pendingBinaryCommandStore,
       actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
     }),

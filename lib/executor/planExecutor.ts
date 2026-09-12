@@ -1,20 +1,10 @@
-import type { DeviceObservation } from '../device/deviceObservation';
 import type { DevicePlan, PlanInputDevice, ShedBehavior } from '../plan/planTypes';
 import type { PendingTargetObservationSource } from '../plan/planTypes';
-
-/**
- * The executor's **read-only** view of the device transport: snapshot reads
- * only (`DeviceObservation`). The executor issues no transport writes — every
- * write intent (binary / target / step) routes through the injected `Actuator`
- * seam (`deps.actuator`), so the device-transport view carries no write methods.
- * This makes the "only the actuator writes" invariant structural: there is no
- * write surface here to call. The abstract `DeviceObservation` interface keeps
- * the executor off the concrete `DeviceTransport` class — see
- * `notes/state-management/observer-transport-split.md` and
- * `notes/state-management/actuator-write-seam.md`.
- */
-export type PlanExecutorDeviceTransport = DeviceObservation;
-import type { ExecutorDeviceSnapshot } from './executablePlan';
+import {
+  type ExecutorDeviceReadDeps,
+  readExecutorDevice,
+  readExecutorDevices,
+} from './executorDeviceRead';
 import type { PlanEngineState } from '../plan/planState';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
@@ -55,25 +45,22 @@ import { createTargetCommandClaim } from './targetCommandClaim';
 import { createSteppedCommandClaim } from './steppedCommandClaim';
 import { createBinaryCommandClaim } from './binaryCommandClaim';
 import { buildExecutableObservedDeviceStateFromSnapshot } from './executablePlanProjection';
-import type { ObserverDeviceRead, DriftObservationDeps } from './driftObservedDevice';
+import type { DriftObservationDeps } from './driftObservedDevice';
 
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 
-export type PlanExecutorDeps = ShortfallExecutorDeps & {
+/**
+ * The executor holds NO view of the device transport. Its device reads are the
+ * two owner reads in `ExecutorDeviceReadDeps` — the transport's descriptor and
+ * the observer's record — joined per device by `readExecutorDevice`. It issues
+ * no transport writes either: every write intent (binary / target / step)
+ * routes through the injected `Actuator` seam (`deps.actuator`), so the "only
+ * the actuator writes" invariant is structural — there is no write surface here
+ * to call. See `notes/state-management/snapshot-decomposition.md` (stage 5) and
+ * `notes/state-management/actuator-write-seam.md`.
+ */
+export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & {
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
-  deviceManager: PlanExecutorDeviceTransport;
-  /**
-   * Observer-owned observed-state read (stage 5). The target executor sources
-   * observed capability values from this projection accessor instead of the
-   * transport snapshot; `undefined` until the first observation for a device.
-   */
-  /**
-   * The observed RECORD, not the base state: the drift check reads the reported
-   * step, measured power and EV state off it (`ObserverDeviceRead`). Declared as
-   * what it needs rather than widened structurally further down, where it
-   * compiled only because the object happened to be wider than its type.
-   */
-  getObservedState: (deviceId: string) => ObserverDeviceRead | undefined;
   /**
    * Observer-owned accepted-write counter, used to tell whether the observed
    * world moved while a plan build yielded. Not a clock and not a freshness
@@ -183,10 +170,6 @@ export class PlanExecutor {
   private readonly steppedCommandClaim = createSteppedCommandClaim();
   private readonly binaryCommandClaim = createBinaryCommandClaim();
 
-  private get deviceManager(): PlanExecutorDeviceTransport {
-    return this.deps.deviceManager;
-  }
-
   private get capacityDryRun(): boolean {
     return this.deps.getCapacityDryRun();
   }
@@ -197,7 +180,7 @@ export class PlanExecutor {
 
   private buildBinaryControlTransport() {
     return {
-      observation: this.deviceManager,
+      getObservedBinaryControl: (deviceId: string) => this.deps.getObservedState(deviceId),
       pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
       actuator: this.deps.actuator,
     };
@@ -327,10 +310,6 @@ export class PlanExecutor {
     }
   }
 
-  private get latestTargetSnapshot(): ExecutorDeviceSnapshot[] {
-    return this.deviceManager.getSnapshot();
-  }
-
   private buildTargetExecutorContext(): PlanExecutorTargetContext {
     if (!this.targetExecutorContext) {
       this.targetExecutorContext = {
@@ -376,7 +355,6 @@ export class PlanExecutor {
         isLifecycleFallbackActive: (deviceId) => (
           this.lifecycleFallbackDispatcher?.isActive(deviceId) === true
         ),
-        observation: this.deviceManager,
         buildBinaryControlTransport: this.boundBuildBinaryControlTransport,
         markSteppedLoadDesiredStepIssued: this.boundMarkSteppedLoadDesiredStepIssued,
         recordShedActuation: this.boundRecordShedActuation,
@@ -404,7 +382,7 @@ export class PlanExecutor {
     if (!this.binaryExecutorContext) {
       this.binaryExecutorContext = {
         state: this.state,
-        observation: this.deviceManager,
+        readDevice: (deviceId) => readExecutorDevice(this.deps, deviceId),
         capacityDryRun: this.capacityDryRun,
         buildBinaryControlTransport: this.boundBuildBinaryControlTransport,
         getRestoreLogSource: this.boundGetRestoreLogSource,
@@ -437,7 +415,8 @@ export class PlanExecutor {
         getShedBehavior: this.boundGetShedBehavior,
         getSteppedLoadCommandSession: this.deps.getSteppedLoadCommandSession,
         recordReleaseShedActuation: this.recordReleaseShedActuation,
-        latestTargetSnapshot: () => this.latestTargetSnapshot,
+        readDevice: (deviceId) => readExecutorDevice(this.deps, deviceId),
+        readDevices: () => readExecutorDevices(this.deps),
         capacityDryRun: () => this.capacityDryRun,
         state: this.state,
         flushLastControlledPersistence: () => this.flushLastControlledPersistence(),
@@ -460,13 +439,8 @@ export class PlanExecutor {
         targetCommandClaim: this.targetCommandClaim,
         capacityDryRun: () => this.capacityDryRun,
         refreshObserved: (deviceId) => {
-          const snapshot = this.deviceManager.getSnapshotByDeviceId(deviceId);
-          if (!snapshot) return undefined;
-          const observedState = this.deps.getObservedState(deviceId);
-          return buildExecutableObservedDeviceStateFromSnapshot({
-            ...snapshot,
-            ...(observedState ? { ...observedState } : {}),
-          });
+          const device = readExecutorDevice(this.deps, deviceId);
+          return device ? buildExecutableObservedDeviceStateFromSnapshot(device) : undefined;
         },
       });
     }

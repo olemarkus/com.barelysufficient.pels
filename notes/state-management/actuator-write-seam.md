@@ -288,7 +288,10 @@ leaf**, like observer/price.
 > (`PlanExecutorDeviceTransport`) is **`= DeviceObservation`** — read-only, with no
 > write members at all — and the `PlanExecutorTargetContext.deviceManager` lost its
 > `setCapability` member too, so there is no transport write surface for the
-> executor to call; every write goes through the injected `Actuator`. The
+> executor to call; every write goes through the injected `Actuator`. *(Superseded
+> in the stronger direction by stage 5 of the snapshot decomposition: the executor
+> now holds no transport view at all, read-only or otherwise — its device reads are
+> `ExecutorDeviceReadDeps`, the transport's descriptors plus the observer projection.)* The
 > `no-actuator-bypass` rule (now shipped) additionally forbids plan/executor from
 > **value**-importing anything out of `lib/actuator/**` (notably
 > `createDeviceActuator`); the `import type { Actuator }` edge is erased and stays
@@ -347,7 +350,9 @@ Split into sub-PRs so each is independently shippable and behavior-preserving:
   now-redundant `isFlowBackedBinaryControl` recompute on the dispatch path.
 - **PR1b-final — close out.** *Shipped (this PR).* Removed the now-dead transport
   write members from the executor's transport view: `PlanExecutorDeviceTransport`
-  is now `= DeviceObservation` (read-only) and `PlanExecutorTargetContext`'s
+  is now `= DeviceObservation` (read-only; both since deleted by stage 5 of the
+  snapshot decomposition, which left the executor no transport view at all) and
+  `PlanExecutorTargetContext`'s
   `deviceManager` lost `setCapability`. Added the `no-actuator-bypass` cruiser rule
   now that all three write sites are migrated and the actuator is the sole write
   path (see the rules section for why it could not land earlier). No behavior
@@ -378,7 +383,7 @@ risk profiles.
 - New `lib/observer/observedHomePower.ts` (`ObservedHomePower`) owns the
   whole-home power scalar. `DeviceTransport` no longer caches `latestHomePowerW`
   or exposes `getHomePowerW()`; it is removed from the `DeviceObservation`
-  interface too.
+  interface too (an interface stage 5 of the snapshot decomposition later deleted).
 - `updateHomePowerFromReport` pushes the resolved scalar to the observer via a
   new `setHomePowerW(w)` method on the `observedStateDispatcher` callback bag;
   transport still does not statically import observer.

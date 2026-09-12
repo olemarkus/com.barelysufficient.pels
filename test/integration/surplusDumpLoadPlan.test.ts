@@ -37,7 +37,6 @@ import {
 import { applyCapacityControlOffRestoreWithSnapshot } from '../../lib/executor/binaryRestoreHelpers';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
-import type { DeviceObservation } from '../../lib/device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { buildSwapCandidates } from '../../lib/plan/swap/candidates';
 import { buildPlanDevice } from '../utils/planTestUtils';
@@ -447,13 +446,13 @@ const buildExecutorCtx = (snapshot: TargetDeviceSnapshot) => {
   const observation = {
     getSnapshot: () => [snapshot],
     getSnapshotByDeviceId: (id: string) => (id === snapshot.id ? snapshot : undefined),
-  } as unknown as DeviceObservation;
+  };
   const ctx: PlanExecutorBinaryContext = {
     state,
-    observation,
+    readDevice: observation.getSnapshotByDeviceId,
     capacityDryRun: false,
     buildBinaryControlTransport: () => ({
-      observation,
+      getObservedBinaryControl: observation.getSnapshotByDeviceId,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       actuator: createDeviceActuator({
         resolveTemperatureTarget: (_deviceId, desired) => desired,

@@ -260,7 +260,8 @@ module.exports = {
         + 'tsPreCompilationDeps is unset, so this catches only VALUE imports (e.g. `createDeviceActuator`); '
         + 'the type-only `ActuatorTransport`/`DeviceCommand`/`Actuator` edges are erased. And no import '
         + 'rule can forbid a raw `.setCapability()` CALL — that half is enforced STRUCTURALLY: the '
-        + 'executor transport view is now `PlanExecutorDeviceTransport = DeviceObservation` (write-free), '
+        + 'executor holds no transport view at all (stage 5 of the snapshot decomposition: it reads '
+        + 'descriptors and the observer projection through `ExecutorDeviceReadDeps`), '
         + 'so the only write path it has is the injected `Actuator`. See '
         + 'notes/state-management/actuator-write-seam.md.',
       severity: 'error',
@@ -349,12 +350,12 @@ module.exports = {
     },
     {
       name: 'no-plan-to-device',
-      comment: 'Plan must consume the DeviceObservation interface, not the concrete DeviceTransport class or device internals. PR #1b of the observer/transport split (see notes/state-management/observer-transport-split.md). Allowed exceptions: the DeviceObservation interface itself, the deviceActionProjection producer seam (chunk 1 of the planner-detype refactor — pure resolvers physically owned by the device layer, consumed by plan-side shims), and the deviceResidualKw producer seam (chunk 3). PR #2 removed the remaining type-only DeviceManager surface from lib/plan/ and lib/executor/; PR #3 renamed the class to DeviceTransport.',
+      comment: 'Plan must not import the concrete DeviceTransport class or device internals; its observed reads come from the observer projection (stage 5 of the snapshot decomposition, notes/state-management/snapshot-decomposition.md — the DeviceObservation read interface that used to sit here is gone). Allowed exceptions: the deviceActionProjection producer seam (chunk 1 of the planner-detype refactor — pure resolvers physically owned by the device layer, consumed by plan-side shims), and the deviceResidualKw producer seam (chunk 3).',
       severity: 'error',
       from: { path: '^lib/plan/' },
       to: {
         path: '^lib/device/',
-        pathNot: '^lib/device/(deviceObservation|deviceActionProjection|deviceResidualKw)\\.ts$',
+        pathNot: '^lib/device/(deviceActionProjection|deviceResidualKw)\\.ts$',
       },
     },
     {
@@ -435,13 +436,10 @@ module.exports = {
     },
     {
       name: 'no-executor-to-device-internals',
-      comment: 'Executor consumes the DeviceObservation interface only; it must not have a runtime dependency on the DeviceTransport class or other device internals. PR #1b of the observer/transport split (see notes/state-management/observer-transport-split.md). PR #2 moved synthetic-capability IDs and SteppedLoadStepRequest types into packages/shared-domain/src/ (where they survive the Homey .homeybuild prune), so the previous synthetic-capability exception is no longer needed, and the remaining type-only DeviceManager references in lib/executor/ have been replaced with PlanExecutorDeviceTransport (local interface). PR #3 renamed the concrete class from DeviceManager to DeviceTransport.',
+      comment: 'Executor imports nothing from lib/device: it reads devices through the two owner reads it is wired with (transport descriptors + the observer projection, `lib/executor/executorDeviceRead.ts`) and writes through the injected Actuator. Stage 5 of the snapshot decomposition (notes/state-management/snapshot-decomposition.md) removed the last allowed edge, the DeviceObservation read interface. PR #2 of the observer/transport split moved synthetic-capability IDs and SteppedLoadStepRequest types into packages/shared-domain/src/ (where they survive the Homey .homeybuild prune), so no synthetic-capability exception is needed either.',
       severity: 'error',
       from: { path: '^lib/executor/' },
-      to: {
-        path: '^lib/device/',
-        pathNot: '^lib/device/deviceObservation\\.ts$',
-      },
+      to: { path: '^lib/device/' },
     },
   ],
   options: {

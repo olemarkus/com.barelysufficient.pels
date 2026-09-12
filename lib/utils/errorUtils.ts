@@ -27,7 +27,7 @@ export const normalizeError = (value: unknown): Error => (
  *
  * It lives in `lib/utils` rather than beside the transport that throws it
  * because both sides of the boundary need it and `lib/executor/**` may import
- * only `lib/device/deviceObservation.ts` (`no-executor-to-device-internals`).
+ * nothing from `lib/device/` (`no-executor-to-device-internals`).
  * The type is the seam; classification still happens exactly once, where the
  * socket times out (root `AGENTS.md` § "Clean and trusted interfaces between
  * layers").

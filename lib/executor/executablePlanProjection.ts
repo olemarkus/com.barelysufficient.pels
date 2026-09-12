@@ -36,6 +36,7 @@ import type {
 import { getCurrentDrawKw } from '../observer/observedPower';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
+import type { ExecutorDeviceRead } from './executorDeviceRead';
 import { buildExecutableTargetIntent } from './executableTargetProjection';
 import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
 import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
@@ -134,10 +135,10 @@ const resolveConvergenceDesiredTarget = (
 };
 
 export function buildExecutableObservedState(
-  snapshots: ExecutorDeviceSnapshot[],
+  devices: ExecutorDeviceRead[],
 ): ExecutableObservedState {
   return {
-    devices: snapshots.map(buildExecutableObservedDeviceStateFromSnapshot),
+    devices: devices.map(buildExecutableObservedDeviceStateFromSnapshot),
   };
 }
 

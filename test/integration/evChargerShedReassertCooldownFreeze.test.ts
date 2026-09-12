@@ -212,7 +212,8 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
-    deviceManager: deviceManager as never,
+    getDeviceDescriptor: (id) => deviceManager.getSnapshotByDeviceId(id),
+    getDeviceDescriptors: () => deviceManager.getSnapshot(),
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     actuator: createDeviceActuator({

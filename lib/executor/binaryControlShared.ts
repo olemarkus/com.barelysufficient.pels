@@ -1,5 +1,5 @@
-import type { DeviceObservation } from '../device/deviceObservation';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
+import type { ExecutorDeviceRead } from './executorDeviceRead';
 import {
   type BinaryControlOutcome,
   type BinaryControlTransport,
@@ -23,7 +23,8 @@ const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export type PlanExecutorBinaryContext = {
   state: PlanEngineState;
-  observation: DeviceObservation;
+  /** The device as the executor reads it now — descriptor joined with the observer's record. */
+  readDevice: (deviceId: string) => ExecutorDeviceRead | undefined;
   capacityDryRun: boolean;
   buildBinaryControlTransport: () => BinaryControlTransport;
   getRestoreLogSource: (deviceId: string) => 'shed_state' | 'current_plan';

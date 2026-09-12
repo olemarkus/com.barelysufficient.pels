@@ -20,7 +20,6 @@ import {
 } from '../../lib/executor/binaryRestoreHelpers';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
-import type { DeviceObservation } from '../../lib/device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   getInactiveReason,
@@ -221,13 +220,13 @@ const buildExecutorCtx = (held: boolean) => {
   const observation = {
     getSnapshot: () => [offHeaterSnapshot],
     getSnapshotByDeviceId: (id: string) => (id === HEATER ? offHeaterSnapshot : undefined),
-  } as unknown as DeviceObservation;
+  };
   const ctx: PlanExecutorBinaryContext = {
     state,
-    observation,
+    readDevice: observation.getSnapshotByDeviceId,
     capacityDryRun: false,
     buildBinaryControlTransport: () => ({
-      observation,
+      getObservedBinaryControl: observation.getSnapshotByDeviceId,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       actuator: createDeviceActuator({
         resolveTemperatureTarget: (_deviceId, desired) => desired,

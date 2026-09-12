@@ -20,9 +20,10 @@ god-struct, and seal the raw snapshot inside transport.**
 
 ## The smell (why this exists)
 
-`DeviceObservation` (`lib/device/deviceObservation.ts`) — the read contract plan +
-executor depend on — is **named for the observer, titled "view over the snapshot
-store," but defined in `lib/device/` and implemented only by `DeviceTransport`.**
+`DeviceObservation` (`lib/device/deviceObservation.ts`; deleted in stage 5, kept here
+as the smell it was) — the read contract plan + executor depended on — was **named for
+the observer, titled "view over the snapshot store," but defined in `lib/device/` and
+implemented only by `DeviceTransport`.**
 Its own docstring says it was extracted "so the transport half can move later." That
 move is the deferred half of the split: the seam exists, ownership never transferred.
 So transport owns "observation"; `lib/observer/` is a sidecar of interpretation
@@ -308,7 +309,43 @@ store, because:
      `preservePreviousSnapshot` invalid-binary-payload edge — enrich from the committed,
      not the parsed, snapshot). Plan/executor reads convert in stage 5.
 5. **Convert plan + executor reads** from `DeviceObservation` → observer's
-   `ObservedDeviceState`.
+   `ObservedDeviceState` — **DONE.** The executor's device read is
+   `readExecutorDevice` / `readExecutorDevices` (`lib/executor/executorDeviceRead.ts`):
+   the descriptor (`getDeviceDescriptor` on `AppHostApi`, surface 2 from stage 6.5)
+   joined per device with the observer's record (`getObservedState`). `PlanExecutorDeps`
+   lost `deviceManager`; the binary-control decision's one observed read is
+   `getObservedBinaryControl` (`ObservedBinaryControlRead`, the projection's binary
+   axis); `PlanExecutorSteppedContext.observation` turned out to have no reader and
+   went with it. `DeviceObservation` is deleted and both cruiser rules tightened:
+   `no-executor-to-device-internals` allows the executor nothing from `lib/device`,
+   `no-plan-to-device` only the two producer seams.
+   Faithfulness: every observed field the executor reads was already load-bearing on
+   the projection — `targets` (slice 2), `binaryControl` (slice 3, the optimistic-write
+   dispatch), the reported step / measured power / EV state (the drift check) — except
+   one. `available` is not a capability, so it has no per-capability event: it changes
+   only when a re-parsed `device.update` REPLACES the entry, and that path emitted an
+   observation event only for a control-state change or a temperature / state-of-charge
+   facet. A grep for in-place `.available =` writes could not see the replacement; review
+   did. `handleRealtimeDeviceUpdateEvent` now dispatches for the device when the commit
+   flipped `available` and nothing else was emitted, so the executor no longer keeps
+   writing to a device Homey marked unreachable (or skips one that came back) for up to
+   a poll interval. (The executor reads none of `lastFreshDataMs`, `lastLocalWriteMs`,
+   `binaryControlObservation` or the `*ObservedAtMs` stamps, so their dispatch behaviour
+   is not load-bearing here.) The descriptor half is the transport's
+   own truth, so it has no faithfulness question — but it had a LEAK question, found
+   in review: the join is a spread, and a spread copies what the object physically
+   carries, so a descriptor that was the raw snapshot under a narrower type would
+   have handed the executor every observed key the projection did not override.
+   `projectDeviceDescriptor` (`lib/device/deviceDescriptorProjection.ts`, sibling of
+   `projectObservedState`) is what closes it: every descriptor read on `AppHostApi`
+   now serves a fresh object carrying exactly the keys of `DeviceDescriptorRead`, a
+   key list gated at the type level. A device with either half missing
+   is unreadable this cycle — the same answer dispatch already gave for a device absent
+   between planning and dispatch. It never happens for a tracked device: the
+   projection subscribes to the emitter before the bootstrap refresh
+   (`wireDeviceTransport.ts`), so the first committed snapshot's refresh batch lands in
+   it, and every realtime add dispatches enriched after its commit; the boot seed
+   (`seedMissing`, run before every plan build) is a belt over those braces.
 6. **Convert `toPlanDevice` to `(descriptor, observed)`**; replace `...device` spread
    with explicit copies; `getPlanDevices` zips the two.
 ## The API layer has no home
@@ -372,15 +409,20 @@ decomposition stages, but it is why 6.4's builder sits where it does.
    those four files, which is the condition to re-run when adding a fifth; `deadlineObjectiveCards`, `headroomAndEvSocCards` and
    `steppedLoadReport` genuinely read observations (`targets`, `stateOfCharge`,
    `reportedStepId`) and convert with stage 5.
-   The narrowing is DECLARATIVE — the served objects still physically carry the
-   observations, exactly as `getObservedState` does since stage 4b. It stops
-   consumers *reading* them, which is what stage 7 needs.
+   The narrowing was DECLARATIVE at first — the served objects still physically
+   carried the observations — which was enough to stop consumers *reading* them.
+   Stage 5 made it physical (`projectDeviceDescriptor`), because its join spreads
+   the descriptor and a spread is not a read.
 
 7. **Seal `getSnapshot()` inside transport** once no external caller remains; cruiser-
    enforce. External pullers to clear first: the `app.ts` composition callbacks,
-   `AppHostApi`/`AppRuntimeApi`, `setup/flowConflictProbe`,
-   `lib/executor/{binaryExecutor,binaryControlDispatch,targetExecutor,planExecutor}`,
-   `setup/appDebugHelpers`, and the plan-layer `DeviceObservation` consumers.
+   `AppHostApi`/`AppRuntimeApi`, `setup/flowConflictProbe`, and
+   `setup/appDebugHelpers`. The executor and plan-layer pullers are gone (stage 5),
+   and the descriptor reads already live with their owner
+   (`readDeviceDescriptor(s)` in `lib/device/deviceDescriptorProjection.ts`, over the
+   two snapshot lookups; `AppHostApi` only delegates). Sealing `getSnapshot()` leaves
+   them as the descriptor's only exit — they are what stage 7 keeps, not what it
+   clears.
 
 ## Invariants the implementation + tests must preserve
 

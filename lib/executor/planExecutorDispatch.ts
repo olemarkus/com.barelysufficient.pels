@@ -25,6 +25,7 @@ import type {
   ExecutableTargetIntent,
   ExecutorDeviceSnapshot,
 } from './executablePlan';
+import type { ExecutorDeviceRead } from './executorDeviceRead';
 import {
   applyShedTemperaturePlan,
   applyTargetUpdate,
@@ -98,7 +99,9 @@ export type PlanExecutorCore = {
     stepCommandPending: boolean;
   };
   recordReleaseShedActuation: (deviceId: string, name: string, now: number) => void;
-  latestTargetSnapshot: () => ExecutorDeviceSnapshot[];
+  /** One device as the executor reads it — see `executorDeviceRead.ts`. */
+  readDevice: (deviceId: string) => ExecutorDeviceRead | undefined;
+  readDevices: () => ExecutorDeviceRead[];
   capacityDryRun: () => boolean;
   state: PlanEngineState;
   flushLastControlledPersistence: () => void;
@@ -199,8 +202,8 @@ const resolveLatestObservedDevice = (
   deviceId: string,
   observed: ExecutableObservedDeviceState | undefined,
 ): ExecutableObservedDeviceState | undefined => {
-  const snapshot = core.latestTargetSnapshot().find((entry) => entry.id === deviceId);
-  return snapshot ? buildExecutableObservedDeviceStateFromSnapshot(snapshot) : observed;
+  const device = core.readDevice(deviceId);
+  return device ? buildExecutableObservedDeviceStateFromSnapshot(device) : observed;
 };
 
 const applyShedTemperatureIntent = async (
@@ -445,7 +448,7 @@ export const dispatchPlanActions = async (
   plan: DevicePlan,
 ): Promise<PlanActuationResult> => {
   const executablePlan = buildExecutablePlan(plan);
-  const observedState = buildExecutableObservedState(core.latestTargetSnapshot());
+  const observedState = buildExecutableObservedState(core.readDevices());
   const observedMap = new Map(observedState.devices.map((entry) => [entry.id, entry]));
   // Producer-resolved current state per device. The raw dispatch snapshot carries
   // no observed step (`selectedStepId` is a plan-device decoration, absent here),
@@ -514,7 +517,7 @@ export const applySheddingToDeviceImpl = async (
 ): Promise<boolean> => {
   try {
     if (core.capacityDryRun()) return false;
-    const snapshotState = core.latestTargetSnapshot().find((d) => d.id === deviceId);
+    const snapshotState = core.readDevice(deviceId);
     if (shouldSkipShedding({
       state: core.state,
       deviceId,

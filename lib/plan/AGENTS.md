@@ -34,8 +34,8 @@ Execution — converging observed state onto that plan — is `lib/executor`.
   `lib/objectives/deferredObjectives/diagnosticProgress.ts`, and removing it turned every EV smart
   task's progress into `objective_progress_stale`. The contract and the runtime disagree about that
   field on purpose, and the mismatch stays until someone reconciles the two spellings deliberately.
-- **No `lib/device` imports** except the producer seams `deviceObservation.ts`,
-  `deviceActionProjection.ts`, `deviceResidualKw.ts` (`no-plan-to-device`). Resolution happens in
+- **No `lib/device` imports** except the producer seams `deviceActionProjection.ts` and
+  `deviceResidualKw.ts` (`no-plan-to-device`). Resolution happens in
   the producer projection; the planner consumes flat `PlanInputDevice` fields, never source/evidence.
 - **Smart-task-agnostic**: never import anything from `lib/objectives/**` — the source AST guard
   behind `npm run arch:grep` fails on ANY `lib/plan` → objectives edge, including type and dynamic

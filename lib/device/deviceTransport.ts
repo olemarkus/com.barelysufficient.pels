@@ -8,8 +8,8 @@
  *
  * The planner never imports this module directly: plan code reaches
  * `lib/device` only through the producer seams allowlisted by
- * `no-plan-to-device` (`deviceObservation.ts`, `deviceActionProjection.ts`,
- * `deviceResidualKw.ts`), so changes here must surface planner-facing data
+ * `no-plan-to-device` (`deviceActionProjection.ts`, `deviceResidualKw.ts`), so
+ * changes here must surface planner-facing data
  * through those seams, never as new exports for `lib/plan` to import.
  *
  * This class is the Homey-SDK leaf. It keeps SDK wiring (`init`), snapshot
@@ -61,7 +61,6 @@ import {
 import type { DeviceTransportParseProviders } from './transport/managerParseDevice';
 import { applyDeviceDriverOverride } from './transport/managerParseIdentity';
 import { syncNativeSteppedLoadCommandAdapters } from './managerNativeSteppedCommand';
-import type { DeviceObservation } from './deviceObservation';
 import type { SnapshotRefreshOptions, TransportContext } from './transport/transportContext';
 import type { HomePowerSampleWithIdentity } from './transport/resolvedHomeMeterDispatch';
 import {
@@ -124,7 +123,7 @@ export type {
   TransportObservedStateDispatcher,
 } from './transport/transportTypes';
 
-export class DeviceTransport extends EventEmitter implements DeviceObservation {
+export class DeviceTransport extends EventEmitter {
     private sdkReady = false;
     private liveFeed: DeviceLiveFeed | null = null;
     private logger: Logger;

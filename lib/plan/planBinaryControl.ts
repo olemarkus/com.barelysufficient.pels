@@ -1,10 +1,10 @@
-import type { DeviceObservation } from '../device/deviceObservation';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import {
   type BinaryControlDecision,
   type BinaryControlDecisionSnapshot,
   type BinaryControlLogContext,
   type BinaryControlRestoreSource,
+  type ObservedBinaryControlRead,
   shouldSkipBinaryControl,
 } from './planBinaryControlHelpers';
 // `getBinaryControlPlan` moved to `lib/device/deviceActionProjection.ts` as
@@ -18,7 +18,7 @@ export { type BinaryControlDecision } from './planBinaryControlHelpers';
 
 type BinaryControlDeps = {
   pendingBinaryCommandStore: PendingBinaryCommandStore;
-  deviceObservation: DeviceObservation;
+  getObservedBinaryControl: ObservedBinaryControlRead;
 };
 
 /**
@@ -43,7 +43,7 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   forceAgainstReleasedOpposing?: boolean;
 }): BinaryControlDecision | null {
   const {
-    pendingBinaryCommandStore, deviceObservation,
+    pendingBinaryCommandStore, getObservedBinaryControl,
     deviceId, name, desired, snapshot, logContext, restoreSource, reason,
     lifecycleRelease,
     forceAgainstReleasedOpposing,
@@ -51,7 +51,7 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   const controlPlan = getBinaryControlPlan(snapshot);
   if (shouldSkipBinaryControl({
     controlPlan,
-    deviceManager: deviceObservation,
+    getObservedBinaryControl,
     deviceId,
     desired,
     logContext,

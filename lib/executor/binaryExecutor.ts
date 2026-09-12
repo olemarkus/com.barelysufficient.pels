@@ -49,7 +49,7 @@ export const applyBinaryRestore = async (
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
   if (!intent || !intent.desiredOn || intent.source !== 'controlled') return false;
-  const snapshot = ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
+  const snapshot = ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
   if (!snapshot) {
     canApplyRestoreSnapshot(ctx, {
       snapshot,
@@ -86,7 +86,7 @@ export const applyUncontrolledBinaryRestore = async (
   // invariant): a baseline-off dump load must never be force-turned-ON on
   // capacity-control-off. See `skipRestoreForSurplusPosture`.
   if (skipRestoreForSurplusPosture(ctx, intent.deviceId, intent.name)) return false;
-  const entry = ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
+  const entry = ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
   if (!entry) {
     canApplyRestoreSnapshot(ctx, {
       snapshot: entry,
@@ -143,7 +143,7 @@ export const applyBinarySheddingToDevice = async (
   const skipPrecheck = params.skipPrecheck ?? Boolean(lifecycleRelease);
   const trackPendingShed = params.trackPendingShed ?? !lifecycleRelease;
   if (ctx.capacityDryRun && !lifecycleRelease) return false;
-  const snapshotState = snapshotOverride ?? ctx.observation.getSnapshotByDeviceId(deviceId);
+  const snapshotState = snapshotOverride ?? ctx.readDevice(deviceId);
   if (!skipPrecheck && shouldSkipShedding({
     state: ctx.state,
     deviceId,
@@ -190,7 +190,7 @@ export const applyDeferredBinaryCommand = async (
   if (intent.kind === 'shed_release') return false;
   const snapshot = options.preferObservedSnapshot
     ? observed?.snapshot
-    : ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
+    : ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
   // Requires a binary control handle (onoff or evcharger_charging). The actuation is
   // device-agnostic — the dispatched command's capability is derived from the device's
   // `binaryCapabilityId`, never hardcoded — so this accepts any binary control.
@@ -253,7 +253,7 @@ const turnOffDevice = async (
     lifecycleRelease,
     forceAgainstReleasedOpposing,
   } = params;
-  const snapshotEntry = snapshot ?? ctx.observation.getSnapshotByDeviceId(deviceId);
+  const snapshotEntry = snapshot ?? ctx.readDevice(deviceId);
   const controlPlan = getBinaryControlPlan(snapshotEntry);
   if (!controlPlan) {
     const hasTarget = Array.isArray(snapshotEntry?.targets) && snapshotEntry.targets.length > 0;

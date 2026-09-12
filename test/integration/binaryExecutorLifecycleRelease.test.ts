@@ -6,7 +6,6 @@ import {
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
-import type { DeviceObservation } from '../../lib/device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { ExecutableReleaseIntent } from '../../lib/executor/executablePlan';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
@@ -20,7 +19,7 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
   const observation = {
     getSnapshot: () => [snapshot],
     getSnapshotByDeviceId: (id: string) => (id === snapshot.id ? snapshot : undefined),
-  } as unknown as DeviceObservation;
+  };
 
   // Mirror PlanExecutor.recordShedActuation: a capacity shed stamps both markers.
   const recordShedActuation = vi.fn((deviceId: string, _name: string, now: number) => {
@@ -32,12 +31,12 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
 
   const ctx: PlanExecutorBinaryContext = {
     state,
-    observation,
+    readDevice: observation.getSnapshotByDeviceId,
     capacityDryRun: false,
     // Binary writes route through the actuator over a recording `setCapability`,
     // so the native-path assertions still observe the onoff/evcharger writes.
     buildBinaryControlTransport: () => ({
-      observation,
+      getObservedBinaryControl: observation.getSnapshotByDeviceId,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       actuator: createDeviceActuator({
         resolveTemperatureTarget: (_deviceId, desired) => desired,
