@@ -485,7 +485,7 @@ export function parseSnapshotDevice(
     });
 }
 
-export function getSnapshotUiPickerDevices(ctx: TransportContext): TargetDeviceSnapshot[] {
+export function getSnapshotUiPickerDevices(ctx: TransportContext): TransportDeviceSnapshot[] {
     const rawDevices = ctx.getLatestRawDevices();
     if (rawDevices.length === 0) return [];
     return parseDeviceList({

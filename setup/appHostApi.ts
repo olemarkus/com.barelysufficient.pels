@@ -54,6 +54,7 @@ import {
   readDeviceDescriptor,
   readDeviceDescriptors,
 } from '../lib/device/deviceDescriptorProjection';
+import { projectDeviceSurfaces, readDeviceSurface, readDeviceSurfaces } from '../lib/device/deviceSurfaces';
 import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import { SMART_TASK_WIDGET_WRITE_ORIGIN } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
@@ -185,14 +186,37 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return readDeviceDescriptor(this.requireDeviceManager(), deviceId);
   }
 
+  /**
+   * The plan-input view: every tracked device as its descriptor joined with the
+   * observer's record (`readDeviceSurfaces`), then decorated with the stepped
+   * command state. Stage 6 of the snapshot decomposition: what the plan-input
+   * producer gets is the union of the two declared surfaces and nothing else, so
+   * the carried-key gate on `toPlanDevice` is a statement about the object, not
+   * just its type. (The raw snapshot is still the SOURCE of both halves, and on
+   * the no-record fallback path it is the source of the observed half directly —
+   * what it no longer does is travel onward as itself.)
+   *
+   * Still a getter that re-projects and re-decorates on every access, so a
+   * per-device lookup inside a loop is O(n²) — read it once per pass.
+   */
   public get latestTargetSnapshot(): DecoratedDeviceSnapshot[] {
-    const snapshot = this.context.deviceManager?.getSnapshot() ?? [];
-    return this.context.deviceControlHelpers.decorateTargetSnapshotList(snapshot);
+    const transport = this.context.deviceManager;
+    if (!transport) return [];
+    return this.context.deviceControlHelpers.decorateTargetSnapshotList(
+      readDeviceSurfaces(transport, (deviceId) => this.context.getObservedRecord(deviceId)),
+    );
   }
 
+  /**
+   * The picker list is a fresh parse of every Homey device, managed or not, so
+   * an unmanaged entry has no observer record to join against: both surfaces
+   * are projected from the parse itself (`projectDeviceSurfaces`), which keeps
+   * a picker device bounded exactly like a tracked one when the smart-task
+   * preview hands it to `toPlanDevice`.
+   */
   public getUiPickerDevices(): DecoratedDeviceSnapshot[] {
     const snapshot = this.context.deviceManager?.getUiPickerDevices() ?? [];
-    return this.context.deviceControlHelpers.decorateTargetSnapshotList(snapshot);
+    return this.context.deviceControlHelpers.decorateTargetSnapshotList(projectDeviceSurfaces(snapshot));
   }
 
   public getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead {
@@ -274,9 +298,20 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public getTemperatureBoostConfig = (deviceId: string) => this.context.temperatureBoostSettings[deviceId];
   public getEvBoostConfig = (deviceId: string) => this.context.evBoostSettings[deviceId];
   public getShedBehavior = (deviceId: string) => resolveTemperaturePolicyShedBehavior(
-    getShedBehaviorHelper(deviceId, this.context.shedBehaviors), this.context.latestTargetSnapshot, deviceId,
+    getShedBehaviorHelper(deviceId, this.context.shedBehaviors),
+    // Lazy and single-device: this runs several times per device per plan build,
+    // and `latestTargetSnapshot` rebuilds the whole list on every access.
+    () => this.decorateOneDevice(deviceId),
     this.context.observedTemperatureModeUpdates.allowsAutomaticAdjustments(deviceId),
   );
+
+  /** One device through the same join + decoration `latestTargetSnapshot` applies to all of them. */
+  private decorateOneDevice(deviceId: string): DecoratedDeviceSnapshot | undefined {
+    const transport = this.context.deviceManager;
+    if (!transport) return undefined;
+    const device = readDeviceSurface(transport, (id) => this.context.getObservedRecord(id), deviceId);
+    return device ? this.context.deviceControlHelpers.decorateTargetSnapshotList([device])[0] : undefined;
+  }
   public computeDynamicSoftLimit = (): number => this.requirePlanService().computeDynamicSoftLimit();
   protected computeShortfallThreshold = (): number => this.requirePlanService().computeShortfallThreshold();
 

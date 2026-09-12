@@ -244,6 +244,97 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         h.transport.destroy();
     });
 
+    it('copies every declared observed key — the projection is hand-written and drifts silently', () => {
+        // `evChargingStateObservedAtMs` was declared on the observed surface, carried
+        // in `PlanDeviceCarriedKey`, and never copied here: the type-level key-set
+        // gate could not see it, because the omission is in the FUNCTION, not the
+        // type. The descriptor projection is gated by an exhaustive
+        // `Record<keyof DeviceDescriptorRead, true>`; this is the equivalent for the
+        // observed half, and it is why a new observed field cannot be added to the
+        // contract without being copied here.
+        const everyObservedField: TransportDeviceSnapshot = {
+            id: 'dev1', name: 'dev1', available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+            targets: [{ id: 'target_temperature', value: 21 }],
+            binaryControl: { on: true },
+            binaryControlObservation: { capabilityId: 'onoff', observedAtMs: 1, observedCapabilityIds: ['onoff'] },
+            evCharging: true,
+            evChargingObservedAtMs: 2,
+            evChargingState: 'plugged_in_charging',
+            evChargingStateObservedAtMs: 3,
+            temperature: { currentTemperature: 19, target: { id: 'target_temperature', value: 21 } },
+            stateOfCharge: stateOfChargeFixture({ percent: 55, observedAtMs: 4 }),
+            measuredPowerKw: 1.5,
+            measuredPowerObservedAtMs: 5,
+            reportedStepId: 'low',
+            reportedStepPowerW: 500,
+            reportedStepObservedAtMs: 6,
+            lastFreshDataMs: 7,
+            lastLocalWriteMs: 8,
+            lastUpdated: 9,
+        } as unknown as TransportDeviceSnapshot;
+        // The two the fixture carries only to satisfy the snapshot type: they are
+        // DESCRIPTOR fields, and the observed projection is right not to copy them.
+        const descriptorOnly = new Set(['expectedPowerKw', 'expectedPowerSource']);
+        const projected = projectObservedState(everyObservedField);
+        expect(Object.keys(projected).sort()).toEqual(
+            Object.keys(everyObservedField).filter((key) => !descriptorOnly.has(key)).sort(),
+        );
+    });
+
+    it('advances the measured-power observation stamp on a REPEATED identical reading', async () => {
+        // `applyFreshnessOnlyCapabilityUpdate` stamps `measuredPowerObservedAtMs`
+        // BEFORE its change check, deliberately: a repeated identical reading is
+        // still a fresh observation. The realtime handler used to return on
+        // `!changed` before dispatching, so the projection kept the stamp from the
+        // last time the VALUE moved. Since stage 6 the plan input reads that stamp
+        // off the projection, and `resolveConfirmedNotDrawing` answers from a
+        // 60-second window — so a charger sitting at a steady 0 W would have read
+        // "still drawing" for four minutes in five and never released its boost.
+        // Date only: the transport's awaits must still resolve.
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(Date.UTC(2026, 2, 20, 6, 0, 0));
+        try {
+            const h = await buildHarness();
+            mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', true, '2026-03-20T06:00:00.000Z') });
+            await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+
+            h.transport.injectCapabilityUpdateForTest('dev1', 'measure_power', 0);
+            const afterFirst = h.projection.getObservedState('dev1')?.measuredPowerObservedAtMs;
+            expect(afterFirst).toBe(Date.UTC(2026, 2, 20, 6, 0, 0));
+
+            vi.setSystemTime(Date.UTC(2026, 2, 20, 6, 1, 30));
+            // Same value again: `changed` is false, and the stamp must still travel.
+            h.transport.injectCapabilityUpdateForTest('dev1', 'measure_power', 0);
+            expect(h.projection.getObservedState('dev1')?.measuredPowerObservedAtMs)
+                .toBe(Date.UTC(2026, 2, 20, 6, 1, 30));
+            assertShadowEquality(h);
+            h.transport.destroy();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does NOT dispatch a REJECTED freshness reading', async () => {
+        // A junk `measure_power` (NaN / infinite / negative) is validated out at the
+        // boundary: nothing is written. Dispatching it anyway would bump the
+        // projection's accepted-write revision for an observation that never
+        // happened, and `hasExecutionWorkOutstanding` reads that revision to decide
+        // whether the world it planned against still holds — so a spurious bump can
+        // suppress a reconciliation. "A transient external failure is a no-op, not
+        // an event."
+        const h = await buildHarness();
+        mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', true, '2026-03-20T06:00:00.000Z') });
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+        const revisionBefore = h.projection.getRevision();
+
+        h.transport.injectCapabilityUpdateForTest('dev1', 'measure_power', Number.NaN);
+        h.transport.injectCapabilityUpdateForTest('dev1', 'measure_power', -5);
+
+        expect(h.projection.getRevision()).toBe(revisionBefore);
+        assertShadowEquality(h);
+        h.transport.destroy();
+    });
+
     it('reflects an availability flip carried by a device.update with no other change', async () => {
         // Availability is not a capability, so it has no per-capability event: it
         // arrives only on the re-parsed device.update that replaces the entry, and

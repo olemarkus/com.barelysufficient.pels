@@ -14,7 +14,7 @@ import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../lib/objectives/deferredOb
 import { getDateKeyInTimeZone, getDateKeyStartMs } from '../../lib/utils/dateUtils';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { getLatestPlanSnapshotForTests, MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
-import { cleanupApps, createApp, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
+import { cleanupApps, createApp, getTransportSnapshotForTests } from '../utils/appTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 
@@ -851,10 +851,12 @@ async function rebuildPlan(
 async function refreshSnapshot(app: InternalApp): Promise<SnapshotEntry[]> {
   await app.refreshTargetDevicesSnapshot({ fast: false });
   await flushPromises();
-  // `getLatestTargetSnapshotForTests` returns the full `TargetDeviceSnapshot[]`;
-  // `SnapshotEntry` is a narrow view DTO over it (and `evChargingState` rides on
-  // the EV-observed cluster, off the base type), so widen through `unknown`.
-  return getLatestTargetSnapshotForTests() as unknown as SnapshotEntry[];
+  // The TRANSPORT's snapshot: these specs assert the parse result, including
+  // `binaryCapabilityId`, which the plan-input view no longer carries (stage 6 of
+  // the snapshot decomposition). `SnapshotEntry` is a narrow view DTO over
+  // `TargetDeviceSnapshot` (and `evChargingState` rides on the EV-observed
+  // cluster, off the base type), so widen through `unknown`.
+  return getTransportSnapshotForTests() as unknown as SnapshotEntry[];
 }
 
 function getSnapshotEntry(snapshot: SnapshotEntry[], deviceId: string): SnapshotEntry | undefined {

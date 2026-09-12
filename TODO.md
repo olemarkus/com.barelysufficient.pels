@@ -1000,6 +1000,39 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Device observation and transport
 
+- [ ] **P2 — three transport writes of observed fields still never reach the observer projection.**
+      Stage 6 made the plan input read every observed field off the projection, so a write that
+      does not dispatch is a field frozen until the next 5-minute refresh. Two of the three have a
+      reader today. **Where:** (a) `lib/device/transport/deviceWrites.ts` bumps `lastLocalWriteMs`
+      for any capability write but dispatches only when the capability is the device's binary one,
+      so a `target_temperature` / `target_power` / `max_power_*` write never reaches the projection
+      — `lastLocalWriteMs` is declared in `PlanDeviceCarriedKey` and has no planner or executor
+      reader today, so this one is a frozen field waiting for a consumer. (b) A repeated identical
+      binary boolean re-stamps `binaryControlObservation` (`observedAtMs`, `source`) and the
+      unchanged-fold path in `lib/device/transport/realtimeCapabilityHandling.ts` returns without
+      dispatching; the reader is `setup/externalOffHoldDetection.ts`, whose `binaryAxisObservedAtMs`
+      then lags and is handed to `clearRecentBinaryOffCommand` by
+      `setup/homeRuntime/planDevicePrePass.ts` — a stamp that fails to postdate a recently confirmed
+      PELS-off command leaves the provenance in place, so a later manual OFF is attributed to PELS
+      and the "leave off until turned on again" hold never starts. Trigger: a charger re-reporting
+      `evcharger_charging: true` every poll with the fold unchanged. This one is NOT a bare dispatch:
+      an equal report while PELS's own write is in flight is deliberately kept quiet
+      (`deviceManager.test.ts`, "keeps equal realtime control truth quiet after an accepted write"),
+      so the fix must separate "re-stamped an observation" from "echoed a command we have not
+      settled". (c) The same path DELETES `binaryControlObservation` for an invalid control payload
+      (a driver sending
+      `onoff: null` or a string) and returns without dispatching, so the projection keeps evidence
+      the transport discarded and `toExternalOffHoldObservedDevice` still resolves a capability id
+      where it would now answer "none". **What changes:** dispatch at all three sites — (b) only
+      once the settle question above is answered — the way the
+      `measure_power` freshness path and the availability flip already do
+      (`lib/device/transport/realtimeCapabilityHandling.ts`, `deviceUpdateHandling.ts`).
+      **Done when:** each of the three has a transport-boundary spec asserting the projection
+      matches the transport after the write, in the shape of "advances the measured-power
+      observation stamp on a REPEATED identical reading"
+      (`test/integration/observedDeviceStateProjection.test.ts`). Source: adversarial + runtime-reality
+      review of the stage-6 PR.
+
 - [ ] **P2 — the observer projection keeps serving a device the transport dropped between
       refreshes.** `dropDeviceWithoutRemainingControlFacet`
       (`lib/device/transport/realtimeCapabilityHandling.ts`) and the device.update parse-out path

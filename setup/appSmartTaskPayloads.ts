@@ -51,8 +51,11 @@ export class AppSmartTaskPayloads {
         list.push(entry);
         byDevice.set(entry.deviceId, list);
       }
+      // Read ONCE: the getter re-projects and re-decorates the whole device list
+      // on every access, so calling it per device is quadratic.
+      const devices = this.ctx.latestTargetSnapshot;
       for (const [deviceId, list] of byDevice) {
-        const device = this.ctx.latestTargetSnapshot.find((candidate) => candidate.id === deviceId);
+        const device = devices.find((candidate) => candidate.id === deviceId);
         if (!device) continue;
         const objectiveKind = resolveSmartTaskDeviceKind({
           ...device,

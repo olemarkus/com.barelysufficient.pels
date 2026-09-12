@@ -128,7 +128,8 @@ returns a `TargetDeviceSnapshot` with `targetStepId`, `selectedStepId`,
 `desiredStepId`, `previousStepId`, `planningPowerKw`, `lastStepCommandIssuedAt`,
 `stepCommandRetryCount`, `nextStepCommandRetryAtMs`, `stepCommandPending`,
 `stepCommandStatus`, `lastDesiredStepChangeAt` written on it for stepped-load devices.
-`AppHostApi.latestTargetSnapshot` in `setup/appHostApi.ts` returns the **decorated** list; `getPlanDevices` →
+`AppHostApi.latestTargetSnapshot` in `setup/appHostApi.ts` returns the **decorated** list (since stage 6,
+decorated over the descriptor ⋈ observed join rather than the raw snapshot); `getPlanDevices` →
 `toPlanDevice`'s explicit stepped-field projection (`setup/appInit/toPlanDevice.ts`) carries those live values
 into `PlanInputDevice` (which independently declares the same fields). And they ARE
 read off the decorated snapshot by `setup/appInit/residualKwForPlanDevice.ts`
@@ -348,6 +349,66 @@ store, because:
    (`seedMissing`, run before every plan build) is a belt over those braces.
 6. **Convert `toPlanDevice` to `(descriptor, observed)`**; replace `...device` spread
    with explicit copies; `getPlanDevices` zips the two.
+   **DONE, in the form that turned out to matter.** The zip is
+   `readDeviceSurfaces` (`lib/device/deviceSurfaces.ts`): every tracked device's
+   projected descriptor joined with the observer's record, and
+   `AppHostApi.latestTargetSnapshot` decorates THAT rather than the transport's raw
+   list. The picker list (unmanaged devices with no observer record) is bounded the
+   same way from its own parse (`projectDeviceSurfaces`). So `ToPlanDeviceInput` is
+   `DeviceSurfaces & SteppedLoadDecoration & AssociatedCarDecoration` — and that is
+   what the object physically carries, not only its type: the transport's binding
+   ids (`binaryCapabilityId` and kin) are no longer on the input, so the producer
+   no longer strips them and `PlanDeviceStrippedKey` lost four names.
+   The "explicit copies instead of `...device`" half is NOT done and is no longer
+   the point: with the input physically bounded and the carried set pinned by the
+   type-level equality (`test/unit/planDeviceCarriedFields.test.ts`), the rest-spread
+   carries exactly the declared 47 keys, and 47 explicit copies would restate the
+   gate by hand. The signature stays `(ctx, device, opts)`; what changed is what
+   `device` is.
+   One deliberate asymmetry with the executor's read: a tracked device the observer
+   has no record for is NOT dropped here — its observed half falls back to the
+   projection of the snapshot itself, the same source and values the boot seed uses.
+   For the executor, "no observation" means do not command the device, which is safe
+   by default; for the plan input and the settings-UI list it would mean the device
+   silently disappears from planning and from the owner's screen. (An earlier draft
+   justified this with a hot-plug emitting no observation event — not true: a first
+   `device.update` has no previous snapshot, so the availability comparison added in
+   stage 5 cannot match and always dispatches. The real justifications are the
+   destructive consumer below and the two dispatch gaps stage 6 review found.) **Do not simplify that fallback away on the UI argument alone** — the
+   sharper reason is destructive: `syncHeadroomCardState` (`lib/plan/planHeadroomState.ts`)
+   is documented to take a COMPLETE snapshot and treats a device missing from it as
+   one that has left the home, dropping its held-time accounting, surplus
+   eligibility and rung tracking and closing its activation attempt. Its caller
+   (`setup/appSnapshotHelpers.ts`) reads this view with no seed of its own. Before
+   stage 6 that argument was the transport's raw snapshot, complete by construction;
+   it is now complete only because of the fallback. (Feeding that one call site from
+   the descriptors instead does not work: the same array also drives the per-device
+   headroom sync, which reads far more than `id`.)
+   No existing spec needed changing, which is the behaviour-preservation
+   evidence worth having.
+   Faithfulness for the plan path is the executor's argument plus one field family:
+   the objectives layer reads `lastFreshDataMs` off the plan device, and a
+   repeated IDENTICAL reading bumps that stamp in the transport without a
+   dispatch, so the projection's copy can lag it until the next full refresh.
+   The lag is safe, but NOT for the reason a first draft of this paragraph gave.
+   `lib/objectives/samples.ts` does gate on that stamp (30 minutes); what makes it
+   safe is that the 5-minute device poll re-stamps the whole projection through
+   `dispatchObservedStateRefresh`, and that the failure direction is to REJECT a
+   sample rather than bill an idle interval at full power. So the safety margin is
+   `DEVICE_POLL_INTERVAL_MS` against `OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS` —
+   lengthen the poll past 30 minutes and this stops holding.
+   **Its two siblings were not benign, and reasoning about `lastFreshDataMs` alone
+   is what hid them.** The same stamp-before-the-change-check line writes
+   `measuredPowerObservedAtMs`, and its consumer flips the unsafe way: an identical
+   `measure_power` reading returned `changed: false`, the realtime handler returned
+   before dispatching, and `resolveConfirmedNotDrawing` — which reads a 60-second
+   window and exists to CANCEL a boost — would have answered "still drawing" for
+   four minutes in five. The flow-backed state-of-charge heartbeat had the mirror
+   problem, skipping its dispatch on a comment that said no projection reader
+   consumed `stateOfCharge` yet; stage 6 made `toPlanDevice` exactly that reader,
+   and the heartbeat re-resolves `level`, so a charger could stay `unavailable` to
+   the objectives layer while the transport knew better. Both now dispatch. Audit
+   the field FAMILY, not the member you happen to be holding.
 ## The API layer has no home
 
 Surfaced while doing 6.4, and worth stating because it will keep recurring.

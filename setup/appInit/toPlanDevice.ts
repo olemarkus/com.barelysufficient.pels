@@ -19,12 +19,14 @@ import {
   type ResidualKwForPlanDeviceShedBehavior,
 } from './residualKwForPlanDevice';
 import type {
+  AssociatedCarDecoration,
   DecoratedDeviceSnapshot,
   DeviceControlModel,
   EvBoostConfig,
   EvObservedProbe,
   MeasuredPowerObservedProbe,
   StateOfChargeObservedProbe,
+  SteppedLoadDecoration,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
@@ -33,7 +35,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { AppContext } from '../../lib/app/appContext';
-import type { TransportControlBindingProbe } from '../../lib/device/transportDeviceSnapshot';
+import type { DeviceSurfaces } from '../../lib/device/deviceSurfaces';
 import type { BinaryCommandabilityProjection } from '../../lib/plan/admission/binaryCommandReachability';
 import {
   buildStepPowerCalibrationView,
@@ -473,9 +475,15 @@ export type UnrankedPlanInputDevice = Omit<PlanInputDevice, 'priority'>;
  * computed from (`PlanDeviceCarriedKey`, `packages/planner-types`). It is the
  * PARAMETER's own type, not a restatement beside it: declared separately the two
  * drift, and the assertion goes on passing while a new field rides the spread.
+ *
+ * Both surfaces of the split plus the stepped decoration — and, since stage 6,
+ * that is also what the object PHYSICALLY carries: `latestTargetSnapshot` and
+ * the picker list are built from the two projections (`lib/device/deviceSurfaces.ts`),
+ * so a transport-internal field is not on the object for the rest-spread to
+ * sweep up. The binding ids the destructure below used to strip are gone with
+ * it.
  */
-export type ToPlanDeviceInput = DecoratedDeviceSnapshot & EvObservedProbe & MeasuredPowerObservedProbe
-  & TemperatureObservedProbe & StateOfChargeObservedProbe & TransportControlBindingProbe;
+export type ToPlanDeviceInput = DeviceSurfaces & SteppedLoadDecoration & AssociatedCarDecoration;
 
 export function toPlanDevice(
   ctx: AppContext,
@@ -590,12 +598,10 @@ export function toPlanDevice(
   // pair. The descriptor (`TargetDeviceSnapshot`) keeps the profile as a plain
   // optional (out of scope for this slice), so `device.steppedLoadProfile` is
   // read directly here.
-  // Raw transport bindings and observations are stripped before planning.
+  // Raw observations are stripped before planning. (The transport's binding
+  // ids used to be stripped here too; since stage 6 the input is the join of
+  // the two projected surfaces, so they never arrive.)
   const {
-    binaryCapabilityId: _binaryCapabilityId,
-    binaryWriteCapabilityId: _binaryWriteCapabilityId,
-    binaryObservationCapabilityId: _binaryObservationCapabilityId,
-    flowBackedCapabilityIds: _flowBackedCapabilityIds,
     temperatureControlDisabled: _temperatureControlDisabled,
     temperatureAdjustmentsDisabled: _temperatureAdjustmentsDisabled,
     steppedLoadProfile: _confirmedSteppedLoadProfile,

@@ -15,6 +15,19 @@ import {
 
 export type FreshnessOnlyCapabilityUpdateResult = {
   changed: boolean;
+  /**
+   * The reading was ACCEPTED and advanced an observation stamp, even though the
+   * value itself did not move. Distinct from `changed`, which gates expensive
+   * downstream work, and distinct from a REJECTED reading — junk (`NaN`,
+   * infinite, negative power), a capability this seam does not handle, or a
+   * guard that declined — which mutates nothing and must stay a no-op, not
+   * become an event (root `AGENTS.md`: "A transient external failure is a
+   * no-op, not an event"). The observer dispatch keys on this: a spurious
+   * observation event bumps the projection's accepted-write revision, and
+   * `hasExecutionWorkOutstanding` reads that revision to decide whether the
+   * world it planned against still holds.
+   */
+  observationAdvanced?: boolean;
   normalizedValue: unknown;
   reconcileChange?: RealtimeDeviceReconcileChange;
   temperatureRecoveryRequested?: boolean;
@@ -58,7 +71,7 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     // observed, and a device holding a steady draw must not decay to "stale".
     snapshot.measuredPowerObservedAtMs = Date.now();
     if (Object.is(snapshot.measuredPowerKw, measuredKw)) {
-      return { changed: false, normalizedValue: measuredKw };
+      return { changed: false, observationAdvanced: true, normalizedValue: measuredKw };
     }
     snapshot.measuredPowerKw = measuredKw;
     return { changed: true, normalizedValue: measuredKw };
@@ -66,6 +79,10 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
   if (capabilityId === 'measure_temperature') return applyTemperatureUpdate(snapshot, value);
   if (isStateOfChargeCapabilityId(capabilityId)) {
     const observedAtMs = Date.now();
+    // The writer REPLACES the bag when it accepts a reading and returns early
+    // without touching it when a guard declines (not a charger, car-sourced,
+    // unparseable percent), so identity is the honest "did anything happen".
+    const previousStateOfCharge = snapshot.stateOfCharge;
     const changed = updateStateOfChargeFromRealtimeCapability({
       snapshot,
       capabilityId,
@@ -74,6 +91,7 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     });
     return {
       changed,
+      observationAdvanced: snapshot.stateOfCharge !== previousStateOfCharge,
       normalizedValue: snapshot.stateOfCharge?.report.percent,
     };
   }
@@ -120,7 +138,7 @@ function applyEvChargingStateUpdate(
   const observedAtMs = Date.now();
   mutableSnapshot.evChargingStateObservedAtMs = observedAtMs;
   if (Object.is(mutableSnapshot.evChargingState, value)) {
-    return { changed: false, normalizedValue: value };
+    return { changed: false, observationAdvanced: true, normalizedValue: value };
   }
   mutableSnapshot.evChargingState = value;
   // Session-boundary tracking is only meaningful for a known plug-state; a

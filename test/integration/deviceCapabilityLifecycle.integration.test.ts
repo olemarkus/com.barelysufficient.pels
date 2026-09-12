@@ -3,7 +3,7 @@ import {
   setMockDrivers,
 } from '../mocks/homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
-import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getTransportSnapshotForTests } from '../utils/appTestUtils';
 
 // Use fake timers to prevent resource leaks from periodic refresh and control
 // timing deterministically.
@@ -34,8 +34,12 @@ type SnapshotEntry = {
 const DEVICE_ID = 'device-a';
 const onoffCap = (id: string) => `manager/devices/device/${id}/capability/onoff`;
 
+// These specs assert what the PARSE produced — including `binaryCapabilityId`,
+// the transport's own binding — so they read the transport's snapshot rather
+// than the plan-input view, which carries no binding since stage 6 of the
+// snapshot decomposition.
 const findEntry = (id: string): SnapshotEntry | undefined => (
-  (getLatestTargetSnapshotForTests() as SnapshotEntry[]).find((entry) => entry.id === id)
+  (getTransportSnapshotForTests() as SnapshotEntry[]).find((entry) => entry.id === id)
 );
 
 describe('Device capability lifecycle across SDK pulls', () => {
