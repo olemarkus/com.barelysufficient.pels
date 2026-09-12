@@ -244,6 +244,36 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         h.transport.destroy();
     });
 
+    it('reflects an availability flip carried by a device.update with no other change', async () => {
+        // Availability is not a capability, so it has no per-capability event: it
+        // arrives only on the re-parsed device.update that replaces the entry, and
+        // that path emitted an observation event only for a control-state change
+        // or a temperature / state-of-charge facet. The executor reads `available`
+        // from the projection (stage 5), so an un-dispatched flip would have it
+        // writing to an unreachable device, or skipping one that came back, until
+        // the next full refresh.
+        const h = await buildHarness();
+        mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z') });
+        await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+        expect(h.projection.getObservedState('dev1')?.available).toBe(true);
+
+        // Same onoff value and stamp: nothing but availability moves.
+        h.transport.injectDeviceUpdateForTest({
+            ...onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z'),
+            available: false,
+        });
+        expect(h.transport.getSnapshotByDeviceId('dev1')?.available).toBe(false);
+        expect(h.projection.getObservedState('dev1')?.available).toBe(false);
+
+        h.transport.injectDeviceUpdateForTest({
+            ...onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z'),
+            available: true,
+        });
+        expect(h.projection.getObservedState('dev1')?.available).toBe(true);
+        assertShadowEquality(h);
+        h.transport.destroy();
+    });
+
     it('setSnapshotForTests feeds the projection (test seam mirrors the production refresh funnel)', async () => {
         // The test seam must populate the projection exactly as the production
         // refresh path does, so any reader routed onto the projection (stage 4b)

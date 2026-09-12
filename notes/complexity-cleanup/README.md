@@ -70,8 +70,8 @@ Remaining work:
 
 Parsing, observation, and binary-settle internals have been extracted, and as of the observer/transport
 split the orchestrating class is `DeviceTransport` (`lib/device/deviceTransport.ts`). The read-side
-parse pipeline lives under `lib/device/transport/`; plan and executor consume only the
-`DeviceObservation` read interface. See `notes/state-management/observer-transport-split.md` for the
+parse pipeline lives under `lib/device/transport/`; plan and executor read observed state from the
+observer projection, not from transport. See `notes/state-management/observer-transport-split.md` for the
 layering rationale, and `notes/state-management/README.md` + `docs/architecture.md` for the current
 contract. One deferred cleanup remains: a file-rename sweep aligning the surviving `manager*.ts`
 filenames + `device/manager-*` logger tags with the `DeviceTransport` rename.

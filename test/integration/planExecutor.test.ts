@@ -276,7 +276,8 @@ const buildExecutor = (
       settings: { set: settingsSet },
       flow: flowMock,
     } as unknown as Homey.App['homey'],
-    deviceManager: deviceManager as never,
+    getDeviceDescriptor: (id) => deviceManager.getSnapshotByDeviceId(id),
+    getDeviceDescriptors: () => deviceManager.getSnapshot(),
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // Route writes through the actuator over the SAME device-manager methods + the

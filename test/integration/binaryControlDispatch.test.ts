@@ -12,7 +12,6 @@ import {
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/observer/controlCommandConfirmation';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
-import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
 let logs: LoggerCapture;
@@ -24,7 +23,7 @@ const buildTransport = (
 ) => {
   const state = createPlanEngineState();
   const transport: BinaryControlTransport = {
-    observation: withGetSnapshotByDeviceId({ getSnapshot: vi.fn(() => []) }),
+    getObservedBinaryControl: () => undefined,
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     actuator: createDeviceActuator({
       requestBinaryControl,
@@ -233,7 +232,7 @@ describe('binary command dispatch', () => {
       requestSteppedLoadStep: async () => ({ requested: false }),
     });
     const transport: BinaryControlTransport = {
-      observation: withGetSnapshotByDeviceId({ getSnapshot: vi.fn(() => []) }),
+      getObservedBinaryControl: () => undefined,
       pendingBinaryCommandStore: store,
       actuator,
     };

@@ -1440,6 +1440,10 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // The executor's drift check holds the observed RECORD, which is a separate
     // accessor from the base read — stubbing only the latter used to serve both.
     rig.ctx.getObservedRecord = vi.fn(() => load);
+    // The executor's device read is the descriptor joined with that record
+    // (stage 5); the mock context's descriptor reads default to nothing.
+    rig.ctx.getDeviceDescriptor = vi.fn((id: string) => deviceManager.getSnapshotByDeviceId(id));
+    rig.ctx.getDeviceDescriptors = vi.fn(() => deviceManager.getSnapshot());
     rig.ctx.homeMembership = {
       hasSubHomes: () => true,
       getHomeIdForDevice: () => 'h_a',

@@ -9,7 +9,7 @@ import { partialDouble } from '../helpers/partialDouble';
 /**
  * Adds `getSnapshotByDeviceId` derived from the same backing snapshot source
  * as `getSnapshot`, plus a no-op `dispatchObservedStateForDevice`, so test mocks
- * for `DeviceObservation` / `DeviceTransport` stay in sync with the production
+ * for `DeviceTransport` stay in sync with the production
  * interface without each call site having to wire the accessors manually.
  *
  * `dispatchObservedStateForDevice` exists on the live transport so wiring paths

@@ -1,4 +1,3 @@
-import type { DeviceObservation } from '../device/deviceObservation';
 import type { DeviceDescriptor, ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import {
@@ -28,6 +27,18 @@ export type BinaryControlDecisionSnapshot = Pick<ObservedDeviceState, 'targets' 
     DeviceDescriptor,
     'capabilities' | 'canSetControl'
   > & { currentOn?: boolean };
+
+/**
+ * The observer's binary axis for one device, live — the only observed read the
+ * binary-control decision makes. `undefined` for a device the observer has not
+ * recorded; the decision then falls back to the snapshot the caller carried
+ * into the cycle. Stage 5 of the snapshot decomposition: this used to be the
+ * transport's `getSnapshotByDeviceId`, which handed the decision the whole raw
+ * snapshot to read one field off.
+ */
+export type ObservedBinaryControlRead = (
+  deviceId: string,
+) => Pick<ObservedDeviceState, 'binaryControl'> | undefined;
 
 // `BinaryControlPlan` is owned by the producer
 // (`lib/device/deviceActionProjection.ts`) — plan consumes the same flat
@@ -66,7 +77,7 @@ export type BinaryControlDecision = {
 
 export function shouldSkipBinaryControl(params: {
   controlPlan: BinaryControlPlan | null;
-  deviceManager: DeviceObservation;
+  getObservedBinaryControl: ObservedBinaryControlRead;
   deviceId: string;
   desired: boolean;
   logContext: BinaryControlLogContext;
@@ -78,7 +89,7 @@ export function shouldSkipBinaryControl(params: {
 }): boolean {
   const {
     controlPlan,
-    deviceManager,
+    getObservedBinaryControl,
     deviceId,
     desired,
     logContext,
@@ -115,7 +126,7 @@ export function shouldSkipBinaryControl(params: {
     return true;
   }
   if (shouldSkipAlreadyMatched({
-    deviceManager, controlPlan, deviceId, desired, snapshot, pendingBinaryCommandStore,
+    getObservedBinaryControl, controlPlan, deviceId, desired, snapshot, pendingBinaryCommandStore,
     preferProvidedSnapshot,
     forceAgainstReleasedOpposing,
   })) {
@@ -146,7 +157,7 @@ export function shouldSkipBinaryControl(params: {
 }
 
 export function shouldSkipAlreadyMatched(params: {
-  deviceManager: DeviceObservation;
+  getObservedBinaryControl: ObservedBinaryControlRead;
   controlPlan: BinaryControlPlan;
   deviceId: string;
   desired: boolean;
@@ -156,13 +167,13 @@ export function shouldSkipAlreadyMatched(params: {
   forceAgainstReleasedOpposing?: boolean;
 }): boolean {
   const {
-    deviceManager, controlPlan, deviceId, desired, snapshot, pendingBinaryCommandStore,
+    getObservedBinaryControl, controlPlan, deviceId, desired, snapshot, pendingBinaryCommandStore,
     preferProvidedSnapshot,
     forceAgainstReleasedOpposing,
   } = params;
   const latestObservedSnapshot = preferProvidedSnapshot
     ? snapshot
-    : deviceManager.getSnapshotByDeviceId(deviceId) ?? snapshot;
+    : getObservedBinaryControl(deviceId) ?? snapshot;
   // An opposite pending command must be superseded even when the current
   // observation already matches the new intent: the older command may still
   // materialize after this decision.

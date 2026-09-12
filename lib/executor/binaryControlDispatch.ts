@@ -1,9 +1,9 @@
-import type { DeviceObservation } from '../device/deviceObservation';
 import {
   type BinaryControlDecision,
   type BinaryControlDecisionSnapshot,
   type BinaryControlLogContext,
   type BinaryControlRestoreSource,
+  type ObservedBinaryControlRead,
 } from '../plan/planBinaryControlHelpers';
 import { decideBinaryControl } from '../plan/planBinaryControl';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
@@ -31,13 +31,11 @@ export type BinaryControlOutcome =
   | { applied: true };
 
 /**
- * Transport seam for binary-control dispatch. Executor talks to this
- * (an interface implementing the two writeable seams) rather than
- * importing `DeviceTransport` directly. Today the same concrete object
- * services both reads (`DeviceObservation`) and writes — PRs #2 and #3
- * of the observer/transport split established this shape; only the
- * implementer changed when `DeviceManager` was renamed to
- * `DeviceTransport` in PR #3.
+ * Transport seam for binary-control dispatch. Executor talks to this rather
+ * than importing `DeviceTransport` directly. Its one read is the observer's
+ * binary axis (`getObservedBinaryControl`), so the decision cannot consult a
+ * transport snapshot the projection has not recorded (stage 5 of the snapshot
+ * decomposition); its writes go through the actuator.
  *
  * Carries the observer-owned `pendingBinaryCommandStore` so the
  * dispatcher can record pending entries on every issued command and
@@ -47,7 +45,7 @@ export type BinaryControlOutcome =
  * cleared from the declined/failure arms here as well).
  */
 export type BinaryControlTransport = {
-  observation: DeviceObservation;
+  getObservedBinaryControl: ObservedBinaryControlRead;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   /**
    * The single device write seam. Binary control routes through
@@ -60,16 +58,16 @@ export type BinaryControlTransport = {
 const logger = getLogger('executor/binary-dispatch');
 
 /**
- * Convenience wrapper: ask the plan layer to decide (reading state via the
- * transport's bound `observation`) and, if it returns a decision, dispatch
- * it via the same transport. Returns `{ applied: true }` when the
- * underlying dispatch succeeded, `{ applied: false }` when the plan skipped or
- * the dispatch failed.
+ * Convenience wrapper: ask the plan layer to decide (reading the binary axis
+ * via the transport's bound `getObservedBinaryControl`) and, if it returns a
+ * decision, dispatch it via the same transport. Returns `{ applied: true }`
+ * when the underlying dispatch succeeded, `{ applied: false }` when the plan
+ * skipped or the dispatch failed.
  *
  * The decide-and-dispatch pair must share one observation source to avoid
- * deciding against one snapshot and logging against another; that's why the
- * wrapper sources both from `transport.observation` rather than accepting a
- * second `DeviceObservation` parameter.
+ * deciding against one reading and logging against another; that's why the
+ * wrapper sources both from the transport rather than accepting a second
+ * observed read.
  */
 export async function decideAndDispatchBinaryControl(params: {
   transport: BinaryControlTransport;
@@ -90,7 +88,7 @@ export async function decideAndDispatchBinaryControl(params: {
   } = params;
   const decision = decideBinaryControl({
     pendingBinaryCommandStore: transport.pendingBinaryCommandStore,
-    deviceObservation: transport.observation,
+    getObservedBinaryControl: transport.getObservedBinaryControl,
     deviceId,
     name,
     desired,

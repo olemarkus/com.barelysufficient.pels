@@ -93,7 +93,8 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     homeId: deps.homeId,
     setCapacityInShortfall: deps.setCapacityInShortfall,
     persistLastControlledMs: deps.persistLastControlledMs,
-    deviceManager: deps.deviceManager,
+    getDeviceDescriptor: deps.getDeviceDescriptor,
+    getDeviceDescriptors: deps.getDeviceDescriptors,
     // The RECORD, not the base read: the executor's drift check reads the
     // reported step, measured power and EV state off it. Supplying
     // `getObservedState` here compiles — narrow is assignable to wide, since
@@ -141,11 +142,13 @@ export function createPlanEngineComposition(
   scope: HomeScope,
   options: CreatePlanEngineOptions,
 ): PlanEngineCompositionResult {
-  // Resolve the device manager first so its absence surfaces the canonical
+  // Assert the device manager first so its absence surfaces the canonical
   // "DeviceTransport must be initialized" error. buildDeviceActuator only returns
   // null when the device manager is absent, so past this guard the actuator is
-  // non-null; the assertion just satisfies the required dep type.
-  const deviceManager = requireDeviceManager(ctx);
+  // non-null; the assertion just satisfies the required dep type. The handle
+  // itself is not kept: the executor reads devices through `ctx`'s descriptor
+  // and observed reads below, never through the transport.
+  requireDeviceManager(ctx);
   const baseActuator = buildDeviceActuator(ctx);
   if (!baseActuator) {
     throw new Error('Device actuator must be initialized before plan engine setup.');
@@ -173,7 +176,11 @@ export function createPlanEngineComposition(
     steppedCommandStore: ctx.steppedCommandStore,
     steppedReportedStore: ctx.steppedReportedStore,
     persistLastControlledMs: scope.persistLastControlledMs,
-    deviceManager,
+    // The executor's two device reads, each from its owner: descriptors from
+    // the transport, the observed record from the observer projection. It gets
+    // no handle on the transport itself (stage 5 of the snapshot decomposition).
+    getDeviceDescriptor: (deviceId: string) => ctx.getDeviceDescriptor(deviceId),
+    getDeviceDescriptors: () => ctx.getDeviceDescriptors(),
     // See the sibling wiring above: the drift check holds the record.
     getObservedRecord: (deviceId: string) => ctx.getObservedRecord(deviceId),
     getObservationRevision: () => ctx.getObservationRevision(),

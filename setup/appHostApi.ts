@@ -49,6 +49,11 @@ import {
 import { requireConfiguredPowerSource } from './powerSourceSettings';
 import { assembleWeatherAdvisorReadout } from './appInit/weatherAdvisorReadoutAssembler';
 import { requirePlanService as requireInitializedPlanService } from './appInit/contextGuards';
+import {
+  projectDeviceDescriptors,
+  readDeviceDescriptor,
+  readDeviceDescriptors,
+} from '../lib/device/deviceDescriptorProjection';
 import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import { SMART_TASK_WIDGET_WRITE_ORIGIN } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
@@ -137,7 +142,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
    * `getSnapshot()` cannot be sealed inside transport yet.
    */
   public async getFlowDeviceDescriptors(): Promise<DeviceDescriptorRead[]> {
-    return this.getFlowSnapshot();
+    return projectDeviceDescriptors(await this.getFlowSnapshot());
   }
 
   /**
@@ -146,16 +151,38 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
    * Surface 2 of the observer/transport split
    * (`notes/state-management/snapshot-decomposition.md`). Most wiring that
    * reaches for `getSnapshot()` wants only this: a device's id, its zone, what it
-   * can natively write, what class it is. Same value, narrower declared surface,
-   * so a caller typed to it cannot read an observation — the property stage 7
-   * needs before `getSnapshot()` can be sealed inside transport.
+   * can natively write, what class it is. PROJECTED, not merely narrowed
+   * (`projectDeviceDescriptor`): the executor spreads a descriptor into its own
+   * read, and a spread copies what the object physically carries, so the served
+   * object must carry no observation — the property stage 7 needs before
+   * `getSnapshot()` can be sealed inside transport.
    *
-   * Lives here rather than on `DeviceTransport` for a dull reason worth writing
-   * down: that class sits at exactly its 500-line cap, so it cannot take another
-   * method without something else leaving first.
+   * The reads themselves live with their owner (`readDeviceDescriptors` in
+   * `lib/device/deviceDescriptorProjection.ts`); this façade only delegates, and
+   * decides one thing: what an absent transport means. The two forms answer that
+   * differently, on purpose. This list read resolves to "no devices": one of its
+   * callers is the target-power probe scheduler's timer
+   * (`appTargetPowerReachabilityWiring.ts`), which cannot surface a throw and
+   * runs before the transport exists in the app's own boot ordering
+   * (`setup/AGENTS.md`: "assert only where the caller can surface the error, and
+   * resolve where it cannot"). The by-id read below is the executor's alone,
+   * constructed only after `requireDeviceManager`, so it asserts.
    */
   public getDeviceDescriptors(): DeviceDescriptorRead[] {
-    return this.context.deviceManager?.getSnapshot() ?? [];
+    const transport = this.context.deviceManager;
+    return transport ? readDeviceDescriptors(transport) : [];
+  }
+
+  /**
+   * The by-id form of `getDeviceDescriptors`, same projection. Asserts the
+   * transport rather than optional-chaining it: this is the executor's read, and
+   * an absent transport must surface as the boot-order error, not as "untracked
+   * device" — a plan decided and silently never applied (`setup/AGENTS.md`
+   * § "An extracted body re-asserts a boot-window invariant by throwing, never
+   * by defaulting").
+   */
+  public getDeviceDescriptor(deviceId: string): DeviceDescriptorRead | undefined {
+    return readDeviceDescriptor(this.requireDeviceManager(), deviceId);
   }
 
   public get latestTargetSnapshot(): DecoratedDeviceSnapshot[] {

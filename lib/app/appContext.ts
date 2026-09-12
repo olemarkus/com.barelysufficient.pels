@@ -299,6 +299,8 @@ export type AppContext = {
    * committed snapshot rather than through the Flow-card lazy refresh.
    */
   getDeviceDescriptors(): DeviceDescriptorRead[];
+  /** One device's descriptor, or `undefined` for an untracked id. */
+  getDeviceDescriptor(deviceId: string): DeviceDescriptorRead | undefined;
   getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead;
   get priceOptimizationEnabled(): boolean;
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;

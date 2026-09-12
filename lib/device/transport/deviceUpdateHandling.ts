@@ -219,9 +219,7 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     // Snapshot (and binary-settle evidence) is now committed to
     // `latestSnapshotById`, so each enriched observed value projects the
     // post-update state rather than the previous one.
-    for (const event of deferredObservedStateEvents) {
-        ctx.dispatchObservedStateChanged(event);
-    }
+    flushDeferredObservedState(ctx, deviceId, deferredObservedStateEvents, previousSnapshot, currentSnapshot);
     for (const event of deferredControlEvents) ctx.emitObservedControlStateChangedEvent(event);
     // Class `car` devices reach us only here and on the device fetch: the live
     // feed pushes `device.update` for EVERY device, while parse drops unsupported
@@ -233,6 +231,30 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     // the committed snapshot, so running it earlier would diff against the
     // PRE-update state and lag every charger edge by one device update.
     ctx.observationProducers.evCarLink.noteDeviceUpdate(effectiveDevice, Date.now());
+}
+
+// Dispatch the reconcile's deferred observed-state events — and when it emitted
+// none, still dispatch for an availability flip. Availability is not a
+// capability, so it has no per-capability event of its own: it changes only
+// here, when the re-parsed device replaces the entry, and the reconcile emits an
+// observation event only for a control-state change or a temperature /
+// state-of-charge facet. A device.update that ONLY flips `available` would
+// otherwise leave the projection reporting the old value until the next full
+// refresh — and the executor reads `available` from the projection (stage 5 of
+// the snapshot decomposition), so it would keep writing to a device Homey had
+// marked unreachable, or skip one that had come back, for up to that long.
+// Called AFTER the commit, like every dispatch on this path.
+function flushDeferredObservedState(
+    ctx: TransportContext,
+    deviceId: string,
+    events: readonly ObservedDeviceStateEvent[],
+    previousSnapshot: Pick<TargetDeviceSnapshot, 'available'> | undefined,
+    currentSnapshot: Pick<TargetDeviceSnapshot, 'available'> | null,
+): void {
+    for (const event of events) ctx.dispatchObservedStateChanged(event);
+    if (events.length > 0 || !currentSnapshot) return;
+    if (previousSnapshot?.available === currentSnapshot.available) return;
+    ctx.dispatchObservedStateForDevice(deviceId);
 }
 
 function recordMalformedTemperatureEntries(

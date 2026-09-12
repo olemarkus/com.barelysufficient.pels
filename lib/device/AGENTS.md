@@ -1,12 +1,11 @@
 # Device Layer — Orientation and State Invariants
 
-`lib/device` owns observed current device state and device-specific actuation transport. The planner imports this module only through the producer seams allowlisted by `no-plan-to-device` (`deviceObservation.ts`, `deviceActionProjection.ts`, `deviceResidualKw.ts`); planning inputs cross that boundary as producer-resolved flat values.
+`lib/device` owns observed current device state and device-specific actuation transport. The planner imports this module only through the producer seams allowlisted by `no-plan-to-device` (`deviceActionProjection.ts`, `deviceResidualKw.ts`); planning inputs cross that boundary as producer-resolved flat values. The executor imports nothing from here at all: its device reads are the transport's descriptors and the observer projection, joined in `lib/executor/executorDeviceRead.ts`.
 
 ## Map
 
 - `deviceTransport.ts` — the hub class: syncs Homey state back, detects external changes, owns the actuation transport (splitting the two halves is still open work).
 - `transport/` — snapshot fetch/parse, realtime capability handlers, freshness, and retained-observation accounting (`managerObservation.ts`).
-- `deviceObservation.ts` — read-only view over the snapshot store; plan/executor read consumers depend on this interface, not the concrete class. House-style docblock reference.
 - `deviceActionProjection.ts` — the producer that resolves observed/planner-facing bits onto `PlanInputDevice`; consumers must not re-branch on source/provenance/evidence.
 - `devicePowerEstimate.ts` / `devicePowerCalibration*.ts` / `deviceResidualKw.ts` — expected-power estimation and step calibration.
 - `manager*.ts` — transport halves (control, energy, flow support, measured power, native EV, native stepped command).

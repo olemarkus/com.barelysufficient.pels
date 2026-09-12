@@ -1000,6 +1000,22 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Device observation and transport
 
+- [ ] **P2 — the observer projection keeps serving a device the transport dropped between
+      refreshes.** `dropDeviceWithoutRemainingControlFacet`
+      (`lib/device/transport/realtimeCapabilityHandling.ts`) and the device.update parse-out path
+      (`lib/device/transport/deviceUpdateHandling.ts` via `syncRealtimeDeviceUpdateSnapshot`) remove
+      the entry from `latestSnapshot`/`latestSnapshotById` and THEN dispatch, so
+      `dispatchObservedStateChanged` finds no snapshot to enrich, the event carries no `observed`,
+      and `ObservedDeviceStateProjection.applyDelta` ignores it. The projection prunes only on the
+      next full refresh (`applyRefresh`), so every `getObservedState`/`getObservedRecord` reader —
+      the settings-UI payload, `toPlanDevice` — sees a ghost for up to a poll interval. The executor
+      is not affected: `readExecutorDevice` gates on the descriptor first. Trigger: a thermostat
+      with no `onoff` and no ladder whose `target_temperature` goes non-finite. **What changes:**
+      dispatch an explicit removal from both drop sites (a refresh-shaped event for that one id, or
+      a `removed` delta the projection deletes on). **Done when:** a transport-boundary spec drops
+      a device over the realtime path and `projection.getObservedState(id)` is `undefined` before
+      any refresh. Source: runtime-reality review of the stage-5 PR.
+
 - [ ] **P2 — the one persisted actuation clock sits outside the abandon-grace regime.**
       `DEVICE_LAST_CONTROLLED_MS` is hydrated by `setup/appServiceWiring.ts` and
       `setup/homeRuntime/createHomeCapacityBundle.ts` as `isNumberMap(stored) ? { ...stored } : {}` and
