@@ -3,7 +3,7 @@ import { RESPECT_EXTERNAL_OFF_DEVICES } from '../../../../contracts/src/settings
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
 import { showToast } from '../toast.ts';
-import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 
 /**
  * "Leave off until turned on again" — the per-device opt-in that makes an
@@ -11,9 +11,26 @@ import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
  *
  * Shown only for devices PELS can actually switch: the runtime gate is
  * binary-capability-only, so offering it for a temperature-only device would be
- * a switch that silently does nothing. Disabled — with a visible "why" — while
- * Managed or Power-limit control is off, since the setting only has meaning when
- * PELS controls whether the device runs.
+ * a switch that silently does nothing. Disabled — with a visible "why" — only
+ * while Managed is off.
+ *
+ * NOT disabled while Power-limit control is off. The setting is a standing
+ * preference, not a momentary one: hold detection is plan-independent
+ * (`setup/externalOffHoldDetection.ts`, "regardless of control mode"), so an
+ * outside OFF is recorded whether or not PELS may resume the device right now,
+ * and it takes effect the moment power-limit control comes on. The documented
+ * cheap-hour pattern leaves power-limit control OFF by default and lets a Flow
+ * turn it on for the booked hours (`docs/how-to-book-cheap-hours-with-flows.md`);
+ * gating the switch on the toggle's current state made the hold un-settable for
+ * exactly those devices, for as long as the Flow had control off. The
+ * power-limit hint stays, as information about when the setting applies.
+ *
+ * ON/OFF ONLY. The hold says nothing about a thermostat's setpoint: PELS keeps
+ * writing the temperature it would write anyway unless the owner selected
+ * "Keep the new temperature" (`notes/temperature-ownership.md`). A temperature
+ * device gets a second hint saying so, because an owner who tests the hold
+ * assumes PELS has taken its hands off the device entirely — one did, and
+ * reported the setpoint "being restored" as a bug.
  */
 
 // Queried here rather than in `dom.ts` because these four elements have exactly
@@ -26,6 +43,7 @@ const toggleEl = q<HTMLElement & { selected: boolean; disabled: boolean }>(
 );
 const powerLimitHintEl = q<HTMLElement>('#device-detail-respect-external-off-power-limit-hint');
 const smartTaskHintEl = q<HTMLElement>('#device-detail-respect-external-off-smart-task-hint');
+const temperatureHintEl = q<HTMLElement>('#device-detail-respect-external-off-temperature-hint');
 
 const runSerializedRespectExternalOffWrite = createSerializedAsyncRunner();
 
@@ -47,10 +65,11 @@ const isPowerLimitControlOn = (deviceId: string): boolean => (
 );
 
 /**
- * Power-limit-off is the more fundamental blocker, so its hint wins when both
- * apply. The smart-task hint is a WARNING, not a blocker: an explicit off action
- * is meant to beat a smart task, so the switch stays usable and the hint just
- * makes the deadline consequence visible.
+ * Managed-off is the only blocker. The two hints are INFORMATION, not blockers:
+ * the power-limit hint says when the setting takes effect (see the module doc
+ * for why that is not a gate), and the smart-task hint makes the deadline
+ * consequence visible — an explicit off action is meant to beat a smart task,
+ * so the switch stays usable through both.
  */
 const applyRespectExternalOffDisabledState = (
   deviceId: string,
@@ -64,7 +83,7 @@ const applyRespectExternalOffDisabledState = (
     // native wiring becomes required, Managed switched off — leaves the user no
     // way to remove the opt-in, and PELS silently starts honouring it again if
     // the device later qualifies. Same escape-hatch rule that keeps the row visible.
-    toggleEl.disabled = !optedIn && (powerLimitOff || !isManaged);
+    toggleEl.disabled = !optedIn && !isManaged;
   }
   if (powerLimitHintEl) {
     powerLimitHintEl.hidden = !powerLimitOff || !isManaged;
@@ -105,9 +124,18 @@ export const syncRespectExternalOffRow = (params: {
     if (smartTaskHintEl) {
       smartTaskHintEl.hidden = true;
     }
+    if (temperatureHintEl) {
+      temperatureHintEl.hidden = true;
+    }
     return;
   }
   toggleEl.selected = optedIn;
+  if (temperatureHintEl) {
+    // A static capability fact, not a blocker: the row is the same for a plain
+    // switch and a thermostat, and only the thermostat's owner needs telling
+    // that this switch leaves the setpoint alone.
+    temperatureHintEl.hidden = !supportsTemperatureDevice(device);
+  }
   applyRespectExternalOffDisabledState(deviceId, controlState.isManaged, optedIn);
 };
 

@@ -4,6 +4,7 @@ import {
   supportsPowerDevice, supportsTemperatureControlDevice, supportsTemperatureDevice, type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
 import { isSteppedLoadControlModel } from '../deviceKind.ts';
+import { POWER_READING_REMEDY } from '../deviceControlAvailability.ts';
 
 export function followsDeviceTemperature(device: SettingsUiDeviceDetailItem | null): boolean {
   return device !== null && resolveTemperatureControlMode(
@@ -27,7 +28,7 @@ export function temperatureAdjustmentGateHint(device: SettingsUiDeviceDetailItem
 }
 
 export function manualTemperaturePowerHint(device: SettingsUiDeviceDetailItem | null): string {
-  if (!supportsPowerDevice(device)) return 'PELS cannot limit this device’s power.';
+  if (!supportsPowerDevice(device)) return `PELS cannot limit this device’s power. It needs ${POWER_READING_REMEDY}.`;
   if (isSteppedLoadControlModel(device)) return 'PELS can still limit power using this device’s power levels.';
   if (device?.binaryControllable === true) return 'PELS can still limit power by turning this device off and on.';
   return 'PELS cannot limit this device’s power without changing its temperature.';
