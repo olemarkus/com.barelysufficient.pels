@@ -650,9 +650,14 @@ export type PlanDeviceCarriedKey =
   | 'stepCommandRetryCount' | 'stepCommandStatus' | 'suggestedSteppedLoadProfile' | 'targetStepId'
   | 'targets' | 'zone' | 'zoneId';
 
-/** Stripped before planning: raw transport bindings and observations. */
+/**
+ * Stripped before planning: raw observations and the decorator's own stamps.
+ * (The transport's binding ids — `binaryCapabilityId` and its kin — are no
+ * longer in this list because they are no longer on the input: since stage 6
+ * of the snapshot decomposition the producer takes the join of the two
+ * projected surfaces, which never carried them.)
+ */
 export type PlanDeviceStrippedKey =
-  'binaryCapabilityId' | 'binaryControl' | 'binaryControlObservation' | 'binaryObservationCapabilityId'
-  | 'binaryWriteCapabilityId' | 'evChargingState' | 'flowBackedCapabilityIds' | 'measuredPowerKw'
+  'binaryControl' | 'binaryControlObservation' | 'evChargingState' | 'measuredPowerKw'
   | 'steppedLoadProfile' | 'targetPowerConfig' | 'temperature' | 'temperatureAdjustmentsDisabled'
   | 'temperatureControlDisabled';

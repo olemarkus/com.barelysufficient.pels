@@ -20,16 +20,25 @@
  * in place — the in-place mutators (`transport/observationApply.ts` and its
  * neighbours) all write observed fields, which this projection does not carry.
  */
-import type { DeviceDescriptorRead, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { DeviceDescriptorRead } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 
 /**
- * The snapshot store as the descriptor reads see it — the two lookups
- * `DeviceTransport` exposes, and nothing else. Structural so this module never
- * names the concrete class.
+ * The snapshot store as these reads see it — the two lookups `DeviceTransport`
+ * exposes, and nothing else. Structural so this module never names the concrete
+ * class.
+ *
+ * Typed `TransportDeviceSnapshot`, not `TargetDeviceSnapshot`: `readDeviceSurfaces`
+ * projects the OBSERVED half out of these same objects when the observer has no
+ * record, and the observed clusters it reads (`temperature`, `stateOfCharge`,
+ * `measuredPowerKw`, `evChargingState`, `reportedStepId`) live on the probes, not
+ * on the base type. Declared as the base it would compile anyway — every probe
+ * member is optional — and work only because the object happens to be physically
+ * wider, which is the failure this file's own header warns about.
  */
 export type DeviceSnapshotStore = {
-    getSnapshot(): TargetDeviceSnapshot[];
-    getSnapshotByDeviceId(id: string): TargetDeviceSnapshot | undefined;
+    getSnapshot(): TransportDeviceSnapshot[];
+    getSnapshotByDeviceId(id: string): TransportDeviceSnapshot | undefined;
 };
 
 // A record keyed by EVERY descriptor key: TypeScript refuses the literal when a

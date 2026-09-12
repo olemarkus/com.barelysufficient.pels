@@ -3877,11 +3877,21 @@ describe('periodic snapshot refresh scheduling', () => {
     expect(dispatchObservedStateForDevice).toHaveBeenCalledWith('dev-1', 'onoff');
   });
 
-  it('does not dispatch for an already-fresh EV SoC heartbeat', async () => {
-    // Regression: the EV-SoC freshness branch must NOT dispatch the SoC capability
-    // into the projection — doing so would re-advertise measure_battery, which is
-    // the work `shouldRebuildPlanForFlowEvSocReport` deliberately skips for a
-    // fresh heartbeat.
+  it('dispatches an already-fresh EV SoC heartbeat without asking for a rebuild', async () => {
+    // This used to assert the opposite — that the EV-SoC freshness branch must NOT
+    // dispatch — on the grounds that doing so would re-advertise measure_battery and
+    // undo the work `shouldRebuildPlanForFlowEvSocReport` skips for a fresh heartbeat.
+    // The dispatch does not do that: the observed-state subscribers are the projection
+    // and `planObservedStateSubscription`, and no listener there requests a rebuild
+    // (an observation never rebuilds the plan). The rebuild assertion below is what
+    // actually pins that invariant, and it still holds.
+    //
+    // Not dispatching, meanwhile, became a defect at stage 6 of the snapshot
+    // decomposition: the plan input reads `stateOfCharge` off the observer's record
+    // now, and this branch re-resolves `level`, so a heartbeat that gives a charger a
+    // level it did not have would never reach `toPlanDevice` — leaving the objectives
+    // layer reporting `objective_progress_stale` for a charger the transport knew
+    // about.
     const app = createApp();
     const initialReportedAt = Date.now();
     const nextReportedAt = initialReportedAt + 60_000;
@@ -3916,10 +3926,10 @@ describe('periodic snapshot refresh scheduling', () => {
       reportedAt: nextReportedAt,
     });
 
-    expect(dispatchObservedStateForDevice).not.toHaveBeenCalled();
-    // Falsifiable replacement for the old `reason: 'realtime_ev_soc'` clause,
-    // which named a trigger that no longer exists: a fresh heartbeat asks the
-    // scheduler for nothing at all.
+    expect(dispatchObservedStateForDevice).toHaveBeenCalledWith('ev-1', 'measure_battery');
+    // The invariant that matters, and the falsifiable one: a fresh heartbeat asks
+    // the scheduler for nothing at all. Dispatching the observation does not
+    // change that.
     expect(rebuildSpy).not.toHaveBeenCalled();
   });
 

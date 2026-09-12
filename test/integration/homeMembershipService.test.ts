@@ -323,11 +323,14 @@ describe('post-refresh recompute through the transport seam', () => {
       observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
     });
     // Stub ctx exposing ONLY the members `wireHomeMembership` may touch. The
-    // decorated-snapshot getter throws: `decorateTargetSnapshotList` MUTATES
-    // stepped-load runtime state (prune/expire/confirm), so a membership
-    // recompute routing through it would be a side-effecting read. If any
-    // recompute touched it, containment would leave the membership map empty
-    // and the h_a assertion below would fail.
+    // decorated-snapshot getter throws, so if any recompute touched it,
+    // containment would leave the membership map empty and the h_a assertion
+    // below would fail. (It used to be a SIDE-EFFECTING read —
+    // `decorateTargetSnapshotList` settled stepped commands — which is why the
+    // routing-around exists at all. That settling moved to
+    // `lib/executor/syncSteppedCommands.ts` and the decorator is now pure; what
+    // the getter still costs is a full re-projection and re-decoration of every
+    // device on each access, which is reason enough not to reach for it here.)
     const ctxStub = {
       homey: homeyLike,
       deviceManager: transport,

@@ -69,15 +69,22 @@ export function hasTemperaturePolicyPowerControl(device: DecoratedDeviceSnapshot
     || device.binaryControl !== undefined || isSteppedLoadSnapshot(device);
 }
 
-/** Preserve the configured action unless following device targets removes its axis. */
+/**
+ * Preserve the configured action unless following device targets removes its axis.
+ *
+ * The device arrives as a THUNK because the first line answers for most devices
+ * without one, and resolving it is not free: the caller's device view re-projects
+ * and re-decorates on access, and this runs several times per device per plan
+ * build (shed floors, candidates, restore, the silent-meter pass). Passed eagerly
+ * it rebuilt the whole device list every time, for an argument usually unread.
+ */
 export function resolveTemperaturePolicyShedBehavior<T extends { action: string }>(
   configured: T,
-  devices: readonly DecoratedDeviceSnapshot[],
-  deviceId: string,
+  readDevice: () => DecoratedDeviceSnapshot | undefined,
   allowsAdjustments: boolean,
 ): T | { action: 'turn_off' } | { action: 'set_step' } {
   if (allowsAdjustments || configured.action !== 'set_temperature') return configured;
-  const device = devices.find((candidate) => candidate.id === deviceId);
+  const device = readDevice();
   if (device && device.binaryControl === undefined && isSteppedLoadSnapshot(device)) return { action: 'set_step' };
   return { action: 'turn_off' };
 }

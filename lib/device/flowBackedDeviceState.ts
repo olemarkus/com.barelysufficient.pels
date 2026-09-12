@@ -398,8 +398,11 @@ export class FlowBackedDeviceState {
     capabilityId: FlowReportedCapabilityId;
     reportedAt: number;
   }): void {
-    const snapshot = this.deps.getDeviceManager()?.getSnapshot();
-    if (!snapshot) return;
+    // Resolved once. Every use below was `getDeviceManager()?.…`, and each of
+    // those optional chains is a branch this method is charged for.
+    const transport = this.deps.getDeviceManager();
+    const snapshot = transport?.getSnapshot();
+    if (!transport || !snapshot) return;
     // Probe-widened: the stored snapshot physically carries the observed SoC bag
     // the base type omits, and this seam mutates its freshness in place.
     const device: (TargetDeviceSnapshot & StateOfChargeObservedProbe) | undefined = snapshot
@@ -409,23 +412,27 @@ export class FlowBackedDeviceState {
       return;
     }
     if (params.capabilityId === EV_SOC_CAPABILITY_ID) {
-      if (this.deps.getDeviceManager()?.isFlowBackedCapability(params.deviceId, params.capabilityId) !== true) return;
+      if (transport.isFlowBackedCapability(params.deviceId, params.capabilityId) !== true) return;
       // A car-sourced level is NOT the flow card's to keep alive. This helper
       // spreads the previous reading forward, so without this guard a flow card
       // that keeps firing would re-stamp the CAR's percentage as this charger's
       // own observation — laundering one device's reading into another's, and
       // outliving the association that justified adopting it.
       if (hasObservedStateOfCharge(device) && device.stateOfCharge.source.kind === 'car') return;
-      updateStateOfChargeObservationFreshness({
-        snapshot: device,
-        reportedAt: params.reportedAt,
-      });
-      // Deliberately NOT dispatched into the projection here: this branch only
-      // advances `stateOfCharge` freshness (no `lastFreshDataMs` change), which
-      // no projection reader consumes yet, and re-advertising the SoC capability
-      // on this event would trip `the realtime SoC dispatch`
-      // into the very plan rebuild this freshness-only heartbeat is meant to
-      // skip. A future SoC-freshness projection reader handles its own dispatch.
+      updateStateOfChargeObservationFreshness({ snapshot: device, reportedAt: params.reportedAt });
+      // Dispatched since stage 6 of the snapshot decomposition. This branch
+      // advances `stateOfCharge` freshness AND re-resolves `level`
+      // (`resolveLevelFields`), so a heartbeat can give a charger a level it did
+      // not have. The reader an earlier comment here said did not exist is
+      // `toPlanDevice`, which reads `stateOfCharge` off the observer's record
+      // now — and the objectives layer behind it, which drops samples whose
+      // `level.observedAtMs` is older than 30 minutes and reports
+      // `objective_progress_stale` for a level that never became `known`.
+      //
+      // The plan rebuild that non-dispatch avoided is no longer reachable: an
+      // observation never rebuilds the plan (root `AGENTS.md` § Control Flow),
+      // and the realtime EV-SoC rebuild gate it named is gone.
+      transport.dispatchObservedStateForDevice(params.deviceId, params.capabilityId);
       return;
     }
     const nextFreshDataMs = Math.max(device.lastFreshDataMs ?? 0, params.reportedAt);
@@ -435,8 +442,7 @@ export class FlowBackedDeviceState {
     // Steady (no value change) flow-backed reports only advance freshness in
     // place; dispatch so the projection-fed freshness reader stays faithful
     // instead of marking the device stale until the next value change/refresh.
-    // Non-SoC capability id, so it can't trip the realtime EV-SoC rebuild gate.
-    this.deps.getDeviceManager()?.dispatchObservedStateForDevice(params.deviceId, params.capabilityId);
+    transport.dispatchObservedStateForDevice(params.deviceId, params.capabilityId);
   }
 
   async getHomeyDevicesForFlow(): Promise<HomeyDeviceLike[]> {

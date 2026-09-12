@@ -1,4 +1,4 @@
-import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getTransportSnapshotForTests } from '../utils/appTestUtils';
 import { mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../../lib/utils/settingsKeys';
@@ -73,7 +73,10 @@ const buildEvApiDevice = (overrides?: Partial<{
 });
 
 function getSnapshot(): TargetDeviceSnapshot[] {
-  return (getLatestTargetSnapshotForTests()) ?? [];
+  // The TRANSPORT's snapshot: these specs assert admission AND the parse's own
+  // `binaryCapabilityId`, which the plan-input view no longer carries (stage 6
+  // of the snapshot decomposition). Admission is identical through either.
+  return (getTransportSnapshotForTests()) ?? [];
 }
 
 function withoutSnapshotFreshness(snapshot: TargetDeviceSnapshot[]): Array<Omit<

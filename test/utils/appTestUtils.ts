@@ -139,6 +139,21 @@ export function getLatestTargetSnapshotForTests(): TargetDeviceSnapshot[] {
 }
 
 /**
+ * The TRANSPORT's snapshot, not the plan-input view above.
+ *
+ * Since stage 6 of the snapshot decomposition `latestTargetSnapshot` is the
+ * descriptor joined with the observer's record, so it carries no transport
+ * binding (`binaryCapabilityId` and kin) — those are how the transport reaches
+ * the device, not something a plan device is entitled to know. A spec asserting
+ * what PARSE produced reads them here instead.
+ */
+export function getTransportSnapshotForTests(): TargetDeviceSnapshot[] {
+  const app = mockHomeyInstance.app as { deviceManager?: { getSnapshot?: () => unknown } } | null;
+  const snapshot = app?.deviceManager?.getSnapshot?.();
+  return Array.isArray(snapshot) ? snapshot as TargetDeviceSnapshot[] : [];
+}
+
+/**
  * Clean up all tracked app instances by calling onUninit().
  * Should be called in afterEach().
  */

@@ -49,6 +49,9 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
         projected.evChargingObservedAtMs = snapshot.evChargingObservedAtMs;
     }
     if (snapshot.evChargingState !== undefined) projected.evChargingState = snapshot.evChargingState;
+    if (snapshot.evChargingStateObservedAtMs !== undefined) {
+        projected.evChargingStateObservedAtMs = snapshot.evChargingStateObservedAtMs;
+    }
     if (snapshot.stateOfCharge !== undefined) {
         projected.stateOfCharge = {
             ...snapshot.stateOfCharge,

@@ -85,6 +85,16 @@ function applyBinaryCapabilityUpdate(ctx: TransportContext, params: {
     // absent (non-binary) previous state can't read as a spurious on<->on change.
     const previousOn = previousBinaryAxisOn;
     const nextOn = resolveBinaryAxisOn(snapshot, capabilityId, true);
+    // NOT dispatched when the fold is unchanged, though
+    // `applyBinaryObservationToSnapshot` may have re-stamped
+    // `binaryControlObservation` — see the `TODO.md` entry on transport writes
+    // that never reach the projection. The one-line dispatch that belongs here by
+    // analogy with `measure_power` cuts across binary-settle semantics: a report
+    // equal to the PRE-write value while PELS's own command is in flight is
+    // deliberately kept quiet ("keeps equal realtime control truth quiet after an
+    // accepted write", `test/integration/deviceManager.test.ts`), and separating
+    // "re-stamped an observation" from "echoed a command we have not settled"
+    // needs the settle path's own analysis, not a fold comparison.
     if (nextOn === previousOn) return false;
     changes.push({
         capabilityId,
@@ -94,6 +104,37 @@ function applyBinaryCapabilityUpdate(ctx: TransportContext, params: {
     });
     return false;
 }
+
+/**
+ * A reading that repeats its previous value still advanced an observation stamp
+ * in place — `applyFreshnessOnlyCapabilityUpdate` writes
+ * `measuredPowerObservedAtMs` BEFORE its change check, on purpose, and the
+ * state-of-charge branch does the same with `report.observedAtMs`. The `changed`
+ * flag gates expensive downstream work (calibration ingest, rebuild scheduling);
+ * it does not decide what was observed. So push the delta here — but only when
+ * the reading was ACCEPTED (`observationAdvanced`), never for junk the seam
+ * rejected — or the observer
+ * projection keeps the old stamp until the next full refresh five minutes later
+ * — and `resolveConfirmedNotDrawing` (`setup/appInit/calibrationViews.ts`), which
+ * the stamp exists to serve, answers from a 60-second window off the projection
+ * since stage 6. It would read "not idle" for four minutes in five and never
+ * release the boost it is meant to cancel.
+ *
+ * Twin of the same push in `nativeSteppedRealtime.ts` for a power-step that does
+ * not move the reported rung.
+ */
+const dispatchFreshnessOnlyObservation = (
+    ctx: TransportContext,
+    deviceId: string,
+    capabilityId: string,
+): void => {
+    ctx.dispatchObservedStateChanged({
+        source: 'realtime_capability',
+        deviceId,
+        ...ctx.nextObservationCursor(deviceId),
+        capabilityId,
+    });
+};
 
 function handleFreshnessOnlyCapabilityUpdate(
     ctx: TransportContext,
@@ -122,7 +163,13 @@ function handleFreshnessOnlyCapabilityUpdate(
         result,
     })) return;
     const reconcileChange = result.reconcileChange;
-    if (!result.changed) return;
+    if (!result.changed) {
+        // ONLY for a reading that was accepted and advanced a stamp. A rejected
+        // one mutated nothing, and dispatching it would bump the projection's
+        // accepted-write revision for an observation that never happened.
+        if (result.observationAdvanced) dispatchFreshnessOnlyObservation(ctx, deviceId, capabilityId);
+        return;
+    }
     recordCapabilityObservation({
         state: ctx.observationState,
         latestSnapshot: ctx.latestSnapshot,

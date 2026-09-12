@@ -387,7 +387,7 @@ export class DeviceTransport extends EventEmitter {
         return buildBinaryCommandConfirmationSnapshot(this.latestSnapshot);
     }
     getSnapshotByDeviceId(id: string): TargetDeviceSnapshot | undefined { return this.latestSnapshotById.get(id); }
-    getUiPickerDevices(): TargetDeviceSnapshot[] { return getSnapshotUiPickerDevices(this.ctx); }
+    getUiPickerDevices(): TransportDeviceSnapshot[] { return getSnapshotUiPickerDevices(this.ctx); }
     // Poll-path home power read; also fans the additional (sub-home) meter
     // readings out to the `onAdditionalMeterReadings` provider (multi-home
     // R7b) — see `pollHomePowerWithMeterFanOut` in `homePowerPoll.ts`.

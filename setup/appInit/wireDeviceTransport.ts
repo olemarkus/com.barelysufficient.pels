@@ -162,6 +162,11 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
     observedStateDispatcher: deps.getObservedStateEmitter().asDispatcher(deps.getObservedHomePower()),
     evCarLinkSnapshotAccess: createPersistedEvCarLinkAccess(ctx.homey, deps.timers),
   });
+  // Subscribe the projection BEFORE the transport is reachable through `ctx`:
+  // past that assignment any consumer can read `latestTargetSnapshot`, which is
+  // the descriptor joined with the projection's record, so a delta dispatched in
+  // between would be one no subscriber received.
+  subscribeObservedStateProjection(deps);
   // eslint-disable-next-line functional/immutable-data -- shared AppContext write
   ctx.deviceManager = deviceManager;
   await deviceManager.init();
@@ -174,5 +179,4 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
     () => ctx.deviceManager?.tickEvCarLink(Date.now()),
     EV_CAR_LINK_TICK_INTERVAL_MS,
   ));
-  subscribeObservedStateProjection(deps);
 }
