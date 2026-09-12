@@ -1,7 +1,7 @@
 import type { Logger as PinoLogger } from '../../logging/logger';
 import type { HeadroomReserve, resolveRestoreDecisionPhase } from '../admission';
 import type { DevicePlanDevice, ShedBehavior } from '../planTypes';
-import type { SwapState, SwapStateSnapshot } from '../swap';
+import type { SwapLedger } from '../swap';
 import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { RestoreTiming } from './timing';
@@ -20,8 +20,6 @@ export type RestoreDeps = {
   deviceNameById?: ReadonlyMap<string, string>;
   logDebug: (...args: unknown[]) => void;
 };
-
-export type RestorePlanState = SwapStateSnapshot;
 
 export type RestoreBatchState = {
   enabled: boolean;
@@ -56,7 +54,7 @@ export type RestoreCycle = {
   readonly deps: RestoreDeps;
   /** The pass's single mutable device index — stages read and write through it. */
   readonly deviceMap: Map<string, DevicePlanDevice>;
-  readonly swapState: SwapState;
+  readonly swapLedger: SwapLedger;
   readonly timing: RestoreTiming;
   readonly restoredThisCycle: Set<string>;
   /** Resolved exactly once per cycle — the resolver advances arming state. */
@@ -107,7 +105,6 @@ export type RestoreDeviceTiming = Pick<RestoreTiming,
  */
 export type RestorePlanResult = {
   planDevices: DevicePlanDevice[];
-  stateUpdates: RestorePlanState;
   restoredThisCycle: Set<string>;
   // Post-pass NON-EXEMPT view (min of capacity and measured-exempt budget axes
   // from the per-axis ledger) — no longer the binding-axis scalar. Consumers:

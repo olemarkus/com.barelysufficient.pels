@@ -35,7 +35,7 @@ import type { HeadroomReserve } from '../admission';
 import type { RestoreDeviceTiming } from './types';
 
 // Re-export the public restore-helper surface so existing importers
-// (lib/plan/restore/index.ts, lib/plan/swap/blocking.ts, tests) are unchanged
+// (lib/plan/restore/index.ts, lib/plan/restore/gating.ts, tests) are unchanged
 // while the implementation lives in cohesive sibling modules.
 export { setRestorePlanDevice, buildOffSteppedRestoreShedUpdate } from './planDeviceUpdates';
 export type { SteppedSwapExecutor } from './steppedRestoreAdmission';

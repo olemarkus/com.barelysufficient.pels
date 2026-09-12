@@ -1,3 +1,4 @@
+import { SwapLedger } from '../../lib/plan/swap';
 import { hasBinaryCommand } from '../../lib/executor/executablePlan';
 // Integration tests for the binary "Run on solar surplus" dump-load rung (PR-7).
 //
@@ -432,7 +433,7 @@ describe('surplus-held devices are never swap candidates', () => {
       priority: 9,
     });
     const wantsRoom = buildPlanDevice({ id: 'heater', name: 'Heater', priority: 1, expectedPowerKw: 1 });
-    const { toShed, ready } = buildSwapCandidates(wantsRoom, [heldPump], new Map(), 0, 1, new Set());
+    const { toShed, ready } = buildSwapCandidates(wantsRoom, [heldPump], new SwapLedger(), 0, 1, new Set());
     expect(toShed).toEqual([]);
     expect(ready).toBe(false);
   });

@@ -8,6 +8,7 @@ import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExec
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/executor/commandRetrySchedule';
+import { seedSwapReservation } from '../utils/swapLedgerFixture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   createPendingBinaryCommandStore,
@@ -938,10 +939,7 @@ describe('PlanExecutor restore logging', () => {
   it('records a fast flow-backed restore confirmation exactly once', async () => {
     const state = createPlanEngineState();
     state.shedDecisions.decidedMs['dev-1'] = Date.now() - 10_000;
-    state.swapByDevice['dev-1'] = {
-      pendingTarget: true,
-      timestamp: Date.now() - 1_000,
-    };
+    seedSwapReservation(state, { targetId: 'dev-1', openedAtMs: Date.now() - 1_000 });
     const { executor, deviceManager, flowBackedTurnOnTrigger } = buildExecutor(
       state,
       [{
@@ -1008,7 +1006,12 @@ describe('PlanExecutor restore logging', () => {
       startedMs: expect.any(Number),
       source: 'pels_restore',
     });
-    expect(state.swapByDevice['dev-1']).toBeUndefined();
+    // The executor does NOT settle the reservation. It used to, via
+    // `clearPendingSwapTarget` — which killed the reservation on a binary ON
+    // confirmation and, because donors are a projection of the reservation,
+    // released them before a stepped target reached its promised rung.
+    // Settling is decided from observed state by `SwapLedger.reconcile`.
+    expect(state.swapLedger.reservationFor('dev-1')).toBeDefined();
     expect(logCapture.events.filter((event) => (
       event.event === 'binary_command_applied' && event.deviceId === 'dev-1'
     ))).toHaveLength(1);

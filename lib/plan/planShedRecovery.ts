@@ -22,7 +22,7 @@ export function isNonSteppedDeviceRecovering(
     || !isBinaryPlanDevice(candidate) || candidate.currentOn) {
     return false;
   }
-  if (state.swapByDevice[candidate.id]?.swappedOutFor || state.swapByDevice[candidate.id]?.pendingTarget) {
+  if (state.swapLedger.isDonor(candidate.id) || state.swapLedger.reservationFor(candidate.id) !== undefined) {
     return true;
   }
   const shedDecidedMs = state.shedDecisions.decidedMs[candidate.id];

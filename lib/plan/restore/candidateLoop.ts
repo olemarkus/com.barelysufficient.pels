@@ -50,7 +50,7 @@ export function planSteppedRestoreThroughSourceHold(
   dev: SteppedPlanDevice,
   loop: RestoreLoopState,
 ): RestoreLoopState {
-  if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapState, dev, cycle.deviceMap)) return loop;
+  if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapLedger, dev, cycle.deviceMap)) return loop;
   return planRestoreForSteppedDevice({
     dev,
     deviceMap: cycle.deviceMap,
@@ -94,7 +94,7 @@ function applyRestoreCandidate(
 ): RestoreLoopState {
   const dev = cycle.deviceMap.get(candidate.device.id);
   if (!dev) return loop;
-  if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapState, dev, cycle.deviceMap)) return loop;
+  if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapLedger, dev, cycle.deviceMap)) return loop;
   if (candidate.kind === 'binary' && isBinaryRestoreCandidate(dev)) {
     return planRestoreForDevice(cycle, lane, dev, loop);
   }
@@ -119,7 +119,7 @@ export function buildSteppedSwapExecutor(
       availableHeadroom,
       { needed, devPower, penaltyLevel: 0, penaltyExtraKw: 0 },
       restoreDebugKey,
-      { admitted: admittedDeviceUpdate ?? {}, rejected: rejectedDeviceUpdate ?? {} },
+      { admitted: admittedDeviceUpdate, rejected: rejectedDeviceUpdate },
     )
   );
 }

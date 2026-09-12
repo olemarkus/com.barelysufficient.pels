@@ -4,6 +4,7 @@ import {
   SWAP_RESTORE_RESERVE_KW,
 } from '../planConstants';
 import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from '../admission';
+import type { SwapLedger } from './swapLedger';
 
 /**
  * The half of swap viability that does not depend on who wants the power: a
@@ -14,12 +15,12 @@ import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from '../a
  */
 function canReleaseDrawForSwap(
   onDev: DevicePlanDevice,
-  swappedOutFor: ReadonlyMap<string, string>,
+  ledger: SwapLedger,
   restoredThisCycle: ReadonlySet<string>,
 ): boolean {
   if (onDev.currentDrawKw <= 0) return false;
   if (onDev.plannedState === 'shed') return false;
-  if (swappedOutFor.has(onDev.id)) return false;
+  if (ledger.isDonor(onDev.id)) return false;
   if (restoredThisCycle.has(onDev.id)) return false;
   return true;
 }
@@ -31,24 +32,24 @@ function canReleaseDrawForSwap(
  * the caller's own rejection is already the decision.
  *
  * Evaluated per candidate rather than once per pass: `plannedState`,
- * `swappedOutFor` and `restoredThisCycle` all move as the pass runs, and a
+ * the ledger's donor set and `restoredThisCycle` all move as the pass runs, and a
  * verdict cached before the first admission would be stale by the second.
  */
 export function hasSwappableDraw(
   onDevices: readonly DevicePlanDevice[],
-  swappedOutFor: ReadonlyMap<string, string>,
+  ledger: SwapLedger,
   restoredThisCycle: ReadonlySet<string>,
 ): boolean {
-  return onDevices.some((onDev) => canReleaseDrawForSwap(onDev, swappedOutFor, restoredThisCycle));
+  return onDevices.some((onDev) => canReleaseDrawForSwap(onDev, ledger, restoredThisCycle));
 }
 
 function isViableSwapCandidate(
   onDev: DevicePlanDevice,
   dev: DevicePlanDevice,
-  swappedOutFor: ReadonlyMap<string, string>,
+  ledger: SwapLedger,
   restoredThisCycle: ReadonlySet<string>,
 ): boolean {
-  if (!canReleaseDrawForSwap(onDev, swappedOutFor, restoredThisCycle)) return false;
+  if (!canReleaseDrawForSwap(onDev, ledger, restoredThisCycle)) return false;
   const onDevPriority = onDev.priority ?? 100;
   const devPriority = dev.priority ?? 100;
   if (onDevPriority <= devPriority) return false;
@@ -68,7 +69,7 @@ function isViableSwapCandidate(
 export function buildSwapCandidates(
   dev: DevicePlanDevice,
   onDevices: DevicePlanDevice[],
-  swappedOutFor: ReadonlyMap<string, string>,
+  ledger: SwapLedger,
   availableHeadroom: number,
   needed: number,
   restoredThisCycle: ReadonlySet<string>,
@@ -92,7 +93,7 @@ export function buildSwapCandidates(
   let admission = buildRestoreAdmissionMetrics({ availableKw: effectiveHeadroom, neededKw: needed });
 
   for (const onDev of onDevices) {
-    if (!isViableSwapCandidate(onDev, dev, swappedOutFor, restoredThisCycle)) continue;
+    if (!isViableSwapCandidate(onDev, dev, ledger, restoredThisCycle)) continue;
 
     const pwr = onDev.currentDrawKw;
     toShed.push(onDev);

@@ -1,7 +1,7 @@
 import type { DevicePlanDevice } from '../planTypes';
 import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
+import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
-import { isBlockedBySwapState } from '../swap';
 import { buildInsufficientHeadroomUpdate, resolveRestorePowerSource } from './accounting';
 import { getInactiveReason } from './devices';
 import { blockRestoreForRecentActivationSetback, setRestorePlanDevice as setDevice } from './helpers';
@@ -40,7 +40,7 @@ export function planRestoreForDevice(
   loop: RestoreLoopState,
 ): RestoreLoopState {
   const {
-    state, deviceMap, swapState, timing, restoredThisCycle,
+    state, deviceMap, swapLedger, timing, restoredThisCycle,
     batchState, deps, headroomReserves, phase,
   } = cycle;
   const { availableHeadroom, restoredOneThisCycle } = loop;
@@ -75,7 +75,12 @@ export function planRestoreForDevice(
     return rejectBinaryRestore(cycle, dev, loop, gateReason);
   }
 
-  if (isBlockedBySwapState(dev, deviceMap, swapState)) {
+  const blockingTarget = swapLedger.blockingTarget(dev, deviceMap);
+  if (blockingTarget !== undefined) {
+    setDevice(deviceMap, dev.id, {
+      plannedState: 'shed',
+      reason: { code: PLAN_REASON_CODES.swapPending, targetName: blockingTarget.name },
+    });
     clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }

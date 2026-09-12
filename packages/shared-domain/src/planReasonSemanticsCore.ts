@@ -143,7 +143,7 @@ export type DeviceReason =
     needKw: number;
   }
   // The swap PRODUCERS (`lib/plan/swap/candidates.ts`, `lib/plan/restore/swap.ts`,
-  // `lib/plan/swap/blocking.ts`) must still never pin their own admission numbers
+  // `SwapLedger.blockingTarget`) must still never pin their own admission numbers
   // here — those belong to the device being swapped IN, and stating them on the
   // victim would present another device's quantity as this one's. The
   // `shortfallKw` these variants carry is attached post hoc at reason

@@ -1,17 +1,18 @@
 import { isNonSteppedDeviceRecovering } from '../../lib/plan/planShedRecovery';
 import type { PlanEngineState } from '../../lib/plan/planState';
+import { seedSwapReservation } from '../utils/swapLedgerFixture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';
 
 const buildState = (overrides: {
   decidedMs?: Record<string, number>;
   lastDeviceRestoreMs?: Record<string, number>;
-  swapByDevice?: PlanEngineState['swapByDevice'];
+  swapReservation?: { targetId: string; donorIds?: readonly string[] };
 } = {}): PlanEngineState => {
   const state = createPlanEngineState();
   Object.assign(state.shedDecisions.decidedMs, overrides.decidedMs);
   Object.assign(state.actuation.lastDeviceRestoreMs, overrides.lastDeviceRestoreMs);
-  Object.assign(state.swapByDevice, overrides.swapByDevice);
+  if (overrides.swapReservation) seedSwapReservation(state, overrides.swapReservation);
   return state;
 };
 
@@ -38,14 +39,14 @@ describe('isNonSteppedDeviceRecovering', () => {
   it('is true for an observed-off device that is swapped out', () => {
     const device = buildPlanInputDevice({ id: 'a', currentState: 'off' });
     expect(isNonSteppedDeviceRecovering(device, buildState({
-      swapByDevice: { a: { swappedOutFor: 'b' } },
+      swapReservation: { targetId: 'b', donorIds: ['a'] },
     }))).toBe(true);
   });
 
   it('is true for an observed-off device with a pending swap target', () => {
     const device = buildPlanInputDevice({ id: 'a', currentState: 'off' });
     expect(isNonSteppedDeviceRecovering(device, buildState({
-      swapByDevice: { a: { pendingTarget: true } },
+      swapReservation: { targetId: 'a' },
     }))).toBe(true);
   });
 

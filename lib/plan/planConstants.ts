@@ -51,7 +51,22 @@ export const SHED_GRACE_HEADROOM_FRACTION = 0.02;
 // sustained-shortfall alert's threshold is per-Flow user configuration, not a
 // fixed deadline. There is no precedent here to match, only evidence to fit.
 export const SHED_GRACE_MAX_MS = 60 * 1000;
-export const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
+// How much SERVICEABLE time a swap reservation gets before it lapses: the clock
+// is renewed on any cycle where the restore lane could not have admitted it at
+// all (`SwapLedger.reconcile`). It is deliberately equal to `SHED_COOLDOWN_MS`
+// — one cooldown window is exactly the wait a swap's own shed imposes on the
+// beneficiary, and charging it for that wait is what made every reservation in
+// 34.5 h of production expire without completing.
+export const SWAP_TIMEOUT_MS = 60000;
+// Absolute ceiling on a reservation regardless of serviceability. Bounds the
+// case the renewal above would otherwise make unbounded: a home pinned under
+// its daily budget keeps the restore lane shut for hours (production held three
+// thermostats off for 14 h straight), and a reservation renewed across that
+// window holds its donors shed the whole time — including against the
+// budget-exempt lane, which consults the ledger even while the ordinary lane is
+// closed. Same role and same size as `HEADROOM_RESERVE_MAX_MS`, which bounds a
+// startup reserve that can never be satisfied for the same reason.
+export const SWAP_RESERVATION_MAX_MS = 15 * 60 * 1000;
 export const RESTORE_ADMISSION_RESERVE_KW = 0.25; // Final slack required after restore admission
 export const RESTORE_ADMISSION_FLOOR_KW = 0.25; // Minimum postReserveMarginKw for any restore to be admitted
 // When power is fresh and headroom is abundant, allow a small restore batch instead of draining

@@ -43,8 +43,8 @@ what the permission promises.
 `reportedStepId` confirms step 1 or above. A draw threshold is wrong at this boundary: a charger
 correctly sitting on 6 A while it ramps, or a heater holding its lowest element at setpoint, reads
 well below half its nameplate step, and a draw-only test would keep the reserve alive long after
-the device had started. Same rule and rationale as `isSwapTargetComplete`
-(`lib/plan/swap/completion.ts`): decide from confirmed evidence, never the planner-effective
+the device had started. Same rule and rationale as `isPromiseKept`
+(`lib/plan/swap/swapLedger.ts`): decide from confirmed evidence, never the planner-effective
 `selectedStepId`.
 
 Two further release paths sit alongside it, both of which can only release EARLIER, never later: a

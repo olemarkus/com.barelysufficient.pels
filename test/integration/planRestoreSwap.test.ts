@@ -1,6 +1,8 @@
 import {
   buildSwapCandidates,
+  SwapLedger,
 } from '../../lib/plan/swap';
+import { ledgerWithReservation } from '../utils/swapLedgerFixture';
 import {
   buildInsufficientHeadroomUpdate,
   computeRestoreBufferKw,
@@ -27,7 +29,7 @@ describe('buildSwapCandidates', () => {
     const result = buildSwapCandidates(buildPlanDevice({ priority: 50 }), [
         buildPlanDevice({ id: 'higher', name: 'Higher', priority: 40, measuredPowerKw: 2, expectedPowerKw: 2 }),
         buildPlanDevice({ id: 'equal', name: 'Equal', priority: 50, measuredPowerKw: 2, expectedPowerKw: 2 }),
-      ], new Map(), 1, 3, new Set());
+      ], new SwapLedger(), 1, 3, new Set());
 
     expect(result.ready).toBe(false);
     expect(result.toShed).toHaveLength(0);
@@ -42,11 +44,11 @@ describe('buildSwapCandidates', () => {
     const onDevices = [
       buildPlanDevice({ id: 'exempt-src', name: 'Exempt Heater', priority: 120, budgetExempt: true, measuredPowerKw: 2, expectedPowerKw: 2 }),
     ];
-    const forNonExempt = buildSwapCandidates(buildPlanDevice({ id: 'target', priority: 50 }), onDevices, new Map(), 0.3, 1.2, new Set());
+    const forNonExempt = buildSwapCandidates(buildPlanDevice({ id: 'target', priority: 50 }), onDevices, new SwapLedger(), 0.3, 1.2, new Set());
     expect(forNonExempt.ready).toBe(false);
     expect(forNonExempt.toShed).toHaveLength(0);
 
-    const forExempt = buildSwapCandidates(buildPlanDevice({ id: 'target-exempt', priority: 50, budgetExempt: true }), onDevices, new Map(), 0.3, 1.2, new Set());
+    const forExempt = buildSwapCandidates(buildPlanDevice({ id: 'target-exempt', priority: 50, budgetExempt: true }), onDevices, new SwapLedger(), 0.3, 1.2, new Set());
     expect(forExempt.toShed.map((device) => device.id)).toEqual(['exempt-src']);
   });
 
@@ -54,14 +56,15 @@ describe('buildSwapCandidates', () => {
     const result = buildSwapCandidates(buildPlanDevice({ priority: undefined }), [
         buildPlanDevice({ id: 'equal-default', name: 'EqualDefault', priority: undefined, measuredPowerKw: 2, expectedPowerKw: 2 }),
         buildPlanDevice({ id: 'lower-priority', name: 'LowerPriority', priority: 120, measuredPowerKw: 2, expectedPowerKw: 2 }),
-      ], new Map(), 0.8, 2, new Set());
+      ], new SwapLedger(), 0.8, 2, new Set());
 
     expect(result.ready).toBe(true);
     expect(result.toShed.map((device) => device.id)).toEqual(['lower-priority']);
   });
 
   it('skips ineligible devices and returns ready when enough headroom is found', () => {
-    const swappedOutFor = new Map<string, string>([['skip', 'target']]);
+    // 'skip' was paused to fund 'target', so it is not available to fund another swap.
+    const swapLedger = ledgerWithReservation({ targetId: 'target', donorIds: ['skip'] });
     const restoredThisCycle = new Set(['restored']);
     const onDevices = [
       buildPlanDevice({ id: 'shed', name: 'Shed', priority: 100, plannedState: 'shed', measuredPowerKw: 2, expectedPowerKw: 2 }),
@@ -74,7 +77,7 @@ describe('buildSwapCandidates', () => {
       buildPlanDevice({ id: 'add2', name: 'Add2', priority: 60, plannedState: 'keep', measuredPowerKw: 1, expectedPowerKw: 1 }),
     ];
 
-    const result = buildSwapCandidates(buildPlanDevice({ priority: 50 }), onDevices, swappedOutFor, 0.8, 3, restoredThisCycle);
+    const result = buildSwapCandidates(buildPlanDevice({ priority: 50 }), onDevices, swapLedger, 0.8, 3, restoredThisCycle);
 
     expect(result.ready).toBe(true);
     expect(result.toShed.map((device) => device.id)).toEqual(['add1', 'add2']);
@@ -83,7 +86,7 @@ describe('buildSwapCandidates', () => {
   });
 
   it('returns not ready when potential headroom is still insufficient', () => {
-    const result = buildSwapCandidates(buildPlanDevice({ priority: 50 }), [buildPlanDevice({ id: 'on', name: 'On', priority: 90, measuredPowerKw: 1, expectedPowerKw: 1 })], new Map(), 0, 5, new Set());
+    const result = buildSwapCandidates(buildPlanDevice({ priority: 50 }), [buildPlanDevice({ id: 'on', name: 'On', priority: 90, measuredPowerKw: 1, expectedPowerKw: 1 })], new SwapLedger(), 0, 5, new Set());
 
     expect(result.ready).toBe(false);
     expect(result.toShed).toHaveLength(1);
@@ -97,7 +100,7 @@ describe('buildSwapCandidates', () => {
           priority: 90,
           measuredPowerKw: 1.2,
         }),
-      ], new Map(), 0.4, 1.0, new Set());
+      ], new SwapLedger(), 0.4, 1.0, new Set());
 
     // The numbers the rejection turns on, asserted as numbers. They used to be
     // read out of a formatted sentence, which meant this test passed or failed on
@@ -120,7 +123,7 @@ describe('buildSwapCandidates', () => {
           measuredPowerKw: 1.2,
           expectedPowerKw: 1.2,
         }),
-      ], new Map(), 0.2, 1.3, new Set());
+      ], new SwapLedger(), 0.2, 1.3, new Set());
 
     expect(result.ready).toBe(false);
     expect(result.toShed.map((device) => device.id)).toEqual(['candidate']);
@@ -137,7 +140,7 @@ describe('buildSwapCandidates', () => {
           priority: 90,
           measuredPowerKw: 1.2,
         }),
-      ], new Map(), 0.4, 0.8, new Set());
+      ], new SwapLedger(), 0.4, 0.8, new Set());
 
     expect(result.potentialHeadroom).toBeCloseTo(1.6, 6);
     expect(result.effectiveHeadroom).toBeCloseTo(1.3, 6);
@@ -155,7 +158,7 @@ describe('buildSwapCandidates', () => {
           priority: 90,
           measuredPowerKw: 0, expectedPowerKw: 0,
         }),
-      ], new Map(), 0.2, 0.3, new Set());
+      ], new SwapLedger(), 0.2, 0.3, new Set());
 
     expect(result.ready).toBe(false);
     expect(result.toShed).toHaveLength(0);

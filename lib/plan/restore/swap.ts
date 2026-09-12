@@ -3,16 +3,10 @@ import type { DevicePlanDevice } from '../planTypes';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
 import {
-  buildRequestedTargetFromDeviceUpdate,
   buildSwapCandidates,
   hasSwappableDraw,
-  markDeviceSwappedOutFor,
-  markSwapTargetPending,
-  recordRequestedTarget,
-  recordSwapPlanMeasurement,
-  shouldDeferSwapAdmissionForMeasurement,
-  shouldKeepSwapTargetPending,
-  type SwapState,
+  resolveSwapPromise,
+  type SwapLedger,
 } from '../swap';
 import { buildInsufficientHeadroomUpdate, resolveRestorePowerSource } from './accounting';
 import { isOffSteppedRestoreCandidate } from './devices';
@@ -67,15 +61,15 @@ export function attemptSwapRestore(
   restoreDebugKey: string,
   updates: SwapDeviceUpdates,
 ): SwapRestoreOutcome {
-  const { deviceMap, swapState, state, restoredThisCycle } = cycle;
+  const { deviceMap, swapLedger, state, restoredThisCycle } = cycle;
   const measurementTs = cycle.timing.measurementTs;
   const { admitted: admittedDeviceUpdate, rejected: rejectedDeviceUpdate } = updates;
 
-  if (hasPendingSwapSourcesStillOn(swapState, dev.id, deviceMap)) {
+  if (hasPendingSwapSourcesStillOn(swapLedger, dev.id, deviceMap)) {
     setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
     return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
   }
-  if (shouldKeepSwapTargetPending(swapState, dev.id, measurementTs)) {
+  if (swapLedger.keepsPending(dev.id, measurementTs)) {
     setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
     return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
   }
@@ -83,7 +77,7 @@ export function attemptSwapRestore(
   // at all and be covered by the caller's pre-announcement, which labelled them
   // `insufficient_headroom` — but the shortfall is not why the swap stood down,
   // and once the pre-announcement went they would have gone silent entirely.
-  if (shouldDeferSwapAdmissionForMeasurement(swapState, dev.id, measurementTs)) {
+  if (swapLedger.defersForMeasurement(dev.id, measurementTs)) {
     return rejectSwapRestoreForMeasurement(
       cycle, dev, availableHeadroom, restoreNeed, restoreDebugKey,
       rejectedDeviceUpdate, 'awaiting_fresh_measurement',
@@ -103,12 +97,12 @@ export function attemptSwapRestore(
   // caller has already computed. The handshake gates above run first on
   // purpose: a device mid-swap is held by them even after its sources have
   // stopped drawing, which is exactly when this test goes false.
-  if (!hasSwappableDraw(onDevices, swapState.swappedOutFor, restoredThisCycle)) {
+  if (!hasSwappableDraw(onDevices, swapLedger, restoredThisCycle)) {
     return { kind: 'no_source' };
   }
 
   const swap = buildSwapCandidates(
-    dev, onDevices, swapState.swappedOutFor, availableHeadroom, restoreNeed.needed, restoredThisCycle,
+    dev, onDevices, swapLedger, availableHeadroom, restoreNeed.needed, restoredThisCycle,
   );
   if (!swap.ready) {
     return rejectSwapRestoreWithCandidates(
@@ -121,7 +115,13 @@ export function attemptSwapRestore(
   // decision it replaced.
   clearRestoreDebugEvent(state, restoreDebugKey);
   emitSwapApprovedDebug(cycle, dev, restoreNeed, swap);
-  markApprovedSwapTarget(swapState, dev, measurementTs, admittedDeviceUpdate);
+  swapLedger.open(
+    dev.id,
+    resolveSwapPromise(admittedDeviceUpdate),
+    new Set(swap.toShed.map((shedDev) => shedDev.id)),
+    measurementTs,
+    cycle.timing.nowTs,
+  );
   for (const shedDev of swap.toShed) {
     setDevice(deviceMap, shedDev.id, {
       plannedState: 'shed',
@@ -134,19 +134,19 @@ export function attemptSwapRestore(
       forDeviceId: dev.id,
       forDeviceName: dev.name,
     });
-    markDeviceSwappedOutFor(swapState, shedDev.id, dev.id);
   }
   setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
   return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
 }
 
 function hasPendingSwapSourcesStillOn(
-  swapState: SwapState,
+  swapLedger: SwapLedger,
   targetDeviceId: string,
   deviceMap: ReadonlyMap<string, DevicePlanDevice>,
 ): boolean {
-  for (const [deviceId, swappedOutFor] of swapState.swappedOutFor) {
-    if (swappedOutFor !== targetDeviceId) continue;
+  const reservation = swapLedger.reservationFor(targetDeviceId);
+  if (reservation === undefined) return false;
+  for (const deviceId of reservation.donorIds) {
     const sourceDevice = deviceMap.get(deviceId);
     if (!sourceDevice) return true;
     // A swap source can be any kind: a binary device is off via `!currentOn`, a
@@ -162,28 +162,13 @@ function hasPendingSwapSourcesStillOn(
 }
 
 export function holdPendingSwapTargetUntilSourcesAreOff(
-  swapState: SwapState,
+  swapLedger: SwapLedger,
   targetDevice: DevicePlanDevice,
   deviceMap: Map<string, DevicePlanDevice>,
 ): boolean {
-  if (!hasPendingSwapSourcesStillOn(swapState, targetDevice.id, deviceMap)) return false;
+  if (!hasPendingSwapSourcesStillOn(swapLedger, targetDevice.id, deviceMap)) return false;
   setDevice(deviceMap, targetDevice.id, buildSwapPendingTargetUpdate(targetDevice));
   return true;
-}
-
-function markApprovedSwapTarget(
-  swapState: SwapState,
-  dev: DevicePlanDevice,
-  measurementTs: number,
-  admittedDeviceUpdate: Partial<DevicePlanDevice>,
-): void {
-  markSwapTargetPending(swapState, dev.id);
-  recordSwapPlanMeasurement(swapState, dev.id, measurementTs);
-  recordRequestedTarget(
-    swapState,
-    dev.id,
-    buildRequestedTargetFromDeviceUpdate(admittedDeviceUpdate),
-  );
 }
 
 function rejectSwapRestoreWithCandidates(

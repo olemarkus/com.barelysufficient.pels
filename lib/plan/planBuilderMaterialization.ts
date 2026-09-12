@@ -39,7 +39,6 @@ import { syncHeadroomCardState } from './planHeadroomDevice';
 import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
 import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
 import { buildCeilingShortfallInputs } from './planReasonShortfall';
-import { buildSwapState } from './swap/state';
 import { getOnDevices } from './restore/devices';
 import { trackPlanStage } from './planStageTiming';
 
@@ -208,10 +207,10 @@ export class PlanMaterializationStages {
           (deviceId) => this.deps.getShedBehavior(deviceId),
           normalizedShedFloorCByDevice,
         ),
-        // `state.swapByDevice` was refreshed from this cycle's restore pass
-        // in `applyRestorePlanAndUpdateState`, so the swap surface the
-        // shortfall folds in is the same one the next swap decision reads.
-        swappedOutFor: buildSwapState(this.state).swappedOutFor,
+        // The same ledger instance the restore pass just reconciled — the
+        // swap surface the shortfall folds in is the one the next swap
+        // decision reads, now by identity rather than by a refresh step.
+        swapLedger: this.state.swapLedger,
         restoredThisCycle: restoreResult.restoredThisCycle,
         // Same need the restore gate rejects on: it inflates a recently shed
         // device's requirement, and a card computed against the deflated
@@ -310,7 +309,6 @@ export class PlanMaterializationStages {
         logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       },
     });
-    this.state.swapByDevice = restoreResult.stateUpdates.swapByDevice;
     this.state.restoreBackoff.commitCooldown(restoreResult.timing);
     return restoreResult;
   }

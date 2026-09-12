@@ -239,7 +239,7 @@ describe('resolveHeadroomReserves — release, and the step-1 boundary', () => {
 
   it('keeps holding when the step is unconfirmed — an unknown position is not a start', () => {
     // `selectedStepId` is the planner-effective position and can be a planning fallback; only
-    // `reportedStepId` is evidence. Same rule as isSwapTargetComplete.
+    // `reportedStepId` is evidence. Same rule as `isPromiseKept`.
     const { reserves } = run([waiting({
       id: 'charger',
       priority: 1,

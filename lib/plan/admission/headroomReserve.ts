@@ -353,7 +353,7 @@ function isStartable(device: DevicePlanDevice): boolean {
  * never on measured draw: a charger correctly sitting on 6 A while it ramps, or a heater holding
  * its lowest element at setpoint, reads well below half its nameplate step and a draw-only test
  * would keep the reserve alive long after the device had started — precisely the overreach this
- * design removes. Same rule and rationale as `isSwapTargetComplete` (`lib/plan/swap/completion.ts`).
+ * design removes. Same rule and rationale as `isPromiseKept` (`lib/plan/swap/swapLedger.ts`).
  *
  * The draw test remains as a second, independent release path: it is the only signal a non-stepped
  * device has, and for a stepped device it can only release EARLIER than the step evidence would.
