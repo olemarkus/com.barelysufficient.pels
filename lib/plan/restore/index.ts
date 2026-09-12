@@ -2,12 +2,6 @@ import type { DevicePlanDevice } from '../planTypes';
 import type { PlanEngineState } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
 import {
-  buildSwapState,
-  cleanupCompletedSwaps,
-  cleanupStaleSwaps,
-  exportSwapState,
-} from '../swap';
-import {
   getOnDevices,
   getRestoreCandidates,
   markOffDevicesStayOff,
@@ -16,6 +10,8 @@ import {
   markSteppedDevicesStayAtCurrentLevel,
   setRestorePlanDevice as setDevice,
 } from './helpers';
+import type { RestoreTiming } from './timing';
+import type { SoftLimitSource } from '../planContext';
 import {
   buildRestoreTiming,
   resolveCapacityRestoreBlockReason,
@@ -55,20 +51,38 @@ export function applyRestorePlan(params: {
 }): RestorePlanResult {
   const { planDevices, context, power, state, sheddingActive, guardInShortfall = false, deps } = params;
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
-  const swapState = buildSwapState(state);
+  const swapLedger = state.swapLedger;
   const headroomReserves = resolveCycleHeadroomReserves(planDevices, state);
   const timing = buildRestoreTiming(state, power.headroomKw, deps.powerTracker);
-  const capacityStartupStabilization = timing.inStartupStabilization && context.softLimitSource === 'capacity';
-  const effectiveTiming = capacityStartupStabilization
-    ? timing
-    : {
-        ...timing,
-        inStartupStabilization: false as const,
-        startupStabilizationRemainingSec: null,
-        inShedWindow: timing.inCooldown || timing.activeOvershoot || timing.inRestoreCooldown,
-      };
-  cleanupStaleSwaps(swapState, deps.structuredLog);
-  cleanupCompletedSwaps(swapState, deviceMap);
+  const effectiveTiming = resolveEffectiveTiming(timing, context.softLimitSource);
+  // Resolved BEFORE the ledger reconcile and reused by the branch below, so the
+  // one thing that decides whether restores happen this cycle also decides
+  // whether a waiting swap reservation is charged for it. Ordering used to
+  // carry that relationship implicitly: cleanup ran here and the gate was
+  // re-evaluated thirty lines down, with nothing connecting them.
+  const restoresPlannable = !guardInShortfall
+    && shouldPlanRestores(sheddingActive, effectiveTiming, state.hourlyBudgetExhausted);
+  // The exempt lane admits restores too, and reaches `blockingTarget` through
+  // `applyRestoreCandidates` — so a cycle it runs in is serviceable for a
+  // reservation whose target that lane can actually consider.
+  const exemptRestoresPlannable = !guardInShortfall && shouldPlanBudgetExemptRestores({
+    sheddingActive,
+    softLimitSource: context.softLimitSource,
+    capacityHeadroomKw: power.capacityHeadroomKw,
+    hourlyBudgetExhausted: state.hourlyBudgetExhausted,
+    // Raw timing on purpose: under daily source effectiveTiming clears the
+    // startup-stabilization hold, but this lane runs while shedding is latched
+    // — keep the conservative hold there.
+    timing,
+  });
+  // Per target, not once per cycle: the exempt lane filters its candidates to
+  // budget-exempt devices (`exemptRestoreLane.ts`), so counting it as
+  // serviceable for a NON-exempt reservation would burn that reservation's
+  // window against a lane that could never consider its target.
+  const laneServes = (target: DevicePlanDevice): boolean => (
+    restoresPlannable || (exemptRestoresPlannable && target.budgetExempt === true)
+  );
+  swapLedger.reconcile(deviceMap, timing.nowTs, laneServes, deps.structuredLog);
 
   const restoredThisCycle = new Set<string>();
   const ledger = buildCycleHeadroomLedger(power);
@@ -84,7 +98,7 @@ export function applyRestorePlan(params: {
     state,
     deps,
     deviceMap,
-    swapState,
+    swapLedger,
     timing: effectiveTiming,
     restoredThisCycle,
     headroomReserves,
@@ -98,18 +112,9 @@ export function applyRestorePlan(params: {
       headroomKw: power.headroomKw,
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
     });
-  } else if (shouldPlanRestores(sheddingActive, effectiveTiming, state.hourlyBudgetExhausted)) {
+  } else if (restoresPlannable) {
     ({ restoredOneThisCycle } = applyFullRestorePass(cycle, ledger, restoredOneThisCycle));
-  } else if (shouldPlanBudgetExemptRestores({
-    sheddingActive,
-    softLimitSource: context.softLimitSource,
-    capacityHeadroomKw: power.capacityHeadroomKw,
-    hourlyBudgetExhausted: state.hourlyBudgetExhausted,
-    // Raw timing on purpose: under daily source effectiveTiming clears the
-    // startup-stabilization hold, but this lane runs while shedding is latched
-    // — keep the conservative hold there.
-    timing,
-  })) {
+  } else if (exemptRestoresPlannable) {
     ({ restoredOneThisCycle } = applyBudgetExemptRestorePass(cycle, ledger, restoredOneThisCycle));
   } else if (
     sheddingActive
@@ -133,13 +138,27 @@ export function applyRestorePlan(params: {
 
   return {
     planDevices: Array.from(deviceMap.values()),
-    stateUpdates: exportSwapState(swapState),
     restoredThisCycle,
     availableHeadroom: ledger.summaryAvailableKw(),
     ...ledger.axes(),
     headroomReserves,
     restoredOneThisCycle,
     timing: effectiveTiming,
+  };
+}
+
+/**
+ * The startup-stabilization hold applies only while capacity is the binding
+ * axis; under a daily-budget bind it is cleared, and `inShedWindow` is rebuilt
+ * from the terms that remain.
+ */
+function resolveEffectiveTiming(timing: RestoreTiming, softLimitSource: SoftLimitSource): RestoreTiming {
+  if (timing.inStartupStabilization && softLimitSource === 'capacity') return timing;
+  return {
+    ...timing,
+    inStartupStabilization: false,
+    startupStabilizationRemainingSec: null,
+    inShedWindow: timing.inCooldown || timing.activeOvershoot || timing.inRestoreCooldown,
   };
 }
 
@@ -210,7 +229,7 @@ function applyFullRestorePass(
  * reason stands.
  */
 function applyRestorePlanInCooldown(cycle: RestoreCycle): void {
-  const { deviceMap, swapState, state, timing } = cycle;
+  const { deviceMap, swapLedger, state, timing } = cycle;
   const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
     timing,
     lastRestoreTs: state.actuation.lastRestoreMs,
@@ -222,5 +241,5 @@ function applyRestorePlanInCooldown(cycle: RestoreCycle): void {
       resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs: state.actuation.lastRestoreMs }),
     );
   if (holdReason === null) return;
-  markRestoreCandidatesHeld(deviceMap, swapState, holdReason);
+  markRestoreCandidatesHeld(deviceMap, swapLedger, holdReason);
 }

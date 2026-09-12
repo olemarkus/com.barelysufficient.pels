@@ -1,3 +1,4 @@
+import { SwapLedger } from '../../lib/plan/swap';
 import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
 import { buildCeilingShortfallInputs, resolveCeilingShortfall } from '../../lib/plan/planReasonShortfall';
 import { computeBaseRestoreNeed } from '../../lib/plan/restore/accounting';
@@ -563,7 +564,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       },
       headroomReserves: params.headroomReserves ?? [],
       onDevices: params.devices,
-      swappedOutFor: new Map(),
+      swapLedger: new SwapLedger(),
       restoredThisCycle: new Set(),
       lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
       nowMs: SHORTFALL_NOW_MS,
@@ -657,7 +658,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
         ledgerAxes: { capacityAvailableKw, budgetAvailableKw: null },
         headroomReserves: [],
         onDevices: [],
-        swappedOutFor: new Map(),
+        swapLedger: new SwapLedger(),
         restoredThisCycle: new Set(),
         lastDeviceShedMsById: state.actuation.lastDeviceShedMs,
         nowMs: SHORTFALL_NOW_MS,

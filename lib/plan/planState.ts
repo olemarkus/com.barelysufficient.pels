@@ -4,6 +4,7 @@ import { OvershootIncident } from './overshootIncident';
 import { ActuationRecord } from './actuationRecord';
 import { RestoreBackoff } from './restoreBackoff';
 import { ShedDecisions } from './shedDecisions';
+import { SwapLedger } from './swap';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,
@@ -162,15 +163,6 @@ export type HeadroomCardState = {
   lastStepDownMs?: number;
 };
 
-export type SwapEntry = {
-  swappedOutFor?: string;
-  pendingTarget?: boolean;
-  timestamp?: number;
-  lastPlanMeasurementTs?: number;
-  requestedTargetStepId?: string;
-  requestedDesiredStepId?: string;
-};
-
 export type OvershootTrackedPlanDevice = Pick<
   DevicePlanDevice,
   | 'id'
@@ -311,7 +303,13 @@ export class PlanEngineState {
     if (outcome.escalatedSameSample) this.overshoot.noteEscalation(outcome.atMs);
   }
 
-  swapByDevice: Record<string, SwapEntry> = {};
+  /**
+   * Live swap reservations — see `SwapLedger`. A model, not a per-cycle
+   * projection: the reservation's renewable clock only means anything if the
+   * object outlives the rebuild, and a DTO round-trip through a single
+   * timestamp slot silently discarded it.
+   */
+  readonly swapLedger = new SwapLedger();
 
   inShortfall: boolean = false;
 
@@ -416,19 +414,6 @@ export class PlanEngineState {
     delete this.pendingTargetCommands[deviceId];
   }
 
-  /**
-   * Clear the pending-target markers on a device's swap entry, dropping the
-   * entry entirely once it carries no residual swap state.
-   */
-  clearPendingSwapTarget(deviceId: string): void {
-    const swapEntry = this.swapByDevice[deviceId];
-    if (!swapEntry) return;
-    delete swapEntry.pendingTarget;
-    delete swapEntry.timestamp;
-    if (!swapEntry.swappedOutFor && swapEntry.lastPlanMeasurementTs === undefined) {
-      delete this.swapByDevice[deviceId];
-    }
-  }
 }
 
 export function createPlanEngineState(

@@ -1,19 +1,6 @@
-export { isBlockedBySwapState } from './blocking';
 export { buildSwapCandidates, hasSwappableDraw } from './candidates';
 export {
-  buildRequestedTargetFromDeviceUpdate,
-  cleanupCompletedSwaps,
-  cleanupStaleSwaps,
-  markDeviceSwappedOutFor,
-  markSwapTargetPending,
-  recordRequestedTarget,
-  recordSwapPlanMeasurement,
-  shouldDeferSwapAdmissionForMeasurement,
-  shouldKeepSwapTargetPending,
-} from './lifecycle';
-export {
-  buildSwapState,
-  exportSwapState,
-  type SwapState,
-  type SwapStateSnapshot,
-} from './state';
+  resolveSwapPromise,
+  SwapLedger,
+  type SwapPromise,
+} from './swapLedger';

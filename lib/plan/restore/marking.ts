@@ -1,6 +1,6 @@
 import type { DevicePlanDevice } from '../planTypes';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
-import type { SwapState } from '../swap';
+import type { SwapLedger } from '../swap';
 import { computeBaseRestoreNeed } from './accounting';
 import {
   getInactiveReason,
@@ -91,19 +91,19 @@ export function markRestoreCandidatesStayShedForShortfall(params: {
  */
 export function markRestoreCandidatesHeld(
   deviceMap: Map<string, DevicePlanDevice>,
-  swapState: SwapState,
+  swapLedger: SwapLedger,
   reason: DeviceReason,
 ): void {
   const snapshot = [...deviceMap.values()];
   for (const dev of getOffDevices(snapshot)) {
-    if (holdPendingSwapTargetUntilSourcesAreOff(swapState, dev, deviceMap)) continue;
+    if (holdPendingSwapTargetUntilSourcesAreOff(swapLedger, dev, deviceMap)) continue;
     const inactiveReason = getInactiveReason(dev);
     setDevice(deviceMap, dev.id, inactiveReason
       ? { plannedState: 'inactive', reason: inactiveReason }
       : { plannedState: 'shed', reason });
   }
   for (const dev of getSteppedRestoreCandidates(snapshot)) {
-    if (holdPendingSwapTargetUntilSourcesAreOff(swapState, dev, deviceMap)) continue;
+    if (holdPendingSwapTargetUntilSourcesAreOff(swapLedger, dev, deviceMap)) continue;
     const inactiveReason = getInactiveReason(dev);
     if (inactiveReason) {
       setDevice(deviceMap, dev.id, { plannedState: 'inactive', reason: inactiveReason });

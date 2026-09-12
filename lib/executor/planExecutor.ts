@@ -276,7 +276,6 @@ export class PlanExecutor {
           name: liveDevice.name,
           nowTs: now,
         });
-        this.state.clearPendingSwapTarget(deviceId);
       }
 
     } else {

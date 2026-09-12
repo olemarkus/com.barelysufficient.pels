@@ -1,3 +1,4 @@
+import { SwapLedger } from '../../lib/plan/swap';
 import { describe, it, expect } from 'vitest';
 import {
   buildCeilingShortfallInputs,
@@ -30,7 +31,7 @@ const inputs = (params: {
   budgetAvailableKw?: number | null;
   headroomReserves?: readonly { deviceId: string; deviceName: string; priority: number; kw: number }[];
   onDevices?: readonly ReturnType<typeof buildPlanDevice>[];
-  swappedOutFor?: ReadonlyMap<string, string>;
+  swapLedger?: SwapLedger;
   restoredThisCycle?: ReadonlySet<string>;
   lastDeviceShedMsById?: Readonly<Record<string, number>>;
   nowMs?: number;
@@ -41,7 +42,7 @@ const inputs = (params: {
   },
   headroomReserves: params.headroomReserves ?? [],
   onDevices: params.onDevices ?? [],
-  swappedOutFor: params.swappedOutFor ?? new Map(),
+  swapLedger: params.swapLedger ?? new SwapLedger(),
   restoredThisCycle: params.restoredThisCycle ?? new Set(),
   lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
   nowMs: params.nowMs ?? NOW_MS,

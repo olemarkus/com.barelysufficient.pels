@@ -20,6 +20,13 @@ import { buildPlanInputDevice, buildPlanMeta, buildPlanDevice } from '../utils/p
 import { capturePlanBuilderStructuredLog } from '../helpers/planBuilderLogCapture';
 import { captureLogger } from '../utils/loggerCapture';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import {
+  hasReservation,
+  seedServedSwapReservation,
+  seedSwapReservation,
+  settleReservationsKeepingWatermarks,
+  swappedOutFor,
+} from '../utils/swapLedgerFixture';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
@@ -2638,7 +2645,7 @@ describe('Device plan snapshot', () => {
     // but not enough for the swap target (1.0 + 0.4 = 1.4 kW)
     // Soft limit = 2 kW, total power = 0 (both devices OFF), headroom = 2.0 kW
     // But with NO on devices, swap target can restore normally with 1.4 kW needed
-    // To test the blocking, we need to manually set up the pendingSwapTargets
+    // To test the blocking, we need to seed a reservation on the swap ledger
 
     app.computeDynamicSoftLimit = () => 2;
     app.computeDynamicSoftLimit = () => 2;
@@ -2646,9 +2653,9 @@ describe('Device plan snapshot', () => {
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
 
-    // Simulate that a swap was initiated: swap target is in pendingSwapTargets
+    // Simulate that a swap was initiated: the target holds a reservation
     // This mimics the state after a swap where the target hasn't been restored yet
-    app.planEngine.state.swapByDevice['dev-swap-target'] = { pendingTarget: true };
+    seedSwapReservation(app.planEngine.state, { targetId: 'dev-swap-target' });
 
     // Record power - only 0.8 kW headroom (not enough for swap target with 1.4 kW needed)
     // But enough for lower priority (0.7 kW needed)
@@ -2699,7 +2706,7 @@ describe('Device plan snapshot', () => {
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
-    app.planEngine.state.swapByDevice['dev-pending-low'] = { pendingTarget: true };
+    seedSwapReservation(app.planEngine.state, { targetId: 'dev-pending-low' });
 
     await app['powerSamplePipeline'].recordPowerSample(300);
 
@@ -2751,10 +2758,9 @@ describe('Device plan snapshot', () => {
     // Simulate swap state: dev-swapped was shed for dev-target, but dev-target can't restore
     // Set timestamp to 61 seconds ago (stale)
     const staleTime = Date.now() - 61000;
-    app.planEngine.state.swapByDevice = {
-      'dev-swapped': { swappedOutFor: 'dev-target' },
-      'dev-target': { pendingTarget: true, timestamp: staleTime },
-    };
+    seedServedSwapReservation(app.planEngine.state, {
+      targetId: 'dev-target', donorIds: ['dev-swapped'], servedSinceMs: staleTime,
+    });
 
     // Record power - only 1.5kW headroom (not enough for swap target 2.4kW, but enough for swapped 0.9kW)
     await app['powerSamplePipeline'].recordPowerSample(1500);
@@ -2771,8 +2777,8 @@ describe('Device plan snapshot', () => {
     expect(swappedPlan?.plannedState).toBe('keep');
 
     // Verify swap tracking was cleared
-    expect(app.planEngine.state.swapByDevice['dev-target']?.pendingTarget).toBeFalsy();
-    expect(app.planEngine.state.swapByDevice['dev-swapped']?.swappedOutFor).toBeUndefined();
+    expect(hasReservation(app.planEngine.state, 'dev-target')).toBe(false);
+    expect(swappedOutFor(app.planEngine.state, 'dev-swapped')).toBeUndefined();
   });
 
   // Removed: 'syncs Guard controllables when updateLocalSnapshot changes on/off state'
@@ -2876,7 +2882,7 @@ describe('Device plan snapshot', () => {
 
   it('does not re-plan swap when swap is already pending (e.g. after API timeout)', async () => {
     // This test reproduces the bug where API timeouts caused repeated swap planning.
-    // When applySheddingToDevice times out, the swap target stays in pendingSwapTargets
+    // When applySheddingToDevice times out, the target keeps its reservation
     // but the device wasn't actually shed, so next power sample re-plans the same swap.
 
     // High priority device (OFF, needs restoration) - priority 1 = most important
@@ -2932,7 +2938,7 @@ describe('Device plan snapshot', () => {
       swapCapture.events.length = 0;
 
       // Second power sample - should NOT re-plan the same swap
-      // The swap is already pending (dev-high in pendingSwapTargets)
+      // The swap is already pending (dev-high holds a reservation)
       await app['powerSamplePipeline'].recordPowerSample(3000);
       await flushPromises();
 
@@ -2989,16 +2995,7 @@ describe('Device plan snapshot', () => {
 
     // Simulate swap state being cleared without a new measurement.
     // Keep lastPlanMeasurementTs to block re-planning on the same measurement.
-    const swapByDevice = app.planEngine.state.swapByDevice;
-    for (const key of Object.keys(swapByDevice)) {
-      const entry = swapByDevice[key];
-      delete entry.swappedOutFor;
-      delete entry.pendingTarget;
-      delete entry.timestamp;
-      if (entry.lastPlanMeasurementTs === undefined) {
-        delete swapByDevice[key];
-      }
-    }
+    settleReservationsKeepingWatermarks(app.planEngine.state);
 
     await app.planService.rebuildPlanFromCache('unknown');
     plan = getLatestPlanSnapshotForTests();
@@ -3043,7 +3040,7 @@ describe('Device plan snapshot', () => {
     await app['powerSamplePipeline'].recordPowerSample(3000, sampleBaseMs);
 
     // Clear swap state without a new measurement.
-    app.planEngine.state.swapByDevice = {};
+    settleReservationsKeepingWatermarks(app.planEngine.state);
 
     app.planEngine.state.actuation.lastRestoreMs = Date.now() - 120000;
     await app['powerSamplePipeline'].recordPowerSample(3000, sampleBaseMs + 1000);

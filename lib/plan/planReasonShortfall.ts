@@ -55,7 +55,7 @@ import type { RestoreHeadroomLedger } from './restore/headroomLedger';
 import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
 import { resolveReserveAdmission, type HeadroomReserve } from './admission';
 import { applyRecentShedInflation, computeBaseRestoreNeed } from './restore/accounting';
-import { buildSwapCandidates } from './swap/candidates';
+import { buildSwapCandidates, type SwapLedger } from './swap';
 import { RESTORE_ADMISSION_FLOOR_KW } from './planConstants';
 import { ceilToDisplayKw } from '../../packages/shared-domain/src/planReasonSemantics';
 
@@ -76,7 +76,7 @@ export type CeilingShortfallInputs = {
   // draw would UNDERSTATE the gap — the one error direction this module must
   // never take.
   onDevices: readonly DevicePlanDevice[];
-  swappedOutFor: ReadonlyMap<string, string>;
+  swapLedger: SwapLedger;
   restoredThisCycle: ReadonlySet<string>;
   // Shed timestamps + this cycle's clock, so the need matches the restore gate's
   // recent-shed inflation (`applyRecentShedInflation`). Not optional: a missing
@@ -90,7 +90,7 @@ export function buildCeilingShortfallInputs(params: {
   ledgerAxes: { capacityAvailableKw: number; budgetAvailableKw: number | null };
   headroomReserves: readonly HeadroomReserve[];
   onDevices: readonly DevicePlanDevice[];
-  swappedOutFor: ReadonlyMap<string, string>;
+  swapLedger: SwapLedger;
   restoredThisCycle: ReadonlySet<string>;
   lastDeviceShedMsById: Readonly<Record<string, number>>;
   nowMs: number;
@@ -99,7 +99,7 @@ export function buildCeilingShortfallInputs(params: {
     ledger: buildRestoreHeadroomLedger(params.ledgerAxes),
     headroomReserves: params.headroomReserves,
     onDevices: params.onDevices,
-    swappedOutFor: params.swappedOutFor,
+    swapLedger: params.swapLedger,
     restoredThisCycle: params.restoredThisCycle,
     lastDeviceShedMsById: params.lastDeviceShedMsById,
     nowMs: params.nowMs,
@@ -174,7 +174,7 @@ export function resolveCeilingShortfall(params: {
   const swap = buildSwapCandidates(
     dev,
     [...inputs.onDevices],
-    inputs.swappedOutFor,
+    inputs.swapLedger,
     reserved.effectiveHeadroomKw,
     neededKw,
     inputs.restoredThisCycle,
