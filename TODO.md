@@ -1000,6 +1000,31 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Device observation and transport
 
+- [ ] **P2 — `isDevicePowerCapable` takes one of its terms from the estimate ladder's winning
+      rung, so a manual "Power when running" can unmanage a device.**
+      `lib/device/transport/managerParseDevice.ts` `isDevicePowerCapable` is documented as
+      STRUCTURAL ("must only go false for a durable fact about the device, never for a transient
+      read") and is what `disableUnsupportedDevices` (`setup/appDeviceSupport.ts`) demotes on,
+      permanently. Its fourth term is `powerEstimate.hasEnergyEstimate`, which
+      `resolveExpectedPower` (`lib/device/devicePowerEstimate.ts`) sets only when the
+      `homey-energy` rung WINS; the manual override and `settings.load` rungs sit above it and
+      return without the flag. Its third term, `hasPotentialHomeyEnergyEstimate`
+      (`lib/device/managerEnergy.ts`), reads only `energyObj`/`energy`, not the Advanced-settings
+      `energy_value_on`/`energy_value_off` the ladder's fourth rung reads. Reachable state: a
+      device with no `measure_power`/`meter_power`, absent from the live report, whose `energyObj`
+      carries no numeric `W` and no `approximation.usageOn`, and whose only evidence is
+      `settings.energy_value_on` — powerCapable through term 4 alone. The owner then sets **Power
+      when running** (offered on exactly such a device, `deviceDetail/expectedPower.ts` gates on
+      `supportsPowerDevice`), the override rung wins, term 4 goes false, term 3 was never true,
+      and the next refresh demotes Power-limit control with nothing writing it back. **What
+      changes:** make eligibility structural — `hasPotentialHomeyEnergyEstimate` also reads
+      `settings.energy_value_on`/`energy_value_off` (same delta/on-state rule as
+      `resolveSettingsEnergyWatts`), and term 4 is dropped, so no rung above `homey-energy` can
+      mask the evidence. **Done when:** a `deviceManager` integration case with only
+      `settings.energy_value_on` plus a manual expected-power override stays `powerCapable: true`
+      and keeps `controllable` across a refresh. Source: eligibility audit from the VThermo
+      report (forum #140), 2026-09-11.
+
 - [ ] **P2 — the observer projection keeps serving a device the transport dropped between
       refreshes.** `dropDeviceWithoutRemainingControlFacet`
       (`lib/device/transport/realtimeCapabilityHandling.ts`) and the device.update parse-out path

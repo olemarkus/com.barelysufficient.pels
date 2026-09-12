@@ -145,6 +145,16 @@ that did not come from PELS.
 On the Overview the device reads **Off** with *Turned off elsewhere — turn it
 on to resume*.
 
+It covers on and off only. For a thermostat, PELS keeps setting the temperature
+it would set anyway, even while it is leaving the device off; only **Keep the
+new temperature** (under *When the temperature changes outside PELS*) stops
+that.
+
+You can switch it on while **Power-limit control** is off. It takes effect
+whenever Power-limit control is on, including when a Flow turns it on later, so
+it fits the pattern of leaving Power-limit control off by default and booking
+hours from a Flow.
+
 It is worth being clear about how this differs from turning **Power-limit
 control** off, since both stop PELS resuming a device:
 

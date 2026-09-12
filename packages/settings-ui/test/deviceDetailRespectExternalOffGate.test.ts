@@ -45,7 +45,8 @@ const buildDom = () => {
         </div>
         <div class="md-switch-row" id="device-detail-respect-external-off-row" hidden>
           <md-switch id="device-detail-respect-external-off"></md-switch>
-          <small class="field__hint" id="device-detail-respect-external-off-power-limit-hint" hidden>Turn on Power-limit control above first — this setting applies when PELS controls whether the device runs.</small>
+          <small class="field__hint" id="device-detail-respect-external-off-temperature-hint" hidden>This covers on and off only. PELS still sets this device’s temperature as usual, unless Keep the new temperature is selected above.</small>
+          <small class="field__hint" id="device-detail-respect-external-off-power-limit-hint" hidden>Takes effect whenever Power-limit control is on, including when a Flow turns it on later.</small>
           <small class="field__hint" id="device-detail-respect-external-off-smart-task-hint" hidden>A Smart task may not finish on time while this device stays off.</small>
         </div>
         <md-switch id="device-detail-price-opt"></md-switch>
@@ -198,6 +199,7 @@ const row = () => document.querySelector('#device-detail-respect-external-off-ro
 const toggle = () => document.querySelector('#device-detail-respect-external-off') as MdSwitchLike | null;
 const powerLimitHint = () => document.querySelector('#device-detail-respect-external-off-power-limit-hint') as HTMLElement | null;
 const smartTaskHint = () => document.querySelector('#device-detail-respect-external-off-smart-task-hint') as HTMLElement | null;
+const temperatureHint = () => document.querySelector('#device-detail-respect-external-off-temperature-hint') as HTMLElement | null;
 const temperatureControlRow = () => document.querySelector(
   '#device-detail-temperature-control-disabled-row',
 ) as HTMLElement | null;
@@ -276,14 +278,34 @@ describe('device detail "Leave off until turned on again" gating', () => {
     expect(toggle()?.selected).toBe(true);
   });
 
-  it('disables the switch with the power-limit hint when Power-limit control is off', async () => {
-    // The runtime requires control authority to detect the off action at all, so
-    // the toggle would silently do nothing — surface why rather than lie.
+  it('keeps the switch usable, with the power-limit hint, when Power-limit control is off', async () => {
+    // The hold is a standing preference: detection is plan-independent, so an
+    // outside OFF is recorded regardless of control mode and takes effect the
+    // moment Power-limit control comes on. The documented cheap-hour pattern
+    // keeps Power-limit control off by default and lets a Flow turn it on, so
+    // gating the switch on the toggle's current state made the hold
+    // un-settable for exactly those devices. The hint says WHEN it applies; it
+    // is information, not a blocker.
     await openPanel({ device: buildBinaryDevice(), controllable: false });
     expect(row()?.hidden).toBe(false);
-    expect(toggle()?.disabled).toBe(true);
+    expect(toggle()?.disabled).toBe(false);
     expect(powerLimitHint()?.hidden).toBe(false);
     expect(powerLimitHint()?.textContent).toContain('Power-limit control');
+  });
+
+  it('tells a thermostat owner the hold covers on and off only', async () => {
+    // The hold says nothing about a setpoint: PELS keeps writing the mode
+    // target while it leaves the device off, unless Keep the new temperature is
+    // selected. An owner who tests the hold assumes PELS has let go entirely.
+    await openPanel({ device: buildTemperatureBinaryDevice() });
+    expect(temperatureHint()?.hidden).toBe(false);
+    expect(temperatureHint()?.textContent).toContain('on and off only');
+    expect(toggle()?.disabled).toBe(false);
+  });
+
+  it('hides the on/off-only hint on a device with no temperature target', async () => {
+    await openPanel({ device: buildBinaryDevice() });
+    expect(temperatureHint()?.hidden).toBe(true);
   });
 
   it('disables the switch on an unmanaged device without shouting about power limits', async () => {
@@ -367,12 +389,12 @@ describe('device detail "Leave off until turned on again" write', () => {
     });
   });
 
-  it('enables the switch as soon as the user follows its own hint', async () => {
-    // The hint sends the user to Power-limit control. If the panel does not
-    // re-sync on that write, they turn it on and the switch they were sent to
-    // is still disabled with the same hint showing.
+  it('drops the power-limit hint as soon as Power-limit control comes on', async () => {
+    // The hint describes when the setting applies. If the panel does not
+    // re-sync on that write, the owner turns Power-limit control on and the
+    // hint keeps saying it is off. The switch itself is usable throughout.
     await openPanel({ device: buildBinaryDevice(), controllable: false });
-    expect(toggle()?.disabled).toBe(true);
+    expect(toggle()?.disabled).toBe(false);
     expect(powerLimitHint()?.hidden).toBe(false);
 
     const powerLimit = document.querySelector('#device-detail-controllable') as MdSwitchLike;
