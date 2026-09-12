@@ -3,7 +3,7 @@ import { RESPECT_EXTERNAL_OFF_DEVICES } from '../../../../contracts/src/settings
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
 import { showToast } from '../toast.ts';
-import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 
 /**
  * "Leave off until turned on again" — the per-device opt-in that makes an
@@ -13,7 +13,26 @@ import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
  * binary-capability-only, so offering it for a temperature-only device would be
  * a switch that silently does nothing. Disabled — with a visible "why" — while
  * Managed or Power-limit control is off, since the setting only has meaning when
- * PELS controls whether the device runs.
+ * PELS controls whether the device runs. The dump-load and surplus rows gate the
+ * same way.
+ *
+ * THE GATE IS NOT ABOUT DETECTION, and it does not make the hold safe with Flows.
+ * Detection is plan-independent (`setup/externalOffHoldDetection.ts`), so an
+ * outside OFF is recorded whatever the control state — including one a Flow
+ * sends. That is why the gate was once removed to let a Flow-booked device (the
+ * cheap-hour recipe keeps Power-limit control off by default) opt in while
+ * control was off, and why that was reverted: the recipe's closing Flow turns
+ * the device off, which arms the hold, and its opening Flow only turns
+ * Power-limit control back on, which does not start the device again. Letting
+ * the switch advertise that pattern steered owners into a device that never
+ * restarts. The owner docs now say a Flow's OFF counts (`docs/configuration.md`).
+ *
+ * ON/OFF ONLY. The hold says nothing about a thermostat's setpoint: PELS keeps
+ * writing the temperature it would write anyway unless the owner selected
+ * "Keep the new temperature" (`notes/temperature-ownership.md`). A temperature
+ * device gets a second hint saying so, because an owner who tests the hold
+ * assumes PELS has taken its hands off the device entirely — one did, and
+ * reported the setpoint "being restored" as a bug.
  */
 
 // Queried here rather than in `dom.ts` because these four elements have exactly
@@ -26,6 +45,7 @@ const toggleEl = q<HTMLElement & { selected: boolean; disabled: boolean }>(
 );
 const powerLimitHintEl = q<HTMLElement>('#device-detail-respect-external-off-power-limit-hint');
 const smartTaskHintEl = q<HTMLElement>('#device-detail-respect-external-off-smart-task-hint');
+const temperatureHintEl = q<HTMLElement>('#device-detail-respect-external-off-temperature-hint');
 
 const runSerializedRespectExternalOffWrite = createSerializedAsyncRunner();
 
@@ -105,9 +125,18 @@ export const syncRespectExternalOffRow = (params: {
     if (smartTaskHintEl) {
       smartTaskHintEl.hidden = true;
     }
+    if (temperatureHintEl) {
+      temperatureHintEl.hidden = true;
+    }
     return;
   }
   toggleEl.selected = optedIn;
+  if (temperatureHintEl) {
+    // A static capability fact, not a blocker: the row is the same for a plain
+    // switch and a thermostat, and only the thermostat's owner needs telling
+    // that this switch does not stop PELS setting the temperature.
+    temperatureHintEl.hidden = !supportsTemperatureDevice(device);
+  }
   applyRespectExternalOffDisabledState(deviceId, controlState.isManaged, optedIn);
 };
 

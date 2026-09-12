@@ -45,6 +45,7 @@ const buildDom = () => {
         </div>
         <div class="md-switch-row" id="device-detail-respect-external-off-row" hidden>
           <md-switch id="device-detail-respect-external-off"></md-switch>
+          <small class="field__hint" id="device-detail-respect-external-off-temperature-hint" hidden>This covers on and off only. PELS still sets this device’s temperature as usual, unless Keep the new temperature is selected above.</small>
           <small class="field__hint" id="device-detail-respect-external-off-power-limit-hint" hidden>Turn on Power-limit control above first — this setting applies when PELS controls whether the device runs.</small>
           <small class="field__hint" id="device-detail-respect-external-off-smart-task-hint" hidden>A Smart task may not finish on time while this device stays off.</small>
         </div>
@@ -198,6 +199,7 @@ const row = () => document.querySelector('#device-detail-respect-external-off-ro
 const toggle = () => document.querySelector('#device-detail-respect-external-off') as MdSwitchLike | null;
 const powerLimitHint = () => document.querySelector('#device-detail-respect-external-off-power-limit-hint') as HTMLElement | null;
 const smartTaskHint = () => document.querySelector('#device-detail-respect-external-off-smart-task-hint') as HTMLElement | null;
+const temperatureHint = () => document.querySelector('#device-detail-respect-external-off-temperature-hint') as HTMLElement | null;
 const temperatureControlRow = () => document.querySelector(
   '#device-detail-temperature-control-disabled-row',
 ) as HTMLElement | null;
@@ -277,13 +279,31 @@ describe('device detail "Leave off until turned on again" gating', () => {
   });
 
   it('disables the switch with the power-limit hint when Power-limit control is off', async () => {
-    // The runtime requires control authority to detect the off action at all, so
-    // the toggle would silently do nothing — surface why rather than lie.
+    // While Power-limit control is off PELS never resumes the device, so the
+    // setting has no effect; disable it and say why, as the dump-load and
+    // surplus rows do. Not a detection limit — detection is plan-independent —
+    // and loosening it once invited owners to pair the hold with a booking Flow
+    // that turns the device off, which leaves it off for good.
     await openPanel({ device: buildBinaryDevice(), controllable: false });
     expect(row()?.hidden).toBe(false);
     expect(toggle()?.disabled).toBe(true);
     expect(powerLimitHint()?.hidden).toBe(false);
     expect(powerLimitHint()?.textContent).toContain('Power-limit control');
+  });
+
+  it('tells a thermostat owner the hold covers on and off only', async () => {
+    // The hold says nothing about a setpoint: PELS keeps writing the mode
+    // target while it leaves the device off, unless Keep the new temperature is
+    // selected. An owner who tests the hold assumes PELS has let go entirely.
+    await openPanel({ device: buildTemperatureBinaryDevice() });
+    expect(temperatureHint()?.hidden).toBe(false);
+    expect(temperatureHint()?.textContent).toContain('on and off only');
+    expect(toggle()?.disabled).toBe(false);
+  });
+
+  it('hides the on/off-only hint on a device with no temperature target', async () => {
+    await openPanel({ device: buildBinaryDevice() });
+    expect(temperatureHint()?.hidden).toBe(true);
   });
 
   it('disables the switch on an unmanaged device without shouting about power limits', async () => {

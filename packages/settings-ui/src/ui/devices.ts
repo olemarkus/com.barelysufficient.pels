@@ -1,4 +1,5 @@
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
+import { POWER_READING_REMEDY } from './deviceControlAvailability.ts';
 import { deviceCardList, emptyState, refreshButton } from './dom.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
@@ -97,7 +98,7 @@ const getCapacityTitle = (params: {
 }): string => {
   const { isLoadingComplete, supportsPower, isManaged } = params;
   if (!isLoadingComplete) return 'Loading...';
-  if (!supportsPower) return 'Power-limit control (requires power measurement or configured load)';
+  if (!supportsPower) return `Power-limit control (needs ${POWER_READING_REMEDY})`;
   if (isManaged) return 'Power-limit control';
   return 'Power-limit control (requires Managed by PELS)';
 };

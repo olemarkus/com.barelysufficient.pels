@@ -596,6 +596,14 @@ The tracking toggle is the one place the label varies by device kind, and it var
 
 **One toggle is the whole control, and that is deliberate.** There is no per-device "what happens when the surplus runs out" setting: when the surplus cannot fund a device's lowest level, PELS stops it, and *where* it stops is the answer the **Power limiting** section already gives for every other kind of stop. A second selector would be the same question asked twice, in two vocabularies and two units, on one panel — and the Power limiting one is the better of the two, because it lets the owner name the level.
 
+The dump-load toggle's helper copy states the reconcile contract explicitly — the user must learn from the toggle itself that a manual ON gets corrected: `PELS keeps this device off and turns it on when your home is exporting enough solar power to cover it. If you switch it on yourself while there is no surplus, PELS will switch it off again.` ("enough … to cover it" is load-bearing — the allocator reserves the device's own restore draw before engaging, so a trickle of export is not enough.)
+
+The toggle is disabled (with a hint stating why) in two substates. Power-limit-control-off takes precedence when both apply: `Turn on Power-limit control above first — PELS needs it to switch this device on and off.` Otherwise, an active smart task: `Unavailable while this device has an active smart task — the task's schedule decides when it runs.` (Both mirror the runtime gate: the posture only takes effect when PELS actually controls the device's on/off — managed AND power-limit-controllable — and a device an active smart task governs is excluded from the surplus hold.)
+
+Scope guidance (v1) names the intended devices and warns against the cold-tank trap: `Good for pool pumps, towel dryers, and garage or cabin heaters. Not for your only water heater — on a run of cloudy days it would stay cold.` Do not soften the water-heater warning; a multi-day cloudy stretch means the tank never heats (comfort and legionella risk).
+
+Internal terms that stay internal: `dump load`, `surplusOnly`, `surplus hold`, `eligibility`, `posture`. Say what happens ("PELS keeps this device off…"), never "hold"/"shed"/"eligible" in user copy.
+
 ### Leave off until turned on again
 
 | Concept | Label |
@@ -609,13 +617,25 @@ PELS, and it does not claim a human necessarily performed the action. Keep that
 name out of user-facing text. Source: `PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS` in
 `planStateLabels.ts`.
 
-The dump-load toggle's helper copy states the reconcile contract explicitly — the user must learn from the toggle itself that a manual ON gets corrected: `PELS keeps this device off and turns it on when your home is exporting enough solar power to cover it. If you switch it on yourself while there is no surplus, PELS will switch it off again.` ("enough … to cover it" is load-bearing — the allocator reserves the device's own restore draw before engaging, so a trickle of export is not enough.)
+The switch is offered for any device PELS can switch on and off. Like the
+dump-load and surplus rows, it is disabled while **Managed by PELS** or
+**Power-limit control** is off, because PELS does not resume the device then and
+the setting has no effect. The gate is not about detection, which is
+plan-independent (`setup/externalOffHoldDetection.ts`), and it does not make
+the hold safe to pair with Flows: a Flow that turns the device off arms the hold,
+and a later Flow that only turns Power-limit control on does not start the
+device again. Do not write copy that recommends the hold for Flow-booked hours;
+`docs/configuration.md` states the caveat instead.
 
-The toggle is disabled (with a hint stating why) in two substates. Power-limit-control-off takes precedence when both apply: `Turn on Power-limit control above first — PELS needs it to switch this device on and off.` Otherwise, an active smart task: `Unavailable while this device has an active smart task — the task's schedule decides when it runs.` (Both mirror the runtime gate: the posture only takes effect when PELS actually controls the device's on/off — managed AND power-limit-controllable — and a device an active smart task governs is excluded from the surplus hold.)
+| When | Hint |
+|---|---|
+| Power-limit control is off (disables the switch) | `Turn on Power-limit control above first — this setting applies when PELS controls whether the device runs.` |
+| The device has a temperature target (information only) | `This covers on and off only. PELS still sets this device’s temperature as usual, unless Keep the new temperature is selected above.` |
 
-Scope guidance (v1) names the intended devices and warns against the cold-tank trap: `Good for pool pumps, towel dryers, and garage or cabin heaters. Not for your only water heater — on a run of cloudy days it would stay cold.` Do not soften the water-heater warning; a multi-day cloudy stretch means the tank never heats (comfort and legionella risk).
-
-Internal terms that stay internal: `dump load`, `surplusOnly`, `surplus hold`, `eligibility`, `posture`. Say what happens ("PELS keeps this device off…"), never "hold"/"shed"/"eligible" in user copy.
+The hold is the on/off axis only and says nothing about a setpoint
+(`notes/temperature-ownership.md`). The temperature hint exists because an
+owner who tests the hold assumes PELS has let go of the device entirely, then
+reads the mode target being re-applied as a bug.
 
 ## Smart task vocabulary
 
