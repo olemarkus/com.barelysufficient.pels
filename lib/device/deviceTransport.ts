@@ -386,7 +386,15 @@ export class DeviceTransport extends EventEmitter {
     getBinaryCommandConfirmationSnapshot() {
         return buildBinaryCommandConfirmationSnapshot(this.latestSnapshot);
     }
-    getSnapshotByDeviceId(id: string): TargetDeviceSnapshot | undefined { return this.latestSnapshotById.get(id); }
+    /**
+     * `TransportDeviceSnapshot`, not the narrower `TargetDeviceSnapshot`: the map
+     * holds the transport's own shape, and owner-seam consumers intersect the
+     * observed/descriptor PROBES onto what they receive. Declared as the base it
+     * would compile anyway — every probe member is optional — and work only
+     * because the object happens to be physically wider, which is the failure
+     * `deviceDescriptorProjection.ts` was written to stop repeating.
+     */
+    getSnapshotByDeviceId(id: string): TransportDeviceSnapshot | undefined { return this.latestSnapshotById.get(id); }
     getUiPickerDevices(): TransportDeviceSnapshot[] { return getSnapshotUiPickerDevices(this.ctx); }
     // Poll-path home power read; also fans the additional (sub-home) meter
     // readings out to the `onAdditionalMeterReadings` provider (multi-home
@@ -554,8 +562,13 @@ export class DeviceTransport extends EventEmitter {
         desired: boolean,
         triggerFlow: (deviceId: string, capabilityId: string, desired: boolean) => Promise<void>,
     ): Promise<void> {
-        const snapshot = this.latestSnapshotById.get(deviceId)
-            ?? this.latestSnapshot.find((device) => device.id === deviceId);
+        // `latestSnapshotById` is authoritative for a by-id read: every writer
+        // updates it in the same call that touches `latestSnapshot` (refresh
+        // rebuilds it from the array, an unparseable device.update splices and
+        // deletes, the capability-drop path does both). The `?? find` that used to
+        // sit here was a hedge against a divergence that cannot happen, and a
+        // hedging consumer is a symptom — root `AGENTS.md`.
+        const snapshot = this.latestSnapshotById.get(deviceId);
         const capabilityId = snapshot?.binaryCapabilityId;
         if (!capabilityId) throw new Error(`No binary control binding for device ${deviceId}`);
         if (snapshot.flowBackedCapabilityIds?.includes(capabilityId) === true) {
@@ -572,8 +585,7 @@ export class DeviceTransport extends EventEmitter {
 
     /** Semantic primary-temperature write; transport resolves the SDK target. */
     async requestTemperatureTarget(deviceId: string, desired: number): Promise<number> {
-        const snapshot = this.latestSnapshotById.get(deviceId)
-            ?? this.latestSnapshot.find((device) => device.id === deviceId);
+        const snapshot = this.latestSnapshotById.get(deviceId);
         const target = snapshot?.targets.find((entry) => entry.id.startsWith('target_temperature'));
         if (!target) throw new Error(`No temperature target binding for device ${deviceId}`);
         const requested = await runSetCapability(this.ctx, deviceId, target.id, desired);
@@ -582,8 +594,7 @@ export class DeviceTransport extends EventEmitter {
     }
 
     isFlowBackedCapability(deviceId: string, capabilityId: string): boolean {
-        const snapshot = this.latestSnapshotById.get(deviceId)
-            ?? this.latestSnapshot.find((device) => device.id === deviceId);
+        const snapshot = this.latestSnapshotById.get(deviceId);
         return snapshot?.flowBackedCapabilityIds?.includes(capabilityId) === true;
     }
 

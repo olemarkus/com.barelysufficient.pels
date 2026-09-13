@@ -1,8 +1,8 @@
 import { detectNativeWiringConflicts, type NativeWiringConflictDetection } from './flowConflictProbe';
+import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 import { getRawFromHomeyApi } from '../lib/device/transport/managerHomeyApi';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
-import type { DeviceTransport } from '../lib/device/deviceTransport';
 import type { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { PlanService } from '../lib/plan/planService';
 
@@ -44,7 +44,14 @@ export type AppNativeWiringDeps = {
   setFlowConflictsByDevice: (conflicts: FlowConflictMap) => void;
   getNativeEvWiringDevices: () => Record<string, boolean>;
   getStructuredLogger: (component: string) => PinoLogger | undefined;
-  getDeviceManager: () => DeviceTransport | undefined;
+  /**
+   * Descriptors, not the transport: the conflict probe declares
+   * `getDescriptors: () => readonly DeviceDescriptorRead[]`
+   * (`setup/flowConflictProbe.ts`) and this was handing it the raw snapshot — a
+   * surface it declared and did not have. This module needs nothing else from
+   * the transport.
+   */
+  getDeviceDescriptors: () => DeviceDescriptorRead[];
   getSnapshotWarmupGate: () => SnapshotWarmupGate | undefined;
   getPlanService: () => PlanService | undefined;
   refreshTargetDevicesSnapshot: () => Promise<unknown>;
@@ -88,9 +95,9 @@ export class AppNativeWiring {
   async detectNativeWiringConflictsWithSnapshotRetry(): Promise<NativeWiringConflictDetection> {
     for (let attempt = 1; attempt <= NATIVE_WIRING_DETECTION_MAX_ATTEMPTS; attempt += 1) {
       if (this.deps.getNativeWiringUninitializing()) return { status: 'unknown' };
-      const snapshot = this.deps.getDeviceManager()?.getSnapshot() ?? [];
+      const descriptors = this.deps.getDeviceDescriptors();
       const lastAttempt = attempt === NATIVE_WIRING_DETECTION_MAX_ATTEMPTS;
-      if (snapshot.length === 0) {
+      if (descriptors.length === 0) {
         if (!lastAttempt) {
           await this.deps.delayMs(NATIVE_WIRING_DETECTION_RETRY_DELAY_MS);
           continue;
@@ -99,7 +106,7 @@ export class AppNativeWiring {
       }
       return detectNativeWiringConflicts({
         get: (path) => getRawFromHomeyApi(path),
-        getDescriptors: () => snapshot,
+        getDescriptors: () => descriptors,
         // Guarded sink: the flow read can resolve after teardown, so drop the
         // outcome line once uninitializing rather than log into a closing rpc.
         structuredLog: {

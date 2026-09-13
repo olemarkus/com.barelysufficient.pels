@@ -319,8 +319,7 @@ export async function logHomeyDeviceForDebugFromApp(params: {
     deviceManager: runtimeApp.deviceManager,
     getPelsDeviceState: (targetDeviceId) => {
       const targetSnapshot = compactPelsTargetSnapshot(
-        runtimeApp.deviceManager?.getSnapshot?.()
-          ?.find((entry) => entry.id === targetDeviceId) ?? null,
+        runtimeApp.deviceManager?.getSnapshotByDeviceId?.(targetDeviceId) ?? null,
       );
       const planDevice = compactPelsPlanDevice(
         runtimeApp.planService?.getLatestPlanSnapshot?.()
@@ -375,8 +374,7 @@ export async function logHomeyDeviceComparisonForDebugFromApp(params: {
     deviceManager: runtimeApp.deviceManager,
     getPelsDeviceState: (targetDeviceId) => {
       const targetSnapshot = compactPelsTargetSnapshot(
-        runtimeApp.deviceManager?.getSnapshot?.()
-          ?.find((entry) => entry.id === targetDeviceId) ?? null,
+        runtimeApp.deviceManager?.getSnapshotByDeviceId?.(targetDeviceId) ?? null,
       );
       const planDevice = compactPelsPlanDevice(
         runtimeApp.planService?.getLatestPlanSnapshot?.()

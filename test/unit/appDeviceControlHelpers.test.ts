@@ -9,6 +9,7 @@ import {
   reportSteppedLoadActualStep,
   resolveDefaultControlModel,
 } from '../../setup/appDeviceControlHelpers';
+import { snapshotById } from '../helpers/snapshotById';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
@@ -98,7 +99,7 @@ describe('appDeviceControlHelpers', () => {
         config = { ...config, reachability };
         return true;
       },
-      getDeviceSnapshots: () => [snapshot],
+      getDeviceSnapshot: snapshotById(() => [snapshot]),
       getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -157,7 +158,7 @@ describe('appDeviceControlHelpers', () => {
         config = { ...config, reachability };
         return true;
       },
-      getDeviceSnapshots: () => [snapshot],
+      getDeviceSnapshot: snapshotById(() => [snapshot]),
       getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -219,7 +220,7 @@ describe('appDeviceControlHelpers', () => {
         snapshot.reportedStepObservedAtMs = observedAtMs;
         return true;
       },
-      getDeviceSnapshots: () => [snapshot],
+      getDeviceSnapshot: snapshotById(() => [snapshot]),
       getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -278,7 +279,7 @@ describe('appDeviceControlHelpers', () => {
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability,
-      getDeviceSnapshots: () => [snapshot],
+      getDeviceSnapshot: snapshotById(() => [snapshot]),
       getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -323,7 +324,7 @@ describe('appDeviceControlHelpers', () => {
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability,
-      getDeviceSnapshots: () => [snapshot],
+      getDeviceSnapshot: snapshotById(() => [snapshot]),
       getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -373,7 +374,7 @@ describe('appDeviceControlHelpers', () => {
         config = { ...config, reachability };
         return true;
       },
-      getDeviceSnapshots: () => [snapshot],
+      getDeviceSnapshot: snapshotById(() => [snapshot]),
       getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -422,7 +423,7 @@ describe('appDeviceControlHelpers', () => {
       getProfiles: () => ({}),
       getTargetPowerConfig: () => config,
       updateTargetPowerReachability: vi.fn(() => false),
-      getDeviceSnapshots: () => [snapshot],
+      getDeviceSnapshot: snapshotById(() => [snapshot]),
       getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -468,7 +469,7 @@ describe('appDeviceControlHelpers', () => {
         return true;
       },
       scheduleTargetPowerProbeSettlement,
-      getDeviceSnapshots: () => [snapshot],
+      getDeviceSnapshot: snapshotById(() => [snapshot]),
       getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -524,7 +525,7 @@ describe('appDeviceControlHelpers', () => {
         return true;
       },
       scheduleTargetPowerProbeSettlement,
-      getDeviceSnapshots: () => [snapshot],
+      getDeviceSnapshot: snapshotById(() => [snapshot]),
       getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -592,7 +593,7 @@ describe('appDeviceControlHelpers', () => {
         snapshot.reportedStepObservedAtMs = observedAtMs;
         return true;
       },
-      getDeviceSnapshots: () => [snapshot],
+      getDeviceSnapshot: snapshotById(() => [snapshot]),
       getStructuredLogger: () => ({ info: vi.fn(), warn: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -674,7 +675,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => profiles,
-      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: true } })],
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({ binaryControl: { on: true } })]),
       getLatestPlanSnapshot: () => ({
         devices: [{ id: 'dev-1', targetStepId: 'low', desiredStepId: 'low' }],
       } as never),
@@ -1397,7 +1398,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: true } })],
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({ binaryControl: { on: true } })]),
       getLatestPlanSnapshot: () => ({
         devices: [{
           id: 'dev-1',
@@ -1448,10 +1449,10 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => ({}),
-      getDeviceSnapshots: () => [baseSnapshot({
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({
         binaryControl: { on: true },
         steppedLoadProfile: steppedProfiles['dev-1'],
-      })],
+      })]),
       getLatestPlanSnapshot: () => ({ devices: [] } as never),
       getStructuredLogger: () => structuredLogger as never,
       debugStructured: vi.fn(),
@@ -1470,10 +1471,10 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => ({}),
-      getDeviceSnapshots: () => [baseSnapshot({
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfiles['dev-1'],
-      })],
+      })]),
       getStructuredLogger: () => undefined,
       debugStructured: vi.fn(),
     });
@@ -1486,7 +1487,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => ({}),
-      getDeviceSnapshots: () => [baseSnapshot({
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({
         controlAdapter: {
           kind: 'capability_adapter',
           activationAvailable: true,
@@ -1494,7 +1495,7 @@ describe('appDeviceControlHelpers', () => {
           activationRequired: false,
         },
         suggestedSteppedLoadProfile: steppedProfiles['dev-1'],
-      })],
+      })]),
       getStructuredLogger: () => undefined,
       debugStructured: vi.fn(),
     });
@@ -1508,11 +1509,11 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => ({}),
-      getDeviceSnapshots: () => [baseSnapshot({
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({
         binaryControl: { on: true },
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfiles['dev-1'],
-      })],
+      })]),
       getLatestPlanSnapshot: () => ({
         devices: [{
           id: 'dev-1',
@@ -1548,7 +1549,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: true } })],
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({ binaryControl: { on: true } })]),
       getLatestPlanSnapshot: () => ({
         devices: [{
           id: 'dev-1',
@@ -1605,7 +1606,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: true } })],
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({ binaryControl: { on: true } })]),
       getLatestPlanSnapshot: () => ({
         devices: [{
           id: 'dev-1',
@@ -1647,7 +1648,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({ binaryControl: { on: false } })]),
       getStructuredLogger: () => structuredLogger as never,
       debugStructured: vi.fn(),
     });
@@ -1700,7 +1701,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [snapshotHolder.current],
+      getDeviceSnapshot: snapshotById(() => [snapshotHolder.current]),
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -1749,7 +1750,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({ binaryControl: { on: false } })]),
       getLatestPlanSnapshot: () => ({
         devices: [{ id: 'dev-1', targetStepId: 'max', desiredStepId: 'max' }],
       } as never),
@@ -1784,7 +1785,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({ binaryControl: { on: false } })]),
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -1821,7 +1822,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({ binaryControl: { on: false } })]),
       getLatestPlanSnapshot: () => ({
         devices: [{ id: 'dev-1', targetStepId: 'max', desiredStepId: 'max' }],
       } as never),
@@ -1854,7 +1855,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({ binaryControl: { on: false } })]),
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -1894,7 +1895,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({ binaryControl: { on: false } })]),
       getLatestPlanSnapshot: () => ({
         devices: [{ id: 'dev-1', targetStepId: 'low', desiredStepId: 'low' }],
       } as never),
@@ -1932,7 +1933,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({ binaryControl: { on: false } })]),
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -1965,7 +1966,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
     ...stores,
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
+      getDeviceSnapshot: snapshotById(() => [baseSnapshot({ binaryControl: { on: false } })]),
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });

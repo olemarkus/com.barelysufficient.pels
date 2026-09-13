@@ -255,7 +255,15 @@ export class AppDeviceControlHelpers {
     }) => boolean;
     isTemperatureControlDisabled?: (deviceId: string) => boolean;
     allowsTemperatureAdjustments?: (deviceId: string) => boolean;
-    getDeviceSnapshots: () => Array<TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe>;
+    /**
+     * ONE device, by id — not the list. Every reader here resolves a single
+     * device, and asking the transport for the whole snapshot to `.find()` in it
+     * was an O(n) scan per call on per-device paths (`getSteppedLoadProfile` runs
+     * once per stepped device per plan build).
+     */
+    getDeviceSnapshot: (
+      deviceId: string,
+    ) => (TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe) | undefined;
     getLatestPlanSnapshot?: () => DevicePlan | null;
     getStructuredLogger: (component: string) => PinoLogger | undefined;
     debugStructured: StructuredDebugEmitter;
@@ -265,7 +273,7 @@ export class AppDeviceControlHelpers {
   // only `target_temperature` writes. Gating here left the Overview card binary
   // for a flagged stepped device and starved its command session of a profile.
   getSteppedLoadProfile(deviceId: string): SteppedLoadProfile | null {
-    const snapshot = this.deps.getDeviceSnapshots().find((device) => device.id === deviceId);
+    const snapshot = this.deps.getDeviceSnapshot(deviceId);
     const profile = resolveEffectiveSteppedLoadProfile({
       snapshot,
       profiles: this.deps.getProfiles(),
@@ -290,7 +298,7 @@ export class AppDeviceControlHelpers {
   }
 
   getLifecycleFallbackDevice(deviceId: string): LifecycleFallbackDevice | undefined {
-    const snapshot = this.deps.getDeviceSnapshots().find((device) => device.id === deviceId);
+    const snapshot = this.deps.getDeviceSnapshot(deviceId);
     if (!snapshot) return undefined;
     const decorated = this.decorateTargetSnapshotList([snapshot])[0];
     if (!decorated) return undefined;
@@ -393,8 +401,14 @@ export class AppDeviceControlHelpers {
     return this.deps.store.hasPendingTargetPowerProbe();
   }
 
+  /**
+   * `snapshots` is required: every caller already holds the devices it means
+   * (one device from the mutation hook, the refreshed list from the snapshot
+   * pass), and the default that pulled the whole transport snapshot had no
+   * caller at all.
+   */
   reconcileTargetPowerReachability(
-    snapshots = this.deps.getDeviceSnapshots(),
+    snapshots: Array<TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe>,
     nowMs = Date.now(),
   ): void {
     if (!this.deps.getTargetPowerConfig || !this.deps.updateTargetPowerReachability) return;
@@ -413,7 +427,7 @@ export class AppDeviceControlHelpers {
     stepId: string,
     planningPowerW?: number,
   ): ReportSteppedLoadActualStepResult {
-    const snapshot = this.deps.getDeviceSnapshots().find((device) => device.id === deviceId);
+    const snapshot = this.deps.getDeviceSnapshot(deviceId);
     const deviceName = snapshot ? snapshot.name.trim() : `device ${deviceId}`;
     // Per notes/logging/README.md: structured events keep `deviceId` for identity and
     // only carry `deviceName` when actually known (never an id-derived placeholder).

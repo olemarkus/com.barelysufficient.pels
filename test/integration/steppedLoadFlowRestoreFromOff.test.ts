@@ -36,6 +36,7 @@
  * `shedReleaseActuation`), and this charger has `evcharger_charging`.
  */
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
+import { snapshotById } from '../helpers/snapshotById';
 import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
 import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
 import { steppedStoresForTest } from '../helpers/steppedStores';
@@ -224,7 +225,7 @@ const buildHarness = (
   const helpers = new AppDeviceControlHelpers({
     ...stores,
     getProfiles: () => profiles,
-    getDeviceSnapshots: () => [snapshotHolder.current],
+    getDeviceSnapshot: snapshotById(() => [snapshotHolder.current]),
     getLatestPlanSnapshot: () => null,
     getStructuredLogger: () => structuredLogger as never,
     debugStructured: vi.fn(),

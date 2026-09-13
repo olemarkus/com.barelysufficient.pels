@@ -75,8 +75,8 @@ export function hasInvalidBinaryControlPayload(snapshot: TransportDeviceSnapshot
 
 export function clearBinarySettleEvidence(ctx: TransportContext, deviceId: string): boolean {
     const removed = ctx.latestBinarySettleEvidenceByDeviceId.delete(deviceId);
-    const snapshot = ctx.latestSnapshotById.get(deviceId)
-        ?? ctx.latestSnapshot.find((device) => device.id === deviceId);
+    // By-id is authoritative; see the note in `deviceTransport.requestBinaryControl`.
+    const snapshot = ctx.latestSnapshotById.get(deviceId);
     if (snapshot) delete snapshot.binaryControlObservation;
     return removed;
 }

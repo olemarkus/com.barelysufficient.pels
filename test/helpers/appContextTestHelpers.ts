@@ -1,4 +1,5 @@
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
+import { snapshotById } from './snapshotById';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -183,7 +184,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   const deviceControlHelpers = deviceControlHelpersOverride ?? new AppDeviceControlHelpers({
     ...steppedStores,
     getProfiles: () => deviceControlProfiles,
-    getDeviceSnapshots: () => latestTargetSnapshot,
+    getDeviceSnapshot: snapshotById(() => latestTargetSnapshot),
     getStructuredLogger: () => undefined,
     debugStructured: vi.fn(),
   });

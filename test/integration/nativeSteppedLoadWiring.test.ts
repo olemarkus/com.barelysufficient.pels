@@ -1,4 +1,5 @@
 import Homey from 'homey';
+import { snapshotById } from '../helpers/snapshotById';
 import { steppedStoresForTest } from '../helpers/steppedStores';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
@@ -864,7 +865,7 @@ describe('native stepped-load wiring', () => {
     const helpers = new AppDeviceControlHelpers({
     ...steppedStoresForTest(),
       getProfiles: () => ({ 'hoiax-1': steppedProfile }),
-      getDeviceSnapshots: () => snapshots,
+      getDeviceSnapshot: snapshotById(() => snapshots),
       getStructuredLogger: () => undefined,
       debugStructured: vi.fn(),
     });
@@ -922,7 +923,7 @@ describe('native stepped-load wiring', () => {
     const helpers = new AppDeviceControlHelpers({
     ...steppedStoresForTest(),
       getProfiles: () => ({ 'hoiax-1': configuredProfile }),
-      getDeviceSnapshots: () => [nativeSnapshot],
+      getDeviceSnapshot: snapshotById(() => [nativeSnapshot]),
       getStructuredLogger: () => undefined,
       debugStructured: vi.fn(),
     });

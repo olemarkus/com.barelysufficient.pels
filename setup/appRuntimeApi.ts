@@ -235,7 +235,7 @@ abstract class AppRuntimeApi extends Base {
   protected initDailyBudgetService(): void { this.serviceWiring.initDailyBudgetService(); }
   protected initDeviceManager(): Promise<void> { return this.serviceWiring.initDeviceManager(); }
   protected getSnapshotDevice(deviceId: string): TargetDeviceSnapshot | undefined {
-    return this.context.deviceManager?.getSnapshot()?.find((entry) => entry.id === deviceId);
+    return this.context.deviceManager?.getSnapshotByDeviceId(deviceId);
   }
   protected hasEnabledEvBoostForSnapshot(device: TargetDeviceSnapshot | undefined): boolean {
     if (!device || device.deviceClass !== 'evcharger') return false;

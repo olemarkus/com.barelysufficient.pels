@@ -414,7 +414,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     allowsTemperatureAdjustments: (deviceId) => (
       this.observedTemperatureModeUpdates.allowsAutomaticAdjustments(deviceId)
     ),
-    getDeviceSnapshots: () => this.deviceManager?.getSnapshot() ?? [],
+    getDeviceSnapshot: (deviceId) => this.deviceManager?.getSnapshotByDeviceId(deviceId),
     getLatestPlanSnapshot: () => this.planService.getLatestPlanSnapshot(),
     getStructuredLogger: (component) => this.getStructuredLogger(component),
     debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
@@ -443,7 +443,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     setFlowConflictsByDevice: (conflicts) => { this.flowConflictsByDevice = conflicts; },
     getNativeEvWiringDevices: () => this.nativeEvWiringDevices,
     getStructuredLogger: (component) => this.getStructuredLogger(component),
-    getDeviceManager: () => this.deviceManager,
+    getDeviceDescriptors: () => this.getDeviceDescriptors(),
     getSnapshotWarmupGate: () => this.snapshotWarmupGate,
     getPlanService: () => this.planService,
     refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot(),

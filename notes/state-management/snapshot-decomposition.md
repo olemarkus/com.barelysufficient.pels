@@ -476,14 +476,39 @@ decomposition stages, but it is why 6.4's builder sits where it does.
    the descriptor and a spread is not a read.
 
 7. **Seal `getSnapshot()` inside transport** once no external caller remains; cruiser-
-   enforce. External pullers to clear first: the `app.ts` composition callbacks,
-   `AppHostApi`/`AppRuntimeApi`, `setup/flowConflictProbe`, and
-   `setup/appDebugHelpers`. The executor and plan-layer pullers are gone (stage 5),
-   and the descriptor reads already live with their owner
-   (`readDeviceDescriptor(s)` in `lib/device/deviceDescriptorProjection.ts`, over the
-   two snapshot lookups; `AppHostApi` only delegates). Sealing `getSnapshot()` leaves
-   them as the descriptor's only exit — they are what stage 7 keeps, not what it
-   clears.
+   enforce. **Five external pullers left**, each named with what it actually wants (and
+   note the audit shape: `setup/appDebugHelpers.ts` hid from a
+   `deviceManager?.getSnapshot()` grep behind the optional-CALL form
+   `getSnapshot?.()` — grep both):
+   `setup/appRuntimeApi.ts` (the observed-state seed — legitimately raw, and the one
+   that should move INTO `lib/device` beside `projectObservedState`);
+   `setup/appInit/wireHomeMembership.ts` (`id` + `zoneId` only, but deliberately raw
+   today — see the comment there, whose stated reason (a mutating decorated read) no
+   longer holds since the settle moved to `lib/executor/syncSteppedCommands.ts`);
+   `setup/appInit/createGenerationPollSource.ts` (`deviceClass` only, on a 10-second
+   path that must stay allocation-free — so NOT `getDeviceDescriptors()`, which
+   projects per device; it wants a transport-side predicate);
+   `setup/appInit/createPlanService.ts` (device ids only); and
+   `setup/appSnapshotHelpers.ts` (target-power reachability, which reads the observed
+   `reportedStepId`, so it wants the joined surface rather than descriptors —
+   and reusing the `getLatestTargetSnapshot()` two lines below would change WHICH
+   reachability state the decoration sees, so it is not a free swap).
+   Cleared so far: the executor and plan-layer pullers (stage 5), the descriptor reads
+   (stage 6.5, now owned by `lib/device/deviceDescriptorProjection.ts`), and the
+   by-id readers — `AppDeviceControlHelpers` and `AppRuntimeApi.getSnapshotDevice`
+   now ask `getSnapshotByDeviceId`, and `setup/appNativeWiring.ts` asks for
+   descriptors, which is what `setup/flowConflictProbe.ts` already declared it was
+   getting — and `setup/appDebugHelpers.ts`, whose two copies of the same `.find`
+   went with them.
+   **The seal itself is blocked on the transport's line budget.** The natural shape is
+   named reads ON `DeviceTransport` (so `AppContext['deviceManager']` can be narrowed
+   to a port without `getSnapshot`), but that class is at its counted 500-line cap —
+   which is why `getDeviceDescriptors` lives on `AppHostApi` in the first place.
+   Something leaves the class before the seal lands. Sealing `getSnapshot()` leaves
+   the descriptor reads (`readDeviceDescriptor(s)` in
+   `lib/device/deviceDescriptorProjection.ts`, over the two snapshot lookups;
+   `AppHostApi` only delegates) as the descriptor's only exit — they are what stage 7
+   keeps, not what it clears.
 
 ## Invariants the implementation + tests must preserve
 
