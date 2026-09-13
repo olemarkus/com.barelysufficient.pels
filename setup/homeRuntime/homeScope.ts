@@ -181,8 +181,15 @@ export type HomeScope = {
  *
  * `isTornDown` is Main's teardown edge (`stopMainActuation`), fencing the
  * persisted-signal writers exactly as a meter area's bundle fences its own.
+ * `isHomeWideFenced` is the cycle-stable half of Main's actuation fence, folded
+ * into the effective dry-run for the same reason a meter area folds its
+ * membership and source-epoch gates into `resolveEffectiveDryRun`.
  */
-export function buildMainHomeScope(ctx: AppContext, isTornDown: () => boolean): HomeScope {
+export function buildMainHomeScope(
+  ctx: AppContext,
+  isTornDown: () => boolean,
+  isHomeWideFenced: () => boolean,
+): HomeScope {
   const homeId: HomeId = MAIN_HOME_ID;
   const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   // Smart-task controller: lives in the app-wiring layer so the planner engine
@@ -232,7 +239,16 @@ export function buildMainHomeScope(ctx: AppContext, isTornDown: () => boolean): 
     // Live snapshot reads — NOT re-reads through the settings store. The
     // snapshot is the in-memory truth kept current by the settings handler.
     getCapacitySettings: () => ctx.capacitySettings,
-    getCapacityDryRun: () => ctx.capacityDryRun,
+    // The EFFECTIVE dry-run, the same composition a meter area makes: the
+    // owner's persisted intent OR a home-wide fence that holds for the whole
+    // cycle (torn down, ownership not yet trustworthy). Main used to publish
+    // and gate on the persisted flag alone, leaving its readiness fence at the
+    // actuator seam only — so it dispatched writes that were then dropped, and
+    // `pels_status.dryRunEffective` read "active" for a home that could not
+    // actuate. Nothing new is blocked: every one of these already answered
+    // `requested: false` at the write seam. The block just moves to where the
+    // executor can see it, which is also where the status can report it.
+    getCapacityDryRun: () => ctx.capacityDryRun || isHomeWideFenced(),
     getPowerTracker: () => ctx.powerTracker,
     getMeterSilenceMonitor: () => ctx.meterSilenceMonitor,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,

@@ -49,12 +49,17 @@ export type PelsStatus = {
    */
   lastPowerUpdate: number;
   /**
-   * The dry-run the writing home's PLANNER gates on. A meter area's folds in its
-   * membership and source-epoch gates, so it is genuinely effective; Main's is
-   * the persisted intent, because Main's separate actuation fence
-   * (`isMainActuationFenced`) is applied at the actuator seam and not to the
-   * planner. So Main can read "active" here inside its boot fence window. The
-   * name is the one the field has published since R7b and is kept.
+   * The dry-run the writing home gates on, and it is effective for every home:
+   * the owner's persisted intent OR a home-wide fence that holds for the whole
+   * cycle. A meter area folds in its membership and source-epoch gates; Main
+   * folds in the cycle-stable half of its actuation fence (torn down, ownership
+   * not yet trustworthy).
+   *
+   * Main used to publish the persisted intent alone, so this read "active"
+   * inside its boot fence window for a home that could not actuate. What stays
+   * outside the field, for both homes, is the condition that can change DURING
+   * an apply — a superseded plan generation — because that is resolved per
+   * write at the actuator, not once per cycle.
    */
   dryRunEffective: boolean;
 };
@@ -71,12 +76,11 @@ export function buildPelsStatus(params: {
   priceLevel: PriceLevel;
   lastPowerUpdate: number;
   /**
-   * The dry-run this home's planner gates on — `getCapacityDryRun()`, which for
-   * a meter area folds in the R7b boot-window zone-tree gate (persisted-live but
-   * no committed zone tree still reads Simulating on its Limits card) and for
-   * Main is the persisted intent, per the field doc above. EVERY home has one
-   * and writes it. The main home used to pass `undefined` to keep its blob
-   * byte-identical, which made one optional boolean carry two orthogonal
+   * The dry-run this home gates on — `getCapacityDryRun()`, which folds the
+   * boot-window readiness fence into the persisted flag for EVERY home, so a
+   * home that is persisted-live but not yet allowed to actuate reads Simulating
+   * on its Limits card rather than Active. The main home used to pass
+   * `undefined` here, which made one optional boolean carry two orthogonal
    * meanings — actuation posture AND home kind — and left main's own posture
    * flips invisible to the write-forcing that exists for that transition.
    */

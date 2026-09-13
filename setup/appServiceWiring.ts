@@ -202,7 +202,11 @@ export class AppServiceWiring {
 
   constructor(private readonly deps: AppServiceWiringDeps) {
     const { ctx } = deps;
-    this.mainHomeScope = buildMainHomeScope(deps.ctx, deps.isMainActuationStopped);
+    this.mainHomeScope = buildMainHomeScope(
+      deps.ctx,
+      deps.isMainActuationStopped,
+      () => this.isMainHomeWideFenced(),
+    );
     ctx.rebuildOwningHomePlanForDevice = (deviceId, trigger) => (
       this.rebuildOwningHomePlanForDevice(deviceId, trigger)
     );
@@ -493,17 +497,37 @@ export class AppServiceWiring {
   }
 
   /**
-   * Main's home-wide write fence, read by the actuator wrapper AND the
-   * silent-meter escalation (which refuses to spend its one shed pass while
-   * every write would answer `requested: false`). Active sub-home zone
-   * membership is provisional until the first real zone tree commits; Main's
-   * plan may still contain those fallback-Main devices, so the final write
-   * seam stays closed until ownership is trustworthy.
+   * The part of Main's fence that holds for a whole plan cycle: the app torn
+   * down, or ownership not yet trustworthy. Active sub-home zone membership is
+   * provisional until the first real zone tree commits; Main's plan may still
+   * contain those fallback-Main devices, so nothing may be written until
+   * ownership settles.
+   *
+   * Being cycle-stable is what lets it be a DRY-RUN gate rather than only a
+   * write fence — Main's scope folds it into `getCapacityDryRun`, exactly as a
+   * meter area folds its membership and source-epoch gates into
+   * `resolveEffectiveDryRun`. The planner still builds; the executor simply
+   * does not dispatch writes it already knows cannot land.
+   */
+  private isMainHomeWideFenced(): boolean {
+    return this.deps.isMainActuationStopped()
+      || this.deps.ctx.homeMembership?.isMainHomeActuationFenced() === true;
+  }
+
+  /**
+   * Main's write fence, read by the actuator wrapper AND the silent-meter
+   * escalation (which refuses to spend its one shed pass while every write
+   * would answer `requested: false`).
+   *
+   * The home-wide part above, plus the one condition that can change DURING an
+   * apply: a prepared reconcile superseded between the first SDK write and the
+   * tenth. That one cannot be a dry-run gate, because dry-run is resolved once
+   * when the executor decides to dispatch — which is the same split a meter
+   * area makes with its prepared-sample fence.
    */
   private isMainActuationFenced(): boolean {
-    return this.deps.isMainActuationStopped()
-      || this.deps.preparedMainReconcileFence.isSuperseded()
-      || this.deps.ctx.homeMembership?.isMainHomeActuationFenced() === true;
+    return this.isMainHomeWideFenced()
+      || this.deps.preparedMainReconcileFence.isSuperseded();
   }
 
   /**
