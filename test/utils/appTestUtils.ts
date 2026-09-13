@@ -69,9 +69,9 @@ export function createApp(options: CreateAppOptions = {}): MyApp {
     options.userdataDatabase ?? testUserdataDatabase(),
   );
   if (!options.preserveStartupRestoreStabilization) {
-    const originalInitPlanEngine = app['initPlanEngine'].bind(app);
-    app['initPlanEngine'] = () => {
-      originalInitPlanEngine();
+    const originalInitPlanRuntime = app['initPlanRuntime'].bind(app);
+    app['initPlanRuntime'] = () => {
+      originalInitPlanRuntime();
       app.planEngine?.clearStartupRestoreStabilization(Date.now());
     };
   }

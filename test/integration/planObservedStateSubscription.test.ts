@@ -9,10 +9,11 @@ import { cleanupApps, createApp } from '../utils/appTestUtils';
 
 /**
  * Ordering pin. The plan-dependent observed-state listeners are registered by
- * their own startup step, AFTER `initPlanService`, precisely so a device event
- * can never reach an unwired plan service. Folding them back into
- * `initDeviceManager` reopens a window in which `syncLivePlanState` was dropped
- * and an EV-SoC rebuild intent would dereference `undefined`.
+ * their own startup step, AFTER `initPlanRuntime` builds the engine and the
+ * service, precisely so a device event can never reach an unwired plan service.
+ * Folding them back into `initDeviceManager` reopens a window in which
+ * `syncLivePlanState` was dropped and an EV-SoC rebuild intent would
+ * dereference `undefined`.
  */
 const buildDeps = (planService: PlanService | undefined) => {
   const ctx = createAppContextMock({ planService });
@@ -33,20 +34,18 @@ describe('subscribePlanObservedState', () => {
     const app = createApp();
     const callOrder: string[] = [];
     const runtime = app as unknown as {
-      initPlanEngine: () => void;
-      initPlanService: () => void;
+      initPlanRuntime: () => void;
       subscribePlanObservedState: () => void;
       serviceWiring: {
         runPlanStackStartupSteps: (onFailure: (label: string, error: Error) => void) => Promise<void>;
       };
     };
-    runtime.initPlanEngine = () => { callOrder.push('engine'); };
-    runtime.initPlanService = () => { callOrder.push('service'); };
+    runtime.initPlanRuntime = () => { callOrder.push('runtime'); };
     runtime.subscribePlanObservedState = () => { callOrder.push('subscription'); };
 
     await runtime.serviceWiring.runPlanStackStartupSteps(() => undefined);
 
-    expect(callOrder).toEqual(['engine', 'service', 'subscription']);
+    expect(callOrder).toEqual(['runtime', 'subscription']);
   });
 
   it('syncs live plan state for an observation once the plan service is wired', () => {

@@ -33,7 +33,7 @@ export type PlanObservedStateSubscriptionDeps = {
 
 /**
  * The plan-dependent half of the observed-state fan-out, registered by its own
- * startup step AFTER `initPlanService`.
+ * startup step AFTER `initPlanRuntime`.
  *
  * It lives in a separate step because every listener here reaches the plan
  * service: `syncLivePlanState` calls it directly, and the external-off hold
@@ -41,7 +41,7 @@ export type PlanObservedStateSubscriptionDeps = {
  * with the transport meant they were live from `initDeviceManager` — three
  * awaited startup steps before the service existed — so a device event landing
  * in that gap had its work silently dropped. Ordering removes the window
- * instead of guarding it: keep this step after `initPlanService`.
+ * instead of guarding it: keep this step after `initPlanRuntime`.
  *
  * **No listener here requests an IMMEDIATE plan rebuild.** An observed device
  * change is planner input, not a capacity trigger — the decision is about the

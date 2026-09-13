@@ -53,17 +53,10 @@ import type CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import { createHomePlanRebuildThrottle } from '../planRebuildIntentPolicy';
-import {
-} from '../../lib/utils/appTypeGuards';
-import {
-  DEVICE_LAST_CONTROLLED_MS,
-  homeScopedSettingsKey,
-} from '../../lib/utils/settingsKeys';
 import { createCapacitySettingsStore } from '../capacitySettingsStoreAdapter';
 // Direct file imports (not the `setup/appInit.ts` barrel) to mirror
 // `homeScope.ts` and avoid the factory↔scope module cycle via the barrel.
-import { createPlanEngine } from '../appInit/createPlanEngine';
-import { createPlanService } from '../appInit/createPlanService';
+import type { createPlanEngine } from '../appInit/createPlanEngine';
 import { buildHomePlanDevices } from './planDevicePrePass';
 import { createHomePowerPipeline } from './createHomePowerPipeline';
 import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
@@ -82,6 +75,7 @@ import {
 } from './homeModeCatalog';
 import { installHomeCapacityBundleSourceRecovery } from './homeCapacityBundleSourceRecovery';
 import type { HomeScope } from './homeScope';
+import { createHomePlanRuntime } from './createHomePlanRuntime';
 import { createHomeCommandReachability } from './createHomeCommandReachability';
 import { createHomeSignalWriters } from './homeSignalWriters';
 import {
@@ -490,15 +484,11 @@ function createBundlePlanningRuntime(params: {
     shortfallAlertImmediateTimerKey: params.timerKey('shortfallAlertImmediate'),
     shortfallAlertSustainedTimerKey: params.timerKey('shortfallAlertSustained'),
   });
-  const planEngine = createPlanEngine(params.ctx, scope, { capacityGuard: guard, isActuationFenced });
-  const storedLastControlled = params.ctx.homey.settings.get(
-    homeScopedSettingsKey(DEVICE_LAST_CONTROLLED_MS, params.homeId),
-  ) as unknown;
-  planEngine.state.actuation.loadLastControlled(storedLastControlled);
-  // A freshly (re)created bundle holds restores until its meter proves live;
-  // the first fresh sample clears the window via the pipeline.
-  planEngine.beginStartupRestoreStabilization(Date.now());
-  const planService = createPlanService(params.ctx, scope, planEngine);
+  const { planEngine, planService } = createHomePlanRuntime(
+    params.ctx,
+    scope,
+    { capacityGuard: guard, isActuationFenced },
+  );
   const { pipeline, scheduler: planRebuildScheduler, throttle: planRebuildThrottle } = createBundleSamplePipeline({
     ctx: params.ctx,
     homeId: params.homeId,

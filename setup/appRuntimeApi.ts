@@ -243,9 +243,8 @@ abstract class AppRuntimeApi extends Base {
     return config?.enabled === true && Number.isFinite(config.boostBelowPercent);
   }
   protected initCapacityGuard(): void { this.serviceWiring.initCapacityGuard(); }
-  protected initPlanEngine(): void { this.serviceWiring.initPlanEngine(); }
+  protected initPlanRuntime(): void { this.serviceWiring.initPlanRuntime(); }
   protected initDeviceDiagnosticsService(): void { this.serviceWiring.initDeviceDiagnosticsService(); }
-  protected initPlanService(): void { this.serviceWiring.initPlanService(); }
   protected subscribePlanObservedState(): void { this.serviceWiring.subscribePlanObservedState(); }
   protected getPlanRebuildNowMs(): number { return this.planRebuildScheduler.now().nowMs; }
   protected captureDefaultDynamicSoftLimit(): void { this.serviceWiring.captureDefaultDynamicSoftLimit(); }

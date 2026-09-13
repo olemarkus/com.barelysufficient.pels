@@ -8,7 +8,6 @@ import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { PlanService } from '../lib/plan/planService';
 import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
-import { DEVICE_LAST_CONTROLLED_MS } from '../lib/utils/settingsKeys';
 import {
   createRootLogger,
   setRootLogger,
@@ -28,16 +27,14 @@ import {
   createDeferredObjectivePlanHistoryRecorder,
   createDailyBudgetService,
   createDeviceDiagnosticsService,
-  createPlanEngineComposition,
-  createPlanService,
   createPriceCoordinator,
   createPriceFlowTagPublisher,
   persistDeferredObjectiveObservationWatermark,
-  requirePlanEngine,
   resolvePlanService,
   subscribePlanObservedState,
 } from './appInit';
 import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
+import { createHomePlanRuntime } from './homeRuntime/createHomePlanRuntime';
 import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
 import {
   buildHomeRuntimeReadPort, createHomeRuntimeRegistryForApp, wirePlanStatusRealtime,
@@ -176,13 +173,12 @@ export type AppServiceWiringDeps = {
   // Routed through the app so test seams that reassign the instance method are
   // honoured (and so the thin PelsApp delegators are runtime-reachable, not just
   // called by the integration boot helper).
-  initPlanEngine: () => void;
+  initPlanRuntime: () => void;
   initPriceCoordinator: () => Promise<void>;
   initDailyBudgetService: () => void;
   initDeviceManager: () => Promise<void>;
   initCapacityGuard: () => void;
   initDeviceDiagnosticsService: () => void;
-  initPlanService: () => void;
   subscribePlanObservedState: () => void;
   captureDefaultDynamicSoftLimit: () => void;
   initSettingsHandler: () => void;
@@ -423,7 +419,19 @@ export class AppServiceWiring {
     this.deps.setMainShortfallSideEffectGate(runtime.shortfallSideEffectGate);
   }
 
-  initPlanEngine(): void {
+  /**
+   * Main's plan runtime, built by the factory every meter area builds its own
+   * with. Main's half used to be spread over two boot steps and a private
+   * hydration helper, which is the only reason the two assemblies were ever
+   * separate code: the sequence itself — engine, resume the persisted
+   * last-controlled map, open the restore window, then the service over that
+   * engine — was already identical, down to the arguments.
+   *
+   * What stays here is what is genuinely Main's: the smart-task recorders it
+   * alone runs, the ambient `AppContext` handles the rest of the app reads it
+   * through, and the freshness escalation over its own meter.
+   */
+  initPlanRuntime(): void {
     const { ctx } = this.deps;
     if (!ctx.deferredObjectivePlanHistoryRecorder) {
       ctx.deferredObjectivePlanHistoryRecorder = createDeferredObjectivePlanHistoryRecorder(ctx);
@@ -431,30 +439,28 @@ export class AppServiceWiring {
     if (!ctx.deferredObjectiveActivePlanRecorder) {
       ctx.deferredObjectiveActivePlanRecorder = createDeferredObjectiveActivePlanRecorder(ctx);
     }
-    const { planEngine, lifecycleFallbackPort } = createPlanEngineComposition(ctx, this.mainHomeScope, {
-      capacityGuard: ctx.capacityGuard,
-      isActuationFenced: () => this.isMainActuationFenced(),
-    });
-    ctx.planEngine = planEngine;
-    ctx.lifecycleFallback = lifecycleFallbackPort;
-    this.hydratePlanEngineControlState();
-    planEngine.beginStartupRestoreStabilization(Date.now());
-    // Create the warmup gate before `initPlanService` reads it via `ctx`.
-    // The gate holds the first `rebuildPlanFromCache` (any source) until the
-    // bootstrap's first `refreshSnapshot()` resolves, so the planner never
-    // runs against an empty snapshot. Without it, a price-refresh or
-    // settings-change-triggered rebuild between `initDeviceManager` and the
-    // first snapshot publishes `deferred_objective_unknown` for every
-    // objective whose device hasn't landed yet, which fires a spurious
-    // `waiting → unachievable` flow trigger on every restart.
+    // The warmup gate leads: the plan service reads it off `ctx` at
+    // construction, and it holds the first `rebuildPlanFromCache` (any source)
+    // until the bootstrap's first `refreshSnapshot()` resolves, so the planner
+    // never runs against an empty snapshot. Without it a price-refresh or
+    // settings-change rebuild between `initDeviceManager` and the first
+    // snapshot publishes `deferred_objective_unknown` for every objective whose
+    // device has not landed yet, firing a spurious `waiting → unachievable`
+    // flow trigger on every restart. It depends on nothing the runtime builds.
     this.initSnapshotWarmupGate();
-  }
-
-  private hydratePlanEngineControlState(): void {
-    const { ctx } = this.deps;
-    if (!ctx.planEngine) return;
-    const stored = ctx.homey.settings.get(DEVICE_LAST_CONTROLLED_MS) as unknown;
-    ctx.planEngine.state.actuation.loadLastControlled(stored);
+    const { planEngine, planService, lifecycleFallbackPort } = createHomePlanRuntime(
+      ctx,
+      this.mainHomeScope,
+      { capacityGuard: ctx.capacityGuard, isActuationFenced: () => this.isMainActuationFenced() },
+    );
+    ctx.planEngine = planEngine;
+    ctx.planService = planService;
+    ctx.lifecycleFallback = lifecycleFallbackPort;
+    installMainFreshnessEscalation(
+      ctx,
+      () => this.deps.isMainActuationStopped(),
+      () => this.isMainActuationFenced(),
+    );
   }
 
   initDeviceDiagnosticsService(): void {
@@ -486,15 +492,6 @@ export class AppServiceWiring {
     });
   }
 
-  initPlanService(): void {
-    const { ctx } = this.deps;
-    ctx.planService = createPlanService(ctx, this.mainHomeScope, requirePlanEngine(ctx));
-    installMainFreshnessEscalation(
-      ctx,
-      () => this.deps.isMainActuationStopped(),
-      () => this.isMainActuationFenced(),
-    );
-  }
 
   /**
    * The part of Main's fence that holds for a whole plan cycle: the app torn
@@ -543,8 +540,7 @@ export class AppServiceWiring {
   private async runPlanStackStartupSteps(
     logStartupStepFailure: (label: string, error: Error) => void,
   ): Promise<void> {
-    await runStartupStep('initPlanEngine', () => this.deps.initPlanEngine(), logStartupStepFailure);
-    await runStartupStep('initPlanService', () => this.deps.initPlanService(), logStartupStepFailure);
+    await runStartupStep('initPlanRuntime', () => this.deps.initPlanRuntime(), logStartupStepFailure);
     await runStartupStep(
       'subscribePlanObservedState',
       () => this.deps.subscribePlanObservedState(),

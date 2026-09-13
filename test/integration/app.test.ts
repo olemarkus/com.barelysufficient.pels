@@ -135,8 +135,7 @@ const initApp = async (app: MyApp) => {
   app['loadPriceOptimizationSettings']();
   await app['initDeviceManager']();
   app['initCapacityGuard']();
-  app['initPlanEngine']();
-  app['initPlanService']();
+  app['initPlanRuntime']();
   app['subscribePlanObservedState']();
   app['captureDefaultDynamicSoftLimit']();
   app['initSettingsHandler']();
