@@ -21,25 +21,6 @@
  * neighbours) all write observed fields, which this projection does not carry.
  */
 import type { DeviceDescriptorRead } from '../../packages/contracts/src/types';
-import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
-
-/**
- * The snapshot store as these reads see it — the two lookups `DeviceTransport`
- * exposes, and nothing else. Structural so this module never names the concrete
- * class.
- *
- * Typed `TransportDeviceSnapshot`, not `TargetDeviceSnapshot`: `readDeviceSurfaces`
- * projects the OBSERVED half out of these same objects when the observer has no
- * record, and the observed clusters it reads (`temperature`, `stateOfCharge`,
- * `measuredPowerKw`, `evChargingState`, `reportedStepId`) live on the probes, not
- * on the base type. Declared as the base it would compile anyway — every probe
- * member is optional — and work only because the object happens to be physically
- * wider, which is the failure this file's own header warns about.
- */
-export type DeviceSnapshotStore = {
-    getSnapshot(): TransportDeviceSnapshot[];
-    getSnapshotByDeviceId(id: string): TransportDeviceSnapshot | undefined;
-};
 
 // A record keyed by EVERY descriptor key: TypeScript refuses the literal when a
 // key of `DeviceDescriptorRead` is missing, and refuses an extra key it does not
@@ -73,26 +54,9 @@ const DESCRIPTOR_KEY_RECORD: Record<keyof DeviceDescriptorRead, true> = {
 };
 const DESCRIPTOR_KEYS = Object.keys(DESCRIPTOR_KEY_RECORD) as (keyof DeviceDescriptorRead)[];
 
-/**
- * The descriptor reads themselves — surface 2 of the observer/transport split,
- * owned here in `lib/device` so the wiring layer only delegates
- * (`setup/AGENTS.md` § "No domain logic"). They would sit on `DeviceTransport`
- * beside `getSnapshot`, but that class is at its 500-line cap; this is the stage
- * 7 home regardless, since sealing `getSnapshot()` leaves these as the
- * descriptor's only exit.
- */
-export function readDeviceDescriptors(store: DeviceSnapshotStore): DeviceDescriptorRead[] {
-    return projectDeviceDescriptors(store.getSnapshot());
-}
-
 /** The list form of the projection, for a caller already holding a snapshot list. */
 export function projectDeviceDescriptors(snapshots: readonly DeviceDescriptorRead[]): DeviceDescriptorRead[] {
     return snapshots.map(projectDeviceDescriptor);
-}
-
-export function readDeviceDescriptor(store: DeviceSnapshotStore, deviceId: string): DeviceDescriptorRead | undefined {
-    const snapshot = store.getSnapshotByDeviceId(deviceId);
-    return snapshot ? projectDeviceDescriptor(snapshot) : undefined;
 }
 
 export function projectDeviceDescriptor(source: DeviceDescriptorRead): DeviceDescriptorRead {

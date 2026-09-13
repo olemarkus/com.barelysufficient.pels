@@ -79,10 +79,10 @@ function ctxWithRealSeed(snapshot: SnapshotEntry[]): {
   mutableCtx.getObservedEvChargingState = (
     deviceId,
   ) => readObservedEvChargingState(projection.getObservedState(deviceId));
+  // Seeds from the same read the app uses, so this spec cannot pass on a seed
+  // shape production no longer produces.
   mutableCtx.seedObservedStateFromSnapshot = () => {
-    const raw = ctx.deviceManager?.getSnapshot();
-    if (!raw || raw.length === 0) return;
-    projection.seedMissing(raw.map((device) => projectObservedState(device)));
+    projection.seedMissing(ctx.deviceReads.observedSeed());
   };
   return { ctx, projection };
 }

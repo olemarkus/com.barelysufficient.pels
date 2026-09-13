@@ -59,7 +59,7 @@ setup/homeyLocationAdapter.ts 2  # device, solar
 setup/lifecycleFallbackDeviceProjection.ts 2  # device, executor
 setup/lifecycleFallbackRequest.ts 3  # executor, observer, plan
 setup/powerSampleFreshnessEscalation.ts 2  # plan, power
-setup/powerSamplePipeline.ts 4  # device, objectives, plan, power
+setup/powerSamplePipeline.ts 3  # objectives, plan, power
 setup/settingsUiApi.ts 4  # device, objectives, observer, power
 setup/settingsUiHomesApi.ts 2  # home, power
 setup/soleMeterAdoption.ts 2  # device, power

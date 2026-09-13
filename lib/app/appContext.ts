@@ -10,7 +10,8 @@ import type {
 import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from '../device/devicePowerPeak';
 import type Homey from 'homey';
 import type CapacityGuard from '../power/capacityGuard';
-import type { DeviceTransport } from '../device/deviceTransport';
+import type { DeviceReads } from '../device/deviceReads';
+import type { DeviceTransportPort } from '../device/deviceTransport';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DailyBudgetService } from '../dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiRead, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
@@ -301,6 +302,15 @@ export type AppContext = {
   getDeviceDescriptors(): DeviceDescriptorRead[];
   /** One device's descriptor, or `undefined` for an untracked id. */
   getDeviceDescriptor(deviceId: string): DeviceDescriptorRead | undefined;
+  /**
+   * Every device read, in one place (`lib/device/deviceReads.ts`). Consumers ask
+   * it the question they have — descriptors, the joined surface, the picker list,
+   * the observed seed, "is there a PV candidate" — instead of pulling the
+   * transport's cached array and taking what they want out of a ~58-field struct.
+   * That array is no longer reachable from here: `deviceManager` below is a port
+   * without `getSnapshot`.
+   */
+  readonly deviceReads: DeviceReads;
   getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead;
   get priceOptimizationEnabled(): boolean;
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;
@@ -331,7 +341,14 @@ export type AppContext = {
   // budget, flow tags, plan service, deferred recorders). The adapter owns the
   // settings read + V1→V2 migration; consumers receive only typed results.
   readonly combinedPricesReader: CombinedPricesReader;
-  deviceManager?: DeviceTransport;
+  /**
+   * The transport as everything OUTSIDE `lib/device` may hold it: writes, the
+   * by-id read, the zone tree, the producer predicates — but not `getSnapshot`.
+   * The cached array has one owner now (`deviceReads`), and a port that cannot
+   * hand it out is what keeps it that way. `app.ts` holds the concrete class and
+   * builds the reads from it.
+   */
+  deviceManager?: DeviceTransportPort;
   // Cached device→home membership for the multi-home feature: the read-only
   // join of the homes registry + pins + the transport's zone tree + snapshot
   // zone ids. Recomputed after each committed snapshot refresh, on zone-tree

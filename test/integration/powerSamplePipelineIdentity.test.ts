@@ -73,7 +73,6 @@ const buildPipeline = (
       rebuildPlanFromCache: vi.fn(async () => ({ failed: false })),
       computeDynamicSoftLimit: () => 9.5,
     } as unknown as PlanService),
-    getDeviceManager: () => undefined,
     planRebuildThrottle: throttle,
     getLatestTargetSnapshot: () => [],
     savePowerTracker: (state) => { powerTracker = state; savedStates.push(state); },

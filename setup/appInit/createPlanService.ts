@@ -61,9 +61,9 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     getObservedTemperature: (deviceId) => ctx.getObservedTemperature(deviceId),
     getSteppedLoadProfileById: () => {
       const map = new Map<string, SteppedLoadProfile>();
-      for (const device of deviceManager.getSnapshot()) {
-        const profile = ctx.deviceControlHelpers.getSteppedLoadProfile(device.id);
-        if (profile) map.set(device.id, profile);
+      for (const deviceId of ctx.deviceReads.deviceIds()) {
+        const profile = ctx.deviceControlHelpers.getSteppedLoadProfile(deviceId);
+        if (profile) map.set(deviceId, profile);
       }
       return map;
     },

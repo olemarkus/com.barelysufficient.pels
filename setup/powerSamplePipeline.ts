@@ -1,5 +1,4 @@
 import type CapacityGuard from '../lib/power/capacityGuard';
-import type { DeviceTransport } from '../lib/device/deviceTransport';
 import type { PlanEngine } from '../lib/plan/planEngine';
 import type { PlanService } from '../lib/plan/planService';
 import {
@@ -51,7 +50,6 @@ export type PowerSamplePipelineDeps = {
   getCapacityGuard: () => CapacityGuard;
   getPlanEngine: () => PlanEngine;
   getPlanService: () => PlanService;
-  getDeviceManager: () => DeviceTransport | undefined;
   /** This home's rebuild throttle — the admitted sample's one exit into the planner. */
   planRebuildThrottle: PlanRebuildThrottle;
   getLatestTargetSnapshot: () => TargetDeviceSnapshot[];

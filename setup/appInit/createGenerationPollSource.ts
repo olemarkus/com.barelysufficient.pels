@@ -1,9 +1,9 @@
-import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import type { DeviceTransportPort } from '../../lib/device/deviceTransport';
+import type { DeviceReads } from '../../lib/device/deviceReads';
 import type { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import type { PowerSource } from '../../lib/power/powerSource';
 import { GenerationPollSource } from '../../lib/power/sources/generationPoll';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
-import { hasSolarProductionCandidate } from '../../lib/device/solarPresence';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 
 /**
@@ -13,7 +13,8 @@ import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 export type GenerationPollSourceHost = {
   readonly timers: TimerRegistry;
   getPowerSource(): PowerSource;
-  readonly deviceManager?: DeviceTransport;
+  readonly deviceManager?: DeviceTransportPort;
+  readonly deviceReads: DeviceReads;
   getStructuredDebugEmitter(component: 'devices', debugTopic: 'devices'): StructuredDebugEmitter;
   error(...args: unknown[]): void;
 };
@@ -40,7 +41,7 @@ export const createGenerationPollSource = (
   // rather than defaulting: `?.` / `?? default` would silently convert that bug
   // into "this home produces nothing" and quietly suppress production polling
   // forever (setup/AGENTS.md).
-  const requireDeviceManager = (): DeviceTransport => {
+  const requireDeviceManager = (): DeviceTransportPort => {
     const { deviceManager } = host;
     if (!deviceManager) throw new Error('generation poll ran before the device transport was wired');
     return deviceManager;
@@ -51,11 +52,10 @@ export const createGenerationPollSource = (
   // all: `totalGenerated.W` is Homey's generator aggregate, so a home without
   // one has nothing to poll for. Gating the SDK call on it keeps flow homes
   // without solar at the zero energy-API calls they make today.
-  // Reads the RAW snapshot, not `latestTargetSnapshot`: that getter decorates
-  // every device on each call (a fresh object per device) and side-effects a
-  // stepped-load prune. This runs every 10 s on every flow home, so it must stay
-  // allocation-free — the capability question needs only `deviceClass`.
-  hasProductionCandidate: () => hasSolarProductionCandidate(requireDeviceManager().getSnapshot()),
+  // Asks the question rather than taking the list: this runs every 10 s on every
+  // flow home, and `deviceReads.hasProductionCandidate` answers it without
+  // projecting a single device (see its docblock).
+  hasProductionCandidate: () => host.deviceReads.hasProductionCandidate(),
   timers: host.timers,
   readGenerationW: () => requireDeviceManager().readGenerationW(),
   setGenerationW: (generationW, observedAtMs) => observedHomePower

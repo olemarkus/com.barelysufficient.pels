@@ -2,7 +2,7 @@
 import { nextDeviceDumpId } from '../lib/diagnostics/deviceDumpId';
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
-import type { DeviceTransport } from '../lib/device/deviceTransport';
+import type { DeviceTransportPort } from '../lib/device/deviceTransport';
 import { fetchLiveMeterItems } from '../lib/device/transport/managerFetch';
 import { isPickableMeterItem } from '../lib/device/transport/managerHelpers';
 import type { HomeyEnergyMeterEntry } from '../packages/contracts/src/settingsUiApi';
@@ -56,7 +56,7 @@ const getRawManagerDeviceEntry = async (params: {
 };
 
 export async function getHomeyDevicesForDebug(params: {
-  deviceManager: DeviceTransport;
+  deviceManager: DeviceTransportPort;
 }): Promise<HomeyDeviceLike[]> {
   const { deviceManager } = params;
   if (!deviceManager) return [];
@@ -64,7 +64,7 @@ export async function getHomeyDevicesForDebug(params: {
 }
 
 export async function getHomeyDevicesForDebugFromApp(app: Homey.App): Promise<HomeyDeviceLike[]> {
-  const runtimeApp = app as Homey.App & { deviceManager?: DeviceTransport };
+  const runtimeApp = app as Homey.App & { deviceManager?: DeviceTransportPort };
   if (!runtimeApp.deviceManager) return [];
   return getHomeyDevicesForDebug({ deviceManager: runtimeApp.deviceManager }).catch((err) => {
     runtimeApp.error?.('Failed to get Homey devices for debug', normalizeError(err));
@@ -139,7 +139,7 @@ function emitDeviceDumpSections(params: {
 
 export async function logHomeyDeviceForDebug(params: {
   deviceId: string;
-  deviceManager: DeviceTransport;
+  deviceManager: DeviceTransportPort;
   getPelsDeviceState?: (deviceId: string) => PelsDeviceDebugState | null;
   error: (msg: string, err: Error) => void;
 }): Promise<boolean> {
@@ -237,7 +237,7 @@ export async function logHomeyDeviceComparisonForDebug(params: {
   expectedTarget?: number;
   observedTarget?: unknown;
   observedSource?: string;
-  deviceManager: DeviceTransport;
+  deviceManager: DeviceTransportPort;
   getPelsDeviceState?: (deviceId: string) => PelsDeviceDebugState | null;
   error: (msg: string, err: Error) => void;
 }): Promise<boolean> {
@@ -309,7 +309,7 @@ export async function logHomeyDeviceForDebugFromApp(params: {
 }): Promise<boolean> {
   const { app, deviceId } = params;
   const runtimeApp = app as Homey.App & {
-    deviceManager?: DeviceTransport;
+    deviceManager?: DeviceTransportPort;
     planService?: { getLatestPlanSnapshot?: () => DevicePlan | null };
     powerCalibrationStore?: { getSnapshot?: () => PowerCalibrationSnapshot };
   };
@@ -360,7 +360,7 @@ export async function logHomeyDeviceComparisonForDebugFromApp(params: {
     observedSource,
   } = params;
   const runtimeApp = app as Homey.App & {
-    deviceManager?: DeviceTransport;
+    deviceManager?: DeviceTransportPort;
     planService?: { getLatestPlanSnapshot?: () => DevicePlan | null };
     powerCalibrationStore?: { getSnapshot?: () => PowerCalibrationSnapshot };
   };

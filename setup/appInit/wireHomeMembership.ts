@@ -513,20 +513,15 @@ export const wireHomeMembership = (
     setOnZoneTreeCommitted: (callback) => ctx.deviceManager?.setOnZoneTreeCommitted(callback),
     setOnDeviceZoneChanged: (callback) => ctx.deviceManager?.setOnDeviceZoneChanged(callback),
     getZoneTree: () => ctx.deviceManager?.getZoneTree() ?? null,
-    // The RAW transport snapshot on purpose, NOT `ctx.latestTargetSnapshot`:
-    // the decorated path (`decorateTargetSnapshotList`) prunes/expires/confirms
-    // stepped-load command state, while a membership recompute must be a pure
-    // read. The join needs only `id` + `zoneId`, both
-    // stamped on the raw snapshot at parse (R3).
-    // Deliberately NOT `ctx.getDeviceDescriptors()`: membership reads the transport
-    // directly, and `homeMembershipService.test.ts` pins that with a ctx stub
-    // exposing only the members this may touch. Routing the recompute through ctx
-    // is what that test exists to forbid — the decorated getter there MUTATES
-    // stepped-load runtime state, so a membership read through it side-effects.
-    getDevices: () => (ctx.deviceManager?.getSnapshot() ?? []).map((device) => ({
-      deviceId: device.id,
-      zoneId: device.zoneId ?? null,
-    })),
+    // The membership join asks for exactly what it needs — `id` + `zoneId`, both
+    // stamped at parse — and nothing decorates on the way. NOT
+    // `ctx.latestTargetSnapshot`: that getter projects and decorates every device
+    // per access, and a membership recompute must stay a pure, cheap read. (It
+    // used to be a side-EFFECTING read too — the decorator settled stepped
+    // commands — which is what `homeMembershipService.test.ts` pins with a ctx
+    // stub exposing only the members this may touch. The settling moved to
+    // `lib/executor/syncSteppedCommands.ts`; the cost argument is what survives.)
+    getDevices: () => ctx.deviceReads.zoneMemberships(),
     getLogger: () => ctx.getStructuredLogger('homes'),
     // Restart fence anchor: the stamp of the sample Main's tracker currently
     // serves. `hydratePowerTracker` restores the durable `lastPowerW`/

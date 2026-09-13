@@ -1,4 +1,4 @@
-import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import type { DeviceTransportPort } from '../../lib/device/deviceTransport';
 import type { PowerSource } from '../../lib/power/powerSource';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import type { PowerSamplePipeline } from '../powerSamplePipeline';
@@ -12,7 +12,7 @@ import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 export type HomeyEnergyPollSourceHost = {
   readonly timers: TimerRegistry;
   getPowerSource(): PowerSource;
-  readonly deviceManager?: Pick<DeviceTransport, 'pollHomePowerW'>;
+  readonly deviceManager?: Pick<DeviceTransportPort, 'pollHomePowerW'>;
   getStructuredDebugEmitter(component: 'devices', debugTopic: 'devices'): StructuredDebugEmitter;
   error(...args: unknown[]): void;
 };

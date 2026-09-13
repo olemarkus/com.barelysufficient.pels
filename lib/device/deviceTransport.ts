@@ -123,6 +123,19 @@ export type {
   TransportObservedStateDispatcher,
 } from './transport/transportTypes';
 
+/**
+ * `DeviceTransport` as everything outside `lib/device` may hold it: writes, the
+ * by-id read, the zone tree, the producer predicates — but not `getSnapshot`.
+ * The cached array has one owner (`deviceReads.ts`), and a type that cannot hand
+ * it out is what keeps it that way. Declared here rather than beside `AppContext`
+ * because it is this class's own narrowing: `lib/device` may not import
+ * `lib/app` (`no-domain-to-app-layer`), so a port declared there could never be
+ * named by the module that owns it — and routing consumers' device-type import
+ * through `lib/app` would launder a peer edge past `setup:boundaries` without
+ * decoupling anything.
+ */
+export type DeviceTransportPort = Omit<DeviceTransport, 'getSnapshot'>;
+
 export class DeviceTransport extends EventEmitter {
     private sdkReady = false;
     private liveFeed: DeviceLiveFeed | null = null;

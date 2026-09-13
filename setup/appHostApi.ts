@@ -1,7 +1,7 @@
 import { resolveTemperaturePolicyShedBehavior } from '../lib/device/temperatureControlPosture';
 import type Homey from 'homey';
 import type { AppContext } from '../lib/app/appContext';
-import type { DeviceTransport } from '../lib/device/deviceTransport';
+import type { DeviceTransportPort } from '../lib/device/deviceTransport';
 import { PriceLevel } from '../lib/price/priceLevels';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 import type { PowerSource } from '../lib/power/powerSource';
@@ -49,12 +49,7 @@ import {
 import { requireConfiguredPowerSource } from './powerSourceSettings';
 import { assembleWeatherAdvisorReadout } from './appInit/weatherAdvisorReadoutAssembler';
 import { requirePlanService as requireInitializedPlanService } from './appInit/contextGuards';
-import {
-  projectDeviceDescriptors,
-  readDeviceDescriptor,
-  readDeviceDescriptors,
-} from '../lib/device/deviceDescriptorProjection';
-import { projectDeviceSurfaces, readDeviceSurface, readDeviceSurfaces } from '../lib/device/deviceSurfaces';
+import { projectDeviceDescriptors } from '../lib/device/deviceDescriptorProjection';
 import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import { SMART_TASK_WIDGET_WRITE_ORIGIN } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
@@ -140,7 +135,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
    * they resolve a device by id and filter with predicates that read
    * `deviceClass`, `controlAdapter` or `targetPowerConfig`. Handing them the
    * whole snapshot let them reach observations they never asked for, and is why
-   * `getSnapshot()` cannot be sealed inside transport yet.
+   * `getSnapshot()` could not be sealed inside transport until stage 7.
    */
   public async getFlowDeviceDescriptors(): Promise<DeviceDescriptorRead[]> {
     return projectDeviceDescriptors(await this.getFlowSnapshot());
@@ -155,68 +150,39 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
    * can natively write, what class it is. PROJECTED, not merely narrowed
    * (`projectDeviceDescriptor`): the executor spreads a descriptor into its own
    * read, and a spread copies what the object physically carries, so the served
-   * object must carry no observation — the property stage 7 needs before
-   * `getSnapshot()` can be sealed inside transport.
+   * object must carry no observation — the property stage 7's seal rests on.
    *
-   * The reads themselves live with their owner (`readDeviceDescriptors` in
-   * `lib/device/deviceDescriptorProjection.ts`); this façade only delegates, and
-   * decides one thing: what an absent transport means. The two forms answer that
-   * differently, on purpose. This list read resolves to "no devices": one of its
-   * callers is the target-power probe scheduler's timer
-   * (`appTargetPowerReachabilityWiring.ts`), which cannot surface a throw and
-   * runs before the transport exists in the app's own boot ordering
-   * (`setup/AGENTS.md`: "assert only where the caller can surface the error, and
-   * resolve where it cannot"). The by-id read below is the executor's alone,
-   * constructed only after `requireDeviceManager`, so it asserts.
+   * A pure delegation: the read, the projection, and what an absent transport
+   * means all belong to `lib/device/deviceReads.ts`.
    */
   public getDeviceDescriptors(): DeviceDescriptorRead[] {
-    const transport = this.context.deviceManager;
-    return transport ? readDeviceDescriptors(transport) : [];
+    return this.context.deviceReads.descriptors();
   }
 
-  /**
-   * The by-id form of `getDeviceDescriptors`, same projection. Asserts the
-   * transport rather than optional-chaining it: this is the executor's read, and
-   * an absent transport must surface as the boot-order error, not as "untracked
-   * device" — a plan decided and silently never applied (`setup/AGENTS.md`
-   * § "An extracted body re-asserts a boot-window invariant by throwing, never
-   * by defaulting").
-   */
+  /** The by-id form; same owner, and it asserts the transport. See `deviceReads`. */
   public getDeviceDescriptor(deviceId: string): DeviceDescriptorRead | undefined {
-    return readDeviceDescriptor(this.requireDeviceManager(), deviceId);
+    return this.context.deviceReads.descriptor(deviceId);
   }
 
   /**
-   * The plan-input view: every tracked device as its descriptor joined with the
-   * observer's record (`readDeviceSurfaces`), then decorated with the stepped
-   * command state. Stage 6 of the snapshot decomposition: what the plan-input
-   * producer gets is the union of the two declared surfaces and nothing else, so
-   * the carried-key gate on `toPlanDevice` is a statement about the object, not
-   * just its type. (The raw snapshot is still the SOURCE of both halves, and on
-   * the no-record fallback path it is the source of the observed half directly —
-   * what it no longer does is travel onward as itself.)
+   * The plan-input view: `deviceReads.surfaces()` — every tracked device as its
+   * descriptor joined with the observer's record — decorated with the stepped
+   * command state. What the plan-input producer gets is the union of the two
+   * declared surfaces and nothing else, so the carried-key gate on `toPlanDevice`
+   * is a statement about the object, not just its type.
    *
    * Still a getter that re-projects and re-decorates on every access, so a
    * per-device lookup inside a loop is O(n²) — read it once per pass.
    */
   public get latestTargetSnapshot(): DecoratedDeviceSnapshot[] {
-    const transport = this.context.deviceManager;
-    if (!transport) return [];
-    return this.context.deviceControlHelpers.decorateTargetSnapshotList(
-      readDeviceSurfaces(transport, (deviceId) => this.context.getObservedRecord(deviceId)),
-    );
+    return this.context.deviceControlHelpers.decorateTargetSnapshotList(this.context.deviceReads.surfaces());
   }
 
-  /**
-   * The picker list is a fresh parse of every Homey device, managed or not, so
-   * an unmanaged entry has no observer record to join against: both surfaces
-   * are projected from the parse itself (`projectDeviceSurfaces`), which keeps
-   * a picker device bounded exactly like a tracked one when the smart-task
-   * preview hands it to `toPlanDevice`.
-   */
+  /** The picker list, bounded the same way — see `deviceReads.pickerSurfaces`. */
   public getUiPickerDevices(): DecoratedDeviceSnapshot[] {
-    const snapshot = this.context.deviceManager?.getUiPickerDevices() ?? [];
-    return this.context.deviceControlHelpers.decorateTargetSnapshotList(projectDeviceSurfaces(snapshot));
+    return this.context.deviceControlHelpers.decorateTargetSnapshotList(
+      this.context.deviceReads.pickerSurfaces(),
+    );
   }
 
   public getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead {
@@ -235,7 +201,9 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     this.requireDeviceManager().setSnapshotForTests(snapshot);
   }
 
-  public parseDevicesForTests(list: Parameters<DeviceTransport['parseDeviceListForTests']>[0]): TargetDeviceSnapshot[] {
+  public parseDevicesForTests(
+    list: Parameters<DeviceTransportPort['parseDeviceListForTests']>[0],
+  ): TargetDeviceSnapshot[] {
     return this.requireDeviceManager().parseDeviceListForTests(list);
   }
 
@@ -307,9 +275,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
 
   /** One device through the same join + decoration `latestTargetSnapshot` applies to all of them. */
   private decorateOneDevice(deviceId: string): DecoratedDeviceSnapshot | undefined {
-    const transport = this.context.deviceManager;
-    if (!transport) return undefined;
-    const device = readDeviceSurface(transport, (id) => this.context.getObservedRecord(id), deviceId);
+    const device = this.context.deviceReads.surface(deviceId);
     return device ? this.context.deviceControlHelpers.decorateTargetSnapshotList([device])[0] : undefined;
   }
   public computeDynamicSoftLimit = (): number => this.requirePlanService().computeDynamicSoftLimit();
@@ -374,7 +340,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected requirePlanService() {
     return requireInitializedPlanService(this.context);
   }
-  protected requireDeviceManager(): DeviceTransport {
+  protected requireDeviceManager(): DeviceTransportPort {
     if (!this.context.deviceManager) throw new Error('DeviceTransport must be initialized');
     return this.context.deviceManager;
   }

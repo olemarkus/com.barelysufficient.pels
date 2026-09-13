@@ -51,7 +51,7 @@ import {
 import { migrateManagedDevices } from './appManagedDeviceMigration';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import { runBootMigrations } from './appBootMigrations';
-import { registerAppFlowCards, toObservedStateSeed } from './appInit';
+import { registerAppFlowCards } from './appInit';
 import { buildPeriodicStatusLogFields } from '../lib/diagnostics/periodicStatus';
 import type { FlowBackedDeviceState } from '../lib/device/flowBackedDeviceState';
 import type { BackgroundTasksController } from './backgroundTasksController';
@@ -190,7 +190,7 @@ abstract class AppRuntimeApi extends Base {
     return readObservedEvChargingState(this.observedDeviceStateProjection.getObservedState(deviceId));
   }
   public seedObservedStateFromSnapshot(): void {
-    this.observedDeviceStateProjection.seedMissing(toObservedStateSeed(this.context.deviceManager?.getSnapshot()));
+    this.observedDeviceStateProjection.seedMissing(this.context.deviceReads.observedSeed());
   }
   public async logTargetRetryComparison(params: {
     deviceId: string; name: string; target: 'temperature'; desired: number; observedValue?: unknown;

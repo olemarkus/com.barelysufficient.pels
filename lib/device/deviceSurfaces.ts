@@ -27,7 +27,7 @@ import type {
     ProjectedObservedDeviceState,
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
-import { type DeviceSnapshotStore, projectDeviceDescriptor } from './deviceDescriptorProjection';
+import { projectDeviceDescriptor } from './deviceDescriptorProjection';
 import { projectObservedState } from './observedStateProjection';
 
 export type DeviceSurfaces = DeviceDescriptorRead & ProjectedObservedDeviceState;
@@ -37,57 +37,6 @@ export function joinDeviceSurfaces(
     observed: ProjectedObservedDeviceState,
 ): DeviceSurfaces {
     return { ...observed, ...descriptor };
-}
-
-/**
- * Every tracked device, in snapshot order, as its descriptor joined with the
- * observer's record.
- *
- * A device the observer has no record for falls back to the observed state
- * projected from the snapshot itself — the same source and the same values the
- * boot seed uses (`seedMissing`), which is why the fallback cannot disagree with
- * the record it stands in for. It is NOT dropped, and that is the one place this
- * read deliberately differs from the executor's
- * (`lib/executor/executorDeviceRead.ts`, which drops). The asymmetry is the
- * consequence: for the executor, no observation means do not command this device
- * — safe by default. Here a drop would be destructive. `syncHeadroomCardState`
- * (`lib/plan/planHeadroomState.ts`) is documented to take a COMPLETE snapshot and
- * treats a device missing from it as one that has left the home: it drops the
- * device's held-time accounting (the card's `Held 2 h` line), its surplus
- * eligibility, its rung tracking, and closes its activation attempt. Its caller
- * (`setup/appSnapshotHelpers.ts`) reads this view and runs no seed of its own —
- * only the plan pre-pass does (`setup/homeRuntime/planDevicePrePass.ts`). So
- * completeness here is load-bearing well beyond the device list the owner sees.
- *
- * Three things produce a record, and a device can be tracked without one for a
- * whole poll interval anyway: the bootstrap refresh batch, the boot/hot-plug seed,
- * and the realtime push — but a hot-plug whose first `device.update` reconciles to
- * no control-state change and no temperature / state-of-charge facet emits no
- * observation event at all (`lib/device/managerRuntime.ts` appends it to the
- * snapshot regardless).
- */
-export function readDeviceSurfaces(
-    store: DeviceSnapshotStore,
-    getObserved: (deviceId: string) => ProjectedObservedDeviceState | undefined,
-): DeviceSurfaces[] {
-    return store.getSnapshot().map((snapshot) => joinDeviceSurfaces(
-        projectDeviceDescriptor(snapshot),
-        getObserved(snapshot.id) ?? projectObservedState(snapshot),
-    ));
-}
-
-/** The by-id form of {@link readDeviceSurfaces}, for a caller that needs one device. */
-export function readDeviceSurface(
-    store: DeviceSnapshotStore,
-    getObserved: (deviceId: string) => ProjectedObservedDeviceState | undefined,
-    deviceId: string,
-): DeviceSurfaces | undefined {
-    const snapshot = store.getSnapshotByDeviceId(deviceId);
-    if (!snapshot) return undefined;
-    return joinDeviceSurfaces(
-        projectDeviceDescriptor(snapshot),
-        getObserved(deviceId) ?? projectObservedState(snapshot),
-    );
 }
 
 /**

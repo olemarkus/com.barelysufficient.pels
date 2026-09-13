@@ -85,7 +85,6 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     getCapacityGuard: deps.getCapacityGuard,
     getPlanEngine: deps.getPlanEngine,
     getPlanService: deps.getPlanService,
-    getDeviceManager: () => ctx.deviceManager,
     planRebuildThrottle: deps.planRebuildThrottle,
     // Membership complement (same single seam as the plan input in
     // `homeScope.ts`): with sub-homes configured, this home's controlled/

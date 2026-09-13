@@ -180,6 +180,27 @@ const TARGET_SNAPSHOT_FORBID_PATTERN = {
 };
 // Consumer layers forbidden from the raw producer snapshot. Add a dir here once
 // it no longer imports `TargetDeviceSnapshot` (route its reads to the halves first).
+// The device transport's CLASS carries `getSnapshot()` — the raw ~58-field
+// snapshot array. Stage 7 of the snapshot decomposition gave those reads one owner
+// (`lib/device/deviceReads.ts`) and narrowed `AppContext.deviceManager` to
+// `DeviceTransportPort`, which omits it. A consumer that imports the class instead
+// of the port gets the array back with nothing failing — which is how
+// `setup/appDebugHelpers.ts` kept it through the first pass of that work.
+// dependency-cruiser cannot catch this (`tsPreCompilationDeps` is unset, so a
+// type-only import is erased before the cruise sees it), so the ban is here, by
+// import NAME, the same mechanism as the raw-snapshot ban above.
+const DEVICE_TRANSPORT_CLASS_FORBID_PATTERN = {
+  // Both spellings: a consumer outside lib/** reaches it as `../lib/device/deviceTransport`,
+  // while a sibling inside lib/** reaches it as `../device/deviceTransport` — no `lib/`
+  // segment, so the first glob alone silently matches nothing there. Same relative-path
+  // trap the settings-UI snapshot ban documents above.
+  group: ['**/lib/device/deviceTransport', '**/device/deviceTransport'],
+  importNames: ['DeviceTransport'],
+  message: 'Outside lib/device, hold `DeviceTransportPort` (same module) rather than the '
+    + '`DeviceTransport` class: the class carries `getSnapshot()`, the raw snapshot array whose '
+    + 'reads belong to lib/device/deviceReads.ts. app.ts is the one exception — it constructs the '
+    + 'transport and builds the reads from it. See notes/state-management/snapshot-decomposition.md.',
+};
 const SNAPSHOT_CONSUMER_DIRS = [
   'lib/objectives/**/*.ts',
   'lib/plan/**/*.ts',
@@ -404,7 +425,7 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', {
         paths: [HOMEY_SDK_FORBID_PATH],
-        patterns: [CONTRACTS_VALUE_IMPORT_FORBID_PATTERN],
+        patterns: [CONTRACTS_VALUE_IMPORT_FORBID_PATTERN, DEVICE_TRANSPORT_CLASS_FORBID_PATTERN],
       }],
       '@typescript-eslint/no-require-imports': 'error',
     },
@@ -418,7 +439,11 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', {
         paths: [HOMEY_SDK_FORBID_PATH],
-        patterns: [TARGET_SNAPSHOT_FORBID_PATTERN, CONTRACTS_VALUE_IMPORT_FORBID_PATTERN],
+        patterns: [
+          TARGET_SNAPSHOT_FORBID_PATTERN,
+          CONTRACTS_VALUE_IMPORT_FORBID_PATTERN,
+          DEVICE_TRANSPORT_CLASS_FORBID_PATTERN,
+        ],
       }],
       '@typescript-eslint/no-require-imports': 'error',
     },
@@ -442,6 +467,22 @@ export default tseslint.config(
       '@typescript-eslint/no-require-imports': 'error',
     },
   },
+  // `lib/device` owns the transport, so it keeps the class the two blocks above
+  // ban elsewhere. Everything else those blocks apply is restated, because flat
+  // config REPLACES `no-restricted-imports`. The SDK leaves are excluded: the
+  // HOMEY_LEAF_ALLOWLIST block above grants them a narrower homey allowance that
+  // this would otherwise clobber.
+  {
+    files: ['lib/device/**/*.ts'],
+    ignores: HOMEY_LEAF_ALLOWLIST,
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        paths: [HOMEY_SDK_FORBID_PATH],
+        patterns: [CONTRACTS_VALUE_IMPORT_FORBID_PATTERN],
+      }],
+      '@typescript-eslint/no-require-imports': 'error',
+    },
+  },
   // Dynamic-import seal for the non-hot-path lib dirs (the hot-path dirs get
   // HOMEY_DYNAMIC_IMPORT_BAN via the perf block's no-restricted-syntax above;
   // flat config replaces this rule, so it can't be set in one lib-wide block
@@ -458,6 +499,19 @@ export default tseslint.config(
   // contracts; lib/** gets the pattern via the blocks above.)
   {
     files: ['app.ts', 'api.ts', 'setup/**/*.ts', 'flowCards/**/*.ts', 'drivers/**/*.ts', 'packages/shared-domain/src/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        patterns: [CONTRACTS_VALUE_IMPORT_FORBID_PATTERN, DEVICE_TRANSPORT_CLASS_FORBID_PATTERN],
+      }],
+    },
+  },
+  // The two files that legitimately hold the transport CLASS: the composition
+  // root, which builds the reads from it, and the wiring that `new`s it. They
+  // keep the contracts seal; they drop the class ban. Declared after the block
+  // above because flat config REPLACES `no-restricted-imports` rather than
+  // merging it — which is also why the class ban could not be its own block.
+  {
+    files: ['app.ts', 'setup/appInit/wireDeviceTransport.ts'],
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', {
         patterns: [CONTRACTS_VALUE_IMPORT_FORBID_PATTERN],
@@ -708,13 +762,20 @@ export default tseslint.config(
   // app.ts is the Homey.App composition root: it constructs and wires the runtime
   // service/adapter objects as fields, so its runtime fan-in is inherently high
   // and not reducible without laundering its field initializers into another
-  // setup/* file. Public/runtime behavior now lives behind AppHostApi and
-  // AppRuntimeApi; this exact-current 31 ceiling is the single backend exception over 20.
+  // setup/* file. Raised 31 -> 32 for `createDeviceReads`. The operative reason is
+  // LIFECYCLE, not exclusivity (`setup/appInit/wireDeviceTransport.ts` also holds
+  // the concrete transport): the reads must exist from field-init time, because
+  // list reads run before `initDeviceManager` — the target-power probe timer calls
+  // `ctx.getDeviceDescriptors()` (`setup/appTargetPowerReachabilityWiring.ts`). A
+  // `deviceReads` assigned during ordered startup would be `undefined` there, so
+  // no `setup/appInit/*` factory can own the construction.
+  // Public/runtime behavior now lives behind AppHostApi and
+  // AppRuntimeApi; this exact-current 32 ceiling is the single backend exception over 20.
   {
     files: ['app.ts'],
     plugins: { 'import-x': importX },
     rules: {
-      'import-x/max-dependencies': ['error', { max: 31, ignoreTypeImports: true }],
+      'import-x/max-dependencies': ['error', { max: 32, ignoreTypeImports: true }],
     },
   },
   // lib/store is the one place `node:sqlite` is named (dependency-cruiser's

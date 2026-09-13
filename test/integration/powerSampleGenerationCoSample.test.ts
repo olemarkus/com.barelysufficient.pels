@@ -80,7 +80,6 @@ const buildPipeline = (coSampledGenerationW?: number): { pipeline: PowerSamplePi
       rebuildPlanFromCache: vi.fn(async () => ({ failed: false })),
       computeDynamicSoftLimit: () => 9.5,
     } as unknown as PlanService),
-    getDeviceManager: () => undefined,
     planRebuildThrottle: throttle,
     getLatestTargetSnapshot: () => [],
     // Production's `savePowerTracker` calls `setPowerTracker`, so the next

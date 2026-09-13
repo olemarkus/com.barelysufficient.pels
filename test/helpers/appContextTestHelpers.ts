@@ -1,4 +1,5 @@
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
+import { createDeviceReads, type DeviceReadStore } from '../../lib/device/deviceReads';
 import { snapshotById } from './snapshotById';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import { createTrackerStore } from '../../lib/power/trackerStore';
@@ -189,9 +190,29 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     debugStructured: vi.fn(),
   });
 
+  // The real reads over the fixture: a spec that touches descriptors, the joined
+  // surface or the picker list goes through the production projections rather
+  // than a stand-in that could drift from them.
+  // The mock's device fixture is `latestTargetSnapshot`, so the reads are backed
+  // by THAT rather than by `context.deviceManager` — which most specs never set,
+  // and which two helpers set to a partial stub. Without this a spec exercising
+  // code that now calls `deviceReads.surfaces()` / `.deviceIds()` sees zero
+  // devices and passes vacuously while production sees the fixture.
+  const deviceReadStore: DeviceReadStore = {
+    getSnapshot: () => latestTargetSnapshot as unknown as TransportDeviceSnapshot[],
+    getSnapshotByDeviceId: (deviceId) => (
+      latestTargetSnapshot as unknown as TransportDeviceSnapshot[]
+    ).find((device) => device.id === deviceId),
+    getUiPickerDevices: () => latestTargetSnapshot as unknown as TransportDeviceSnapshot[],
+  };
+  const deviceReads = createDeviceReads({
+    getStore: () => deviceReadStore,
+    getObservedRecord: (deviceId) => context.getObservedRecord(deviceId),
+  });
   const userdataDatabase = openUserdataDatabase(IN_MEMORY_DATABASE);
   const trackerStore = createTrackerStore(userdataDatabase);
   const context: AppContext = {
+    deviceReads,
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
       homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
     ),

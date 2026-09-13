@@ -267,7 +267,7 @@ export class ObservedDeviceStateProjection {
      * projection so a reader (the settings-UI EV chip, `toPlanDevice`'s freshness)
      * sees the device's real plug/freshness state for cycle 1, before the first
      * dispatcher delta/refresh lands. Sourced from the RAW cached snapshot
-     * (`deviceManager.getSnapshot()` → `projectObservedState`), so it never
+     * (`deviceReads.observedSeed()` → `projectObservedState`), so it never
      * re-decorates and never re-enters the device manager.
      *
      * Strictly ADDITIVE — and that is the whole safety story:

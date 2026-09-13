@@ -475,40 +475,51 @@ decomposition stages, but it is why 6.4's builder sits where it does.
    Stage 5 made it physical (`projectDeviceDescriptor`), because its join spreads
    the descriptor and a spread is not a read.
 
-7. **Seal `getSnapshot()` inside transport** once no external caller remains; cruiser-
-   enforce. **Five external pullers left**, each named with what it actually wants (and
-   note the audit shape: `setup/appDebugHelpers.ts` hid from a
-   `deviceManager?.getSnapshot()` grep behind the optional-CALL form
-   `getSnapshot?.()` — grep both):
-   `setup/appRuntimeApi.ts` (the observed-state seed — legitimately raw, and the one
-   that should move INTO `lib/device` beside `projectObservedState`);
-   `setup/appInit/wireHomeMembership.ts` (`id` + `zoneId` only, but deliberately raw
-   today — see the comment there, whose stated reason (a mutating decorated read) no
-   longer holds since the settle moved to `lib/executor/syncSteppedCommands.ts`);
-   `setup/appInit/createGenerationPollSource.ts` (`deviceClass` only, on a 10-second
-   path that must stay allocation-free — so NOT `getDeviceDescriptors()`, which
-   projects per device; it wants a transport-side predicate);
-   `setup/appInit/createPlanService.ts` (device ids only); and
-   `setup/appSnapshotHelpers.ts` (target-power reachability, which reads the observed
-   `reportedStepId`, so it wants the joined surface rather than descriptors —
-   and reusing the `getLatestTargetSnapshot()` two lines below would change WHICH
-   reachability state the decoration sees, so it is not a free swap).
-   Cleared so far: the executor and plan-layer pullers (stage 5), the descriptor reads
-   (stage 6.5, now owned by `lib/device/deviceDescriptorProjection.ts`), and the
-   by-id readers — `AppDeviceControlHelpers` and `AppRuntimeApi.getSnapshotDevice`
-   now ask `getSnapshotByDeviceId`, and `setup/appNativeWiring.ts` asks for
-   descriptors, which is what `setup/flowConflictProbe.ts` already declared it was
-   getting — and `setup/appDebugHelpers.ts`, whose two copies of the same `.find`
-   went with them.
-   **The seal itself is blocked on the transport's line budget.** The natural shape is
-   named reads ON `DeviceTransport` (so `AppContext['deviceManager']` can be narrowed
-   to a port without `getSnapshot`), but that class is at its counted 500-line cap —
-   which is why `getDeviceDescriptors` lives on `AppHostApi` in the first place.
-   Something leaves the class before the seal lands. Sealing `getSnapshot()` leaves
-   the descriptor reads (`readDeviceDescriptor(s)` in
-   `lib/device/deviceDescriptorProjection.ts`, over the two snapshot lookups;
-   `AppHostApi` only delegates) as the descriptor's only exit — they are what stage 7
-   keeps, not what it clears.
+7. **Seal `getSnapshot()` inside transport** — **DONE.** No consumer outside
+   `lib/device` can reach the transport's cached array, and the seal is structural
+   rather than a rule someone has to remember: `AppContext.deviceManager` is
+   `DeviceTransportPort` (`Omit<DeviceTransport, 'getSnapshot'>`), so the method is
+   not on the type anything but the composition root holds.
+   The reads that array served now have one owner, `lib/device/deviceReads.ts`,
+   named for the questions consumers actually asked: `descriptors()`,
+   `descriptor(id)`, `surfaces()`, `surface(id)`, `pickerSurfaces()`,
+   `observedSeed()`, `hasProductionCandidate()`, `zoneMemberships()`, `deviceIds()`.
+   `app.ts` builds it from the concrete transport and hands it over on the context
+   — not because it is the only holder (`wireDeviceTransport.ts` constructs one),
+   but because the reads must exist from field-init time: the target-power probe
+   timer calls a list read before `initDeviceManager` runs.
+   That module owns two things the callers used to each decide for themselves.
+   **The projections** — a descriptor read serves `projectDeviceDescriptor`'s
+   output and an observed read serves `projectObservedState`'s, so what a consumer
+   receives physically carries its declared surface and nothing else. And **what an
+   absent transport means**, which is deliberately not one answer: a list read
+   resolves to "no devices" because the target-power probe timer calls one before
+   the transport exists and cannot surface a throw, while a by-id read asserts,
+   because answering "untracked device" there is a plan decided and silently never
+   applied.
+   FIVE callers had declared `DeviceTransport` locally and so slipped the port —
+   `createGenerationPollSource` and `appSnapshotHelpers` on the first pass, then
+   `appDebugHelpers`, `appDebugComparison` and `createHomeyEnergyPollSource` found
+   only by review. Narrowing a context member seals only the consumers that read
+   the member's type, and a grep for `.getSnapshot()` misses a file that merely
+   HOLDS the class. That is why the seal is enforced by an ESLint `importNames`
+   ban on the `DeviceTransport` name outside `lib/device` (`eslint.config.mjs`),
+   with `app.ts` and `wireDeviceTransport.ts` exempt — dependency-cruiser cannot
+   do it, because `tsPreCompilationDeps` is unset and a type-only import is erased
+   before the cruise sees it. The ban was verified by negative probe; folded into
+   the block that already governs those files, because flat config REPLACES
+   `no-restricted-imports` rather than merging, so a standalone block silently
+   matched nothing. Both now take the port and ask the read surface instead: the
+   generation poll asks `hasProductionCandidate()`, which answers from `deviceClass`
+   without projecting a device, because it runs every 10 s on every flow home; the
+   snapshot refresh takes `surfaces()` undecorated, because the reachability pass
+   reads the observed `reportedStepId` AND must not be priced against a decoration
+   resolved from the very reachability state it is about to update.
+   Folded away as redundant once the owner existed: `readDeviceDescriptor(s)`,
+   `readDeviceSurface(s)`, and `setup/appInit/seedObservedStateFromSnapshot.ts`.
+   What is deliberately NOT sealed: `getSnapshotByDeviceId` stays on the port. It
+   is the authoritative by-id read, it hands out one device rather than the corpus,
+   and the executor and control helpers depend on it.
 
 ## Invariants the implementation + tests must preserve
 

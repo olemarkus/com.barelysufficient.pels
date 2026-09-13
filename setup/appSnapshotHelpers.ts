@@ -1,6 +1,7 @@
 import type { PowerSource } from '../lib/power/powerSource';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
-import type { DeviceTransport } from '../lib/device/deviceTransport';
+import type { DeviceTransportPort } from '../lib/device/deviceTransport';
+import type { DeviceSurfaces } from '../lib/device/deviceSurfaces';
 import type { HomePowerSampleWithIdentity as HomePowerSample } from '../lib/device/transport/resolvedHomeMeterDispatch';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import type { PlanEngine } from '../lib/plan/planEngine';
@@ -61,7 +62,7 @@ const sameMainMeterSelection = (
 
 /** One pass of the refresh loop: the transport to read, and the intent. */
 type SnapshotRefreshRequest = {
-  deviceManager: DeviceTransport;
+  deviceManager: DeviceTransportPort;
   options: RefreshTargetDevicesSnapshotOptions;
 };
 
@@ -109,7 +110,7 @@ export class AppSnapshotHelpers {
   constructor(private readonly deps: {
     getPowerSource: () => PowerSource;
     timers: TimerRegistry;
-    getDeviceManager: () => DeviceTransport | undefined;
+    getDeviceManager: () => DeviceTransportPort | undefined;
     getPlanEngine: () => PlanEngine | undefined;
     getPlanService: () => PlanService | undefined;
     getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
@@ -139,6 +140,15 @@ export class AppSnapshotHelpers {
     // (the poll path has the same fence via its pollGeneration counter).
     resolveMainMeterSelection: () => MainMeterSelection;
     reconcileTargetPowerReachability?: (snapshot: TargetDeviceSnapshot[], nowMs: number) => void;
+    /**
+     * The joined surface, UNDECORATED. The reachability pass reads the observed
+     * `reportedStepId` as well as the descriptor's target-power config, so a
+     * descriptor read is not enough — and the decorated getter is not wanted
+     * either: decoration resolves the ladder from the very reachability state
+     * this pass is about to update, so taking it before would price the pass
+     * against a state one step stale.
+     */
+    getDeviceSurfaces: () => DeviceSurfaces[];
     getNextTargetPowerProbe?: () => DueTargetPowerProbe | undefined;
     hasPendingTargetPowerProbe?: () => boolean;
     rebuildOwningHomePlanForDevice?: (deviceId: string, trigger: PlanRebuildTrigger) => Promise<unknown>;
@@ -313,7 +323,7 @@ export class AppSnapshotHelpers {
   }
 
   private async runSnapshotRefreshCycle(
-    deviceManager: DeviceTransport,
+    deviceManager: DeviceTransportPort,
     options: RefreshTargetDevicesSnapshotOptions,
   ): Promise<void> {
     if (options.emitFlowBackedRefresh !== false) {
@@ -334,7 +344,7 @@ export class AppSnapshotHelpers {
     });
 
     this.deps.reconcileTargetPowerReachability?.(
-      deviceManager.getSnapshot(),
+      this.deps.getDeviceSurfaces(),
       this.deps.getNow().getTime(),
     );
     this.scheduleTargetPowerProbe();

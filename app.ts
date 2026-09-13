@@ -3,6 +3,7 @@ import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from '.
 import type { DeviceStartPolicy } from './packages/shared-domain/src/settings/deviceStartPolicy';
 import type CapacityGuard from './lib/power/capacityGuard';
 import type { DeviceTransport } from './lib/device/deviceTransport';
+import { createDeviceReads, type DeviceReads } from './lib/device/deviceReads';
 import { ObservedStateEmitter } from './lib/observer/observedStateEvents';
 import { ObservedHomePower } from './lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from './lib/observer/observedDeviceStateProjection';
@@ -180,6 +181,18 @@ class PelsApp extends PelsAppBase implements AppContext {
   public priceCoordinator!: PriceCoordinator;
   public priceFlowTagPublisher?: PriceFlowTagPublisher;
   public deviceManager!: DeviceTransport;
+
+  /**
+   * Every device read, built here because this is where the concrete transport
+   * lives: `AppContext.deviceManager` is a port without `getSnapshot`, so the
+   * composition root is the only place that can hand the cached array to its
+   * owner. Lazy on both sides — the transport is wired during ordered startup,
+   * and the observed record comes from the projection built with it.
+   */
+  public readonly deviceReads: DeviceReads = createDeviceReads({
+    getStore: () => this.deviceManager,
+    getObservedRecord: (deviceId) => this.getObservedRecord(deviceId),
+  });
   /**
    * Observer-owned emitter for post-translation realtime events
    * (`observed-state-changed`, `observed-control-state-changed`). Wiring builds
@@ -374,6 +387,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     getPlanEngine: () => this.planEngine,
     getPlanService: () => this.planService,
     getLatestTargetSnapshot: () => this.latestTargetSnapshot,
+    getDeviceSurfaces: () => this.deviceReads.surfaces(),
     resolveManagedState: (deviceId) => this.resolveManagedState(deviceId),
     isCapacityControlEnabled: (deviceId) => this.isCapacityControlEnabled(deviceId),
     getStructuredLogger: (component) => this.getStructuredLogger(component),
