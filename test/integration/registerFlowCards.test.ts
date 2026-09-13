@@ -364,6 +364,94 @@ describe('registerFlowCards', () => {
     expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
+  // `powerCapable: false` is the transport's durable verdict that PELS cannot
+  // limit the device, and `disableUnsupportedDevices` demotes `controllable`
+  // for it on every refresh. A Flow writing `true` here never won that fight,
+  // but between the write and the next refresh the planner resumed the device
+  // on an invented expected power. The enable card refuses — and refuses a
+  // device PELS does not track at all, whose eligibility cannot be resolved.
+  // The disable card does neither, because taking control away must never
+  // depend on a successful lookup.
+  //
+  // Built on the shared `buildDeps` double, whose action listeners and
+  // `settings` spies are the ones every other case here asserts on.
+  const buildCapacityControlDeps = (descriptors: ReadonlyArray<Record<string, unknown>>) => buildDeps({
+    getSnapshot: vi.fn().mockResolvedValue(descriptors),
+    getDeviceDescriptors: vi.fn().mockResolvedValue(descriptors),
+  });
+  const unlimitableThermostat = { id: 'dev-1', name: 'Bad termostat', powerCapable: false };
+
+  it('refuses to enable capacity control for a device PELS cannot limit', async () => {
+    const { deps, actionListeners, structuredInfo } = buildCapacityControlDeps([unlimitableThermostat]);
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.enable_device_capacity_control({ device: 'dev-1' })).resolves.toBe(true);
+
+    expect(deps.homey.settings.set).not.toHaveBeenCalled();
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_setting_toggle_skipped',
+      setting: 'capacity_control',
+      reasonCode: 'device_not_eligible',
+      deviceId: 'dev-1',
+      deviceName: 'Bad termostat',
+    }));
+  });
+
+  it('refuses to enable capacity control for a device PELS does not track', async () => {
+    // The Flow list is the runtime snapshot, so a device outside the managed
+    // filter is absent. A grant written blind would bring an unsupported device
+    // back already controllable.
+    const { deps, actionListeners, structuredInfo } = buildCapacityControlDeps([]);
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.enable_device_capacity_control({ device: 'dev-1' })).resolves.toBe(true);
+
+    expect(deps.homey.settings.set).not.toHaveBeenCalled();
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_setting_toggle_skipped',
+      setting: 'capacity_control',
+      reasonCode: 'device_not_tracked',
+      deviceId: 'dev-1',
+      deviceName: null,
+    }));
+  });
+
+  it('still lets a Flow disable capacity control for a device PELS cannot limit', async () => {
+    const { deps, actionListeners } = buildCapacityControlDeps([unlimitableThermostat]);
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.disable_device_capacity_control({ device: 'dev-1' })).resolves.toBe(true);
+
+    expect(deps.homey.settings.set).toHaveBeenCalledWith('controllable_devices', { 'dev-1': false });
+  });
+
+  it('still lets a Flow disable capacity control for a device PELS does not track', async () => {
+    // A booking Flow hands a device back by disabling control. If that write
+    // waited on a successful lookup, PELS would keep controlling the device.
+    const { deps, actionListeners } = buildCapacityControlDeps([]);
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.disable_device_capacity_control({ device: 'dev-1' })).resolves.toBe(true);
+
+    expect(deps.homey.settings.set).toHaveBeenCalledWith('controllable_devices', { 'dev-1': false });
+  });
+
+  it('enables capacity control when the descriptor carries no verdict', async () => {
+    // An absent flag is not a verdict: a descriptor without the field must not
+    // be refused.
+    const { deps, actionListeners } = buildCapacityControlDeps([{ id: 'dev-1', name: 'Heater' }]);
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.enable_device_capacity_control({ device: 'dev-1' })).resolves.toBe(true);
+
+    expect(deps.homey.settings.set).toHaveBeenCalledWith('controllable_devices', { 'dev-1': true });
+  });
+
   it('keeps EV SoC card registration when generic flow-backed cards are unavailable', () => {
     const { deps, actionListeners, triggerListeners } = buildDeps({
       areFlowBackedCardsAvailable: () => false,

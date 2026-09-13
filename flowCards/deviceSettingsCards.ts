@@ -23,6 +23,42 @@ const isUserSelectableDevice = (device: DeviceDescriptorRead): boolean => (
   !isObserveOnlyRoleClassKey(device.deviceClass)
 );
 
+// The gate an action card applies to the device its Flow names, and — over the
+// tracked devices — to what its picker offers, so the two cannot disagree. A Flow
+// can name a device PELS does not track right now (removed from Homey, or outside
+// the managed filter, since the Flow list is the runtime snapshot); the gate then
+// sees `undefined`, and each card decides what writing its value for it means.
+type DeviceWriteGate = (device: DeviceDescriptorRead | undefined) => boolean;
+
+// The disable and budget-exemption cards record their value for an untracked
+// device, as they always have; it takes effect if the device is tracked again.
+// Disabling in particular must never depend on a successful lookup: it is how a
+// booking Flow hands a device back, and a refusal would leave PELS controlling it.
+const recordsForUntrackedDevice: DeviceWriteGate = (device) => (
+  device === undefined || isUserSelectableDevice(device)
+);
+
+// ENABLING capacity control grants control authority, so it requires a device PELS
+// can actually limit. `powerCapable === false` is the transport's durable
+// structural verdict (`isDevicePowerCapable`), and `disableUnsupportedDevices`
+// writes `controllable: false` for such a device on every snapshot refresh. A Flow
+// that wrote `true` here never won that fight — the next refresh reverted it — but
+// in the window between, the planner treated the device as controllable with an
+// invented expected power and resumed it (an owner reported PELS switching a
+// thermostat on while the home was in Away). Refusing the write turns a silent
+// fight into a logged `device_setting_toggle_skipped`.
+//
+// An UNTRACKED device is refused too: its eligibility cannot be resolved, and a
+// grant written blind is exactly the write this gate exists to stop — an
+// unsupported device outside the managed filter would come back already
+// controllable. A Flow arg is untrusted input, so an unresolvable one is a no-op.
+// `getFlowSnapshot` refreshes an empty snapshot before answering, so this does not
+// turn the boot window into a refusal. `!== false`, not `=== true`: a descriptor
+// without the flag is not a verdict.
+const mayGrantCapacityControl: DeviceWriteGate = (device) => (
+  device !== undefined && isUserSelectableDevice(device) && device.powerCapable !== false
+);
+
 export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
   registerDeviceBooleanActionCard({
     cardId: 'enable_device_capacity_control',
@@ -30,7 +66,7 @@ export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
     settingKey: CONTROLLABLE_DEVICES,
     label: 'capacity control',
     settingKind: 'capacity_control',
-    deviceFilter: isUserSelectableDevice,
+    deviceFilter: mayGrantCapacityControl,
     deps,
   });
   registerDeviceBooleanActionCard({
@@ -39,7 +75,7 @@ export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
     settingKey: CONTROLLABLE_DEVICES,
     label: 'capacity control',
     settingKind: 'capacity_control',
-    deviceFilter: isUserSelectableDevice,
+    deviceFilter: recordsForUntrackedDevice,
     deps,
   });
 }
@@ -51,7 +87,7 @@ export function registerBudgetExemptionCards(deps: FlowCardDeps): void {
     settingKey: BUDGET_EXEMPT_DEVICES,
     label: 'budget exemption',
     settingKind: 'budget_exemption',
-    deviceFilter: isUserSelectableDevice,
+    deviceFilter: recordsForUntrackedDevice,
     deps,
   });
   registerDeviceBooleanActionCard({
@@ -60,7 +96,7 @@ export function registerBudgetExemptionCards(deps: FlowCardDeps): void {
     settingKey: BUDGET_EXEMPT_DEVICES,
     label: 'budget exemption',
     settingKind: 'budget_exemption',
-    deviceFilter: isUserSelectableDevice,
+    deviceFilter: recordsForUntrackedDevice,
     deps,
   });
 }
@@ -95,10 +131,10 @@ function registerDeviceBooleanActionCard(params: {
   settingKey: string;
   label: string;
   settingKind: string;
-  // Optional eligibility filter. When present, the autocomplete only offers — and the
+  // Optional eligibility gate. When present, the autocomplete only offers — and the
   // write only acts on — devices that pass it. Used by the capacity-control cards to keep
   // observe-only devices (battery / solar, `controllable: false`) out of the picker.
-  deviceFilter?: (device: DeviceDescriptorRead) => boolean;
+  deviceFilter?: DeviceWriteGate;
   deps: FlowCardDeps;
 }): void {
   const { cardId, deps, deviceFilter, ...settingParams } = params;
@@ -169,7 +205,7 @@ async function setDeviceBooleanSetting(params: {
   settingKey: string;
   label: string;
   settingKind: string;
-  deviceFilter?: (device: DeviceDescriptorRead) => boolean;
+  deviceFilter?: DeviceWriteGate;
   deps: FlowCardDeps;
 }): Promise<void> {
   const {
@@ -185,14 +221,15 @@ async function setDeviceBooleanSetting(params: {
   const descriptors = await deps.getDeviceDescriptors();
   const device = descriptors.find((entry) => entry.id === deviceId);
   const deviceName = device ? device.name : null;
-  // Skip the write for an ineligible device (e.g. an observe-only battery/solar device
-  // hand-picked via a stale flow arg): it would only persist a no-op, inconsistent
-  // settings row. Log the skip so the user-facing flow still has a trace.
-  if (device && deviceFilter && !deviceFilter(device)) {
+  // Skip the write for a device the gate refuses (e.g. an observe-only battery/solar
+  // device hand-picked via a stale flow arg, or a device PELS cannot limit). The gate
+  // also sees an untracked device and decides for itself what that means. Log the skip
+  // so the user-facing flow still has a trace, naming which of the two it was.
+  if (deviceFilter && !deviceFilter(device)) {
     deps.getStructuredLogger('devices')?.info({
       event: 'device_setting_toggle_skipped',
       setting: settingKind,
-      reasonCode: 'device_not_eligible',
+      reasonCode: device === undefined ? 'device_not_tracked' : 'device_not_eligible',
       deviceId,
       deviceName,
     });
