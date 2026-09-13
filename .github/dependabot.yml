@@ -26,6 +26,15 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      # `@vitest/coverage-v8` pins `vitest` to its exact version as a peer, so
+      # bumping either alone fails `npm ci` with ERESOLVE (#2390/#2391 did, for
+      # the 5.0.0 major). They always move together, majors included. Listed
+      # before `development` because Dependabot assigns a dependency to the
+      # first group that matches it.
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
       # Patch/minor churn lands as two PRs a week rather than twenty. Majors
       # stay ungrouped so each one gets its own PR and its own CI signal —
       # they carry real lint/type churn here (typescript, eslint plugins).
