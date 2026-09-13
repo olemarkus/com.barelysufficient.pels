@@ -166,6 +166,18 @@ time-critical.
   either direction** — an away session is silent evidence, not counter-evidence, so it
   must never decrement the affinity prior.
 
+**Contention counts devices, not edges.** A plug that bounces (plugged, unplugged and plugged
+again inside one window) gives one charger several edges of the same kind, all fitting the same
+car edge. That is one charger, not several competing for the car, and several edges from one car
+are likewise one candidate. Counting edges instead marked every edge of the bounce ambiguous: on
+prod 2026-09-12 a one-car home's charger was plugged and unplugged several times in quick
+succession, the session never linked, the charger (with its car ticked) had no battery level, and
+that night's smart task sat at `objective_progress_stale` until it was abandoned. A bounce is also
+one physical event, so it earns one decision. The burst is every edge of one charger joined
+through shared car edges; only its latest edge, where the plug came to rest, decides, and it
+decides on the whole burst's candidates. A rival car that only an earlier edge of the burst could
+explain is still a rival, so the burst stays ambiguous rather than linking the other car.
+
 **An away verdict waits two windows, not one.** A charger edge that could still explain a
 car edge at time T lies within [T−W, T+W], and the latest of those does not itself settle
 until (T+W)+W. Reporting at one window would call an away session on a pair that links
@@ -341,7 +353,8 @@ Read `/tmp/pels` with the `pels-log-review` skill and check, in order:
 1. `ev_car_link_resolved` — did it pick the right pair, and after how many sessions?
    `source: 'coincidence'` is strong; `affinity_prior` means it fell back to history.
 2. `ev_car_link_ambiguous` — should be absent in a one-car home. Its presence means two
-   devices are edging together and the probe is right to refuse.
+   devices are edging together and the probe is right to refuse. One device edging several
+   times (a bouncing plug) is not a contest and must not produce it.
 3. `ev_car_session_elsewhere` — should appear when charging away from home, and should
    *not* appear for home sessions.
 4. `ev_car_self_stopped` — does `stoppedAtSocPct` cluster? Compare `observedLimitPct` and

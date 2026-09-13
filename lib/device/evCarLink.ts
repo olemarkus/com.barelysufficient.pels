@@ -145,7 +145,7 @@ export type EvLinkMatchResult = {
  *
  * Three outcomes, and the distinction between them is the whole point:
  *   - exactly one car matches a charger edge, and that car matches no OTHER
- *     charger edge → a coincidence worth voting on;
+ *     charger → a coincidence worth voting on;
  *   - two or more cars match a charger, OR the single matching car could equally
  *     be explained by another charger → ambiguous, no vote. One physical car
  *     cannot be on two chargers, so a car edge that fits two of them is evidence
@@ -154,6 +154,24 @@ export type EvLinkMatchResult = {
  *   - a car edge matches no charger edge → the car connected somewhere else.
  *     Reported so the caller can log it, but it carries NO vote in either
  *     direction: an away session is silent evidence, not counter-evidence.
+ *
+ * "Car" and "charger" there mean DEVICES, not edges. A plug that bounces —
+ * connected, unplugged, connected again inside one window — gives one charger
+ * several edges of the same kind, and each of them fits the same car edge. That
+ * is one charger, not two competing for the car, and counting it as a contest
+ * marked every edge ambiguous: prod 2026-09-12, a one-car home whose charger was
+ * plugged and unplugged several times in quick succession never linked, so the
+ * charger had no battery level and the night's smart task could not plan. The
+ * same holds on the car side: several edges from one car are one candidate.
+ *
+ * A bounce is also one physical event, so it earns one decision, not one per
+ * bounce. The burst is every edge of one charger joined through shared car
+ * edges; only its latest edge decides, because that is the state the plug came
+ * to rest in, and it decides on the WHOLE burst's candidates. A rival car that
+ * only an earlier edge of the burst could explain is still a rival: judging the
+ * latest edge on its own candidates would link a car the burst had already
+ * refused. Earlier edges still count as explained, so they are never reported
+ * as away sessions.
  */
 export const matchCoincidentEdges = (params: {
     carEdges: readonly EvLinkEdge[];
@@ -179,49 +197,36 @@ export const matchCoincidentEdges = (params: {
                 && Math.abs(carEdge.atMs - chargerEdge.atMs) <= windowMs
             )),
         }));
-    const withCandidates = scored.filter((entry) => entry.candidates.length > 0);
-
-    // How many charger edges each car edge could serve, counted over ALL retained
-    // edges rather than only the settled ones. A charger that connects slightly
-    // later is still competition: finalising a vote the moment the FIRST charger
-    // settles would hand out a persisted vote and an active link that the later
-    // edge's ambiguity can no longer retract.
-    const chargersPerCarEdge = new Map<string, number>();
-    for (const { candidates } of withCandidates) {
-        for (const candidate of candidates) {
-            const key = buildEdgeKey(candidate);
-            chargersPerCarEdge.set(key, (chargersPerCarEdge.get(key) ?? 0) + 1);
-        }
-    }
+    const withCandidates = scored.flatMap(({ chargerEdge, candidates }): ScoredChargerEdge[] => (
+        hasEdges(candidates) ? [{ chargerEdge, candidates }] : []
+    ));
 
     const coincidences: EvLinkCoincidence[] = [];
     const ambiguities: EvLinkAmbiguity[] = [];
-    const matchedCarKeys = new Set<string>();
 
-    for (const { chargerEdge, candidates } of withCandidates) {
-        for (const candidate of candidates) {
-            matchedCarKeys.add(buildEdgeKey(candidate));
-        }
-        // Decide only once this edge has settled; contention above already
-        // accounted for edges that have not.
+    for (const entry of withCandidates) {
+        const { chargerEdge } = entry;
+        // Decide only once this edge has settled; contention below still counts
+        // edges that have not.
         if (!isSettled(chargerEdge)) continue;
-        const contested = candidates.some((candidate) => (
-            (chargersPerCarEdge.get(buildEdgeKey(candidate)) ?? 0) > 1
-        ));
-        if (candidates.length > 1 || contested) {
+        const burst = resolveChargerEdgeBurst(entry, withCandidates);
+        // An earlier edge of a bouncing plug; the burst's resting edge decides.
+        if (burst.restingEdge !== chargerEdge) continue;
+        const carIds = distinctDeviceIds(burst.candidates);
+        if (carIds.length > 1 || isContestedByAnotherCharger(burst, withCandidates)) {
             ambiguities.push({
                 chargerId: chargerEdge.deviceId,
-                carIds: candidates.map((candidate) => candidate.deviceId),
+                carIds,
                 kind: chargerEdge.kind,
                 atMs: chargerEdge.atMs,
             });
             continue;
         }
-        const [carEdge] = candidates;
-        // `withCandidates` keeps only entries with at least one candidate and the
-        // multi-candidate case left above, so a missing edge cannot happen; skipping
-        // it casts no vote, which is what an unattributable edge earns anyway.
-        if (carEdge === undefined) continue;
+        // One car, possibly with several edges. The LATEST one stands for it:
+        // the caller waits one window past the car edge it is handed before
+        // finalising, and only the latest guarantees every charger that could
+        // contest any of these edges has been ingested by then.
+        const carEdge = latestEdge(burst.candidates);
         coincidences.push({
             carId: carEdge.deviceId,
             chargerId: chargerEdge.deviceId,
@@ -231,11 +236,12 @@ export const matchCoincidentEdges = (params: {
         });
     }
 
+    // Every car edge some charger edge fits, whatever was decided about it:
+    // ambiguous and superseded edges are explained, just not attributable.
+    const matchedCarKeys = new Set(withCandidates.flatMap((entry) => entry.candidates.map(buildEdgeKey)));
     return {
         coincidences,
         ambiguities,
-        // Matched-but-ambiguous edges count as explained: they are not away
-        // sessions, they are simply not attributable to one charger.
         unmatchedCarEdges: carEdges.filter((edge) => !matchedCarKeys.has(buildEdgeKey(edge))),
         unmatchedChargerEdges: scored
             .filter((entry) => entry.candidates.length === 0 && isSettled(entry.chargerEdge))
@@ -244,6 +250,97 @@ export const matchCoincidentEdges = (params: {
 };
 
 const buildEdgeKey = (edge: EvLinkEdge): string => `${edge.deviceId}|${edge.kind}|${edge.atMs}`;
+
+/** At least one edge. A charger edge only enters matching with a car edge that fits it. */
+type EvLinkEdges = readonly [EvLinkEdge, ...EvLinkEdge[]];
+
+const hasEdges = (edges: readonly EvLinkEdge[]): edges is EvLinkEdges => edges.length > 0;
+
+/** A charger edge together with the car edges that fit it inside the window. */
+type ScoredChargerEdge = {
+    chargerEdge: EvLinkEdge;
+    candidates: EvLinkEdges;
+};
+
+/**
+ * One charger's edges joined through shared car edges: a bouncing plug, or
+ * just a single edge. See "DEVICES, not edges" on `matchCoincidentEdges`.
+ */
+type ChargerEdgeBurst = {
+    /** The burst's latest charger edge, where the plug came to rest. Only it decides. */
+    restingEdge: EvLinkEdge;
+    /** Every car edge any edge of the burst fits. */
+    candidates: EvLinkEdges;
+};
+
+/**
+ * The burst `entry` belongs to: every edge of the same charger reachable from it
+ * through shared car edges, transitively, because a plug bouncing for longer
+ * than one window chains edges that share no car edge directly. Candidates
+ * always share their charger edge's kind, so a shared car edge implies the same
+ * kind too.
+ */
+const resolveChargerEdgeBurst = (
+    entry: ScoredChargerEdge,
+    scored: readonly ScoredChargerEdge[],
+): ChargerEdgeBurst => {
+    const members: ScoredChargerEdge[] = [entry];
+    let grew = true;
+    while (grew) {
+        grew = false;
+        for (const other of scored) {
+            if (members.includes(other) || !members.some((member) => sharesCarEdge(member, other))) continue;
+            members.push(other);
+            grew = true;
+        }
+    }
+    const candidates: [EvLinkEdge, ...EvLinkEdge[]] = [...entry.candidates];
+    for (const member of members) {
+        if (member !== entry) addEdges(candidates, member.candidates);
+    }
+    return { restingEdge: latestEdge(chargerEdgesOf(members, entry)), candidates };
+};
+
+const chargerEdgesOf = (members: readonly ScoredChargerEdge[], entry: ScoredChargerEdge): EvLinkEdges => (
+    [entry.chargerEdge, ...members.map((member) => member.chargerEdge)]
+);
+
+const addEdges = (target: EvLinkEdge[], edges: EvLinkEdges): void => {
+    for (const edge of edges) target.push(edge);
+};
+
+const sharesCarEdge = (a: ScoredChargerEdge, b: ScoredChargerEdge): boolean => (
+    a.chargerEdge.deviceId === b.chargerEdge.deviceId
+    && a.candidates.some((candidate) => b.candidates.includes(candidate))
+);
+
+/**
+ * Whether any car edge of the burst also fits an edge of a DIFFERENT charger,
+ * counted over all retained edges rather than only the settled ones. A charger
+ * that connects slightly later is still competition: finalising a vote the
+ * moment the first charger settles would hand out a persisted vote and an
+ * active link that the later edge's ambiguity can no longer retract.
+ */
+const isContestedByAnotherCharger = (
+    burst: ChargerEdgeBurst,
+    scored: readonly ScoredChargerEdge[],
+): boolean => scored.some((other) => (
+    other.chargerEdge.deviceId !== burst.restingEdge.deviceId
+    && other.candidates.some((candidate) => burst.candidates.includes(candidate))
+));
+
+const distinctDeviceIds = (edges: EvLinkEdges): string[] => (
+    Array.from(new Set(edges.map((edge) => edge.deviceId)))
+);
+
+const latestEdge = (edges: EvLinkEdges): EvLinkEdge => {
+    const [first] = edges;
+    let latest = first;
+    for (const edge of edges) {
+        if (edge.atMs > latest.atMs) latest = edge;
+    }
+    return latest;
+};
 
 export type EvLinkResolution = {
     carId: string;

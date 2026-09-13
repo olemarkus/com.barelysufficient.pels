@@ -259,6 +259,43 @@ describe('linking a car to a charger', () => {
     expect(getEvCarLinkVotes(h.snapshot, 'car-1', 'charger-B')).toBe(0);
   });
 
+  it('links a one-car home whose charger plug bounces, with one vote for the burst', () => {
+    // Prod 2026-09-12: the charger was plugged and unplugged several times in
+    // quick succession while the car reported one plug-in. Every charger connect
+    // edge fit that car edge, the matcher counted them as competing chargers, and
+    // the session never linked — so the charger had no battery level all night.
+    seedDisconnected(h, 0);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 33 }), 10_000);
+    h.setCharger({ evChargingState: 'plugged_in', measuredPowerW: 0 });
+    h.tick(10_000);
+    h.setCharger({ evChargingState: 'plugged_out' });
+    h.tick(20_000);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(30_000);
+    h.setCharger({ evChargingState: 'plugged_out' });
+    h.tick(40_000);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(50_000);
+
+    // The first connect edge has settled and the car edge's window has closed,
+    // but the burst's latest edge has not: nothing may be decided yet.
+    h.tick(120_000);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(h.of('ev_car_link_ambiguous')).toEqual([]);
+
+    h.tick(50_000 + SETTLE_MS);
+
+    expect(h.of('ev_car_link_ambiguous')).toEqual([]);
+    expect(h.of('ev_car_link_resolved')).toHaveLength(1);
+    expect(h.of('ev_car_link_resolved')[0]).toMatchObject({
+      carId: 'car-1', chargerId: 'charger-1', source: 'coincidence',
+    });
+    expect(getEvCarLinkVotes(h.snapshot, 'car-1', 'charger-1')).toBe(1);
+    // The session began where the plug came to rest, not at the first bounce.
+    expect(h.snapshot.sessions).toEqual({ 'charger-1': { carId: 'car-1', sinceMs: 50_000 } });
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1', socPct: 33 });
+  });
+
   it('ends the session on a car-side disconnect even when the charger view is stale', () => {
     // Regression: only a charger-side disconnect cleared the link. If the
     // charger's update was missed the link survived, and every later charge

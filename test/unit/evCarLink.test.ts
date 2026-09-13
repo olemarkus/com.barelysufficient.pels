@@ -171,6 +171,113 @@ describe('matchCoincidentEdges', () => {
     expect(result.coincidences[0].chargerId).toBe('chargerA');
   });
 
+  it('treats a charger whose plug bounces as one charger, not a contest', () => {
+    // Prod 2026-09-12: plugged, unplugged and plugged again within one window.
+    // Both connect edges fit the one car edge; counting edges called that a
+    // contest and linked nothing. The latest edge speaks for the burst.
+    const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
+      carEdges: [edge('car', 'connect', 10_000)],
+      chargerEdges: [
+        edge('charger', 'connect', 0),
+        edge('charger', 'disconnect', 5_000),
+        edge('charger', 'connect', 20_000),
+      ],
+    });
+    expect(result.ambiguities).toEqual([]);
+    expect(result.coincidences).toEqual([
+      { carId: 'car', chargerId: 'charger', kind: 'connect', deltaMs: -10_000, atMs: 20_000 },
+    ]);
+    expect(result.unmatchedCarEdges).toEqual([]);
+    // The superseded edge is explained by the burst, not candidate-free, so the
+    // affinity-prior fallback must not see it either.
+    expect(result.unmatchedChargerEdges).toEqual([edge('charger', 'disconnect', 5_000)]);
+  });
+
+  it('decides nothing for a bounce until its latest edge settles', () => {
+    const result = matchCoincidentEdges({
+      nowMs: EV_CAR_LINK_COINCIDENCE_WINDOW_MS + 1_000,
+      carEdges: [edge('car', 'connect', 10_000)],
+      chargerEdges: [edge('charger', 'connect', 0), edge('charger', 'connect', 20_000)],
+    });
+    expect(result.coincidences).toEqual([]);
+    expect(result.ambiguities).toEqual([]);
+  });
+
+  it('treats a car whose plug bounces as one candidate', () => {
+    const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
+      carEdges: [edge('car', 'connect', 0), edge('car', 'connect', 20_000)],
+      chargerEdges: [edge('charger', 'connect', 10_000)],
+    });
+    expect(result.ambiguities).toEqual([]);
+    // The latest car edge: the caller waits a window past it before finalising.
+    expect(result.coincidences).toEqual([
+      { carId: 'car', chargerId: 'charger', kind: 'connect', deltaMs: 10_000, atMs: 10_000 },
+    ]);
+  });
+
+  it('still refuses a bouncing charger when a second charger fits the car edge', () => {
+    const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
+      carEdges: [edge('car', 'connect', 10_000)],
+      chargerEdges: [
+        edge('chargerA', 'connect', 0),
+        edge('chargerA', 'connect', 20_000),
+        edge('chargerB', 'connect', 15_000),
+      ],
+    });
+    expect(result.coincidences).toEqual([]);
+    expect(result.ambiguities.map((a) => [a.chargerId, a.atMs])).toEqual([
+      ['chargerA', 20_000],
+      ['chargerB', 15_000],
+    ]);
+  });
+
+  it('judges a bounce on every car its earlier edges could explain', () => {
+    // Car B's edge fits only the FIRST charger edge; car A's fits both. Judging
+    // the latest edge on its own candidates would see A alone and link it, right
+    // after the first edge had been reported ambiguous between A and B.
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+    const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
+      carEdges: [edge('carB', 'connect', 0), edge('carA', 'connect', 100_000)],
+      chargerEdges: [edge('charger', 'connect', 50_000), edge('charger', 'connect', W + 90_000)],
+    });
+    expect(result.coincidences).toEqual([]);
+    expect(result.ambiguities).toEqual([
+      { chargerId: 'charger', carIds: ['carA', 'carB'], kind: 'connect', atMs: W + 90_000 },
+    ]);
+  });
+
+  it('chains a bounce that outlasts one window through shared car edges', () => {
+    // Edges at 0 and 150 s share no car edge directly; the one at 60 s links
+    // them, so the whole run is one burst and only its latest edge decides.
+    const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
+      carEdges: [edge('car', 'connect', 0), edge('car', 'connect', 150_000)],
+      chargerEdges: [
+        edge('charger', 'connect', 0),
+        edge('charger', 'connect', 60_000),
+        edge('charger', 'connect', 150_000),
+      ],
+    });
+    expect(result.ambiguities).toEqual([]);
+    expect(result.coincidences).toEqual([
+      { carId: 'car', chargerId: 'charger', kind: 'connect', deltaMs: 0, atMs: 150_000 },
+    ]);
+  });
+
+  it('keeps two sessions on one charger apart when they share no car edge', () => {
+    const later = EV_CAR_LINK_COINCIDENCE_WINDOW_MS * 3;
+    const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
+      carEdges: [edge('car', 'connect', 0), edge('car', 'connect', later)],
+      chargerEdges: [edge('charger', 'connect', 0), edge('charger', 'connect', later)],
+    });
+    expect(result.coincidences.map((c) => c.atMs)).toEqual([0, later]);
+  });
+
   it('reports a car edge with no charger edge as unmatched', () => {
     const result = matchCoincidentEdges({
       nowMs: 10_000_000,
