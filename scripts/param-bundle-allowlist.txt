@@ -352,7 +352,6 @@ setup/appDeviceSupport.ts 5
 setup/appInit/appHomeMembershipOptions.ts 1
 setup/appInit/buildDeviceParseProviders.ts 1
 setup/appInit/calibrationViews.ts 1
-setup/appInit/createMainCapacityGuard.ts 1
 setup/appInit/planEngineWiring.ts 2
 setup/appInit/registerSettingsHandler.ts 1
 setup/appInit/residualKwForPlanDevice.ts 1
@@ -372,7 +371,6 @@ setup/flowConflictProbe.ts 1
 setup/homeMembership.ts 1
 setup/homeMeterOwnership.ts 1
 setup/homeRegistryAdapter.ts 2
-setup/homeRuntime/createBundleCapacityGuard.ts 1
 setup/homeRuntime/createHomeCapacityBundle.ts 4
 setup/homeRuntime/homeCapacityBundleApi.ts 5
 setup/homeRuntime/homeCapacityBundleReadiness.ts 1

@@ -7,7 +7,7 @@
 # Regenerate with `node scripts/check-setup-boundaries.mjs --seed`, never by
 # hand. When the last line goes, DELETE THIS FILE.
 #
-# Seeded at 55 files.
+# Seeded at 54 files.
 
 setup/appDebugHelpers.ts 2  # device, plan
 setup/appDeviceControlFeedback.ts 2  # executor, plan
@@ -18,7 +18,6 @@ setup/appInit/calibrationViews.ts 3  # device, objectives, observer
 setup/appInit/composedPlanEngine.ts 3  # executor, observer, plan
 setup/appInit/createGenerationPollSource.ts 3  # device, observer, power
 setup/appInit/createHomeyEnergyPollSource.ts 2  # device, power
-setup/appInit/createMainCapacityGuard.ts 2  # plan, power
 setup/appInit/createPlanEngine.ts 5  # actuator, executor, observer, plan, power
 setup/appInit/createPlanService.ts 3  # observer, plan, power
 setup/appInit/createSteppedStores.ts 2  # executor, observer
@@ -45,8 +44,8 @@ setup/appTargetPowerReachabilityWiring.ts 2  # device, plan
 setup/backgroundTasksController.ts 3  # objectives, price, weather
 setup/homeMainMeterAuthority.ts 2  # home, power
 setup/homeMembership.ts 2  # home, observer
-setup/homeRuntime/createBundleCapacityGuard.ts 2  # plan, power
 setup/homeRuntime/createHomeCapacityBundle.ts 4  # home, plan, power, price
+setup/homeRuntime/createHomeCapacityGuard.ts 2  # plan, power
 setup/homeRuntime/createHomePowerPipeline.ts 3  # observer, plan, power
 setup/homeRuntime/homeCapacityBundleApi.ts 3  # home, plan, power
 setup/homeRuntime/homeCapacityBundleReadiness.ts 2  # plan, power

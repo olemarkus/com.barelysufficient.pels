@@ -30,11 +30,13 @@ import {
   createPriceCoordinator,
   createPriceFlowTagPublisher,
   persistDeferredObjectiveObservationWatermark,
+  requirePlanService,
   resolvePlanService,
   subscribePlanObservedState,
 } from './appInit';
 import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
 import { createHomePlanRuntime } from './homeRuntime/createHomePlanRuntime';
+import { createHomeCapacityGuard } from './homeRuntime/createHomeCapacityGuard';
 import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
 import {
   buildHomeRuntimeReadPort, createHomeRuntimeRegistryForApp, wirePlanStatusRealtime,
@@ -54,7 +56,6 @@ import {
   type StableSampleRevisionReader,
 } from './appInit/appHomeMembershipOptions';
 import { registerSettingsHandler } from './appInit/registerSettingsHandler';
-import { createMainCapacityGuard } from './appInit/createMainCapacityGuard';
 import { startPostStartupBackgroundTasks } from './appInit/startPostStartupBackgroundTasks';
 import { BackgroundTasksController } from './backgroundTasksController';
 import type { AppNativeWiring } from './appNativeWiring';
@@ -90,7 +91,7 @@ export { createPreparedMainReconcileFence };
 
 /** The Main-home shortfall gate, as this wiring hands it over and reads it back. */
 export type MainShortfallSideEffectGate = ReturnType<
-  typeof createMainCapacityGuard
+  typeof createHomeCapacityGuard
 >['shortfallSideEffectGate'];
 
 /** Ask Main to re-establish meter authority, now or on the next scheduled pass. */
@@ -404,17 +405,28 @@ export class AppServiceWiring {
     wirePlanStatusRealtime(this.deps.ctx);
   }
 
+  /**
+   * Main's capacity guard, built by the factory every meter area builds its own
+   * with. Main's scalars, tracker and display name reach it through the same
+   * scope its plan runtime already takes, and its timer keys through the
+   * identity namer its tracker persistence already uses — so what stays here is
+   * only what is genuinely Main's: which lifecycle signals close its authority.
+   */
   initCapacityGuard(): void {
     const { ctx } = this.deps;
-    const runtime = createMainCapacityGuard({
+    const runtime = createHomeCapacityGuard(
       ctx,
-      isDiscarded: () => this.deps.isMainActuationStopped(),
-      isTemporarilyFenced: () => (
-        this.deps.preparedMainReconcileFence.isActive()
-        || this.deps.getHomeMembershipService()?.isMainHomeActuationFenced() === true
-      ),
-      isPreparedReconcileActive: this.deps.preparedMainReconcileFence.isActive,
-    });
+      this.mainHomeScope,
+      // Main's timer namespace is the bare suffix, the same identity naming
+      // `appPowerTracker.ts` binds for its tracker persistence.
+      (suffix) => suffix,
+      () => requirePlanService(ctx),
+      // Discarded, authority closed, prepared reconcile active — see the
+      // factory for what each one licenses.
+      () => this.deps.isMainActuationStopped(),
+      () => this.deps.getHomeMembershipService()?.isMainHomeActuationFenced() === true,
+      this.deps.preparedMainReconcileFence.isActive,
+    );
     ctx.capacityGuard = runtime.guard;
     this.deps.setMainShortfallSideEffectGate(runtime.shortfallSideEffectGate);
   }

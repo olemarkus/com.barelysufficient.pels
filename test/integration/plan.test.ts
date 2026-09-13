@@ -2175,7 +2175,7 @@ describe('Device plan snapshot', () => {
     openMaxIntervalEscape();
     await advanceTimeAndRecordPower(app, 31000, 1000);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
-    expect(app.timers.has('mainShortfallAlertSustained')).toBe(false);
+    expect(app.timers.has('shortfallAlertSustained')).toBe(false);
 
     openMaxIntervalEscape();
     await app['powerSamplePipeline'].recordPowerSample(500000);

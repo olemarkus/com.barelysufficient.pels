@@ -82,7 +82,7 @@ import {
   createHomeTrackerPersistence,
 } from '../../lib/power/homeTrackerPersistence';
 import type { StableSampleRevision } from '../powerSamplePipeline';
-import { createBundleCapacityGuard } from './createBundleCapacityGuard';
+import { createHomeCapacityGuard } from './createHomeCapacityGuard';
 import type { PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
@@ -464,26 +464,23 @@ function createBundlePlanningRuntime(params: {
     ) return true;
     return !params.isMeterSourceAuthorizedForExecution();
   };
-  const {
-    guard,
-    flushDeferredShortfallSideEffect,
-    holdDeferredShortfallSideEffect,
-  } = createBundleCapacityGuard({
-    ctx: params.ctx,
-    homeId: params.homeId,
-    getCapacityScalars: params.getCapacityScalars,
-    getPlanService: () => planService,
-    getHomeDisplayName: scope.getHomeDisplayName,
-    getPowerTracker: params.tracker.getState,
-    isTornDown: params.isTornDown,
-    isMembershipReady: params.isMembershipReady,
-    isMeterSourceAuthorized: params.isMeterSourceAuthorized,
-    isMeterSourceEpochDiscarded: params.isMeterSourceEpochDiscarded,
-    isPreparedReconcileActive: params.preparedSampleFence.isActive,
-    shortfallRetryTimerKey: params.timerKey('shortfallSideEffectRetry'),
-    shortfallAlertImmediateTimerKey: params.timerKey('shortfallAlertImmediate'),
-    shortfallAlertSustainedTimerKey: params.timerKey('shortfallAlertSustained'),
-  });
+  // Lifecycle/source authority, composed here for the same reason the main home
+  // composes its own at its boot step: an area has two inputs Main does not
+  // (membership, meter-source authority), and they are this bundle's signals,
+  // not the guard's business. The epoch-discard arm is on the DISCARDED
+  // predicate and not on the closed-authority one because an invalidated source
+  // epoch never reopens for this runtime — the bundle is torn down before the
+  // epoch can commit again — so a transition observed behind it is dropped
+  // rather than held for a reopening that will not come.
+  const { guard, shortfallSideEffectGate } = createHomeCapacityGuard(
+    params.ctx,
+    scope,
+    params.timerKey,
+    () => planService,
+    () => params.isTornDown() || params.isMeterSourceEpochDiscarded(),
+    () => !params.isMembershipReady() || !params.isMeterSourceAuthorized(),
+    params.preparedSampleFence.isActive,
+  );
   const { planEngine, planService } = createHomePlanRuntime(
     params.ctx,
     scope,
@@ -506,8 +503,8 @@ function createBundlePlanningRuntime(params: {
     planService,
     guard,
     meterSilenceMonitor,
-    flushDeferredShortfallSideEffect,
-    holdDeferredShortfallSideEffect,
+    flushDeferredShortfallSideEffect: shortfallSideEffectGate.flushAfterPreparedApply,
+    holdDeferredShortfallSideEffect: shortfallSideEffectGate.holdDeferredUntilPreparedApply,
     pipeline,
     planRebuildScheduler,
     planRebuildThrottle,

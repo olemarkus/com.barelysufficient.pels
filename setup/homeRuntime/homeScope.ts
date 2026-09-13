@@ -1,6 +1,9 @@
 /**
  * Per-home closure bundle for the plan factories
- * (`setup/appInit/createPlanEngine.ts`, `setup/appInit/createPlanService.ts`).
+ * (`setup/appInit/createPlanEngine.ts`, `setup/appInit/createPlanService.ts`)
+ * and, through them, for `createHomePlanRuntime.ts`. It is also what
+ * `createHomeCapacityGuard.ts` reads a home's scalars, tracker, id and display
+ * name from, so the guard never asks which home it serves either.
  *
  * Today the app runs exactly one always-on home (`MAIN_HOME_ID`); the
  * factories used to hardwire singleton closures over `AppContext`. `HomeScope`

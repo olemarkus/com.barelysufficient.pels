@@ -5,13 +5,17 @@ import {
   createCapacityShortfallAlertDispatch,
 } from '../../setup/capacityShortfallAlertDispatch';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
-import { createMainCapacityGuard } from '../../setup/appInit/createMainCapacityGuard';
+import { createHomeCapacityGuard } from '../../setup/homeRuntime/createHomeCapacityGuard';
+import { requirePlanService } from '../../setup/appInit/contextGuards';
+import type { HomeScope } from '../../setup/homeRuntime/homeScope';
 import type { AppContext } from '../../lib/app/appContext';
 import type { FlowTriggerCard } from '../../lib/ports/homeyRuntime';
-import type { HomeId } from '../../lib/utils/settingsKeys';
+import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { buildNullCapacityStateSummary } from '../../lib/power/capacityStateSummary';
+import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
+import { partialDouble } from '../helpers/partialDouble';
 
 // The guard no longer resolves the hard-cap budget itself; callers pass it in.
 const TEST_SHORTFALL_THRESHOLD_KW = 6;
@@ -137,12 +141,23 @@ describe('capacity shortfall alert dispatch', () => {
       },
       getStructuredLogger: () => undefined,
     } as unknown as AppContext;
-    const { guard } = createMainCapacityGuard({
-      ctx,
-      isDiscarded: () => false,
-      isTemporarilyFenced: () => false,
-      isPreparedReconcileActive: () => false,
+    // The four members the guard reads off a home's scope, bound the way
+    // `buildMainHomeScope` binds them.
+    const scope = partialDouble<HomeScope>({
+      homeId: MAIN_HOME_ID,
+      getHomeDisplayName: () => HOMES_MAIN_HOME_NAME,
+      getCapacitySettings: () => ctx.capacitySettings,
+      getPowerTracker: () => ctx.powerTracker,
     });
+    const { guard } = createHomeCapacityGuard(
+      ctx,
+      scope,
+      (suffix) => suffix,
+      () => requirePlanService(ctx),
+      () => false,
+      () => false,
+      () => false,
+    );
 
     await guard.checkShortfall({
       hasCandidates: false,
