@@ -1,4 +1,7 @@
 import type { Mock } from 'vitest';
+import {
+  createTestDeviceTransport,
+} from '../helpers/deviceTransportHarness';
 import type { EvObservedProbe } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { Logger } from '../../lib/utils/types';
@@ -36,7 +39,6 @@ import {
 } from '../../lib/device/transport/managerHomeyApi';
 import { fetchDevicesByIds } from '../../lib/device/transport/managerFetch';
 import type Homey from 'homey';
-import { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import { mockHomeyInstance } from '../mocks/homey';
@@ -325,7 +327,7 @@ describe('device manager support helpers', () => {
     // `updateLastKnownPower` through the parse pipeline.
     const onLearnedPeakChanged = vi.fn();
     const lastKnownPowerKw: LearnedPeaksByDeviceId = {};
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger() as unknown as Logger,
       { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },

@@ -13,14 +13,13 @@
  * through those seams, never as new exports for `lib/plan` to import.
  *
  * This class is the Homey-SDK leaf. It keeps SDK wiring (`init`), snapshot
- * orchestration, and the event-emitter/projection bridge; the cohesive,
+ * orchestration, and the dispatcher/projection bridge; the cohesive,
  * homey-free behaviour (realtime capability handling, binary-settle evidence,
  * device-update reconciliation, device writes) lives in `transport/*` modules
  * that operate over the shared `TransportContext` this class builds. See
  * `notes/state-management/observer-transport-split.md`.
  */
 import type Homey from 'homey';
-import { EventEmitter } from 'events';
 import type {
   AssociatedCarSnapshot,
   BinaryControlObservation,
@@ -109,13 +108,6 @@ import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/
 
 const moduleLogger = getLogger('device/transport');
 
-export const OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT = 'observed_control_state_changed';
-export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
-// Fallback event-name for the full-refresh batch when no dispatcher is injected
-// (legacy direct-`DeviceTransport` tests). Mirrors observer's
-// `OBSERVED_STATE_REFRESH_EVENT`. Stage 4a of the snapshot decomposition.
-const PLAN_LIVE_STATE_OBSERVED_REFRESH_EVENT = 'plan_live_state_observed_refresh';
-
 export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './transport/managerObservation';
 export type {
   DeviceTransportOptions,
@@ -136,7 +128,7 @@ export type {
  */
 export type DeviceTransportPort = Omit<DeviceTransport, 'getSnapshot'>;
 
-export class DeviceTransport extends EventEmitter {
+export class DeviceTransport {
     private sdkReady = false;
     private liveFeed: DeviceLiveFeed | null = null;
     private logger: Logger;
@@ -199,7 +191,7 @@ export class DeviceTransport extends EventEmitter {
     private getFlowTriggerCard: DeviceTransportOptions['getFlowTriggerCard'] | undefined;
     private onSnapshotMutated: DeviceTransportOptions['onSnapshotMutated'] | undefined;
     private debugStructured: StructuredDebugEmitter | undefined;
-    private observedStateDispatcher: TransportObservedStateDispatcher | undefined;
+    private readonly observedStateDispatcher: TransportObservedStateDispatcher;
     // Read-only home-battery awareness producer. Holds the detected battery-id set
     // (the authoritative role-membership set the app's managed/controllable
     // resolution consults) and emits `battery_state_observed`; never feeds the
@@ -233,25 +225,23 @@ export class DeviceTransport extends EventEmitter {
         handleRealtimeDeviceUpdateEvent(this.ctx, device)
     );
 
-    /* eslint-disable complexity -- constructor wires the transport dependency bags. */
     constructor(
         homey: Homey.App,
         logger: Logger,
-        providers?: DeviceTransportParseProviders,
-        powerState?: DeviceTransportPowerState,
-        options?: DeviceTransportOptions,
+        providers: DeviceTransportParseProviders | undefined,
+        powerState: DeviceTransportPowerState | undefined,
+        options: DeviceTransportOptions,
     ) {
-        super();
         this.homey = homey;
         this.logger = logger;
-        this.debugStructured = options?.debugStructured;
-        this.getFlowTriggerCard = options?.getFlowTriggerCard;
-        this.onSnapshotMutated = options?.onSnapshotMutated;
-        this.observedStateDispatcher = options?.observedStateDispatcher;
+        this.debugStructured = options.debugStructured;
+        this.getFlowTriggerCard = options.getFlowTriggerCard;
+        this.onSnapshotMutated = options.onSnapshotMutated;
+        this.observedStateDispatcher = options.observedStateDispatcher;
         this.observationProducers = createObservationProducers({
             emit: (p) => (this.logger.structuredLog ?? moduleLogger).info(p),
             getSnapshots: () => this.latestSnapshot,
-            evCarLinkSnapshotAccess: options?.evCarLinkSnapshotAccess,
+            evCarLinkSnapshotAccess: options.evCarLinkSnapshotAccess,
             // The probe reports; this decides whether anything is written.
             ...createCarStateOfChargeAdoption({
                 getCtx: () => this.ctx,
@@ -273,7 +263,6 @@ export class DeviceTransport extends EventEmitter {
         });
         this.ctx = this.createContext();
     }
-    /* eslint-enable complexity */
 
     private createContext(): TransportContext {
         return DeviceTransport.assembleContext(this);
@@ -633,7 +622,6 @@ export class DeviceTransport extends EventEmitter {
         this.liveFeed = null;
         this.latestBinarySettleEvidenceByDeviceId.clear();
         this.latestTrackedDevicesById.clear();
-        this.removeAllListeners();
     }
 
     // Single-device parse seam consumed by the realtime device-update collaborator
@@ -670,15 +658,10 @@ export class DeviceTransport extends EventEmitter {
     /**
      * Post-translation fan-out of an `observed-state-changed` event.
      *
-     * When wiring has injected an `observedStateDispatcher` (production path),
-     * observer owns the emitter and transport routes the event through it.
-     * When the dispatcher is omitted (legacy direct-`DeviceTransport` tests),
-     * transport falls back to emitting through its own EventEmitter using
-     * the historical `PLAN_LIVE_STATE_OBSERVED_EVENT` name so existing test
-     * subscriptions keep working.
-     *
-     * Per PR #5 of the observer/transport split, transport never statically
-     * imports observer; the dispatcher is just a callback pair passed in at
+     * Observer owns the emitter; transport routes every event through the
+     * injected dispatcher and has no second surface of its own. Per PR #5 of
+     * the observer/transport split, transport never statically imports
+     * observer; the dispatcher is just a callback set passed in at
      * construction time (notes/state-management/observer-transport-split.md).
      */
     private dispatchObservedStateChanged(event: ObservedDeviceStateEvent): void {
@@ -690,18 +673,13 @@ export class DeviceTransport extends EventEmitter {
         const enriched: ObservedDeviceStateEvent = snapshot
             ? { ...event, observed: projectObservedState(snapshot) }
             : event;
-        if (this.observedStateDispatcher) {
-            this.observedStateDispatcher.observedStateChanged(enriched);
-            return;
-        }
-        this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, enriched);
+        this.observedStateDispatcher.observedStateChanged(enriched);
     }
 
     /**
      * Fan-out of the refresh batch. Built from the just-committed snapshot:
      * each device gets a FRESH per-device cursor (so the refresh supersedes any
-     * in-flight per-capability delta) and the decided observed value. Mirrors
-     * `dispatchObservedStateChanged`'s dispatcher-or-fallback shape. Fired from
+     * in-flight per-capability delta) and the decided observed value. Fired from
      * `commitRefreshedSnapshot` only after `setSnapshot`, so the grace-deferred
      * path (commit returns false before `setSnapshot`) never fires it.
      * Stage 4a of the snapshot decomposition.
@@ -726,30 +704,21 @@ export class DeviceTransport extends EventEmitter {
                 };
             }),
         };
-        if (this.observedStateDispatcher) {
-            this.observedStateDispatcher.observedStateRefresh(event);
-            return;
-        }
-        this.emit(PLAN_LIVE_STATE_OBSERVED_REFRESH_EVENT, event);
+        this.observedStateDispatcher.observedStateRefresh(event);
     }
 
     /**
      * Post-translation fan-out of a `observed-control-state-changed` event.
-     * See `dispatchObservedStateChanged` for the dispatcher-vs-fallback
-     * contract; same fallback shape for `OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT`.
+     * See `dispatchObservedStateChanged` for the dispatcher contract.
      */
     private dispatchObservedControlStateChanged(event: PlanRealtimeUpdateEvent): void {
         const adjustment = this.observationProducers.temperature.observeControlChange(
             this.latestSnapshotById.get(event.deviceId), event,
         );
         if (adjustment) {
-            this.observedStateDispatcher?.externalTemperatureAdjusted?.(adjustment);
+            this.observedStateDispatcher.externalTemperatureAdjusted(adjustment);
         }
-        if (this.observedStateDispatcher) {
-            this.observedStateDispatcher.observedControlStateChanged(event);
-            return;
-        }
-        this.emit(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, event);
+        this.observedStateDispatcher.observedControlStateChanged(event);
     }
 
     private syncLatestSnapshotIndex(): void { this.latestSnapshotById

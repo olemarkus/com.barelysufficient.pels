@@ -14,12 +14,14 @@
 // Only the Homey SDK seams are mocked, via the shared mock (settings store,
 // `manager/zones/zone` route, drivers).
 import { createTrackerStore, type TrackerStore } from '../../lib/power/trackerStore';
+import {
+  createTestDeviceTransport,
+} from '../helpers/deviceTransportHarness';
 import { createDeviceReads, type DeviceReadStore, type DeviceReads } from '../../lib/device/deviceReads';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import type Homey from 'homey';
 import api from '../../api';
-import { DeviceTransport } from '../../lib/device/deviceTransport';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
@@ -252,7 +254,7 @@ describe('post-refresh recompute through the transport seam', () => {
   // assembles it (both notification seams subscribed).
   const buildTransportChain = (logger?: PinoLogger) => {
     const emitter = new ObservedStateEmitter();
-    const transport = new DeviceTransport(homeyApp, loggerMock, {
+    const transport = createTestDeviceTransport(homeyApp, loggerMock, {
       getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
     }, undefined, {
       observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
@@ -318,7 +320,7 @@ describe('post-refresh recompute through the transport seam', () => {
       subHomes: [SUB_HOME_A],
     });
     const emitter = new ObservedStateEmitter();
-    const transport = new DeviceTransport(homeyApp, loggerMock, {
+    const transport = createTestDeviceTransport(homeyApp, loggerMock, {
       getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
     }, undefined, {
       observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
@@ -363,7 +365,7 @@ describe('post-refresh recompute through the transport seam', () => {
     });
     const { warn, error, logger } = makeLoggerSpy();
     const emitter = new ObservedStateEmitter();
-    const transport = new DeviceTransport(homeyApp, loggerMock, {
+    const transport = createTestDeviceTransport(homeyApp, loggerMock, {
       getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
     }, undefined, {
       observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),

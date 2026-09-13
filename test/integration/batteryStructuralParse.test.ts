@@ -12,8 +12,10 @@
 // Drives the real transport parse (`parseDeviceListForTests` and the realtime
 // `device.update` path), mocking only the SDK seam via the shared homey mock.
 import { describe, expect, it } from 'vitest';
+import {
+  createTestDeviceTransport,
+} from '../helpers/deviceTransportHarness';
 import Homey from 'homey';
-import { DeviceTransport } from '../../lib/device/deviceTransport';
 import { mockHomeyInstance } from '../mocks/homey';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
@@ -43,7 +45,7 @@ const batteryCaps = {
 
 describe('structural battery-role resolution at parse', () => {
   it('stamps a class:battery device managed:true/controllable:false despite settings saying controllable:true', () => {
-    const transport = new DeviceTransport(homeyMock, loggerMock, adversarialProviders);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
     const [parsed] = transport.parseDeviceListForTests([{
       id: 'battery1',
       name: 'Home Battery',
@@ -60,7 +62,7 @@ describe('structural battery-role resolution at parse', () => {
   });
 
   it('detects AND survives an energy-role-only battery (class not "battery") via the homeBattery role', () => {
-    const transport = new DeviceTransport(homeyMock, loggerMock, adversarialProviders);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
     const [parsed] = transport.parseDeviceListForTests([{
       id: 'battery2',
       name: 'Inverter Battery',
@@ -83,7 +85,7 @@ describe('structural battery-role resolution at parse', () => {
     // The realtime path parses a single device WITHOUT the full-refresh battery-id
     // re-derivation. With the structural stamp, a battery whose settings say
     // controllable:true STILL resolves controllable:false the moment it is observed.
-    const transport = new DeviceTransport(homeyMock, loggerMock, adversarialProviders);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
     transport.injectDeviceUpdateForTest({
       id: 'battery1',
       name: 'Home Battery',

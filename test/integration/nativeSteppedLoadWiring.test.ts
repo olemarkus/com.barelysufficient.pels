@@ -1,13 +1,13 @@
 import Homey from 'homey';
+import {
+  createTestDeviceTransport,
+  onObservedControlState,
+  onObservedState,
+} from '../helpers/deviceTransportHarness';
 import { snapshotById } from '../helpers/snapshotById';
 import { steppedStoresForTest } from '../helpers/steppedStores';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
-import {
-  DeviceTransport,
-  PLAN_LIVE_STATE_OBSERVED_EVENT,
-  OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT,
-} from '../../lib/device/deviceTransport';
 import {
   resolveNativeSteppedLoadCommand,
   resolveNativeSteppedLoadProfileSuggestion,
@@ -362,7 +362,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('exposes native stepped-load wiring from the device-supported profile', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -387,7 +387,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('surfaces nativeWriteCapabilities from pre-strip caps for a native-enabled Hoiax', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       { getNativeEvWiringEnabled: () => true, getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
@@ -402,7 +402,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('surfaces nativeWriteCapabilities even when native wiring is OFF (PR4 gate population)', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       { getNativeEvWiringEnabled: () => false, getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
@@ -417,7 +417,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('projects target_power controls as stepped-load wiring at the observation boundary', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -445,7 +445,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('applies saved target_power configs to devices that already expose target_power', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -489,7 +489,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('keeps an independent stepped-load facet when the temperature pair is malformed', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }), getDeviceTargetPowerConfig: () => ({ min: 0, max: 3_000, step: 1_000 }) },
@@ -532,7 +532,7 @@ describe('native stepped-load wiring', () => {
       }),
     };
     const onSnapshotMutated = vi.fn();
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -568,7 +568,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('projects configured target_power details as stepped-load without a native command adapter', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -607,7 +607,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('parses test-device target_power compatibility metadata from JSON string settings', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -664,7 +664,7 @@ describe('native stepped-load wiring', () => {
     const put = vi.fn().mockResolvedValue(undefined);
     setRestClient({ get, post: vi.fn().mockResolvedValue({ ok: true }), put });
     try {
-      const deviceManager = new DeviceTransport(
+      const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
@@ -698,7 +698,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('does not treat unrelated max_power capabilities as native stepped-load wiring', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -720,7 +720,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('detects native stepped-load wiring from real Høiax driver shapes', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -806,7 +806,7 @@ describe('native stepped-load wiring', () => {
       },
     } satisfies HomeyDeviceLike;
 
-    const disabledManager = new DeviceTransport(
+    const disabledManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -822,7 +822,7 @@ describe('native stepped-load wiring', () => {
     }));
     expect(disabledParsed.capabilities).not.toContain('max_power_3000');
 
-    const enabledManager = new DeviceTransport(
+    const enabledManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -1474,7 +1474,7 @@ describe('native stepped-load wiring', () => {
     setRestClient({ get, put });
     try {
       const debugStructured = vi.fn();
-      const deviceManager = new DeviceTransport(
+      const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
@@ -1554,8 +1554,8 @@ describe('native stepped-load wiring', () => {
 
       const liveStateObserved = vi.fn();
       const realtimeReconcile = vi.fn();
-      deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateObserved);
-      deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeReconcile);
+      onObservedState(deviceManager, liveStateObserved);
+      onObservedControlState(deviceManager, realtimeReconcile);
       deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', '3');
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -1616,7 +1616,7 @@ describe('native stepped-load wiring', () => {
     });
     setRestClient({ get, put: vi.fn().mockResolvedValue(undefined) });
     try {
-      const deviceManager = new DeviceTransport(
+      const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }), getNativeEvWiringEnabled: () => true, getDeviceControlProfile: () => steppedProfile },
@@ -1625,8 +1625,8 @@ describe('native stepped-load wiring', () => {
 
       const observed = vi.fn();
       const reconcile = vi.fn();
-      deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, observed);
-      deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, reconcile);
+      onObservedState(deviceManager, observed);
+      onObservedControlState(deviceManager, reconcile);
 
       // First power-step changes the reported step (medium -> max): the
       // reported-step-changed branch dispatches both observed + reconcile.
@@ -1657,7 +1657,7 @@ describe('native stepped-load wiring', () => {
 
   it('uses DeviceTransport flow transport for non-native stepped-load commands', async () => {
     mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed = [];
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       undefined,
@@ -1717,7 +1717,7 @@ describe('native stepped-load wiring', () => {
     setRestClient({ get, put });
     mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed = [];
     try {
-      const deviceManager = new DeviceTransport(
+      const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
@@ -1766,7 +1766,7 @@ describe('native stepped-load wiring', () => {
         }),
       },
     } as unknown as Homey.App;
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       homey,
       logger,
       undefined,
@@ -1817,7 +1817,7 @@ describe('native stepped-load wiring', () => {
           getTriggerCard: () => ({ trigger }),
         },
       } as unknown as Homey.App;
-      const deviceManager = new DeviceTransport(
+      const deviceManager = createTestDeviceTransport(
         homey,
         logger,
         undefined,
@@ -1876,7 +1876,7 @@ describe('native stepped-load wiring', () => {
     const put = vi.fn().mockResolvedValue(undefined);
     setRestClient({ get, put });
     try {
-      const deviceManager = new DeviceTransport(
+      const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
@@ -1890,8 +1890,8 @@ describe('native stepped-load wiring', () => {
 
       const liveStateObserved = vi.fn();
       const realtimeReconcile = vi.fn();
-      deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateObserved);
-      deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeReconcile);
+      onObservedState(deviceManager, liveStateObserved);
+      onObservedControlState(deviceManager, realtimeReconcile);
 
       await expect(setObservedNativeSteppedLoadStep({
         owner: deviceManager,
@@ -1933,7 +1933,7 @@ describe('native stepped-load wiring', () => {
     const put = vi.fn().mockResolvedValue(undefined);
     setRestClient({ get, put });
     try {
-      const deviceManager = new DeviceTransport(
+      const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
@@ -1986,7 +1986,7 @@ describe('native stepped-load wiring', () => {
     });
     setRestClient({ get, put: vi.fn().mockResolvedValue(undefined) });
     try {
-      const deviceManager = new DeviceTransport(
+      const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
@@ -2003,7 +2003,7 @@ describe('native stepped-load wiring', () => {
       }));
 
       const realtimeReconcile = vi.fn();
-      deviceManager.on(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT, realtimeReconcile);
+      onObservedControlState(deviceManager, realtimeReconcile);
       deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'onoff', true);
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -2039,7 +2039,7 @@ describe('native stepped-load wiring', () => {
     const put = vi.fn().mockResolvedValue(undefined);
     setRestClient({ get, put });
     try {
-      const deviceManager = new DeviceTransport(
+      const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
@@ -2077,7 +2077,7 @@ describe('native stepped-load wiring', () => {
 
   describe('target_power capability contract validation', () => {
     it('ignores configs whose min raises the range above zero', () => {
-      const deviceManager = new DeviceTransport(
+      const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
@@ -2110,7 +2110,7 @@ describe('native stepped-load wiring', () => {
 
     it('emits a deduplicated warning when target_power capability options violate the contract', () => {
       const logger = createLogger();
-      const deviceManager = new DeviceTransport(
+      const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         logger,
         { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },

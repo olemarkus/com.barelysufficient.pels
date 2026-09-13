@@ -13,8 +13,10 @@
 // Drives the real transport parse (`parseDeviceListForTests` and the realtime
 // `device.update` path), mocking only the SDK seam via the shared homey mock.
 import { describe, expect, it } from 'vitest';
+import {
+  createTestDeviceTransport,
+} from '../helpers/deviceTransportHarness';
 import Homey from 'homey';
-import { DeviceTransport } from '../../lib/device/deviceTransport';
 import { mockHomeyInstance } from '../mocks/homey';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
@@ -43,7 +45,7 @@ const solarCaps = {
 
 describe('structural solar-role resolution at parse', () => {
   it('stamps a class:solarpanel device managed:true/controllable:false despite settings saying controllable:true', () => {
-    const transport = new DeviceTransport(homeyMock, loggerMock, adversarialProviders);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
     const [parsed] = transport.parseDeviceListForTests([{
       id: 'solar1',
       name: 'Solar Panel',
@@ -66,7 +68,7 @@ describe('structural solar-role resolution at parse', () => {
     // it is treated as an ordinary device (here: dropped, having no control surface, so
     // it certainly never rides as a managed observe-only solar device), and it is NOT in
     // the solar membership set.
-    const transport = new DeviceTransport(homeyMock, loggerMock, adversarialProviders);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
     const parsed = transport.parseDeviceListForTests([{
       id: 'grid',
       name: 'Grid meter',
@@ -83,7 +85,7 @@ describe('structural solar-role resolution at parse', () => {
   });
 
   it('stamps the same structural values on the REALTIME device.update path (before any full refresh)', () => {
-    const transport = new DeviceTransport(homeyMock, loggerMock, adversarialProviders);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
     transport.injectDeviceUpdateForTest({
       id: 'solar1',
       name: 'Solar Panel',

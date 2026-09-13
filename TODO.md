@@ -1863,42 +1863,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       the guard stops depending on comment wording. Left out of that PR to avoid loosening a
       packaging guard in the same change that needed it to pass. [P2]
 
-- [ ] **`DeviceTransport` still extends `EventEmitter` to serve a fallback with zero production
-      subscribers.** `lib/device/deviceTransport.ts` declares
-      `class DeviceTransport extends EventEmitter`, and its three dispatch helpers
-      (`dispatchObservedStateChanged`, `dispatchObservedStateRefresh`,
-      `dispatchObservedControlStateChanged`) each keep an else-branch that emits on it when no
-      `observedStateDispatcher` was injected. Production always injects one — the single
-      construction path (`setup/appInit/wireDeviceTransport.ts`) passes
-      `getObservedStateEmitter().asDispatcher(...)` — so those branches are unreachable in the app
-      and exist only for specs: all 83 `.on()` subscriptions to `PLAN_LIVE_STATE_OBSERVED_EVENT` /
-      `OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT` are in tests (76 in
-      `test/integration/deviceManager.test.ts`, 7 in
-      `test/integration/nativeSteppedLoadWiring.test.ts`; zero in `lib/**` or `setup/**`). The cost
-      is a second, untyped event surface on transport shadowing the observer-owned
-      `ObservedStateEmitter` that the split made canonical — a reader cannot tell from
-      `DeviceTransport` alone which one carries the events.
-      Change: force the dispatcher in, delete the three `this.emit(...)` fallbacks, drop
-      `extends EventEmitter`, and migrate the test subscriptions onto `ObservedStateEmitter` through
-      `emitter.asDispatcher(...)` — the shape `test/integration/observedDeviceStateProjection.test.ts`
-      and `test/integration/homeMembershipService.test.ts` already use. Note the obvious first move
-      does NOT work: making `observedStateDispatcher` required inside `DeviceTransportOptions`
-      (`lib/device/transport/transportTypes.ts`) changes nothing, because `options` is itself the
-      OPTIONAL fifth constructor parameter (`deviceTransport.ts`, `options?: DeviceTransportOptions`),
-      so `new DeviceTransport(homey, logger)` still compiles with no dispatcher — and many specs do
-      exactly that. Forcing injection means making `options` itself required, which puts all 142
-      `new DeviceTransport(` call sites across 12 spec files in the blast radius on top of the 83
-      subscriptions. That, not the emit-deletion, is the work: land a shared construct-and-subscribe
-      test helper first and migrate onto it, rather than hand-editing ~225 sites.
-      Done when `DeviceTransport` no longer extends `EventEmitter`, the three
-      `this.emit` calls are gone, and neither `PLAN_LIVE_STATE_OBSERVED_EVENT` nor
-      `OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT` is exported from
-      `lib/device/deviceTransport.ts`. P2 — no user-visible defect and no live bug; it is the
-      unfinished last mile of the observer/transport split
-      (`notes/state-management/observer-transport-split.md` step 7), and the dead branch will read
-      as a supported mode to whoever touches transport next. Source: observer cleanup sweep,
-      2026-09-03. [P2]
-
 - [ ] **The topic-gated debug emitter is still threaded through parameter objects that never use
       it.** `getDebugEmitter(component, topic)` (`lib/logging/logger.ts`) is the ambient way to
       reach the channel, and `getStructuredDebugEmitter` is now the same emitter under the wiring's

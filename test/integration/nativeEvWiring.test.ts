@@ -1,5 +1,7 @@
 import Homey from 'homey';
-import { DeviceTransport } from '../../lib/device/deviceTransport';
+import {
+  createTestDeviceTransport,
+} from '../helpers/deviceTransportHarness';
 import { setRestClient, resetRestClient } from '../../lib/device/transport/managerHomeyApi';
 import {
   applyNativeEvWiringOverlay,
@@ -53,7 +55,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('always wires Zaptec Go through the native EV shim without any opt-in', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
@@ -76,7 +78,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('keeps Zaptec wired even when the legacy native_ev_wiring_devices entry is explicitly false', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -100,7 +102,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('maps Zaptec native capabilities to EV charger capabilities when native wiring is enabled', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -126,7 +128,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('maps Zaptec available installation current into EV preset stepped-load observations', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -175,7 +177,7 @@ describe('native EV wiring shim', () => {
       throw new Error(`unexpected device fetch: ${path}`);
     });
     setRestClient({ get, put: vi.fn().mockResolvedValue(undefined) });
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -202,7 +204,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('accepts the real Zaptec app when Homey reports the full driver URI', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -231,7 +233,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('uses a device driver override to treat a mock device as Zaptec Go 2', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -266,7 +268,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('uses compatibility settings to classify a test-device mock as the real driver', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -301,7 +303,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('drops Zaptec-like devices when driverId is missing or not a supported Zaptec driver', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -332,7 +334,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('accepts Zaptec Home and Pro through the same native EV wiring path', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -391,7 +393,7 @@ describe('native EV wiring shim', () => {
     // either, this device counted as fully wired, the shim was skipped, and it
     // ran with no plug state at all — so nothing could end its charging session,
     // and therefore nothing could retire its battery level.
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -421,7 +423,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('keeps native evcharger capabilities ahead of the Zaptec shim', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -465,7 +467,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('ignores flow-backed EV reports when Zaptec already has native evcharger support', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -506,7 +508,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('keeps the Zaptec shim ahead of flow-backed charging reports when enabled', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -532,7 +534,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('ignores flow-backed EV reports when Zaptec shim wiring is active', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -561,7 +563,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('ignores flow-backed EV reports for unmanaged Zaptec candidates', () => {
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
@@ -598,7 +600,7 @@ describe('native EV wiring shim', () => {
     };
     setRestClient(restClient);
 
-    const deviceManager = new DeviceTransport(
+    const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {

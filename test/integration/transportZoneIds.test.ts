@@ -9,6 +9,9 @@
 // Drives the real transport parse + refresh pipeline; only the Homey SDK REST
 // seam is mocked, via the shared homey mock (`setMockZones` / MockDriver).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  createTestDeviceTransport,
+} from '../helpers/deviceTransportHarness';
 import Homey from 'homey';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
 import {
@@ -52,7 +55,7 @@ afterEach(() => {
 
 describe('zoneId on parsed device snapshots', () => {
   const parseOne = (overrides: Partial<HomeyDeviceLike>) => {
-    const transport = new DeviceTransport(homeyMock, loggerMock);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock);
     const [parsed] = transport.parseDeviceListForTests([heaterDevice(overrides)]);
     expect(parsed).toBeDefined();
     return parsed;
@@ -102,7 +105,7 @@ describe('zone tree fetch riding the snapshot refresh', () => {
   };
 
   it('is null before any refresh', () => {
-    const transport = new DeviceTransport(homeyMock, loggerMock);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock);
     expect(transport.getZoneTree()).toBeNull();
   });
 
@@ -122,7 +125,7 @@ describe('zone tree fetch riding the snapshot refresh', () => {
       },
     };
     setMockZones({ z1: { id: 'z1', name: 'Home', parent: null } });
-    const transport = new DeviceTransport(homeyMock, explodingLogger);
+    const transport = createTestDeviceTransport(homeyMock, explodingLogger);
     await refreshAndSettleZones(transport);
     expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'Home', parent: null } });
 
@@ -138,7 +141,7 @@ describe('zone tree fetch riding the snapshot refresh', () => {
       z1: { id: 'z1', name: 'Home', parent: null },
       z2: { id: 'z2', name: 'First floor', parent: 'z1' },
     });
-    const transport = new DeviceTransport(homeyMock, loggerMock);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock);
     await refreshAndSettleZones(transport);
     expect(transport.getZoneTree()).toEqual({
       z1: { id: 'z1', name: 'Home', parent: null },
@@ -159,7 +162,7 @@ describe('zone tree fetch riding the snapshot refresh', () => {
       // Missing parent normalizes to null (root), not a drop.
       noParent: { id: 'z5', name: 'Garage' },
     });
-    const transport = new DeviceTransport(homeyMock, loggerMock);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock);
     await refreshAndSettleZones(transport);
     expect(transport.getZoneTree()).toEqual({
       z1: { id: 'z1', name: 'Home', parent: null },
@@ -172,7 +175,7 @@ describe('zone tree fetch riding the snapshot refresh', () => {
       driverA: new MockDriver('driverA', [new MockDevice('dev1', 'Heater', ['target_temperature', 'onoff'])]),
     });
     setMockZones({ z1: { id: 'z1', name: 'Home', parent: null } });
-    const transport = new DeviceTransport(homeyMock, loggerMock);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock);
     await refreshAndSettleZones(transport);
     expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'Home', parent: null } });
     expect(transport.getSnapshot()).toHaveLength(1);
@@ -207,7 +210,7 @@ describe('zone tree fetch riding the snapshot refresh', () => {
   it('an older cycle\'s slow zones response cannot overwrite a newer tree (generation guard)', async () => {
     const pendingZoneResponses = captureZoneResponses();
 
-    const transport = new DeviceTransport(homeyMock, loggerMock);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock);
     // Two refresh cycles, each detaching a zones fetch that stays pending.
     await refreshAndSettleZones(transport);
     await refreshAndSettleZones(transport);
@@ -227,7 +230,7 @@ describe('zone tree fetch riding the snapshot refresh', () => {
   it('a superseded-but-fresher result still commits when the newer fetch failed', async () => {
     const pendingZoneResponses = captureZoneResponses();
 
-    const transport = new DeviceTransport(homeyMock, loggerMock);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock);
     // Seed a committed tree (generation 1).
     await refreshAndSettleZones(transport);
     pendingZoneResponses[0]?.resolve({ z0: { id: 'z0', name: 'Seed', parent: null } });
@@ -253,7 +256,7 @@ describe('zone tree fetch riding the snapshot refresh', () => {
       z1: { id: 'z1', name: 'Home', parent: null },
       evil: { id: '__proto__', name: 'Evil', parent: null },
     });
-    const transport = new DeviceTransport(homeyMock, loggerMock);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock);
     await refreshAndSettleZones(transport);
     const tree = transport.getZoneTree();
     expect(tree).not.toBeNull();
@@ -267,14 +270,14 @@ describe('zone tree fetch riding the snapshot refresh', () => {
 
   it('normalizes a self-parenting zone to a root node', async () => {
     setMockZones({ z9: { id: 'z9', name: 'Loop', parent: 'z9' } });
-    const transport = new DeviceTransport(homeyMock, loggerMock);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock);
     await refreshAndSettleZones(transport);
     expect(transport.getZoneTree()).toEqual({ z9: { id: 'z9', name: 'Loop', parent: null } });
   });
 
   it('an empty-but-valid zones payload counts as a failed fetch (a zone-less Homey cannot exist)', async () => {
     setMockZones({ z1: { id: 'z1', name: 'Home', parent: null } });
-    const transport = new DeviceTransport(homeyMock, loggerMock);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock);
     await refreshAndSettleZones(transport);
     expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'Home', parent: null } });
 
@@ -285,7 +288,7 @@ describe('zone tree fetch riding the snapshot refresh', () => {
 
   it('a payload where EVERY entry is malformed counts as a failed fetch (cached tree retained)', async () => {
     setMockZones({ z1: { id: 'z1', name: 'Home', parent: null } });
-    const transport = new DeviceTransport(homeyMock, loggerMock);
+    const transport = createTestDeviceTransport(homeyMock, loggerMock);
     await refreshAndSettleZones(transport);
     expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'Home', parent: null } });
 

@@ -55,7 +55,7 @@ export function updateHomePowerFromReport(
     // nothing so the held reading carries forward.
     const { home, generation } = report;
     if (generation.state !== 'unavailable') {
-      ctx.observedStateDispatcher?.setGenerationW(
+      ctx.observedStateDispatcher.setGenerationW(
         generation.state === 'measured' ? generation.watts : null,
         Date.now(),
       );

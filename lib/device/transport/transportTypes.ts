@@ -81,7 +81,7 @@ export type TransportObservedStateDispatcher = {
     observedStateChanged: (event: ObservedDeviceStateEvent) => void;
     observedStateRefresh: (event: ObservedDeviceStateRefreshEvent) => void;
     observedControlStateChanged: (event: PlanRealtimeUpdateEvent) => void;
-    externalTemperatureAdjusted?: (adjustment: ExternalTemperatureAdjustment) => void;
+    externalTemperatureAdjusted: (adjustment: ExternalTemperatureAdjustment) => void;
     /**
      * Push the gross PV generation (W) resolved from the same energy report into
      * observer's holder, or `null` when absent, stamped with its read time. Used
@@ -108,22 +108,13 @@ export type DeviceTransportOptions = {
      */
     onSnapshotMutated?: (snapshot: TargetDeviceSnapshot, nowMs: number) => void;
     /**
-     * Observer-owned dispatcher consulted by transport after translation of
-     * each realtime event. Wiring (`setup/`) builds the dispatcher against
-     * `lib/observer/observedStateEvents.ts`'s `ObservedStateEmitter`. When
-     * supplied, observer is the single source of truth for the post-translation
-     * fan-out and transport does not emit through its own EventEmitter.
-     *
-     * When omitted (legacy direct-`DeviceTransport` tests), transport falls
-     * back to emitting `PLAN_LIVE_STATE_OBSERVED_EVENT` and
-     * `OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT` through its own EventEmitter so
-     * existing `deviceManager.on(...)` test subscriptions keep working with
-     * the same event-name strings.
-     *
-     * See PR #5 of the observer/transport split
-     * (`notes/state-management/observer-transport-split.md`).
+     * Observer-owned dispatcher consulted by transport after translation of each
+     * realtime event. REQUIRED: observer is the single source of truth for the
+     * post-translation fan-out, and transport has no second surface to fall back
+     * to. Wiring (`setup/`) builds it against `ObservedStateEmitter`; specs build
+     * it through `test/helpers/deviceTransportHarness.ts`.
      */
-    observedStateDispatcher?: TransportObservedStateDispatcher;
+    observedStateDispatcher: TransportObservedStateDispatcher;
 };
 
 export const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();

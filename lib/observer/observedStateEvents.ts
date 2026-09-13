@@ -16,9 +16,10 @@ import type { ObservedHomePower } from './observedHomePower';
  * `no-device-to-peer-except-power` cruiser rule stays intact.
  *
  * Event-name strings are preserved verbatim from their previous transport-side
- * declarations because they are identity-bearing — operator log queries, debug
- * tooling, and the legacy transport-side back-compat emit path (used by direct
- * `DeviceTransport` tests) all match on the same string values.
+ * declarations because they are identity-bearing — operator log queries and
+ * debug tooling match on these values. Transport kept a second declaration of
+ * them for its back-compat emit path; that path and its constants are gone, so
+ * this file is now their only declaration site.
  */
 
 /**
@@ -101,9 +102,15 @@ export type ObservedControlStateChangedEvent = {
  * translating a Homey realtime event, observer's emitter is the single source
  * of truth for the post-translation fan-out.
  *
- * When omitted (legacy direct-`DeviceTransport` tests), transport falls back
- * to its own EventEmitter using the same event-name strings so existing test
- * subscriptions keep working.
+ * Required at construction: transport once fell back to an EventEmitter of its
+ * own when this was omitted, and that surface is gone. Specs build one through
+ * `test/helpers/deviceTransportHarness.ts`.
+ *
+ * Transport mirrors this type by hand as `TransportObservedStateDispatcher`
+ * (`lib/device/transport/transportTypes.ts`) because the cruiser blocks the
+ * import in both directions. The two are held in step by the per-member
+ * assignability assertions in `test/unit/observerObservedStateEvents.test.ts`;
+ * a member added here needs an assertion there, or the mirror can drift.
  */
 export type ObservedStateEmitterDispatcher = {
     observedStateChanged: (event: ObservedStateChangedEvent) => void;
@@ -125,7 +132,8 @@ export type ObservedStateEmitterDispatcher = {
 /**
  * Tiny typed EventEmitter wrapper owned by wiring (`setup/`) and consumed by
  * wiring listeners. Observer owns the emitter at this physical location so
- * transport can call into it via a callback bag without any static import.
+ * transport can call into it via an injected dispatcher without any static
+ * import.
  */
 export class ObservedStateEmitter {
     private readonly emitter = new EventEmitter();

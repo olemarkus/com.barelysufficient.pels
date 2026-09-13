@@ -8,75 +8,51 @@ import {
   type ObservedControlStateChangedEvent,
 } from '../../lib/observer/observedStateEvents';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
-import {
-  PLAN_LIVE_STATE_OBSERVED_EVENT,
-  OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT,
-  type TransportObservedStateDispatcher,
-} from '../../lib/device/deviceTransport';
+import { type TransportObservedStateDispatcher } from '../../lib/device/deviceTransport';
 
 // ---------- compile-time shape-parity guard ----------
 // Observer's `ObservedStateEmitterDispatcher` and transport's
-// `TransportObservedStateDispatcher` are structurally mirrored by hand
-// because the cruiser correctly blocks both directions of import between
-// `lib/device/` and `lib/observer/`. The wiring at `app.ts` passes the
-// observer dispatcher into transport's slot; TypeScript bivariance bridges
-// the two — which means a future field added to one side without the other
-// will silently typecheck at the binding site but route the wrong shape at
-// runtime. The asserted-true assignments below force a *strict* bidirectional
-// `extends` check; if shapes diverge, this file will fail compilation BEFORE
-// it ever runs as a test. Added per the post-merge cumulative review of the
-// observer/transport split train.
+// `TransportObservedStateDispatcher` are structurally mirrored by hand because
+// the cruiser correctly blocks both directions of import between `lib/device/`
+// and `lib/observer/`. Wiring passes the observer dispatcher into transport's
+// slot, and TypeScript's bivariance bridges the two — so a member added, dropped
+// or re-shaped on one side alone still typechecks at the binding site and routes
+// the wrong shape at runtime. The assertion below fails compilation instead, and
+// two details in it are load-bearing.
+//
+// The operands are wrapped in tuples. A NAKED type parameter on the left of
+// `extends` DISTRIBUTES over a union, so an optional member — `F | undefined` —
+// evaluates element-wise to `true | false`, which is `boolean`, and `[true, true]`
+// is happily assignable to `[true, boolean]`. Written that way the guard passes on
+// exactly the divergence it exists to catch. `[B] extends [A]` does not distribute.
+//
+// It compares the WHOLE dispatcher types rather than a list of members. A
+// per-member assertion can only police members someone remembered to list, and a
+// member present on one side alone is invisible to every one of them — which is
+// how transport's copy of `externalTemperatureAdjusted` stayed `?:` for a whole
+// train while observer's was required and `asDispatcher` always supplied it.
 type _MutuallyAssignable<A, B> = [
-  A extends B ? true : false,
-  B extends A ? true : false,
+  [A] extends [B] ? true : false,
+  [B] extends [A] ? true : false,
 ];
 
-const _observedStateChangedEventParity: _MutuallyAssignable<
-  Parameters<ObservedStateEmitterDispatcher['observedStateChanged']>[0],
-  Parameters<TransportObservedStateDispatcher['observedStateChanged']>[0]
+const _dispatcherParity: _MutuallyAssignable<
+  ObservedStateEmitterDispatcher,
+  TransportObservedStateDispatcher
 > = [true, true];
 
-const _observedControlStateChangedEventParity: _MutuallyAssignable<
-  Parameters<ObservedStateEmitterDispatcher['observedControlStateChanged']>[0],
-  Parameters<TransportObservedStateDispatcher['observedControlStateChanged']>[0]
-> = [true, true];
-
-const _observedStateRefreshParity: _MutuallyAssignable<
-  Parameters<ObservedStateEmitterDispatcher['observedStateRefresh']>[0],
-  Parameters<TransportObservedStateDispatcher['observedStateRefresh']>[0]
-> = [true, true];
-
-const _setGenerationWParity: _MutuallyAssignable<
-  Parameters<ObservedStateEmitterDispatcher['setGenerationW']>,
-  Parameters<TransportObservedStateDispatcher['setGenerationW']>
-> = [true, true];
-
-// Reference the values so the compiler doesn't strip them as unused.
-void _observedStateChangedEventParity;
-void _observedControlStateChangedEventParity;
-void _observedStateRefreshParity;
-void _setGenerationWParity;
+// Reference the value so the compiler doesn't strip it as unused.
+void _dispatcherParity;
 
 describe('ObservedStateEmitter', () => {
-  it('pins the event-name strings the two declaration sites share', () => {
-    // These literals are the channel names on the EventEmitter, and the legacy
-    // transport-side back-compat emit path matches on the same values. They are
-    // NOT log fields — grep finds them nowhere but these two declarations, which
-    // is why `plan_reconcile_realtime_update` could be renamed with the lane it
-    // was named after (root `AGENTS.md` § Control Flow).
+  it('pins the event-name strings this emitter routes on', () => {
+    // These literals are the channel names on observer's EventEmitter, and
+    // since transport's fallback emit path was deleted they are the only
+    // declaration of them. They are NOT log fields — grep finds them nowhere
+    // else, which is why `plan_reconcile_realtime_update` could be renamed with
+    // the lane it was named after (root `AGENTS.md` § Control Flow).
     expect(OBSERVED_STATE_CHANGED_EVENT).toBe('plan_live_state_observed');
     expect(OBSERVED_CONTROL_STATE_CHANGED_EVENT).toBe('observed_control_state_changed');
-  });
-
-  it('keeps the observer-side and transport-side event constants in lockstep', () => {
-    // Transport keeps its own constants for the back-compat fallback path
-    // (`this.emit(...)` when no dispatcher is supplied) so legacy tests
-    // can subscribe to its EventEmitter. The two declaration sites are
-    // structurally separate per the cruiser rules; this pin catches a
-    // one-sided rename before it silently fragments operator log queries
-    // or routes the dispatcher and fallback to different event names.
-    expect(OBSERVED_STATE_CHANGED_EVENT).toBe(PLAN_LIVE_STATE_OBSERVED_EVENT);
-    expect(OBSERVED_CONTROL_STATE_CHANGED_EVENT).toBe(OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT);
   });
 
   it('emits observed-state-changed events through the dispatcher to subscribed listeners', () => {

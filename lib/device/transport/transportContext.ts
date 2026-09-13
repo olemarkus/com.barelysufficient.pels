@@ -153,7 +153,7 @@ export type TransportContext = {
   readonly providers: DeviceTransportParseProviders;
   readonly powerState: ResolvedTransportPowerState;
   readonly measuredPowerResolver: DeviceMeasuredPowerResolver;
-  readonly observedStateDispatcher: TransportObservedStateDispatcher | undefined;
+  readonly observedStateDispatcher: TransportObservedStateDispatcher;
   // Per-device targeted-miss grace state — stable Map, mutated in place.
   readonly targetedMissByDeviceId: Map<string, TargetedMissState>;
   // Mutable scalars the leaf reassigns; threaded via accessor pairs so the

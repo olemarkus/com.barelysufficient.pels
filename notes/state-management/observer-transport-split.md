@@ -44,12 +44,31 @@ the cruiser rule promote to error.
 
 > **Shipped vs original target** — the sub-sections below describe the
 > design's original end state. Several bullets did not ship in the train
-> (PRs #1095, #1102, #1107, #1140, #1148, #1158) and stay deliberately
-> deferred: the transport's `write(intent)` / `subscribe(handler)`
-> abstract API never landed (executor still calls `setCapability` /
-> `requestSteppedLoadStep` directly on `DeviceTransport`); observer never
-> gained full snapshot ownership (`latestSnapshot` / `latestSnapshotById` are
-> still on `DeviceTransport` — PR2b, deferred by decision, see below). The
+> (PRs #1095, #1102, #1107, #1140, #1148, #1158).
+>
+> **The write half is DONE, by a different route than this design named**
+> (corrected 2026-09-13; the text here said otherwise for two trains). The
+> abstract `write(intent)` API never landed, but it is not needed and is not
+> deferred: the actuator-write-seam train made `lib/actuator/` the single write
+> seam, and the executor holds no transport write surface at all — it calls
+> `actuator.apply({kind})`. The one apparent exception,
+> `ctx.requestSteppedLoadStep` in `lib/executor/steppedLoadExecutorCommand.ts`,
+> is a context callback that `planExecutor.ts` binds to
+> `actuator.apply({ kind: 'step', … })`. See
+> `notes/state-management/actuator-write-seam.md`.
+>
+> **The read half is DONE, likewise by a different route** (stage 7 of
+> `snapshot-decomposition.md`, 2026-09-13): consumers cannot reach the snapshot
+> array at all — `AppContext.deviceManager` is `DeviceTransportPort`
+> (`Omit<DeviceTransport, 'getSnapshot'>`) and the reads live in
+> `lib/device/deviceReads.ts`.
+>
+> **Still genuinely deferred: observer never gained snapshot OWNERSHIP**
+> (`latestSnapshot` / `latestSnapshotById` are still private fields on
+> `DeviceTransport` — PR2b, deferred by decision, see below). Note what stage 7
+> did and did not do: it sealed ACCESS to the store, not ownership of it. Weigh
+> PR2b on that basis — most of what the move was for has been bought without it,
+> and moving the store means moving the fresher-wins merge with it. The
 > home-power read scalar **did** move to the observer in PR2a of the
 > actuator-write-seam train (`lib/observer/observedHomePower.ts`); the realtime
 > "subscribe normalized events" surface was instead realised via the
@@ -371,9 +390,9 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    `observedStateDispatcher` callback bag supplied by wiring (`app.ts`) and
    routes every post-translation fan-out through it via two new private
    helpers (`dispatchObservedStateChanged`, `dispatchObservedControlStateChanged`).
-   Transport's own EventEmitter still fires the legacy events when no
-   dispatcher is wired, so legacy direct-`DeviceTransport` tests continue
-   to subscribe with the same event-name strings without behaviour drift.
+   Transport originally kept its own EventEmitter as a fallback for when no
+   dispatcher was wired, so direct-`DeviceTransport` tests could subscribe with
+   the same event-name strings; that fallback is gone (see below).
    Drift detection against plan intent already lived in
    `lib/executor/planExecutionDrift.ts` since PR #1b — wiring's
    `appRealtimeDeviceReconcileRuntime.ts` consults that predicate before
@@ -392,13 +411,40 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    `appRealtimeDeviceReconcileRuntime.ts` is gone. See `lib/plan/planRebuildTrigger.ts`,
    root `AGENTS.md` § Control Flow, and `README.md` in this directory.)
 
-   Still open (2026-09-03): the no-dispatcher fallback above never went away, so
-   this step is not fully shipped. Production always injects a dispatcher, which
-   leaves transport's own EventEmitter with zero production subscribers — every
-   subscription to it is a test. Removing it (dispatcher required, the three
-   `this.emit` fallbacks deleted, `extends EventEmitter` dropped) is tracked in
-   `TODO.md` under "`DeviceTransport` still extends `EventEmitter` to serve a
-   fallback with zero production subscribers".
+   Closed 2026-09-13: the fallback is deleted and this step is fully shipped.
+   `observedStateDispatcher` and the `options` object that carries it are both
+   required, `DeviceTransport` no longer extends `EventEmitter`, the three
+   `this.emit(...)` else-branches are gone, and neither legacy event name is
+   exported from `lib/device/deviceTransport.ts`. Observer's
+   `ObservedStateEmitter` is now the only declaration of those strings and the
+   only surface the events travel on — a reader of `DeviceTransport` can no
+   longer mistake a second, untyped channel for a supported mode.
+
+   What the fallback cost to remove was never the emit-deletion: making the
+   dispatcher mandatory made `options` mandatory, which put every
+   `new DeviceTransport(` site in specs into the blast radius. That was absorbed
+   by `test/helpers/deviceTransportHarness.ts`, which constructs a transport with
+   an observer-owned emitter injected and hands back `onObservedState` and
+   `onObservedControlState` subscription helpers keyed off the transport itself —
+   so migrating a spec is a textual swap at the call, not a rewrite of its setup.
+
+   One divergence surfaced while doing it, and the guard meant to prevent it
+   turned out to be two-thirds decorative. Transport mirrors observer's
+   dispatcher type by hand (the cruiser blocks the import in both directions),
+   and its copy declared `externalTemperatureAdjusted` optional while observer's
+   had always been required and `asDispatcher` had always supplied it. The
+   compile-time parity guard in `test/unit/observerObservedStateEvents.test.ts`
+   asserted parity member by member, so a member nobody listed was a member
+   nobody checked — and adding an assertion for this one did not help either,
+   because a naked type parameter on the left of `extends` DISTRIBUTES over a
+   union: an optional member is `F | undefined`, the check evaluates to
+   `true | false` — that is, `boolean` — and `[true, true]` is assignable to
+   `[true, boolean]`. The assertion passed on precisely the divergence it named.
+   The guard is now a single `[A] extends [B]`-shaped assertion over the WHOLE
+   dispatcher types: tuple-wrapped so nothing distributes, and whole-type so a
+   member added to one side alone fails too, which no per-member scheme can see.
+   Verified by probe — re-optionalizing the member, adding a member to one side,
+   and changing one member's parameter type each fail the typecheck.
 
 ## Secondary cleanups surfaced during review
 

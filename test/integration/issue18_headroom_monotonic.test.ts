@@ -1,4 +1,7 @@
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
+import {
+  createTestDeviceTransport,
+} from '../helpers/deviceTransportHarness';
 import type { Mock, MockInstance } from 'vitest';
 
 import { DeviceTransport } from '../../lib/device/deviceTransport';
@@ -41,7 +44,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         lastKnownPowerKw = {};
         lastPositiveMeasuredPowerKw = {};
 
-        deviceManager = new DeviceTransport(homeyMock, loggerMock, undefined, {
+        deviceManager = createTestDeviceTransport(homeyMock, loggerMock, undefined, {
             expectedPowerKwOverrides,
             lastKnownPowerKw,
             lastPositiveMeasuredPowerKw,

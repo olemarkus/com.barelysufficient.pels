@@ -1,9 +1,12 @@
 import type Homey from 'homey';
 import {
+  createTestDeviceTransport,
+  createTestObservedStateDispatcher,
+} from '../helpers/deviceTransportHarness';
+import {
   extractLiveMeterItems,
   extractLiveMeterPowerWatts,
 } from '../../lib/device/managerEnergy';
-import { DeviceTransport } from '../../lib/device/deviceTransport';
 import { mockHomeyInstance } from '../mocks/homey';
 import { fetchLiveGenerationW, fetchLiveMeterItems, fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
 import {
@@ -321,6 +324,7 @@ describe('transport Main-meter authority', () => {
       logger,
       resolveMainMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }),
       providers: {},
+      observedStateDispatcher: createTestObservedStateDispatcher(),
     } as unknown as TransportContext;
 
     await expect(pollHomePowerWithMeterFanOut(ctx, () => true)).resolves.toEqual({
@@ -344,6 +348,7 @@ describe('transport Main-meter authority', () => {
         getAdditionalMeterDeviceIds: () => ['meter-area'],
         onAdditionalMeterReadings,
       },
+      observedStateDispatcher: createTestObservedStateDispatcher(),
     } as unknown as TransportContext;
 
     await expect(pollHomePowerWithMeterFanOut(ctx, () => true)).resolves.toBeNull();
@@ -372,7 +377,7 @@ describe('resolved home meter identity on the sample', () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [{ type: 'cumulative', id: 'm-area', values: { W: 4_200 } }],
     });
-    const transport = new DeviceTransport(
+    const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
       { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'm-area' }) },
@@ -394,7 +399,7 @@ describe('resolved home meter identity on the sample', () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [{ type: 'cumulative', values: { W: 4_200 } }],
     });
-    const transport = new DeviceTransport(
+    const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
       { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }) },
@@ -411,7 +416,7 @@ describe('resolved home meter identity on the sample', () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [{ type: 'cumulative', id: 'meter-main', values: { W: 2_800 } }],
     });
-    const transport = new DeviceTransport(
+    const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
       { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }) },
@@ -429,7 +434,7 @@ describe('resolved home meter identity on the sample', () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [{ type: 'cumulative', id: 'm-area', values: { W: 4_200 } }],
     });
-    const transport = new DeviceTransport(
+    const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
       { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
@@ -440,7 +445,7 @@ describe('resolved home meter identity on the sample', () => {
 
   it('does NOT read live power on a fast refresh, so no sample and no identity exist', async () => {
     const getEnergyLiveReport = vi.spyOn(homeyApi, 'getEnergyLiveReport');
-    const transport = new DeviceTransport(
+    const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
       { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }) },
@@ -463,7 +468,7 @@ describe('resolved home meter identity on the sample', () => {
         { type: 'cumulative', id: 'other', values: { W: 900 } },
       ],
     });
-    const transport = new DeviceTransport(
+    const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
       { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
@@ -474,7 +479,7 @@ describe('resolved home meter identity on the sample', () => {
 
   it('an empty report yields NO sample, so no identity can publish at all', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ items: [] });
-    const transport = new DeviceTransport(
+    const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
       { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }) },
@@ -540,7 +545,7 @@ describe('hasWarmSnapshot — proof that the SDK listed devices', () => {
   it('stays cold on an empty raw read, and warms on a read that listed a device', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
     const rawDevices = vi.spyOn(homeyApi, 'getRawDevices').mockResolvedValue([]);
-    const transport = new DeviceTransport(
+    const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
       { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
@@ -567,7 +572,7 @@ describe('hasWarmSnapshot — proof that the SDK listed devices', () => {
       id: 'heater-1', name: 'Heater', class: 'heater', capabilities: ['onoff', 'measure_power'],
       capabilitiesObj: { onoff: { value: true }, measure_power: { value: 1800 } }, available: true, ready: true,
     }]);
-    const transport = new DeviceTransport(
+    const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
       { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },

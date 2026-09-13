@@ -1,4 +1,7 @@
 import { DeviceTransport } from '../../lib/device/deviceTransport';
+import {
+  createTestDeviceTransport,
+} from '../helpers/deviceTransportHarness';
 import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
@@ -73,7 +76,7 @@ async function buildHarness(): Promise<Harness> {
     emitter.onObservedStateChanged((event) => projection.applyDelta(event));
     emitter.onObservedStateRefresh((event) => projection.applyRefresh(event));
 
-    const transport = new DeviceTransport(
+    const transport = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         loggerMock as unknown as Logger,
         undefined,
