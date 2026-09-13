@@ -1669,6 +1669,47 @@ describe('DeviceTransport', () => {
             vi.useRealTimers();
         });
 
+        it('does not bring back a meter_power rate once a device.update has resolved no reading', async () => {
+            // An idle meter-only device: its meter has stopped moving, so a
+            // device.update carrying only a temperature tick resolves no rate.
+            // The rate the previous device.update retained must not come back
+            // on the next refresh, which reads the same unmoved meter.
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+            const buildAc = (meterKwh: number, meterAt: string, temperature: number) => ({
+                id: 'dev1',
+                name: 'AC',
+                class: 'airconditioning',
+                capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
+                capabilitiesObj: {
+                    meter_power: { value: meterKwh, id: 'meter_power', lastUpdated: meterAt },
+                    target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
+                    measure_temperature: { value: temperature, id: 'measure_temperature', units: '°C' },
+                },
+            });
+            const readMeasuredPowerKw = () => (
+                deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe
+            ).measuredPowerKw;
+
+            await deviceManager.init();
+            mockApiGet.mockResolvedValue({ dev1: buildAc(100, '2026-01-01T00:00:30.000Z', 20) });
+            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+
+            vi.setSystemTime(new Date('2026-01-01T01:00:40.000Z'));
+            deviceManager.injectDeviceUpdateForTest(buildAc(101, '2026-01-01T01:00:30.000Z', 20));
+            expect(readMeasuredPowerKw()).toBeCloseTo(1, 3);
+
+            vi.setSystemTime(new Date('2026-01-01T01:05:00.000Z'));
+            deviceManager.injectDeviceUpdateForTest(buildAc(101, '2026-01-01T01:00:30.000Z', 21));
+            expect(readMeasuredPowerKw()).toBeUndefined();
+
+            mockApiGet.mockResolvedValue({ dev1: buildAc(101, '2026-01-01T01:00:30.000Z', 21) });
+            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            expect(readMeasuredPowerKw()).toBeUndefined();
+
+            vi.useRealTimers();
+        });
+
         // Regression: previously the override resolved at three sites in the
         // snapshot pipeline (refreshSnapshot, the wrapper parseDeviceList, and
         // resolveParseDeviceIdentity). After the dedup, the provider callback is

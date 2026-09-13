@@ -122,10 +122,13 @@ export class DeviceMeasuredPowerResolver {
    * value has not moved, so the delta was zero over real elapsed time and the
    * device was credited a measured `0 kW` while running — a positive claim that
    * it draws nothing, for most of every poll interval. On one clock that pair
-   * spans no window at all, so it resolves to ABSENCE: no reading, last good
-   * value carries forward, which is what a gap in a feed is owed. A device whose
-   * app re-publishes an unchanged meter still resolves a true `0` there, because
-   * its observation time moves while its energy does not.
+   * spans no window at all, so it resolves to ABSENCE: no reading, rather than a
+   * measured claim either way. Once a `device.update` observes the reading drop
+   * to that absence, it deletes a rate an earlier push retained
+   * (`forgetSupersededMeasuredPower`), so the refresh cannot bring the last
+   * running power back. A device whose app re-publishes an unchanged meter still
+   * resolves a true `0` there, because its observation time moves while its
+   * energy does not.
    *
    * THE ANCHOR ADVANCES ONLY WHEN A PAIR IS CONSUMED (or on a meter reset).
    * Advancing it on a skipped pair would discard that interval's energy for

@@ -16,7 +16,7 @@ type RecordSnapshotObservationOptions = {
     snapshot: TransportDeviceSnapshot;
     source: CapabilityObservationSource;
     observedAt: number;
-    capabilityIdSet: Set<string> | null;
+    capabilityIdSet: ReadonlySet<string>;
 };
 
 export function recordLocalWriteObservation(params: {
@@ -62,7 +62,7 @@ export function recordSnapshotCapabilityObservations(params: {
     latestSnapshot: TransportDeviceSnapshot[];
     deviceId: string;
     source: CapabilityObservationSource;
-    capabilityIds?: string[];
+    capabilityIds: readonly string[];
 }): void {
     const {
         state,
@@ -74,7 +74,7 @@ export function recordSnapshotCapabilityObservations(params: {
     const snapshot = latestSnapshot.find((entry) => entry.id === deviceId);
     if (!snapshot) return;
     const observedAt = Date.now();
-    const capabilityIdSet = capabilityIds ? new Set(capabilityIds) : null;
+    const capabilityIdSet: ReadonlySet<string> = new Set(capabilityIds);
     const recordedFreshData = [
         recordSnapshotControlObservation({ state, deviceId, snapshot, source, observedAt, capabilityIdSet }),
         recordSnapshotTargetObservations({ state, deviceId, snapshot, source, observedAt, capabilityIdSet }),
@@ -106,6 +106,7 @@ export function recordSnapshotCapabilityObservations(params: {
             countsTowardDeviceFreshness: true,
         }),
     ].some(Boolean);
+    forgetSupersededMeasuredPower(state, snapshot, capabilityIdSet);
     const stateOfChargeCapabilityId = snapshot.stateOfCharge?.capabilityId;
     const observedStateOfChargeCapabilityId = stateOfChargeCapabilityId
         && isStateOfChargeCapabilityId(stateOfChargeCapabilityId)
@@ -183,7 +184,7 @@ function recordSnapshotControlObservation(options: RecordSnapshotObservationOpti
     } = options;
     if (
         !snapshot.binaryCapabilityId
-        || (capabilityIdSet && !capabilityIdSet.has(snapshot.binaryCapabilityId))
+        || !capabilityIdSet.has(snapshot.binaryCapabilityId)
     ) {
         return false;
     }
@@ -218,7 +219,7 @@ function recordSnapshotTargetObservations(options: RecordSnapshotObservationOpti
     } = options;
     let recorded = false;
     for (const target of snapshot.targets) {
-        if (capabilityIdSet && !capabilityIdSet.has(target.id)) continue;
+        if (!capabilityIdSet.has(target.id)) continue;
         recordCapabilityObservation({
             state,
             latestSnapshot: [],
@@ -245,7 +246,7 @@ function recordSnapshotScalarObservation(
         value: number | string | undefined;
         source: CapabilityObservationSource;
         observedAt: number;
-        capabilityIdSet: Set<string> | null;
+        capabilityIdSet: ReadonlySet<string>;
         countsTowardDeviceFreshness: boolean;
     },
 ): boolean {
@@ -259,7 +260,7 @@ function recordSnapshotScalarObservation(
         countsTowardDeviceFreshness,
     } = params;
     if (typeof value !== 'number' && typeof value !== 'string') return false;
-    if (capabilityIdSet && !capabilityIdSet.has(capabilityId)) return false;
+    if (!capabilityIdSet.has(capabilityId)) return false;
     recordCapabilityObservation({
         state,
         latestSnapshot: [],
@@ -272,6 +273,35 @@ function recordSnapshotScalarObservation(
         countsTowardDeviceFreshness,
     });
     return true;
+}
+
+/**
+ * An observation that saw the measured power change TO no reading is the newest
+ * word on it, so the value an earlier push retained is superseded and must go.
+ *
+ * A retained `measure_power` observation exists to outlive an older pull: the
+ * refresh merge re-applies it whenever the fetched device cannot prove itself
+ * fresher. A device measured only by `meter_power` never can — it has no
+ * `measure_power.lastUpdated` — so a rate one `device.update` retained came back
+ * on every refresh. Once its meter stopped moving, the next `device.update`
+ * resolved no reading (the resolver's no-window case), recorded nothing, and
+ * left that rate standing: an idle device read its last running power until its
+ * meter moved again. Deleting the retained observation is what closes it; the
+ * absence then resolves to no draw at `getCurrentDrawKw`, as a meter that has
+ * not moved should.
+ *
+ * It closes only the case an observation sees. An idle device that sends no
+ * further `device.update` still has its last rate re-applied on every refresh,
+ * because nothing here observes the drop.
+ */
+function forgetSupersededMeasuredPower(
+    state: DeviceTransportObservationState,
+    snapshot: TransportDeviceSnapshot,
+    capabilityIdSet: ReadonlySet<string>,
+): void {
+    if (!capabilityIdSet.has('measure_power')) return;
+    if (typeof snapshot.measuredPowerKw === 'number') return;
+    state.capabilityObservations.delete(buildCapabilityObservationKey(snapshot.id, 'measure_power'));
 }
 
 function updateLocalWriteTimestamps(
