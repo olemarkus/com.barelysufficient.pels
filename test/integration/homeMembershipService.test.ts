@@ -2210,6 +2210,44 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
     expect(service.isMainHomeActuationFenced()).toBe(true);
   });
 
+  it('fences an unconfigured meter without ever asking for a retry', () => {
+    // The whole point of splitting `unconfigured` out of `unavailable`: both
+    // fence control, but only an untrustworthy read is worth asking again.
+    // `classifyOwnershipGenerationForPreparation` returning 'retry' is what
+    // arms the authority recovery loop in `wireHomeMembership`, so an unchosen
+    // meter answering 'blocked' is what stops that loop re-reading a setting
+    // once a minute for the life of the app.
+    createHomesStore(homeyLike).write({
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: [SUB_HOME_A],
+    });
+    const onMainAuthorityUnresolved = vi.fn();
+    let selection: MainMeterSelection = { state: 'unavailable' };
+    const service = new HomeMembershipService({
+      getConfiguredPowerSource: homeyEnergyPowerSource,
+      homesStore: createHomesStore(homeyLike),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      getZoneTree: () => ZONES,
+      getDevices: () => [],
+      getLogger: () => undefined,
+      getMainMeterSelection: () => selection,
+      onMainAuthorityUnresolved,
+      legacyMultiHomeEnabled: false,
+    });
+    service.recompute();
+
+    // An untrustworthy read fences AND asks to be retried.
+    expect(service.isMainHomeActuationFenced()).toBe(true);
+    expect(onMainAuthorityUnresolved).toHaveBeenCalled();
+
+    onMainAuthorityUnresolved.mockClear();
+    selection = { state: 'unconfigured' };
+
+    // An unchosen meter fences just as hard, and asks for nothing.
+    expect(service.isMainHomeActuationFenced()).toBe(true);
+    expect(onMainAuthorityUnresolved).not.toHaveBeenCalled();
+  });
+
   // Automatic (no explicit Main meter) resolves the whole-home reading from a
   // sole readable `cumulative` item or retains a meter proven by an earlier
   // unambiguous poll. That may still be a meter area's own meter when it is the

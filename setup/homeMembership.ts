@@ -22,7 +22,7 @@ import {
   isHomeConfigRuntimeActive,
   readLegacyMultiHomeEnabled,
 } from './multiHomeActivation';
-import { readMainMeterSelection } from './mainMeterSettings';
+import { createMainMeterSelectionReader } from '../lib/home/mainMeterSelection';
 import {
   MainMeterAuthority,
   type MainMeterAuthorityContext,
@@ -759,6 +759,10 @@ export const createHomeMembershipService = (params: {
   /** See {@link HomeMembershipServiceDeps.onZoneTreeCommitReady}. */
   onZoneTreeCommitReady?: () => void;
 }): HomeMembershipWiring => {
+  // The graced reader, built once per membership wiring: settling a listed-empty
+  // key needs memory across reads, and that memory belongs to the lib component
+  // rather than to any caller asking whether a meter is configured.
+  const mainMeterSelection = createMainMeterSelectionReader(params.homey.settings, () => Date.now());
   const service = new HomeMembershipService({
     homesStore: createHomesStore(params.homey),
     assignmentsStore: createDeviceHomeAssignmentsStore(params.homey),
@@ -766,7 +770,7 @@ export const createHomeMembershipService = (params: {
     getDevices: params.getDevices,
     getLogger: params.getLogger,
     getConfiguredPowerSource: () => readConfiguredPowerSource(params.homey.settings),
-    getMainMeterSelection: () => readMainMeterSelection(params.homey.settings),
+    getMainMeterSelection: () => mainMeterSelection.read(),
     getRestoredSampleAtMs: params.getRestoredSampleAtMs,
     legacyMultiHomeEnabled: readLegacyMultiHomeEnabled(params.homey.settings),
     onMembershipChanged: params.onMembershipChanged,

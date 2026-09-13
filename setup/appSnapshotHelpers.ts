@@ -55,7 +55,7 @@ const sameMainMeterSelection = (
 ): boolean => (
   left.state === right.state
   && (
-    left.state === 'unavailable'
+    left.state !== 'resolved'
     || (right.state === 'resolved' && left.meterDeviceId === right.meterDeviceId)
   )
 );

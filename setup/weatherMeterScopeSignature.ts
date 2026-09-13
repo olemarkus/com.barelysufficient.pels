@@ -47,7 +47,7 @@ export const readWholeHomeMeterScopeSignature = (
   if (powerSource.value === 'flow') return 'source:flow';
 
   const mainMeter = readMainMeterSelection(homey.settings);
-  if (mainMeter.state === 'unavailable') return undefined;
+  if (mainMeter.state !== 'resolved') return undefined;
   // The source value is a closed enum and meter ids are Homey device UUIDs,
   // so the separators cannot collide.
   return `source:homey_energy|main:${mainMeter.meterDeviceId}`;

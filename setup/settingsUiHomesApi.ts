@@ -120,7 +120,7 @@ const resolveMainMeterConflictAreaName = (
   const powerSource = readConfiguredPowerSource(homey.settings);
   if (powerSource.state !== 'resolved' || powerSource.value !== 'homey_energy') return null;
   const selection = readMainMeterSelection(homey.settings);
-  if (selection.state === 'unavailable') return null;
+  if (selection.state !== 'resolved') return null;
   return findMainMeterCollision(selection.meterDeviceId, subHomes)?.name ?? null;
 };
 

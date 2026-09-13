@@ -301,7 +301,13 @@ export class MainMeterAuthority {
       return this.resolveSampled(ctx);
     }
     const selection = this.readMainMeterSelection();
+    // A read that could not be trusted is worth asking again; a meter the owner
+    // has never chosen is not. Both fence — control needs a meter either way —
+    // but only the first is 'retry', which is what `wireHomeMembership` arms
+    // recovery on. The settings-change event that fires when a meter IS chosen
+    // re-opens this seam, so nothing is waiting on a poll.
     if (selection.state === 'unavailable') return 'retry';
+    if (selection.state === 'unconfigured') return 'blocked';
     if (!ctx.runtimeActive || ctx.subHomes.length === 0) {
       this.mainMeterCollisionLogged = false;
       this.loggedSampledFenceReason = null;
@@ -405,7 +411,14 @@ export class MainMeterAuthority {
     }
     if (powerSource === 'flow') return { state: 'resolved', deviceIds: new Set() };
     const mainSelection = this.readMainMeterSelection();
-    return { state: mainSelection.state, deviceIds: this.knownConfiguredMeterDeviceIds(ctx) };
+    // This contract asks whether the source set is authoritative, not why it is
+    // not. An unchosen meter and an untrustworthy read are both "cannot say",
+    // and consumers fail closed on either — `filterDevicesForHome` empties the
+    // plan rather than risk commanding a device that is really a meter.
+    return {
+      state: mainSelection.state === 'resolved' ? 'resolved' : 'unavailable',
+      deviceIds: this.knownConfiguredMeterDeviceIds(ctx),
+    };
   }
 
   private knownConfiguredMeterDeviceIds(ctx: MainMeterAuthorityContext): ReadonlySet<string> {
@@ -443,16 +456,25 @@ export class MainMeterAuthority {
 
   private readMainMeterSelection(): MainMeterSelection {
     const selection = this.deps.getMainMeterSelection();
-    if (selection.state === 'unavailable') {
+    if (selection.state !== 'resolved') {
+      // One latch for "the meter fence is closed", with the reason in the
+      // payload — the no-state rule budgets this file and a second boolean
+      // would only say the same thing twice.
       if (!this.mainMeterUnavailableLogged) {
         this.deps.getLogger()?.warn({
           event: 'main_home_meter_authority_unavailable',
-          detail: 'fencing control until the Main meter selection is authoritative',
+          reason: selection.state,
+          detail: selection.state === 'unconfigured'
+            ? 'fencing control until a whole-home meter is chosen'
+            : 'fencing control until the Main meter selection is authoritative',
         });
       }
       this.mainMeterUnavailableLogged = true;
       this.mainMeterCollisionLogged = false;
-      this.deps.onMainAuthorityUnresolved?.();
+      // Only an untrustworthy read is worth asking again. No re-read makes an
+      // owner pick a meter; the settings-change event that fires when they do
+      // is what re-opens this seam, so an unchosen meter arms nothing.
+      if (selection.state === 'unavailable') this.deps.onMainAuthorityUnresolved?.();
       return selection;
     }
     this.mainMeterUnavailableLogged = false;

@@ -267,12 +267,18 @@ export class WeatherBackfillChain {
     // unset, so the next start() retries): a failed read must not widen the
     // election.
     const mainMeter = this.deps.readMainMeterSelection();
-    if (mainMeter.state === 'unavailable') {
+    if (mainMeter.state !== 'resolved') {
       if (!this.meterSelectionUnavailableLogged) {
-        this.deps.logger.info({ event: 'weather_meter_backfill_deferred_selection_unavailable' });
+        this.deps.logger.info({
+          event: 'weather_meter_backfill_deferred_selection_unavailable',
+          reason: mainMeter.state,
+        });
       }
       this.meterSelectionUnavailableLogged = true;
-      this.scheduleMeterSettingsRetry();
+      // Poll only for a read that might yet succeed. With no meter chosen the
+      // marker simply stays unset and the next `start()` — after the owner
+      // picks one — launches the election.
+      if (mainMeter.state === 'unavailable') this.scheduleMeterSettingsRetry();
       return;
     }
     this.meterSelectionUnavailableLogged = false;

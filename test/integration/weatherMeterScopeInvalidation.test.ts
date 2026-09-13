@@ -4,7 +4,7 @@ import { MockSettings } from '../mocks/homey';
 import { createSettingsHandler, type SettingsHandlerDeps } from '../../lib/utils/settingsHandlers';
 import { createWeatherHistoryStore, type WeatherHistoryStore } from '../../lib/weather/weatherHistoryStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
-import { readMainMeterSelection } from '../../setup/mainMeterSettings';
+import { readMainMeterSelection } from '../../lib/home/mainMeterSelection';
 import { readConfiguredPowerSource } from '../../setup/powerSourceSettings';
 import { readWholeHomeMeterScopeSignature } from '../../setup/weatherMeterScopeSignature';
 import { WeatherCollector, type WeatherCollectorDeps } from '../../lib/weather/weatherCollector';

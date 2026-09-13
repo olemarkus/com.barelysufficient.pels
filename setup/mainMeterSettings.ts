@@ -1,35 +1,16 @@
-import { resolveExplicitMainMeterDeviceId } from '../lib/home/homeConfig';
-import { HOMEY_ENERGY_METER_DEVICE_ID } from '../lib/utils/settingsKeys';
-import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
-
-type MainMeterSettingsPort = {
-  get(key: string): unknown;
-};
-
 /**
- * Classify Main's explicit meter. Absence is never a value any more (the
- * stored-null Automatic selection is retired and the save seam cannot write
- * it), so every non-string read — `null`, `undefined`, junk — is honestly
- * `unavailable`: a transient SDK miss, a malformed value, or a legacy
- * Automatic install whose owner has not picked a meter yet (the boot-time
- * sole-meter adoption fills it when Homey Energy lists exactly one whole-home
- * meter; otherwise the no-readings banner names the remedy). The
- * old `getKeys()` cross-check existed only to tell a transient miss apart
- * from never-written-means-Automatic; with that meaning gone, so is the
- * cross-check. All SDK provenance is consumed here: callers receive only
- * `resolved` or semantic `unavailable`.
+ * The wiring layer's handle on Main's meter selection. It classifies nothing:
+ * the read, the absence policy and the bounded grace all live in
+ * `lib/home/mainMeterSelection.ts`, the module that owns what the key means.
+ *
+ * It exists as a re-export rather than as five direct imports because
+ * `lib/home` is a domain peer, and the files that need a meter id — the weather
+ * collector, the transport wiring, the settings repository — do not otherwise
+ * touch the home domain. Pointing each at `lib/home` would raise the cross-peer
+ * count `npm run setup:boundaries` holds down, for no gain: what those callers
+ * want is one device id, not the home domain.
+ *
+ * The consumer that needs the GRACED reader — `homeMembership.ts`, which is the
+ * home domain's own service — imports it from `lib/home` directly.
  */
-export const readMainMeterSelection = (
-  settings: MainMeterSettingsPort,
-): MainMeterSelection => {
-  try {
-    const raw = settings.get(HOMEY_ENERGY_METER_DEVICE_ID);
-    if (typeof raw !== 'string') return { state: 'unavailable' };
-    const meterDeviceId = resolveExplicitMainMeterDeviceId(raw);
-    return meterDeviceId === null
-      ? { state: 'unavailable' }
-      : { state: 'resolved', meterDeviceId };
-  } catch {
-    return { state: 'unavailable' };
-  }
-};
+export { readMainMeterSelection } from '../lib/home/mainMeterSelection';
