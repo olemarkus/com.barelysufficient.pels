@@ -517,5 +517,8 @@
   },
   "3.1.1": {
     "en": "Devices that report only an energy meter, with no live power reading, now show the right power. Before, such a device could show far more power than it really uses, or keep showing its running power after it had gone idle. PELS could then turn it off expecting power to drop when it wouldn't, and smart-task estimates came out wrong. Any high figures PELS already learned from these readings will fade out over the next 30 days.\n\nWhen PELS turns one device off to make room for another, it now waits long enough for the other device to start. Before, it could give up too early, so a device was sometimes turned off and on many times for nothing. An EV charger that is plugged in and out several times in a row now connects to its car, so the car's smart task gets its battery level. The device page now explains how to make a device limitable: add a power meter, or set 'Energy used when on' under Energy in the device's advanced settings in Homey. For thermostats it also says that 'Leave off until turned on again' still sets the temperature. The 'Enable power-limit control' Flow card no longer switches on control for a device PELS cannot limit."
+  },
+  "3.1.2": {
+    "en": "Minor stability improvements. PELS no longer keeps checking in the background for a whole-home meter when none has been chosen, and it avoids sending device commands while it is still starting up and cannot yet control your devices."
   }
 }
